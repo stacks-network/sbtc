@@ -21,6 +21,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
+use crate::bitcoin::utxo::TxDeconstructor as _;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::SignerEvent;
@@ -123,7 +124,7 @@ where
     BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
-    #[tracing::instrument(skip(self), name = "block-observer")]
+    #[tracing::instrument(skip_all, name = "block-observer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let term = self.context.get_termination_handle();
 
@@ -132,16 +133,15 @@ where
                 break;
             }
 
-            // Bitcoin blocks will generally arrive in ~19 minute intervals, so
+            // Bitcoin blocks will generally arrive in ~10 minute intervals, so
             // we don't need to be so aggresive in our timeout here.
             let poll = tokio::time::timeout(Duration::from_millis(100), self.bitcoin_blocks.next());
 
             match poll.await {
                 Ok(Some(Ok(block_hash))) => {
-                    tracing::info!(%block_hash, "observed new bitcoin block from stream");
+                    tracing::info!("observed new bitcoin block from stream");
 
-                    let next_blocks_to_process = match self.next_blocks_to_process(block_hash).await
-                    {
+                    let next_blocks = match self.next_blocks_to_process(block_hash).await {
                         Ok(blocks) => blocks,
                         Err(error) => {
                             tracing::warn!(%error, %block_hash, "could not get next blocks to process");
@@ -149,7 +149,7 @@ where
                         }
                     };
 
-                    for block in next_blocks_to_process {
+                    for block in next_blocks {
                         if let Err(error) = self.process_bitcoin_block(block).await {
                             tracing::warn!(%error, "could not process bitcoin block");
                         }
@@ -178,7 +178,7 @@ where
 
     /// Fetch deposit requests from Emily and store the validated ones into
     /// the database.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
         let mut failed_requests = Vec::new();
@@ -215,7 +215,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(%block_hash))]
     async fn next_blocks_to_process(
         &self,
         mut block_hash: bitcoin::BlockHash,
@@ -373,6 +373,8 @@ where
             .map(ScriptBuf::from_bytes)
             .collect();
 
+        let db = self.context.get_storage_mut();
+        let btc_rpc = self.context.get_bitcoin_client();
         // Look through all the UTXOs in the given transaction slice and
         // keep the transactions where a UTXO is locked with a
         // `scriptPubKey` controlled by the signers.
@@ -390,40 +392,42 @@ where
                 continue;
             }
 
+            // This function is called after we have received a
+            // notification of a bitcoin block, and we are iterating
+            // through all of the transactions within that block. This
+            // means the `get_tx_info` call below should not fail.
+            let txid = tx.compute_txid();
+            let tx_info = btc_rpc
+                .get_tx_info(&txid, &block_hash)
+                .await?
+                .ok_or(Error::BitcoinTxMissing(txid, None))?;
+
             // sBTC transactions have as first txin a signers spendable output
-            let mut tx_type = model::TransactionType::Donation;
-            if let Some(txin) = tx.input.first() {
-                let tx_info = self
-                    .context
-                    .get_bitcoin_client()
-                    .get_tx(&txin.previous_output.txid)
-                    .await?
-                    .ok_or(Error::BitcoinTxMissing(txin.previous_output.txid, None))?;
-
-                let prevout = &tx_info
-                    .tx
-                    .tx_out(txin.previous_output.vout as usize)
-                    .map_err(|_| Error::OutPointMissing(txin.previous_output))?
-                    .script_pubkey;
-
-                if signer_script_pubkeys.contains(prevout) {
-                    tx_type = model::TransactionType::SbtcTransaction;
-                }
+            let tx_type = if tx_info.is_signer_created(&signer_script_pubkeys) {
+                model::TransactionType::SbtcTransaction
+            } else {
+                model::TransactionType::Donation
             };
 
+            let txid = tx.compute_txid();
             sbtc_txs.push(model::Transaction {
-                txid: tx.compute_txid().to_byte_array(),
+                txid: txid.to_byte_array(),
                 tx: bitcoin::consensus::serialize(&tx),
                 tx_type,
                 block_hash: block_hash.to_byte_array(),
             });
+
+            for prevout in tx_info.to_inputs(&signer_script_pubkeys) {
+                db.write_tx_prevout(&prevout).await?;
+            }
+
+            for output in tx_info.to_outputs(&signer_script_pubkeys) {
+                db.write_tx_output(&output).await?;
+            }
         }
 
         // Write these transactions into storage.
-        self.context
-            .get_storage_mut()
-            .write_bitcoin_transactions(sbtc_txs)
-            .await?;
+        db.write_bitcoin_transactions(sbtc_txs).await?;
         Ok(())
     }
 
@@ -759,7 +763,7 @@ mod tests {
     #[tokio::test]
     async fn sbtc_transactions_get_stored() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+        let mut test_harness = TestHarness::generate(&mut rng, 20, 0..5);
 
         let block_hash = BlockHash::from_byte_array([1u8; 32]);
         // We're going to do the following:
@@ -790,13 +794,6 @@ mod tests {
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-        let ctx = TestContext::builder()
-            .with_storage(storage.clone())
-            .with_stacks_client(test_harness.clone())
-            .with_emily_client(test_harness.clone())
-            .with_bitcoin_client(test_harness.clone())
-            .build();
-
         // Now let's create two transactions, one spending to the signers
         // and another not spending to the signers. We use
         // sbtc::testing::deposits::tx_setup just to quickly create a
@@ -810,6 +807,30 @@ mod tests {
 
         // This one does not spend to the signers :(
         let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, 2000);
+        let txid0 = tx_setup0.tx.compute_txid();
+        let txid1 = tx_setup1.tx.compute_txid();
+
+        let response0 = GetTxResponse {
+            tx: tx_setup0.tx.clone(),
+            block_hash: Some(block_hash),
+            confirmations: None,
+            block_time: None,
+        };
+        let response1 = GetTxResponse {
+            tx: tx_setup1.tx.clone(),
+            block_hash: Some(block_hash),
+            confirmations: None,
+            block_time: None,
+        };
+        test_harness.add_deposit(txid0, response0);
+        test_harness.add_deposit(txid1, response1);
+
+        let ctx = TestContext::builder()
+            .with_storage(storage.clone())
+            .with_stacks_client(test_harness.clone())
+            .with_emily_client(test_harness.clone())
+            .with_bitcoin_client(test_harness.clone())
+            .build();
 
         let block_observer = BlockObserver {
             context: ctx,

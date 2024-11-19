@@ -31,10 +31,15 @@ export class EmilyStackUtils {
     private static tablesOnly?: boolean;
 
     /*
+     * The number of signer API keys to create.
+     */
+    private static numSignerApiKeys?: number;
+
+    /*
      * Returns the current stage name.
      */
     public static getStageName(): string {
-        this.stageName ??= (process.env.AWS_STAGE ?? "dev");
+        this.stageName ??= (process.env.AWS_STAGE ?? Constants.DEFAULT_STAGE_NAME);
         if (this.stageName === undefined) {
             throw new Error('Must define AWS account on either "AWS_ACCOUNT" or "CDK_DEFAULT_ACCOUNT" env variables.');
         }
@@ -75,6 +80,26 @@ export class EmilyStackUtils {
     public static isTablesOnly(): boolean {
         this.tablesOnly ??= (process.env.TABLES_ONLY ?? "false").toLowerCase() === "true";
         return this.tablesOnly;
+    }
+
+    /*
+     * Returns the number of signer API keys to create.
+     */
+    public static getNumSignerApiKeys(): number {
+        this.numSignerApiKeys ??= parseInt(process.env.NUM_SIGNER_API_KEYS ?? (Constants.DEFAULT_NUM_SIGNER_API_KEYS).toString());
+        if (this.numSignerApiKeys === undefined) {
+            throw new Error('Must define number of signer API keys');
+        }
+        return this.numSignerApiKeys
+    }
+
+    /*
+     * Returns true iff the current stack is a development stack / not a production stack.
+     */
+    public static isDevelopmentStack(): boolean {
+        return this.getStageName() === Constants.DEV_STAGE_NAME
+            || this.getStageName() === Constants.LOCAL_STAGE_NAME
+            || this.getStageName() === Constants.UNIT_TEST_STAGE_NAME;
     }
 
     /*

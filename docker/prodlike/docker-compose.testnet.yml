@@ -1,0 +1,57 @@
+# DISCLAIMER! READ!
+# This file is an example of how it will look in production but there may be changes
+# to this once production docker images are created and uploaded to dockerhub. This file is
+# not meant to be used as is, but a docker compose like this one be created to be used later,
+# and this documentation will be updated to reflect those changes.
+
+# Services.
+# ------------------------------------------------------------------------------
+services:
+
+  postgres:
+    image: postgres:16.3-alpine
+    stop_grace_period: 5s
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+    ports:
+      - 5432:5432
+
+  sbtc-signer:
+    image: blockstack/sbtc:signer-0.0.1-dev-4
+    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres
+    environment:
+      RUST_LOG: info,signer=debug
+      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres:5432/signer
+      SIGNER_BLOCKLIST_CLIENT__ENDPOINT: http://localhost:3032
+    volumes:
+      - ./config/signer-config.toml:/signer-config.toml
+    ports:
+      - "4122:4122"
+
+  blocklist-client:
+    image: blockstack/sbtc:blocklist-client-0.0.1-dev-4
+    entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
+    volumes:
+      - ./config/blocklist-client-config.toml:/blocklist-client-config.toml
+    ports:
+      - "3032:3032"
+
+  bitcoin:
+    build:
+      context: bitcoin
+      dockerfile: Dockerfile.bitcoin
+    ports:
+      - "18443:18443"
+      - "28332:28332"
+    volumes:
+      - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        bitcoind

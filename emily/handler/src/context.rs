@@ -10,12 +10,14 @@ use std::fmt;
 
 use aws_config::BehaviorVersion;
 use aws_sdk_dynamodb::Client;
+use serde::Deserialize;
 use serde::Serialize;
 
+use crate::api::models::limits::AccountLimits;
 use crate::common::error::Error;
 
 /// Emily lambda settings.
-#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize)]
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     /// Whether the Emily lambda is running locally.
     pub is_local: bool,
@@ -25,6 +27,10 @@ pub struct Settings {
     pub withdrawal_table_name: String,
     /// Chainstate table name.
     pub chainstate_table_name: String,
+    /// Limit table name.
+    pub limit_table_name: String,
+    /// The default global limits for the system.
+    pub default_limits: AccountLimits,
 }
 
 /// Emily Context
@@ -60,6 +66,21 @@ impl Settings {
             deposit_table_name: env::var("DEPOSIT_TABLE_NAME")?,
             withdrawal_table_name: env::var("WITHDRAWAL_TABLE_NAME")?,
             chainstate_table_name: env::var("CHAINSTATE_TABLE_NAME")?,
+            limit_table_name: env::var("LIMIT_TABLE_NAME")?,
+            default_limits: AccountLimits {
+                peg_cap: env::var("DEFAULT_PEG_CAP")
+                    .ok()
+                    .map(|v| v.parse())
+                    .transpose()?,
+                per_deposit_cap: env::var("DEFAULT_PER_DEPOSIT_CAP")
+                    .ok()
+                    .map(|v| v.parse())
+                    .transpose()?,
+                per_withdrawal_cap: env::var("DEFAULT_PER_WITHDRAWAL_CAP")
+                    .ok()
+                    .map(|v| v.parse())
+                    .transpose()?,
+            },
         })
     }
 }
@@ -72,6 +93,7 @@ impl EmilyContext {
         let settings: Settings = Settings::from_env()?;
         let mut config: aws_config::SdkConfig =
             aws_config::load_defaults(BehaviorVersion::latest()).await;
+
         // TODO(389): Instead of using `is_local` configuration parameter set the specific
         // field in the config.
         if settings.is_local {
@@ -114,7 +136,7 @@ impl EmilyContext {
         // Attempt to get all the tables by searching the output of the
         // list tables operation.
         let mut table_name_map: HashMap<&str, String> = HashMap::new();
-        let tables_to_find: Vec<&str> = vec!["Deposit", "Chainstate", "Withdrawal"];
+        let tables_to_find: Vec<&str> = vec!["Deposit", "Chainstate", "Withdrawal", "Limit"];
         for name in table_names {
             for table_to_find in &tables_to_find {
                 if name.contains(table_to_find) {
@@ -139,6 +161,11 @@ impl EmilyContext {
                     .get("Chainstate")
                     .expect("Couldn't find valid chainstate table in existing table list.")
                     .to_string(),
+                limit_table_name: table_name_map
+                    .get("Limit")
+                    .expect("Couldn't find valid limit table table in existing table list.")
+                    .to_string(),
+                default_limits: AccountLimits::default(),
             },
             dynamodb_client,
         })

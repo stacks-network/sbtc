@@ -24,11 +24,20 @@ export class EmilyStack extends cdk.Stack {
     constructor(scope: Construct, id: string, props: EmilyStackProps) {
         super(scope, id, props);
 
+        // Set persistent resources to be deleted when the stack is deleted in a development environment.
+        //
+        // In a production environment we don't want to do this as it would result in data loss
+        // without an explicit action to delete the resources.
+        const persistentResourceRemovalPolicy: cdk.RemovalPolicy = EmilyStackUtils.isDevelopmentStack()
+            ? cdk.RemovalPolicy.DESTROY
+            : cdk.RemovalPolicy.RETAIN;
+
         const depositTableId: string = 'DepositTable';
         const depositTableName: string = EmilyStackUtils.getResourceName(depositTableId, props);
         const depositTable: dynamodb.Table = this.createOrUpdateDepositTable(
             depositTableId,
             depositTableName,
+            persistentResourceRemovalPolicy,
         );
 
         const withdrawalTableId: string = 'WithdrawalTable';
@@ -36,6 +45,7 @@ export class EmilyStack extends cdk.Stack {
         const withdrawalTable: dynamodb.Table = this.createOrUpdateWithdrawalTable(
             withdrawalTableId,
             withdrawalTableName,
+            persistentResourceRemovalPolicy,
         );
 
         const chainstateTableId: string = 'ChainstateTable';
@@ -43,6 +53,15 @@ export class EmilyStack extends cdk.Stack {
         const chainstateTable: dynamodb.Table = this.createOrUpdateChainstateTable(
             chainstateTableId,
             chainstateTableName,
+            persistentResourceRemovalPolicy,
+        );
+
+        const limitTableId: string = 'LimitTable';
+        const limitTableName: string = EmilyStackUtils.getResourceName(limitTableId, props);
+        const limitTable: dynamodb.Table = this.createOrUpdateLimitTable(
+            limitTableId,
+            limitTableName,
+            persistentResourceRemovalPolicy,
         );
 
         if (!EmilyStackUtils.isTablesOnly()) {
@@ -50,6 +69,7 @@ export class EmilyStack extends cdk.Stack {
                 depositTableName,
                 withdrawalTableName,
                 chainstateTableName,
+                limitTableName,
                 props
             );
 
@@ -57,6 +77,7 @@ export class EmilyStack extends cdk.Stack {
             depositTable.grantReadWriteData(operationLambda);
             withdrawalTable.grantReadWriteData(operationLambda);
             chainstateTable.grantReadWriteData(operationLambda);
+            limitTable.grantReadWriteData(operationLambda);
 
             const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
         }
@@ -66,12 +87,14 @@ export class EmilyStack extends cdk.Stack {
      * Creates or updates a DynamoDB table for deposits.
      * @param {string} tableId The id of the table AWS resource.
      * @param {string} tableName The name of the DynamoDB table.
+     * @param {cdk.RemovalPolicy} removalPolicy The removal policy for the table.
      * @returns {dynamodb.Table} The created or updated DynamoDB table.
      * @post A DynamoDB table with configured indexes is returned.
      */
     createOrUpdateDepositTable(
         depositTableId: string,
         depositTableName: string,
+        removalPolicy: cdk.RemovalPolicy,
     ): dynamodb.Table {
         const table: dynamodb.Table = new dynamodb.Table(this, depositTableId, {
             tableName: depositTableName,
@@ -82,7 +105,8 @@ export class EmilyStack extends cdk.Stack {
             sortKey: {
                 name: 'BitcoinTxOutputIndex',
                 type: dynamodb.AttributeType.NUMBER,
-            }
+            },
+            removalPolicy: removalPolicy,
         });
 
         const indexName: string = "DepositStatus";
@@ -116,12 +140,14 @@ export class EmilyStack extends cdk.Stack {
      * Creates or updates a DynamoDB table for withdrawals.
      * @param {string} tableId The id of the table AWS resource.
      * @param {string} tableName The name of the DynamoDB table.
+     * @param {cdk.RemovalPolicy} removalPolicy The removal policy for the table.
      * @returns {dynamodb.Table} The created or updated DynamoDB table.
      * @post A DynamoDB table with configured indexes is returned.
      */
     createOrUpdateWithdrawalTable(
         tableId: string,
         tableName: string,
+        removalPolicy: cdk.RemovalPolicy,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         const table: dynamodb.Table = new dynamodb.Table(this, tableId, {
@@ -133,7 +159,8 @@ export class EmilyStack extends cdk.Stack {
             sortKey: {
                 name: 'StacksBlockHash',
                 type: dynamodb.AttributeType.STRING,
-            }
+            },
+            removalPolicy: removalPolicy,
         });
 
         const indexName: string = "WithdrawalStatus";
@@ -172,6 +199,7 @@ export class EmilyStack extends cdk.Stack {
     createOrUpdateChainstateTable(
         tableId: string,
         tableName: string,
+        removalPolicy: cdk.RemovalPolicy,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         return new dynamodb.Table(this, tableId, {
@@ -183,7 +211,35 @@ export class EmilyStack extends cdk.Stack {
             sortKey: {
                 name: 'Hash',
                 type: dynamodb.AttributeType.STRING,
-            }
+            },
+            removalPolicy: removalPolicy,
+        });
+    }
+
+    /**
+     * Creates or updates a DynamoDB table for limits.
+     * @param {string} tableId The id of the table AWS resource.
+     * @param {string} tableName The name of the DynamoDB table.
+     * @returns {dynamodb.Table} The created or updated DynamoDB table.
+     * @post A DynamoDB table is returned without additional configuration.
+     */
+    createOrUpdateLimitTable(
+        tableId: string,
+        tableName: string,
+        removalPolicy: cdk.RemovalPolicy,
+    ): dynamodb.Table {
+        // Create DynamoDB table to store the messages. Encrypted by default.
+        return new dynamodb.Table(this, tableId, {
+            tableName: tableName,
+            partitionKey: {
+                name: 'Account',
+                type: dynamodb.AttributeType.STRING,
+            },
+            sortKey: {
+                name: 'Timestamp',
+                type: dynamodb.AttributeType.NUMBER,
+            },
+            removalPolicy: removalPolicy,
         });
     }
 
@@ -200,18 +256,19 @@ export class EmilyStack extends cdk.Stack {
         depositTableName: string,
         withdrawalTableName: string,
         chainstateTableName: string,
+        limitTableName: string,
         props: EmilyStackProps
     ): lambda.Function {
 
         const operationLambdaId: string = "OperationLambda";
         const operationLambda: lambda.Function = new lambda.Function(this, operationLambdaId, {
             functionName: EmilyStackUtils.getResourceName(operationLambdaId, props),
-            architecture: EmilyStackUtils.getLambdaArchitecture(props),
+            architecture: lambda.Architecture.X86_64,
             runtime: lambda.Runtime.PROVIDED_AL2023,
             code: lambda.Code.fromAsset(EmilyStackUtils.getPathFromProjectRoot(
                 props.stageName === Constants.UNIT_TEST_STAGE_NAME
                     ? "emily/cdk/test/assets/empty-lambda.zip"
-                    : "target/lambda/emily-handler/bootstrap.zip"
+                    : "target/lambda/emily-lambda/bootstrap.zip"
             )),
             // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
             timeout: cdk.Duration.seconds(5),
@@ -221,6 +278,7 @@ export class EmilyStack extends cdk.Stack {
                 DEPOSIT_TABLE_NAME: depositTableName,
                 WITHDRAWAL_TABLE_NAME: withdrawalTableName,
                 CHAINSTATE_TABLE_NAME: chainstateTableName,
+                LIMIT_TABLE_NAME: limitTableName,
                 // Declare an environment variable that will be overwritten in local SAM
                 // deployments the AWS stack. SAM can only set environment variables that are
                 // already expected to be present in the lambda.
@@ -244,9 +302,9 @@ export class EmilyStack extends cdk.Stack {
         props: EmilyStackProps
     ): apig.SpecRestApi {
 
-        const restApiId: string  = "EmilyAPI";
-        const restApi: apig.SpecRestApi = new apig.SpecRestApi(this, restApiId, {
-            restApiName: EmilyStackUtils.getResourceName(restApiId, props),
+        const apiId: string  = "EmilyAPI";
+        const api: apig.SpecRestApi = new apig.SpecRestApi(this, apiId, {
+            restApiName: EmilyStackUtils.getResourceName(apiId, props),
             apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
                 EmilyStackUtils.getPathFromProjectRoot(
                     ".generated-sources/emily/openapi/emily-openapi-spec.json"
@@ -260,14 +318,46 @@ export class EmilyStack extends cdk.Stack {
             deployOptions: { stageName: props.stageName },
         });
 
+        // Create a usage plan that will be used by the Signers. This will allow us to throttle
+        // the general API more than the signers.
+        const signerApiUsagePlanId: string = `SignerApiUsagePlan`;
+        const signerApiUsagePlan = api.addUsagePlan(signerApiUsagePlanId, {
+            name: EmilyStackUtils.getResourceName(signerApiUsagePlanId, props),
+            throttle: {
+                // These are very high limits. We can adjust them down as needed.
+                rateLimit: 100,
+                burstLimit: 200,
+            },
+            apiStages: [
+                {
+                    api: api,
+                    stage: api.deploymentStage,
+                }
+            ]
+        });
+
+        let num_api_keys = EmilyStackUtils.getNumSignerApiKeys();
+        let api_keys = [];
+        for (let i = 0; i < num_api_keys; i++) {
+            // Create an API Key
+            const apiKeyId: string = `ApiKey-${i}`;
+            const apiKey = api.addApiKey(apiKeyId, {
+                apiKeyName: EmilyStackUtils.getResourceName(apiKeyId, props),
+            });
+
+            // Associate the API Key with the Usage Plan and specify stages
+            signerApiUsagePlan.addApiKey(apiKey);
+            api_keys.push(apiKey);
+        }
+
         // Give the the rest api execute ARN permission to invoke the lambda.
         operationLambda.addPermission("ApiInvokeLambdaPermission", {
             principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
             action: "lambda:InvokeFunction",
-            sourceArn: restApi.arnForExecuteApi(),
+            sourceArn: api.arnForExecuteApi(),
         });
 
         // Return api resource.
-        return restApi;
+        return api;
     }
 }

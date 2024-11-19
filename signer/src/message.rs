@@ -151,6 +151,8 @@ pub struct SweepTransactionInfo {
     pub amount: u64,
     /// The fee paid for this transaction.
     pub fee: u64,
+    /// The virtual size of this transaction (in bytes).
+    pub vsize: u32,
     /// The Bitcoin block hash at which this transaction was created.
     pub created_at_block_hash: bitcoin::BlockHash,
     /// The market fee rate at the time of this transaction.
@@ -208,6 +210,7 @@ impl SweepTransactionInfo {
                 .signers_script_pubkey(),
             amount: unsigned.output_amounts(),
             fee: unsigned.tx_fee,
+            vsize: unsigned.tx_vsize,
             market_fee_rate: unsigned.signer_utxo.fee_rate,
             created_at_block_hash: *block_hash,
             swept_deposits,
@@ -249,8 +252,10 @@ pub struct SignerDepositDecision {
     pub txid: bitcoin::Txid,
     /// Index of the deposit request UTXO.
     pub output_index: u32,
-    /// Whether the signer has accepted the deposit request.
-    pub accepted: bool,
+    /// This specifies whether the sending signer's blocklist client
+    /// blocked the deposit request. `true` here means the blocklist client
+    /// did not block the request.
+    pub can_accept: bool,
     /// This specifies whether the sending signer can provide signature
     /// shares for the associated deposit request.
     pub can_sign: bool,
@@ -392,7 +397,7 @@ impl wsts::net::Signable for SignerDepositDecision {
         hasher.update("SIGNER_DEPOSIT_DECISION");
         hasher.update(self.txid);
         hasher.update(self.output_index.to_be_bytes());
-        hasher.update([self.accepted as u8]);
+        hasher.update([self.can_accept as u8]);
     }
 }
 

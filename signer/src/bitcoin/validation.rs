@@ -3,7 +3,11 @@
 use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
+use bitcoin::ScriptBuf;
 
+use crate::bitcoin::utxo::FeeAssessment;
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -11,6 +15,9 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::QualifiedRequestId;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksTxId;
+use crate::storage::DbRead as _;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 /// The necessary information for validating a bitcoin transaction.
@@ -21,11 +28,23 @@ pub struct BitcoinTxContext {
     /// bitcoin blockchain with the greatest height. On ties, we sort by
     /// the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockHash,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for requests.
+    pub context_window: u16,
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
     /// The transaction that is being validated.
     pub tx: BitcoinTx,
+    /// The deposit requests associated with the inputs in the transaction.
+    pub deposit_requests: Vec<OutPoint>,
+    /// The total amount of the transaction fee in sats.
+    pub tx_fee: u64,
+    /// The current market fee rate in sat/vByte.
+    pub fee_rate: f64,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fee: Option<Fees>,
     /// The withdrawal requests associated with the outputs in the current
     /// transaction.
     pub request_ids: Vec<QualifiedRequestId>,
@@ -34,85 +53,104 @@ pub struct BitcoinTxContext {
     /// [`BitcoinTx::validate`] function, but is here for logging and
     /// tracking purposes.
     pub origin: PublicKey,
+    /// Two byte prefix for BTC transactions that are related to the Stacks
+    /// blockchain.
+    pub magic_bytes: [u8; 2],
 }
 
 impl BitcoinTxContext {
     /// Validate the current bitcoin transaction.
-    ///
-    /// It does the following:
-    /// 1. Validate the signer input.
-    /// 2. Validate the other inputs assuming that they are all deposit
-    ///    request inputs.
-    /// 3. Validate the signer outputs. These are the first two outputs of
-    ///    the transaction.
-    /// 4. Validate the remaining outputs. These are assumed to be
-    ///    associated with withdrawal requests.
-    /// 5. Validate that the fees associated with the requests are within
-    ///    bounds of the max-fee.
-    pub async fn validate<C>(&self, ctx: &C) -> Result<(), Error>
+    pub async fn validate<C>(&self, _ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        let signer_amount = self.validate_signer_input(ctx).await?;
-        let deposit_amounts = self.validate_deposits(ctx).await?;
+        unimplemented!()
+    }
 
-        self.validate_signer_outputs(ctx).await?;
-        self.validate_withdrawals(ctx).await?;
+    /// Validate each of the prevouts that correspond to deposits. This
+    /// should be every input except for the first one.
+    pub async fn validate_deposit<C>(&self, ctx: &C, outpoint: &OutPoint) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let db = ctx.get_storage();
+        let signer_public_key = PublicKey::from_private_key(&ctx.config().signer.private_key);
 
-        let input_amounts = signer_amount + deposit_amounts;
+        let txid = outpoint.txid.into();
+        let report_future = db.get_deposit_request_report(
+            &self.chain_tip,
+            &txid,
+            outpoint.vout,
+            &signer_public_key,
+        );
 
-        self.validate_fees(input_amounts)?;
+        // The DbRead::get_deposit_request_report only returns Ok(None)
+        // if there isn't a record of the deposit request.
+        let Some(report) = report_future.await? else {
+            return Err(BitcoinDepositInputError::Unknown(*outpoint).into_error(self));
+        };
+
+        report
+            .validate(self.chain_tip_height)
+            .map_err(|err| err.into_error(self))?;
+        report
+            .validate_fee(&self.tx, self.tx_fee)
+            .map_err(|err| err.into_error(self))?;
+
         Ok(())
     }
 
-    fn validate_fees(&self, _input_amounts: Amount) -> Result<(), Error> {
-        unimplemented!()
-    }
-
-    /// Validate the signers' input UTXO
-    async fn validate_signer_input<C>(&self, _ctx: &C) -> Result<Amount, Error>
-    where
-        C: Context + Send + Sync,
-    {
-        unimplemented!()
-    }
-
-    /// Validate the signer outputs.
-    ///
-    /// Each sweep transaction has two signer outputs, the new UTXO with
-    /// all of the signers' funds and an `OP_RETURN` TXO. This function
-    /// validates both of them.
-    async fn validate_signer_outputs<C>(&self, _ctx: &C) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        unimplemented!()
-    }
-
-    /// Validate each of the prevouts that coorespond to deposits. This
-    /// should be every input except for the first one.
-    async fn validate_deposits<C>(&self, _ctx: &C) -> Result<Amount, Error>
-    where
-        C: Context + Send + Sync,
-    {
-        unimplemented!()
-    }
-
     /// Validate the withdrawal UTXOs
-    async fn validate_withdrawals<C>(&self, _ctx: &C) -> Result<(), Error>
+    pub async fn validate_withdrawals<C>(&self, _ctx: &C) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        unimplemented!()
+        if !self.request_ids.is_empty() {
+            return Err(Error::MissingBlock);
+        }
+
+        Ok(())
+    }
+
+    /// Fetch the signers' BTC state.
+    ///
+    /// The returned state is the essential information for the signers
+    /// UTXO, and information about the current fees and any fees paid for
+    /// transactions currently in the mempool.
+    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<SignerBtcState, Error>
+    where
+        C: Context + Send + Sync,
+    {
+        // We need to know the signers UTXO, so let's fetch that.
+        let db = ctx.get_storage();
+        let utxo = db
+            .get_signer_utxo(&self.chain_tip, self.context_window)
+            .await?
+            .ok_or(Error::MissingSignerUtxo)?;
+
+        // If we are here, then we know that we have run DKG. Why? Well,
+        // users cannot deposit if they don't have an aggregate key to lock
+        // their funds with, and that requires DKG.
+        let Some(dkg_shares) = db.get_latest_encrypted_dkg_shares().await? else {
+            return Err(Error::NoDkgShares);
+        };
+
+        Ok(SignerBtcState {
+            fee_rate: self.fee_rate,
+            utxo,
+            public_key: bitcoin::XOnlyPublicKey::from(dkg_shares.aggregate_key),
+            last_fees: self.last_fee,
+            magic_bytes: self.magic_bytes,
+        })
     }
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinDepositInputError {
-    /// The assessed exceeds the max-fee in the deposit request.
+    /// The assessed fee exceeds the max-fee in the deposit request.
     #[error("the assessed fee for a deposit would exceed their max-fee; {0}")]
-    AssessedFeeTooHigh(OutPoint),
+    FeeTooHigh(OutPoint),
     /// The signer is not part of the signer set that generated the
     /// aggregate public key used to lock the deposit funds.
     ///
@@ -152,12 +190,44 @@ pub enum BitcoinDepositInputError {
     UnsupportedLockTime(OutPoint),
 }
 
+impl BitcoinDepositInputError {
+    fn into_error(self, ctx: &BitcoinTxContext) -> Error {
+        Error::BitcoinValidation(Box::new(BitcoinValidationError {
+            error: BitcoinSweepErrorMsg::Deposit(self),
+            context: ctx.clone(),
+        }))
+    }
+}
+
+/// The responses for validation of the outputs of a sweep transaction on
+/// bitcoin.
+#[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
+pub enum BitcoinWithdrawalOutputError {
+    /// The signer does not have a record of the withdrawal request in
+    /// their database.
+    #[error("the signer does not have a record of the withdrawal request; {}", .0.request_id)]
+    Unknown(QualifiedRequestId),
+}
+
+impl BitcoinWithdrawalOutputError {
+    /// Make into a crate error
+    pub fn into_error(self, ctx: &BitcoinTxContext) -> Error {
+        Error::BitcoinValidation(Box::new(BitcoinValidationError {
+            error: BitcoinSweepErrorMsg::Withdrawal(self),
+            context: ctx.clone(),
+        }))
+    }
+}
+
 /// The responses for validation of a sweep transaction on bitcoin.
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinSweepErrorMsg {
     /// The error has something to do with the inputs.
     #[error("deposit error; {0}")]
     Deposit(#[from] BitcoinDepositInputError),
+    /// The error has something to do with the outputs.
+    #[error("withdrawal error; {0}")]
+    Withdrawal(#[from] BitcoinWithdrawalOutputError),
 }
 
 /// A struct for a bitcoin validation error containing all the necessary
@@ -224,12 +294,14 @@ pub struct DepositRequestReport {
     /// This will only be `None` if we do not have a record of the deposit
     /// request.
     pub can_sign: Option<bool>,
-    /// Whether this signer accepted the deposit request or not. This
-    /// should only be `None` if we do not have a record of the deposit
-    /// request or if we cannot sign for the deposited funds.
-    pub is_accepted: Option<bool>,
+    /// Whether this signers' blocklist client accepted the deposit request
+    /// or not. This should only be `None` if we do not have a record of
+    /// the deposit request.
+    pub can_accept: Option<bool>,
     /// The deposit amount
     pub amount: u64,
+    /// The max fee embedded in the deposit request.
+    pub max_fee: u64,
     /// The lock_time in the reclaim script
     pub lock_time: LockTime,
 }
@@ -259,24 +331,6 @@ impl DepositRequestReport {
             DepositRequestStatus::Confirmed(block_height, _) => block_height,
         };
 
-        match self.can_sign {
-            // If we are here, we know that we have a record for the
-            // deposit request, but we have not voted on it yet, so we do
-            // not know if we can sign for it.
-            None => return Err(BitcoinDepositInputError::NoVote(self.outpoint)),
-            // In this case we know that we cannot sign for the deposit
-            // because it is locked with a public key where the current
-            // signer is not part of the signing set.
-            Some(false) => return Err(BitcoinDepositInputError::CannotSignUtxo(self.outpoint)),
-            // Yay.
-            Some(true) => (),
-        }
-        // If we are here then can_sign is Some(true) so is_accepted is
-        // Some(_). Let's check whether we rejected this deposit.
-        if self.is_accepted != Some(true) {
-            return Err(BitcoinDepositInputError::RejectedRequest(self.outpoint));
-        }
-
         // We only sweep a deposit if the depositor cannot reclaim the
         // deposit within the next DEPOSIT_LOCKTIME_BLOCK_BUFFER blocks.
         let deposit_age = chain_tip_height.saturating_sub(confirmed_block_height);
@@ -293,12 +347,127 @@ impl DepositRequestReport {
             }
         }
 
+        match self.can_sign {
+            // If we are here, we know that we have a record for the
+            // deposit request, but we have not voted on it yet, so we do
+            // not know if we can sign for it.
+            None => return Err(BitcoinDepositInputError::NoVote(self.outpoint)),
+            // In this case we know that we cannot sign for the deposit
+            // because it is locked with a public key where the current
+            // signer is not part of the signing set.
+            Some(false) => return Err(BitcoinDepositInputError::CannotSignUtxo(self.outpoint)),
+            // Yay.
+            Some(true) => (),
+        }
+        // If we are here then can_sign is Some(true) so can_accept is
+        // Some(_). Let's check whether we rejected this deposit.
+        if self.can_accept != Some(true) {
+            return Err(BitcoinDepositInputError::RejectedRequest(self.outpoint));
+        }
+
         Ok(())
+    }
+
+    /// Validate that the fees assessed to the deposit prevout is below the
+    /// max fee.
+    pub fn validate_fee<F>(&self, tx: &F, tx_fee: u64) -> Result<(), BitcoinDepositInputError>
+    where
+        F: FeeAssessment,
+    {
+        let tx_fee = Amount::from_sat(tx_fee);
+        let Some(assessed_fee) = tx.assess_input_fee(&self.outpoint, tx_fee) else {
+            return Err(BitcoinDepositInputError::Unknown(self.outpoint));
+        };
+
+        if assessed_fee.to_sat() > self.max_fee {
+            return Err(BitcoinDepositInputError::FeeTooHigh(self.outpoint));
+        }
+        Ok(())
+    }
+}
+
+/// An enum for the confirmation status of a withdrawal request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WithdrawalRequestStatus {
+    /// We have a record of the withdrawal request transaction, and it has
+    /// been confirmed on the canonical Stacks blockchain. We have not
+    /// fulfilled the request. The integer is the height of the bitcoin
+    /// block anchoring the Stacks block that confirmed the withdrawal
+    /// request, and the block hash is the associated block hash of that
+    /// bitcoin block.
+    Confirmed(u64, BitcoinBlockHash),
+    /// We have a record of the withdrawal request being included as an
+    /// output in another bitcoin transaction that has been confirmed on
+    /// the canonical bitcoin blockchain.
+    Fulfilled(BitcoinTxId),
+    /// We have a record of the withdrawal request transaction, and it has
+    /// not been confirmed on the canonical Stacks blockchain.
+    ///
+    /// Usually we will almost certainly have a record of a withdrawal
+    /// request, and we require that the withdrawal transaction be
+    /// confirmed before we write it to our database. But the withdrawal
+    /// transaction can be affected by a bitcoin reorg, where it is no
+    /// longer confirmed on the canonical bitcoin blockchain. If this
+    /// happens when we query for the status then it will come back as
+    /// unconfirmed.
+    Unconfirmed,
+}
+
+/// A struct for the status report summary of a withdrawal request for use
+/// in validation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawalRequestReport {
+    /// The confirmation status of the withdrawal request transaction.
+    pub status: WithdrawalRequestStatus,
+    /// The request id generated by the smart contract when the
+    /// `initiate-withdrawal-request` public function was called.
+    pub request_id: u64,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub txid: StacksTxId,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
+    pub block_hash: StacksBlockHash,
+    /// The amount of BTC, in sats, to withdraw.
+    pub amount: u64,
+    /// The max fee amount to use for the bitcoin transaction sweeping out
+    /// the funds.
+    pub max_fee: u64,
+    /// The script_pubkey of the output.
+    pub script_pubkey: ScriptBuf,
+}
+
+impl WithdrawalRequestReport {
+    fn qualified_id(&self) -> QualifiedRequestId {
+        QualifiedRequestId {
+            block_hash: self.block_hash,
+            txid: self.txid,
+            request_id: self.request_id,
+        }
+    }
+    /// Validate that the withdrawal request is okay given the report.
+    pub fn validate(&self, _: u64) -> Result<(), BitcoinWithdrawalOutputError> {
+        Err(BitcoinWithdrawalOutputError::Unknown(self.qualified_id()))
+    }
+
+    /// Validate that the fees assessed to the withdrawal output is below
+    /// the max fee.
+    pub fn validate_fee<F>(&self, _: &F, _: u64) -> Result<(), BitcoinWithdrawalOutputError>
+    where
+        F: FeeAssessment,
+    {
+        Err(BitcoinWithdrawalOutputError::Unknown(self.qualified_id()))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::hashes::Hash as _;
+    use bitcoin::ScriptBuf;
+    use bitcoin::Sequence;
+    use bitcoin::TxIn;
+    use bitcoin::Txid;
+    use bitcoin::Witness;
     use test_case::test_case;
 
     use super::*;
@@ -315,8 +484,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Unconfirmed,
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -327,8 +497,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Spent(BitcoinTxId::from([1; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -339,8 +510,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -351,8 +523,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(false),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -363,8 +536,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(false),
+            can_accept: Some(false),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -375,8 +549,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 1),
             outpoint: OutPoint::null(),
         },
@@ -387,8 +562,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 2),
             outpoint: OutPoint::null(),
         },
@@ -399,8 +575,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_512_second_intervals(u16::MAX),
             outpoint: OutPoint::null(),
         },
@@ -411,8 +588,9 @@ mod tests {
         report: DepositRequestReport {
             status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
-            is_accepted: Some(true),
+            can_accept: Some(true),
             amount: 0,
+            max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
         },
@@ -430,6 +608,69 @@ mod tests {
                 assert_eq!(error, expected_error);
             }
             None => mapping.report.validate(mapping.chain_tip_height).unwrap(),
+        }
+    }
+
+    const TX_FEE: u64 = 10000;
+
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 0,
+            max_fee: TX_FEE,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+        },
+        error: Some(BitcoinDepositInputError::Unknown(OutPoint::new(Txid::from_byte_array([1; 32]), 0))),
+        chain_tip_height: 2,
+    } ; "unknown-prevout")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 0,
+            max_fee: TX_FEE,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+        },
+        error: None,
+        chain_tip_height: 2,
+    } ; "at-the-border")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositRequestStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 0,
+            max_fee: TX_FEE - 1,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+        },
+        error: Some(BitcoinDepositInputError::FeeTooHigh(OutPoint::null())),
+        chain_tip_height: 2,
+    } ; "one-sat-too-high-fee")]
+    fn deposit_report_fee_validation(mapping: DepositReportErrorMapping) {
+        // This is a base sweep transaction without any deposit inputs or
+        // withdrawal outputs. We add one input so that there is exactly
+        // one deposit request being serviced by this transaction. This
+        // means it pays for the entire transaction fee.
+        let mut tx = crate::testing::btc::base_signer_transaction();
+        tx.input.push(TxIn {
+            previous_output: OutPoint::null(),
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::ZERO,
+            witness: Witness::new(),
+        });
+
+        match mapping.error {
+            Some(expected_error) => {
+                let error = mapping.report.validate_fee(&tx, TX_FEE).unwrap_err();
+                assert_eq!(error, expected_error);
+            }
+            None => mapping.report.validate_fee(&tx, TX_FEE).unwrap(),
         }
     }
 }

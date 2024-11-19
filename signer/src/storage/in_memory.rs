@@ -6,6 +6,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use futures::StreamExt as _;
 use futures::TryStreamExt as _;
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -14,6 +15,7 @@ use tokio::sync::Mutex;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
+use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -113,6 +115,12 @@ pub struct Store {
     /// sBTC Bitcoin sweep transactions which have been broadcast to the
     /// Bitcoin network, but not necessarily confirmed.
     pub sweep_transactions: Vec<model::SweepTransaction>,
+
+    /// Bitcoin transaction outputs
+    pub bitcoin_outputs: HashMap<model::BitcoinTxId, model::TxOutput>,
+
+    /// Bitcoin transaction inputs
+    pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
 }
 
 impl Store {
@@ -307,7 +315,11 @@ impl super::DbRead for SharedStore {
                     .deposit_request_to_signers
                     .get(&(deposit_request.txid, deposit_request.output_index))
                     .map(|signers| {
-                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
+                        signers
+                            .iter()
+                            .filter(|signer| signer.can_accept && signer.can_sign)
+                            .count()
+                            >= threshold
                     })
                     .unwrap_or_default()
             })
@@ -485,6 +497,15 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn get_withdrawal_request_report(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _id: &model::QualifiedRequestId,
+        _signer_public_key: &PublicKey,
+    ) -> Result<Option<WithdrawalRequestReport>, Error> {
+        unimplemented!()
+    }
+
     async fn get_bitcoin_blocks_with_transaction(
         &self,
         txid: &model::BitcoinTxId,
@@ -556,6 +577,16 @@ impl super::DbRead for SharedStore {
         )
     }
 
+    async fn key_rotation_exists(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _signer_set: &BTreeSet<PublicKey>,
+        _aggregate_key: &PublicKey,
+        _signatures_required: u16,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
     async fn get_signers_script_pubkeys(&self) -> Result<Vec<model::Bytes>, Error> {
         Ok(self
             .lock()
@@ -569,9 +600,12 @@ impl super::DbRead for SharedStore {
     async fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
         context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
+        let Some(dkg_shares) = self.get_latest_encrypted_dkg_shares().await? else {
+            return Ok(None);
+        };
+        let aggregate_key = dkg_shares.aggregate_key;
         let script_pubkey = aggregate_key.signers_script_pubkey();
         let store = self.lock().await;
         let bitcoin_blocks = &store.bitcoin_blocks;
@@ -610,11 +644,11 @@ impl super::DbRead for SharedStore {
         let Some(sbtc_txs) = sbtc_txs else {
             // if no sbtc tx exists, consider donations
             return store
-                .get_utxo_from_donation(chain_tip, aggregate_key, context_window)
+                .get_utxo_from_donation(chain_tip, &aggregate_key, context_window)
                 .await;
         };
 
-        get_utxo(aggregate_key, sbtc_txs)
+        get_utxo(&aggregate_key, sbtc_txs)
     }
 
     async fn get_deposit_request_signer_votes(
@@ -627,7 +661,7 @@ impl super::DbRead for SharedStore {
         let signers = self.get_deposit_signers(txid, output_index).await?;
         let mut signer_votes: HashMap<PublicKey, bool> = signers
             .iter()
-            .map(|vote| (vote.signer_pub_key, vote.is_accepted))
+            .map(|vote| (vote.signer_pub_key, vote.can_accept))
             .collect();
 
         // Now we might not have votes from every signer, so lets get the
@@ -809,6 +843,20 @@ impl super::DbRead for SharedStore {
             });
 
         Ok(package)
+    }
+
+    async fn get_latest_unconfirmed_sweep_transactions(
+        &self,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+        _prevout_txid: &model::BitcoinTxId,
+    ) -> Result<Vec<model::SweepTransaction>, Error> {
+        // TODO: This should probably be implemented at some point. It turned
+        // rather complex to solve at the moment due to the new constraints
+        // dealing with reorgs, so I'm postponing it for now and returning an
+        // empty list. This will result in the coordinator using `None` for last
+        // fees, but this seems OK for all current tests.
+        Ok(Vec::new())
     }
 }
 
@@ -1081,6 +1129,24 @@ impl super::DbWrite for SharedStore {
             .await
             .completed_deposit_events
             .insert(event.outpoint, event.clone());
+
+        Ok(())
+    }
+
+    async fn write_tx_output(&self, output: &model::TxOutput) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_outputs
+            .insert(output.txid, output.clone());
+
+        Ok(())
+    }
+
+    async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
+        self.lock()
+            .await
+            .bitcoin_prevouts
+            .insert(prevout.txid, prevout.clone());
 
         Ok(())
     }

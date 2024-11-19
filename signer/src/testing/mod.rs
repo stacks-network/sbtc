@@ -4,10 +4,12 @@
 
 pub mod api_clients;
 pub mod block_observer;
+pub mod btc;
 pub mod context;
 pub mod dummy;
 pub mod message;
 pub mod network;
+pub mod request_decider;
 pub mod stacks;
 pub mod storage;
 pub mod transaction_coordinator;

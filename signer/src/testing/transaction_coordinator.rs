@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
-use crate::context::TxSignerEvent;
+use crate::context::RequestDeciderEvent;
 use crate::emily_client::MockEmilyInteract;
 use crate::error;
 use crate::keys;
@@ -173,11 +173,6 @@ where
                     .expect_estimate_fee_rate()
                     .times(1)
                     .returning(|| Box::pin(async { Ok(1.3) }));
-
-                client
-                    .expect_get_last_fee()
-                    .once()
-                    .returning(|_| Box::pin(async { Ok(None) }));
             })
             .await;
 
@@ -259,10 +254,10 @@ where
                 .await
         });
 
-        // Signal `TxSignerEvent::NewRequestsHandled` to trigger the coordinator.
+        // Signal `RequestDeciderEvent::NewRequestsHandled` to trigger the coordinator.
         handle
             .context
-            .signal(TxSignerEvent::NewRequestsHandled.into())
+            .signal(RequestDeciderEvent::NewRequestsHandled.into())
             .expect("failed to signal");
 
         // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
@@ -328,11 +323,6 @@ where
                     .expect_estimate_fee_rate()
                     .times(1)
                     .returning(|| Box::pin(async { Ok(1.3) }));
-
-                client
-                    .expect_get_last_fee()
-                    .once()
-                    .returning(|_| Box::pin(async { Ok(None) }));
             })
             .await;
 
@@ -457,7 +447,7 @@ where
         // Signal `TxSignerEvent::NewRequestsHandled` to trigger the coordinator.
         handle
             .context
-            .signal(TxSignerEvent::NewRequestsHandled.into())
+            .signal(RequestDeciderEvent::NewRequestsHandled.into())
             .expect("failed to signal");
 
         // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
@@ -549,7 +539,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window)
+            .get_signer_utxo(&chain_tip, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -648,7 +638,7 @@ where
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
             let signer_utxo = storage
-                .get_signer_utxo(&chain_tip.block_hash, &aggregate_key, self.context_window)
+                .get_signer_utxo(&chain_tip.block_hash, self.context_window)
                 .await
                 .unwrap()
                 .expect("no signer utxo");
@@ -657,12 +647,12 @@ where
 
         // Check context window
         assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 1)
+            .get_signer_utxo(&block_c2.block_hash, 1)
             .await
             .unwrap()
             .is_none());
         assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, &aggregate_key, 2)
+            .get_signer_utxo(&block_c2.block_hash, 2)
             .await
             .unwrap()
             .is_some());
@@ -757,7 +747,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, &aggregate_key, self.context_window)
+            .get_signer_utxo(&chain_tip, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -850,7 +840,7 @@ where
 
         // Check with chain tip A1
         let signer_utxo = storage
-            .get_signer_utxo(&block_a1.block_hash, &aggregate_key, self.context_window)
+            .get_signer_utxo(&block_a1.block_hash, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -865,7 +855,7 @@ where
 
         // Check with chain tip A2
         let signer_utxo = storage
-            .get_signer_utxo(&block_a2.block_hash, &aggregate_key, self.context_window)
+            .get_signer_utxo(&block_a2.block_hash, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -880,7 +870,7 @@ where
 
         // Check with chain tip B1
         let signer_utxo = storage
-            .get_signer_utxo(&block_b1.block_hash, &aggregate_key, self.context_window)
+            .get_signer_utxo(&block_b1.block_hash, self.context_window)
             .await
             .unwrap()
             .expect("no signer utxo");

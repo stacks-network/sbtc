@@ -12,12 +12,14 @@ pub mod postgres;
 pub mod sqlx;
 pub mod util;
 
+use std::collections::BTreeSet;
 use std::future::Future;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
+use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
@@ -59,7 +61,11 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
     /// Get pending deposit requests that have been accepted by at least
-    /// `signatures_required` signers and has no responses
+    /// `signatures_required` signers and has no responses.
+    ///
+    /// For an individual signer, 'accepted' means their blocklist client
+    /// hasn't blocked the request and they are part of the signing set
+    /// that generated the aggregate key locking the deposit.
     fn get_pending_accepted_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -143,6 +149,29 @@ pub trait DbRead {
         threshold: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
+    /// This function returns a withdrawal request report that does the
+    /// following:
+    ///
+    /// 1. Check that the current signer accepted by the withdrawal
+    ///    request.
+    /// 2. Check that the transaction that created the withdrawal is in a
+    ///    stacks block anchored by a bitcoin block on the blockchain
+    ///    identified by the given chain tip.
+    /// 3. Check that the withdrawal has not been included on a sweep
+    ///    transaction that has been confirmed by block on the bitcoin
+    ///    blockchain identified by the given chain tip.
+    ///
+    ///  `Ok(None)` is returned if we do not have a record of the
+    /// withdrawal request.
+    ///
+    /// Note: The above list is probably not exhaustive.
+    fn get_withdrawal_request_report(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        id: &model::QualifiedRequestId,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<Option<WithdrawalRequestReport>, Error>> + Send;
+
     /// Get bitcoin blocks that include a particular transaction
     fn get_bitcoin_blocks_with_transaction(
         &self,
@@ -174,6 +203,15 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::RotateKeysTransaction>, Error>> + Send;
 
+    /// Checks if a key rotation exists on the canonical chain
+    fn key_rotation_exists(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        signer_set: &BTreeSet<PublicKey>,
+        aggregate_key: &PublicKey,
+        signatures_required: u16,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Get the last 365 days worth of the signers' `scriptPubkey`s. If no
     /// keys are available within the last 365, then return the most recent
     /// key.
@@ -183,20 +221,20 @@ pub trait DbRead {
 
     /// Get the outstanding signer UTXO.
     ///
-    /// Under normal conditions, the signer will have only one UTXO they can spend.
-    /// The specific UTXO we want is one such that:
-    /// 1. The transaction is in a block on the canonical bitcoin blockchain.
+    /// Under normal conditions, the signer will have only one UTXO they
+    /// can spend. The specific UTXO we want is one such that:
+    /// 1. The transaction is in a block on the canonical bitcoin
+    ///    blockchain.
     /// 2. The output is the first output in the transaction.
-    /// 3. The output's `scriptPubKey` matches `aggregate_key`.
-    /// 4. The output is unspent. It is possible for more than one transaction
-    ///     within the same block to satisfy points 1-3, but if the signers
-    ///     have one or more transactions within a block, exactly one output
-    ///     satisfying points 1-3 will be unspent.
-    /// 5. The block that includes the transaction that satisfies points 1-4 has the greatest height of all such blocks.
+    /// 3. The output is unspent. It is possible for more than one
+    ///    transaction within the same block to satisfy points 1-3, but if
+    ///    the signers have one or more transactions within a block,
+    ///    exactly one output satisfying points 1-3 will be unspent.
+    /// 4. The block that includes the transaction that satisfies points
+    ///    1-4 has the greatest height of all such blocks.
     fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &crate::keys::PublicKey,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<SignerUtxo>, Error>> + Send;
 
@@ -271,6 +309,26 @@ pub trait DbRead {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> impl Future<Output = Result<Option<model::SweepTransaction>, Error>> + Send;
+
+    /// Get unconfirmed sweep transactions where the first transaction in the
+    /// package chain spends the signer UTXO from the transaction identified by
+    /// the given `prevout_txid`.
+    ///
+    /// The returned sweep transactions are transactions which we have not yet
+    /// seen confirmed in a block. If the package has been partially confirmed
+    /// then this function will only return the remaining unconfirmed sweep
+    /// transactions.
+    ///
+    /// If the transaction package has been RBF'd (i.e. there are two or more
+    /// sweep transaction chains spending the same signer UTXO) then this
+    /// function returns the transactions associated with the most recent sweep
+    /// package spending the `prevout_txid`'s UTXO.
+    fn get_latest_unconfirmed_sweep_transactions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        prevout_txid: &model::BitcoinTxId,
+    ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -393,5 +451,17 @@ pub trait DbWrite {
     fn write_sweep_transaction(
         &self,
         tx: &model::SweepTransaction,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transaction output to the database.
+    fn write_tx_output(
+        &self,
+        output: &model::TxOutput,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transaction input to the database.
+    fn write_tx_prevout(
+        &self,
+        prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }

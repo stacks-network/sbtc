@@ -16,6 +16,7 @@
 
 use bitcoin::BlockHash;
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use url::Url;
 
 use crate::{error::Error, util::ApiFallbackClient};
@@ -23,7 +24,8 @@ use crate::{error::Error, util::ApiFallbackClient};
 use super::rpc::BitcoinCoreClient;
 use super::rpc::BitcoinTxInfo;
 use super::rpc::GetTxResponse;
-use super::{utxo, BitcoinInteract};
+use super::BitcoinInteract;
+use super::TransactionLookupHint;
 
 /// Implement the [`TryFrom`] trait for a slice of [`Url`]s to allow for a
 /// [`ApiFallbackClient`] to be implicitly created from a list of URLs.
@@ -68,13 +70,47 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
             .await
     }
 
-    async fn get_last_fee(&self, utxo: bitcoin::OutPoint) -> Result<Option<utxo::Fees>, Error> {
-        // TODO(541)
-        self.exec(|client, _| client.get_last_fee(utxo)).await
-    }
-
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
         self.exec(|client, _| client.broadcast_transaction(tx))
+            .await
+    }
+
+    async fn find_mempool_transactions_spending_output(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+    ) -> Result<Vec<Txid>, Error> {
+        self.exec(|client, _| client.find_mempool_transactions_spending_output(outpoint))
+            .await
+    }
+
+    async fn find_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
+        self.exec(|client, _| client.find_mempool_descendants(txid))
+            .await
+    }
+
+    async fn get_transaction_output(
+        &self,
+        outpoint: &bitcoin::OutPoint,
+        include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        self.exec(|client, _| client.get_transaction_output(outpoint, include_mempool))
+            .await
+    }
+
+    async fn get_transaction_fee(
+        &self,
+        txid: &bitcoin::Txid,
+        lookup_hint: Option<TransactionLookupHint>,
+    ) -> Result<super::GetTransactionFeeResult, Error> {
+        self.exec(|client, _| client.get_transaction_fee(txid, lookup_hint))
+            .await
+    }
+
+    async fn get_mempool_entry(
+        &self,
+        txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
+        self.exec(|client, _| async { client.get_mempool_entry(txid) })
             .await
     }
 }

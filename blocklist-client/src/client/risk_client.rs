@@ -8,7 +8,7 @@
 //! The module includes functions to handle API requests, interpret responses, and map them to application-specific errors.
 
 use crate::common::error::Error;
-use crate::common::{BlocklistStatus, RiskSeverity};
+use crate::common::{BlocklistStatus, RiskAssessment};
 use crate::config::RiskAnalysisConfig;
 use reqwest::{Client, Response, StatusCode};
 use serde::Deserialize;
@@ -21,17 +21,6 @@ const API_BASE_PATH: &str = "/api/risk/v2/entities";
 struct RegistrationResponse {
     /// The registered address
     address: String,
-}
-
-/// Risk information associated with a wallet address
-#[derive(Deserialize, Debug)]
-pub struct RiskAssessment {
-    /// The evaluated risk severity for the address
-    #[serde(rename = "risk")]
-    pub severity: RiskSeverity,
-    /// The reason for the assigned risk severity
-    #[serde(rename = "riskReason")]
-    pub reason: Option<String>,
 }
 
 /// Register the user address with provider to run subsequent risk checks

@@ -4,6 +4,7 @@ use std::time::Duration;
 use std::{ops::Deref, sync::Arc};
 
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
@@ -16,6 +17,7 @@ use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
+use crate::bitcoin::GetTransactionFeeResult;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::{
@@ -141,6 +143,20 @@ impl TestContext<(), (), (), ()> {
     /// the [`ContextBuilder::with_settings`] method to override these settings.
     pub fn builder() -> ContextBuilder<(), (), (), ()> {
         Default::default()
+    }
+
+    /// Creates a new [`TestContext`] with the default configuration, i.e.
+    /// `with_in_memory_storage()` and `with_mocked_clients()`.
+    pub fn default_mocked() -> TestContext<
+        SharedStore,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
+    > {
+        Self::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build()
     }
 }
 
@@ -302,15 +318,44 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         self.inner.lock().await.estimate_fee_rate().await
     }
 
-    async fn get_last_fee(
-        &self,
-        utxo: bitcoin::OutPoint,
-    ) -> Result<Option<crate::bitcoin::utxo::Fees>, Error> {
-        self.inner.lock().await.get_last_fee(utxo).await
-    }
-
     async fn broadcast_transaction(&self, tx: &bitcoin::Transaction) -> Result<(), Error> {
         self.inner.lock().await.broadcast_transaction(tx).await
+    }
+
+    async fn find_mempool_transactions_spending_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+    ) -> Result<Vec<Txid>, Error> {
+        // TODO: We shouldn't return an empty vec here but doing it for now to
+        // satisfy some coordinator tests.
+        Ok(vec![])
+    }
+
+    async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+        _include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_fee(
+        &self,
+        _txid: &bitcoin::Txid,
+        _lookup_hint: Option<crate::bitcoin::TransactionLookupHint>,
+    ) -> Result<GetTransactionFeeResult, Error> {
+        unimplemented!()
+    }
+
+    async fn get_mempool_entry(
+        &self,
+        _txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
+        unimplemented!()
     }
 }
 

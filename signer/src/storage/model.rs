@@ -11,6 +11,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
+use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::Fees;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -43,11 +45,14 @@ pub struct SweepTransaction {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u64"))]
     pub fee: u64,
+    /// The virtual size of this transaction (in bytes).
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub vsize: u32,
     /// The Bitcoin block hash at which this transaction was created.
     pub created_at_block_hash: BitcoinBlockHash,
     /// The market fee rate at the time of this transaction.
     pub market_fee_rate: f64,
-
     /// List of deposits which were swept-in by this transaction.
     #[sqlx(skip)]
     pub swept_deposits: Vec<SweptDeposit>,
@@ -76,11 +81,50 @@ impl From<&crate::message::SweepTransactionInfo> for SweepTransaction {
             signer_prevout_script_pubkey: info.signer_prevout_script_pubkey.clone().into(),
             amount: info.amount,
             fee: info.fee,
+            vsize: info.vsize,
             market_fee_rate: info.market_fee_rate,
             created_at_block_hash: info.created_at_block_hash.into(),
             swept_deposits: info.swept_deposits.iter().map(Into::into).collect(),
             swept_withdrawals: info.swept_withdrawals.iter().map(Into::into).collect(),
         }
+    }
+}
+
+impl utxo::GetFees for Vec<SweepTransaction> {
+    /// Return the total fee of all the transactions in the vector.
+    fn get_fees(&self) -> Result<Option<Fees>, Error> {
+        // If there are no transactions then we have no basis for calculation,
+        // so we return `None`.
+        if self.is_empty() {
+            return Ok(None);
+        }
+
+        // This should never realistically happen in prod, but we do
+        // checked-math to ensure that we don't panic in case of overflow.
+        let total: u64 = self
+            .iter()
+            .map(|tx| tx.fee)
+            .try_fold(0u64, |acc, fee| acc.checked_add(fee))
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        // This should never realistically happen in prod either.
+        let total_size: u64 = self
+            .iter()
+            .map(|tx| tx.vsize as u64)
+            .try_fold(0u64, |acc, size| acc.checked_add(size))
+            .ok_or(Error::ArithmeticOverflow)?;
+
+        // This should never realistically happen in prod either.
+        if total_size == 0 {
+            return Err(Error::DivideByZero);
+        }
+
+        let fees = Some(Fees {
+            total,
+            rate: total as f64 / total_size as f64,
+        });
+
+        Ok(fees)
     }
 }
 
@@ -119,6 +163,61 @@ impl From<&crate::message::SweptDeposit> for SweptDeposit {
             deposit_request_output_index: deposit.deposit_request_output_index,
         }
     }
+}
+
+/// A bitcoin transaction output (TXO) relevant for the sBTC signers.
+///
+/// This object can have a few different meanings, all of them identified
+/// by the output_type:
+/// 1. Whether a TXO was created by someone other than the signers as a
+///    donation.
+/// 2. Whether this is the signers' TXO with all of the swept in funds.
+/// 3. Whether it is an `OP_RETURN` output.
+/// 4. Whether this is a withdrawal output.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct TxOutput {
+    /// The Bitcoin transaction id.
+    pub txid: BitcoinTxId,
+    /// The index of the output in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub output_index: u32,
+    /// The scriptPubKey locking the output.
+    pub script_pubkey: ScriptPubKey,
+    /// The amount created in the output.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub amount: u64,
+    /// The scriptPubKey locking the output.
+    pub output_type: TxOutputType,
+}
+
+/// A bitcoin transaction output being spent as an input in a transaction.
+///
+/// This object can have two different meanings: whether or not this is a
+/// deposit output being swept in.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct TxPrevout {
+    /// The ID of the transaction spending the output.
+    pub txid: BitcoinTxId,
+    /// The ID of the bitcoin transaction that created the output being
+    /// spent.
+    pub prevout_txid: BitcoinTxId,
+    /// The output index in the transaction that created the output that is
+    /// being spent.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub prevout_output_index: u32,
+    /// The scriptPubKey locking the output.
+    pub script_pubkey: ScriptPubKey,
+    /// The amount locked in the output.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
+    pub amount: u64,
+    /// The type prevout we are referring to.
+    pub prevout_type: TxPrevoutType,
 }
 
 /// Represents a single withdrawal which has been swept-out by a sweep
@@ -257,7 +356,7 @@ impl From<Deposit> for DepositRequest {
         // It's most likely the case that each of the inputs "came" from
         // the same Address, so we filter out duplicates.
         let sender_script_pub_keys: BTreeSet<ScriptPubKey> = tx_input_iter
-            .map(|tx_in| ScriptPubKey::from_bytes(tx_in.prevout.script_pub_key.hex))
+            .map(|tx_in| tx_in.prevout.script_pub_key.script.into())
             .collect();
 
         Self {
@@ -297,8 +396,8 @@ pub struct DepositSigner {
     pub output_index: u32,
     /// Public key of the signer.
     pub signer_pub_key: PublicKey,
-    /// Signals if the signer is prepared to sign for this request.
-    pub is_accepted: bool,
+    /// Signals if the signer will sign for this request if able.
+    pub can_accept: bool,
     /// This specifies whether the indicated signer_pub_key can sign for
     /// the associated deposit request.
     pub can_sign: bool,
@@ -470,6 +569,9 @@ pub struct SweptWithdrawalRequest {
     /// The block id of the stacks block that includes this sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
+    /// The block height of the block that includes the sweep transaction.
+    #[sqlx(try_from = "i64")]
+    pub sweep_block_height: u64,
     /// Request ID of the withdrawal request. These are supposed to be
     /// unique, but there can be duplicates if there is a reorg that
     /// affects a transaction that calls the `initiate-withdrawal-request`
@@ -533,6 +635,8 @@ pub struct EncryptedDkgShares {
 pub struct RotateKeysTransaction {
     /// Transaction ID.
     pub txid: StacksTxId,
+    /// The address that deployed the contract.
+    pub address: StacksPrincipal,
     /// The aggregate key for these shares.
     ///
     /// TODO(511): maybe make the aggregate key private. Set it using the
@@ -575,8 +679,8 @@ impl From<Vec<SignerVote>> for SignerVotes {
     }
 }
 
-impl From<SignerVotes> for BitArray<[u8; 16]> {
-    fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
+impl From<&SignerVotes> for BitArray<[u8; 16]> {
+    fn from(votes: &SignerVotes) -> BitArray<[u8; 16]> {
         let mut signer_bitmap = BitArray::ZERO;
         votes
             .iter()
@@ -594,6 +698,12 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
             });
 
         signer_bitmap
+    }
+}
+
+impl From<SignerVotes> for BitArray<[u8; 16]> {
+    fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
+        Self::from(&votes)
     }
 }
 
@@ -619,6 +729,41 @@ pub enum TransactionType {
     RotateKeys,
     /// A donation to signers aggregated key on Bitcoin.
     Donation,
+}
+
+/// The types of Bitcoin transaction input or outputs that the signer may
+/// be interested in.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "output_type", rename_all = "snake_case")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[strum(serialize_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum TxOutputType {
+    /// An output created by the signers as the TXO containing all of the
+    /// swept funds.
+    SignersOutput,
+    /// The `OP_RETURN` TXO created by the signers containing data about
+    /// the sweep transaction.
+    SignersOpReturn,
+    /// A UTXO created by the signers as a response to a withdrawal
+    /// request.
+    Withdrawal,
+    /// A donation to signers aggregated key.
+    Donation,
+}
+
+/// The types of Bitcoin transaction input or outputs that the signer may
+/// be interested in.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[sqlx(type_name = "prevout_type", rename_all = "snake_case")]
+#[derive(serde::Serialize, serde::Deserialize)]
+#[strum(serialize_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum TxPrevoutType {
+    /// An output controled by the signers spent as an input.
+    SignersInput,
+    /// A deposit request TXO being spent as an input
+    Deposit,
 }
 
 /// An identifier for a withdrawal request, comprised of the Stacks
@@ -835,6 +980,12 @@ impl From<[u8; 32]> for StacksBlockHash {
     }
 }
 
+impl std::fmt::Display for StacksBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -962,6 +1113,9 @@ pub type Bytes = Vec<u8>;
 mod tests {
     use fake::Fake;
     use rand::SeedableRng;
+    use test_case::test_case;
+
+    use crate::bitcoin::utxo::GetFees;
 
     use super::*;
 
@@ -978,5 +1132,65 @@ mod tests {
         let block_hash = BitcoinBlockHash::from(stacks_hash);
         let round_trip = BurnchainHeaderHash::from(block_hash);
         assert_eq!(stacks_hash, round_trip);
+    }
+
+    #[test_case(&[(1000, 500)], Some(Fees { total: 500, rate: 0.5 }))]
+    #[test_case(&[(1000, 500), (2000, 1000)], Some(Fees { total: 1500, rate: 0.5 }))]
+    #[test_case(&[(1000, 250), (2000, 1000)], Some(Fees { total: 1250, rate: 0.4166666666666667 }))]
+    #[test_case(&[(1000, 125), (1250, 125), (1500, 175)], Some(Fees { total: 425, rate: 0.11333333333333333 }))]
+    #[test_case(&[], None)]
+    fn get_sweep_transaction_package_fees(sweeps: &[(u32, u64)], expected: Option<Fees>) {
+        // (vsize, fee)
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let mut sweep_txs = vec![];
+        for (vsize, fee) in sweeps {
+            let tx = SweepTransaction {
+                vsize: *vsize,
+                fee: *fee,
+                ..fake::Faker.fake_with_rng(&mut rng)
+            };
+            sweep_txs.push(tx);
+        }
+
+        let fees = sweep_txs.get_fees().expect("failed to calculate fees");
+
+        assert_eq!(fees, expected);
+    }
+
+    #[test]
+    fn get_sweep_transaction_package_overflows() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let mut sweep_txs = vec![];
+        (0..3).for_each(|_| {
+            let tx = SweepTransaction {
+                fee: u64::MAX,
+                vsize: 1,
+                ..fake::Faker.fake_with_rng(&mut rng)
+            };
+            sweep_txs.push(tx);
+        });
+
+        let fees = sweep_txs.get_fees();
+        assert!(matches!(fees, Err(Error::ArithmeticOverflow)));
+    }
+
+    #[test]
+    fn get_sweep_transaction_package_divide_by_zero() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
+
+        let mut sweep_txs = vec![];
+        (0..3).for_each(|_| {
+            let tx = SweepTransaction {
+                fee: 1,
+                vsize: 0,
+                ..fake::Faker.fake_with_rng(&mut rng)
+            };
+            sweep_txs.push(tx);
+        });
+
+        let fees = sweep_txs.get_fees();
+        assert!(matches!(fees, Err(Error::DivideByZero)));
     }
 }

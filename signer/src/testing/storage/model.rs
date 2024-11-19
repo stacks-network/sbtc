@@ -48,6 +48,9 @@ pub struct TestData {
 
     /// Withdraw signers
     pub withdraw_signers: Vec<model::WithdrawalSigner>,
+
+    /// transaction outputs
+    pub tx_outputs: Vec<model::TxOutput>,
 }
 
 impl TestData {
@@ -123,6 +126,7 @@ impl TestData {
                 bitcoin_transactions: deposit_data.bitcoin_transactions,
                 stacks_transactions: withdraw_data.stacks_transactions,
                 transactions,
+                tx_outputs: Vec::new(),
             },
             block.into(),
         )
@@ -141,6 +145,7 @@ impl TestData {
         self.stacks_transactions
             .extend(new_data.stacks_transactions);
         self.transactions.extend(new_data.transactions);
+        self.tx_outputs.extend(new_data.tx_outputs);
     }
 
     /// Remove data in `other` present in the current model.
@@ -154,6 +159,7 @@ impl TestData {
         vec_diff(&mut self.bitcoin_transactions, &other.bitcoin_transactions);
         vec_diff(&mut self.stacks_transactions, &other.stacks_transactions);
         vec_diff(&mut self.transactions, &other.transactions);
+        vec_diff(&mut self.tx_outputs, &other.tx_outputs);
     }
 
     /// Push bitcoin txs to a specific bitcoin block
@@ -164,12 +170,13 @@ impl TestData {
     ) {
         let mut bitcoin_transactions = vec![];
         let mut transactions = vec![];
+        let mut tx_outputs = Vec::new();
 
         for (tx_type, tx) in sbtc_txs {
             let mut tx_bytes = Vec::new();
             tx.consensus_encode(&mut tx_bytes).unwrap();
 
-            let tx = model::Transaction {
+            let model_tx = model::Transaction {
                 txid: tx.compute_txid().to_byte_array(),
                 tx: tx_bytes,
                 tx_type,
@@ -177,17 +184,36 @@ impl TestData {
             };
 
             let bitcoin_transaction = model::BitcoinTxRef {
-                txid: tx.txid.into(),
+                txid: model_tx.txid.into(),
                 block_hash: block.block_hash,
             };
 
-            transactions.push(tx);
+            transactions.push(model_tx);
             bitcoin_transactions.push(bitcoin_transaction);
+
+            let output_type = match tx_type {
+                model::TransactionType::SbtcTransaction => model::TxOutputType::SignersOutput,
+                model::TransactionType::Donation => model::TxOutputType::Donation,
+                _ => continue,
+            };
+            if let Some(tx_out) = tx.output.first() {
+                // In our tests we always happen to put the first output as
+                // the signers UTXO, even if it is a donation.
+                let tx_output = model::TxOutput {
+                    txid: tx.compute_txid().into(),
+                    output_index: 0,
+                    script_pubkey: tx_out.script_pubkey.clone().into(),
+                    amount: tx_out.value.to_sat(),
+                    output_type,
+                };
+                tx_outputs.push(tx_output);
+            }
         }
 
         self.push(Self {
             bitcoin_transactions,
             transactions,
+            tx_outputs,
             ..Self::default()
         });
     }
@@ -258,6 +284,10 @@ impl TestData {
                 .write_withdrawal_signer_decision(decision)
                 .await
                 .expect("failed to write signer decision");
+        }
+
+        for tx_output in self.tx_outputs.iter() {
+            storage.write_tx_output(tx_output).await.unwrap();
         }
     }
 
@@ -376,7 +406,7 @@ impl DepositData {
                     txid: deposit_request.txid,
                     output_index: deposit_request.output_index,
                     signer_pub_key,
-                    is_accepted: fake::Faker.fake_with_rng(rng),
+                    can_accept: fake::Faker.fake_with_rng(rng),
                     can_sign: true,
                 })
                 .collect();

@@ -21,6 +21,7 @@ use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
+use signer::request_decider::RequestDeciderEventLoop;
 use signer::stacks::api::StacksClient;
 use signer::storage::postgres::PgStore;
 use signer::transaction_coordinator;
@@ -108,6 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_checked(run_stacks_event_observer, &context),
         run_checked(run_libp2p_swarm, &context),
         run_checked(run_block_observer, &context),
+        run_checked(run_request_decider, &context),
         run_checked(run_transaction_coordinator, &context),
         run_checked(run_transaction_signer, &context),
     );
@@ -262,8 +264,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     .unwrap();
 
     // TODO: Get clients from context when implemented
-    let emily_client: ApiFallbackClient<EmilyClient> =
-        TryFrom::try_from(&config.emily.endpoints[..])?;
+    let emily_client: ApiFallbackClient<EmilyClient> = TryFrom::try_from(&config.emily)?;
     let stacks_client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&config)?;
 
     // TODO: We should have a new() method that builds from the context
@@ -288,7 +289,6 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         context: ctx.clone(),
         context_window: 10000,
         threshold: 2,
-        blocklist_checker: BlocklistClient::new(&ctx),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
@@ -315,6 +315,22 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
     };
 
     coord.run().await
+}
+
+/// Run the request decider event-loop.
+async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
+    let config = ctx.config().clone();
+    let network = P2PNetwork::new(&ctx);
+
+    let decider = RequestDeciderEventLoop {
+        network,
+        context: ctx.clone(),
+        context_window: 10000,
+        blocklist_checker: BlocklistClient::new(&ctx),
+        signer_private_key: config.signer.private_key,
+    };
+
+    decider.run().await
 }
 
 /// Run the limit updater event-loop.

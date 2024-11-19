@@ -7,11 +7,36 @@ use crate::codec;
 use crate::ecdsa;
 use crate::emily_client::EmilyClientError;
 use crate::stacks::contracts::DepositValidationError;
+use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Attempted division by zero
+    #[error("attempted division by zero")]
+    DivideByZero,
+
+    /// Arithmetic overflow
+    #[error("arithmetic overflow")]
+    ArithmeticOverflow,
+
+    /// Indicates that a sweep transaction with the specified txid could not be found.
+    #[error("sweep transaction not found: {0}")]
+    MissingSweepTransaction(bitcoin::Txid),
+
+    /// Received an error in response to gettxout RPC call
+    #[error("bitcoin-core gettxout error for outpoint {1} (search mempool? {2}): {0}")]
+    BitcoinCoreGetTxOut(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint, bool),
+
+    /// Received an error in response to getmempooldescendants RPC call
+    #[error("bitcoin-core getmempooldescendants error for txid {1}: {0}")]
+    BitcoinCoreGetMempoolDescendants(bitcoincore_rpc::Error, bitcoin::Txid),
+
+    /// Received an error in response to gettxspendingprevout RPC call
+    #[error("bitcoin-core gettxspendingprevout error for outpoint: {0}")]
+    BitcoinCoreGetTxSpendingPrevout(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint),
+
     /// The nakamoto start height could not be determined.
     #[error("nakamoto start height could not be determined")]
     MissingNakamotoStartHeight,
@@ -387,6 +412,15 @@ pub enum Error {
     #[error("observer dropped")]
     ObserverDropped,
 
+    /// A required field in a protobuf type was not set.
+    #[error("a required protobuf field was not set")]
+    RequiredProtobufFieldMissing,
+
+    /// The error for when the request to sign a rotate-keys
+    /// transaction fails at the validation step.
+    #[error("rotate keys validation error: {0}")]
+    RotateKeysValidation(#[source] Box<RotateKeysValidationError>),
+
     /// Thrown when the recoverable signature has a public key that is
     /// unexpected.
     #[error("unexpected public key from signature. key {0}; digest: {1}")]
@@ -465,6 +499,10 @@ pub enum Error {
     /// The smart contract has already been deployed
     #[error("smart contract already deployed, contract name: {0}")]
     ContractAlreadyDeployed(&'static str),
+
+    /// Received coordinator message wasn't from coordinator for this chain tip
+    #[error("not chain tip coordinator")]
+    NotChainTipCoordinator,
 }
 
 impl From<std::convert::Infallible> for Error {
