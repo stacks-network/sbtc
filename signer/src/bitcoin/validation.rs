@@ -237,7 +237,7 @@ impl BitcoinTxValidationData {
     ///    withdrawals in the transaction.
     /// 3. That the signer is a party to signing set that controls the
     ///    public key locking the transaction output.
-    pub fn to_input_rows(&self) -> Vec<BitcoinSighash> {
+    pub fn to_input_rows(&self) -> Vec<BitcoinTxSigHash> {
         // If any of the inputs or outputs fail validation, then
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
