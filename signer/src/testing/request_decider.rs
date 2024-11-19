@@ -30,7 +30,7 @@ use tokio::time::error::Elapsed;
 
 use super::context::*;
 
-/// A test harness for the signer event loop.
+/// A test harness for the request decider event loop.
 pub struct RequestDeciderEventLoopHarness<C> {
     context: C,
     event_loop: TestRequestDeciderEventLoop<C>,
