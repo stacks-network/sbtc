@@ -7,6 +7,8 @@ use futures::StreamExt;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::context::P2PEvent;
+use crate::context::SignerSignal;
 use crate::error::Error;
 
 use super::MessageTransfer;
@@ -153,6 +155,29 @@ impl MessageTransfer for SignerNetworkInstance {
             }
             interval.tick().await;
         }
+    }
+
+    fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
+        let (sender, receiver) = tokio::sync::broadcast::channel(DEFAULT_SIGNER_CAPACITY);
+        let mut signal_rx = self.instance_rx.resubscribe();
+
+        tokio::spawn(async move {
+            // If we get an error that means that all senders have been
+            // dropped and the channel has been closed, or the channel is
+            // full. We bail in both cases because we can, this code is for
+            // tests anyway.
+            while let Ok(msg) = signal_rx.recv().await {
+                // Because there could only be one receiver, an error from
+                // Sender::send means the channel is closed and cannot be
+                // re-opened. So we bail on these errors too.
+                if let Err(error) = sender.send(P2PEvent::MessageReceived(msg).into()) {
+                    tracing::error!(%error, "could not send message over local stream");
+                    break;
+                }
+            }
+            tracing::warn!("the instance stream is closed or lagging, bailing");
+        });
+        BroadcastStream::new(receiver)
     }
 }
 

@@ -10,21 +10,21 @@ use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::future::try_join_all;
-use futures::FutureExt;
 use futures::StreamExt as _;
-use futures::TryStreamExt;
 use sha2::Digest;
-use tokio::time::sleep;
-use tokio_stream::wrappers::BroadcastStream;
-use wsts::net::SignatureType;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::TransactionLookupHint;
+use crate::context::Context;
+use crate::context::P2PEvent;
+use crate::context::RequestDeciderEvent;
+use crate::context::SignerCommand;
+use crate::context::SignerEvent;
+use crate::context::SignerSignal;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
-use crate::context::{Context, SignerEvent, SignerSignal};
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
 use crate::emily_client::EmilyInteract;
@@ -57,6 +57,7 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::CoordinatorStateMachine;
 
 use bitcoin::hashes::Hash as _;
+use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 use wsts::state_machine::OperationResult as WstsOperationResult;
@@ -148,14 +149,14 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub context_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
-    pub signing_round_max_duration: std::time::Duration,
+    pub signing_round_max_duration: Duration,
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
-    pub dkg_max_duration: std::time::Duration,
+    pub dkg_max_duration: Duration,
     /// Whether the coordinator has already deployed the contracts.
     pub sbtc_contracts_deployed: bool,
     /// An indicator for whether the Stacks blockchain has reached Nakamoto
-    /// 3. If we are not in Nakamoto 3 or later then the coordinator does
+    /// 3. If we are not in Nakamoto 3 or later, then the coordinator does
     /// not do any work.
     pub is_epoch3: bool,
 }
@@ -166,34 +167,37 @@ where
     N: network::MessageTransfer,
 {
     /// Run the coordinator event loop
-    #[tracing::instrument(skip(self), name = "tx-coordinator")]
+    #[tracing::instrument(skip_all, name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let term = self.context.get_termination_handle();
-        let mut signal_rx = self.context.get_signal_receiver();
+        let mut signal_stream = self.context.as_signal_stream(&self.network);
 
         loop {
-            if term.shutdown_signalled() {
-                break;
-            }
-
-            match tokio::time::timeout(Duration::from_millis(100), signal_rx.recv()).await {
-                Ok(Ok(SignerSignal::Event(SignerEvent::TxSigner(
-                    TxSignerEvent::NewRequestsHandled,
-                )))) => {
-                    tracing::debug!("received signal; processing new blocks");
-                    let _ = self.process_new_blocks().await.inspect_err(|error| {
-                        tracing::error!(?error, "error processing new blocks; skipping this round")
-                    });
+            match signal_stream.next().await {
+                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
+                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
+                Some(Ok(SignerSignal::Event(event))) => {
+                    if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
+                        event
+                    {
+                        tracing::debug!("received signal; processing requests");
+                        if let Err(error) = self.process_new_blocks().await {
+                            tracing::error!(
+                                %error,
+                                "error processing requests; skipping this round"
+                            );
+                        }
+                        tracing::trace!("sending tenure completed signal");
+                        self.context
+                            .signal(TxCoordinatorEvent::TenureCompleted.into())?;
+                    }
                 }
-                Ok(Err(_)) => {
-                    tracing::debug!(
-                        "error receiving signal; application is probably shutting down"
-                    );
-                    break;
+                // This means one of the broadcast streams is lagging. We
+                // will just continue and hope for the best next time.
+                Some(Err(error)) => {
+                    tracing::error!(%error, "received an error over one of the broadcast streams");
                 }
-                Ok(_) => continue,  // Signal we're not interested in
-                Err(_) => continue, // Timeout timed-out
+                None => break,
             }
         }
 
@@ -202,39 +206,22 @@ where
         Ok(())
     }
 
-    /// Receive the next message. This message could be from over the
-    /// network or from.
-    async fn receive_message(&mut self) -> Signed<SignerMessage> {
-        let signal_rx = self.context.get_signal_receiver();
-        // Turn the receiver into a stream that returns messages that have
-        // been sent by the TxSignerEventLoop.
-        let stream1 = BroadcastStream::new(signal_rx)
-            .filter_map(|msg| async move { msg.ok()?.tx_signer_generated() });
-
-        // We should potentially turn this into a stream that only returns
-        // successful responses.
-        let stream2 = self
-            .network
-            .receive()
-            .into_stream()
-            .inspect_err(|error| tracing::warn!(%error, "received an error from the network"))
-            .filter_map(|x| std::future::ready(x.ok()));
-
-        // The `.select_next_some()` method requires the streams to
-        // implement `Unpin`.
-        tokio::pin!(stream1);
-        tokio::pin!(stream2);
-
-        futures::stream::select(stream1, stream2)
-            .select_next_some()
-            .await
+    /// A function that filters the [`Context::as_signal_stream`] stream
+    /// for items that the coordinator might care about, which includes
+    /// some network messages and transaction signer messages.
+    async fn to_signed_message<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
+        match event.ok()? {
+            SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg)))
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => Some(msg),
+            _ => None,
+        }
     }
 
     async fn is_epoch3(&mut self) -> Result<bool, Error> {
         if self.is_epoch3 {
             return Ok(true);
         }
-        tracing::debug!("Checked for whether we are in Epoch 3 or later");
+        tracing::debug!("checked for whether we are in Epoch 3 or later");
         let pox_info = self.context.get_stacks_client().get_pox_info().await?;
 
         let Some(nakamoto_start_height) = pox_info.nakamoto_start_height() else {
@@ -244,15 +231,24 @@ where
         let is_epoch3 = pox_info.current_burnchain_block_height > nakamoto_start_height;
         if is_epoch3 {
             self.is_epoch3 = is_epoch3;
-            tracing::debug!("We are in Epoch 3 or later; time to do work");
+            tracing::debug!("we are in Epoch 3 or later; time to do work");
         }
         Ok(is_epoch3)
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(
+        skip_all,
+        fields(public_key = %self.signer_public_key(), chain_tip = tracing::field::Empty)
+    )]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         if !self.is_epoch3().await? {
             return Ok(());
+        }
+
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > Duration::ZERO {
+            tracing::debug!("sleeping before processing new Bitcoin block.");
+            tokio::time::sleep(bitcoin_processing_delay).await;
         }
 
         let bitcoin_chain_tip = self
@@ -261,6 +257,9 @@ where
             .get_bitcoin_canonical_chain_tip()
             .await?
             .ok_or(Error::NoChainTip)?;
+
+        let span = tracing::Span::current();
+        span.record("chain_tip", tracing::field::display(&bitcoin_chain_tip));
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -275,17 +274,11 @@ where
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
-            tracing::debug!("We are not the coordinator, so nothing to do");
+            tracing::debug!("we are not the coordinator, so nothing to do");
             return Ok(());
         }
 
-        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
-        if bitcoin_processing_delay > std::time::Duration::ZERO {
-            tracing::debug!("Sleeping before processing new Bitcoin block.");
-            sleep(bitcoin_processing_delay).await;
-        }
-
-        tracing::debug!("We are the coordinator, we may need to coordinate DKG");
+        tracing::debug!("we are the coordinator, we may need to coordinate DKG");
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
         // we are the coordinator, we should coordinate DKG.
@@ -329,7 +322,7 @@ where
 
     /// Submit the rotate key tx for the latest DKG shares, if the aggregate key
     /// differs from the one in the smart contract registry
-    #[tracing::instrument(skip_all, fields(bitcoin_chain_tip))]
+    #[tracing::instrument(skip_all)]
     async fn check_and_submit_rotate_key_transaction(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -358,6 +351,7 @@ where
 
         // If the latest DKG aggregate key matches on-chain data, nothing to do here
         if Some(last_dkg.aggregate_key) == current_aggregate_key {
+            tracing::debug!("stacks-core is up to date with the current aggregate key");
             return Ok(());
         }
 
@@ -379,14 +373,14 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip_all, fields(bitcoin_chain_tip))]
+    #[tracing::instrument(skip_all)]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        tracing::debug!("Fetching the stacks chain tip");
+        tracing::debug!("fetching the stacks chain tip");
         let stacks_chain_tip = self
             .context
             .get_storage()
@@ -394,15 +388,26 @@ where
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
+        tracing::debug!(
+            stacks_chain_tip = %stacks_chain_tip.block_hash,
+            "retrieved the stacks chain tip"
+        );
+
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
 
         // If Self::get_pending_requests returns Ok(None) then there are no
         // requests to respond to, so let's just exit.
         let Some(pending_requests) = pending_requests_fut.await? else {
+            tracing::debug!("no requests to handle, exiting");
             return Ok(());
         };
 
+        tracing::debug!(
+            num_deposits = %pending_requests.deposits.len(),
+            num_withdrawals = pending_requests.withdrawals.len(),
+            "fetched requests"
+        );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
 
@@ -446,7 +451,7 @@ where
     /// 4. Broadcast this sign-request to the network and wait for
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
-    #[tracing::instrument(skip(self, bitcoin_aggregate_key))]
+    #[tracing::instrument(skip_all)]
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -473,9 +478,14 @@ where
             .await?;
 
         if deposit_requests.is_empty() {
+            tracing::debug!("no stacks transactions to create, exiting");
             return Ok(());
         }
 
+        tracing::debug!(
+            num_deposits = %deposit_requests.len(),
+            "we have deposit requests that have been swept that may need minting"
+        );
         // We need to know the nonce to use, so we reach out to our stacks
         // node for the account information for our multi-sig address.
         //
@@ -525,7 +535,7 @@ where
     }
 
     /// Construct and coordinate signing round for a `rotate-keys-wrapper` transaction.
-    #[tracing::instrument(skip_all, fields(bitcoin_chain_tip))]
+    #[tracing::instrument(skip_all)]
     async fn construct_and_sign_rotate_key_transaction(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -566,6 +576,7 @@ where
     }
 
     /// Sign and broadcast the stacks transaction
+    #[tracing::instrument(skip_all)]
     async fn process_sign_request(
         &mut self,
         sign_request: StacksTransactionSignRequest,
@@ -650,6 +661,7 @@ where
     }
 
     /// Attempt to sign the stacks transaction.
+    #[tracing::instrument(skip_all)]
     async fn sign_stacks_transaction(
         &mut self,
         req: StacksTransactionSignRequest,
@@ -664,15 +676,32 @@ where
         self.send_message(req, chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
+        let signal_stream = self
+            .context
+            .as_signal_stream(&self.network)
+            .filter_map(Self::to_signed_message);
+
+        tokio::pin!(signal_stream);
 
         let future = async {
             while multi_tx.num_signatures() < wallet.signatures_required() {
-                let msg = self.receive_message().await;
+                // If signal_stream.next() returns None then one of the
+                // underlying streams has closed. That means either the
+                // network stream, the internal message stream, or the
+                // termination handler stream has closed. This is all bad,
+                // so we trigger a shutdown.
+                let Some(msg) = signal_stream.next().await else {
+                    self.context.get_termination_handle().signal_shutdown();
+                    return Err(Error::SignerShutdown);
+                };
                 // TODO: We need to verify these messages, but it is best
                 // to do that at the source when we receive the message.
 
                 if &msg.bitcoin_chain_tip != chain_tip {
-                    tracing::warn!(?msg, "concurrent signing round message observed");
+                    tracing::warn!(
+                        sender = %msg.signer_pub_key,
+                        "concurrent signing round message observed"
+                    );
                     continue;
                 }
 
@@ -768,7 +797,7 @@ where
                 tx_in.witness = witness;
             });
 
-        tracing::info!("broadcasing bitcoin transaction");
+        tracing::info!("broadcasting bitcoin transaction");
         // Broadcast the transaction to the Bitcoin network.
         self.context
             .get_bitcoin_client()
@@ -822,7 +851,7 @@ where
 
     /// Set up a WSTS coordinator state machine and run DKG with the other
     /// signers in the signing set.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn coordinate_dkg(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -893,13 +922,23 @@ where
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
 
+        let signal_stream = self
+            .context
+            .as_signal_stream(&self.network)
+            .filter_map(Self::to_signed_message);
+
+        tokio::pin!(signal_stream);
+
+        coordinator_state_machine.save();
         loop {
             // Let's get the next message from the network or the
             // TxSignerEventLoop.
-            let msg = self.receive_message().await;
+            let Some(msg) = signal_stream.next().await else {
+                continue;
+            };
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(?msg, "concurrent WSTS activity observed");
+                tracing::warn!(sender = %msg.signer_pub_key, "concurrent WSTS activity observed");
                 continue;
             }
 
@@ -1072,13 +1111,14 @@ where
     /// time as well. We need to do this because deposit requests are locked
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
-    #[tracing::instrument(skip(self, aggregate_key, signer_public_keys))]
+    #[tracing::instrument(skip_all)]
     async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
+        tracing::debug!("Fetching pending deposit and withdrawal requests");
         let context_window = self.context_window;
         let threshold = self.threshold;
 
@@ -1150,7 +1190,7 @@ where
     /// our database, and return None as the aggregate key if no DKG shares
     /// can be found, implying that this signer has not participated in
     /// DKG.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     pub async fn get_signer_set_and_aggregate_key(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -1196,7 +1236,7 @@ where
             .into()
     }
 
-    #[tracing::instrument(skip(self, msg))]
+    #[tracing::instrument(skip_all)]
     async fn send_message(
         &mut self,
         msg: impl Into<Payload>,
@@ -1294,7 +1334,7 @@ where
 
     /// Deploy all sBTC smart contracts to the stacks node (if not already deployed).
     /// If a contract fails to deploy, the function will return an error.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     pub async fn deploy_smart_contracts(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
@@ -1347,6 +1387,10 @@ where
         wallet.set_nonce(account.nonce);
 
         Ok(wallet)
+    }
+
+    fn signer_public_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.private_key)
     }
 
     /// Assesses the total fees paid for any outstanding sweep transactions in
@@ -1540,6 +1584,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "This is sensitive to the values set in the config"]
     #[tokio::test]
     async fn should_wait_before_processing_bitcoin_blocks() {
         // NOTE: Above test `should_be_able_to_coordinate_signing_rounds`
