@@ -38,6 +38,11 @@ fn main() {
         api::handlers::chainstate::get_chainstate_at_height,
         api::handlers::chainstate::set_chainstate,
         api::handlers::chainstate::update_chainstate,
+        // Limit endpoints.
+        api::handlers::limits::get_limits,
+        api::handlers::limits::set_limits,
+        api::handlers::limits::get_limits_for_account,
+        api::handlers::limits::set_limits_for_account,
         // Testing endpoints.
         api::handlers::testing::wipe_databases,
     ),
@@ -45,7 +50,6 @@ fn main() {
     components(schemas(
         // Chainstate models.
         api::models::chainstate::Chainstate,
-
         // Deposit models.
         api::models::deposit::Deposit,
         api::models::deposit::DepositParameters,
@@ -56,7 +60,6 @@ fn main() {
         api::models::deposit::responses::GetDepositsForTransactionResponse,
         api::models::deposit::responses::GetDepositsResponse,
         api::models::deposit::responses::UpdateDepositsResponse,
-
         // Withdrawal Models.
         api::models::withdrawal::Withdrawal,
         api::models::withdrawal::WithdrawalInfo,
@@ -66,14 +69,14 @@ fn main() {
         api::models::withdrawal::requests::UpdateWithdrawalsRequestBody,
         api::models::withdrawal::responses::GetWithdrawalsResponse,
         api::models::withdrawal::responses::UpdateWithdrawalsResponse,
-
         // Health check datatypes.
         api::models::health::responses::HealthData,
-
+        // Limit models.
+        api::models::limits::Limits,
+        api::models::limits::AccountLimits,
         // Common models.
         api::models::common::Status,
         api::models::common::Fulfillment,
-
         // Errors.
         common::error::ErrorResponse,
     ))

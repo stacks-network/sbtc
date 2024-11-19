@@ -828,6 +828,316 @@
         }
       }
     },
+    "/limits": {
+      "get": {
+        "tags": [
+          "limits"
+        ],
+        "summary": "Get the global limits.",
+        "operationId": "getLimits",
+        "responses": {
+          "200": {
+            "description": "Limits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Limits"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "limits"
+        ],
+        "summary": "Get limits handler.",
+        "operationId": "setLimits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Limits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Limits updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Limits"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/limits/{account}": {
+      "get": {
+        "tags": [
+          "limits"
+        ],
+        "summary": "Get limits for account handler.",
+        "operationId": "getLimitsForAccount",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "description": "The account for which to get the limits.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Account limits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountLimits"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "limits"
+        ],
+        "summary": "Set limits for account handler.",
+        "operationId": "setLimitsForAccount",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "description": "The account for which to set the limits.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountLimits"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Set account limits successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountLimits"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/testing/wipe": {
       "post": {
         "tags": [
@@ -1212,6 +1522,33 @@
   },
   "components": {
     "schemas": {
+      "AccountLimits": {
+        "type": "object",
+        "description": "The representation of a limit for a specific account.",
+        "properties": {
+          "pegCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Represents the current sBTC limits.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perDepositCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per deposit cap. If none then the cap is the same as the global per deposit cap.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.",
+            "nullable": true,
+            "minimum": 0
+          }
+        }
+      },
       "Chainstate": {
         "type": "object",
         "description": "Chainstate.",
@@ -1638,6 +1975,43 @@
           "is_okay": {
             "type": "boolean",
             "description": "Whether the API is okay."
+          }
+        }
+      },
+      "Limits": {
+        "type": "object",
+        "description": "Represents the current sBTC limits.",
+        "required": [
+          "accountCaps"
+        ],
+        "properties": {
+          "accountCaps": {
+            "type": "object",
+            "description": "Represents the individual limits for requests coming from different accounts.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AccountLimits"
+            }
+          },
+          "pegCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Represents the total cap for all pegged-in BTC/sBTC.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perDepositCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per deposit cap. If none then there is no cap.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per withdrawal cap. If none then there is no cap.",
+            "nullable": true,
+            "minimum": 0
           }
         }
       },
