@@ -183,8 +183,6 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        stacks_client: ctx.stacks_client.clone(),
-        emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
         horizon,
     };
@@ -311,8 +309,6 @@ async fn link_blocks() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        stacks_client: ctx.stacks_client.clone(),
-        emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
         horizon: 10,
     };
@@ -494,8 +490,6 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        stacks_client: ctx.stacks_client.clone(),
-        emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
         horizon: 2,
     };

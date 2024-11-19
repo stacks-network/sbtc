@@ -37,6 +37,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
+use futures::stream::Stream;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
@@ -44,13 +45,9 @@ use std::collections::HashSet;
 
 /// Block observer
 #[derive(Debug)]
-pub struct BlockObserver<Context, StacksClient, EmilyClient, BlockHashStream> {
+pub struct BlockObserver<Context, BlockHashStream> {
     /// Signer context
     pub context: Context,
-    /// Stacks client
-    pub stacks_client: StacksClient,
-    /// Emily client
-    pub emily_client: EmilyClient,
     /// Stream of blocks from the block notifier
     pub bitcoin_blocks: BlockHashStream,
     /// How far back in time the observer should look
@@ -116,12 +113,10 @@ pub trait DepositRequestValidator {
         C: BitcoinInteract;
 }
 
-impl<C, SC, EC, BHS> BlockObserver<C, SC, EC, BHS>
+impl<C, S> BlockObserver<C, S>
 where
     C: Context,
-    SC: StacksInteract,
-    EC: EmilyInteract,
-    BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
+    S: Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
     #[tracing::instrument(skip_all, name = "block-observer")]
@@ -175,7 +170,9 @@ where
 
         Ok(())
     }
+}
 
+impl<C: Context, B> BlockObserver<C, B> {
     /// Fetch deposit requests from Emily and store the validated ones into
     /// the database.
     #[tracing::instrument(skip_all)]
@@ -183,7 +180,8 @@ where
         let mut deposit_requests = Vec::new();
         let mut failed_requests = Vec::new();
 
-        for request in self.emily_client.get_deposits().await? {
+        let emily_client = self.context.get_emily_client();
+        for request in emily_client.get_deposits().await? {
             let deposit = request
                 .validate(&self.context.get_bitcoin_client())
                 .await
@@ -260,11 +258,12 @@ where
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
-        let tenure_info = self.stacks_client.get_tenure_info().await?;
+        let stacks_client = self.context.get_stacks_client();
+        let tenure_info = stacks_client.get_tenure_info().await?;
 
         tracing::debug!("fetching unknown ancestral blocks from stacks-core");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
-            &self.stacks_client,
+            &stacks_client,
             &self.context.get_storage(),
             tenure_info.tip_block_id,
         )
@@ -508,8 +507,6 @@ mod tests {
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            stacks_client: test_harness.clone(),
-            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
         };
@@ -643,8 +640,6 @@ mod tests {
 
         let mut block_observer = BlockObserver {
             context: ctx,
-            stacks_client: test_harness.clone(),
-            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
         };
@@ -730,8 +725,6 @@ mod tests {
 
         let mut block_observer = BlockObserver {
             context: ctx,
-            stacks_client: test_harness.clone(),
-            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
         };
@@ -834,8 +827,6 @@ mod tests {
 
         let block_observer = BlockObserver {
             context: ctx,
-            stacks_client: test_harness.clone(),
-            emily_client: test_harness.clone(),
             bitcoin_blocks: test_harness.spawn_block_hash_stream(),
             horizon: 1,
         };
