@@ -336,6 +336,8 @@ CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
     validation_result TEXT NOT NULL,
     -- Whether the transaction is valid.
     is_valid_tx BOOLEAN NOT NULL,
+    -- Whether the signer will participate in a signing round for the sighash.
+    will_sign BOOLEAN NOT NULL,
     -- The version of the algorithm that was used to create the bitcoin transaction.
     construction_version TEXT NOT NULL,
     -- a timestamp of when this record was created in the database.

@@ -7,7 +7,6 @@ use bitcoin::ScriptBuf;
 use bitcoin::XOnlyPublicKey;
 
 use crate::bitcoin::utxo::FeeAssessment;
-use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
@@ -29,9 +28,6 @@ use super::utxo::SignatureHash;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
 
-// use super::utxo::DepositRequest;
-// use super::utxo;
-
 /// The necessary information for validating a bitcoin transaction.
 #[derive(Debug, Clone)]
 pub struct BitcoinTxContext {
@@ -40,9 +36,6 @@ pub struct BitcoinTxContext {
     /// bitcoin blockchain with the greatest height. On ties, we sort by
     /// the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockHash,
-    /// How many bitcoin blocks back from the chain tip the signer will
-    /// look for requests.
-    pub context_window: u16,
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
@@ -50,23 +43,10 @@ pub struct BitcoinTxContext {
     /// package. Each element in the vector corresponds to the requests
     /// that will be included in a single bitcoin transaction.
     pub request_packages: Vec<TxRequestIds>,
-    /// The current market fee rate in sat/vByte.
-    pub fee_rate: f64,
-    /// The total fee amount and the fee rate for the last transaction that
-    /// used this UTXO as an input.
-    pub last_fee: Option<Fees>,
-    /// The public key of the signer that created the bitcoin transaction.
-    /// This is very unlikely to ever be used in the
-    /// [`BitcoinTx::validate`] function, but is here for logging and
-    /// tracking purposes.
-    pub origin: PublicKey,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
     /// The current aggregate key that was the output of DKG.
     pub aggregate_key: PublicKey,
-    /// Two byte prefix for BTC transactions that are related to the Stacks
-    /// blockchain.
-    pub magic_bytes: [u8; 2],
     /// The state of the signers.
     pub signer_state: SignerBtcState,
 }
@@ -113,40 +93,16 @@ impl BitcoinTxContext {
         }
     }
 
-    /// Fetch the signers' BTC state and the aggregate key.
-    ///
-    /// The returned state is the essential information for the signers
-    /// UTXO, and information about the current fees and any fees paid for
-    /// transactions currently in the mempool.
-    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<SignerBtcState, Error>
-    where
-        C: Context + Send + Sync,
-    {
-        // We need to know the signers UTXO, so let's fetch that.
-        let db = ctx.get_storage();
-        let utxo = db
-            .get_signer_utxo(&self.chain_tip, self.context_window)
-            .await?
-            .ok_or(Error::MissingSignerUtxo)?;
-
-        let btc_state = SignerBtcState {
-            fee_rate: self.fee_rate,
-            utxo,
-            public_key: bitcoin::XOnlyPublicKey::from(self.aggregate_key),
-            last_fees: self.last_fee,
-            magic_bytes: self.magic_bytes,
-        };
-
-        Ok(btc_state)
-    }
-
     /// Construct the reports for each request that this transaction will
     /// service.
-    pub async fn construct_package_sighashes<C>(&self, ctx: &C) -> Result<Vec<TempOutput>, Error>
+    pub async fn construct_package_sighashes<C>(
+        &self,
+        ctx: &C,
+    ) -> Result<Vec<BitcoinTxValidationData>, Error>
     where
         C: Context + Send + Sync,
     {
-        let mut signer_state = self.get_btc_state(ctx).await?;
+        let mut signer_state = self.signer_state;
         let mut outputs = Vec::new();
 
         for requests in self.request_packages.iter() {
@@ -167,7 +123,7 @@ impl BitcoinTxContext {
         ctx: &C,
         requests: &TxRequestIds,
         signer_state: SignerBtcState,
-    ) -> Result<(TempOutput, SignerBtcState), Error>
+    ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
     where
         C: Context + Send + Sync,
     {
@@ -212,7 +168,7 @@ impl BitcoinTxContext {
         }
 
         deposits.sort_by_key(|(request, _)| request.outpoint);
-        withdrawals.sort_by(|(_, report1), (_, report2)| report1.id.cmp(&report2.id));
+        withdrawals.sort_by_key(|(_, report)| report.id);
         let reports = SbtcReports {
             deposits,
             withdrawals,
@@ -232,7 +188,7 @@ impl BitcoinTxContext {
         // network.
         signer_state.last_fees = None;
 
-        let out = TempOutput {
+        let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
             chain_tip: self.chain_tip,
@@ -249,7 +205,7 @@ impl BitcoinTxContext {
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
 /// [`BitcoinTxSigHash`].
-pub struct TempOutput {
+pub struct BitcoinTxValidationData {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
     /// The sighash of each of the deposit request prevout
@@ -267,7 +223,7 @@ pub struct TempOutput {
     pub chain_tip_height: u64,
 }
 
-impl TempOutput {
+impl BitcoinTxValidationData {
     /// Construct the sighashes for the inputs of the associated
     /// transaction.
     pub fn to_input_rows(&self) -> Vec<BitcoinTxSigHash> {
@@ -307,6 +263,7 @@ impl TempOutput {
                 prevout_type: sighash.prevout_type,
                 validation_result,
                 is_valid_tx,
+                will_sign: is_valid_tx && validation_result == InputValidationResult::Ok,
                 construction_version: ConstructionVersion::V0,
             })
             .collect()
@@ -644,7 +601,7 @@ impl DepositRequestReport {
 }
 
 /// An enum for the confirmation status of a withdrawal request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WithdrawalRequestStatus {
     /// We have a record of the withdrawal request transaction, and it has
     /// been confirmed on the canonical Stacks blockchain. We have not
@@ -672,15 +629,15 @@ pub enum WithdrawalRequestStatus {
 
 /// A struct for the status report summary of a withdrawal request for use
 /// in validation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WithdrawalRequestReport {
-    /// The confirmation status of the withdrawal request transaction.
-    pub status: WithdrawalRequestStatus,
     /// The unique identifier for the request. It includes the ID generated
     /// by the smart contract when the `initiate-withdrawal-request` public
     /// function was called along with the transaction ID and Stacks block
     /// ID.
     pub id: QualifiedRequestId,
+    /// The confirmation status of the withdrawal request transaction.
+    pub status: WithdrawalRequestStatus,
     /// The amount of BTC, in sats, to withdraw.
     pub amount: u64,
     /// The max fee amount to use for the bitcoin transaction sweeping out

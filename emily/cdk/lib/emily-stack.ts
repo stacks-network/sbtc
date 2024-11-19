@@ -263,9 +263,9 @@ export class EmilyStack extends cdk.Stack {
         props: EmilyStackProps
     ): apig.SpecRestApi {
 
-        const restApiId: string  = "EmilyAPI";
-        const restApi: apig.SpecRestApi = new apig.SpecRestApi(this, restApiId, {
-            restApiName: EmilyStackUtils.getResourceName(restApiId, props),
+        const apiId: string  = "EmilyAPI";
+        const api: apig.SpecRestApi = new apig.SpecRestApi(this, apiId, {
+            restApiName: EmilyStackUtils.getResourceName(apiId, props),
             apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
                 EmilyStackUtils.getPathFromProjectRoot(
                     ".generated-sources/emily/openapi/emily-openapi-spec.json"
@@ -279,14 +279,46 @@ export class EmilyStack extends cdk.Stack {
             deployOptions: { stageName: props.stageName },
         });
 
+        // Create a usage plan that will be used by the Signers. This will allow us to throttle
+        // the general API more than the signers.
+        const signerApiUsagePlanId: string = `SignerApiUsagePlan`;
+        const signerApiUsagePlan = api.addUsagePlan(signerApiUsagePlanId, {
+            name: EmilyStackUtils.getResourceName(signerApiUsagePlanId, props),
+            throttle: {
+                // These are very high limits. We can adjust them down as needed.
+                rateLimit: 100,
+                burstLimit: 200,
+            },
+            apiStages: [
+                {
+                    api: api,
+                    stage: api.deploymentStage,
+                }
+            ]
+        });
+
+        let num_api_keys = EmilyStackUtils.getNumSignerApiKeys();
+        let api_keys = [];
+        for (let i = 0; i < num_api_keys; i++) {
+            // Create an API Key
+            const apiKeyId: string = `ApiKey-${i}`;
+            const apiKey = api.addApiKey(apiKeyId, {
+                apiKeyName: EmilyStackUtils.getResourceName(apiKeyId, props),
+            });
+
+            // Associate the API Key with the Usage Plan and specify stages
+            signerApiUsagePlan.addApiKey(apiKey);
+            api_keys.push(apiKey);
+        }
+
         // Give the the rest api execute ARN permission to invoke the lambda.
         operationLambda.addPermission("ApiInvokeLambdaPermission", {
             principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
             action: "lambda:InvokeFunction",
-            sourceArn: restApi.arnForExecuteApi(),
+            sourceArn: api.arnForExecuteApi(),
         });
 
         // Return api resource.
-        return restApi;
+        return api;
     }
 }

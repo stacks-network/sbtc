@@ -5,10 +5,14 @@ mod signer_context;
 mod signer_state;
 mod termination;
 
+use futures::stream::SelectAll;
+use tokio_stream::wrappers::BroadcastStream;
+
 use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::network::MessageTransfer;
 use crate::stacks::api::StacksInteract;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
@@ -41,6 +45,27 @@ pub trait Context: Clone + Sync + Send {
     fn get_bitcoin_client(&self) -> impl BitcoinInteract + Clone + 'static;
     /// Get a handler to the Stacks client.
     fn get_stacks_client(&self) -> impl StacksInteract + Clone + 'static;
-    /// Get a handle to a Emily client.
+    /// Get a handle to an Emily client.
     fn get_emily_client(&self) -> impl EmilyInteract + Clone + 'static;
+    /// Create a new signal stream containing signer messages from:
+    /// 1. The signer network, as defined by the given network object
+    ///    implementing [`MessageTransfer`].
+    /// 2. The termination handled. This should only ever return one item.
+    /// 3. All messages over the signers' internal channel.
+    ///
+    /// Messages are returned as they become ready. Note that the returned
+    /// stream is not "fused", so [`StreamExt::next`] can return `None` and
+    /// later return `Some(_)`. But if [`StreamExt::next`] yields `None`
+    /// three times then the stream is "fused" and will return `None`
+    /// forever after.
+    fn as_signal_stream<M>(&self, network: &M) -> SelectAll<BroadcastStream<SignerSignal>>
+    where
+        M: MessageTransfer,
+    {
+        let term = self.get_termination_handle().as_stream();
+        let signal_stream = BroadcastStream::new(self.get_signal_receiver());
+        let network_stream = network.receiver_stream();
+
+        futures::stream::select_all([term, signal_stream, network_stream])
+    }
 }

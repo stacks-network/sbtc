@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::ops::Deref;
 use std::sync::atomic::AtomicBool;
-use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -54,7 +53,6 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
-use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
@@ -71,6 +69,7 @@ pub const GET_POX_INFO_JSON: &str =
 /// that pass validation, regardless of when they were confirmed.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(1, 10; "one block ago")]
+#[test_case::test_case(5, 10; "five blocks ago")]
 #[tokio::test]
 async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64, horizon: usize) {
     // We start with the typical setup with a fresh database and context
@@ -164,8 +163,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     // We only proceed with the test after the BlockObserver "process" has
     // started, and we use this counter to notify us when that happens.
-    let start_count = Arc::new(AtomicU8::new(0));
-    let counter = start_count.clone();
+    let start_flag = Arc::new(AtomicBool::new(false));
+    let flag = start_flag.clone();
 
     // We jump through all of these hoops to make sure that the block
     // stream object is Send + Sync.
@@ -190,6 +189,9 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         horizon,
     };
 
+    // We need at least one receiver
+    let _signal = ctx.get_signal_receiver();
+
     // Our database shouldn't have any deposit requests. In fact, our
     // database doesn't have any blockchain data at all.
     let db = &ctx.storage;
@@ -200,12 +202,12 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         .is_none());
 
     tokio::spawn(async move {
-        counter.fetch_add(1, Ordering::Relaxed);
+        flag.store(true, Ordering::Relaxed);
         block_observer.run().await
     });
 
     // Wait for the task to start.
-    while start_count.load(Ordering::SeqCst) < 1 {
+    while !start_flag.load(Ordering::SeqCst) {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
 
@@ -219,23 +221,22 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     // Let's generate a new block and wait for out block observer to send a
     // BitcoinBlockObserved signal.
-    let chain_tip = faucet.generate_blocks(1).pop().unwrap().into();
+    let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
-    let receiver = ctx.get_signal_receiver();
+    // We need to wait for the bitcoin-core to send us all the
+    // notifications so that we are up to date with the expected chain tip.
+    // For that we just wait until we know that we're up-to-date
+    let mut current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
 
-    let stream = BroadcastStream::new(receiver)
-        .filter_map(|signal| match signal {
-            Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) => {
-                std::future::ready(Some(()))
-            }
-            _ => std::future::ready(None),
-        })
-        .fuse();
-    // We need it to implement UnPin for StreamExt::select_next_some, same
-    // for StreamExt::next.
-    tokio::pin!(stream);
+    let waiting_fut = async {
+        let db = db.clone();
+        while current_chain_tip != Some(chain_tip) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+        }
+    };
 
-    tokio::time::timeout(Duration::from_secs(10), stream.select_next_some())
+    tokio::time::timeout(Duration::from_secs(3), waiting_fut)
         .await
         .unwrap();
 

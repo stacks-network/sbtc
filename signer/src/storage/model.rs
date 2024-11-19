@@ -983,6 +983,12 @@ impl From<[u8; 32]> for StacksBlockHash {
     }
 }
 
+impl std::fmt::Display for StacksBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -1170,6 +1176,9 @@ pub struct BitcoinTxSigHash {
     /// Whether the transaction is valid. A transaction is invalid if any
     /// of the inputs or outputs failed validation.
     pub is_valid_tx: bool,
+    /// Whether the signer will participate in a signing round for the
+    /// sighash.
+    pub will_sign: bool,
     /// The version of the algorithm that was used to create the bitcoin
     /// transaction.
     pub construction_version: ConstructionVersion,

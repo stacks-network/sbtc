@@ -1836,6 +1836,7 @@ impl super::DbRead for PgStore {
                     i.prevout_type,
                     s.validation_result,
                     s.is_valid_tx,
+                    s.will_sign,
                     s.construction_version
                 FROM sbtc_signer.bitcoin_tx_sighashes AS s
                 JOIN sbtc_signer.bitcoin_tx_inputs AS i
@@ -2690,6 +2691,7 @@ impl super::DbWrite for PgStore {
         let mut sighash = Vec::with_capacity(sighashes.len());
         let mut validation_result = Vec::with_capacity(sighashes.len());
         let mut is_valid_tx = Vec::with_capacity(sighashes.len());
+        let mut will_sign = Vec::with_capacity(sighashes.len());
         let mut construction_version = Vec::with_capacity(sighashes.len());
 
         for tx_sighash in sighashes {
@@ -2703,6 +2705,7 @@ impl super::DbWrite for PgStore {
             sighash.push(tx_sighash.sighash);
             validation_result.push(tx_sighash.validation_result);
             is_valid_tx.push(tx_sighash.is_valid_tx);
+            will_sign.push(tx_sighash.will_sign);
             construction_version.push(tx_sighash.construction_version);
         }
 
@@ -2715,7 +2718,8 @@ impl super::DbWrite for PgStore {
             , sighash               AS (SELECT ROW_NUMBER() OVER (), sighash FROM UNNEST($5::BYTEA[]) AS sighash)
             , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($6::TEXT[]) AS validation_result)
             , is_valid_tx           AS (SELECT ROW_NUMBER() OVER (), is_valid_tx FROM UNNEST($7::BOOLEAN[]) AS is_valid_tx)
-            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($8::TEXT[]) AS construction_version)
+            , will_sign             AS (SELECT ROW_NUMBER() OVER (), will_sign FROM UNNEST($8::BOOLEAN[]) AS will_sign)
+            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($9::TEXT[]) AS construction_version)
             INSERT INTO sbtc_signer.bitcoin_tx_sighashes (
                   txid
                 , chain_tip
@@ -2724,6 +2728,7 @@ impl super::DbWrite for PgStore {
                 , sighash
                 , validation_result
                 , is_valid_tx
+                , will_sign
                 , construction_version)
             SELECT
                 txid
@@ -2733,6 +2738,7 @@ impl super::DbWrite for PgStore {
               , sighash
               , validation_result
               , is_valid_tx
+              , will_sign
               , construction_version
             FROM tx_ids
             JOIN chain_tip USING (row_number)
@@ -2741,6 +2747,7 @@ impl super::DbWrite for PgStore {
             JOIN sighash USING (row_number)
             JOIN validation_result USING (row_number)
             JOIN is_valid_tx USING (row_number)
+            JOIN will_sign USING (row_number)
             JOIN construction_version USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
@@ -2751,6 +2758,7 @@ impl super::DbWrite for PgStore {
         .bind(sighash)
         .bind(validation_result)
         .bind(is_valid_tx)
+        .bind(will_sign)
         .bind(construction_version)
         .execute(&self.0)
         .await
