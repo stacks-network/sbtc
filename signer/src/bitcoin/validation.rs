@@ -12,6 +12,7 @@ use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::SbtcRequestsContext;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxSigHash;
@@ -80,6 +81,28 @@ pub struct TxRequestIds {
     /// The withdrawal requests associated with the outputs in the current
     /// transaction.
     pub withdrawals: Vec<QualifiedRequestId>,
+}
+
+impl From<SbtcRequestsContext> for TxRequestIds {
+    fn from(requests: SbtcRequestsContext) -> Self {
+        let deposits = requests.deposits.into_iter().map(Into::into).collect();
+        let withdrawals = requests.withdrawals.into_iter().map(Into::into).collect();
+        TxRequestIds { deposits, withdrawals }
+    }
+}
+
+impl From<Requests<'_>> for TxRequestIds {
+    fn from(requests: Requests) -> Self {
+        let mut deposits = Vec::new();
+        let mut withdrawals = Vec::new();
+        for request in requests.iter() {
+            match request {
+                RequestRef::Deposit(deposit) => deposits.push(deposit.outpoint),
+                RequestRef::Withdrawal(withdrawal) => withdrawals.push((*withdrawal).into()),
+            }
+        }
+        TxRequestIds { deposits, withdrawals }
+    }
 }
 
 /// Check that this does not contain duplicate deposits or withdrawals.
@@ -218,7 +241,6 @@ impl BitcoinTxContext {
             withdrawals,
             signer_state,
         };
-
         let mut signer_state = signer_state;
         let tx = reports.create_transaction()?;
         let sighashes = tx.construct_digests()?;

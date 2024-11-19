@@ -1,13 +1,17 @@
 //! Signer message definition for network communication
 
+use bitcoin::OutPoint;
 use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest;
 
+use crate::bitcoin::utxo::RequestRef;
+use crate::bitcoin::utxo::Requests;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -38,6 +42,8 @@ pub enum Payload {
     WstsMessage(WstsMessage),
     /// Information about a new sweep transaction
     SweepTransactionInfo(SweepTransactionInfo),
+    /// Information about a new Bitcoin block sign request
+    BitcoinBlockSignRequest(BitcoinBlockSignRequest),
 }
 
 impl std::fmt::Display for Payload {
@@ -72,6 +78,7 @@ impl std::fmt::Display for Payload {
                 write!(f, ")")
             }
             Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
+            Self::BitcoinBlockSignRequest(_) => write!(f, "BitcoinBlockSignRequest(..)"),
         }
     }
 }
@@ -131,6 +138,12 @@ impl From<WstsMessage> for Payload {
 impl From<SweepTransactionInfo> for Payload {
     fn from(value: SweepTransactionInfo) -> Self {
         Self::SweepTransactionInfo(value)
+    }
+}
+
+impl From<BitcoinBlockSignRequest> for Payload {
+    fn from(value: BitcoinBlockSignRequest) -> Self {
+        Self::BitcoinBlockSignRequest(value)
     }
 }
 
@@ -322,6 +335,100 @@ pub struct BitcoinTransactionSignAck {
     pub txid: bitcoin::Txid,
 }
 
+/// The message version of an the [`OutPoint`].
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OutPointMessage {
+    /// The referenced transaction's txid.
+    pub txid: bitcoin::Txid,
+    /// The index of the referenced output in its transaction's vout.
+    pub vout: u32,
+}
+
+impl From<OutPoint> for OutPointMessage {
+    fn from(outpoint: OutPoint) -> Self {
+        OutPointMessage {
+            txid: outpoint.txid,
+            vout: outpoint.vout,
+        }
+    }
+}
+
+impl From<OutPointMessage> for OutPoint {
+    fn from(val: OutPointMessage) -> Self {
+        OutPoint { txid: val.txid, vout: val.vout }
+    }
+}
+
+/// The message version of a [`QualifiedRequestId`].
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct QualifiedRequestIdMessage {
+    /// The ID that was generated in the clarity contract call for the
+    /// withdrawal request.
+    pub request_id: u64,
+    /// The txid that generated the request.
+    pub txid: blockstack_lib::burnchains::Txid,
+    /// The Stacks block ID that includes the transaction that generated
+    /// the request.
+    pub block_hash: StacksBlockHash,
+}
+
+impl From<QualifiedRequestId> for QualifiedRequestIdMessage {
+    fn from(qualified_request_id: QualifiedRequestId) -> Self {
+        QualifiedRequestIdMessage {
+            request_id: qualified_request_id.request_id,
+            txid: qualified_request_id.txid.into(),
+            block_hash: qualified_request_id.block_hash.into_bytes(),
+        }
+    }
+}
+
+///  The message version of the [`Requests`] context.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SbtcRequestsContext {
+    /// The deposit requests associated with the inputs in the transaction.
+    pub deposits: Vec<OutPointMessage>,
+    /// The withdrawal requests associated with the outputs in the current
+    /// transaction.
+    pub withdrawals: Vec<QualifiedRequestIdMessage>,
+}
+
+impl<'a> From<&Requests<'a>> for SbtcRequestsContext {
+    fn from(requests: &Requests<'a>) -> Self {
+        // Implement the conversion logic here
+        let mut deposits = Vec::new();
+        let mut withdrawals = Vec::new();
+        for request in requests.iter() {
+            match request {
+                RequestRef::Deposit(deposit) => {
+                    deposits.push(deposit.outpoint.into());
+                }
+                RequestRef::Withdrawal(withdrawal) => {
+                    withdrawals.push(QualifiedRequestIdMessage {
+                        request_id: withdrawal.request_id,
+                        txid: withdrawal.txid.into(),
+                        block_hash: withdrawal.block_hash.into_bytes(),
+                    });
+                }
+            }
+        }
+        SbtcRequestsContext { deposits, withdrawals }
+    }
+}
+
+/// The transaction context needed by the signers to reconstruct the transaction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BitcoinBlockSignRequest {
+    /// The set of sBTC requests with additional relevant
+    /// information for the transaction.
+    pub requests: Vec<SbtcRequestsContext>,
+    /// The current market fee rate in sat/vByte.
+    pub fee_rate: f64,
+    // /// The total fee paid in sats for the transaction.
+    // pub last_fee_total: Option<u64>,
+    // /// The fee rate paid in sats per virtual byte.
+    // pub last_fee_rate: Option<f64>,
+}
+
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WstsMessage {
@@ -351,6 +458,7 @@ impl wsts::net::Signable for Payload {
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
             Self::StacksTransactionSignature(msg) => msg.hash(hasher),
             Self::SweepTransactionInfo(msg) => msg.hash(hasher),
+            Self::BitcoinBlockSignRequest(msg) => msg.hash(hasher),
         }
     }
 }
@@ -449,6 +557,48 @@ impl wsts::net::Signable for WstsMessage {
         hasher.update("SIGNER_WSTS_MESSAGE");
         hasher.update(self.txid);
         self.inner.hash(hasher);
+    }
+}
+
+impl wsts::net::Signable for OutPointMessage {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.txid);
+        hasher.update(self.vout.to_be_bytes());
+    }
+}
+
+impl wsts::net::Signable for QualifiedRequestIdMessage {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.request_id.to_be_bytes());
+        hasher.update(self.txid);
+        hasher.update(self.block_hash);
+    }
+}
+
+impl wsts::net::Signable for SbtcRequestsContext {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        for deposit in &self.deposits {
+            deposit.hash(hasher);
+        }
+        for withdrawal in &self.withdrawals {
+            withdrawal.hash(hasher);
+        }
+    }
+}
+
+impl wsts::net::Signable for BitcoinBlockSignRequest {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_NEW_BITCOIN_TX_CONTEXT");
+        for request in &self.requests {
+            request.hash(hasher);
+        }
+        hasher.update(self.fee_rate.to_be_bytes());
+        // if let Some(fee_total) = self.last_fee_total {
+        //     hasher.update(fee_total.to_be_bytes());
+        // }
+        // if let Some(fee_rate) = self.last_fee_rate {
+        //     hasher.update(fee_rate.to_be_bytes());
+        // }
     }
 }
 

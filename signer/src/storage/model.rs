@@ -14,12 +14,14 @@ use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::utxo::WithdrawalRequest as BitcoinWithdrawalRequest;
 use crate::bitcoin::validation::InputValidationResult;
 use crate::bitcoin::validation::WithdrawalValidationResult;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
+use crate::message::QualifiedRequestIdMessage;
 
 /// Represents a single transaction which is part of a sweep transaction package
 /// which has been broadcast to the Bitcoin network.
@@ -790,6 +792,36 @@ pub struct QualifiedRequestId {
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     pub block_hash: StacksBlockHash,
+}
+
+impl From<BitcoinWithdrawalRequest> for QualifiedRequestId {
+    fn from(request: BitcoinWithdrawalRequest) -> Self {
+        Self {
+            request_id: request.request_id,
+            txid: request.txid,
+            block_hash: request.block_hash,
+        }
+    }
+}
+
+impl From<&BitcoinWithdrawalRequest> for QualifiedRequestId {
+    fn from(request: &BitcoinWithdrawalRequest) -> Self {
+        Self {
+            request_id: request.request_id,
+            txid: request.txid.clone(),
+            block_hash: request.block_hash.clone(),
+        }
+    }
+}
+
+impl From<QualifiedRequestIdMessage> for QualifiedRequestId {
+    fn from(request: QualifiedRequestIdMessage) -> Self {
+        Self {
+            request_id: request.request_id,
+            txid: request.txid.into(),
+            block_hash: request.block_hash.into(),
+        }
+    }
 }
 
 /// A bitcoin transaction

@@ -8,6 +8,10 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 
+use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::GetFees;
+use crate::bitcoin::validation::BitcoinTxContext;
+use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::SignerCommand;
@@ -250,6 +254,10 @@ where
                     .await?;
             }
 
+            (message::Payload::BitcoinBlockSignRequest(block_request), _, _) => {
+                self.handle_bitcoin_block_sign_request(block_request, &msg.bitcoin_chain_tip)
+                    .await?;
+            }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
             | (message::Payload::BitcoinTransactionSignAck(_), _, _)
@@ -303,6 +311,46 @@ where
             chain_tip_status,
             chain_tip,
         })
+    }
+
+    #[tracing::instrument(skip(self, request))]
+    async fn handle_bitcoin_block_sign_request(
+        &mut self,
+        request: &message::BitcoinBlockSignRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        let bitcoin_block = self
+            .context
+            .get_storage()
+            .get_bitcoin_block(bitcoin_chain_tip)
+            .await
+            .map_err(|_| Error::NoChainTip)?
+            .ok_or_else(|| Error::NoChainTip)?;
+
+        let (maybe_aggregate_key, signer_set) = self
+            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+            .await?;
+        let aggregate_key = maybe_aggregate_key.ok_or(Error::NoDkgShares)?;
+
+        let signer_state = self
+            .get_btc_state(bitcoin_chain_tip, &aggregate_key)
+            .await?;
+
+        let bitcoin_tx_context = BitcoinTxContext {
+            chain_tip: *bitcoin_chain_tip,
+            chain_tip_height: bitcoin_block.block_height,
+            signer_state,
+            signer_public_key: self.signer_pub_key(),
+            aggregate_key,
+            context_window: self.context_window,
+            fee_rate: request.fee_rate,
+            last_fee: todo!(),
+            origin: todo!(),
+            magic_bytes: todo!(),
+            request_packages: request.requests.into_iter().map(|r| r.into()).collect(),
+        };
+
+        Ok(())
     }
 
     #[tracing::instrument(skip(self, request))]
@@ -392,6 +440,50 @@ where
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         Ok(())
+    }
+
+    /// Constructs a new [`utxo::SignerBtcState`] based on the current market
+    /// fee rate, the signer's UTXO, and the last sweep package.
+    #[tracing::instrument(skip(self, aggregate_key))]
+    pub async fn get_btc_state(
+        &mut self,
+        chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &PublicKey,
+    ) -> Result<utxo::SignerBtcState, Error> {
+        let bitcoin_client = self.context.get_bitcoin_client();
+        let fee_rate = bitcoin_client.estimate_fee_rate().await?;
+
+        // Retrieve the signer's current UTXO.
+        let utxo = self
+            .context
+            .get_storage()
+            .get_signer_utxo(chain_tip, self.context_window)
+            .await?
+            .ok_or(Error::MissingSignerUtxo)?;
+
+        // Retrieve the last sweep package for the above UTXO. These are
+        // transactions which exist in the mempool.
+        let last_sweep_package = self
+            .context
+            .get_storage()
+            .get_latest_unconfirmed_sweep_transactions(
+                chain_tip,
+                self.context_window,
+                &utxo.outpoint.txid.into(),
+            )
+            .await?;
+
+        // Calculate the last fees paid by the signer based on the latest sweep
+        // package.
+        let last_fees = last_sweep_package.get_fees()?;
+
+        Ok(utxo::SignerBtcState {
+            fee_rate,
+            utxo,
+            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
+            last_fees,
+            magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
+        })
     }
 
     /// Check that the transaction is indeed valid. We specific checks that

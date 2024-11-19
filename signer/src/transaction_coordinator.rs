@@ -12,6 +12,7 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::StreamExt as _;
 use sha2::Digest;
 use tokio::time::sleep;
+use wsts::net::Signable;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::GetFees;
@@ -31,7 +32,9 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::BitcoinBlockSignRequest;
 use crate::message::Payload;
+use crate::message::SbtcRequestsContext;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::SweepTransactionInfo;
@@ -388,11 +391,67 @@ where
         let Some(pending_requests) = pending_requests_fut.await? else {
             return Ok(());
         };
+        // let bitcoin_chain_tip_block = self
+        //     .context
+        //     .get_storage()
+        //     .get_bitcoin_block(bitcoin_chain_tip)
+        //     .await
+        //     .map_err(|_| Error::NoChainTip)? // This should never happen
+        //     .ok_or(Error::NoChainTip)?;
 
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
+        let (last_fee_total, last_fee_rate) = match pending_requests.signer_state.last_fees {
+            Some(fee) => (Some(fee.total), Some(fee.rate)),
+            None => (None, None),
+        };
+        // Get the requests from the transaction package because they have been split into
+        // multiple transactions.
+        let mut hasher = sha2::Sha256::new();
+        let sign_request = BitcoinBlockSignRequest {
+            requests: transaction_package
+                .iter()
+                .map(|tx| SbtcRequestsContext::from(&tx.requests))
+                .collect(),
+            fee_rate: pending_requests.signer_state.fee_rate,
+            // last_fee_total,
+            // last_fee_rate,
+        };
+        sign_request.hash(&mut hasher);
+
+        // let request_id = bitcoin::Txid::from_byte_array(hasher.finalize().into());
+        // let coordinator_state_machine = CoordinatorStateMachine::load(
+        //     &mut self.context.get_storage_mut(),
+        //     *aggregate_key,
+        //     signer_public_keys.clone(),
+        //     self.threshold,
+        //     self.private_key,
+        // )
+        // .await?;
+        self.send_message(sign_request, bitcoin_chain_tip).await?;
+        // let signature = self
+        //     .coordinate_signing_round(
+        //         bitcoin_chain_tip,
+        //         &mut coordinator_state_machine,
+        //         request_id,
+        //         &sign_request.serialize(),
+        //         SignatureType::Schnorr,
+        //     )
+        //     .await?;
 
         for mut transaction in transaction_package {
+            // let bitcoin_tx_context: BitcoinTxContext = BitcoinTxContext {
+            //     chain_tip: bitcoin_chain_tip.clone(),
+            //     chain_tip_height: bitcoin_chain_tip_block.block_height,
+            //     request_packages: vec![(&pending_requests).into()],
+            //     signer_state: transaction.signer_utxo,
+            //     signer_public_key: self.signer_public_key(),
+            //     aggregate_key: aggregate_key.clone(),
+            // };
+            // let sighashes = bitcoin_tx_context
+            //     .construct_package_sighashes(&self.context)
+            //     .await?;
+
             self.sign_and_broadcast(
                 bitcoin_chain_tip,
                 aggregate_key,
@@ -731,8 +790,15 @@ where
 
         let mut deposit_witness = Vec::new();
 
+        let (_, signer_set) = self
+            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+            .await?;
+
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
+
+            let mut coordinator_state_machine =
+                CoordinatorStateMachine::new(signer_set.clone(), self.threshold, self.private_key);
 
             let signature = self
                 .coordinate_signing_round(
