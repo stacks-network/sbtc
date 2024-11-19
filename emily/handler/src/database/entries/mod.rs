@@ -65,6 +65,8 @@ pub mod chainstate;
 pub mod deposit;
 /// Withdrawal table entries.
 pub mod withdrawal;
+/// Limits table entries.
+pub mod limits;
 
 // Event structure
 // -----------------------------------------------------------------------------

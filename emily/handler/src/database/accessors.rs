@@ -15,7 +15,7 @@ use crate::common::error::{Error, Inconsistency};
 use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::deposit::ValidatedDepositUpdate;
-use super::entries::limit::{LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT};
+use super::entries::limits::{LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT};
 use super::entries::withdrawal::ValidatedWithdrawalUpdate;
 use super::entries::{
     chainstate::{

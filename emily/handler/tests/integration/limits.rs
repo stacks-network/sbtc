@@ -1,11 +1,11 @@
 // use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use testing_emily_client::apis;
+use emily_client::apis;
 // use testing_emily_client::apis::configuration::Configuration;
-use testing_emily_client::models;
-use testing_emily_client::models::AccountLimits;
-use testing_emily_client::models::Limits;
+use emily_client::models;
+use emily_client::models::AccountLimits;
+use emily_client::models::Limits;
 
 use crate::common::clean_setup;
 // use test_case::test_case;

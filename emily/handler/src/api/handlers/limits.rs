@@ -5,7 +5,7 @@ use crate::{
     api::models::limits::{AccountLimits, Limits},
     common::error::Error,
     context::EmilyContext,
-    database::{accessors, entries::limit::{LimitEntry, GLOBAL_CAP_ACCOUNT}},
+    database::{accessors, entries::limits::{LimitEntry, GLOBAL_CAP_ACCOUNT}},
 };
 use warp::http::StatusCode;
 use warp::reply::{json, with_status, Reply};
@@ -93,7 +93,48 @@ pub async fn set_limits(
         .map_or_else(Reply::into_response, Reply::into_response)
 }
 
-/// Set account limits handler.
+/// Get limits for account handler.
+#[utoipa::path(
+    get,
+    operation_id = "getLimitsForAccount",
+    path = "/limits/{account}",
+    params(
+        ("account" = String, Path, description = "The account for which to get the limits."),
+    ),
+    tag = "limits",
+    responses(
+        // TODO(271): Add success body.
+        (status = 201, description = "Account limits retrieved successfully", body = AccountLimits),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    security(("ApiGatewayKey" = []))
+)]
+pub async fn get_limits_for_account(
+    context: EmilyContext,
+    account: String,
+) -> impl warp::reply::Reply {
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        account: String,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Get the entry.
+        let account_limit: AccountLimits = accessors::get_limit_for_account(&context, &account)
+            .await?
+            .into();
+        // Respond.
+        Ok(with_status(json(&account_limit), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, account)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Set limits for account handler.
 #[utoipa::path(
     post,
     operation_id = "setLimitsForAccount",
@@ -137,47 +178,6 @@ pub async fn set_limits_for_account(
     }
     // Handle and respond.
     handler(context, account, body)
-        .await
-        .map_or_else(Reply::into_response, Reply::into_response)
-}
-
-/// Get limits for account handler.
-#[utoipa::path(
-    get,
-    operation_id = "getLimitsForAccount",
-    path = "/limits/{account}",
-    params(
-        ("account" = String, Path, description = "The account for which to get the limits."),
-    ),
-    tag = "limits",
-    responses(
-        // TODO(271): Add success body.
-        (status = 201, description = "Account limits retrieved successfully", body = AccountLimits),
-        (status = 400, description = "Invalid request body", body = ErrorResponse),
-        (status = 404, description = "Address not found", body = ErrorResponse),
-        (status = 405, description = "Method not allowed", body = ErrorResponse),
-        (status = 500, description = "Internal server error", body = ErrorResponse)
-    ),
-    security(("ApiGatewayKey" = []))
-)]
-pub async fn get_limits_for_account(
-    context: EmilyContext,
-    account: String,
-) -> impl warp::reply::Reply {
-    // Internal handler so `?` can be used correctly while still returning a reply.
-    async fn handler(
-        context: EmilyContext,
-        account: String,
-    ) -> Result<impl warp::reply::Reply, Error> {
-        // Get the entry.
-        let account_limit: AccountLimits = accessors::get_limit_for_account(&context, &account)
-            .await?
-            .into();
-        // Respond.
-        Ok(with_status(json(&account_limit), StatusCode::OK))
-    }
-    // Handle and respond.
-    handler(context, account)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
