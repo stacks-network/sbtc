@@ -1,6 +1,7 @@
 //! MessageTransfer implementation for the application signalling channel
 //! together with LibP2P.
 
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::wrappers::BroadcastStream;
@@ -103,7 +104,36 @@ impl MessageTransfer for P2PNetwork {
     }
 
     fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
-        BroadcastStream::new(self.signal_rx.resubscribe())
+        let (sender, receiver) = tokio::sync::broadcast::channel(10);
+        let mut rx = self.signal_rx.resubscribe();
+
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(
+                        msg @ SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_))),
+                    ) => {
+                        // Because there could only be one receiver, an error from
+                        // Sender::send means the channel is closed and cannot be
+                        // re-opened. So we bail on these errors too.
+                        if sender.send(msg).is_err() {
+                            break;
+                        }
+                    }
+                    // The receiver has been dropped. This is normal
+                    // behavior so nothing to worry about
+                    Err(RecvError::Closed) => break,
+                    // If we are lagging in the stream, we could always
+                    // catch up, we'll just have lost messages.
+                    Err(error @ RecvError::Lagged(_)) => {
+                        tracing::warn!(%error, "stream lagging behing")
+                    }
+                    _ => continue,
+                }
+            }
+            tracing::warn!("the instance stream is closed or lagging, bailing");
+        });
+        BroadcastStream::new(receiver)
     }
 }
 
@@ -202,7 +232,7 @@ mod tests {
             handle1.abort();
             handle2.abort();
             panic!(
-                r#"Test timed out, we waited for 30 seconds but this usually takes around 5 seconds. 
+                r#"Test timed out, we waited for 30 seconds but this usually takes around 5 seconds.
             This is generally due to connectivity issues between the two swarms."#
             );
         }

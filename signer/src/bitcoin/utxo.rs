@@ -637,7 +637,7 @@ pub struct SignatureHashes<'a> {
     pub deposits: Vec<(&'a DepositRequest, TapSighash)>,
 }
 
-/// A signature hash and an
+/// A signature hash of a transaction with the associated outpoint.
 #[derive(Debug, Copy, Clone)]
 pub struct SignatureHash {
     /// The ID of the transaction that these sighashes are associated with.
@@ -701,7 +701,7 @@ impl<'a> UnsignedTransaction<'a> {
         Ok(unsigned)
     }
 
-    /// Construct an transaction with stub witness data.
+    /// Construct a transaction with stub witness data.
     ///
     /// This function can fail if the output amounts are greater than the
     /// input amounts.

@@ -1015,6 +1015,12 @@ impl From<[u8; 32]> for StacksBlockHash {
     }
 }
 
+impl std::fmt::Display for StacksBlockHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -1187,7 +1193,6 @@ pub struct BitcoinTxSigHash {
     pub prevout_txid: BitcoinTxId,
     /// The index of the vout from the transaction that created this
     /// output.
-    // #[cfg_attr(feature = "testing", dummy(faker = "0..100"))]
     #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub prevout_output_index: u32,
@@ -1203,6 +1208,9 @@ pub struct BitcoinTxSigHash {
     /// Whether the transaction is valid. A transaction is invalid if any
     /// of the inputs or outputs failed validation.
     pub is_valid_tx: bool,
+    /// Whether the signer will participate in a signing round for the
+    /// sighash.
+    pub will_sign: bool,
     /// The version of the algorithm that was used to create the bitcoin
     /// transaction.
     pub construction_version: ConstructionVersion,
@@ -1213,7 +1221,7 @@ pub struct BitcoinTxSigHash {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinWithdrawalOutput {
     /// The ID of the transaction that includes this withdrawal output.
-    pub txid: BitcoinTxId,
+    pub bitcoin_txid: BitcoinTxId,
     /// The index of the referenced output in the transaction's outputs.
     #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
