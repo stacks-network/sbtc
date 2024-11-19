@@ -58,6 +58,7 @@ build {
       "sudo chmod +x /usr/local/bin/docker-compose",
       "sudo usermod -aG docker ubuntu",
       "git clone https://github.com/stacks-network/sbtc.git",
+      "cd sbtc",
       "sudo docker-compose -f docker/prodlike/docker-compose.testnet.yml pull",
       "sudo docker-compose -f docker/prodlike/docker-compose.testnet.yml up -d",
     ]
