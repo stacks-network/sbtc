@@ -689,6 +689,7 @@ where
                 // termination handler stream has closed. This is all bad,
                 // so we trigger a shutdown.
                 let Some(msg) = signal_stream.next().await else {
+                    tracing::warn!("signal stream returned None, shutting down");
                     self.context.get_termination_handle().signal_shutdown();
                     return Err(Error::SignerShutdown);
                 };
@@ -938,6 +939,7 @@ where
             // termination handler stream has closed. This is all bad,
             // so we trigger a shutdown.
             let Some(msg) = signal_stream.next().await else {
+                tracing::warn!("signal stream returned None, shutting down");
                 self.context.get_termination_handle().signal_shutdown();
                 return Err(Error::SignerShutdown);
             };
