@@ -264,9 +264,6 @@ pub struct BitcoinSighash {
     /// Whether the signer will participate in a signing round for the
     /// sighash.
     pub will_sign: bool,
-    /// The version of the algorithm that was used to create the bitcoin
-    /// transaction.
-    pub construction_version: ConstructionVersion,
 }
 
 /// An output that was created due to a withdrawal request.
@@ -289,9 +286,6 @@ pub struct BitcoinWithdrawalOutput {
     pub stacks_block_hash: StacksBlockHash,
     /// The outcome of validation of the withdrawal request.
     pub validation_result: WithdrawalValidationResult,
-    /// The version of the algorithm that was used to create the bitcoin
-    /// transaction.
-    pub construction_version: ConstructionVersion,
 }
 
 impl BitcoinTxValidationData {
@@ -303,14 +297,14 @@ impl BitcoinTxValidationData {
     /// each of them. Signing a sighash depends on
     /// 1. The entire transaction passing an "aggregate" validation. This
     ///    means that each input and output is unfulfilled, and doesn't
-    ///    violate any fees. For withdrawals this also means that the
-    ///    amounts and recipient match.
+    ///    violate protocol rules, such as max fees, lock-time rules, and
+    ///    so on.
     /// 2. That the signer has not rejected/blocked any of the deposits or
     ///    withdrawals in the transaction.
     /// 3. That the signer is a party to signing set that controls the
     ///    public key locking the transaction output.
     pub fn to_input_rows(&self) -> Vec<BitcoinSighash> {
-        // If any of the inputs or outputs fail validation, then
+        // If any of the inputs or outputs fail validation, then the
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
         let is_valid_tx = self.is_valid_tx();
@@ -348,14 +342,13 @@ impl BitcoinTxValidationData {
                 validation_result,
                 is_valid_tx,
                 will_sign: is_valid_tx && validation_result == InputValidationResult::Ok,
-                construction_version: ConstructionVersion::V0,
             })
             .collect()
     }
 
     /// Construct objects with withdrawal output identifier with the
     /// validation result.
-    pub fn to_output_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
+    pub fn to_withdrawal_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
         let txid = self.tx.compute_txid().into();
         // If we ever construct a transaction with more than u32::MAX then
         // we are dealing with a very different Bitcoin and Stacks than we
@@ -371,7 +364,6 @@ impl BitcoinTxValidationData {
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
-                construction_version: ConstructionVersion::V0,
                 validation_result: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
             })
             .collect()
