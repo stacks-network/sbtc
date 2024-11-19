@@ -694,7 +694,7 @@ async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
     wipe::<ChainstateTablePrimaryIndex>(context).await
 }
 
-/// Wipes the chainstate table.
+/// Wipes the limit table.
 #[cfg(feature = "testing")]
 async fn wipe_limit_table(context: &EmilyContext) -> Result<(), Error> {
     wipe::<LimitTablePrimaryIndex>(context).await
