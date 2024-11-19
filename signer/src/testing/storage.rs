@@ -1,8 +1,11 @@
 //! Test utilities for the `storage` module
 
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::time::Duration;
 
+use crate::storage::model::BitcoinBlockHash;
 use crate::storage::postgres::PgStore;
+use crate::storage::DbRead;
 
 pub mod model;
 
@@ -124,4 +127,50 @@ pub async fn drop_db(store: PgStore) {
             .await
             .expect("failed to drop test database");
     }
+}
+
+/// This is a helper function for waiting for the database to be up-to-date
+/// with the chain-tip of the bitcoin blockchain.
+///
+/// A typical need for this function arises when we need to wait for
+/// bitcoin-core to send us all the notifications so that we are up to date
+/// with the chain tip. This occurs because the first message that we
+/// process from the ZeroMQ socket need not be the last one sent by
+/// bitcoin-core.
+pub async fn wait_for_chain_tip<D>(db: &D, chain_tip: BitcoinBlockHash)
+where
+    D: DbRead + Clone,
+{
+    let mut current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+
+    let waiting_fut = async {
+        let db = db.clone();
+        while current_chain_tip != Some(chain_tip) {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+        }
+    };
+
+    // Wrap in a timeout just in case the block observer crashes and
+    // can no longer update the database.
+    tokio::time::timeout(Duration::from_secs(10), waiting_fut)
+        .await
+        .unwrap();
+}
+
+/// This is a helper function for waiting for the database to have a row in
+/// the dkg_shares, signaling that DKG has finished successfully.
+pub async fn wait_for_dkg(db: &PgStore) {
+    let mut db_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    let waiting_fut = async {
+        let db = db.clone();
+        while db_shares.is_none() {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            db_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+        }
+    };
+
+    tokio::time::timeout(Duration::from_secs(10), waiting_fut)
+        .await
+        .unwrap();
 }

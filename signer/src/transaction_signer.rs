@@ -135,7 +135,11 @@ where
     Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
-    #[tracing::instrument(skip(self), name = "tx-signer")]
+    #[tracing::instrument(
+        skip_all,
+        fields(public_key = %self.signer_public_key()),
+        name = "tx-signer"
+    )]
     pub async fn run(mut self) -> Result<(), Error> {
         if let Err(error) = self.context.signal(TxSignerEvent::EventLoopStarted.into()) {
             tracing::error!(%error, "error signalling event loop start");
@@ -190,7 +194,7 @@ where
         tracing::trace!(
             %sender_is_coordinator,
             %chain_tip_status,
-            origin = %msg.signer_pub_key,
+            sender = %msg.signer_pub_key,
             payload = %msg.inner.payload,
             "handling message from signer"
         );
@@ -266,7 +270,7 @@ where
     }
 
     /// Find out the status of the given chain tip
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn inspect_msg_chain_tip(
         &mut self,
         msg_sender: PublicKey,
@@ -305,7 +309,7 @@ where
         })
     }
 
-    #[tracing::instrument(skip(self, request))]
+    #[tracing::instrument(skip_all)]
     async fn handle_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
@@ -344,7 +348,7 @@ where
         &self,
         _request: &message::BitcoinTransactionSignRequest,
     ) -> Result<bool, Error> {
-        let signer_pub_key = self.signer_pub_key();
+        let signer_pub_key = self.signer_public_key();
         let _accepted_deposit_requests = self
             .context
             .get_storage()
@@ -396,7 +400,7 @@ where
 
     /// Check that the transaction is indeed valid. We specific checks that
     /// are run depend on the transaction being signed.
-    #[tracing::instrument(skip_all, fields(origin = %origin_public_key, txid = %request.txid), err)]
+    #[tracing::instrument(skip_all, fields(sender = %origin_public_key, txid = %request.txid), err)]
     pub async fn assert_valid_stacks_tx_sign_request(
         &self,
         request: &StacksTransactionSignRequest,
@@ -404,7 +408,7 @@ where
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
         let db = self.context.get_storage();
-        let public_key = self.signer_pub_key();
+        let public_key = self.signer_public_key();
 
         let Some(shares) = db.get_encrypted_dkg_shares(&request.aggregate_key).await? else {
             return Err(Error::MissingDkgShares(request.aggregate_key));
@@ -452,7 +456,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, msg))]
+    #[tracing::instrument(skip_all, fields(txid = %msg.txid))]
     async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
@@ -460,7 +464,7 @@ where
         msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
-        tracing::info!("handling message");
+        tracing::info!("handling wsts message");
 
         match &msg.inner {
             WstsNetMessage::DkgBegin(_) => {
@@ -591,7 +595,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, msg))]
+    #[tracing::instrument(skip_all)]
     async fn relay_message(
         &mut self,
         txid: bitcoin::Txid,
@@ -637,6 +641,7 @@ where
 
         let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
+        tracing::debug!("storing DKG shares");
         self.context
             .get_storage_mut()
             .write_encrypted_dkg_shares(&encrypted_dkg_shares)
@@ -645,13 +650,15 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, msg))]
+    #[tracing::instrument(skip_all)]
     async fn send_message(
         &mut self,
         msg: impl Into<message::Payload>,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         let payload: message::Payload = msg.into();
+        tracing::trace!(%payload, "broadcasting message");
+
         let msg = payload
             .to_message(*bitcoin_chain_tip)
             .sign_ecdsa(&self.signer_private_key)?;
@@ -675,7 +682,7 @@ where
     /// our database, and return None as the aggregate key if no DKG shares
     /// can be found, implying that this signer has not participated in
     /// DKG.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     pub async fn get_signer_set_and_aggregate_key(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -730,7 +737,7 @@ where
         }
     }
 
-    fn signer_pub_key(&self) -> PublicKey {
+    fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.signer_private_key)
     }
 }
@@ -798,7 +805,6 @@ mod tests {
         }
     }
 
-    #[ignore = "This test will be fixed shortly"]
     #[tokio::test]
     async fn should_respond_to_bitcoin_transaction_sign_requests() {
         test_environment()
