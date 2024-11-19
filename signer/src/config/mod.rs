@@ -386,7 +386,8 @@ pub struct StacksConfig {
     pub endpoints: Vec<url::Url>,
     /// This is the start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
-    pub nakamoto_start_height: u64,
+    #[serde(default)]
+    pub nakamoto_start_height: Option<u64>,
 }
 
 impl Validatable for StacksConfig {
@@ -397,7 +398,7 @@ impl Validatable for StacksConfig {
             ));
         }
 
-        if self.nakamoto_start_height == 0 {
+        if self.nakamoto_start_height == Some(0) {
             return Err(ConfigError::Message(
                 "[stacks] Nakamoto start height must be greater than zero".to_string(),
             ));

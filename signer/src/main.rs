@@ -347,39 +347,61 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
     decider.run().await
 }
 
+/// Back-fills Bitcoin and Stacks blockchains' blocks from the current Stacks
+/// tip back to the Nakamoto activation height (in Bitcoin block height).
+///
+/// This method uses the Stacks node's RPC endpoints to retrieve the necessary
+/// information regarding the current chain tip, and proceeds to back-fill
+/// first the Bitcoin blockchain, and then the Stacks blockchain.
+#[tracing::instrument(skip_all)]
 async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
     let stacks_client = ctx.get_stacks_client();
 
-    let pox_info = stacks_client.get_pox_info().await?;
-    let node_info = stacks_client.get_node_info().await?;
-    let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
-        tracing::error!("missing nakamoto activation height, failing sync");
-        return Err(Error::MissingNakamotoStartHeight);
+    // If the nakamoto start height is provided in the config, use that value.
+    // Otherwise, get the value from the Stacks node's PoX-info endpoint.
+    let nakamoto_activation_height = match ctx.config().stacks.nakamoto_start_height {
+        Some(height) => height,
+        None => {
+            let pox_info = stacks_client.get_pox_info().await?;
+            let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
+                tracing::error!("missing nakamoto activation height, failing sync");
+                return Err(Error::MissingNakamotoStartHeight);
+            };
+            nakamoto_activation_height
+        }
     };
 
-    let sortition = stacks_client
-        .get_sortition_info(&node_info.stacks_tip_consensus_hash).await?;
- 
-    sync_bitcoin_blocks(
-        ctx, 
-        &sortition.burn_block_hash.into(), 
-        sortition.burn_block_height, 
-        nakamoto_activation_height
-    ).await?;
+    // Get the current tenure tip and anchor (Bitcoin) block information.
+    let current_tenure = stacks_client.get_tenure_info().await?;
+    let tenure = stacks_client
+        .get_tenure(current_tenure.tip_block_id)
+        .await?;
 
-    let tenure = stacks_client.get_tenure_info().await?;
+    // Back-fill the Bitcoin blockchain first.
+    sync_bitcoin_blocks(
+        ctx,
+        &tenure.anchor_block_hash,
+        tenure.anchor_block_height,
+        nakamoto_activation_height,
+    )
+    .await?;
 
     sync_stacks_blocks(
-        ctx, 
-        &tenure.tip_block_id,
+        ctx,
+        &current_tenure.tip_block_id,
         nakamoto_activation_height,
-    ).await?;
-    
+    )
+    .await?;
+
     todo!()
 }
 
 /// Performs a back-fill of the Bitcoin blockchain from the provided chain-tip,
 /// filling the `bitcoin_blocks` table in the database.
+#[tracing::instrument(
+    skip_all,
+    fields(chain_tip, chain_tip_height, nakamoto_activation_height)
+)]
 async fn sync_bitcoin_blocks(
     ctx: &impl Context,
     chain_tip: &model::BitcoinBlockHash,
@@ -403,15 +425,15 @@ async fn sync_bitcoin_blocks(
         let existing_block = storage.get_bitcoin_block(&next_bitcoin_block).await?;
         if existing_block.is_some() {
             tracing::info!("reached already-stored block, bitcoin block-sync completed");
-            return Ok(())
+            return Ok(());
         }
-        
+
         // Retrieve the next Bitcoin block from the Bitcoin Core node. If the
         // block is missing, we will fail the sync.
         let block = bitcoin_client.get_block(&next_bitcoin_block).await?;
         let Some(block) = block else {
             tracing::error!("failed to get block from Bitcoin Core, failing sync");
-            return Err(Error::MissingBitcoinBlock(next_bitcoin_block.into()));
+            return Err(Error::MissingBitcoinBlock(next_bitcoin_block));
         };
 
         // If we can't read the BIP34 block height from the retrieved block, we
@@ -427,7 +449,11 @@ async fn sync_bitcoin_blocks(
         // as well as this is likely indicative that something is "off".
         if block_height != chain_tip_height {
             tracing::error!("block height mismatch, failing sync");
-            return Err(Error::BitcoinBlockHeightMismatch(next_bitcoin_block.into(), block_height, chain_tip_height));
+            return Err(Error::BitcoinBlockHeightMismatch(
+                next_bitcoin_block.into(),
+                block_height,
+                chain_tip_height,
+            ));
         }
 
         // If the block height is less than the Nakamoto activation height, we
@@ -449,11 +475,11 @@ async fn sync_bitcoin_blocks(
 /// Performs a back-fill of the Stacks blockchain from the provided chain-tip,
 /// filling the `stacks_blocks` table in the database.
 #[tracing::instrument(skip_all, fields(
-    chain_tip = %chain_tip, 
+    chain_tip = %chain_tip,
     nakamoto_activation_height
 ))]
 async fn sync_stacks_blocks(
-    ctx: &impl Context, 
+    ctx: &impl Context,
     chain_tip: &StacksBlockId,
     nakamoto_activation_height: u64,
 ) -> Result<(), Error> {
@@ -472,25 +498,28 @@ async fn sync_stacks_blocks(
 
         // Retrieve the tenure from the Stacks node representing the current
         // Stacks chain-tip.
+        //
+        // Note: This specifically does not use the `fetch_unknown_ancestors`
+        // method as this is intended to be run on startup, which for an initial
+        // sync can result in high memory usage if all blocks are buffered.
         let tenure = stacks_client.get_tenure(next_tenure_tip).await?;
 
         // If there are no blocks in the tenure (which shouldn't happen), then
         // we fail the sync.
         if tenure.blocks().is_empty() {
             tracing::error!("received an empty tenure from the stacks node, failing sync");
-            return Err(Error::EmptyTenure(next_tenure_tip.into()));
+            return Err(Error::EmptyTenure(next_tenure_tip));
         }
 
         // Retrieve the anchor Bitcoin block from our local storage. We should
         // have already processed this block and thus it should exist.
-        let bitcoin_block = storage
-            .get_bitcoin_block(&tenure.anchor_block_hash)
-            .await?;
+        let bitcoin_block = storage.get_bitcoin_block(&tenure.anchor_block_hash).await?;
 
-        // If the Bitcoin block is missing, we fail the sync.
+        // If the Bitcoin block is missing, we fail the sync because then our
+        // stacks-block-linking is broken.
         let Some(bitcoin_block) = bitcoin_block else {
             tracing::error!("missing anchor block, failing sync");
-            return Err(Error::MissingBitcoinBlock(tenure.anchor_block_hash.into()));
+            return Err(Error::MissingBitcoinBlock(tenure.anchor_block_hash));
         };
 
         // We use `get_tenure` to fetch all of the Nakamoto blocks for each
@@ -498,19 +527,21 @@ async fn sync_stacks_blocks(
         // parameter. As we're walking backwards, we grab the first block in
         // the tenure and use its parent block ID for the next iteration, which
         // should give us the previous tenure and all of its blocks.
-        #[allow(clippy::expect_used)]
-        let first_block = tenure.blocks()
+        let first_block = tenure
+            .blocks()
             .first()
-            // We assert that this is not empty above.
-            .expect("empty tenure");
+            .ok_or(Error::EmptyTenure(next_tenure_tip))?;
 
         next_tenure_tip = first_block.header.parent_block_id;
 
-        // Iterate through all of the blocks in the tenure and write them to
-        // storage.
-        for block in tenure.as_stacks_blocks() {
-            storage.write_stacks_block(&block).await?;
-        }
+        // We re-use the same code as the block observer to write the blocks to
+        // the database.
+        block_observer::write_stacks_blocks(
+            &ctx.get_storage_mut(),
+            &ctx.config().signer.deployer,
+            &[tenure],
+        )
+        .await?;
 
         // If the block height of the anchor block is equal to the nakamoto
         // activation height then we're done.
@@ -533,8 +564,12 @@ async fn wait_for_stacks_node_to_report_full_sync(ctx: &impl Context) -> Result<
     loop {
         match stacks_client.get_node_info().await {
             Ok(node_info) if node_info.is_fully_synced => break,
-            Ok(_) => tracing::info!("Stacks node reports that it is not yet fully-synced, waiting..."),
-            Err(error) => tracing::warn!(%error, "Failed to get node info from Stacks node, will retry"),
+            Ok(_) => {
+                tracing::info!("Stacks node reports that it is not yet fully-synced, waiting...")
+            }
+            Err(error) => {
+                tracing::warn!(%error, "Failed to get node info from Stacks node, will retry")
+            }
         }
 
         tokio::select! {

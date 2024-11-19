@@ -90,10 +90,15 @@ subscribe_interval = 10
 # making requests.
 endpoints = ["http://localhost:20443"]
 
-# This is the start height of the first EPOCH 3.0 block on the stacks
-# blockchain.
-# TODO(715): Update to 867867
-nakamoto_start_height = 31
+# If specified, the sBTC signer will use this value as the Nakamoto start height
+# (in Bitcoin block height). Otherwise, it will use information provided by the
+# Stacks node.
+#
+# Default: <none>
+# Required: false
+# Environment: SIGNER_STACKS__NAKAMOTO_START_HEIGHT
+#
+# nakamoto_start_height = 31
 
 # !! ==============================================================================
 # !! Signer Configuration

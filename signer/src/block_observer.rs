@@ -27,6 +27,7 @@ use crate::context::Context;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::stacks::api::GetNakamotoStartHeight as _;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
@@ -37,6 +38,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
+use clarity::types::chainstate::StacksAddress;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
@@ -261,16 +263,31 @@ where
     async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
         let tenure_info = self.stacks_client.get_tenure_info().await?;
+        let until_bitcoin_height = match self.context.config().stacks.nakamoto_start_height {
+            Some(height) => height,
+            None => {
+                let pox_info = self.stacks_client.get_pox_info().await?;
+                pox_info
+                    .nakamoto_start_height()
+                    .ok_or(Error::MissingNakamotoStartHeight)?
+            }
+        };
 
         tracing::debug!("fetching unknown ancestral blocks from stacks-core");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
             &self.context.get_storage(),
             tenure_info.tip_block_id,
+            until_bitcoin_height,
         )
         .await?;
 
-        self.write_stacks_blocks(&stacks_blocks).await?;
+        write_stacks_blocks(
+            &self.context.get_storage_mut(),
+            &self.context.config().signer.deployer,
+            &stacks_blocks,
+        )
+        .await?;
         self.write_bitcoin_block(&block).await?;
 
         tracing::debug!("finished processing bitcoin block");
@@ -431,26 +448,6 @@ where
         Ok(())
     }
 
-    async fn write_stacks_blocks(&self, tenures: &[TenureBlocks]) -> Result<(), Error> {
-        let deployer = &self.context.config().signer.deployer;
-        let txs = tenures
-            .iter()
-            .flat_map(|tenure| {
-                storage::postgres::extract_relevant_transactions(tenure.blocks(), deployer)
-            })
-            .collect::<Vec<_>>();
-
-        let headers = tenures
-            .iter()
-            .flat_map(TenureBlocks::as_stacks_blocks)
-            .collect::<Vec<_>>();
-
-        let storage = self.context.get_storage_mut();
-        storage.write_stacks_block_headers(headers).await?;
-        storage.write_stacks_transactions(txs).await?;
-        Ok(())
-    }
-
     /// Write the bitcoin block to the database. We also write any
     /// transactions that are spend to any of the signers `scriptPubKey`s
     async fn write_bitcoin_block(&self, block: &bitcoin::Block) -> Result<(), Error> {
@@ -465,6 +462,30 @@ where
 
         Ok(())
     }
+}
+
+/// Takes a list of Nakamoto `TenureBlocks` and writes the Stacks block
+/// headers and transactions to the database.
+pub async fn write_stacks_blocks(
+    storage: &impl DbWrite,
+    deployer: &StacksAddress,
+    tenures: &[TenureBlocks],
+) -> Result<(), Error> {
+    let txs = tenures
+        .iter()
+        .flat_map(|tenure| {
+            storage::postgres::extract_relevant_transactions(tenure.blocks(), deployer)
+        })
+        .collect::<Vec<_>>();
+
+    let headers = tenures
+        .iter()
+        .flat_map(TenureBlocks::as_stacks_blocks)
+        .collect::<Vec<_>>();
+
+    storage.write_stacks_block_headers(headers).await?;
+    storage.write_stacks_transactions(txs).await?;
+    Ok(())
 }
 
 #[cfg(test)]

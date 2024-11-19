@@ -448,24 +448,17 @@ pub struct StacksClient {
     pub endpoint: Url,
     /// The client used to make the request.
     pub client: reqwest::Client,
-    /// The start height of the first EPOCH 3.0 block on the Stacks
-    /// blockchain.
-    pub nakamoto_start_height: u64,
 }
 
 impl StacksClient {
     /// Create a new instance of the Stacks client using the given
     /// StacksSettings.
-    pub fn new(url: Url, nakamoto_start_height: u64) -> Result<Self, Error> {
+    pub fn new(url: Url) -> Result<Self, Error> {
         let client = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .build()?;
 
-        Ok(Self {
-            endpoint: url,
-            client,
-            nakamoto_start_height,
-        })
+        Ok(Self { endpoint: url, client })
     }
 
     /// Retrieve the latest value of a data variable from the specified contract.
@@ -932,28 +925,26 @@ impl StacksClient {
 }
 
 /// Fetch all Nakamoto blocks that are not already stored in the
-/// datastore.
+/// datastore, walking backwards until the specified Bitcoin
+/// block height is reached.
 pub async fn fetch_unknown_ancestors<S, D>(
     stacks: &S,
     db: &D,
     block_id: StacksBlockId,
+    until_bitcoin_height: u64,
 ) -> Result<Vec<TenureBlocks>, Error>
 where
     S: StacksInteract,
     D: DbRead + Send + Sync,
 {
     let mut blocks = vec![stacks.get_tenure(block_id).await?];
-    let pox_info = stacks.get_pox_info().await?;
-    let nakamoto_start_height = pox_info
-        .nakamoto_start_height()
-        .ok_or(Error::MissingNakamotoStartHeight)?;
 
     while let Some(tenure) = blocks.last() {
         // We won't get anymore Nakamoto blocks before this point, so
         // time to stop.
-        if tenure.anchor_block_height <= nakamoto_start_height {
+        if tenure.anchor_block_height <= until_bitcoin_height {
             tracing::info!(
-                %nakamoto_start_height,
+                %until_bitcoin_height,
                 last_chain_length = %tenure.anchor_block_height,
                 "Stopping, since we have fetched all Nakamoto blocks"
             );
@@ -1297,12 +1288,11 @@ impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
     type Error = Error;
 
     fn try_from(settings: &Settings) -> Result<Self, Self::Error> {
-        let naka_start_height = settings.stacks.nakamoto_start_height;
         let clients = settings
             .stacks
             .endpoints
             .iter()
-            .map(|url| StacksClient::new(url.clone(), naka_start_height))
+            .map(|url| StacksClient::new(url.clone()))
             .collect::<Result<Vec<_>, _>>()?;
 
         ApiFallbackClient::new(clients).map_err(Error::FallbackClient)
@@ -1343,30 +1333,6 @@ mod tests {
         SignerWallet::new(&public_keys, signatures_required, network_kind, 0).unwrap()
     }
 
-    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
-    #[test(tokio::test)]
-    async fn fetch_unknown_ancestors_works() {
-        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-        let db = crate::testing::storage::new_test_database(db_num, true).await;
-
-        let settings = Settings::new_from_default_config().unwrap();
-        // This is an integration test that will read from the config, which provides
-        // a list of endpoints, so we use the fallback client.
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
-
-        let info = client.get_tenure_info().await.unwrap();
-        let tenures = fetch_unknown_ancestors(&client, &db, info.tip_block_id).await;
-
-        let blocks = tenures.unwrap();
-        let headers = blocks
-            .iter()
-            .flat_map(TenureBlocks::as_stacks_blocks)
-            .collect::<Vec<_>>();
-        db.write_stacks_block_headers(headers).await.unwrap();
-
-        crate::testing::storage::drop_db(db).await;
-    }
-
     /// Test that get_blocks works as expected.
     ///
     /// The author took the following steps to set up this test:
@@ -1395,8 +1361,8 @@ mod tests {
     ///         -vvv
     ///     ```
     /// 4. Done
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
     async fn get_blocks_test<F, C>(client: F)
     where
@@ -1494,8 +1460,8 @@ mod tests {
         second_mock.assert();
     }
 
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
     async fn get_tenure_info_works<F, C>(client: F)
     where
@@ -1548,8 +1514,8 @@ mod tests {
             .collect()
     }
 
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
     async fn get_current_signer_set_fails_when_value_not_a_sequence<F, C>(client: F)
     where
@@ -1590,10 +1556,10 @@ mod tests {
         mock.assert();
     }
 
-    #[test_case(0, |url| StacksClient::new(url, 20).unwrap(); "stacks-client-empty-list")]
-    #[test_case(128, |url| StacksClient::new(url, 20).unwrap(); "stacks-client-list-128")]
-    #[test_case(0, |url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client-empty-list")]
-    #[test_case(128, |url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client-list-128")]
+    #[test_case(0, |url| StacksClient::new(url).unwrap(); "stacks-client-empty-list")]
+    #[test_case(128, |url| StacksClient::new(url).unwrap(); "stacks-client-list-128")]
+    #[test_case(0, |url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client-empty-list")]
+    #[test_case(128, |url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client-list-128")]
     #[tokio::test]
     async fn get_current_signer_set_works<F, C>(list_size: u16, client: F)
     where
@@ -1650,10 +1616,10 @@ mod tests {
         mock.assert();
     }
 
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(), false; "stacks-client-some")]
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(), true; "stacks-client-none")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(), false; "fallback-client-some")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(), true; "fallback-client-none")]
+    #[test_case(|url| StacksClient::new(url).unwrap(), false; "stacks-client-some")]
+    #[test_case(|url| StacksClient::new(url).unwrap(), true; "stacks-client-none")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(), false; "fallback-client-some")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(), true; "fallback-client-none")]
     #[tokio::test]
     async fn get_current_signers_aggregate_key_works<F, C>(client: F, return_none: bool)
     where
@@ -1744,11 +1710,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_data_var` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
 
         // Make the request to the mock server
         let resp = client
@@ -1786,11 +1749,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_fee_estimate` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
 
         let expected_fee = get_full_tx_size(&DUMMY_STX_TRANSFER_PAYLOAD, &wallet).unwrap()
             * TX_FEE_TX_SIZE_MULTIPLIER;
@@ -1839,11 +1799,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_fee_estimate` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
         let resp = client
             .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD, None)
             .await
@@ -1891,11 +1848,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_pox_info` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
         let resp = client.get_pox_info().await.unwrap();
         let expected: RPCPoxInfoData = serde_json::from_str(raw_json_response).unwrap();
 
@@ -1923,32 +1877,13 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_node_info` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
         let resp = client.get_node_info().await.unwrap();
         let expected: RPCPeerInfoData = serde_json::from_str(raw_json_response).unwrap();
 
         assert_eq!(resp, expected);
         mock.assert();
-    }
-
-    #[tokio::test]
-    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
-    async fn fetching_last_tenure_blocks_works() {
-        let settings = Settings::new_from_default_config().unwrap();
-        // We use the fallback client here because the CI test reads from the config
-        // which provides a list of endpoints.
-        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
-        let storage = Store::new_shared();
-
-        let info = client.get_tenure_info().await.unwrap();
-        let blocks = fetch_unknown_ancestors(&client, &storage, info.tenure_start_block_id)
-            .await
-            .unwrap();
-        assert!(!blocks.is_empty());
     }
 
     #[test_case("0x1A3B5C7D9E", 112665066910; "uppercase-112665066910")]
@@ -1979,5 +1914,45 @@ mod tests {
         let address = StacksAddress::burn_address(false);
         let account = client.get_account(&address).await.unwrap();
         assert_eq!(account.nonce, 0);
+    }
+
+    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
+    #[test(tokio::test)]
+    async fn fetch_unknown_ancestors_works() {
+        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+        let db = crate::testing::storage::new_test_database(db_num, true).await;
+
+        let settings = Settings::new_from_default_config().unwrap();
+        // This is an integration test that will read from the config, which provides
+        // a list of endpoints, so we use the fallback client.
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+
+        let info = client.get_tenure_info().await.unwrap();
+        let tenures = fetch_unknown_ancestors(&client, &db, info.tip_block_id, 20).await;
+
+        let blocks = tenures.unwrap();
+        let headers = blocks
+            .iter()
+            .flat_map(TenureBlocks::as_stacks_blocks)
+            .collect::<Vec<_>>();
+        db.write_stacks_block_headers(headers).await.unwrap();
+
+        crate::testing::storage::drop_db(db).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "This is an integration test that hasn't been setup for CI yet"]
+    async fn fetching_last_tenure_blocks_works() {
+        let settings = Settings::new_from_default_config().unwrap();
+        // We use the fallback client here because the CI test reads from the config
+        // which provides a list of endpoints.
+        let client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&settings).unwrap();
+        let storage = Store::new_shared();
+
+        let info = client.get_tenure_info().await.unwrap();
+        let blocks = fetch_unknown_ancestors(&client, &storage, info.tenure_start_block_id, 31)
+            .await
+            .unwrap();
+        assert!(!blocks.is_empty());
     }
 }
