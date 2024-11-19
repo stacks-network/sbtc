@@ -75,17 +75,12 @@ impl BitcoinTxContext {
     where
         C: Context + Send + Sync,
     {
-        let no_withdrawals = self
-            .request_packages
-            .iter()
-            .all(|reqs| reqs.withdrawals.is_empty());
-
         let unique_requests = is_unique(&self.request_packages);
 
         // TODO: check that we have not received a different transaction
         // package during this tenure.
 
-        if no_withdrawals && unique_requests {
+        if unique_requests {
             Ok(())
         } else {
             // TODO: Create a real one
@@ -116,9 +111,13 @@ impl BitcoinTxContext {
         Ok(outputs)
     }
 
-    /// Construct the reports for each request that this transaction will
-    /// service.
-    pub async fn construct_tx_sighashes<C>(
+    /// Construct the validation for each request that this transaction
+    /// will service.
+    ///
+    /// This function returns the new signer bitcoin state if we were to
+    /// sign and confirmed the bitcoin transaction created using the given
+    /// inputs and outputs.
+    async fn construct_tx_sighashes<C>(
         &self,
         ctx: &C,
         requests: &TxRequestIds,
@@ -226,7 +225,19 @@ pub struct BitcoinTxValidationData {
 impl BitcoinTxValidationData {
     /// Construct the sighashes for the inputs of the associated
     /// transaction.
-    pub fn to_input_rows(&self) -> Vec<BitcoinTxSigHash> {
+    ///
+    /// This function coalesces the information contained in this struct
+    /// into a list of sighashes and a summary of how validation went for
+    /// each of them. Signing a sighash depends on
+    /// 1. The entire transaction passing an "aggregate" validation. This
+    ///    means that each input and output is unfulfilled, and doesn't
+    ///    violate any fees. For withdrawals this also means that the
+    ///    amounts and recipient match.
+    /// 2. That the signer has not rejected/blocked any of the deposits or
+    ///    withdrawals in the transaction.
+    /// 3. That the signer is a party to signing set that controls the
+    ///    public key locking the transaction output.
+    pub fn to_input_rows(&self) -> Vec<BitcoinSighash> {
         // If any of the inputs or outputs fail validation, then
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
@@ -248,9 +259,10 @@ impl BitcoinTxValidationData {
             .zip(validation_results);
 
         // We know the signers' input is valid. We started by fetching it
-        // from our database, so we know it is unspent and valid. Later the
-        // signer's input was created as part of a transaction chain, so
-        // each is unspent and locked by our "aggregate" private key.
+        // from our database, so we know it is unspent and valid. Later,
+        // each of the signer's inputs were created as part of a
+        // transaction chain, so each one is unspent and locked by the
+        // signers' "aggregate" private key.
         [(self.signer_sighash, InputValidationResult::Ok)]
             .into_iter()
             .chain(deposit_sighashes)
@@ -560,7 +572,7 @@ impl DepositRequestReport {
             return InputValidationResult::Unknown;
         };
 
-        if assessed_fee.to_sat() > self.max_fee {
+        if assessed_fee.to_sat() > self.max_fee.min(self.amount) {
             return InputValidationResult::FeeTooHigh;
         }
 
@@ -675,7 +687,6 @@ mod tests {
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
     use bitcoin::TxIn;
-    use bitcoin::Txid;
     use bitcoin::Witness;
     use test_case::test_case;
 
@@ -843,7 +854,7 @@ mod tests {
             amount: 0,
             max_fee: TX_FEE.to_sat(),
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
-            outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+            outpoint: OutPoint::new(bitcoin::Txid::from_byte_array([1; 32]), 0),
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
