@@ -639,7 +639,7 @@ impl DepositRequestReport {
             return InputValidationResult::Unknown;
         };
 
-        if assessed_fee.to_sat() > self.max_fee {
+        if assessed_fee.to_sat() > self.max_fee.min(self.amount) {
             return InputValidationResult::FeeTooHigh;
         }
 
