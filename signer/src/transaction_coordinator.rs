@@ -936,7 +936,7 @@ where
             };
 
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(origin = %msg.signer_pub_key, "concurrent WSTS activity observed");
+                tracing::warn!(sender = %msg.signer_pub_key, "concurrent WSTS activity observed");
                 continue;
             }
 

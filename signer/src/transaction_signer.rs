@@ -194,7 +194,7 @@ where
         tracing::trace!(
             %sender_is_coordinator,
             %chain_tip_status,
-            origin = %msg.signer_pub_key,
+            sender = %msg.signer_pub_key,
             payload = %msg.inner.payload,
             "handling message from signer"
         );
@@ -400,7 +400,7 @@ where
 
     /// Check that the transaction is indeed valid. We specific checks that
     /// are run depend on the transaction being signed.
-    #[tracing::instrument(skip_all, fields(origin = %origin_public_key, txid = %request.txid), err)]
+    #[tracing::instrument(skip_all, fields(sender = %origin_public_key, txid = %request.txid), err)]
     pub async fn assert_valid_stacks_tx_sign_request(
         &self,
         request: &StacksTransactionSignRequest,

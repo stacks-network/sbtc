@@ -306,7 +306,7 @@ where
         Ok(can_accept)
     }
 
-    #[tracing::instrument(skip_all, fields(origin = %signer_pub_key))]
+    #[tracing::instrument(skip_all, fields(sender = %signer_pub_key))]
     async fn persist_received_deposit_decision(
         &mut self,
         decision: &SignerDepositDecision,
@@ -331,7 +331,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip_all, fields(origin = %signer_pub_key))]
+    #[tracing::instrument(skip_all, fields(sender = %signer_pub_key))]
     async fn persist_received_withdraw_decision(
         &mut self,
         decision: &SignerWithdrawalDecision,
