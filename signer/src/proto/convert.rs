@@ -1675,11 +1675,153 @@ mod tests {
         }
     }
 
-    impl Dummy<Unit> for Point {
+    impl Dummy<Unit> for Scalar {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
             let number: [u8; 32] = Faker.fake_with_rng(rng);
-            let scalar = p256k1::scalar::Scalar::from(number);
-            Point::from(scalar)
+            p256k1::scalar::Scalar::from(number)
+        }
+    }
+
+    impl Dummy<Unit> for Point {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            Point::from(config.fake_with_rng::<Scalar, R>(rng))
+        }
+    }
+
+    impl Dummy<Unit> for Polynomial<Scalar> {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+            Polynomial::new(
+                fake::vec![[u8; 32]; 0..=15]
+                    .into_iter()
+                    .map(p256k1::scalar::Scalar::from)
+                    .collect(),
+            )
+        }
+    }
+
+    impl Dummy<Unit> for (u32, Scalar) {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            (Faker.fake_with_rng(rng), config.fake_with_rng(rng))
+        }
+    }
+
+    impl Dummy<Unit> for DkgBegin {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            DkgBegin {
+                dkg_id: Faker.fake_with_rng(rng),
+            }
+        }
+    }
+    impl Dummy<Unit> for DkgPrivateBegin {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            DkgPrivateBegin {
+                dkg_id: Faker.fake_with_rng(rng),
+                signer_ids: Faker.fake_with_rng(rng),
+                key_ids: Faker.fake_with_rng(rng),
+            }
+        }
+    }
+
+    impl Dummy<Unit> for Vec<(u32, hashbrown::HashMap<u32, Vec<u8>>)> {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+            fake::vec![u32; 0..16]
+                .into_iter()
+                .map(|v| (v, fake::vec![(u32, Vec<u8>); 0..16].into_iter().collect()))
+                .collect()
+        }
+    }
+
+    impl Dummy<Unit> for DkgPrivateShares {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            DkgPrivateShares {
+                dkg_id: Faker.fake_with_rng(rng),
+                signer_id: Faker.fake_with_rng(rng),
+                shares: config.fake_with_rng(rng),
+            }
+        }
+    }
+
+    impl Dummy<Unit> for DkgEndBegin {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            DkgEndBegin {
+                dkg_id: Faker.fake_with_rng(rng),
+                signer_ids: Faker.fake_with_rng(rng),
+                key_ids: Faker.fake_with_rng(rng),
+            }
+        }
+    }
+
+    impl Dummy<Unit> for TupleProof {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            TupleProof {
+                R: config.fake_with_rng(rng),
+                rB: config.fake_with_rng(rng),
+                z: config.fake_with_rng(rng),
+            }
+        }
+    }
+
+    impl Dummy<Unit> for BadPrivateShare {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            BadPrivateShare {
+                shared_key: config.fake_with_rng(rng),
+                tuple_proof: config.fake_with_rng(rng),
+            }
+        }
+    }
+
+    impl Dummy<Unit> for hashbrown::HashMap<u32, BadPrivateShare> {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            fake::vec![u32; 0..20]
+                .into_iter()
+                .map(|v| (v, config.fake_with_rng(rng)))
+                .collect()
+        }
+    }
+
+    impl Dummy<Unit> for hashbrown::HashSet<u32> {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+            fake::vec![u32; 0..20].into_iter().collect()
+        }
+    }
+
+    impl Dummy<Unit> for DkgStatus {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            match rng.gen_range(0..6usize) {
+                0 => DkgStatus::Success,
+                1 => DkgStatus::Failure(DkgFailure::BadState),
+                2 => DkgStatus::Failure(DkgFailure::MissingPublicShares(config.fake_with_rng(rng))),
+                3 => DkgStatus::Failure(DkgFailure::BadPublicShares(config.fake_with_rng(rng))),
+                4 => {
+                    DkgStatus::Failure(DkgFailure::MissingPrivateShares(config.fake_with_rng(rng)))
+                }
+                5 => DkgStatus::Failure(DkgFailure::BadPrivateShares(config.fake_with_rng(rng))),
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    impl Dummy<Unit> for DkgEnd {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            DkgEnd {
+                dkg_id: Faker.fake_with_rng(rng),
+                signer_id: Faker.fake_with_rng(rng),
+                status: config.fake_with_rng(rng),
+            }
+        }
+    }
+    impl Dummy<Unit> for SignatureType {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            match rng.gen_range(0..3usize) {
+                0 => SignatureType::Frost,
+                1 => SignatureType::Schnorr,
+                2 => SignatureType::Taproot(if rng.gen_bool(0.5) {
+                    None
+                } else {
+                    Some(Faker.fake_with_rng(rng))
+                }),
+                _ => unreachable!(),
+            }
         }
     }
 
@@ -1708,41 +1850,17 @@ mod tests {
     #[test_case(PhantomData::<(SignerWithdrawalDecision, proto::SignerWithdrawalDecision)>; "SignerWithdrawalDecision")]
     #[test_case(PhantomData::<(BitcoinTransactionSignAck, proto::BitcoinTransactionSignAck)>; "BitcoinTransactionSignAck")]
     #[test_case(PhantomData::<(StacksTransactionSignature, proto::StacksTransactionSignature)>; "StacksTransactionSignature")]
-    // #[test_case(PhantomData::<(CompleteDepositV1, proto::CompleteDeposit)>; "CompleteDeposit")]
-    // #[test_case(PhantomData::<(AcceptWithdrawalV1, proto::AcceptWithdrawal)>; "AcceptWithdrawal")]
-    // #[test_case(PhantomData::<(RejectWithdrawalV1, proto::RejectWithdrawal)>; "RejectWithdrawal")]
-    // #[test_case(PhantomData::<(RotateKeysV1, proto::RotateKeys)>; "RotateKeys")]
-    // #[test_case(PhantomData::<(SmartContract, proto::SmartContract)>; "SmartContract")]
+    #[test_case(PhantomData::<(CompleteDepositV1, proto::CompleteDeposit)>; "CompleteDeposit")]
+    #[test_case(PhantomData::<(AcceptWithdrawalV1, proto::AcceptWithdrawal)>; "AcceptWithdrawal")]
+    #[test_case(PhantomData::<(RejectWithdrawalV1, proto::RejectWithdrawal)>; "RejectWithdrawal")]
+    #[test_case(PhantomData::<(RotateKeysV1, proto::RotateKeys)>; "RotateKeys")]
+    #[test_case(PhantomData::<(SmartContract, proto::SmartContract)>; "SmartContract")]
     #[test_case(PhantomData::<(StacksTransactionSignRequest, proto::StacksTransactionSignRequest)>; "StacksTransactionSignRequest")]
     #[test_case(PhantomData::<(BitcoinTransactionSignRequest, proto::BitcoinTransactionSignRequest)>; "BitcoinTransactionSignRequest")]
-    // #[test_case(PhantomData::<(DkgBegin, proto::DkgBegin)>; "DkgBegin")]
-    // #[test_case(PhantomData::<(DkgPrivateBegin, proto::DkgPrivateBegin)>; "DkgPrivateBegin")]
-    // #[test_case(PhantomData::<(DkgPrivateShares, proto::DkgPrivateShares)>; "DkgPrivateShares")]
-    // #[test_case(PhantomData::<(DkgEndBegin, proto::DkgEndBegin)>; "DkgEndBegin")]
-    // #[test_case(PhantomData::<(TupleProof, proto::TupleProof)>; "TupleProof")]
-    // #[test_case(PhantomData::<(BadPrivateShare, proto::BadPrivateShare)>; "BadPrivateShare")]
-    // #[test_case(PhantomData::<(hashbrown::HashMap<u32, BadPrivateShare>, proto::BadPrivateShares)>; "BadPrivateShares")]
-    // #[test_case(PhantomData::<(DkgStatus, proto::DkgStatus)>; "DkgStatus")]
-    // #[test_case(PhantomData::<(DkgEnd, proto::DkgEnd)>; "DkgEnd")]
-    // #[test_case(PhantomData::<(SignatureType, proto::SignatureType)>; "SignatureType")]
-    // #[test_case(PhantomData::<(NonceRequest, proto::NonceRequest)>; "NonceRequest")]
-    // #[test_case(PhantomData::<(PublicNonce, proto::PublicNonce)>; "PublicNonce")]
-    // #[test_case(PhantomData::<(NonceResponse, proto::NonceResponse)>; "NonceResponse")]
-    // #[test_case(PhantomData::<(SignatureShareRequest, proto::SignatureShareRequest)>; "SignatureShareRequest")]
-    // #[test_case(PhantomData::<(SignatureShare, proto::SignatureShare)>; "SignatureShare")]
-    // #[test_case(PhantomData::<(SignatureShareResponse, proto::SignatureShareResponse)>; "SignatureShareResponse")]
     #[test_case(PhantomData::<(WstsMessage, proto::WstsMessage)>; "WstsMessage")]
-    // #[test_case(PhantomData::<(SweptDeposit, proto::SweptDeposit)>; "SweptDeposit")]
-    // #[test_case(PhantomData::<(SweptWithdrawal, proto::SweptWithdrawal)>; "SweptWithdrawal")]
-    // #[test_case(PhantomData::<(SweepTransactionInfo, proto::SweepTransactionInfo)>; "SweepTransactionInfo")]
-    // #[test_case(PhantomData::<(Nonce, proto::PrivateNonce)>; "PrivateNonce")]
-    // #[test_case(PhantomData::<((u32, PartyState), proto::PartyState)>; "PartyState")]
-    // #[test_case(PhantomData::<(SignerState, proto::SignerState)>; "SignerState")]
-    // #[test_case(PhantomData::<(wsts::schnorr::ID, proto::ProofIdentifier)>; "ProofIdentifier")]
-    // #[test_case(PhantomData::<(PolyCommitment, proto::PolyCommitment)>; "PolyCommitment")]
-    // #[test_case(PhantomData::<((u32, PolyCommitment), proto::PartyCommitment)>; "PartyCommitment")]
-    // #[test_case(PhantomData::<(DkgPublicShares, proto::SignerDkgPublicShares)>; "SignerDkgPublicShares")]
-    // #[test_case(PhantomData::<(BTreeMap<u32, DkgPublicShares>, proto::DkgPublicShares)>; "DkgPublicShares")]
+    #[test_case(PhantomData::<(SweptDeposit, proto::SweptDeposit)>; "SweptDeposit")]
+    #[test_case(PhantomData::<(SweptWithdrawal, proto::SweptWithdrawal)>; "SweptWithdrawal")]
+    #[test_case(PhantomData::<(SweepTransactionInfo, proto::SweepTransactionInfo)>; "SweepTransactionInfo")]
     #[test_case(PhantomData::<(SignerMessage, proto::SignerMessage)>; "SignerMessage")]
     #[test_case(PhantomData::<(Signed<SignerMessage>, proto::Signed)>; "Signed")]
     fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
@@ -1776,9 +1894,33 @@ mod tests {
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
     #[test_case(PhantomData::<(StacksAddress, proto::StacksAddress)>; "StacksAddress")]
     #[test_case(PhantomData::<(Point, proto::Point)>; "Point")]
-    // #[test_case(PhantomData::<(Scalar, proto::Scalar)>; "Scalar")]
-    // #[test_case(PhantomData::<(Polynomial<Scalar>, proto::Polynomial)>; "Polynomial")]
-    // #[test_case(PhantomData::<((u32, Scalar), proto::PrivateKeyShare)>; "PrivateKeyShare")]
+    #[test_case(PhantomData::<(Scalar, proto::Scalar)>; "Scalar")]
+    #[test_case(PhantomData::<(Polynomial<Scalar>, proto::Polynomial)>; "Polynomial")]
+    #[test_case(PhantomData::<((u32, Scalar), proto::PrivateKeyShare)>; "PrivateKeyShare")]
+    #[test_case(PhantomData::<(DkgBegin, proto::DkgBegin)>; "DkgBegin")]
+    #[test_case(PhantomData::<(DkgPrivateBegin, proto::DkgPrivateBegin)>; "DkgPrivateBegin")]
+    #[test_case(PhantomData::<(DkgPrivateShares, proto::DkgPrivateShares)>; "DkgPrivateShares")]
+    #[test_case(PhantomData::<(DkgEndBegin, proto::DkgEndBegin)>; "DkgEndBegin")]
+    #[test_case(PhantomData::<(TupleProof, proto::TupleProof)>; "TupleProof")]
+    #[test_case(PhantomData::<(BadPrivateShare, proto::BadPrivateShare)>; "BadPrivateShare")]
+    #[test_case(PhantomData::<(hashbrown::HashMap<u32, BadPrivateShare>, proto::BadPrivateShares)>; "BadPrivateShares")]
+    #[test_case(PhantomData::<(DkgStatus, proto::DkgStatus)>; "DkgStatus")]
+    #[test_case(PhantomData::<(DkgEnd, proto::DkgEnd)>; "DkgEnd")]
+    #[test_case(PhantomData::<(SignatureType, proto::SignatureType)>; "SignatureType")]
+    // #[test_case(PhantomData::<(NonceRequest, proto::NonceRequest)>; "NonceRequest")]
+    // #[test_case(PhantomData::<(PublicNonce, proto::PublicNonce)>; "PublicNonce")]
+    // #[test_case(PhantomData::<(NonceResponse, proto::NonceResponse)>; "NonceResponse")]
+    // #[test_case(PhantomData::<(SignatureShareRequest, proto::SignatureShareRequest)>; "SignatureShareRequest")]
+    // #[test_case(PhantomData::<(SignatureShare, proto::SignatureShare)>; "SignatureShare")]
+    // #[test_case(PhantomData::<(SignatureShareResponse, proto::SignatureShareResponse)>; "SignatureShareResponse")]
+    // #[test_case(PhantomData::<(Nonce, proto::PrivateNonce)>; "PrivateNonce")]
+    // #[test_case(PhantomData::<((u32, PartyState), proto::PartyState)>; "PartyState")]
+    // #[test_case(PhantomData::<(SignerState, proto::SignerState)>; "SignerState")]
+    // #[test_case(PhantomData::<(wsts::schnorr::ID, proto::ProofIdentifier)>; "ProofIdentifier")]
+    // #[test_case(PhantomData::<(PolyCommitment, proto::PolyCommitment)>; "PolyCommitment")]
+    // #[test_case(PhantomData::<((u32, PolyCommitment), proto::PartyCommitment)>; "PartyCommitment")]
+    // #[test_case(PhantomData::<(DkgPublicShares, proto::SignerDkgPublicShares)>; "SignerDkgPublicShares")]
+    // #[test_case(PhantomData::<(BTreeMap<u32, DkgPublicShares>, proto::DkgPublicShares)>; "DkgPublicShares")]
     fn convert_protobuf_type2<T, U, E>(_: PhantomData<(T, U)>)
     where
         T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
