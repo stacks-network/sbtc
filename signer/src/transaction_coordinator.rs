@@ -403,14 +403,6 @@ where
             tracing::debug!("no requests to handle, exiting");
             return Ok(());
         };
-        // let bitcoin_chain_tip_block = self
-        //     .context
-        //     .get_storage()
-        //     .get_bitcoin_block(bitcoin_chain_tip)
-        //     .await
-        //     .map_err(|_| Error::NoChainTip)? // This should never happen
-        //     .ok_or(Error::NoChainTip)?;
-
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
@@ -795,14 +787,12 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
-        let mut coordinator_state_machine = CoordinatorStateMachine::load(
-            &mut self.context.get_storage_mut(),
-            *aggregate_key,
-            signer_public_keys.clone(),
-            self.threshold,
-            self.private_key,
-        )
-        .await?;
+        let (_, signer_set) = self
+            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+            .await?;
+
+        let mut coordinator_state_machine =
+            CoordinatorStateMachine::new(signer_set.clone(), self.threshold, self.private_key);
 
         let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
@@ -822,10 +812,6 @@ where
         let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature.into());
 
         let mut deposit_witness = Vec::new();
-
-        let (_, signer_set) = self
-            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
-            .await?;
 
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
