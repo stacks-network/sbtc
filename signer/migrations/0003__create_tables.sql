@@ -28,6 +28,9 @@ CREATE TABLE sbtc_signer.stacks_blocks (
 );
 -- Index to serve queries filtering on `parent_hash`. This is commonly used when
 -- "walking" the chain in recursive CTE's.
+CREATE INDEX ix_stacks_blocks_parent_hash ON sbtc_signer.stacks_blocks(parent_hash);
+-- Index to serve queries filtering on `bitcoin_anchor`.
+CREATE INDEX ix_stacks_blocks_bitcoin_anchor ON sbtc_signer.stacks_blocks(bitcoin_anchor);
 
 CREATE TABLE sbtc_signer.deposit_requests (
     txid BYTEA NOT NULL,

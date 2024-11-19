@@ -13,6 +13,23 @@ use crate::stacks::contracts::WithdrawalAcceptValidationError;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An empty tenure was received from the stacks node.
+    #[error("received an empty tenure from the stacks node for the given stacks block id: {0}")]
+    EmptyTenure(StacksBlockId),
+
+    /// Stacks node failed to report last PoX anchor information.
+    #[error("missing last pox anchor information from stacks node")]
+    MissingLastPoxAnchor,
+
+    /// A mismatch in expected bitcoin block heights was detected.
+    #[error("a mismatch in expected bitcoin block heights was detected: expected {1}, got {2} for block {0}")]
+    BitcoinBlockHeightMismatch(bitcoin::BlockHash, u64, u64),
+
+    /// An error occurred while attempting to read the bip34 block height from
+    /// the specified bitcoin block.
+    #[error("failed to read the bip34 block height from a bitcoin block: {0}")]
+    MissingBitcoinBlockHeight(bitcoin::BlockHash),
+
     /// Attempted division by zero
     #[error("attempted division by zero")]
     DivideByZero,

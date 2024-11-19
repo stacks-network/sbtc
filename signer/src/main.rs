@@ -7,10 +7,12 @@ use axum::routing::post;
 use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
+use clarity::types::chainstate::StacksBlockId;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
+use signer::bitcoin::BitcoinInteract;
 use signer::block_observer;
 use signer::blocklist_client::BlocklistClient;
 use signer::config::Settings;
@@ -21,8 +23,13 @@ use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
 use signer::request_decider::RequestDeciderEventLoop;
+use signer::stacks::api::GetNakamotoStartHeight;
 use signer::stacks::api::StacksClient;
+use signer::stacks::api::StacksInteract;
+use signer::storage::model;
 use signer::storage::postgres::PgStore;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use signer::transaction_coordinator;
 use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
@@ -83,6 +90,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for signer in settings.signer.bootstrap_signing_set() {
         context.state().current_signer_set().add_signer(signer);
     }
+
+    // Pause until the Stacks node is fully-synced, otherwise we will not be
+    // able to properly back-fill blocks and the sBTC signer will generally just
+    // not work.
+    tracing::info!("waiting for stacks node to report full-sync");
+    wait_for_stacks_node_to_report_full_sync(&context).await?;
+    tracing::info!("stacks node reports that is is up-to-date");
+
+    // Back-fill the Bitcoin and Stacks blockchains to the Nakamoto activation
+    // height.
+    tracing::info!("preparing to sync both bitcoin & stacks blockchains back to the nakamoto activation height");
+    sync_blockchains(&context).await?;
 
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
@@ -326,4 +345,202 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
     };
 
     decider.run().await
+}
+
+async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
+    let stacks_client = ctx.get_stacks_client();
+
+    let pox_info = stacks_client.get_pox_info().await?;
+    let node_info = stacks_client.get_node_info().await?;
+    let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
+        tracing::error!("missing nakamoto activation height, failing sync");
+        return Err(Error::MissingNakamotoStartHeight);
+    };
+
+    let sortition = stacks_client
+        .get_sortition_info(&node_info.stacks_tip_consensus_hash).await?;
+ 
+    sync_bitcoin_blocks(
+        ctx, 
+        &sortition.burn_block_hash.into(), 
+        sortition.burn_block_height, 
+        nakamoto_activation_height
+    ).await?;
+
+    let tenure = stacks_client.get_tenure_info().await?;
+
+    sync_stacks_blocks(
+        ctx, 
+        &tenure.tip_block_id,
+        nakamoto_activation_height,
+    ).await?;
+    
+    todo!()
+}
+
+/// Performs a back-fill of the Bitcoin blockchain from the provided chain-tip,
+/// filling the `bitcoin_blocks` table in the database.
+async fn sync_bitcoin_blocks(
+    ctx: &impl Context,
+    chain_tip: &model::BitcoinBlockHash,
+    chain_tip_height: u64,
+    nakamoto_activation_height: u64,
+) -> Result<(), Error> {
+    let term = ctx.get_termination_handle();
+    let storage = ctx.get_storage_mut();
+    let bitcoin_client = ctx.get_bitcoin_client();
+    let mut next_bitcoin_block = *chain_tip;
+
+    loop {
+        if term.shutdown_signalled() {
+            return Ok(());
+        }
+
+        tracing::debug!(block_hash = %next_bitcoin_block, "syncing next bitcoin block");
+
+        // Check if we already have the block. If we do, then we have already
+        // been synced up to this point and can break out of the loop.
+        let existing_block = storage.get_bitcoin_block(&next_bitcoin_block).await?;
+        if existing_block.is_some() {
+            tracing::info!("reached already-stored block, bitcoin block-sync completed");
+            return Ok(())
+        }
+        
+        // Retrieve the next Bitcoin block from the Bitcoin Core node. If the
+        // block is missing, we will fail the sync.
+        let block = bitcoin_client.get_block(&next_bitcoin_block).await?;
+        let Some(block) = block else {
+            tracing::error!("failed to get block from Bitcoin Core, failing sync");
+            return Err(Error::MissingBitcoinBlock(next_bitcoin_block.into()));
+        };
+
+        // If we can't read the BIP34 block height from the retrieved block, we
+        // will fail the sync because we need this information both in the db
+        // and for the sync logic (to know when to stop).
+        let Ok(block_height) = block.bip34_block_height() else {
+            tracing::error!("missing bip34 block height, failing sync");
+            return Err(Error::MissingBitcoinBlockHeight(next_bitcoin_block.into()));
+        };
+
+        // If the block height reported by Bitcoin core doesn't match the
+        // burnchain block height reported by the Stacks node, we fail the sync
+        // as well as this is likely indicative that something is "off".
+        if block_height != chain_tip_height {
+            tracing::error!("block height mismatch, failing sync");
+            return Err(Error::BitcoinBlockHeightMismatch(next_bitcoin_block.into(), block_height, chain_tip_height));
+        }
+
+        // If the block height is less than the Nakamoto activation height, we
+        // have reached the end of the sync and can break out of the loop.
+        if block_height < nakamoto_activation_height {
+            tracing::info!("nakamoto activation height reached, bitcoin block-sync completed");
+            return Ok(());
+        }
+
+        // The next block that we will process will be this block's parent.
+        next_bitcoin_block = block.header.prev_blockhash.into();
+
+        // Write the block to storage. At present there are no FK's for parent
+        // blocks, so it's okay that we're writing them in reverse order.
+        storage.write_bitcoin_block(&block.into()).await?;
+    }
+}
+
+/// Performs a back-fill of the Stacks blockchain from the provided chain-tip,
+/// filling the `stacks_blocks` table in the database.
+#[tracing::instrument(skip_all, fields(
+    chain_tip = %chain_tip, 
+    nakamoto_activation_height
+))]
+async fn sync_stacks_blocks(
+    ctx: &impl Context, 
+    chain_tip: &StacksBlockId,
+    nakamoto_activation_height: u64,
+) -> Result<(), Error> {
+    let term = ctx.get_termination_handle();
+    let stacks_client = ctx.get_stacks_client();
+    let storage = ctx.get_storage_mut();
+
+    let mut next_tenure_tip = *chain_tip;
+
+    loop {
+        if term.shutdown_signalled() {
+            return Ok(());
+        }
+
+        tracing::debug!(block_id = %next_tenure_tip, "syncing next tenure");
+
+        // Retrieve the tenure from the Stacks node representing the current
+        // Stacks chain-tip.
+        let tenure = stacks_client.get_tenure(next_tenure_tip).await?;
+
+        // If there are no blocks in the tenure (which shouldn't happen), then
+        // we fail the sync.
+        if tenure.blocks().is_empty() {
+            tracing::error!("received an empty tenure from the stacks node, failing sync");
+            return Err(Error::EmptyTenure(next_tenure_tip.into()));
+        }
+
+        // Retrieve the anchor Bitcoin block from our local storage. We should
+        // have already processed this block and thus it should exist.
+        let bitcoin_block = storage
+            .get_bitcoin_block(&tenure.anchor_block_hash)
+            .await?;
+
+        // If the Bitcoin block is missing, we fail the sync.
+        let Some(bitcoin_block) = bitcoin_block else {
+            tracing::error!("missing anchor block, failing sync");
+            return Err(Error::MissingBitcoinBlock(tenure.anchor_block_hash.into()));
+        };
+
+        // We use `get_tenure` to fetch all of the Nakamoto blocks for each
+        // tenure, walking backwards, which accepts a `StacksBlockId` as its
+        // parameter. As we're walking backwards, we grab the first block in
+        // the tenure and use its parent block ID for the next iteration, which
+        // should give us the previous tenure and all of its blocks.
+        #[allow(clippy::expect_used)]
+        let first_block = tenure.blocks()
+            .first()
+            // We assert that this is not empty above.
+            .expect("empty tenure");
+
+        next_tenure_tip = first_block.header.parent_block_id;
+
+        // Iterate through all of the blocks in the tenure and write them to
+        // storage.
+        for block in tenure.as_stacks_blocks() {
+            storage.write_stacks_block(&block).await?;
+        }
+
+        // If the block height of the anchor block is equal to the nakamoto
+        // activation height then we're done.
+        if bitcoin_block.block_height == nakamoto_activation_height {
+            tracing::info!("nakamoto activation height reached, stacks block-sync completed");
+            return Ok(());
+        }
+    }
+}
+
+/// Waits for the Stacks node to report that it is fully-synced. It does this
+/// by polling the node's `info` endpoint every 5 seconds until the response's
+/// `is_fully_synced` field is `true`.
+#[tracing::instrument(skip_all)]
+async fn wait_for_stacks_node_to_report_full_sync(ctx: &impl Context) -> Result<(), Error> {
+    let mut term = ctx.get_termination_handle();
+    let stacks_client = ctx.get_stacks_client();
+
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        match stacks_client.get_node_info().await {
+            Ok(node_info) if node_info.is_fully_synced => break,
+            Ok(_) => tracing::info!("Stacks node reports that it is not yet fully-synced, waiting..."),
+            Err(error) => tracing::warn!(%error, "Failed to get node info from Stacks node, will retry"),
+        }
+
+        tokio::select! {
+            _ = term.wait_for_shutdown() => return Ok(()),
+            _ = interval.tick() => {},
+        }
+    }
+    Ok(())
 }
