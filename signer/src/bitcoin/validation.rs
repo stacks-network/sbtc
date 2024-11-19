@@ -102,7 +102,10 @@ impl BitcoinTxContext {
 
     /// Construct the reports for each request that this transaction will
     /// service.
-    pub async fn construct_package_sighashes<C>(&self, ctx: &C) -> Result<Vec<BitcoinTxValidationData>, Error>
+    pub async fn construct_package_sighashes<C>(
+        &self,
+        ctx: &C,
+    ) -> Result<Vec<BitcoinTxValidationData>, Error>
     where
         C: Context + Send + Sync,
     {
