@@ -1312,7 +1312,10 @@ impl super::DbRead for PgStore {
         _id: &model::QualifiedRequestId,
         _signer_public_key: &PublicKey,
     ) -> Result<Option<WithdrawalRequestReport>, Error> {
-        unimplemented!()
+        // Returning Ok(None) means that all withdrawals fail validation,
+        // because without a report we assume the withdrawal request does
+        // not exist.
+        Ok(None)
     }
 
     async fn get_bitcoin_blocks_with_transaction(
