@@ -76,17 +76,12 @@ impl BitcoinTxContext {
     where
         C: Context + Send + Sync,
     {
-        let no_withdrawals = self
-            .request_packages
-            .iter()
-            .all(|reqs| reqs.withdrawals.is_empty());
-
         let unique_requests = is_unique(&self.request_packages);
 
         // TODO: check that we have not received a different transaction
         // package during this tenure.
 
-        if no_withdrawals && unique_requests {
+        if unique_requests {
             Ok(())
         } else {
             // TODO: Create a real one
@@ -759,7 +754,6 @@ mod tests {
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
     use bitcoin::TxIn;
-    use bitcoin::Txid;
     use bitcoin::Witness;
     use test_case::test_case;
 
@@ -927,7 +921,7 @@ mod tests {
             amount: 0,
             max_fee: TX_FEE.to_sat(),
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
-            outpoint: OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+            outpoint: OutPoint::new(bitcoin::Txid::from_byte_array([1; 32]), 0),
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
