@@ -1,0 +1,33 @@
+services:
+  postgres:
+    image: postgres:16.3-alpine
+    stop_grace_period: 5s
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+    ports:
+      - 5432:5432
+
+  sbtc-signer:
+    image: blockstack/sbtc:signer-0.0.1-dev-5
+    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
+    depends_on:
+      - postgres
+    environment:
+      RUST_LOG: info,signer=debug
+    env_file: ./config/signer-config.env
+    volumes:
+      - ./config/signer-config.toml:/signer-config.toml
+    ports:
+      - "4122:4122"
+
+  blocklist-client:
+    image: blockstack/sbtc:blocklist-client-0.0.1-dev-6
+    entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
+    volumes:
+      # TODO(762): It should not be necessary to provide a default configuration
+      - ./config/blocklist-client-default-config.toml:/src/config/default.toml:ro
+      - ./config/blocklist-client-config.toml:/blocklist-client-config.toml
+    ports:
+      - "3032:3032"
