@@ -599,11 +599,13 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
 
     let deposit_amount = 2_500_000;
+    let max_fee = deposit_amount / 2;
     let signers_public_key = shares.aggregate_key.into();
     let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_amount,
         depositor_utxo,
+        max_fee,
         signers_public_key,
     );
     rpc.send_raw_transaction(&deposit_tx).unwrap();
