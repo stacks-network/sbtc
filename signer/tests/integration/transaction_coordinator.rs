@@ -9,6 +9,7 @@ use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::AddressType;
+use bitcoin::BlockHash;
 use bitcoin::Transaction;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
@@ -30,11 +31,14 @@ use rand::rngs::OsRng;
 use rand::SeedableRng as _;
 use reqwest;
 use sbtc::testing::regtest;
+use sbtc::testing::regtest::p2wpkh_sign_transaction;
+use sbtc::testing::regtest::AsUtxo as _;
 use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use sha2::Digest as _;
 use signer::bitcoin::rpc::BitcoinCoreClient;
-use signer::bitcoin::utxo::GetFees as _;
+use signer::bitcoin::utxo::Fees;
+use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
 
 use signer::context::TxCoordinatorEvent;
@@ -1736,20 +1740,20 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
 
-    let network = SignerNetwork::single();
-    let mut context = TestContext::builder()
-        .with_storage(db.clone())
-        .with_mocked_clients()
-        .build();
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
 
-    context
-        .with_bitcoin_client(|client| {
-            client
-                .expect_estimate_fee_rate()
-                .times(1)
-                .returning(|| Box::pin(async { Ok(1.3) }));
-        })
-        .await;
+    let network = SignerNetwork::single();
+    let context = TestContext::builder()
+        .with_storage(db.clone())
+        .with_bitcoin_client(client.clone())
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
+        .build();
 
     let mut coord = TxCoordinatorEventLoop {
         context,
@@ -1772,28 +1776,20 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
 
-    // We create a single Bitcoin block which will be the chain tip and hold
-    // our signer UTXO.
-    let bitcoin_block = model::BitcoinBlock {
-        block_height: 1,
-        block_hash: Faker.fake_with_rng(&mut rng),
-        parent_hash: Faker.fake_with_rng(&mut rng),
-    };
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let addr = Recipient::new(AddressType::P2wpkh);
 
-    // Create a Bitcoin transaction simulating holding a simulated signer
-    // UTXO.
-    let mut signer_utxo_tx = testing::dummy::tx(&Faker, &mut rng);
-    signer_utxo_tx.output.insert(
-        0,
-        bitcoin::TxOut {
-            value: bitcoin::Amount::from_btc(5.0).unwrap(),
-            script_pubkey: aggregate_key.signers_script_pubkey(),
-        },
-    );
-    let signer_utxo_txid = signer_utxo_tx.compute_txid();
-    let mut signer_utxo_encoded = Vec::new();
+    // Get some coins to spend (and our "utxo" outpoint).
+    let outpoint = faucet.send_to(10_000, &addr.address);
+    let signer_utxo_block_hash = faucet.generate_blocks(1).pop().unwrap();
+
+    let signer_utxo_tx = client.get_tx(&outpoint.txid).unwrap().unwrap();
+    let signer_utxo_txid = signer_utxo_tx.tx.compute_txid();
+
+    let mut signer_utxo_tx_encoded = Vec::new();
     signer_utxo_tx
-        .consensus_encode(&mut signer_utxo_encoded)
+        .tx
+        .consensus_encode(&mut signer_utxo_tx_encoded)
         .unwrap();
 
     let utxo_input = model::TxPrevout {
@@ -1804,37 +1800,40 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     let utxo_output = model::TxOutput {
         txid: signer_utxo_txid.into(),
+        output_index: 0,
         output_type: model::TxOutputType::Donation,
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
         ..Faker.fake_with_rng(&mut rng)
     };
 
-    // Write the Bitcoin block and transaction to the database.
-    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
-    db.write_transaction(&model::Transaction {
-        txid: *signer_utxo_txid.as_byte_array(),
-        tx: signer_utxo_encoded,
-        tx_type: model::TransactionType::SbtcTransaction,
-        block_hash: bitcoin_block.block_hash.into_bytes(),
+    db.write_bitcoin_block(&model::BitcoinBlock {
+        block_height: 1,
+        block_hash: signer_utxo_block_hash.into(),
+        parent_hash: BlockHash::all_zeros().into(),
     })
     .await
     .unwrap();
+
+    db.write_transaction(&model::Transaction {
+        txid: signer_utxo_txid.to_byte_array(),
+        tx: signer_utxo_tx_encoded,
+        tx_type: model::TransactionType::SbtcTransaction,
+        block_hash: signer_utxo_block_hash.to_byte_array(),
+    })
+    .await
+    .unwrap();
+
+    db.write_tx_prevout(&utxo_input).await.unwrap();
+    db.write_tx_output(&utxo_output).await.unwrap();
+
     db.write_bitcoin_transaction(&model::BitcoinTxRef {
-        block_hash: bitcoin_block.block_hash.into(),
+        block_hash: signer_utxo_block_hash.into(),
         txid: signer_utxo_txid.into(),
     })
     .await
     .unwrap();
-    db.write_tx_prevout(&utxo_input).await.unwrap();
-    db.write_tx_output(&utxo_output).await.unwrap();
 
-    // Get the chain tip and assert that it is the block we just wrote.
-    let chain_tip = db
-        .get_bitcoin_canonical_chain_tip()
-        .await
-        .unwrap()
-        .expect("no chain tip");
-    assert_eq!(chain_tip, bitcoin_block.block_hash.into());
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
@@ -1844,69 +1843,29 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
         .expect("no signer utxo");
     assert_eq!(utxo.outpoint.txid, signer_utxo_txid.into());
 
-    // ** Step 1**: Write a first round a sweep transactions to the db.
-    // These transactions are just noise and simulates a previous sweep
-    // transaction package which we will "RBF" below.
-    let mut sweep_transactions1: Vec<model::SweepTransaction> = fake::Faker.fake_with_rng(&mut rng);
-    let sweep_txids = sweep_transactions1
-        .iter()
-        .map(|tx| tx.txid)
-        .collect::<Vec<_>>();
+    // Get a utxo to spend.
+    let utxo = addr.get_utxos(rpc, Some(10_000)).pop().unwrap();
+    assert_eq!(utxo.txid, outpoint.txid);
 
-    for (i, tx) in sweep_transactions1.iter_mut().enumerate() {
-        if i == 0 {
-            tx.signer_prevout_txid = signer_utxo_txid.into();
-        } else {
-            tx.signer_prevout_txid = sweep_txids[i - 1];
-        }
+    // Create a transaction that spends the utxo.
+    let mut tx1 = bitcoin::Transaction {
+        version: bitcoin::transaction::Version::ONE,
+        lock_time: bitcoin::absolute::LockTime::ZERO,
+        input: vec![bitcoin::TxIn {
+            previous_output: utxo.outpoint(),
+            script_sig: bitcoin::ScriptBuf::new(),
+            sequence: bitcoin::Sequence::ZERO,
+            witness: bitcoin::Witness::new(),
+        }],
+        output: vec![bitcoin::TxOut {
+            value: bitcoin::Amount::from_sat(9_000),
+            script_pubkey: addr.address.script_pubkey(),
+        }],
+    };
 
-        // We clear these so we don't have to mess around with writing them and
-        // their FK's etc -- that's already tested elsewhere.
-        tx.swept_deposits.clear();
-        tx.swept_withdrawals.clear();
-    }
-
-    // Write package #1 to the database (will be RBF'd).
-    for tx in &sweep_transactions1 {
-        db.write_sweep_transaction(tx).await.unwrap();
-    }
-
-    // A little pause just to make sure we have a gap in the timestamps.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-
-    // ** Step 2**: Write a second round of sweep transactions to the db.
-    // This transaction package will be the "newest" and thus should be
-    // the package which is used to determine the previous fees.
-    let mut sweep_transactions2: Vec<model::SweepTransaction> = fake::Faker.fake_with_rng(&mut rng);
-    let sweep_txids = sweep_transactions2
-        .iter()
-        .map(|tx| tx.txid)
-        .collect::<Vec<_>>();
-
-    for (i, tx) in sweep_transactions2.iter_mut().enumerate() {
-        if i == 0 {
-            tx.signer_prevout_txid = signer_utxo_txid.into();
-        } else {
-            tx.signer_prevout_txid = sweep_txids[i - 1];
-        }
-
-        // We clear these so we don't have to mess around with writing them and
-        // their FK's etc -- that's already tested elsewhere.
-        tx.swept_deposits.clear();
-        tx.swept_withdrawals.clear();
-    }
-
-    // Write package #2 to the database.
-    for tx in &sweep_transactions2 {
-        db.write_sweep_transaction(tx).await.unwrap();
-    }
-
-    // Calculate the expected fees from the vec we used to insert sweep
-    // package #2 into the database.
-    let expected_fees = sweep_transactions2
-        .get_fees()
-        .expect("failed to calculate fees (error)")
-        .expect("failed to calculate fees (none)");
+    // Sign and broadcast the transaction
+    p2wpkh_sign_transaction(&mut tx1, 0, &utxo, &addr.keypair);
+    client.broadcast_transaction(&tx1).await.unwrap();
 
     // Grab the BTC state.
     let btc_state = coord
@@ -1914,13 +1873,52 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
         .await
         .unwrap();
 
+    let expected_fees = Fees {
+        total: 1_000,
+        rate: 1_000 as f64 / tx1.vsize() as f64,
+    };
+
     // Assert that everything's as expected.
     assert_eq!(btc_state.utxo.outpoint.txid, signer_utxo_txid.into());
     assert_eq!(btc_state.utxo.public_key, aggregate_key.into());
     assert_eq!(btc_state.public_key, aggregate_key.into());
-    assert_eq!(btc_state.fee_rate, 1.3);
     assert_eq!(btc_state.last_fees, Some(expected_fees));
     assert_eq!(btc_state.magic_bytes, [b'T', b'3']);
+
+    // Create a 2nd transaction that spends the utxo (simulate RBF).
+    let mut tx2 = bitcoin::Transaction {
+        version: bitcoin::transaction::Version::ONE,
+        lock_time: bitcoin::absolute::LockTime::ZERO,
+        input: vec![bitcoin::TxIn {
+            previous_output: utxo.outpoint(),
+            script_sig: bitcoin::ScriptBuf::new(),
+            sequence: bitcoin::Sequence::ZERO,
+            witness: bitcoin::Witness::new(),
+        }],
+        output: vec![bitcoin::TxOut {
+            value: bitcoin::Amount::from_sat(8_000),
+            script_pubkey: addr.address.script_pubkey(),
+        }],
+    };
+
+    // Sign and broadcast the transaction
+    p2wpkh_sign_transaction(&mut tx2, 0, &utxo, &addr.keypair);
+    client.broadcast_transaction(&tx2).await.unwrap();
+
+    // Grab the BTC state.
+    let btc_state = coord
+        .get_btc_state(&chain_tip, &aggregate_key)
+        .await
+        .unwrap();
+
+    let expected_fees = Fees {
+        total: 2_000,
+        rate: 2_000 as f64 / tx2.vsize() as f64,
+    };
+
+    // Assert that everything's as expected.
+    assert_eq!(btc_state.utxo.outpoint.txid, signer_utxo_txid.into());
+    assert_eq!(btc_state.last_fees, Some(expected_fees));
 
     testing::storage::drop_db(db).await;
 }
