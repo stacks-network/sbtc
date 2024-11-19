@@ -262,7 +262,10 @@ where
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
-        let tenure_info = self.stacks_client.get_tenure_info().await?;
+
+        // If the Nakamoto start height is set in the configuration then we
+        // use that value, otherwise we fetch the Nakamoto start height from
+        // the Stacks node.
         let until_bitcoin_height = match self.context.config().stacks.nakamoto_start_height {
             Some(height) => height,
             None => {
@@ -273,6 +276,17 @@ where
             }
         };
 
+        // Get the current tenure info (incl. tip details) from the Stacks node.
+        let tenure_info = self.stacks_client.get_tenure_info().await?;
+
+        // While we do do this at startup to do the "heavy lifting" of syncing
+        // potentially from a long chain, we also do this here to ensure that
+        // we don't miss any Stacks blocks given the high frequency of
+        // Nakamoto blocks.
+        //
+        // Maybe this can be removed in the future if we can be sure that our
+        // Stacks event observer will always pick up this information before
+        // we get here, but for now it's a good safety net.
         tracing::debug!("fetching unknown ancestral blocks from stacks-core");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
             &self.stacks_client,
@@ -282,12 +296,16 @@ where
         )
         .await?;
 
+        // Write the Stacks blocks and header information. This method will also
+        // extract relevant sBTC information from the blocks.
         write_stacks_blocks(
             &self.context.get_storage_mut(),
             &self.context.config().signer.deployer,
             &stacks_blocks,
         )
         .await?;
+
+        // Finally, write the Bitcoin block and any sBTC-related transactions.
         self.write_bitcoin_block(&block).await?;
 
         tracing::debug!("finished processing bitcoin block");
@@ -464,7 +482,7 @@ where
     }
 }
 
-/// Takes a list of Nakamoto `TenureBlocks` and writes the Stacks block
+/// Takes a list of Nakamoto [`TenureBlocks`] and writes the Stacks block
 /// headers and transactions to the database.
 pub async fn write_stacks_blocks(
     storage: &impl DbWrite,

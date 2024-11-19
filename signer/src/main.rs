@@ -98,24 +98,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wait_for_stacks_node_to_report_full_sync(&context).await?;
     tracing::info!("stacks node reports that is is up-to-date");
 
-    // Back-fill the Bitcoin and Stacks blockchains to the Nakamoto activation
-    // height.
+    // Back-fill the Bitcoin and Stacks blockchains from the current Stacks tip
+    // until the Nakamoto activation height.
     tracing::info!("preparing to sync both bitcoin & stacks blockchains back to the nakamoto activation height");
     sync_blockchains(&context).await?;
 
-    // Run the application components concurrently. We're `join!`ing them
-    // here so that every component can shut itself down gracefully when
-    // the shutdown signal is received.
+    // Run the application components concurrently. We're `join!`ing them here
+    // so that every component can shut itself down gracefully when the shutdown
+    // signal is received.
     //
     // Note that we must use `join` here instead of `select` as `select` would
     // immediately abort the remaining tasks on the first completion, which
     // deprives the other tasks of the opportunity to shut down gracefully. This
     // is the reason we also use the `run_checked` helper method, which will
-    // intercept errors and send a shutdown signal to the other components if an error
-    // does occur, otherwise the `join` will continue running indefinitely.
+    // intercept errors and send a shutdown signal to the other components if an
+    // error does occur, otherwise the `join` will continue running
+    // indefinitely.
     let _ = tokio::join!(
-        // Our global termination signal watcher. This does not run using `run_checked`
-        // as it sends its own shutdown signal.
+        // Our global termination signal watcher. This does not run using
+        // `run_checked` as it sends its own shutdown signal.
         run_shutdown_signal_watcher(context.clone()),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
@@ -131,9 +132,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// A helper method that captures errors from the provided future and sends a
-/// shutdown signal to the application if an error is encountered. This is needed
-/// as otherwise the application would continue running indefinitely (since no
-/// shutdown signal is sent automatically on error).
+/// shutdown signal to the application if an error is encountered. This is
+/// needed as otherwise the application would continue running indefinitely
+/// (since no shutdown signal is sent automatically on error).
 async fn run_checked<F, Fut, C>(f: F, ctx: &C) -> Result<(), Error>
 where
     C: Context,
@@ -501,7 +502,8 @@ async fn sync_stacks_blocks(
         //
         // Note: This specifically does not use the `fetch_unknown_ancestors`
         // method as this is intended to be run on startup, which for an initial
-        // sync can result in high memory usage if all blocks are buffered.
+        // sync can result in high memory usage if all blocks from all tenures
+        // are fetched/buffered.
         let tenure = stacks_client.get_tenure(next_tenure_tip).await?;
 
         // If there are no blocks in the tenure (which shouldn't happen), then
