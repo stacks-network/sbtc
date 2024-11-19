@@ -5,7 +5,10 @@ use crate::{
     api::models::limits::{AccountLimits, Limits},
     common::error::Error,
     context::EmilyContext,
-    database::{accessors, entries::limits::{LimitEntry, GLOBAL_CAP_ACCOUNT}},
+    database::{
+        accessors,
+        entries::limits::{LimitEntry, GLOBAL_CAP_ACCOUNT},
+    },
 };
 use warp::http::StatusCode;
 use warp::reply::{json, with_status, Reply};
@@ -52,12 +55,12 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
     ),
     security(("ApiGatewayKey" = []))
 )]
-pub async fn set_limits(
-    context: EmilyContext,
-    limits: Limits,
-) -> impl warp::reply::Reply {
+pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
-    async fn handler(context: EmilyContext, limits: Limits) -> Result<impl warp::reply::Reply, Error> {
+    async fn handler(
+        context: EmilyContext,
+        limits: Limits,
+    ) -> Result<impl warp::reply::Reply, Error> {
         // Set the global limits.
         accessors::set_limit_for_account(
             &context,
@@ -70,13 +73,15 @@ pub async fn set_limits(
                     per_withdrawal_cap: limits.per_withdrawal_cap,
                 },
             ),
-        ).await?;
+        )
+        .await?;
         // Get account cap entries.
         let account_cap_entries = limits
             .account_caps
             .into_iter()
-            .map(|(account, account_limits)|
-                LimitEntry::from_account_limit(account, SystemTime::now(), &account_limits))
+            .map(|(account, account_limits)| {
+                LimitEntry::from_account_limit(account, SystemTime::now(), &account_limits)
+            })
             .collect::<Vec<LimitEntry>>();
         // Put each entry into the table.
         for entry in account_cap_entries {
@@ -166,11 +171,8 @@ pub async fn set_limits_for_account(
         account_limit: crate::api::models::limits::AccountLimits,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Create the limit entry.
-        let limit_entry = LimitEntry::from_account_limit(
-            account,
-            SystemTime::now(),
-            &account_limit,
-        );
+        let limit_entry =
+            LimitEntry::from_account_limit(account, SystemTime::now(), &account_limit);
         // Put entry into the table.
         accessors::set_limit_for_account(&context, &limit_entry).await?;
         // Respond.

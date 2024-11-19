@@ -6,17 +6,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{ToResponse, ToSchema};
 
 /// Represents the current sBTC limits.
-#[derive(
-    Clone,
-    Default,
-    Debug,
-    Eq,
-    PartialEq,
-    Serialize,
-    Deserialize,
-    ToSchema,
-    ToResponse,
-)]
+#[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize, ToSchema, ToResponse)]
 #[serde(rename_all = "camelCase")]
 pub struct Limits {
     /// Represents the total cap for all pegged-in BTC/sBTC.

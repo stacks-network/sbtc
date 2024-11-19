@@ -60,10 +60,10 @@ impl LimitEntry {
             key: LimitEntryKey {
                 account,
                 timestamp: now
-                .duration_since(std::time::UNIX_EPOCH)
-                // It's impossible for this to fail.
-                .unwrap()
-                .as_secs()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    // It's impossible for this to fail.
+                    .unwrap()
+                    .as_secs(),
             },
             peg_cap: account_limit.peg_cap,
             per_deposit_cap: account_limit.per_deposit_cap,
@@ -73,8 +73,8 @@ impl LimitEntry {
     /// Returns true if the limit entry has no limits set.
     pub fn is_empty(&self) -> bool {
         self.peg_cap.is_none()
-        && self.per_deposit_cap.is_none()
-        && self.per_withdrawal_cap.is_none()
+            && self.per_deposit_cap.is_none()
+            && self.per_withdrawal_cap.is_none()
     }
 }
 

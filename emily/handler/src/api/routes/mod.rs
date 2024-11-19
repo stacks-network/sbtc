@@ -14,13 +14,13 @@ mod chainstate;
 mod deposit;
 /// Health routes.
 mod health;
+/// Limit routes.
+mod limits;
 /// Testing routes.
 #[cfg(feature = "testing")]
 mod testing;
 /// Withdrawal routes.
 mod withdrawal;
-/// Limit routes.
-mod limits;
 
 /// This function sets up the Warp filters for handling all requests.
 #[cfg(feature = "testing")]

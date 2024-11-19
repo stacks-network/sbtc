@@ -15,7 +15,9 @@ use crate::common::error::{Error, Inconsistency};
 use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::deposit::ValidatedDepositUpdate;
-use super::entries::limits::{LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT};
+use super::entries::limits::{
+    LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
+};
 use super::entries::withdrawal::ValidatedWithdrawalUpdate;
 use super::entries::{
     chainstate::{
@@ -573,14 +575,11 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 /// data for this sigular entry is spread across the entire table in a way that
 /// needs to be first gathered, then filtered. It does not neatly fit into a
 /// return type that is within the table as an entry.
-pub async fn get_limits(
-    context: &EmilyContext,
-) -> Result<Limits, Error> {
+pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
     // Get all the entries of the limit table. This table shouldn't be too large.
-    let all_entries = LimitTablePrimaryIndex::get_all_entries(
-        &context.dynamodb_client,
-        &context.settings,
-    ).await?;
+    let all_entries =
+        LimitTablePrimaryIndex::get_all_entries(&context.dynamodb_client, &context.settings)
+            .await?;
     // Create the default global cap.
     let default_global_cap = context.settings.default_limits.clone();
     let mut global_cap = LimitEntry {
@@ -608,12 +607,11 @@ pub async fn get_limits(
         } else if limit_by_account.contains_key(account) {
             // If the account is already in the map then update the entry if the current
             // entry is newer.
-            limit_by_account.get_mut(account)
-                .map(|existing_entry| {
-                    if existing_entry.key.timestamp < entry.key.timestamp {
-                        *existing_entry = entry.clone();
-                    }
-                });
+            if let Some(existing_entry) = limit_by_account.get_mut(account) {
+                if existing_entry.key.timestamp < entry.key.timestamp {
+                    *existing_entry = entry.clone();
+                }
+            }
         } else {
             // If the account isn't in the map then insert it.
             limit_by_account.insert(entry.key.account.clone(), entry.clone());
@@ -635,6 +633,7 @@ pub async fn get_limits(
 }
 
 /// Get the limit for a specific account.
+#[allow(clippy::ptr_arg)]
 pub async fn get_limit_for_account(
     context: &EmilyContext,
     account: &String,
