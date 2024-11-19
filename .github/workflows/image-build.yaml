@@ -33,6 +33,7 @@ jobs:
           - debian
         docker_target:
           - signer
+          - blocklist-client
 
     runs-on: ubuntu-latest
     steps:

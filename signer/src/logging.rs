@@ -24,7 +24,7 @@ fn setup_logging_json(directives: &str) {
         .json()
         .flatten_event(true)
         .with_target(false)
-        .with_current_span(true)
+        .with_current_span(false)
         .with_span_list(true)
         .with_line_number(true)
         .with_file(true)

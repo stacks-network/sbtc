@@ -410,3 +410,103 @@ async fn get_mempool_descendants() {
     assert!(response.contains(&tx2.compute_txid()));
     assert!(response.contains(&tx3.compute_txid()));
 }
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_tx_out_confirmed_no_mempool() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+
+    let (_, faucet) = regtest::initialize_blockchain();
+    let addr1 = Recipient::new(AddressType::P2wpkh);
+
+    // Get some coins to spend (and our "utxo" outpoint).
+    let outpoint = faucet.send_to(10_000, &addr1.address);
+    faucet.generate_blocks(1);
+
+    let txout = client
+        .get_tx_out(&outpoint, false)
+        .expect("error calling gettxout")
+        .expect("no txout found");
+
+    assert_eq!(txout.value, Amount::from_sat(10_000));
+    assert_eq!(txout.confirmations, 1);
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_tx_out_confirmed_with_mempool() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+
+    let (_, faucet) = regtest::initialize_blockchain();
+    let addr1 = Recipient::new(AddressType::P2wpkh);
+
+    // Get some coins to spend (and our "utxo" outpoint).
+    let outpoint = faucet.send_to(10_000, &addr1.address);
+    faucet.generate_blocks(1);
+
+    let txout = client
+        .get_tx_out(&outpoint, true)
+        .expect("error calling gettxout")
+        .expect("no txout found");
+
+    assert_eq!(txout.value, Amount::from_sat(10_000));
+    assert_eq!(txout.confirmations, 1);
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_tx_out_unconfirmed_no_mempool() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+
+    let (_, faucet) = regtest::initialize_blockchain();
+    let addr1 = Recipient::new(AddressType::P2wpkh);
+
+    // Get some coins to spend (and our "utxo" outpoint).
+    let outpoint = faucet.send_to(10_000, &addr1.address);
+
+    let txout = client
+        .get_tx_out(&outpoint, false)
+        .expect("error calling gettxout");
+
+    assert!(txout.is_none());
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_tx_out_unconfirmed_with_mempool() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+
+    let (_, faucet) = regtest::initialize_blockchain();
+    let addr1 = Recipient::new(AddressType::P2wpkh);
+
+    // Get some coins to spend (and our "utxo" outpoint).
+    let outpoint = faucet.send_to(10_000, &addr1.address);
+
+    let txout = client
+        .get_tx_out(&outpoint, true)
+        .expect("error calling gettxout")
+        .expect("expected txout from mempool");
+
+    assert_eq!(txout.value, Amount::from_sat(10_000));
+    assert_eq!(txout.confirmations, 0); // Unconfirmed txs will have 0 confirmations
+}

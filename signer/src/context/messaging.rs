@@ -26,6 +26,8 @@ impl SignerSignal {
 pub enum SignerCommand {
     /// Signals to the application to publish a message to the P2P network.
     P2PPublish(crate::network::Msg),
+    /// Signal to shut down the application
+    Shutdown,
 }
 
 /// Events that can be received on the signalling channel.
@@ -35,6 +37,8 @@ pub enum SignerEvent {
     P2P(P2PEvent),
     /// Signals that a block observer event has occurred.
     BitcoinBlockObserved,
+    /// A Request decider event has occurred.
+    RequestDecider(RequestDeciderEvent),
     /// Transaction signer events
     TxSigner(TxSignerEvent),
     /// Transaction coordinator events
@@ -55,9 +59,9 @@ pub enum P2PEvent {
     PeerConnected(libp2p::PeerId),
 }
 
-/// Events that can be triggered from the transaction signer.
+/// Events that can be triggered from the request decider.
 #[derive(Debug, Clone, PartialEq)]
-pub enum TxSignerEvent {
+pub enum RequestDeciderEvent {
     /// Received a deposit decision
     ReceivedDepositDecision,
     /// Received a withdrawal decision
@@ -69,6 +73,14 @@ pub enum TxSignerEvent {
     /// New pending requests have been handled. This is primarily used as a
     /// trigger for the transaction coordinator to process the new blocks.
     NewRequestsHandled,
+    /// Event which occurs when the transaction signer has started its event
+    /// loop.
+    EventLoopStarted,
+}
+
+/// Events that can be triggered from the transaction signer.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TxSignerEvent {
     /// Event which occurs when the transaction signer has sent a message to
     /// the P2P network.
     MessageGenerated(crate::network::Msg),
@@ -83,11 +95,20 @@ pub enum TxCoordinatorEvent {
     /// Event which occurs when the transaction coordinator has sent a message
     /// to the P2P network.
     MessageGenerated(crate::network::Msg),
+    /// The coordinator is finished processing requests for the bitcoin
+    /// block.
+    TenureCompleted,
 }
 
 impl From<SignerCommand> for SignerSignal {
     fn from(command: SignerCommand) -> Self {
         SignerSignal::Command(command)
+    }
+}
+
+impl From<RequestDeciderEvent> for SignerSignal {
+    fn from(event: RequestDeciderEvent) -> Self {
+        SignerSignal::Event(SignerEvent::RequestDecider(event))
     }
 }
 
