@@ -1,4 +1,4 @@
-//! Entries into the chainstate table.
+//! Entries into the limit table.
 
 use std::{hash::Hash, time::SystemTime};
 
@@ -8,12 +8,12 @@ use crate::api::models::limits::AccountLimits;
 
 use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait};
 
-// Chainstate entry ---------------------------------------------------------------
+// Limit entry ---------------------------------------------------------------
 
 /// The special account name for the global cap.
 pub(crate) const GLOBAL_CAP_ACCOUNT: &str = "GLOBAL";
 
-/// Chainstate table entry key. This is the primary index key.
+/// Limit table entry key. This is the primary index key.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct LimitEntryKey {
@@ -23,7 +23,7 @@ pub struct LimitEntryKey {
     pub timestamp: u64,
 }
 
-/// Chainstate table entry key. This is the primary index key.
+/// Limit table entry key. This is the primary index key.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct LimitEntry {
@@ -38,7 +38,7 @@ pub struct LimitEntry {
     pub per_withdrawal_cap: Option<u64>,
 }
 
-/// Convert from entry to its corresponding chainstate.
+/// Convert from entry to its corresponding limit.
 impl From<LimitEntry> for AccountLimits {
     fn from(limit_entry: LimitEntry) -> Self {
         AccountLimits {
@@ -62,7 +62,7 @@ impl LimitEntry {
                 timestamp: now
                     .duration_since(std::time::UNIX_EPOCH)
                     // It's impossible for this to fail.
-                    .unwrap()
+                    .expect("Error making timestamp during limit entry creation.")
                     .as_secs(),
             },
             peg_cap: account_limit.peg_cap,

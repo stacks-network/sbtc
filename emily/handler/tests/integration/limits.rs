@@ -1,14 +1,11 @@
-// use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use emily_client::apis;
-// use testing_emily_client::apis::configuration::Configuration;
 use emily_client::models;
 use emily_client::models::AccountLimits;
 use emily_client::models::Limits;
 
 use crate::common::clean_setup;
-// use test_case::test_case;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]

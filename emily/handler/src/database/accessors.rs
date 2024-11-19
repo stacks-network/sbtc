@@ -790,8 +790,6 @@ async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
     Ok(items)
 }
 
-// We want a function that goes through every table entry and returns the
-
 #[cfg(feature = "testing")]
 async fn wipe<T: TableIndexTrait>(context: &EmilyContext) -> Result<(), Error> {
     <T as TableIndexTrait>::wipe(&context.dynamodb_client, &context.settings).await
