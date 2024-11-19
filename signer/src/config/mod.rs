@@ -129,6 +129,10 @@ pub struct P2PNetworkConfig {
     /// public endpoint(s).
     #[serde(deserialize_with = "p2p_multiaddr_deserializer_vec")]
     pub public_endpoints: Vec<Multiaddr>,
+    /// Enable mDNS discovery for the P2P network. This is useful for local
+    /// testing and development.
+    #[serde(default)]
+    pub enable_mdns: bool,
 }
 
 impl Validatable for P2PNetworkConfig {
