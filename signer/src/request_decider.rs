@@ -277,6 +277,14 @@ where
     }
 
     async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
+        // If the deposit request is larger than the allowed per-deposit cap
+        // then we cannot accept the deposit.
+        if let Some(per_deposit_cap) = self.context.state().get_current_limits().per_deposit_cap() {
+            if req.amount > per_deposit_cap.to_sat() {
+                return Ok(false);
+            }
+        }
+
         // If we have not configured a blocklist checker, then we can
         // return early.
         let Some(client) = self.blocklist_checker.as_ref() else {
