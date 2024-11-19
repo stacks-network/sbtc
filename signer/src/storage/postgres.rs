@@ -376,7 +376,7 @@ impl PgStore {
                 FROM bitcoin_blockchain_of($1, $2)
             ),
             confirmed_sweeps AS (
-                SELECT 
+                SELECT
                     prevout_txid
                   , prevout_output_index
                 FROM sbtc_signer.bitcoin_tx_inputs
@@ -464,7 +464,7 @@ impl PgStore {
         sqlx::query_scalar::<_, model::BitcoinTxId>(
             r#"
             WITH RECURSIVE block_chain AS (
-                SELECT 
+                SELECT
                     block_hash
                   , block_height
                   , parent_hash
@@ -531,7 +531,7 @@ impl PgStore {
         sqlx::query_as::<_, DepositStatusSummary>(
             r#"
             WITH RECURSIVE block_chain AS (
-                SELECT 
+                SELECT
                     block_hash
                   , block_height
                   , parent_hash
@@ -560,7 +560,7 @@ impl PgStore {
               , dr.signers_public_key
               , bc.block_height
               , bc.block_hash
-            FROM sbtc_signer.deposit_requests AS dr 
+            FROM sbtc_signer.deposit_requests AS dr
             JOIN sbtc_signer.bitcoin_transactions USING (txid)
             LEFT JOIN block_chain AS bc USING (block_hash)
             LEFT JOIN sbtc_signer.deposit_signers AS ds
@@ -1665,7 +1665,7 @@ impl super::DbRead for PgStore {
                 deposit_requests AS deposit_req
                     ON deposit_req.txid = swept_deposit.deposit_request_txid
                     AND deposit_req.output_index = swept_deposit.deposit_request_output_index
-            LEFT JOIN 
+            LEFT JOIN
                 completed_deposit_events AS cde
                     ON cde.bitcoin_txid = deposit_req.txid
                     AND cde.output_index = deposit_req.output_index
@@ -1740,8 +1740,8 @@ impl super::DbRead for PgStore {
         // sort these by the created_at timestamp and take the latest one.
         let first = sqlx::query_scalar::<_, model::BitcoinTxId>(
             "
-            SELECT txid 
-            FROM sweep_transactions 
+            SELECT txid
+            FROM sweep_transactions
             WHERE signer_prevout_txid = $1
             ORDER BY created_at DESC
             LIMIT 1;
@@ -1770,7 +1770,7 @@ impl super::DbRead for PgStore {
                   , signer_prevout_txid
                   , 1 AS number
                 FROM sweep_transactions
-                WHERE 
+                WHERE
                     txid = $1
 
                 UNION ALL
@@ -1780,7 +1780,7 @@ impl super::DbRead for PgStore {
                   , tx.signer_prevout_txid
                   ,  last.number + 1
                 FROM sweep_transactions tx
-                INNER JOIN sweep_txs last 
+                INNER JOIN sweep_txs last
                     ON tx.signer_prevout_txid = last.txid
             ),
             canonical_txs AS (
@@ -1794,7 +1794,7 @@ impl super::DbRead for PgStore {
                 sweep_txs.txid
               , number
             FROM sweep_txs
-            LEFT JOIN canonical_txs AS btc_tx 
+            LEFT JOIN canonical_txs AS btc_tx
                 ON btc_tx.txid = sweep_txs.txid
             WHERE btc_tx.txid IS NULL
             ORDER BY number ASC;
@@ -1828,23 +1828,19 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::BitcoinTxSigHash>(
             r#"
                 SELECT
-                    s.txid,
-                    s.chain_tip,
-                    s.prevout_txid,
-                    s.prevout_output_index,
-                    s.sighash,
-                    i.prevout_type,
-                    s.validation_result,
-                    s.is_valid_tx,
-                    s.will_sign,
-                    s.construction_version
-                FROM sbtc_signer.bitcoin_tx_sighashes AS s
-                JOIN sbtc_signer.bitcoin_tx_inputs AS i
-                ON s.txid = i.txid
-                    AND s.prevout_txid = i.prevout_txid
-                    AND s.prevout_output_index = i.prevout_output_index
-                WHERE s.txid = $1;
-            "#,
+                    txid
+                  , chain_tip
+                  , prevout_txid
+                  , prevout_output_index
+                  , sighash
+                  , prevout_type
+                  , validation_result
+                  , is_valid_tx
+                  , will_sign
+                  , construction_version
+                FROM sbtc_signer.bitcoin_tx_sighashes
+                WHERE txid = $1
+                "#,
         )
         .bind(txid)
         .fetch_optional(&self.0)
@@ -2689,6 +2685,7 @@ impl super::DbWrite for PgStore {
         let mut prevout_txid = Vec::with_capacity(sighashes.len());
         let mut prevout_output_index = Vec::with_capacity(sighashes.len());
         let mut sighash = Vec::with_capacity(sighashes.len());
+        let mut prevout_type = Vec::with_capacity(sighashes.len());
         let mut validation_result = Vec::with_capacity(sighashes.len());
         let mut is_valid_tx = Vec::with_capacity(sighashes.len());
         let mut will_sign = Vec::with_capacity(sighashes.len());
@@ -2703,6 +2700,7 @@ impl super::DbWrite for PgStore {
                     .map_err(Error::ConversionDatabaseInt)?,
             );
             sighash.push(tx_sighash.sighash);
+            prevout_type.push(tx_sighash.prevout_type);
             validation_result.push(tx_sighash.validation_result);
             is_valid_tx.push(tx_sighash.is_valid_tx);
             will_sign.push(tx_sighash.will_sign);
@@ -2716,16 +2714,18 @@ impl super::DbWrite for PgStore {
             , prevout_txid          AS (SELECT ROW_NUMBER() OVER (), prevout_txid FROM UNNEST($3::BYTEA[]) AS prevout_txid)
             , prevout_output_index  AS (SELECT ROW_NUMBER() OVER (), prevout_output_index FROM UNNEST($4::INTEGER[]) AS prevout_output_index)
             , sighash               AS (SELECT ROW_NUMBER() OVER (), sighash FROM UNNEST($5::BYTEA[]) AS sighash)
-            , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($6::TEXT[]) AS validation_result)
-            , is_valid_tx           AS (SELECT ROW_NUMBER() OVER (), is_valid_tx FROM UNNEST($7::BOOLEAN[]) AS is_valid_tx)
-            , will_sign             AS (SELECT ROW_NUMBER() OVER (), will_sign FROM UNNEST($8::BOOLEAN[]) AS will_sign)
-            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($9::TEXT[]) AS construction_version)
+            , prevout_type          AS (SELECT ROW_NUMBER() OVER (), prevout_type FROM UNNEST($6::sbtc_signer.prevout_type[]) AS prevout_type)
+            , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($7::TEXT[]) AS validation_result)
+            , is_valid_tx           AS (SELECT ROW_NUMBER() OVER (), is_valid_tx FROM UNNEST($8::BOOLEAN[]) AS is_valid_tx)
+            , will_sign             AS (SELECT ROW_NUMBER() OVER (), will_sign FROM UNNEST($9::BOOLEAN[]) AS will_sign)
+            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($10::TEXT[]) AS construction_version)
             INSERT INTO sbtc_signer.bitcoin_tx_sighashes (
                   txid
                 , chain_tip
                 , prevout_txid
                 , prevout_output_index
                 , sighash
+                , prevout_type
                 , validation_result
                 , is_valid_tx
                 , will_sign
@@ -2736,6 +2736,7 @@ impl super::DbWrite for PgStore {
               , prevout_txid
               , prevout_output_index
               , sighash
+              , prevout_type
               , validation_result
               , is_valid_tx
               , will_sign
@@ -2745,6 +2746,7 @@ impl super::DbWrite for PgStore {
             JOIN prevout_txid USING (row_number)
             JOIN prevout_output_index USING (row_number)
             JOIN sighash USING (row_number)
+            JOIN prevout_type USING (row_number)
             JOIN validation_result USING (row_number)
             JOIN is_valid_tx USING (row_number)
             JOIN will_sign USING (row_number)
@@ -2756,6 +2758,7 @@ impl super::DbWrite for PgStore {
         .bind(prevout_txid)
         .bind(prevout_output_index)
         .bind(sighash)
+        .bind(prevout_type)
         .bind(validation_result)
         .bind(is_valid_tx)
         .bind(will_sign)

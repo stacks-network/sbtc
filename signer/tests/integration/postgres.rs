@@ -50,7 +50,6 @@ use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::SweepTransaction;
-use signer::storage::model::TxPrevout;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
@@ -3088,21 +3087,6 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     let db = testing::storage::new_test_database(db_num, true).await;
 
     let sighashes: Vec<BitcoinTxSigHash> = (0..5).map(|_| fake::Faker.fake()).collect();
-    let prevouts: Vec<TxPrevout> = sighashes
-        .iter()
-        .map(|sighash| TxPrevout {
-            txid: sighash.txid.clone(),
-            prevout_txid: sighash.prevout_txid.clone(),
-            prevout_output_index: sighash.prevout_output_index,
-            script_pubkey: fake::Faker.fake(),
-            amount: 1_000_000,
-            prevout_type: sighash.prevout_type,
-        })
-        .collect();
-
-    for prevout in prevouts.iter() {
-        db.write_tx_prevout(prevout).await.unwrap();
-    }
 
     db.write_bitcoin_txs_sighashes(sighashes.clone())
         .await
