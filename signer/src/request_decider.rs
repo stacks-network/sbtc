@@ -67,7 +67,7 @@ where
             return Err(error);
         };
 
-        let mut signal_stream = self.context.new_signal_stream(&self.network);
+        let mut signal_stream = self.context.as_signal_stream(&self.network);
 
         while let Some(message) = signal_stream.next().await {
             match message {
