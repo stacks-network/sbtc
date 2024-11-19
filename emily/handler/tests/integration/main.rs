@@ -8,3 +8,5 @@ pub mod config;
 pub mod deposit;
 /// Withdrawal test module.
 pub mod withdrawal;
+/// Limit test module.
+pub mod limits;

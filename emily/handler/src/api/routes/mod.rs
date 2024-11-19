@@ -19,6 +19,8 @@ mod health;
 mod testing;
 /// Withdrawal routes.
 mod withdrawal;
+/// Limit routes.
+mod limits;
 
 /// This function sets up the Warp filters for handling all requests.
 #[cfg(feature = "testing")]
@@ -29,6 +31,7 @@ pub fn routes(
         .or(chainstate::routes(context.clone()))
         .or(deposit::routes(context.clone()))
         .or(withdrawal::routes(context.clone()))
+        .or(limits::routes(context.clone()))
         .or(testing::routes(context))
         .or(verbose_not_found_route())
         // Convert reply to tuple to that more routes can be added to the returned filter.
@@ -44,6 +47,7 @@ pub fn routes(
         .or(chainstate::routes(context.clone()))
         .or(deposit::routes(context.clone()))
         .or(withdrawal::routes(context))
+        .or(limits::routes(context.clone()))
         // Convert reply to tuple to that more routes can be added to the returned filter.
         .map(|reply| (reply,))
 }
