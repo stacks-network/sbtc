@@ -331,7 +331,7 @@ where
             .map_err(|_| Error::NoChainTip)?
             .ok_or_else(|| Error::NoChainTip)?;
 
-        let (maybe_aggregate_key, signer_set) = self
+        let (maybe_aggregate_key, _signer_set) = self
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
         let aggregate_key = maybe_aggregate_key.ok_or(Error::NoDkgShares)?;
@@ -348,6 +348,26 @@ where
             aggregate_key,
             request_packages: request.requests.iter().map(|r| r.clone().into()).collect(),
         };
+
+        let sighashes = bitcoin_tx_context
+            .construct_package_sighashes(&self.context)
+            .await?;
+
+        let deposits_sighashes: Vec<model::BitcoinTxSigHash> =
+            sighashes.iter().flat_map(|s| s.to_input_rows()).collect();
+
+        let withdrawals_outputs: Vec<model::BitcoinWithdrawalOutput> =
+            sighashes.iter().flat_map(|s| s.to_output_rows()).collect();
+
+        self.context
+            .get_storage_mut()
+            .write_bitcoin_txs_sighashes(deposits_sighashes)
+            .await?;
+
+        self.context
+            .get_storage_mut()
+            .write_bitcoin_withdrawals_outputs(withdrawals_outputs)
+            .await?;
 
         Ok(())
     }

@@ -808,8 +808,8 @@ impl From<&BitcoinWithdrawalRequest> for QualifiedRequestId {
     fn from(request: &BitcoinWithdrawalRequest) -> Self {
         Self {
             request_id: request.request_id,
-            txid: request.txid.clone(),
-            block_hash: request.block_hash.clone(),
+            txid: request.txid,
+            block_hash: request.block_hash,
         }
     }
 }

@@ -418,10 +418,10 @@ where
         );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
-        let (last_fee_total, last_fee_rate) = match pending_requests.signer_state.last_fees {
-            Some(fee) => (Some(fee.total), Some(fee.rate)),
-            None => (None, None),
-        };
+        // let (last_fee_total, last_fee_rate) = match pending_requests.signer_state.last_fees {
+        //     Some(fee) => (Some(fee.total), Some(fee.rate)),
+        //     None => (None, None),
+        // };
         // Get the requests from the transaction package because they have been split into
         // multiple transactions.
         let mut hasher = sha2::Sha256::new();
