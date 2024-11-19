@@ -183,7 +183,6 @@ impl std::ops::DerefMut for SignerStateMachine {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoordinatorStateMachine(WstsCoordinator);
 
-//type WstsCoordinator = wsts::state_machine::coordinator::frost::Coordinator<wsts::v2::Aggregator>;
 type WstsCoordinator = wsts::state_machine::coordinator::fire::Coordinator<wsts::v2::Aggregator>;
 
 impl CoordinatorStateMachine {

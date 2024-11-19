@@ -124,8 +124,6 @@ impl Coordinator {
             signer_public_keys,
         };
 
-        tracing::info!("signer_key_ids {:?}", &config.signer_key_ids);
-
         let wsts_coordinator = fire::Coordinator::new(config);
 
         Self {
