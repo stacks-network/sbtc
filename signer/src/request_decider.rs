@@ -54,8 +54,12 @@ where
     N: MessageTransfer,
     B: BlocklistChecker,
 {
-    /// Run the signer event loop
-    #[tracing::instrument(skip_all, fields(public_key = %self.signer_public_key()), name = "request-decider")]
+    /// Run the request decider event loop
+    #[tracing::instrument(
+        skip_all,
+        fields(public_key = %self.signer_public_key()),
+        name = "request-decider"
+    )]
     pub async fn run(mut self) -> Result<(), Error> {
         let start_message = RequestDeciderEvent::EventLoopStarted.into();
         if let Err(error) = self.context.signal(start_message) {
