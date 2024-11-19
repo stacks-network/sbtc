@@ -43,7 +43,7 @@ pub enum Payload {
     /// Information about a new sweep transaction
     SweepTransactionInfo(SweepTransactionInfo),
     /// Information about a new Bitcoin block sign request
-    BitcoinBlockSignRequest(BitcoinBlockSignRequest),
+    BitcoinBlockSbtcRequests(BitcoinBlockSbtcRequests),
 }
 
 impl std::fmt::Display for Payload {
@@ -78,7 +78,7 @@ impl std::fmt::Display for Payload {
                 write!(f, ")")
             }
             Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
-            Self::BitcoinBlockSignRequest(_) => write!(f, "BitcoinBlockSignRequest(..)"),
+            Self::BitcoinBlockSbtcRequests(_) => write!(f, "BitcoinBlockSbtcRequests(..)"),
         }
     }
 }
@@ -141,9 +141,9 @@ impl From<SweepTransactionInfo> for Payload {
     }
 }
 
-impl From<BitcoinBlockSignRequest> for Payload {
-    fn from(value: BitcoinBlockSignRequest) -> Self {
-        Self::BitcoinBlockSignRequest(value)
+impl From<BitcoinBlockSbtcRequests> for Payload {
+    fn from(value: BitcoinBlockSbtcRequests) -> Self {
+        Self::BitcoinBlockSbtcRequests(value)
     }
 }
 
@@ -417,7 +417,7 @@ impl<'a> From<&Requests<'a>> for SbtcRequestsContext {
 
 /// The transaction context needed by the signers to reconstruct the transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct BitcoinBlockSignRequest {
+pub struct BitcoinBlockSbtcRequests {
     /// The set of sBTC requests with additional relevant
     /// information for the transaction.
     pub requests: Vec<SbtcRequestsContext>,
@@ -458,7 +458,7 @@ impl wsts::net::Signable for Payload {
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
             Self::StacksTransactionSignature(msg) => msg.hash(hasher),
             Self::SweepTransactionInfo(msg) => msg.hash(hasher),
-            Self::BitcoinBlockSignRequest(msg) => msg.hash(hasher),
+            Self::BitcoinBlockSbtcRequests(msg) => msg.hash(hasher),
         }
     }
 }
@@ -586,7 +586,7 @@ impl wsts::net::Signable for SbtcRequestsContext {
     }
 }
 
-impl wsts::net::Signable for BitcoinBlockSignRequest {
+impl wsts::net::Signable for BitcoinBlockSbtcRequests {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         hasher.update("SIGNER_NEW_BITCOIN_TX_CONTEXT");
         for request in &self.requests {

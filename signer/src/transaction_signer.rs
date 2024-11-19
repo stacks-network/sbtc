@@ -258,8 +258,8 @@ where
                     .await?;
             }
 
-            (message::Payload::BitcoinBlockSignRequest(block_request), _, _) => {
-                self.handle_bitcoin_block_sign_request(block_request, &msg.bitcoin_chain_tip)
+            (message::Payload::BitcoinBlockSbtcRequests(requests), _, _) => {
+                self.handle_bitcoin_block_sbtc_requests(requests, &msg.bitcoin_chain_tip)
                     .await?;
             }
             // Message types ignored by the transaction signer
@@ -318,9 +318,9 @@ where
     }
 
     #[tracing::instrument(skip(self, request))]
-    async fn handle_bitcoin_block_sign_request(
+    async fn handle_bitcoin_block_sbtc_requests(
         &mut self,
-        request: &message::BitcoinBlockSignRequest,
+        request: &message::BitcoinBlockSbtcRequests,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         let bitcoin_block = self

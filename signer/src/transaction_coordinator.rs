@@ -31,7 +31,7 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
-use crate::message::BitcoinBlockSignRequest;
+use crate::message::BitcoinBlockSbtcRequests;
 use crate::message::Payload;
 use crate::message::SbtcRequestsContext;
 use crate::message::SignerMessage;
@@ -417,7 +417,7 @@ where
         // Get the requests from the transaction package because they have been split into
         // multiple transactions.
         let mut hasher = sha2::Sha256::new();
-        let sign_request = BitcoinBlockSignRequest {
+        let sign_request = BitcoinBlockSbtcRequests {
             requests: transaction_package
                 .iter()
                 .map(|tx| SbtcRequestsContext::from(&tx.requests))
@@ -783,16 +783,15 @@ where
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
+        _aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
-        let (_, signer_set) = self
-            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
-            .await?;
-
-        let mut coordinator_state_machine =
-            CoordinatorStateMachine::new(signer_set.clone(), self.threshold, self.private_key);
+        let mut coordinator_state_machine = CoordinatorStateMachine::new(
+            signer_public_keys.clone(),
+            self.threshold,
+            self.private_key,
+        );
 
         let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
@@ -816,8 +815,11 @@ where
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
-            let mut coordinator_state_machine =
-                CoordinatorStateMachine::new(signer_set.clone(), self.threshold, self.private_key);
+            let mut coordinator_state_machine = CoordinatorStateMachine::new(
+                signer_public_keys.clone(),
+                self.threshold,
+                self.private_key,
+            );
 
             let signature = self
                 .coordinate_signing_round(
