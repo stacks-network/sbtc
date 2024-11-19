@@ -259,6 +259,9 @@ pub struct BitcoinSighash {
     /// Whether the transaction is valid. A transaction is invalid if any
     /// of the inputs or outputs failed validation.
     pub is_valid_tx: bool,
+    /// Whether the signer will participate in a signing round for the
+    /// sighash.
+    pub will_sign: bool,
     /// The version of the algorithm that was used to create the bitcoin
     /// transaction.
     pub construction_version: ConstructionVersion,
@@ -329,6 +332,7 @@ impl BitcoinTxValidationData {
                 prevout_type: sighash.prevout_type,
                 validation_result,
                 is_valid_tx,
+                will_sign: is_valid_tx && validation_result == InputValidationResult::Ok,
                 construction_version: ConstructionVersion::V0,
             })
             .collect()
