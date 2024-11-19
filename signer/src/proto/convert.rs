@@ -14,7 +14,6 @@ use bitcoin::consensus::encode::serialize;
 use bitvec::array::BitArray;
 use clarity::codec::StacksMessageCodec as _;
 use clarity::vm::types::PrincipalData;
-use p256k1::point::Compressed;
 use p256k1::point::Point;
 use p256k1::scalar::Scalar;
 use polynomial::Polynomial;
@@ -1365,10 +1364,10 @@ impl TryFrom<proto::Signed> for Signed<SignerMessage> {
 
 impl From<Point> for proto::Point {
     fn from(value: Point) -> Self {
-        let [parity, x @ ..] = value.compress().data;
+        let x_coordinate = value.x().to_bytes();
         proto::Point {
-            x_coordinate: Some(proto::Uint256::from(x)),
-            parity_is_odd: parity == 3, // SECP256K1_TAG_PUBKEY_ODD
+            x_coordinate: Some(proto::Uint256::from(x_coordinate)),
+            parity_is_odd: !value.has_even_y(),
         }
     }
 }
@@ -1376,17 +1375,17 @@ impl From<Point> for proto::Point {
 impl TryFrom<proto::Point> for Point {
     type Error = Error;
     fn try_from(value: proto::Point) -> Result<Self, Self::Error> {
-        let prefix: &[u8] = &[match value.parity_is_odd {
-            true => 3u8,  // SECP256K1_TAG_PUBKEY_ODD
-            false => 2u8, // SECP256K1_TAG_PUBKEY_EVEN
-        }];
-        let x: [u8; 32] = value.x_coordinate.required()?.into();
-        let compressed: Compressed = [prefix, &x]
-            .concat()
-            .as_slice()
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
-        Self::try_from(&compressed).map_err(|_| Error::TypeConversion)
+        let x_coordinate: [u8; 32] = value.x_coordinate.required()?.into();
+        let field_element = p256k1::field::Element::from(x_coordinate);
+        // This gives you a point with even parity. We may need to negate the
+        // point so that it has the correct parity.
+        let point = Point::lift_x(&field_element).map_err(|_| Error::TypeConversion)?;
+
+        if value.parity_is_odd {
+            Ok(-point)
+        } else {
+            Ok(point)
+        }
     }
 }
 
