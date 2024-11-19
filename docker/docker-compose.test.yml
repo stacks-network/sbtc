@@ -2,7 +2,7 @@ services:
 
   bitcoind:
     container_name: bitcoind
-    image: lncm/bitcoind:v27.0
+    image: lncm/bitcoind:v25.1
     volumes:
       - ../signer/tests/service-configs/bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
     restart: on-failure

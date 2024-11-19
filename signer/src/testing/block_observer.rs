@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
@@ -30,6 +31,8 @@ use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::GetTransactionFeeResult;
+use crate::bitcoin::TransactionLookupHint;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -237,6 +240,29 @@ impl BitcoinInteract for TestHarness {
     }
 
     async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+        _include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_fee(
+        &self,
+        _txid: &bitcoin::Txid,
+        _lookup_hint: Option<TransactionLookupHint>,
+    ) -> Result<GetTransactionFeeResult, Error> {
+        unimplemented!()
+    }
+
+    async fn get_mempool_entry(
+        &self,
+        _txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
 }

@@ -58,7 +58,7 @@ pub trait Context: Clone + Sync + Send {
     /// later return `Some(_)`. But if [`StreamExt::next`] yields `None`
     /// three times then the stream is "fused" and will return `None`
     /// forever after.
-    fn new_signal_stream<M>(&self, network: &M) -> SelectAll<BroadcastStream<SignerSignal>>
+    fn as_signal_stream<M>(&self, network: &M) -> SelectAll<BroadcastStream<SignerSignal>>
     where
         M: MessageTransfer,
     {

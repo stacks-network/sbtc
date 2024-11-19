@@ -17,13 +17,18 @@ use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi as _;
+use bitcoincore_rpc_json::GetMempoolEntryResult;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
+use bitcoincore_rpc_json::GetTxOutResult;
 use serde::Deserialize;
 use url::Url;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
+
+use super::GetTransactionFeeResult;
+use super::TransactionLookupHint;
 
 /// A slimmed down type representing a response from bitcoin-core's
 /// getrawtransaction RPC.
@@ -125,15 +130,28 @@ pub struct BitcoinTxInfo {
     pub block_time: u64,
 }
 
+/// A slimmed down version of the `BitcoinTxInfo` struct which only contains the
+/// `fee`, `vsize`, and `confirmations` fields; used in fee-retrieval contexts.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BitcoinTxFeeInfo {
+    /// The transaction fee paid to the bitcoin miners. If the transaction is
+    /// not confirmed, a number of RPC endpoints will not return this field.
+    #[serde(default, with = "bitcoin::amount::serde::as_btc::opt")]
+    pub fee: Option<Amount>,
+    /// The virtual transaction size (differs from size for witness
+    /// transactions).
+    pub vsize: u64,
+}
+
 /// A struct containing the response from bitcoin-core for a
 /// `gettxspendingprevout` RPC call. The actual response is an array; this
 /// struct represents a single element of that array.
 ///
 /// # Notes
 ///
-/// * This endpoint requires bitcoin-core v27.0 or later.
+/// * This endpoint requires bitcoin-core v25.0 or later.
 /// * Documentation for this endpoint can be found at
-///   https://bitcoincore.org/en/doc/27.0.0/rpc/blockchain/gettxspendingprevout/
+///   https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/gettxspendingprevout/
 /// * This struct omits some fields returned from bitcoin-core: `txid` and
 ///   `vout`, which are just the txid and vout of the outpoint which was passed
 ///   as RPC arguments. We don't need them because we're not providing multiple
@@ -311,10 +329,19 @@ impl BitcoinCoreClient {
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// `getrawtransaction` RPC with a verbosity of 2.
     ///
+    /// #### From the bitcoin-core docs:
+    ///
+    /// By default, this call only returns a transaction if it is in the
+    /// mempool. If -txindex is enabled and no blockhash argument is passed, it
+    /// will return the transaction if it is in the mempool or any block. If a
+    /// blockhash argument is passed, it will return the transaction if the
+    /// specified block is available and the transaction is in that block.
+    ///
     /// # Notes
     ///
-    /// We require bitcoin-core v25 or later. For bitcoin-core v24 and
-    /// earlier, this function will return an error.
+    /// - This method requires bitcoin-core v25 or later.
+    /// - The implementation is based on the documentation at
+    ///   https://bitcoincore.org/en/doc/25.0.0/rpc/rawtransactions/getrawtransaction/
     pub fn get_tx_info(
         &self,
         txid: &Txid,
@@ -341,13 +368,43 @@ impl BitcoinCoreClient {
         }
     }
 
+    /// Fetch and decode raw transaction from bitcoin-core using the
+    /// `getrawtransaction` RPC with a verbosity of 2. This method returns a
+    /// highly slimmed-down version of the response, containing only the
+    /// `fee` and `vsize` fields for fees retrieval.
+    pub fn get_tx_fee_info(&self, txid: &Txid) -> Result<Option<BitcoinTxFeeInfo>, Error> {
+        let args = [
+            serde_json::to_value(txid).map_err(Error::JsonSerialize)?,
+            // This is the verbosity level. The acceptable values are 0, 1,
+            // and 2, and we want the 2 because it will include all the
+            // required fields of the type.
+            serde_json::Value::Number(serde_json::value::Number::from(2u32)),
+        ];
+
+        match self
+            .inner
+            .call::<BitcoinTxFeeInfo>("getrawtransaction", &args)
+        {
+            Ok(tx_info) => Ok(Some(tx_info)),
+            // If the `block_hash` is not found then the message is "Block
+            // hash not found", while if the transaction is not found in an
+            // actual block then the message is "No such transaction found
+            // in the provided block. Use `gettransaction` for wallet
+            // transactions." In both cases the code is the same.
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::BitcoinCoreGetTransaction(err, *txid)),
+        }
+    }
+
     /// Scan the Bitcoin node's mempool to find transactions spending the
     /// provided output. This method uses the `gettxspendingprevout` RPC
     /// endpoint.
     ///
     /// # Notes
     ///
-    /// This method requires bitcoin-core v27 or later.
+    /// This method requires bitcoin-core v25 or later and is based on the
+    /// documentation at
+    /// https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/gettxspendingprevout/
     pub fn get_tx_spending_prevout(&self, outpoint: &OutPoint) -> Result<Vec<Txid>, Error> {
         let rpc_outpoint = RpcOutPoint::from(outpoint);
         let args = [serde_json::to_value(vec![rpc_outpoint]).map_err(Error::JsonSerialize)?];
@@ -389,9 +446,11 @@ impl BitcoinCoreClient {
     ///
     /// # Notes
     ///
-    /// - This method requires bitcoin-core v27 or later.
+    /// - This method requires bitcoin-core v25 or later.
     /// - The RPC endpoint does not in itself return raw transaction data, so
     ///   [`Self::get_tx`] must be used to fetch each transaction separately.
+    /// - Implementation based on documentation at
+    ///   https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/getmempooldescendants/
     pub fn get_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
         let args = [serde_json::to_value(txid).map_err(Error::JsonSerialize)?];
 
@@ -401,6 +460,23 @@ impl BitcoinCoreClient {
             Ok(txids) => Ok(txids),
             Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(vec![]),
             Err(err) => Err(Error::BitcoinCoreGetMempoolDescendants(err, *txid)),
+        }
+    }
+
+    /// Fetch the output of a transaction identified by the given outpoint,
+    /// optionally including mempool transactions.
+    pub fn get_tx_out(
+        &self,
+        outpoint: &OutPoint,
+        include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        match self
+            .inner
+            .get_tx_out(&outpoint.txid, outpoint.vout, Some(include_mempool))
+        {
+            Ok(txout) => Ok(txout),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::BitcoinCoreGetTxOut(err, *outpoint, include_mempool)),
         }
     }
 
@@ -440,6 +516,19 @@ impl BitcoinCoreClient {
         };
 
         Ok(FeeEstimate { sats_per_vbyte })
+    }
+
+    /// Gets mempool data for the given transaction id. If the transaction was
+    /// not found in the mempool, `None` is returned.
+    ///
+    /// Documentation for the `getmempoolentry` RPC call can be found here:
+    /// https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/getmempoolentry/
+    pub fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
+        match self.inner.get_mempool_entry(txid) {
+            Ok(entry) => Ok(Some(entry)),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::BitcoinCoreRpc(err)),
+        }
     }
 }
 
@@ -484,5 +573,93 @@ impl BitcoinInteract for BitcoinCoreClient {
 
     async fn find_mempool_descendants(&self, txid: &Txid) -> Result<Vec<Txid>, Error> {
         self.get_mempool_descendants(txid)
+    }
+
+    async fn get_transaction_output(
+        &self,
+        outpoint: &OutPoint,
+        include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        self.get_tx_out(outpoint, include_mempool)
+    }
+
+    async fn get_transaction_fee(
+        &self,
+        txid: &bitcoin::Txid,
+        lookup_hint: Option<TransactionLookupHint>,
+    ) -> Result<GetTransactionFeeResult, Error> {
+        let vsize: u64;
+        let fee: u64;
+
+        match lookup_hint {
+            None => {
+                // Since we don't know if the transaction is confirmed or in
+                // the mempool, we first try to get the fee info from the
+                // confirmed transactions. This will also return a value if
+                // the transaction exists in the mempool, but the fee will be
+                // empty.
+                let tx_fee_info = self
+                    .get_tx_fee_info(txid)?
+                    .ok_or(Error::BitcoinTxMissing(*txid, None))?;
+
+                vsize = tx_fee_info.vsize;
+
+                // If the fee is present, then the transaction was confirmed and
+                // we can can simply use that value.
+                if let Some(tx_fee) = tx_fee_info.fee {
+                    fee = tx_fee.to_sat();
+                } else {
+                    // Otherwise, we need to get the mempool entry which does
+                    // include the fee information.
+                    let mempool_entry = self
+                        .get_mempool_entry(txid)?
+                        .ok_or(Error::BitcoinTxMissing(*txid, None))?;
+
+                    fee = mempool_entry.fees.base.to_sat();
+                }
+            }
+            Some(TransactionLookupHint::Confirmed) => {
+                let tx_fee_info = self
+                    .get_tx_fee_info(txid)?
+                    .ok_or(Error::BitcoinTxMissing(*txid, None))?;
+
+                vsize = tx_fee_info.vsize;
+
+                // If the transaction is confirmed, the fee will be present.
+                // But if not, we will return an error since the hint explicitly
+                // indicates that the transaction is confirmed.
+                fee = tx_fee_info
+                    .fee
+                    .ok_or(Error::BitcoinTxMissing(*txid, None))?
+                    .to_sat();
+            }
+            Some(TransactionLookupHint::Mempool) => {
+                // If the hint indicates that the transaction is in the mempool
+                // then we can skip the confirmed transaction lookup and go
+                // straight to the mempool entry.
+                let mempool_entry = self
+                    .get_mempool_entry(txid)?
+                    .ok_or(Error::BitcoinTxMissing(*txid, None))?;
+
+                vsize = mempool_entry.vsize;
+                fee = mempool_entry.fees.base.to_sat();
+            }
+        }
+
+        // This should never happen since we're pulling the vsize from an actual
+        // bitcoin transaction, but we'll check just in case.
+        if vsize == 0 {
+            return Err(Error::DivideByZero);
+        }
+
+        // Calculate the fee rate.
+        let fee_rate = fee as f64 / vsize as f64;
+
+        // Return the fee information.
+        Ok(GetTransactionFeeResult { fee, fee_rate, vsize })
+    }
+
+    async fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
+        self.get_mempool_entry(txid)
     }
 }

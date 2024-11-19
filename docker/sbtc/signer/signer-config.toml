@@ -231,3 +231,12 @@ listen_on = []
 # Required: false
 # Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
 public_endpoints = []
+
+# Enables/disables mDNS (multicast DNS) discovery. mDNS allows sBTC signers
+# running on the same local network to discover each other without explicitly
+# providing them as seed nodes.
+#
+# Default: false
+# Required: false
+# Environment: SIGNER_SIGNER__P2P__ENABLE_MDNS
+enable_mdns = false
