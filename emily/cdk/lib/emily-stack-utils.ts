@@ -36,6 +36,16 @@ export class EmilyStackUtils {
     private static numSignerApiKeys?: number;
 
     /*
+     * The hosted zone ID.
+     */
+    private static hostedZoneId?: string;
+
+    /*
+     * The custom root domain name.
+     */
+    private static customRootDomainName?: string;
+
+    /*
      * Returns the current stage name.
      */
     public static getStageName(): string {
@@ -91,6 +101,22 @@ export class EmilyStackUtils {
             throw new Error('Must define number of signer API keys');
         }
         return this.numSignerApiKeys
+    }
+
+    /*
+     * Returns the hosted zone ID or undefined if none is set.
+     */
+    public static getHostedZoneId(): string | undefined{
+        this.hostedZoneId ??= process.env.HOSTED_ZONE_ID;
+        return this.hostedZoneId;
+    }
+
+    /*
+     * Returns the custom root domain name or undefined if none is set.
+     */
+    public static getCustomRootDomainName(): string | undefined {
+        this.customRootDomainName ??= process.env.CUSTOM_ROOT_DOMAIN_NAME;
+        return this.customRootDomainName;
     }
 
     /*

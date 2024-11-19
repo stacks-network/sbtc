@@ -4,6 +4,9 @@ import * as apig from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
+import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
 import { Constants } from './constants';
 import { EmilyStackProps } from './emily-stack-props';
@@ -356,6 +359,61 @@ export class EmilyStack extends cdk.Stack {
             action: "lambda:InvokeFunction",
             sourceArn: api.arnForExecuteApi(),
         });
+
+        // Only add the custom domain name it's specified.
+        let customRootDomainNameRoot = EmilyStackUtils.getCustomRootDomainName();
+        let hostedZoneId = EmilyStackUtils.getHostedZoneId();
+        if (customRootDomainNameRoot !== undefined) {
+            // Error if the hosted zone ID is not provided.
+            if (hostedZoneId === undefined) {
+                throw new Error("Custom domain name specified but hosted zone ID not provided.");
+            }
+
+            // Make the custom domain name. Add the stage name extension ot the domain name
+            // if it's not what we consider the "production" stage.
+            const customDomainName = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
+                ? customRootDomainNameRoot
+                : `${EmilyStackUtils.getStageName()}.${customRootDomainNameRoot}`;
+
+            // Get zone.
+            const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, "HostedZone", {
+                hostedZoneId: hostedZoneId,
+                zoneName: customDomainName,
+            });
+
+            // Get certificate.
+            const certificate = new certificatemanager.Certificate(this, "DomainCertificate", {
+                domainName: customDomainName,
+                validation: certificatemanager.CertificateValidation.fromDns(hostedZone),
+            });
+
+            // Create a custom domain.
+            const customDomain = new apig.DomainName(this, "CustomDomain", {
+                domainName: customDomainName,
+                certificate: certificate,
+                // If the endpoint is in us-east-1 then we'll use EDGE because it's a better faster
+                // option globally. If the stack is in any region other than us-east-1 you'll need
+                // to make the certificate in us-east-1 independently and then reference it here if you
+                // want to use the EDGE endpoint type. That's a big pain and simply not worth it,
+                // especially if we only deploy "prod" in us-east-1.
+                endpointType: this.region == 'us-east-1' && !EmilyStackUtils.isDevelopmentStack()
+                    ? apig.EndpointType.EDGE
+                    : apig.EndpointType.REGIONAL,
+            });
+
+            // Map custom domain to API Gateway
+            new apig.BasePathMapping(this, "BasePathMapping", {
+                domainName: customDomain,
+                restApi: api,
+                stage: api.deploymentStage,
+            });
+
+            // Create a Route 53 alias record
+            new route53.ARecord(this, "AliasRecord", {
+                zone: hostedZone,
+                target: route53.RecordTarget.fromAlias(new route53Targets.ApiGatewayDomain(customDomain)),
+            });
+        }
 
         // Return api resource.
         return api;
