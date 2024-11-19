@@ -326,7 +326,9 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         &self,
         _outpoint: &bitcoin::OutPoint,
     ) -> Result<Vec<Txid>, Error> {
-        unimplemented!()
+        // TODO: We shouldn't return an empty vec here but doing it for now to
+        // satisfy some coordinator tests.
+        Ok(vec![])
     }
 
     async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {

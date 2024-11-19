@@ -504,7 +504,7 @@ impl TryFrom<proto::SmartContract> for SmartContract {
             proto::SmartContract::SbtcDeposit => SmartContract::SbtcDeposit,
             proto::SmartContract::SbtcWithdrawal => SmartContract::SbtcWithdrawal,
             proto::SmartContract::SbtcBootstrap => SmartContract::SbtcBootstrap,
-            proto::SmartContract::ScUnspecified => return Err(Error::TypeConversion),
+            proto::SmartContract::Unspecified => return Err(Error::TypeConversion),
         })
     }
 }
@@ -1366,9 +1366,10 @@ impl TryFrom<proto::Signed> for Signed<SignerMessage> {
 
 impl From<Point> for proto::Point {
     fn from(value: Point) -> Self {
-        let compressed = value.compress();
+        let [parity, x @ ..] = value.compress().data;
         proto::Point {
-            data: compressed.as_bytes().to_vec(),
+            x_coordinate: Some(proto::Uint256::from(x)),
+            parity_is_odd: parity == 3, // SECP256K1_TAG_PUBKEY_ODD
         }
     }
 }
@@ -1376,8 +1377,14 @@ impl From<Point> for proto::Point {
 impl TryFrom<proto::Point> for Point {
     type Error = Error;
     fn try_from(value: proto::Point) -> Result<Self, Self::Error> {
-        let compressed_data: &[u8] = value.data.as_slice();
-        let compressed: Compressed = compressed_data
+        let prefix: &[u8] = &[match value.parity_is_odd {
+            true => 3u8,  // SECP256K1_TAG_PUBKEY_ODD
+            false => 2u8, // SECP256K1_TAG_PUBKEY_EVEN
+        }];
+        let x: [u8; 32] = value.x_coordinate.required()?.into();
+        let compressed: Compressed = [prefix, &x]
+            .concat()
+            .as_slice()
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
         Self::try_from(&compressed).map_err(|_| Error::TypeConversion)
@@ -1684,8 +1691,9 @@ mod tests {
 
     impl Dummy<Unit> for Point {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
-            let public_key: PublicKey = Faker.fake_with_rng(rng);
-            public_key.into()
+            let number: [u8; 32] = Faker.fake_with_rng(rng);
+            let scalar = p256k1::scalar::Scalar::from(number);
+            Point::from(scalar)
         }
     }
 
@@ -1714,6 +1722,41 @@ mod tests {
     #[test_case(PhantomData::<(SignerWithdrawalDecision, proto::SignerWithdrawalDecision)>; "SignerWithdrawalDecision")]
     #[test_case(PhantomData::<(BitcoinTransactionSignAck, proto::BitcoinTransactionSignAck)>; "BitcoinTransactionSignAck")]
     #[test_case(PhantomData::<(StacksTransactionSignature, proto::StacksTransactionSignature)>; "StacksTransactionSignature")]
+    // #[test_case(PhantomData::<(CompleteDepositV1, proto::CompleteDeposit)>; "CompleteDeposit")]
+    // #[test_case(PhantomData::<(AcceptWithdrawalV1, proto::AcceptWithdrawal)>; "AcceptWithdrawal")]
+    // #[test_case(PhantomData::<(RejectWithdrawalV1, proto::RejectWithdrawal)>; "RejectWithdrawal")]
+    // #[test_case(PhantomData::<(RotateKeysV1, proto::RotateKeys)>; "RotateKeys")]
+    // #[test_case(PhantomData::<(SmartContract, proto::SmartContract)>; "SmartContract")]
+    #[test_case(PhantomData::<(StacksTransactionSignRequest, proto::StacksTransactionSignRequest)>; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<(BitcoinTransactionSignRequest, proto::BitcoinTransactionSignRequest)>; "BitcoinTransactionSignRequest")]
+    // #[test_case(PhantomData::<(DkgBegin, proto::DkgBegin)>; "DkgBegin")]
+    // #[test_case(PhantomData::<(DkgPrivateBegin, proto::DkgPrivateBegin)>; "DkgPrivateBegin")]
+    // #[test_case(PhantomData::<(DkgPrivateShares, proto::DkgPrivateShares)>; "DkgPrivateShares")]
+    // #[test_case(PhantomData::<(DkgEndBegin, proto::DkgEndBegin)>; "DkgEndBegin")]
+    // #[test_case(PhantomData::<(TupleProof, proto::TupleProof)>; "TupleProof")]
+    // #[test_case(PhantomData::<(BadPrivateShare, proto::BadPrivateShare)>; "BadPrivateShare")]
+    // #[test_case(PhantomData::<(hashbrown::HashMap<u32, BadPrivateShare>, proto::BadPrivateShares)>; "BadPrivateShares")]
+    // #[test_case(PhantomData::<(DkgStatus, proto::DkgStatus)>; "DkgStatus")]
+    // #[test_case(PhantomData::<(DkgEnd, proto::DkgEnd)>; "DkgEnd")]
+    // #[test_case(PhantomData::<(SignatureType, proto::SignatureType)>; "SignatureType")]
+    // #[test_case(PhantomData::<(NonceRequest, proto::NonceRequest)>; "NonceRequest")]
+    // #[test_case(PhantomData::<(PublicNonce, proto::PublicNonce)>; "PublicNonce")]
+    // #[test_case(PhantomData::<(NonceResponse, proto::NonceResponse)>; "NonceResponse")]
+    // #[test_case(PhantomData::<(SignatureShareRequest, proto::SignatureShareRequest)>; "SignatureShareRequest")]
+    // #[test_case(PhantomData::<(SignatureShare, proto::SignatureShare)>; "SignatureShare")]
+    // #[test_case(PhantomData::<(SignatureShareResponse, proto::SignatureShareResponse)>; "SignatureShareResponse")]
+    #[test_case(PhantomData::<(WstsMessage, proto::WstsMessage)>; "WstsMessage")]
+    // #[test_case(PhantomData::<(SweptDeposit, proto::SweptDeposit)>; "SweptDeposit")]
+    // #[test_case(PhantomData::<(SweptWithdrawal, proto::SweptWithdrawal)>; "SweptWithdrawal")]
+    // #[test_case(PhantomData::<(SweepTransactionInfo, proto::SweepTransactionInfo)>; "SweepTransactionInfo")]
+    // #[test_case(PhantomData::<(Nonce, proto::PrivateNonce)>; "PrivateNonce")]
+    // #[test_case(PhantomData::<((u32, PartyState), proto::PartyState)>; "PartyState")]
+    // #[test_case(PhantomData::<(SignerState, proto::SignerState)>; "SignerState")]
+    // #[test_case(PhantomData::<(wsts::schnorr::ID, proto::ProofIdentifier)>; "ProofIdentifier")]
+    // #[test_case(PhantomData::<(PolyCommitment, proto::PolyCommitment)>; "PolyCommitment")]
+    // #[test_case(PhantomData::<((u32, PolyCommitment), proto::PartyCommitment)>; "PartyCommitment")]
+    // #[test_case(PhantomData::<(DkgPublicShares, proto::SignerDkgPublicShares)>; "SignerDkgPublicShares")]
+    // #[test_case(PhantomData::<(BTreeMap<u32, DkgPublicShares>, proto::DkgPublicShares)>; "DkgPublicShares")]
     #[test_case(PhantomData::<(SignerMessage, proto::SignerMessage)>; "SignerMessage")]
     #[test_case(PhantomData::<(Signed<SignerMessage>, proto::Signed)>; "Signed")]
     fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
@@ -1747,6 +1790,9 @@ mod tests {
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
     #[test_case(PhantomData::<(StacksAddress, proto::StacksAddress)>; "StacksAddress")]
     #[test_case(PhantomData::<(Point, proto::Point)>; "Point")]
+    // #[test_case(PhantomData::<(Scalar, proto::Scalar)>; "Scalar")]
+    // #[test_case(PhantomData::<(Polynomial<Scalar>, proto::Polynomial)>; "Polynomial")]
+    // #[test_case(PhantomData::<((u32, Scalar), proto::PrivateKeyShare)>; "PrivateKeyShare")]
     fn convert_protobuf_type2<T, U, E>(_: PhantomData<(T, U)>)
     where
         T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,

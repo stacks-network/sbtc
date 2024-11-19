@@ -231,7 +231,7 @@ pub struct RotateKeys {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum SmartContract {
-    ScUnspecified = 0,
+    Unspecified = 0,
     /// The sbtc-registry contract. This contract needs to be deployed
     /// before any other contract.
     SbtcRegistry = 1,
@@ -255,23 +255,23 @@ impl SmartContract {
     /// (if the ProtoBuf definition does not change) and safe for programmatic use.
     pub fn as_str_name(&self) -> &'static str {
         match self {
-            SmartContract::ScUnspecified => "SC_UNSPECIFIED",
-            SmartContract::SbtcRegistry => "SBTC_REGISTRY",
-            SmartContract::SbtcToken => "SBTC_TOKEN",
-            SmartContract::SbtcDeposit => "SBTC_DEPOSIT",
-            SmartContract::SbtcWithdrawal => "SBTC_WITHDRAWAL",
-            SmartContract::SbtcBootstrap => "SBTC_BOOTSTRAP",
+            SmartContract::Unspecified => "SMART_CONTRACT_UNSPECIFIED",
+            SmartContract::SbtcRegistry => "SMART_CONTRACT_SBTC_REGISTRY",
+            SmartContract::SbtcToken => "SMART_CONTRACT_SBTC_TOKEN",
+            SmartContract::SbtcDeposit => "SMART_CONTRACT_SBTC_DEPOSIT",
+            SmartContract::SbtcWithdrawal => "SMART_CONTRACT_SBTC_WITHDRAWAL",
+            SmartContract::SbtcBootstrap => "SMART_CONTRACT_SBTC_BOOTSTRAP",
         }
     }
     /// Creates an enum from field names used in the ProtoBuf definition.
     pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
         match value {
-            "SC_UNSPECIFIED" => Some(Self::ScUnspecified),
-            "SBTC_REGISTRY" => Some(Self::SbtcRegistry),
-            "SBTC_TOKEN" => Some(Self::SbtcToken),
-            "SBTC_DEPOSIT" => Some(Self::SbtcDeposit),
-            "SBTC_WITHDRAWAL" => Some(Self::SbtcWithdrawal),
-            "SBTC_BOOTSTRAP" => Some(Self::SbtcBootstrap),
+            "SMART_CONTRACT_UNSPECIFIED" => Some(Self::Unspecified),
+            "SMART_CONTRACT_SBTC_REGISTRY" => Some(Self::SbtcRegistry),
+            "SMART_CONTRACT_SBTC_TOKEN" => Some(Self::SbtcToken),
+            "SMART_CONTRACT_SBTC_DEPOSIT" => Some(Self::SbtcDeposit),
+            "SMART_CONTRACT_SBTC_WITHDRAWAL" => Some(Self::SbtcWithdrawal),
+            "SMART_CONTRACT_SBTC_BOOTSTRAP" => Some(Self::SbtcBootstrap),
             _ => None,
         }
     }

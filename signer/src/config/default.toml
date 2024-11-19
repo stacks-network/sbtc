@@ -241,3 +241,12 @@ listen_on = ["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
 # Required: false
 # Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
 public_endpoints = []
+
+# Enables/disables mDNS (multicast DNS) discovery. mDNS allows sBTC signers
+# running on the same local network to discover each other without explicitly
+# providing them as seed nodes.
+#
+# Default: false
+# Required: false
+# Environment: SIGNER_SIGNER__P2P__ENABLE_MDNS
+enable_mdns = true

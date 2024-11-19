@@ -124,7 +124,7 @@ where
     BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
-    #[tracing::instrument(skip(self), name = "block-observer")]
+    #[tracing::instrument(skip_all, name = "block-observer")]
     pub async fn run(mut self) -> Result<(), Error> {
         let term = self.context.get_termination_handle();
 
@@ -133,16 +133,15 @@ where
                 break;
             }
 
-            // Bitcoin blocks will generally arrive in ~19 minute intervals, so
+            // Bitcoin blocks will generally arrive in ~10 minute intervals, so
             // we don't need to be so aggresive in our timeout here.
             let poll = tokio::time::timeout(Duration::from_millis(100), self.bitcoin_blocks.next());
 
             match poll.await {
                 Ok(Some(Ok(block_hash))) => {
-                    tracing::info!(%block_hash, "observed new bitcoin block from stream");
+                    tracing::info!("observed new bitcoin block from stream");
 
-                    let next_blocks_to_process = match self.next_blocks_to_process(block_hash).await
-                    {
+                    let next_blocks = match self.next_blocks_to_process(block_hash).await {
                         Ok(blocks) => blocks,
                         Err(error) => {
                             tracing::warn!(%error, %block_hash, "could not get next blocks to process");
@@ -150,7 +149,7 @@ where
                         }
                     };
 
-                    for block in next_blocks_to_process {
+                    for block in next_blocks {
                         if let Err(error) = self.process_bitcoin_block(block).await {
                             tracing::warn!(%error, "could not process bitcoin block");
                         }
@@ -179,7 +178,7 @@ where
 
     /// Fetch deposit requests from Emily and store the validated ones into
     /// the database.
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all)]
     async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
         let mut failed_requests = Vec::new();
@@ -216,7 +215,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self))]
+    #[tracing::instrument(skip_all, fields(%block_hash))]
     async fn next_blocks_to_process(
         &self,
         mut block_hash: bitcoin::BlockHash,
