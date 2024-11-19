@@ -321,7 +321,7 @@ export class EmilyStack extends cdk.Stack {
             sourceArn: api.arnForExecuteApi(),
         });
 
-        // Only add the custom domain name it it's specified.
+        // Only add the custom domain name it's specified.
         let customRootDomainNameRoot = EmilyStackUtils.getCustomRootDomainName();
         let hostedZoneId = EmilyStackUtils.getHostedZoneId();
         if (customRootDomainNameRoot !== undefined) {
