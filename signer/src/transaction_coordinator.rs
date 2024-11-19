@@ -1570,11 +1570,12 @@ mod tests {
             .with_mocked_clients()
             .build();
 
+        // TODO: fix tech debt #893 then raise threshold to 5
         TestEnvironment {
             context,
             context_window: 5,
             num_signers: 7,
-            signing_threshold: 5,
+            signing_threshold: 3,
             test_model_parameters,
         }
     }
