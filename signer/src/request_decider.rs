@@ -5,6 +5,7 @@
 //!
 //! For more details, see the [`RequestDeciderEventLoop`] documentation.
 
+use crate::block_observer::BlockObserver;
 use crate::blocklist_client::BlocklistChecker;
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -14,6 +15,7 @@ use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -215,10 +217,7 @@ where
             can_sign,
         };
 
-        self.context
-            .get_storage_mut()
-            .write_deposit_signer_decision(&signer_decision)
-            .await?;
+        db.write_deposit_signer_decision(&signer_decision).await?;
 
         self.send_message(msg, chain_tip).await?;
 
@@ -312,18 +311,46 @@ where
         decision: &SignerDepositDecision,
         signer_pub_key: PublicKey,
     ) -> Result<(), Error> {
+        let txid = decision.txid.into();
+        let output_index = decision.output_index;
         let signer_decision = DepositSigner {
-            txid: decision.txid.into(),
-            output_index: decision.output_index,
+            txid,
+            output_index,
             signer_pub_key,
             can_accept: decision.can_accept,
             can_sign: decision.can_sign,
         };
 
-        self.context
-            .get_storage_mut()
-            .write_deposit_signer_decision(&signer_decision)
-            .await?;
+        let db = self.context.get_storage_mut();
+        // Before storing a decision in the database, we first check to see
+        // if we have a record of the associated deposit request. If we
+        // don't have a record then fetch it from Emily and store it before
+        // storing the decision.
+        if !db.deposit_request_exists(&txid, output_index).await? {
+            tracing::debug!("no record of the deposit request, fethcing from emily");
+            let processor = BlockObserver {
+                context: self.context.clone(),
+                horizon: 20,
+                bitcoin_blocks: (),
+            };
+            let deposit_request = self
+                .context
+                .get_emily_client()
+                .get_deposit(&txid, output_index)
+                .await?;
+
+            if let Some(request) = deposit_request {
+                processor.load_requests(&[request]).await?;
+            }
+        }
+        // We still might not have a record of the deposit request (perhaps
+        // it failed validation). In this case we do not persist the
+        // decision and move on.
+        if !db.deposit_request_exists(&txid, output_index).await? {
+            tracing::debug!("we still do not have a record of the deposit request");
+            return Ok(());
+        }
+        db.write_deposit_signer_decision(&signer_decision).await?;
 
         self.context
             .signal(RequestDeciderEvent::ReceivedDepositDecision.into())?;
