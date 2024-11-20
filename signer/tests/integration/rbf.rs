@@ -68,14 +68,15 @@ fn generate_depositor(rpc: &Client, faucet: &Faucet, signer: &Recipient) -> Depo
         .unwrap()
         .unwrap();
 
-    let depositor_utxo = FullUtxo {
+    let utxo = FullUtxo {
         outpoint,
         script: tx_out.script_pub_key.script().unwrap(),
         tx_out,
     };
 
+    let max_fee = amount / 2;
     let (deposit_tx, deposit_request, _) =
-        make_deposit_request(&depositor, amount, depositor_utxo, signers_public_key);
+        make_deposit_request(&depositor, amount, utxo, max_fee, signers_public_key);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
     deposit_request
 }

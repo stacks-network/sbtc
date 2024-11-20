@@ -229,10 +229,12 @@ async fn deposit_flow() {
         amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee),
         height: 0,
     };
+    let max_fee = deposit_config.amount / 2;
     let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_config.amount,
         depositor_utxo,
+        max_fee,
         deposit_config.aggregate_key.into(),
     );
 
@@ -420,8 +422,6 @@ async fn deposit_flow() {
     let block_observer = block_observer::BlockObserver {
         context: context.clone(),
         bitcoin_blocks: block_stream,
-        stacks_client: stacks_client,
-        emily_client: emily_client.clone(),
         horizon: 1,
     };
 

@@ -1382,8 +1382,6 @@ async fn sign_bitcoin_transaction() {
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            stacks_client: ctx.stacks_client.clone(),
-            emily_client: ctx.emily_client.clone(),
             bitcoin_blocks: ReceiverStream::new(receiver),
             horizon: 10,
         };
@@ -1456,12 +1454,13 @@ async fn sign_bitcoin_transaction() {
     //   request transaction. Submit it and inform Emily about it.
     // =========================================================================
     // Now lets make a deposit transaction and submit it
-    let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
+    let utxo = depositor.get_utxos(rpc, None).pop().unwrap();
 
     let amount = 2_500_000;
     let signers_public_key = shares.aggregate_key.into();
+    let max_fee = amount / 2;
     let (deposit_tx, deposit_request, _) =
-        make_deposit_request(&depositor, amount, depositor_utxo, signers_public_key);
+        make_deposit_request(&depositor, amount, utxo, max_fee, signers_public_key);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);

@@ -109,12 +109,13 @@ impl TestSweepSetup {
         faucet.generate_blocks(1);
 
         // Now lets make a deposit transaction and submit it
-        let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
+        let utxo = depositor.get_utxos(rpc, None).pop().unwrap();
 
         more_asserts::assert_lt!(amount, 50_000_000);
+        let max_fee = amount / 2;
 
         let (deposit_tx, deposit_request, deposit_info) =
-            make_deposit_request(&depositor, amount, depositor_utxo, signers_public_key);
+            make_deposit_request(&depositor, amount, utxo, max_fee, signers_public_key);
         rpc.send_raw_transaction(&deposit_tx).unwrap();
         let deposit_block_hash = faucet.generate_blocks(1).pop().unwrap();
 
