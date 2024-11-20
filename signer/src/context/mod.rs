@@ -66,30 +66,27 @@ pub trait Context: Clone + Sync + Send {
     {
         let (sender, receiver) = tokio::sync::mpsc::channel(SIGNER_CHANNEL_CAPACITY);
 
-        let mut term = self.get_termination_handle().as_receiver();
+        let mut watch_receiver = self.get_termination_handle();
         let mut signal_stream = self.get_signal_receiver();
         let mut network_stream = network.as_receiver();
+
         tokio::spawn(async move {
             loop {
                 tokio::select! {
-                    item = term.recv() => {
-                        match item {
-                            Some(signal) => {
-                                // An error means that the channel has been
-                                // closed. This is most likely due to the
-                                // receiver being closed so we can bail.
-                                if let Err(_) = sender.send(signal).await {
-                                    break;
-                                }
-                            }
-                            None => break,
+                    _ = watch_receiver.wait_for_shutdown() => {
+                        let signal = SignerSignal::Command(SignerCommand::Shutdown);
+                        // An error means that the channel has been closed.
+                        // This is most likely due to the receiver being
+                        // closed so we can bail.
+                        if sender.send(signal).await.is_err() {
+                            break;
                         }
                     }
                     item = signal_stream.recv() => {
                         match item {
                             Ok(signal) if predicate(&signal) => {
                                 // See comment above, we can bail.
-                                if let Err(_) = sender.send(signal).await {
+                                if sender.send(signal).await.is_err() {
                                     break;
                                 }
                             }
@@ -110,11 +107,14 @@ pub trait Context: Clone + Sync + Send {
                                 let signal = P2PEvent::MessageReceived(msg).into();
                                 if predicate(&signal) {
                                     // See comment above, we can bail.
-                                    if let Err(_) = sender.send(signal).await {
+                                    if sender.send(signal).await.is_err() {
                                         break;
                                     }
                                 }
                             }
+                            // This means the channel has been closed.
+                            // Since this is the network stream we can bail
+                            // here, we're probably on our way down.
                             None => {
                                 break;
                             }
