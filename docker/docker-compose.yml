@@ -276,11 +276,14 @@ services:
       - -c
       - |
         set -e
+        set -x
         trap "exit" INT TERM
         trap "kill 0" EXIT
         bitcoin-cli -rpcconnect=bitcoin -rpcwait getmininginfo
-        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=main descriptors=false
-        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=depositor descriptors=true
+        pushd /data/bitcoin-data/regtest/wallets/
+        bitcoin-cli -rpcconnect=bitcoin -named loadwallet filename=main
+        bitcoin-cli -rpcconnect=bitcoin -named loadwallet filename=depositor
+        popd
         bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin importaddress $${BTC_ADDR} "" false
         bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin generatetoaddress $${INIT_BLOCKS} $${BTC_ADDR}
         ADDR=$$(bitcoin-cli -rpcwallet=depositor -rpcconnect=bitcoin getnewaddress label="" bech32)
@@ -329,7 +332,7 @@ services:
     ports:
       - "20443:20443"
     volumes:
-      - ./stacks/stacks-regtest-miner.toml:/data/config.toml.in
+      - ./stacks/stacks-regtest-miner.toml:/stacks/config.toml.in
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     environment:
       # STACKS_LOG_TRACE: 1 # uncomment for trace logging

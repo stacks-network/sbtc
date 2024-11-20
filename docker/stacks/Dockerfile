@@ -6,9 +6,13 @@ RUN test -n "$GIT_COMMIT" || (echo "GIT_COMMIT not set" && false)
 
 RUN echo "Building stacks-node from commit: https://github.com/stacks-network/stacks-blockchain/commit/$GIT_COMMIT"
 
-RUN apt-get update && apt-get install -y libclang-dev
-RUN rustup toolchain install stable
-RUN rustup component add rustfmt --toolchain stable
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y libclang-dev && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+RUN rustup toolchain install stable && \
+    rustup component add rustfmt --toolchain stable
 
 WORKDIR /stacks
 RUN git init && \
@@ -25,9 +29,11 @@ COPY --from=builder /stacks/target/debug/stacks-signer /usr/local/bin/
 
 COPY --from=dobtc/bitcoin:25.1 /opt/bitcoin-*/bin /usr/local/bin
 
-RUN apt-get update && apt-get install -y curl gettext-base jq dnsutils net-tools
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN mkdir /data
+RUN apt-get update && apt-get install --no-install-recommends -y curl gettext-base jq dnsutils net-tools  && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-WORKDIR /data
+RUN mkdir -p /stacks
+ADD data.tar.gz /data
+
+WORKDIR /stacks
 CMD ["stacks-node"]
