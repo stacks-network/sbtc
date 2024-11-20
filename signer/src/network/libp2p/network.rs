@@ -104,11 +104,24 @@ impl MessageTransfer for P2PNetwork {
     }
 
     fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
-        let (sender, receiver) = tokio::sync::broadcast::channel(10);
+        let (sender, receiver) = tokio::sync::broadcast::channel(1000);
         let mut rx = self.signal_rx.resubscribe();
 
         tokio::spawn(async move {
             loop {
+                // Let's drain the stream first and then wait for a messages
+                while let Ok(msg) = rx.try_recv() {
+                    if let SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_))) = msg
+                    {
+                        // Because there could only be one receiver, an error from
+                        // Sender::send means the channel is closed and cannot be
+                        // re-opened. So we bail on these errors too.
+                        if sender.send(msg).is_err() {
+                            tracing::warn!("could not send message, receivers dropped, bailing");
+                            return;
+                        }
+                    }
+                }
                 match rx.recv().await {
                     Ok(
                         msg @ SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_))),
@@ -117,12 +130,16 @@ impl MessageTransfer for P2PNetwork {
                         // Sender::send means the channel is closed and cannot be
                         // re-opened. So we bail on these errors too.
                         if sender.send(msg).is_err() {
-                            break;
+                            tracing::warn!("could not send message, receivers dropped, bailing");
+                            return;
                         }
                     }
                     // The receiver has been dropped. This is normal
                     // behavior so nothing to worry about
-                    Err(RecvError::Closed) => break,
+                    Err(RecvError::Closed) => {
+                        tracing::warn!("the instance p2p stream is closed, this is bad, bailing");
+                        return;
+                    }
                     // If we are lagging in the stream, we could always
                     // catch up, we'll just have lost messages.
                     Err(error @ RecvError::Lagged(_)) => {
@@ -131,7 +148,6 @@ impl MessageTransfer for P2PNetwork {
                     _ => continue,
                 }
             }
-            tracing::warn!("the instance stream is closed or lagging, bailing");
         });
         BroadcastStream::new(receiver)
     }
