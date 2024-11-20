@@ -15,6 +15,7 @@ use crate::context::TerminationHandle;
 use crate::error::Error;
 use crate::network::MessageTransfer;
 use crate::network::Msg;
+use crate::SIGNER_CHANNEL_CAPACITY;
 
 /// MessageTransfer interface for the application signalling channel.
 pub struct P2PNetwork {
@@ -106,7 +107,7 @@ impl MessageTransfer for P2PNetwork {
     fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
         // This is the same capacity of `signal_tx` in the SignerContext,
         // which is typically used to create this P2PNetwork.
-        let (sender, receiver) = tokio::sync::broadcast::channel(1024);
+        let (sender, receiver) = tokio::sync::broadcast::channel(SIGNER_CHANNEL_CAPACITY);
         let mut rx = self.signal_rx.resubscribe();
 
         tokio::spawn(async move {
