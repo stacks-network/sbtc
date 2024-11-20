@@ -1840,7 +1840,6 @@ impl super::DbRead for PgStore {
                   , validation_result
                   , is_valid_tx
                   , will_sign
-                  , construction_version
                 FROM sbtc_signer.bitcoin_tx_sighashes
                 WHERE txid = $1
                 "#,
@@ -1865,7 +1864,6 @@ impl super::DbRead for PgStore {
               , stacks_txid
               , stacks_block_hash
               , validation_result
-              , construction_version
             FROM sbtc_signer.bitcoin_withdrawals_outputs
             WHERE request_id = $1 AND stacks_block_hash = $2
             "#,
@@ -2692,7 +2690,6 @@ impl super::DbWrite for PgStore {
         let mut validation_result = Vec::with_capacity(sighashes.len());
         let mut is_valid_tx = Vec::with_capacity(sighashes.len());
         let mut will_sign = Vec::with_capacity(sighashes.len());
-        let mut construction_version = Vec::with_capacity(sighashes.len());
 
         for tx_sighash in sighashes {
             txid.push(tx_sighash.txid);
@@ -2707,7 +2704,6 @@ impl super::DbWrite for PgStore {
             validation_result.push(tx_sighash.validation_result);
             is_valid_tx.push(tx_sighash.is_valid_tx);
             will_sign.push(tx_sighash.will_sign);
-            construction_version.push(tx_sighash.construction_version);
         }
 
         sqlx::query(
@@ -2721,7 +2717,6 @@ impl super::DbWrite for PgStore {
             , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($7::TEXT[]) AS validation_result)
             , is_valid_tx           AS (SELECT ROW_NUMBER() OVER (), is_valid_tx FROM UNNEST($8::BOOLEAN[]) AS is_valid_tx)
             , will_sign             AS (SELECT ROW_NUMBER() OVER (), will_sign FROM UNNEST($9::BOOLEAN[]) AS will_sign)
-            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($10::TEXT[]) AS construction_version)
             INSERT INTO sbtc_signer.bitcoin_tx_sighashes (
                   txid
                 , chain_tip
@@ -2731,8 +2726,7 @@ impl super::DbWrite for PgStore {
                 , prevout_type
                 , validation_result
                 , is_valid_tx
-                , will_sign
-                , construction_version)
+                , will_sign)
             SELECT
                 txid
               , chain_tip
@@ -2743,7 +2737,6 @@ impl super::DbWrite for PgStore {
               , validation_result
               , is_valid_tx
               , will_sign
-              , construction_version
             FROM tx_ids
             JOIN chain_tip USING (row_number)
             JOIN prevout_txid USING (row_number)
@@ -2753,7 +2746,6 @@ impl super::DbWrite for PgStore {
             JOIN validation_result USING (row_number)
             JOIN is_valid_tx USING (row_number)
             JOIN will_sign USING (row_number)
-            JOIN construction_version USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(txid)
@@ -2765,7 +2757,6 @@ impl super::DbWrite for PgStore {
         .bind(validation_result)
         .bind(is_valid_tx)
         .bind(will_sign)
-        .bind(construction_version)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2787,7 +2778,6 @@ impl super::DbWrite for PgStore {
         let mut stacks_txid = Vec::with_capacity(withdrawal_outputs.len());
         let mut stacks_block_hash = Vec::with_capacity(withdrawal_outputs.len());
         let mut validation_result = Vec::with_capacity(withdrawal_outputs.len());
-        let mut construction_version = Vec::with_capacity(withdrawal_outputs.len());
 
         for withdrawal_output in withdrawal_outputs {
             bitcoin_txid.push(withdrawal_output.bitcoin_txid);
@@ -2802,7 +2792,6 @@ impl super::DbWrite for PgStore {
             stacks_txid.push(withdrawal_output.stacks_txid);
             stacks_block_hash.push(withdrawal_output.stacks_block_hash);
             validation_result.push(withdrawal_output.validation_result);
-            construction_version.push(withdrawal_output.construction_version);
         }
 
         sqlx::query(
@@ -2813,15 +2802,13 @@ impl super::DbWrite for PgStore {
             , stacks_txid           AS (SELECT ROW_NUMBER() OVER (), stacks_txid FROM UNNEST($4::BYTEA[]) AS stacks_txid)
             , stacks_block_hash     AS (SELECT ROW_NUMBER() OVER (), stacks_block_hash FROM UNNEST($5::BYTEA[]) AS stacks_block_hash)
             , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($6::TEXT[]) AS validation_result)
-            , construction_version  AS (SELECT ROW_NUMBER() OVER (), construction_version FROM UNNEST($7::TEXT[]) AS construction_version)
             INSERT INTO sbtc_signer.bitcoin_withdrawals_outputs (
                   bitcoin_txid
                 , output_index
                 , request_id
                 , stacks_txid
                 , stacks_block_hash
-                , validation_result
-                , construction_version)
+                , validation_result)
             SELECT
                 bitcoin_txid
               , output_index
@@ -2829,14 +2816,12 @@ impl super::DbWrite for PgStore {
               , stacks_txid
               , stacks_block_hash
               , validation_result
-              , construction_version
             FROM bitcoin_tx_ids
             JOIN output_index USING (row_number)
             JOIN request_id USING (row_number)
             JOIN stacks_txid USING (row_number)
             JOIN stacks_block_hash USING (row_number)
             JOIN validation_result USING (row_number)
-            JOIN construction_version USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(bitcoin_txid)
@@ -2845,7 +2830,6 @@ impl super::DbWrite for PgStore {
         .bind(stacks_txid)
         .bind(stacks_block_hash)
         .bind(validation_result)
-        .bind(construction_version)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
