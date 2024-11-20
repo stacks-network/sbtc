@@ -51,7 +51,7 @@ pub struct BlockObserver<Context, BlockHashStream> {
     /// Stream of blocks from the block notifier
     pub bitcoin_blocks: BlockHashStream,
     /// How far back in time the observer should look
-    pub horizon: usize,
+    pub horizon: u32,
 }
 
 /// A full "deposit", containing the bitcoin transaction and a fully
@@ -175,10 +175,19 @@ where
 impl<C: Context, B> BlockObserver<C, B> {
     /// Fetch deposit requests from Emily and store the validated ones into
     /// the database.
+    ///
+    /// There are two classes of errors that can happen during validation
+    /// 1. The transaction fails primary validation. This means the deposit
+    ///    script itself does not align with what we exepct. If probably
+    ///    does not follow our protocol.
+    /// 2. The transaction passes step (1), but we don't recognize the
+    ///    x-only public key in the deposit script.
+    /// 3. We cannot find the associated transaction confirmed on a bitcoin
+    ///    block, or when we encountered some unexpected error when
+    ///    reaching out to bitcoin-core or our database.
     #[tracing::instrument(skip_all)]
-    async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
+    async fn load_latest_deposit_requests(&self) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
-        let mut failed_requests = Vec::new();
 
         let emily_client = self.context.get_emily_client();
         for request in emily_client.get_deposits().await? {
@@ -187,23 +196,10 @@ impl<C: Context, B> BlockObserver<C, B> {
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
-            match deposit {
-                // Happy path, we've successfully validated the deposit
-                // request.
-                Ok(Some(deposit)) => deposit_requests.push(deposit),
-                // This happens when the transaction has failed the first
-                // step of validation or has passed the first step, but we
-                // don't recognize the x-only public key in the deposit
-                // script.
-                Err(Error::SbtcLib(_)) | Err(Error::UnknownAggregateKey(_, _)) => {
-                    failed_requests.push(request.outpoint);
-                }
-                // This happens when we cannot find the associated
-                // transaction confirmed on a bitcoin block, or when we
-                // encountered some unexpected error when reaching out to
-                // bitcoin-core or our database. We've already logged the
-                // error above, so there is nothing more to do.
-                Err(_) | Ok(None) => {}
+            // We log the error above, so we just need to extract the
+            // deposit now.
+            if let Ok(Some(deposit)) = deposit {
+                deposit_requests.push(deposit);
             }
         }
 
@@ -213,6 +209,7 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
+    /// Find the parent blocks from the given block that are also missing from our database
     #[tracing::instrument(skip_all, fields(%block_hash))]
     async fn next_blocks_to_process(
         &self,
@@ -242,6 +239,8 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(blocks)
     }
 
+    /// Check whether we have already processed this block in our
+    /// databasae.
     #[tracing::instrument(skip(self))]
     async fn have_already_processed_block(
         &self,
@@ -255,6 +254,7 @@ impl<C: Context, B> BlockObserver<C, B> {
             .is_some())
     }
 
+    /// Process the bitcoin block. Also process all recent stacks blocks.
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
@@ -361,18 +361,16 @@ impl<C: Context, B> BlockObserver<C, B> {
         block_hash: BlockHash,
         txs: &[Transaction],
     ) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
         // We store all the scriptPubKeys associated with the signers'
         // aggregate public key. Let's get the last years worth of them.
-        let signer_script_pubkeys: HashSet<ScriptBuf> = self
-            .context
-            .get_storage()
+        let signer_script_pubkeys: HashSet<ScriptBuf> = db
             .get_signers_script_pubkeys()
             .await?
             .into_iter()
             .map(ScriptBuf::from_bytes)
             .collect();
 
-        let db = self.context.get_storage_mut();
         let btc_rpc = self.context.get_bitcoin_client();
         // Look through all the UTXOs in the given transaction slice and
         // keep the transactions where a UTXO is locked with a
@@ -430,6 +428,10 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
+    /// Write the given stacks blocks to the database.
+    ///
+    /// This function also extracts sBTC Stacks transactions from the given
+    /// blocks and stores them into the database.
     async fn write_stacks_blocks(&self, tenures: &[TenureBlocks]) -> Result<(), Error> {
         let deployer = &self.context.config().signer.deployer;
         let txs = tenures
