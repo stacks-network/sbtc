@@ -576,7 +576,7 @@ describe("Accepting a withdrawal request", () => {
       maxFee: defaultMaxFee,
       blockHeight: BigInt(simnet.blockHeight - 3),
       status: {
-        status: true,
+        isAccepted: true,
         sweepTxid: sweepTxid,
         sweepBurnHash: burnHash,
         sweepBurnHeight: BigInt(burnHeight),
@@ -654,7 +654,7 @@ describe("Accepting a withdrawal request", () => {
       maxFee: defaultMaxFee,
       blockHeight: BigInt(simnet.blockHeight - 3),
       status: {
-        status: false,
+        isAccepted: false,
         sweepTxid: null,
         sweepBurnHash: null,
         sweepBurnHeight: null,
