@@ -88,7 +88,7 @@ where
 
                         let message = RequestDeciderEvent::NewRequestsHandled.into();
                         // If there is an error here then the application
-                        // is on it's way down since
+                        // is on its way down since
                         // [`SignerContext::signal`] sends a shutdown
                         // signal on error. We've also logged the error
                         // already.
@@ -327,7 +327,7 @@ where
         // don't have a record then fetch it from Emily and store it before
         // storing the decision.
         if !db.deposit_request_exists(&txid, output_index).await? {
-            tracing::debug!("no record of the deposit request, fethcing from emily");
+            tracing::debug!("no record of the deposit request, fetching from emily");
             let processor = BlockObserver {
                 context: self.context.clone(),
                 horizon: 20,
