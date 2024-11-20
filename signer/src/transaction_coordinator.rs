@@ -172,6 +172,16 @@ fn run_loop_message_filter(signal: &SignerSignal) -> bool {
     )
 }
 
+/// During DKG or message signing, we only need the following message
+/// types, so we construct a stream with only these messages.
+fn signed_message_filter(event: &SignerSignal) -> bool {
+    matches!(
+        event,
+        SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(_)))
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+    )
+}
+
 impl<C, N> TxCoordinatorEventLoop<C, N>
 where
     C: Context,
@@ -181,9 +191,7 @@ where
     #[tracing::instrument(skip_all, name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let mut signal_stream = self
-            .context
-            .as_signal_stream(&self.network, run_loop_message_filter);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
         loop {
             match signal_stream.next().await {
@@ -686,7 +694,7 @@ where
         let max_duration = self.signing_round_max_duration;
         let signal_stream = self
             .context
-            .as_signal_stream(&self.network, |_| true)
+            .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
@@ -933,7 +941,7 @@ where
 
         let signal_stream = self
             .context
-            .as_signal_stream(&self.network, |_| true)
+            .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);

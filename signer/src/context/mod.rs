@@ -12,7 +12,6 @@ use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
-use crate::network::MessageTransfer;
 use crate::stacks::api::StacksInteract;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
@@ -59,16 +58,14 @@ pub trait Context: Clone + Sync + Send {
     /// later return `Some(_)`. But if [`StreamExt::next`] yields `None`
     /// three times then the stream is "fused" and will return `None`
     /// forever after.
-    fn as_signal_stream<F, M>(&self, network: &M, predicate: F) -> ReceiverStream<SignerSignal>
+    fn as_signal_stream<F>(&self, predicate: F) -> ReceiverStream<SignerSignal>
     where
-        M: MessageTransfer,
         F: Fn(&SignerSignal) -> bool + Send + Sync + 'static,
     {
         let (sender, receiver) = tokio::sync::mpsc::channel(SIGNER_CHANNEL_CAPACITY);
 
         let mut watch_receiver = self.get_termination_handle();
         let mut signal_stream = self.get_signal_receiver();
-        let mut network_stream = network.as_receiver();
 
         tokio::spawn(async move {
             loop {
@@ -98,25 +95,6 @@ pub trait Context: Clone + Sync + Send {
                             Err(error @ RecvError::Lagged(_)) => {
                                 tracing::warn!(%error, "internal signal stream lagging");
                                 continue
-                            }
-                        }
-                    }
-                    item = network_stream.recv() => {
-                      match item {
-                            Some(msg) => {
-                                let signal = P2PEvent::MessageReceived(msg).into();
-                                if predicate(&signal) {
-                                    // See comment above, we can bail.
-                                    if sender.send(signal).await.is_err() {
-                                        break;
-                                    }
-                                }
-                            }
-                            // This means the channel has been closed.
-                            // Since this is the network stream we can bail
-                            // here, we're probably on our way down.
-                            None => {
-                                break;
                             }
                         }
                     }

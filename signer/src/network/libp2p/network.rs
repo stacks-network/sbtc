@@ -1,7 +1,6 @@
 //! MessageTransfer implementation for the application signalling channel
 //! together with LibP2P.
 
-use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::Sender;
 
@@ -14,7 +13,6 @@ use crate::context::TerminationHandle;
 use crate::error::Error;
 use crate::network::MessageTransfer;
 use crate::network::Msg;
-use crate::SIGNER_CHANNEL_CAPACITY;
 
 /// MessageTransfer interface for the application signalling channel.
 pub struct P2PNetwork {
@@ -101,56 +99,6 @@ impl MessageTransfer for P2PNetwork {
                 }
             }
         }
-    }
-
-    fn as_receiver(&self) -> tokio::sync::mpsc::Receiver<Msg> {
-        // This is the same capacity of `signal_tx` in the SignerContext,
-        // which is typically used to create this P2PNetwork.
-        let (sender, receiver) = tokio::sync::mpsc::channel(SIGNER_CHANNEL_CAPACITY);
-        let mut rx = self.signal_rx.resubscribe();
-
-        tokio::spawn(async move {
-            loop {
-                // Let's drain the stream first and then wait for a messages
-                while let Ok(msg) = rx.try_recv() {
-                    if let SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) =
-                        msg
-                    {
-                        // Because there could only be one receiver, an error from
-                        // Sender::send means the channel is closed and cannot be
-                        // re-opened. So we bail on these errors too.
-                        if sender.send(msg).await.is_err() {
-                            tracing::debug!("could not send message, receivers dropped, bailing");
-                            return;
-                        }
-                    }
-                }
-                match rx.recv().await {
-                    Ok(SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg)))) => {
-                        // Because there could only be one receiver, an error from
-                        // Sender::send means the channel is closed and cannot be
-                        // re-opened. So we bail on these errors too.
-                        if sender.send(msg).await.is_err() {
-                            tracing::debug!("could not send message, receivers dropped, bailing");
-                            return;
-                        }
-                    }
-                    // The receiver has been dropped. This is normal
-                    // behavior so nothing to worry about
-                    Err(RecvError::Closed) => {
-                        tracing::warn!("the instance p2p stream is closed, this is bad, bailing");
-                        return;
-                    }
-                    // If we are lagging in the stream, we could always
-                    // catch up, we'll just have lost messages.
-                    Err(error @ RecvError::Lagged(_)) => {
-                        tracing::warn!(%error, "stream lagging behind")
-                    }
-                    _ => continue,
-                }
-            }
-        });
-        receiver
     }
 }
 

@@ -80,9 +80,7 @@ where
             return Err(error);
         };
 
-        let mut signal_stream = self
-            .context
-            .as_signal_stream(&self.network, run_loop_message_filter);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
         while let Some(message) = signal_stream.next().await {
             match message {

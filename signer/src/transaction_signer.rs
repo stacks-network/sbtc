@@ -158,9 +158,7 @@ where
             tracing::error!(%error, "error signalling event loop start");
             return Err(error);
         };
-        let mut signal_stream = self
-            .context
-            .as_signal_stream(&self.network, run_loop_message_filter);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
         loop {
             match signal_stream.next().await {

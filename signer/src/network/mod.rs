@@ -21,7 +21,6 @@ use crate::message;
 #[cfg(any(test, feature = "testing"))]
 pub use in_memory::InMemoryNetwork;
 pub use libp2p::P2PNetwork;
-use tokio::sync::mpsc::Receiver;
 
 /// The supported message type of the signer network
 pub type Msg = ecdsa::Signed<message::SignerMessage>;
@@ -35,10 +34,6 @@ pub trait MessageTransfer: Clone {
     fn broadcast(&mut self, msg: Msg) -> impl Future<Output = Result<(), Error>> + Send;
     /// Receive a message from the network
     fn receive(&mut self) -> impl Future<Output = Result<Msg, Error>> + Send;
-    /// Return a stream of the same messages from the
-    /// [`MessageTransfer::receive`]. The inner type of each
-    /// [`SignerSignal`] should be a [`P2PEvent::MessageReceived`].
-    fn as_receiver(&self) -> Receiver<Msg>;
 }
 
 impl std::fmt::Display for Msg {

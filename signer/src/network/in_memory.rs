@@ -9,8 +9,8 @@ use std::{
     sync::{atomic::AtomicU16, Arc},
 };
 
-use tokio::sync::mpsc::Receiver;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
+use tokio::sync::Mutex;
 
 use crate::error::Error;
 
@@ -102,30 +102,6 @@ impl super::MessageTransfer for MpmcBroadcaster {
         }
 
         Ok(msg)
-    }
-
-    fn as_receiver(&self) -> Receiver<super::Msg> {
-        let (sender, receiver) = tokio::sync::mpsc::channel(1000);
-        let mut signal_rx = self.receiver.resubscribe();
-        let recently_sent = self.recently_sent.clone();
-        tokio::spawn(async move {
-            loop {
-                match signal_rx.recv().await {
-                    Ok(mut msg) => {
-                        while Some(&msg.id()) == recently_sent.lock().await.front() {
-                            recently_sent.lock().await.pop_front();
-                            msg = signal_rx.recv().await.map_err(Error::ChannelReceive)?;
-                        }
-                        let _ = sender.send(msg).await;
-                    }
-                    Err(error) => {
-                        tracing::error!(%error, "got a receive error");
-                        return Err::<(), _>(Error::SignerShutdown);
-                    }
-                }
-            }
-        });
-        receiver
     }
 }
 
