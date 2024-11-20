@@ -201,7 +201,6 @@ async fn one_invalid_deposit_invalidates_tx() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
-
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
         DepositAmounts { amount: 1_000_000, max_fee: 10 },
@@ -210,23 +209,18 @@ async fn one_invalid_deposit_invalidates_tx() {
             max_fee: 500_000,
         },
     ];
-
     let setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
-
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
-
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
     let chain_tip_block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
-
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 
     let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
-
     let btc_ctx = BitcoinTxContext {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
@@ -238,7 +232,6 @@ async fn one_invalid_deposit_invalidates_tx() {
         aggregate_key,
         signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
     };
-
     let valadation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
     // There a re a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
@@ -264,25 +257,37 @@ async fn one_invalid_deposit_invalidates_tx() {
     assert!(!signer.will_sign);
     assert!(!signer.is_valid_tx);
 
-    let [deposit1, deposit2] = input_rows.last_chunk().unwrap();
-    let outpoint = setup.deposits[0].0.outpoint;
-    assert_eq!(deposit1.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(
-        deposit1.validation_result,
-        InputValidationResult::FeeTooHigh
-    );
-    assert_eq!(deposit1.prevout_txid.deref(), &outpoint.txid);
-    assert_eq!(deposit1.prevout_output_index, outpoint.vout);
-    assert!(!deposit1.will_sign);
-    assert!(!deposit1.is_valid_tx);
+    let deposits_sighashes: &[signer::storage::model::BitcoinTxSigHash; 2] =
+        input_rows.last_chunk().unwrap();
 
-    let outpoint = setup.deposits[1].0.outpoint;
-    assert_eq!(deposit2.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(deposit2.validation_result, InputValidationResult::Ok);
-    assert_eq!(deposit2.prevout_txid.deref(), &outpoint.txid);
-    assert_eq!(deposit2.prevout_output_index, outpoint.vout);
-    assert!(!deposit2.will_sign);
-    assert!(!deposit2.is_valid_tx);
+    let outpoint1 = setup.deposits[0].0.outpoint;
+    let outpoint2 = setup.deposits[1].0.outpoint;
+    // The deposits sighashes have been internally sorted. We can't gaurentee
+    // the order, so we need to check that at least one of the deposits in the pair
+    // is respecting of the validation result.
+    assert!(deposits_sighashes
+        .iter()
+        .all(|d| d.prevout_type == TxPrevoutType::Deposit));
+    assert!(deposits_sighashes.iter().all(|d| !d.will_sign));
+    assert!(deposits_sighashes.iter().all(|d| !d.is_valid_tx));
+    assert!(deposits_sighashes
+        .iter()
+        .any(|d| d.prevout_txid.deref() == &outpoint1.txid));
+    assert!(deposits_sighashes
+        .iter()
+        .any(|d| d.prevout_txid.deref() == &outpoint2.txid));
+    assert!(deposits_sighashes
+        .iter()
+        .any(|d| d.prevout_output_index == outpoint1.vout));
+    assert!(deposits_sighashes
+        .iter()
+        .any(|d| d.prevout_output_index == outpoint1.vout));
+    assert!(deposits_sighashes
+        .iter()
+        .any(|d| d.validation_result == InputValidationResult::Ok));
+    assert!(deposits_sighashes
+        .iter()
+        .any(|d| d.validation_result == InputValidationResult::FeeTooHigh));
 }
 
 #[tokio::test]
