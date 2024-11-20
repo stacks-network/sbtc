@@ -1,18 +1,18 @@
-# \ChainstateApi
+# \LimitsApi
 
 All URIs are relative to *http://localhost*
 
 Method | HTTP request | Description
 ------------- | ------------- | -------------
-[**get_chain_tip**](ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
-[**get_chainstate_at_height**](ChainstateApi.md#get_chainstate_at_height) | **GET** /chainstate/{height} | Get chainstate handler.
+[**get_limits**](LimitsApi.md#get_limits) | **GET** /limits | Get the global limits.
+[**get_limits_for_account**](LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
 
 
 
-## get_chain_tip
+## get_limits
 
-> models::Chainstate get_chain_tip()
-Get chain tip handler.
+> models::Limits get_limits()
+Get the global limits.
 
 ### Parameters
 
@@ -20,11 +20,11 @@ This endpoint does not need any parameter.
 
 ### Return type
 
-[**models::Chainstate**](Chainstate.md)
+[**models::Limits**](Limits.md)
 
 ### Authorization
 
-No authorization required
+[ApiGatewayKey](../README.md#ApiGatewayKey)
 
 ### HTTP request headers
 
@@ -34,25 +34,25 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 
-## get_chainstate_at_height
+## get_limits_for_account
 
-> models::Chainstate get_chainstate_at_height(height)
-Get chainstate handler.
+> models::AccountLimits get_limits_for_account(account)
+Get limits for account handler.
 
 ### Parameters
 
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**height** | **u64** | Height of the blockchain data to receive. | [required] |
+**account** | **String** | The account for which to get the limits. | [required] |
 
 ### Return type
 
-[**models::Chainstate**](Chainstate.md)
+[**models::AccountLimits**](AccountLimits.md)
 
 ### Authorization
 
-No authorization required
+[ApiGatewayKey](../README.md#ApiGatewayKey)
 
 ### HTTP request headers
 
