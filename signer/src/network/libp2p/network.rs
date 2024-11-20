@@ -146,7 +146,7 @@ impl MessageTransfer for P2PNetwork {
                     // If we are lagging in the stream, we could always
                     // catch up, we'll just have lost messages.
                     Err(error @ RecvError::Lagged(_)) => {
-                        tracing::warn!(%error, "stream lagging behing")
+                        tracing::warn!(%error, "stream lagging behind")
                     }
                     _ => continue,
                 }
