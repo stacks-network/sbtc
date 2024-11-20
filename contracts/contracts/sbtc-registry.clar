@@ -41,7 +41,7 @@
 ;; If status is `none`, the request is pending.
 ;; Otherwise, the boolean value indicates whether
 ;; the deposit was accepted.
-(define-map withdrawal-status uint {
+(define-map is-accepted uint {
   status: bool,
   sweep-txid: (optional (buff 32)),
   sweep-burn-hash: (optional (buff 32)),
@@ -77,12 +77,12 @@
 
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
-;; This function returns the fields of the withrawal
+;; This function returns the fields of the withdrawal
 ;; request, along with its status.
 (define-read-only (get-withdrawal-request (id uint))
   (match (map-get? withdrawal-requests id)
     request (some (merge request {
-      status: (map-get? withdrawal-status id)
+      status: (map-get? is-accepted id)
     }))
     none
   )
@@ -167,7 +167,7 @@
 )
 
 ;; Complete withdrawal request by noting the acceptance in the
-;; withdrawal-status state map.
+;; is-accepted state map.
 ;;
 ;; This function will emit a print event with the topic
 ;; "withdrawal-accept".
@@ -185,7 +185,7 @@
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id {
+    (map-insert is-accepted request-id {
       status: true,
       sweep-txid: (some sweep-txid),
       sweep-burn-hash: (some burn-hash),
@@ -207,7 +207,7 @@
 )
 
 ;; Complete withdrawal request by noting the rejection in the 
-;; withdrawal-status state map.
+;; is-accepted state map.
 ;;
 ;; This function will emit a print event with the topic
 ;; "withdrawal-reject".
@@ -219,7 +219,7 @@
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id {
+    (map-insert is-accepted request-id {
       status: false,
       sweep-txid: none,
       sweep-burn-hash: none,

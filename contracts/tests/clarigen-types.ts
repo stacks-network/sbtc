@@ -1070,6 +1070,32 @@ export const contracts = {
           sweepTxid: Uint8Array;
         }
       >,
+      isAccepted: {
+        name: "is-accepted",
+        key: "uint128",
+        value: {
+          tuple: [
+            { name: "status", type: "bool" },
+            {
+              name: "sweep-burn-hash",
+              type: { optional: { buffer: { length: 32 } } },
+            },
+            { name: "sweep-burn-height", type: { optional: "uint128" } },
+            {
+              name: "sweep-txid",
+              type: { optional: { buffer: { length: 32 } } },
+            },
+          ],
+        },
+      } as TypedAbiMap<
+        number | bigint,
+        {
+          status: boolean;
+          sweepBurnHash: Uint8Array | null;
+          sweepBurnHeight: bigint | null;
+          sweepTxid: Uint8Array | null;
+        }
+      >,
       multiSigAddress: {
         name: "multi-sig-address",
         key: "principal",
@@ -1111,32 +1137,6 @@ export const contracts = {
             version: Uint8Array;
           };
           sender: string;
-        }
-      >,
-      withdrawalStatus: {
-        name: "withdrawal-status",
-        key: "uint128",
-        value: {
-          tuple: [
-            { name: "status", type: "bool" },
-            {
-              name: "sweep-burn-hash",
-              type: { optional: { buffer: { length: 32 } } },
-            },
-            { name: "sweep-burn-height", type: { optional: "uint128" } },
-            {
-              name: "sweep-txid",
-              type: { optional: { buffer: { length: 32 } } },
-            },
-          ],
-        },
-      } as TypedAbiMap<
-        number | bigint,
-        {
-          status: boolean;
-          sweepBurnHash: Uint8Array | null;
-          sweepBurnHeight: bigint | null;
-          sweepTxid: Uint8Array | null;
         }
       >,
     },
