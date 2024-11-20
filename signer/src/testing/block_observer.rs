@@ -1,6 +1,7 @@
 //! Test utilities for the block observer
 
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash;
@@ -427,6 +428,20 @@ impl StacksInteract for TestHarness {
 }
 
 impl EmilyInteract for TestHarness {
+    async fn get_deposit(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<CreateDepositRequest>, Error> {
+        let deposit = self
+            .pending_deposits
+            .iter()
+            .find(|request| {
+                &request.outpoint.txid == txid.deref() && request.outpoint.vout == output_index
+            })
+            .cloned();
+        Ok(deposit)
+    }
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         Ok(self.pending_deposits.clone())
     }
