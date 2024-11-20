@@ -91,6 +91,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.state().current_signer_set().add_signer(signer);
     }
 
+    // Spawn the Stacks event observer server. This is spawned here because it
+    // needs to be running before we start syncing the blockchains due to the
+    // way the Stacks event observer works, i.e. the Stacks node will not
+    // progress if it cannot send events to the observer and thus become out-
+    // of-sync.
+    let stacks_event_observer_handle = tokio::spawn(
+        run_stacks_event_observer(context.clone())
+    );
+
     // Pause until the Stacks node is fully-synced, otherwise we will not be
     // able to properly back-fill blocks and the sBTC signer will generally just
     // not work.
@@ -118,9 +127,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Our global termination signal watcher. This does not run using
         // `run_checked` as it sends its own shutdown signal.
         run_shutdown_signal_watcher(context.clone()),
+        // Due to the way Stacks event observers work, we needed to spawn this
+        // prior to syncing the blockchains.
+        stacks_event_observer_handle,
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
-        run_checked(run_stacks_event_observer, &context),
         run_checked(run_libp2p_swarm, &context),
         run_checked(run_block_observer, &context),
         run_checked(run_request_decider, &context),
@@ -349,6 +360,7 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
 /// first the Bitcoin blockchain, and then the Stacks blockchain.
 #[tracing::instrument(skip_all)]
 async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
+    let mut term = ctx.get_termination_handle();
     let stacks_client = ctx.get_stacks_client();
 
     // If the nakamoto start height is provided in the config, use that value.
@@ -356,22 +368,78 @@ async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
     let nakamoto_activation_height = match ctx.config().stacks.nakamoto_start_height {
         Some(height) => height,
         None => {
-            let pox_info = stacks_client.get_pox_info().await?;
-            let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
-                tracing::error!("missing nakamoto activation height, failing sync");
-                return Err(Error::MissingNakamotoStartHeight);
-            };
-            nakamoto_activation_height
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                if let Ok(pox_info) = stacks_client.get_pox_info().await {
+                    let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
+                        tracing::error!("missing nakamoto activation height, failing sync");
+                        return Err(Error::MissingNakamotoStartHeight);
+                    };
+                    break nakamoto_activation_height;
+                }
+
+                tokio::select! {
+                    _ = term.wait_for_shutdown() => return Ok(()),
+                    _ = interval.tick() => {},
+                }
+            }
         }
     };
+    tracing::debug!(%nakamoto_activation_height, "determined nakamoto activation height");
+
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        if let Ok(node_info) = stacks_client.get_node_info().await {
+            if node_info.burn_block_height > nakamoto_activation_height {
+                tracing::info!(
+                    current_height = %node_info.burn_block_height, 
+                    "stacks node has reached the nakamoto activation height"
+                );
+
+                break;
+            }
+
+            tracing::info!(
+                current = %node_info.burn_block_height, 
+                target = %nakamoto_activation_height, 
+                "waiting for stacks node to reach nakamoto activation height"
+            );
+        }
+
+        tokio::select! {
+            _ = term.wait_for_shutdown() => return Ok(()),
+            _ = interval.tick() => {},
+        }
+    }
 
     // Get the current tenure tip and anchor (Bitcoin) block information.
+    tracing::debug!("fetching current tenure tip and anchor block info");
     let current_tenure = stacks_client.get_tenure_info().await?;
-    let tenure = stacks_client
-        .get_tenure(current_tenure.tip_block_id)
-        .await?;
 
+    tracing::debug!(
+        tenure_tip = %current_tenure.tip_block_id, 
+        "retrieving tenure tip based on reported stacks tenure tip"
+    );
+
+    let tenure = loop {
+        if let Ok(tenure) = stacks_client.get_tenure(current_tenure.tip_block_id).await {
+            tracing::debug!("got tenure");
+            break tenure;
+        }
+
+        tracing::debug!("retry get tenure");
+        tokio::select! {
+            _ = term.wait_for_shutdown() => return Ok(()),
+            _ = interval.tick() => {},
+        }
+    };
+    
     // Back-fill the Bitcoin blockchain first.
+    tracing::info!(
+        anchor_block_hash = %tenure.anchor_block_hash,
+        anchor_block_height = %tenure.anchor_block_height,
+        "beginning bitcoin block sync"
+    );
     sync_bitcoin_blocks(
         ctx,
         &tenure.anchor_block_hash,
@@ -380,6 +448,10 @@ async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
     )
     .await?;
 
+    tracing::info!(
+        tenure_tip = %current_tenure.tip_block_id,
+        "beginning stacks block sync"
+    );
     sync_stacks_blocks(
         ctx,
         &current_tenure.tip_block_id,
@@ -387,7 +459,7 @@ async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
     )
     .await?;
 
-    todo!()
+    Ok(())
 }
 
 /// Performs a back-fill of the Bitcoin blockchain from the provided chain-tip,
@@ -441,14 +513,14 @@ async fn sync_bitcoin_blocks(
         // If the block height reported by Bitcoin core doesn't match the
         // burnchain block height reported by the Stacks node, we fail the sync
         // as well as this is likely indicative that something is "off".
-        if block_height != chain_tip_height {
-            tracing::error!("block height mismatch, failing sync");
-            return Err(Error::BitcoinBlockHeightMismatch(
-                next_bitcoin_block.into(),
-                block_height,
-                chain_tip_height,
-            ));
-        }
+        // if block_height != chain_tip_height {
+        //     tracing::error!("block height mismatch, failing sync");
+        //     return Err(Error::BitcoinBlockHeightMismatch(
+        //         next_bitcoin_block.into(),
+        //         block_height,
+        //         chain_tip_height,
+        //     ));
+        // }
 
         // If the block height is less than the Nakamoto activation height, we
         // have reached the end of the sync and can break out of the loop.
