@@ -62,23 +62,23 @@ endpoint = "stacks-api:3700"
 events_keys = ["*"]
 
 # Add sbtc-signer as an event observers
-[[events_observer]]
-endpoint = "host.docker.internal:8801"
-events_keys = [
-    "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
-]
-
-[[events_observer]]
-endpoint = "host.docker.internal:8802"
-events_keys = [
-    "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
-]
-
-[[events_observer]]
-endpoint = "host.docker.internal:8803"
-events_keys = [
-    "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
-]
+# [[events_observer]]
+# endpoint = "host.docker.internal:8801"
+# events_keys = [
+#     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
+# ]
+#
+# [[events_observer]]
+# endpoint = "host.docker.internal:8802"
+# events_keys = [
+#     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
+# ]
+#
+# [[events_observer]]
+# endpoint = "host.docker.internal:8803"
+# events_keys = [
+#     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
+# ]
 
 # Add stacks-signer as an event observer
 [[events_observer]]

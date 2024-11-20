@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y curl gettext-ba
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN mkdir -p /stacks
-ADD data.tar.gz /data
+# ADD data.tar.gz /data
 
 WORKDIR /stacks
 CMD ["stacks-node"]
