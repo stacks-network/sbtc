@@ -259,7 +259,7 @@ where
             }
 
             (message::Payload::SbtcRequestsContextMessage(requests), _, _) => {
-                self.handle_bitcoin_block_sbtc_requests(requests, &msg.bitcoin_chain_tip)
+                self.handle_sbtc_requests_context_message(requests, &msg.bitcoin_chain_tip)
                     .await?;
             }
             // Message types ignored by the transaction signer
@@ -318,7 +318,7 @@ where
     }
 
     #[tracing::instrument(skip(self, request))]
-    async fn handle_bitcoin_block_sbtc_requests(
+    async fn handle_sbtc_requests_context_message(
         &mut self,
         request: &message::SbtcRequestsContextMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
