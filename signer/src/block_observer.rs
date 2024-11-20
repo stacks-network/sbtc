@@ -129,7 +129,7 @@ where
             }
 
             // Bitcoin blocks will generally arrive in ~10 minute intervals, so
-            // we don't need to be so aggresive in our timeout here.
+            // we don't need to be so aggressive in our timeout here.
             let poll = tokio::time::timeout(Duration::from_millis(100), self.bitcoin_blocks.next());
 
             match poll.await {
@@ -173,12 +173,20 @@ where
 }
 
 impl<C: Context, B> BlockObserver<C, B> {
-    /// Fetch deposit requests from Emily and store the validated ones into
-    /// the database.
+    /// Fetch deposit requests from Emily and store the ones that pass
+    /// validation into the database.
+    #[tracing::instrument(skip_all)]
+    async fn load_latest_deposit_requests(&self) -> Result<(), Error> {
+        let requests = self.context.get_emily_client().get_deposits().await?;
+        self.load_requests(&requests).await
+    }
+
+    /// Validate the given deposit requests and store the ones that pass
+    /// validation into the database.
     ///
-    /// There are two classes of errors that can happen during validation
+    /// There are three types of errors that can happen during validation
     /// 1. The transaction fails primary validation. This means the deposit
-    ///    script itself does not align with what we exepct. If probably
+    ///    script itself does not align with what we expect. If probably
     ///    does not follow our protocol.
     /// 2. The transaction passes step (1), but we don't recognize the
     ///    x-only public key in the deposit script.
@@ -186,11 +194,9 @@ impl<C: Context, B> BlockObserver<C, B> {
     ///    block, or when we encountered some unexpected error when
     ///    reaching out to bitcoin-core or our database.
     #[tracing::instrument(skip_all)]
-    async fn load_latest_deposit_requests(&self) -> Result<(), Error> {
+    pub async fn load_requests(&self, requests: &[CreateDepositRequest]) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
-
-        let emily_client = self.context.get_emily_client();
-        for request in emily_client.get_deposits().await? {
+        for request in requests {
             let deposit = request
                 .validate(&self.context.get_bitcoin_client())
                 .await
@@ -240,7 +246,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     }
 
     /// Check whether we have already processed this block in our
-    /// databasae.
+    /// database.
     #[tracing::instrument(skip(self))]
     async fn have_already_processed_block(
         &self,
@@ -632,7 +638,6 @@ mod tests {
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
-        let block_hash_stream = test_harness.spawn_block_hash_stream();
         let ctx = TestContext::builder()
             .with_storage(storage.clone())
             .with_stacks_client(test_harness.clone())
@@ -640,9 +645,9 @@ mod tests {
             .with_bitcoin_client(test_harness.clone())
             .build();
 
-        let mut block_observer = BlockObserver {
+        let block_observer = BlockObserver {
             context: ctx,
-            bitcoin_blocks: block_hash_stream,
+            bitcoin_blocks: (),
             horizon: 1,
         };
 
@@ -717,7 +722,6 @@ mod tests {
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
-        let block_hash_stream = test_harness.spawn_block_hash_stream();
         let ctx = TestContext::builder()
             .with_storage(storage.clone())
             .with_stacks_client(test_harness.clone())
@@ -725,9 +729,9 @@ mod tests {
             .with_bitcoin_client(test_harness.clone())
             .build();
 
-        let mut block_observer = BlockObserver {
+        let block_observer = BlockObserver {
             context: ctx,
-            bitcoin_blocks: block_hash_stream,
+            bitcoin_blocks: (),
             horizon: 1,
         };
 
@@ -829,7 +833,7 @@ mod tests {
 
         let block_observer = BlockObserver {
             context: ctx,
-            bitcoin_blocks: test_harness.spawn_block_hash_stream(),
+            bitcoin_blocks: (),
             horizon: 1,
         };
 
