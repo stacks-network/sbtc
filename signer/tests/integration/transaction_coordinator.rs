@@ -1000,7 +1000,7 @@ async fn run_dkg_from_scratch() {
         //    This ensures that they participate in DKG.
         data.write_to(&db).await;
 
-        let network = network.connect();
+        let network = network.connect(&ctx);
 
         signers.push((ctx, db, kp, network));
     }
@@ -1198,7 +1198,7 @@ async fn sign_bitcoin_transaction() {
 
         backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
 
-        let network = network.connect();
+        let network = network.connect(&ctx);
 
         signers.push((ctx, db, kp, network));
     }
@@ -1603,11 +1603,11 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
 
-    let network = SignerNetwork::single();
     let mut context = TestContext::builder()
         .with_storage(db.clone())
         .with_mocked_clients()
         .build();
+    let network = SignerNetwork::single(&context);
 
     context
         .with_bitcoin_client(|client| {
@@ -1746,13 +1746,13 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     )
     .unwrap();
 
-    let network = SignerNetwork::single();
     let context = TestContext::builder()
         .with_storage(db.clone())
         .with_bitcoin_client(client.clone())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+    let network = SignerNetwork::single(&context);
 
     let mut coord = TxCoordinatorEventLoop {
         context,

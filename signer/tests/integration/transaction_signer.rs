@@ -199,7 +199,7 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
             })
             .build();
 
-        let net = network.connect();
+        let net = network.connect(&ctx);
 
         let ev = TxSignerEventLoop {
             network: net.spawn(),
@@ -306,7 +306,8 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
 
     // Broadcast the message to the network. We create a new instance so
     // that the message gets broadcast to all signers.
-    let new_signer = network.connect();
+    let ctx = TestContext::default_mocked();
+    let new_signer = network.connect(&ctx);
     let mut net = new_signer.spawn();
     net.broadcast(msg).await.expect("broadcast failed");
 
