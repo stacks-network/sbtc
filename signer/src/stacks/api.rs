@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::future::Future;
 use std::time::Duration;
 
+use bitcoin::Amount;
 use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
@@ -214,6 +215,12 @@ pub trait StacksInteract: Send + Sync {
         address: &StacksAddress,
         contract_name: &str,
     ) -> impl Future<Output = Result<ContractSrcResponse, Error>> + Send;
+
+    /// Get the total supply of sBTC from the `sbtc-token` smart contract.
+    fn get_sbtc_total_supply(
+        &self,
+        sender: &StacksAddress,
+    ) -> impl Future<Output = Result<Amount, Error>> + Send;
 }
 
 /// A trait for getting the start height of the first EPOCH 3.0 block on the
@@ -1264,6 +1271,32 @@ impl StacksInteract for StacksClient {
     ) -> Result<ContractSrcResponse, Error> {
         self.get_contract_source(address, contract_name).await
     }
+
+    async fn get_sbtc_total_supply(&self, deployer: &StacksAddress) -> Result<Amount, Error> {
+        let result = self
+            .call_read(
+                deployer,
+                &ContractName::from("sbtc-token"),
+                &ClarityName::from("get-total-supply"),
+                deployer,
+            )
+            .await?;
+
+        match result {
+            Value::Response(response) => match *response.data {
+                Value::UInt(total_supply) => Ok(Amount::from_sat(
+                    u64::try_from(total_supply)
+                        .map_err(|_| Error::InvalidStacksResponse("total supply is too large"))?,
+                )),
+                _ => Err(Error::InvalidStacksResponse(
+                    "expected a uint but got something else",
+                )),
+            },
+            _ => Err(Error::InvalidStacksResponse(
+                "expected a response but got something else",
+            )),
+        }
+    }
 }
 
 impl StacksInteract for ApiFallbackClient<StacksClient> {
@@ -1355,6 +1388,11 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         // ```
         self.get_client()
             .get_contract_source(address, contract_name)
+            .await
+    }
+
+    async fn get_sbtc_total_supply(&self, deployer: &StacksAddress) -> Result<Amount, Error> {
+        self.exec(|client, _| client.get_sbtc_total_supply(deployer))
             .await
     }
 }
@@ -1558,6 +1596,34 @@ mod tests {
 
         first_mock.assert();
         second_mock.assert();
+    }
+
+    #[tokio::test]
+    async fn get_sbtc_total_supply_works() {
+        let raw_json_response = r#"{
+            "okay": true,
+            "result": "0x070100000000000000000000000000000539"
+        }"#;
+
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("POST", "/v2/contracts/call-read/SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS/sbtc-token/get-total-supply?tip=latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(raw_json_response)
+            .expect(1)
+            .create();
+
+        let client = StacksClient::new(stacks_node_server.url().parse().unwrap(), 20).unwrap();
+        let result = client
+            .get_sbtc_total_supply(
+                &StacksAddress::from_string("SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS").unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result, Amount::from_sat(1337));
+        mock.assert();
     }
 
     #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]

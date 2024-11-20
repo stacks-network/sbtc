@@ -3,7 +3,7 @@
 use std::time::Duration;
 use std::{ops::Deref, sync::Arc};
 
-use bitcoin::Txid;
+use bitcoin::{Amount, Txid};
 use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
@@ -448,6 +448,10 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
             .get_contract_source(address, contract_name)
             .await
+    }
+
+    async fn get_sbtc_total_supply(&self, sender: &StacksAddress) -> Result<Amount, Error> {
+        self.inner.lock().await.get_sbtc_total_supply(sender).await
     }
 }
 
