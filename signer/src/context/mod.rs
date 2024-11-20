@@ -75,7 +75,12 @@ pub trait Context: Clone + Sync + Send {
                     item = term.recv() => {
                         match item {
                             Some(signal) => {
-                                let _ = sender.send(signal).await;
+                                // An error means that the channel has been
+                                // closed. This is most likely due to the
+                                // receiver being closed so we can bail.
+                                if let Err(_) = sender.send(signal).await {
+                                    break;
+                                }
                             }
                             None => break,
                         }
@@ -83,7 +88,10 @@ pub trait Context: Clone + Sync + Send {
                     item = signal_stream.recv() => {
                         match item {
                             Ok(signal) if predicate(&signal) => {
-                                let _ = sender.send(signal).await;
+                                // See comment above, we can bail.
+                                if let Err(_) = sender.send(signal).await {
+                                    break;
+                                }
                             }
                             Ok(_) => continue,
                             Err(RecvError::Closed) => {
@@ -101,7 +109,10 @@ pub trait Context: Clone + Sync + Send {
                             Some(msg) => {
                                 let signal = P2PEvent::MessageReceived(msg).into();
                                 if predicate(&signal) {
-                                    let _ = sender.send(signal).await;
+                                    // See comment above, we can bail.
+                                    if let Err(_) = sender.send(signal).await {
+                                        break;
+                                    }
                                 }
                             }
                             None => {
