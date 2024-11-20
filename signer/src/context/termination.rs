@@ -64,7 +64,7 @@ impl TerminationHandle {
 
     /// Get a stream for the shutdown signal
     pub fn as_stream(&self) -> BroadcastStream<SignerSignal> {
-        let (sender, receiver) = tokio::sync::broadcast::channel(5);
+        let (sender, receiver) = tokio::sync::broadcast::channel(50);
         let mut watch_receiver = self.0.subscribe();
         tokio::spawn(async move {
             loop {
