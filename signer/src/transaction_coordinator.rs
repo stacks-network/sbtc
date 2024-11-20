@@ -411,7 +411,7 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
         // Get the requests from the transaction package because they have been split into
         // multiple transactions.
-        let sign_request = BitcoinBlockSbtcRequests {
+        let sbtc_requests = BitcoinBlockSbtcRequests {
             requests: transaction_package
                 .iter()
                 .map(|tx| SbtcRequestsContext::from(&tx.requests))
@@ -421,7 +421,7 @@ where
         };
 
         // let mut hasher = sha2::Sha256::new();
-        // sign_request.hash(&mut hasher);
+        // sbtc_requests.hash(&mut hasher);
         // let request_id = bitcoin::Txid::from_byte_array(hasher.finalize().into());
         // let coordinator_state_machine = CoordinatorStateMachine::load(
         //     &mut self.context.get_storage_mut(),
@@ -433,7 +433,9 @@ where
         // .await?;
 
         // Share the list of requests with the signers.
-        self.send_message(sign_request, bitcoin_chain_tip).await?;
+        self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
+        // Wait for the signers to receive and process the requests.
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         for mut transaction in transaction_package {
             self.sign_and_broadcast(
