@@ -420,18 +420,6 @@ where
             last_fees: pending_requests.signer_state.last_fees.map(Into::into),
         };
 
-        // let mut hasher = sha2::Sha256::new();
-        // sbtc_requests.hash(&mut hasher);
-        // let request_id = bitcoin::Txid::from_byte_array(hasher.finalize().into());
-        // let coordinator_state_machine = CoordinatorStateMachine::load(
-        //     &mut self.context.get_storage_mut(),
-        //     *aggregate_key,
-        //     signer_public_keys.clone(),
-        //     self.threshold,
-        //     self.private_key,
-        // )
-        // .await?;
-
         // Share the list of requests with the signers.
         self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
         // Wait for the signers to receive and process the requests.
@@ -760,16 +748,18 @@ where
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        _aggregate_key: &PublicKey,
+        aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
-        let mut coordinator_state_machine = CoordinatorStateMachine::new(
+        let mut coordinator_state_machine = CoordinatorStateMachine::load(
+            &mut self.context.get_storage_mut(),
+            *aggregate_key,
             signer_public_keys.clone(),
             self.threshold,
             self.private_key,
-        );
-
+        )
+        .await?;
         let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
@@ -792,11 +782,14 @@ where
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
-            let mut coordinator_state_machine = CoordinatorStateMachine::new(
+            let mut coordinator_state_machine = CoordinatorStateMachine::load(
+                &mut self.context.get_storage_mut(),
+                *aggregate_key,
                 signer_public_keys.clone(),
                 self.threshold,
                 self.private_key,
-            );
+            )
+            .await?;
 
             let signature = self
                 .coordinate_signing_round(
