@@ -223,17 +223,6 @@ pub struct BitcoinTxValidationData {
     pub chain_tip_height: u64,
 }
 
-/// The version of the algorithm that constructed the bitcoin transaction.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "varchar", rename_all = "snake_case")]
-#[derive(serde::Serialize, serde::Deserialize)]
-#[strum(serialize_all = "snake_case")]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub enum ConstructionVersion {
-    /// The first version for constructing a UTXO
-    V0,
-}
-
 /// The sighash and enough metadata to piece together what happened.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BitcoinSighash {
@@ -937,6 +926,22 @@ mod tests {
         status: InputValidationResult::Ok,
         chain_tip_height: 2,
     } ; "at-the-border")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: TX_FEE.to_sat() - 1,
+            max_fee: TX_FEE.to_sat(),
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+        },
+        status: InputValidationResult::FeeTooHigh,
+        chain_tip_height: 2,
+    } ; "one-sat-too-high-fee-amount")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
