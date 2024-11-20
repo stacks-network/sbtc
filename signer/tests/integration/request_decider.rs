@@ -396,7 +396,11 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     assert_eq!(vote.can_sign, decision.can_sign);
     assert_eq!(vote.output_index, decision.output_index);
 
-    assert!(db.deposit_request_exists(&txid, output_index).await.unwrap());
+    let deposit_request_exists = db
+        .deposit_request_exists(&txid, output_index)
+        .await
+        .unwrap();
+    assert!(deposit_request_exists);
 
     testing::storage::drop_db(db).await;
 }
