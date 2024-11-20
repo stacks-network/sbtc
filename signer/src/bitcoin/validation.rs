@@ -737,6 +737,7 @@ mod tests {
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
     use bitcoin::TxIn;
+    use bitcoin::Txid;
     use bitcoin::Witness;
     use test_case::test_case;
 
