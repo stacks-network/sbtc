@@ -64,7 +64,7 @@ x-stacks-signer: &stacks-signer
   depends_on:
     - stacks-node
   volumes:
-    - ./stacks/stacks-signer.toml:/data/config.toml.in
+    - ./stacks/stacks-signer.toml:/stacks/config.toml.in
   environment: &stacks-signer-environment
     STACKS_NODE_HOST: stacks-node:20443
     STACKS_SIGNER_ENDPOINT: 0.0.0.0:30000
