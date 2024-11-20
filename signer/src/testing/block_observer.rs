@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::ops::Deref;
 
 use bitcoin::hashes::Hash;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 use bitcoincore_rpc_json::GetTxOutResult;
@@ -424,6 +425,10 @@ impl StacksInteract for TestHarness {
             publish_height: 1000,
             marf_proof: None,
         })
+    }
+
+    async fn get_sbtc_total_supply(&self, _: &StacksAddress) -> Result<Amount, Error> {
+        Ok(Amount::from_sat(u64::MAX))
     }
 }
 

@@ -26,7 +26,7 @@
 # Environment: SIGNER_EMILY__ENDPOINTS
 # Environment Example: '{"endpoint":"https://api.emilyexample.com","api_key":"1234567890abcdef"},..'
 endpoints = [
-    {endpoint="http://emily-server:3031"}
+    { endpoint = "http://emily-server:3031" },
 ]
 
 # !! ==============================================================================
