@@ -14,7 +14,7 @@ use signer::emily_client::MockEmilyInteract;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::message::SignerDepositDecision;
-use signer::network::in_memory2::WanNetwork;
+use signer::network::in_memory2::SignerNetwork;
 use signer::network::InMemoryNetwork;
 use signer::request_decider::RequestDeciderEventLoop;
 use signer::stacks::api::MockStacksInteract;
@@ -333,8 +333,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
 
-    let wan_network = WanNetwork::default();
-    let network = wan_network.connect();
+    let network = SignerNetwork::single();
 
     let mut decider = RequestDeciderEventLoop {
         network: network.spawn(),
