@@ -356,8 +356,10 @@ where
         let deposits_sighashes: Vec<model::BitcoinTxSigHash> =
             sighashes.iter().flat_map(|s| s.to_input_rows()).collect();
 
-        let withdrawals_outputs: Vec<model::BitcoinWithdrawalOutput> =
-            sighashes.iter().flat_map(|s| s.to_output_rows()).collect();
+        let withdrawals_outputs: Vec<model::BitcoinWithdrawalOutput> = sighashes
+            .iter()
+            .flat_map(|s| s.to_withdrawal_rows())
+            .collect();
 
         self.context
             .get_storage_mut()
