@@ -126,8 +126,17 @@ where
             .await?;
 
         for deposit_request in deposit_requests {
-            self.handle_pending_deposit_request(deposit_request, &chain_tip)
-                .await?;
+            let outpoint = deposit_request.outpoint();
+            let _ = self
+                .handle_pending_deposit_request(deposit_request, &chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(
+                        %error,
+                        %outpoint,
+                        "error handling new deposit request"
+                    )
+                });
         }
 
         let withdraw_requests = db
@@ -135,8 +144,17 @@ where
             .await?;
 
         for withdraw_request in withdraw_requests {
-            self.handle_pending_withdrawal_request(withdraw_request, &chain_tip)
-                .await?;
+            let request_id = withdraw_request.request_id;
+            let _ = self
+                .handle_pending_withdrawal_request(withdraw_request, &chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(
+                        %error,
+                        %request_id,
+                        "error handling new withdrawal request"
+                    )
+                });
         }
 
         Ok(())
@@ -236,8 +254,8 @@ where
         // TODO: Do we want to do this on the sender address or the
         // recipient address?
         let is_accepted = self
-            .can_accept(&withdrawal_request.sender_address.to_string())
-            .await;
+            .can_accept_withdrawal_request(&withdrawal_request)
+            .await?;
 
         let msg = SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
@@ -267,19 +285,53 @@ where
         Ok(())
     }
 
-    async fn can_accept(&self, address: &str) -> bool {
+    async fn can_accept_withdrawal_request(
+        &self,
+        req: &model::WithdrawalRequest,
+    ) -> Result<bool, Error> {
+        // If the withdrawal request is larger than the allowed per-withdrawal cap
+        // then no signer should accept this deposit.
+        if let Some(cap) = self
+            .context
+            .state()
+            .get_current_limits()
+            .per_withdrawal_cap()
+        {
+            if req.amount > cap.to_sat() {
+                tracing::info!(
+                    request_id = req.request_id,
+                    amount = %req.amount,
+                    "withdrawal request exceeds per-withdrawal cap"
+                );
+                return Ok(false);
+            }
+        }
+
+        // If we have not configured a blocklist checker, then we can
+        // return early.
         let Some(client) = self.blocklist_checker.as_ref() else {
-            return true;
+            return Ok(true);
         };
 
-        client.can_accept(address).await.unwrap_or(false)
+        let result = client
+            .can_accept(&req.sender_address.to_string())
+            .await
+            .unwrap_or(false);
+
+        Ok(result)
     }
 
     async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
         // If the deposit request is larger than the allowed per-deposit cap
-        // then we cannot accept the deposit.
+        // then no signer should accept this deposit.
         if let Some(per_deposit_cap) = self.context.state().get_current_limits().per_deposit_cap() {
             if req.amount > per_deposit_cap.to_sat() {
+                tracing::info!(
+                    txid = %req.txid,
+                    outpoint = %req.outpoint(),
+                    amount = %req.amount,
+                    "deposit request exceeds per-deposit cap"
+                );
                 return Ok(false);
             }
         }
