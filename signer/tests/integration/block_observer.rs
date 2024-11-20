@@ -183,8 +183,6 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        stacks_client: ctx.stacks_client.clone(),
-        emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
         horizon,
     };
@@ -311,8 +309,6 @@ async fn link_blocks() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        stacks_client: ctx.stacks_client.clone(),
-        emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
         horizon: 10,
     };
@@ -494,8 +490,6 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        stacks_client: ctx.stacks_client.clone(),
-        emily_client: ctx.emily_client.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
         horizon: 2,
     };
@@ -599,11 +593,13 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
 
     let deposit_amount = 2_500_000;
+    let max_fee = deposit_amount / 2;
     let signers_public_key = shares.aggregate_key.into();
     let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_amount,
         depositor_utxo,
+        max_fee,
         signers_public_key,
     );
     rpc.send_raw_transaction(&deposit_tx).unwrap();

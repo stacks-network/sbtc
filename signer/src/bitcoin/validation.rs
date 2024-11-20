@@ -15,7 +15,6 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxSigHash;
 use crate::storage::model::BitcoinWithdrawalOutput;
-use crate::storage::model::ConstructionVersion;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
 use crate::storage::DbRead;
@@ -231,14 +230,14 @@ impl BitcoinTxValidationData {
     /// each of them. Signing a sighash depends on
     /// 1. The entire transaction passing an "aggregate" validation. This
     ///    means that each input and output is unfulfilled, and doesn't
-    ///    violate any fees. For withdrawals this also means that the
-    ///    amounts and recipient match.
+    ///    violate protocol rules, such as max fees, lock-time rules, and
+    ///    so on.
     /// 2. That the signer has not rejected/blocked any of the deposits or
     ///    withdrawals in the transaction.
     /// 3. That the signer is a party to signing set that controls the
     ///    public key locking the transaction output.
     pub fn to_input_rows(&self) -> Vec<BitcoinTxSigHash> {
-        // If any of the inputs or outputs fail validation, then
+        // If any of the inputs or outputs fail validation, then the
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
         let is_valid_tx = self.is_valid_tx();
@@ -276,14 +275,13 @@ impl BitcoinTxValidationData {
                 validation_result,
                 is_valid_tx,
                 will_sign: is_valid_tx && validation_result == InputValidationResult::Ok,
-                construction_version: ConstructionVersion::V0,
             })
             .collect()
     }
 
     /// Construct objects with withdrawal output identifier with the
     /// validation result.
-    pub fn to_output_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
+    pub fn to_withdrawal_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
         let txid = self.tx.compute_txid().into();
         // If we ever construct a transaction with more than u32::MAX then
         // we are dealing with a very different Bitcoin and Stacks than we
@@ -299,7 +297,6 @@ impl BitcoinTxValidationData {
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
-                construction_version: ConstructionVersion::V0,
                 validation_result: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
             })
             .collect()
@@ -707,7 +704,7 @@ mod tests {
             status: DepositConfirmationStatus::Unconfirmed,
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
@@ -723,7 +720,7 @@ mod tests {
             status: DepositConfirmationStatus::Spent(BitcoinTxId::from([1; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
@@ -739,7 +736,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
@@ -755,7 +752,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(false),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
@@ -771,7 +768,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(false),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
             outpoint: OutPoint::null(),
@@ -787,7 +784,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 1),
             outpoint: OutPoint::null(),
@@ -803,7 +800,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 2),
             outpoint: OutPoint::null(),
@@ -819,7 +816,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_512_second_intervals(u16::MAX),
             outpoint: OutPoint::null(),
@@ -835,7 +832,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
@@ -851,7 +848,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: TX_FEE.to_sat(),
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::new(bitcoin::Txid::from_byte_array([1; 32]), 0),
@@ -867,7 +864,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: TX_FEE.to_sat(),
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
@@ -883,7 +880,7 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
-            amount: 0,
+            amount: 100_000_000,
             max_fee: TX_FEE.to_sat() - 1,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
             outpoint: OutPoint::null(),
