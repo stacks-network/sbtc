@@ -120,7 +120,7 @@ impl MessageTransfer for P2PNetwork {
                         // Sender::send means the channel is closed and cannot be
                         // re-opened. So we bail on these errors too.
                         if sender.send(msg).is_err() {
-                            tracing::warn!("could not send message, receivers dropped, bailing");
+                            tracing::debug!("could not send message, receivers dropped, bailing");
                             return;
                         }
                     }
@@ -133,7 +133,7 @@ impl MessageTransfer for P2PNetwork {
                         // Sender::send means the channel is closed and cannot be
                         // re-opened. So we bail on these errors too.
                         if sender.send(msg).is_err() {
-                            tracing::warn!("could not send message, receivers dropped, bailing");
+                            tracing::debug!("could not send message, receivers dropped, bailing");
                             return;
                         }
                     }
