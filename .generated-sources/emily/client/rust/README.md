@@ -36,6 +36,10 @@ Class | Method | HTTP request | Description
 *DepositApi* | [**get_deposits_for_transaction**](docs/DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
 *DepositApi* | [**update_deposits**](docs/DepositApi.md#update_deposits) | **PUT** /deposit | Update deposits handler.
 *HealthApi* | [**check_health**](docs/HealthApi.md#check_health) | **GET** /health | Get health handler.
+*LimitsApi* | [**get_limits**](docs/LimitsApi.md#get_limits) | **GET** /limits | Get the global limits.
+*LimitsApi* | [**get_limits_for_account**](docs/LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
+*LimitsApi* | [**set_limits**](docs/LimitsApi.md#set_limits) | **POST** /limits | Get limits handler.
+*LimitsApi* | [**set_limits_for_account**](docs/LimitsApi.md#set_limits_for_account) | **POST** /limits/{account} | Set limits for account handler.
 *TestingApi* | [**wipe_databases**](docs/TestingApi.md#wipe_databases) | **POST** /testing/wipe | Wipe databases handler.
 *WithdrawalApi* | [**create_withdrawal**](docs/WithdrawalApi.md#create_withdrawal) | **POST** /withdrawal | Create withdrawal handler.
 *WithdrawalApi* | [**get_withdrawal**](docs/WithdrawalApi.md#get_withdrawal) | **GET** /withdrawal/{id} | Get withdrawal handler.
@@ -45,6 +49,7 @@ Class | Method | HTTP request | Description
 
 ## Documentation For Models
 
+ - [AccountLimits](docs/AccountLimits.md)
  - [Chainstate](docs/Chainstate.md)
  - [CreateDepositRequestBody](docs/CreateDepositRequestBody.md)
  - [CreateWithdrawalRequestBody](docs/CreateWithdrawalRequestBody.md)
@@ -58,6 +63,7 @@ Class | Method | HTTP request | Description
  - [GetDepositsResponse](docs/GetDepositsResponse.md)
  - [GetWithdrawalsResponse](docs/GetWithdrawalsResponse.md)
  - [HealthData](docs/HealthData.md)
+ - [Limits](docs/Limits.md)
  - [Status](docs/Status.md)
  - [UpdateDepositsRequestBody](docs/UpdateDepositsRequestBody.md)
  - [UpdateDepositsResponse](docs/UpdateDepositsResponse.md)

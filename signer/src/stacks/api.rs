@@ -422,6 +422,23 @@ pub struct DataVarResponse {
     pub data: Value,
 }
 
+/// The request body for a POST /v2/contracts/call-read/<contract-principal>/<contract-name>/<fn-name> request.
+#[derive(Debug, serde::Serialize)]
+pub struct CallReadRequest {
+    /// The simulated address of the sender.
+    pub sender: String,
+    /// The arguments to the function in index-order.
+    pub arguments: Vec<String>,
+}
+
+/// The response from a POST /v2/contracts/call-read/<contract-principal>/<contract-name>/<fn-name> request.
+#[derive(Debug, Deserialize)]
+pub struct CallReadResponse {
+    /// The result of the function call.
+    #[serde(deserialize_with = "clarity_value_deserializer")]
+    pub result: Value,
+}
+
 /// Helper function for converting a hexidecimal string into an integer.
 fn parse_hex_u128(hex: &str) -> Result<u128, Error> {
     let hex_str = hex.trim_start_matches("0x");
@@ -466,6 +483,55 @@ impl StacksClient {
             client,
             nakamoto_start_height,
         })
+    }
+
+    /// Calls a read-only public function on a given smart contract.
+    #[tracing::instrument(skip_all)]
+    pub async fn call_read(
+        &self,
+        contract_principal: &StacksAddress,
+        contract_name: &ContractName,
+        fn_name: &ClarityName,
+        sender: &StacksAddress,
+    ) -> Result<Value, Error> {
+        let path = format!(
+            "/v2/contracts/call-read/{}/{}/{}?tip=latest",
+            contract_principal, contract_name, fn_name
+        );
+
+        let url = self
+            .endpoint
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
+
+        let body = CallReadRequest {
+            sender: sender.to_string(),
+            arguments: vec![], // TODO: Add when needed
+        };
+
+        tracing::debug!(
+            %contract_principal,
+            %contract_name,
+            %fn_name,
+            "Fetching contract data variable"
+        );
+
+        let response = self
+            .client
+            .post(url)
+            .timeout(REQUEST_TIMEOUT)
+            .json(&body)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json::<CallReadResponse>()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+            .map(|x| x.result)
     }
 
     /// Retrieve the latest value of a data variable from the specified contract.
