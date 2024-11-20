@@ -1,9 +1,12 @@
 {
   "name": "emily-api",
   "scripts": {
-    "build-rust": "openapi-generator-cli generate -i ./emily-openapi-spec.json -g rust -o ../client/rust/ --config ./config.json --additional-properties=preferUnsignedInt=true",
-    "clean-rust": "find ../client/rust ! -path '../client/rust/src/main.rs' ! -path '../client/rust/Cargo.toml' -mindepth 1 -delete",
-    "build": "pnpm build-rust",
+    "build-test-api-rust": "openapi-generator-cli generate -i ./generated-specs/testing-emily-openapi-spec.json -g rust -o ../client/rust/testing/ --config ./api-config/testing.json",
+    "build-admin-api-rust": "openapi-generator-cli generate -i ./generated-specs/admin-emily-openapi-spec.json -g rust -o ../client/rust/admin/ --config ./api-config/admin.json",
+    "build-public-api-rust": "openapi-generator-cli generate -i ./generated-specs/public-emily-openapi-spec.json -g rust -o ../client/rust/public/ --config ./api-config/public.json",
+    "build-signer-api-rust": "openapi-generator-cli generate -i ./generated-specs/signer-emily-openapi-spec.json -g rust -o ../client/rust/signer/ --config ./api-config/signer.json",
+    "clean-rust": "find ../client/rust ! -path '../client/rust/*/src/main.rs' ! -path '../client/rust/*/Cargo.toml' -mindepth 1 -delete",
+    "build": "pnpm build-test-api-rust && pnpm build-admin-api-rust && pnpm build-public-api-rust && pnpm build-signer-api-rust",
     "clean": "pnpm clean-rust"
   },
   "devDependencies": {
