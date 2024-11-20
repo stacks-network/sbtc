@@ -372,6 +372,9 @@ where
             txid: decision.txid,
         };
 
+        // TODO: we need to check to see if we have the withdrawal request
+        // first.
+
         self.context
             .get_storage_mut()
             .write_withdrawal_signer_decision(&signer_decision)
