@@ -295,9 +295,9 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         context: ctx,
         context_window: 10000,
         private_key,
-        signing_round_max_duration: Duration::from_secs(10),
+        signing_round_max_duration: Duration::from_secs(15),
         threshold: 2,
-        dkg_max_duration: Duration::from_secs(10),
+        dkg_max_duration: Duration::from_secs(15),
         sbtc_contracts_deployed: false,
         is_epoch3: false,
     };
