@@ -3,6 +3,7 @@
 name: Docker Image (Binary)
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - '*'
