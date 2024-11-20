@@ -133,8 +133,7 @@ CREATE TABLE sbtc_signer.rotate_keys_transactions (
     -- This is one of those fields that might not be required in the future
     -- when Schnorr signatures are introduced.
     signatures_required INTEGER NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.completed_deposit_events (
