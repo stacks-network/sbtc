@@ -2,6 +2,7 @@
 .travis.yml
 Cargo.toml
 README.md
+docs/AccountLimits.md
 docs/Chainstate.md
 docs/ChainstateApi.md
 docs/CreateDepositRequestBody.md
@@ -18,6 +19,8 @@ docs/GetDepositsResponse.md
 docs/GetWithdrawalsResponse.md
 docs/HealthApi.md
 docs/HealthData.md
+docs/Limits.md
+docs/LimitsApi.md
 docs/Status.md
 docs/TestingApi.md
 docs/UpdateDepositsRequestBody.md
@@ -34,10 +37,12 @@ src/apis/chainstate_api.rs
 src/apis/configuration.rs
 src/apis/deposit_api.rs
 src/apis/health_api.rs
+src/apis/limits_api.rs
 src/apis/mod.rs
 src/apis/testing_api.rs
 src/apis/withdrawal_api.rs
 src/lib.rs
+src/models/account_limits.rs
 src/models/chainstate.rs
 src/models/create_deposit_request_body.rs
 src/models/create_withdrawal_request_body.rs
@@ -51,6 +56,7 @@ src/models/get_deposits_for_transaction_response.rs
 src/models/get_deposits_response.rs
 src/models/get_withdrawals_response.rs
 src/models/health_data.rs
+src/models/limits.rs
 src/models/mod.rs
 src/models/status.rs
 src/models/update_deposits_request_body.rs

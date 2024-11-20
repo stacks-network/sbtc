@@ -1589,7 +1589,7 @@ async fn wait_for_signers(signers: &[(IntegrationTestContext, PgStore, &Keypair,
     futures::future::join_all(futures).await;
     // It's not entirely clear why this sleep is helpful, but it appears to
     // be necessary in CI.
-    tokio::time::sleep(Duration::from_secs(1)).await;
+    tokio::time::sleep(Duration::from_secs(2)).await;
 }
 
 /// This test asserts that the `get_btc_state` function returns the correct

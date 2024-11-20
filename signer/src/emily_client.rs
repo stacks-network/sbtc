@@ -11,6 +11,7 @@ use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
 use emily_client::apis::withdrawal_api;
 use emily_client::apis::Error as EmilyError;
+use emily_client::apis::ResponseContent;
 use emily_client::models::Chainstate;
 use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::DepositUpdate;
@@ -29,6 +30,7 @@ use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::config::EmilyClientConfig;
 use crate::config::EmilyEndpointConfig;
 use crate::error::Error;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksBlock;
 use crate::util::ApiFallbackClient;
 
@@ -42,6 +44,10 @@ pub enum EmilyClientError {
     /// Host is required
     #[error("invalid URL: host is required: {0}")]
     InvalidUrlHostRequired(String),
+
+    /// An error occurred while getting a deposit request
+    #[error("error getting a deposit: {0}")]
+    GetDeposit(EmilyError<deposit_api::GetDepositError>),
 
     /// An error occurred while getting deposits
     #[error("error getting deposits: {0}")]
@@ -67,6 +73,13 @@ pub enum EmilyClientError {
 /// Trait describing the interactions with Emily API.
 #[cfg_attr(any(test, feature = "testing"), mockall::automock())]
 pub trait EmilyInteract: Sync + Send {
+    /// Get a deposit from Emily.
+    fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> impl std::future::Future<Output = Result<Option<CreateDepositRequest>, Error>> + Send;
+
     /// Get pending deposits from Emily.
     fn get_deposits(
         &self,
@@ -169,6 +182,37 @@ impl TryFrom<&EmilyEndpointConfig> for EmilyClient {
 }
 
 impl EmilyInteract for EmilyClient {
+    async fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<CreateDepositRequest>, Error> {
+        let txid_str = txid.to_string();
+        let index = output_index.to_string();
+
+        let resp = deposit_api::get_deposit(&self.config, &txid_str, &index).await;
+
+        let deposit = match resp {
+            Ok(deposit) => deposit,
+            Err(EmilyError::ResponseError(ResponseContent { status, .. }))
+                if status.as_u16() == 404 =>
+            {
+                return Ok(None)
+            }
+            error => error.map_err(EmilyClientError::GetDeposit)?,
+        };
+
+        Ok(Some(CreateDepositRequest {
+            outpoint: OutPoint {
+                txid: Txid::from_str(&deposit.bitcoin_txid).map_err(Error::DecodeHexTxid)?,
+                vout: deposit.bitcoin_tx_output_index,
+            },
+            reclaim_script: ScriptBuf::from_hex(&deposit.reclaim_script)
+                .map_err(Error::DecodeHexScript)?,
+            deposit_script: ScriptBuf::from_hex(&deposit.deposit_script)
+                .map_err(Error::DecodeHexScript)?,
+        }))
+    }
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         // TODO: hanlde pagination -- if the queried data is over 1MB DynamoDB will
         // paginate the results even if we pass `None` as page limit.
@@ -285,6 +329,15 @@ impl EmilyInteract for EmilyClient {
 }
 
 impl EmilyInteract for ApiFallbackClient<EmilyClient> {
+    async fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<CreateDepositRequest>, Error> {
+        self.exec(|client, _| client.get_deposit(txid, output_index))
+            .await
+    }
+
     fn get_deposits(
         &self,
     ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> {
