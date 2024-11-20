@@ -44,6 +44,7 @@ pub fn write_all(relative_dir: &'static str) {
 }
 
 /// Creates the spec file and writes it to the output file path.
+#[allow(clippy::expect_fun_call)]
 fn write_openapi_spec(
     relative_directory_path: &str,
     file_name: &str,

@@ -2,7 +2,7 @@
 mod generators;
 
 /// The relative directory for the specifications.
-const RELATIVE_SPEC_DIRECTORY: &'static str = "./generated-specs";
+const RELATIVE_SPEC_DIRECTORY: &str = "./generated-specs";
 
 /// Main function.
 fn main() {
