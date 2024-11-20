@@ -399,6 +399,15 @@ impl super::DbRead for SharedStore {
         Ok(Some(can_sign))
     }
 
+    async fn deposit_request_exists(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<bool, Error> {
+        let store = self.lock().await;
+        Ok(store.deposit_requests.contains_key(&(*txid, output_index)))
+    }
+
     async fn get_withdrawal_signers(
         &self,
         request_id: u64,

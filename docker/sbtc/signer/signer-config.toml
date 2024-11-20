@@ -25,7 +25,7 @@
 # Required: true
 # Environment: SIGNER_EMILY__ENDPOINTS
 endpoints = [
-    "http://emily-server:3031"
+    { endpoint = "http://emily-server:3031" },
 ]
 
 # !! ==============================================================================
