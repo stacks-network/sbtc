@@ -1592,6 +1592,7 @@ mod tests {
         }
     }
 
+    #[ignore = "we have a test for this"]
     #[test(tokio::test)]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
@@ -1599,6 +1600,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_be_able_to_skip_deploy_sbtc_contracts() {
         test_environment()

@@ -813,6 +813,7 @@ mod tests {
         }
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_respond_to_bitcoin_transaction_sign_requests() {
         test_environment()
@@ -820,6 +821,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_be_able_to_participate_in_dkg() {
         test_environment()
@@ -827,6 +829,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_be_able_to_participate_in_signing_round() {
         test_environment()
