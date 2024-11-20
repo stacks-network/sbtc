@@ -347,7 +347,12 @@ where
         // it failed validation). In this case we do not persist the
         // decision and move on.
         if !db.deposit_request_exists(&txid, output_index).await? {
-            tracing::debug!("we still do not have a record of the deposit request");
+            tracing::debug!(
+                %txid,
+                %output_index,
+                sender = %signer_pub_key,
+                "we still do not have a record of the deposit request"
+            );
             return Ok(());
         }
         db.write_deposit_signer_decision(&signer_decision).await?;
