@@ -20,6 +20,7 @@ use tokio::time::error::Elapsed;
 use crate::bitcoin::GetTransactionFeeResult;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::model::BitcoinTxId;
 use crate::{
     bitcoin::{
         rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
@@ -451,6 +452,17 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
 }
 
 impl EmilyInteract for WrappedMock<MockEmilyInteract> {
+    async fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<sbtc::deposits::CreateDepositRequest>, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_deposit(txid, output_index)
+            .await
+    }
     async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         self.inner.lock().await.get_deposits().await
     }
