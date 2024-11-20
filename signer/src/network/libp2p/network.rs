@@ -104,7 +104,9 @@ impl MessageTransfer for P2PNetwork {
     }
 
     fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
-        let (sender, receiver) = tokio::sync::broadcast::channel(1000);
+        // This is the same capacity of `signal_tx` in the SignerContext,
+        // which is typically used to create this P2PNetwork.
+        let (sender, receiver) = tokio::sync::broadcast::channel(1024);
         let mut rx = self.signal_rx.resubscribe();
 
         tokio::spawn(async move {
