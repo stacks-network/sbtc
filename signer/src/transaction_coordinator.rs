@@ -846,7 +846,7 @@ where
             WstsOperationResult::SignTaproot(sig) | WstsOperationResult::SignSchnorr(sig) => {
                 Ok(sig.into())
             }
-            _ => Err(Error::UnexpectedOperationResult),
+            result => Err(Error::UnexpectedOperationResult(result)),
         }
     }
 
@@ -905,7 +905,7 @@ where
 
         match operation_result {
             WstsOperationResult::Dkg(aggregate_key) => PublicKey::try_from(&aggregate_key),
-            _ => Err(Error::UnexpectedOperationResult),
+            result => Err(Error::UnexpectedOperationResult(result)),
         }
     }
 
