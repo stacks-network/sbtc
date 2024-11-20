@@ -880,6 +880,22 @@ mod tests {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: Some(true),
             can_accept: Some(true),
+            amount: TX_FEE.to_sat() - 1,
+            max_fee: TX_FEE.to_sat(),
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+        },
+        status: InputValidationResult::FeeTooHigh,
+        chain_tip_height: 2,
+    } ; "one-sat-too-high-fee-amount")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
             amount: 100_000_000,
             max_fee: TX_FEE.to_sat() - 1,
             lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
