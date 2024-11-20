@@ -305,8 +305,13 @@ where
         Ok(can_accept)
     }
 
+    /// Save the given decision into the database
+    ///
+    /// If we do not have a record of the associated deposit request in our
+    /// database then we fetch it from Emily and then attempt to persist
+    /// it.
     #[tracing::instrument(skip_all, fields(sender = %signer_pub_key))]
-    async fn persist_received_deposit_decision(
+    pub async fn persist_received_deposit_decision(
         &mut self,
         decision: &SignerDepositDecision,
         signer_pub_key: PublicKey,
