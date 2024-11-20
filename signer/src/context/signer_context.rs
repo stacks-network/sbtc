@@ -9,7 +9,8 @@ use crate::{
     emily_client::EmilyInteract,
     error::Error,
     stacks::api::StacksInteract,
-    storage::{DbRead, DbWrite}, SIGNER_CHANNEL_CAPACITY,
+    storage::{DbRead, DbWrite},
+    SIGNER_CHANNEL_CAPACITY,
 };
 
 use super::{Context, SignerSignal, SignerState, TerminationHandle};
