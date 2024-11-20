@@ -39,6 +39,7 @@ use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use clarity::types::chainstate::StacksAddress;
+use futures::stream::Stream;
 use futures::stream::StreamExt;
 use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
@@ -46,17 +47,13 @@ use std::collections::HashSet;
 
 /// Block observer
 #[derive(Debug)]
-pub struct BlockObserver<Context, StacksClient, EmilyClient, BlockHashStream> {
+pub struct BlockObserver<Context, BlockHashStream> {
     /// Signer context
     pub context: Context,
-    /// Stacks client
-    pub stacks_client: StacksClient,
-    /// Emily client
-    pub emily_client: EmilyClient,
     /// Stream of blocks from the block notifier
     pub bitcoin_blocks: BlockHashStream,
     /// How far back in time the observer should look
-    pub horizon: usize,
+    pub horizon: u32,
 }
 
 /// A full "deposit", containing the bitcoin transaction and a fully
@@ -118,12 +115,10 @@ pub trait DepositRequestValidator {
         C: BitcoinInteract;
 }
 
-impl<C, SC, EC, BHS> BlockObserver<C, SC, EC, BHS>
+impl<C, S> BlockObserver<C, S>
 where
     C: Context,
-    SC: StacksInteract,
-    EC: EmilyInteract,
-    BHS: futures::stream::Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
+    S: Stream<Item = Result<bitcoin::BlockHash, Error>> + Unpin,
 {
     /// Run the block observer
     #[tracing::instrument(skip_all, name = "block-observer")]
@@ -136,7 +131,7 @@ where
             }
 
             // Bitcoin blocks will generally arrive in ~10 minute intervals, so
-            // we don't need to be so aggresive in our timeout here.
+            // we don't need to be so aggressive in our timeout here.
             let poll = tokio::time::timeout(Duration::from_millis(100), self.bitcoin_blocks.next());
 
             match poll.await {
@@ -177,37 +172,42 @@ where
 
         Ok(())
     }
+}
 
-    /// Fetch deposit requests from Emily and store the validated ones into
-    /// the database.
+impl<C: Context, B> BlockObserver<C, B> {
+    /// Fetch deposit requests from Emily and store the ones that pass
+    /// validation into the database.
     #[tracing::instrument(skip_all)]
-    async fn load_latest_deposit_requests(&mut self) -> Result<(), Error> {
-        let mut deposit_requests = Vec::new();
-        let mut failed_requests = Vec::new();
+    async fn load_latest_deposit_requests(&self) -> Result<(), Error> {
+        let requests = self.context.get_emily_client().get_deposits().await?;
+        self.load_requests(&requests).await
+    }
 
-        for request in self.emily_client.get_deposits().await? {
+    /// Validate the given deposit requests and store the ones that pass
+    /// validation into the database.
+    ///
+    /// There are three types of errors that can happen during validation
+    /// 1. The transaction fails primary validation. This means the deposit
+    ///    script itself does not align with what we expect. If probably
+    ///    does not follow our protocol.
+    /// 2. The transaction passes step (1), but we don't recognize the
+    ///    x-only public key in the deposit script.
+    /// 3. We cannot find the associated transaction confirmed on a bitcoin
+    ///    block, or when we encountered some unexpected error when
+    ///    reaching out to bitcoin-core or our database.
+    #[tracing::instrument(skip_all)]
+    pub async fn load_requests(&self, requests: &[CreateDepositRequest]) -> Result<(), Error> {
+        let mut deposit_requests = Vec::new();
+        for request in requests {
             let deposit = request
                 .validate(&self.context.get_bitcoin_client())
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
-            match deposit {
-                // Happy path, we've successfully validated the deposit
-                // request.
-                Ok(Some(deposit)) => deposit_requests.push(deposit),
-                // This happens when the transaction has failed the first
-                // step of validation or has passed the first step, but we
-                // don't recognize the x-only public key in the deposit
-                // script.
-                Err(Error::SbtcLib(_)) | Err(Error::UnknownAggregateKey(_, _)) => {
-                    failed_requests.push(request.outpoint);
-                }
-                // This happens when we cannot find the associated
-                // transaction confirmed on a bitcoin block, or when we
-                // encountered some unexpected error when reaching out to
-                // bitcoin-core or our database. We've already logged the
-                // error above, so there is nothing more to do.
-                Err(_) | Ok(None) => {}
+            // We log the error above, so we just need to extract the
+            // deposit now.
+            if let Ok(Some(deposit)) = deposit {
+                deposit_requests.push(deposit);
             }
         }
 
@@ -217,6 +217,7 @@ where
         Ok(())
     }
 
+    /// Find the parent blocks from the given block that are also missing from our database
     #[tracing::instrument(skip_all, fields(%block_hash))]
     async fn next_blocks_to_process(
         &self,
@@ -246,6 +247,8 @@ where
         Ok(blocks)
     }
 
+    /// Check whether we have already processed this block in our
+    /// database.
     #[tracing::instrument(skip(self))]
     async fn have_already_processed_block(
         &self,
@@ -259,6 +262,7 @@ where
             .is_some())
     }
 
+    /// Process the bitcoin block. Also process all recent stacks blocks.
     #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
     async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         let storage = self.context.get_storage_mut();
@@ -280,7 +284,8 @@ where
         };
 
         // Get the current tenure info (incl. tip details) from the Stacks node.
-        let tenure_info = self.stacks_client.get_tenure_info().await?;
+        let stacks_client = self.context.get_stacks_client();
+        let tenure_info = stacks_client.get_tenure_info().await?;
 
         // While we do do this at startup to do the "heavy lifting" of syncing
         // potentially from a long chain, we also do this here to ensure that
@@ -549,8 +554,6 @@ mod tests {
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            stacks_client: test_harness.clone(),
-            emily_client: test_harness.clone(),
             bitcoin_blocks: block_hash_stream,
             horizon: 1,
         };
@@ -674,7 +677,6 @@ mod tests {
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
-        let block_hash_stream = test_harness.spawn_block_hash_stream();
         let ctx = TestContext::builder()
             .with_storage(storage.clone())
             .with_stacks_client(test_harness.clone())
@@ -682,11 +684,9 @@ mod tests {
             .with_bitcoin_client(test_harness.clone())
             .build();
 
-        let mut block_observer = BlockObserver {
+        let block_observer = BlockObserver {
             context: ctx,
-            stacks_client: test_harness.clone(),
-            emily_client: test_harness.clone(),
-            bitcoin_blocks: block_hash_stream,
+            bitcoin_blocks: (),
             horizon: 1,
         };
 
@@ -761,7 +761,6 @@ mod tests {
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
-        let block_hash_stream = test_harness.spawn_block_hash_stream();
         let ctx = TestContext::builder()
             .with_storage(storage.clone())
             .with_stacks_client(test_harness.clone())
@@ -769,11 +768,9 @@ mod tests {
             .with_bitcoin_client(test_harness.clone())
             .build();
 
-        let mut block_observer = BlockObserver {
+        let block_observer = BlockObserver {
             context: ctx,
-            stacks_client: test_harness.clone(),
-            emily_client: test_harness.clone(),
-            bitcoin_blocks: block_hash_stream,
+            bitcoin_blocks: (),
             horizon: 1,
         };
 

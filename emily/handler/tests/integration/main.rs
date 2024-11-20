@@ -6,5 +6,7 @@ pub mod common;
 pub mod config;
 /// Deposit test module.
 pub mod deposit;
+/// Limit test module.
+pub mod limits;
 /// Withdrawal test module.
 pub mod withdrawal;

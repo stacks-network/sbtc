@@ -1,11 +1,20 @@
 use std::sync::atomic::Ordering;
 
+use emily_client::apis::deposit_api;
+use emily_client::apis::testing_api;
+use emily_client::models::CreateDepositRequestBody;
+use fake::Fake;
+use fake::Faker;
 use rand::SeedableRng as _;
 
 use signer::bitcoin::MockBitcoinInteract;
 use signer::context::Context;
+use signer::emily_client::EmilyClient;
 use signer::emily_client::MockEmilyInteract;
 use signer::keys::PrivateKey;
+use signer::keys::PublicKey;
+use signer::message::SignerDepositDecision;
+use signer::network::in_memory2::SignerNetwork;
 use signer::network::InMemoryNetwork;
 use signer::request_decider::RequestDeciderEventLoop;
 use signer::stacks::api::MockStacksInteract;
@@ -15,6 +24,7 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
+use url::Url;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
@@ -197,9 +207,9 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
     testing::storage::drop_db(db).await;
 }
 
-/// Test that [`TxSignerEventLoop::handle_pending_deposit_request`] will
-/// write the can_sign field to be false if the current signer is not part
-/// of the signing set locking the deposit transaction.
+/// Test that [`RequestDeciderEventLoop::handle_pending_deposit_request`]
+/// will write the can_sign field to be false if the current signer is not
+/// part of the signing set locking the deposit transaction.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn handle_pending_deposit_request_not_in_signing_set() {
@@ -231,7 +241,7 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
     // store the deposit transaction.
     setup.store_deposit_tx(&db).await;
 
-    // When we run TxSignerEventLoop::handle_pending_deposit_request, we
+    // When we run RequestDeciderEventLoop::handle_pending_deposit_request, we
     // check if the current signer is in the signing set and this adds a
     // signing set.
     setup.store_dkg_shares(&db).await;
@@ -279,6 +289,117 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
     let vote = votes.pop().unwrap();
     assert!(!vote.can_sign);
     assert!(vote.can_accept);
+
+    testing::storage::drop_db(db).await;
+}
+
+/// Test that
+/// [`RequestDeciderEventLoop::persist_received_deposit_decision`] will
+/// fetch the deposit request from emily if does not have a record of it.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let emily_client =
+        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+
+    testing_api::wipe_databases(emily_client.config())
+        .await
+        .unwrap();
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_emily_client(emily_client.clone())
+        .with_mocked_stacks_client()
+        .build();
+
+    // We need this so that there is a live "network". Otherwise,
+    // RequestDeciderEventLoop::persist_received_deposit_decision will
+    // error when trying to send a message at the end.
+    let _rec = ctx.get_signal_receiver();
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    // This confirms a deposit transaction, and has a nice helper function
+    // for storing a real deposit.
+    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+
+    // Let's get the blockchain data into the database.
+    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    let network = SignerNetwork::single();
+
+    let mut decider = RequestDeciderEventLoop {
+        network: network.spawn(),
+        context: ctx.clone(),
+        context_window: 10000,
+        blocklist_checker: Some(()),
+        signer_private_key: PrivateKey::new(&mut rng),
+    };
+    let txid = setup.deposit_request.outpoint.txid.into();
+    let output_index = setup.deposit_request.outpoint.vout;
+
+    let votes = db.get_deposit_signers(&txid, output_index).await.unwrap();
+    assert!(votes.is_empty());
+
+    let decision = SignerDepositDecision {
+        txid: *txid,
+        output_index,
+        can_accept: true,
+        can_sign: true,
+    };
+    let sender_pub_key: PublicKey = Faker.fake_with_rng(&mut rng);
+    // Emily doesn't know about the deposit request so nothing should be
+    // written.
+    decider
+        .persist_received_deposit_decision(&decision, sender_pub_key)
+        .await
+        .unwrap();
+
+    // A decision should get stored and there should only be one
+    let votes = db.get_deposit_signers(&txid, output_index).await.unwrap();
+    assert!(votes.is_empty());
+
+    // Now let's tell emily about the deposit request
+    let body = CreateDepositRequestBody {
+        bitcoin_tx_output_index: setup.deposit_request.outpoint.vout,
+        bitcoin_txid: setup.deposit_request.outpoint.txid.to_string(),
+        deposit_script: setup.deposit_request.deposit_script.to_hex_string(),
+        reclaim_script: setup.deposit_request.reclaim_script.to_hex_string(),
+    };
+    let _ = deposit_api::create_deposit(emily_client.config(), body)
+        .await
+        .unwrap();
+
+    // Okay now before we attempt to fetch the decision, we'll ask emily,
+    // get the deposit reqeust, validate it, persist the request and
+    // persist the decision.
+    decider
+        .persist_received_deposit_decision(&decision, sender_pub_key)
+        .await
+        .unwrap();
+
+    // A decision should get stored and there should only be one
+    let votes = db.get_deposit_signers(&txid, output_index).await.unwrap();
+    assert_eq!(votes.len(), 1);
+
+    let vote = &votes[0];
+    assert_eq!(vote.signer_pub_key, sender_pub_key);
+    assert_eq!(vote.can_accept, decision.can_accept);
+    assert_eq!(vote.can_sign, decision.can_sign);
+    assert_eq!(vote.output_index, decision.output_index);
+
+    let deposit_request_exists = db
+        .deposit_request_exists(&txid, output_index)
+        .await
+        .unwrap();
+    assert!(deposit_request_exists);
 
     testing::storage::drop_db(db).await;
 }
