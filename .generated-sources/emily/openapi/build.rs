@@ -17,7 +17,7 @@ fn main() {
 #[derive(utoipa::OpenApi)]
 #[openapi(
     // Add API key security scheme.
-    modifiers(&AwsApiKey, &AwsLambdaIntegration),
+    modifiers(&CorsSupport, &AwsApiKey, &AwsLambdaIntegration),
     // Paths to be included in the OpenAPI specification.
     paths(
         // Health check endpoints.
@@ -153,6 +153,37 @@ impl Modify for AwsLambdaIntegration {
                     .extensions
                     .get_or_insert(Default::default())
                     .extend(lambda_integration.clone())
+            });
+    }
+}
+
+
+/// Attaches the AWS Lambda integration to the OpenAPI specification. This is necessary
+/// for the AWS CDK to attach the lambda to the API Gateway.
+///
+/// TODO(269): Change Emily API Lambda Integrations to use cdk constructs if possible
+/// instead of specification alteration.
+struct CorsSupport;
+/// Add support for CORS with OPTIONS method to all endpoints.
+impl Modify for CorsSupport {
+    /// Add CORS support to the OPTIONS method for each path in the OpenAPI specification.
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+
+        let cors_options_operation = utoipa::openapi::path::OperationBuilder::new()
+            .summary(Some("CORS support"))
+            .description(Some("Handles CORS preflight requests"))
+            .tag("CORS")
+            .build();
+
+        openapi
+            .paths
+            .paths
+            .iter_mut()
+            .for_each(|(_, path_item)| {
+                path_item.operations.insert(
+                    utoipa::openapi::PathItemType::Options,
+                    cors_options_operation.clone(),
+                );
             });
     }
 }

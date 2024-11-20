@@ -19,10 +19,18 @@ async fn main() {
         .unwrap_or_else(|e| panic!("{e}"));
     info!("Lambda Context:\n{context:?}");
 
+    // Create CORS configuration
+    let cors = warp::cors()
+        .allow_origin("*/*")
+        .allow_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_headers(vec!["Content-Type", "x-api-key"])
+        .build();
+
     // Setup service filters.
     let service_filter = api::routes::routes_with_stage_prefix(context)
         .recover(api::handlers::handle_rejection)
-        .with(warp::log("api"));
+        .with(warp::log("api"))
+        .with(cors);
 
     // Create warp service.
     // TODO(276): Remove warp_lambda in Emily API and use different library.
