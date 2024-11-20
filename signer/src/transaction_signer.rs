@@ -258,7 +258,7 @@ where
                     .await?;
             }
 
-            (message::Payload::BitcoinBlockSbtcRequests(requests), _, _) => {
+            (message::Payload::SbtcRequestsContextMessage(requests), _, _) => {
                 self.handle_bitcoin_block_sbtc_requests(requests, &msg.bitcoin_chain_tip)
                     .await?;
             }
@@ -320,7 +320,7 @@ where
     #[tracing::instrument(skip(self, request))]
     async fn handle_bitcoin_block_sbtc_requests(
         &mut self,
-        request: &message::BitcoinBlockSbtcRequests,
+        request: &message::SbtcRequestsContextMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         let bitcoin_block = self

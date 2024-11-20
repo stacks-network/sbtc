@@ -30,7 +30,7 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
-use crate::message::BitcoinBlockSbtcRequests;
+use crate::message::SbtcRequestsContextMessage;
 use crate::message::Payload;
 use crate::message::SbtcRequestsContext;
 use crate::message::SignerMessage;
@@ -411,7 +411,7 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
         // Get the requests from the transaction package because they have been split into
         // multiple transactions.
-        let sbtc_requests = BitcoinBlockSbtcRequests {
+        let sbtc_requests = SbtcRequestsContextMessage {
             requests: transaction_package
                 .iter()
                 .map(|tx| SbtcRequestsContext::from(&tx.requests))

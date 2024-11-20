@@ -158,7 +158,7 @@ where
             }
             Payload::StacksTransactionSignRequest(_)
             | Payload::BitcoinTransactionSignRequest(_)
-            | Payload::BitcoinBlockSbtcRequests(_)
+            | Payload::SbtcRequestsContextMessage(_)
             | Payload::WstsMessage(_)
             | Payload::SweepTransactionInfo(_)
             | Payload::StacksTransactionSignature(_)
