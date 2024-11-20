@@ -134,6 +134,9 @@ services:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
       - HOST=0.0.0.0
       - PORT=3031
+      - DEFAULT_PEG_CAP=100000000000
+      - DEFAULT_PER_DEPOSIT_CAP=100000000
+      - DEFAULT_PER_WITHDRAWAL_CAP=100000000
     ports:
       - "3031:3031"
     profiles:
@@ -364,7 +367,7 @@ services:
     profiles:
       - default
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:10.0.2.2"
 
   stacker:
     build: stacker
