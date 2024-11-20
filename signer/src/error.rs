@@ -494,7 +494,7 @@ pub enum Error {
 
     /// Wsts state machine returned unexpected operation result
     #[error("unexpected operation result: {0:?}")]
-    UnexpectedOperationResult(wsts::state_machine::OperationResult),
+    UnexpectedOperationResult(Box<wsts::state_machine::OperationResult>),
 
     /// The smart contract has already been deployed
     #[error("smart contract already deployed, contract name: {0}")]
