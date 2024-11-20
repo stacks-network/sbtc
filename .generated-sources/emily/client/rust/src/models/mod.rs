@@ -1,3 +1,5 @@
+pub mod account_limits;
+pub use self::account_limits::AccountLimits;
 pub mod chainstate;
 pub use self::chainstate::Chainstate;
 pub mod create_deposit_request_body;
@@ -24,6 +26,8 @@ pub mod get_withdrawals_response;
 pub use self::get_withdrawals_response::GetWithdrawalsResponse;
 pub mod health_data;
 pub use self::health_data::HealthData;
+pub mod limits;
+pub use self::limits::Limits;
 pub mod status;
 pub use self::status::Status;
 pub mod update_deposits_request_body;
