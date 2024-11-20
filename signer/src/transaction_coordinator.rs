@@ -163,20 +163,22 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
 
 impl<C, N> TxCoordinatorEventLoop<C, N>
 where
-    C: Context,
-    N: network::MessageTransfer,
+    C: Context + 'static,
+    N: network::MessageTransfer + 'static,
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip_all, name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self
+            .context
+            .as_signal_stream(&self.network, Self::run_loop_message_filter);
 
         loop {
             match signal_stream.next().await {
-                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
-                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
-                Some(Ok(SignerSignal::Event(event))) => {
+                Some(SignerSignal::Command(SignerCommand::Shutdown)) => break,
+                Some(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
+                Some(SignerSignal::Event(event)) => {
                     if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
                         event
                     {
@@ -192,11 +194,6 @@ where
                             .signal(TxCoordinatorEvent::TenureCompleted.into())?;
                     }
                 }
-                // This means one of the broadcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Some(Err(error)) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
                 None => break,
             }
         }
@@ -206,11 +203,21 @@ where
         Ok(())
     }
 
+    /// This function defines which messages this event loop is unterested
+    /// in.
+    fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+        matches!(
+            signal,
+            SignerSignal::Event(SignerEvent::RequestDecider(
+                RequestDeciderEvent::NewRequestsHandled,
+            )) | SignerSignal::Command(SignerCommand::Shutdown)
+        )
+    }
     /// A function that filters the [`Context::as_signal_stream`] stream
     /// for items that the coordinator might care about, which includes
     /// some network messages and transaction signer messages.
-    async fn to_signed_message<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
-        match event.ok()? {
+    async fn to_signed_message(event: SignerSignal) -> Option<Signed<SignerMessage>> {
+        match event {
             SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg)))
             | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => Some(msg),
             _ => None,
@@ -678,7 +685,7 @@ where
         let max_duration = self.signing_round_max_duration;
         let signal_stream = self
             .context
-            .as_signal_stream(&self.network)
+            .as_signal_stream(&self.network, |_| true)
             .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
@@ -925,7 +932,7 @@ where
 
         let signal_stream = self
             .context
-            .as_signal_stream(&self.network)
+            .as_signal_stream(&self.network, |_| true)
             .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);

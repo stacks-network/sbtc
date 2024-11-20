@@ -52,9 +52,9 @@ pub struct RequestDeciderEventLoop<C, N, B> {
 
 impl<C, N, B> RequestDeciderEventLoop<C, N, B>
 where
-    C: Context,
-    N: MessageTransfer,
-    B: BlocklistChecker,
+    C: Context + 'static,
+    N: MessageTransfer + 'static,
+    B: BlocklistChecker + 'static,
 {
     /// Run the request decider event loop
     #[tracing::instrument(
@@ -69,13 +69,15 @@ where
             return Err(error);
         };
 
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self
+            .context
+            .as_signal_stream(&self.network, Self::run_loop_message_filter);
 
         while let Some(message) = signal_stream.next().await {
             match message {
-                Ok(SignerSignal::Command(SignerCommand::Shutdown)) => break,
-                Ok(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
-                Ok(SignerSignal::Event(event)) => match event {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => match event {
                     SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
                             tracing::error!(%error, "error handling signer message");
@@ -98,16 +100,22 @@ where
                     }
                     _ => {}
                 },
-                // This means one of the broadcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Err(error) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
             }
         }
 
         tracing::info!("request decider event loop has been stopped");
         Ok(())
+    }
+
+    /// This function defines which messages this event loop is unterested
+    /// in.
+    fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+        matches!(
+            signal,
+            SignerSignal::Command(SignerCommand::Shutdown)
+                | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+                | SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+        )
     }
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]

@@ -5,8 +5,8 @@ mod signer_context;
 mod signer_state;
 mod termination;
 
-use futures::stream::SelectAll;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::broadcast::error::RecvError;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
@@ -16,6 +16,7 @@ use crate::network::MessageTransfer;
 use crate::stacks::api::StacksInteract;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
+use crate::SIGNER_CHANNEL_CAPACITY;
 
 pub use messaging::*;
 pub use signer_context::SignerContext;
@@ -58,14 +59,59 @@ pub trait Context: Clone + Sync + Send {
     /// later return `Some(_)`. But if [`StreamExt::next`] yields `None`
     /// three times then the stream is "fused" and will return `None`
     /// forever after.
-    fn as_signal_stream<M>(&self, network: &M) -> SelectAll<BroadcastStream<SignerSignal>>
+    fn as_signal_stream<F, M>(&self, network: &M, predicate: F) -> ReceiverStream<SignerSignal>
     where
         M: MessageTransfer,
+        F: Fn(&SignerSignal) -> bool + Send + Sync + 'static,
     {
-        let term = self.get_termination_handle().as_stream();
-        let signal_stream = BroadcastStream::new(self.get_signal_receiver());
-        let network_stream = network.receiver_stream();
+        let (sender, receiver) = tokio::sync::mpsc::channel(SIGNER_CHANNEL_CAPACITY);
 
-        futures::stream::select_all([term, signal_stream, network_stream])
+        let mut term = self.get_termination_handle().as_receiver();
+        let mut signal_stream = self.get_signal_receiver();
+        let mut network_stream = network.as_receiver();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    item = term.recv() => {
+                        match item {
+                            Some(signal) => {
+                                let _ = sender.send(signal).await;
+                            }
+                            None => break,
+                        }
+                    }
+                    item = signal_stream.recv() => {
+                        match item {
+                            Ok(signal) if predicate(&signal) => {
+                                let _ = sender.send(signal).await;
+                            }
+                            Ok(_) => continue,
+                            Err(RecvError::Closed) => {
+                                tracing::warn!("internal signal stream closed");
+                                break;
+                            }
+                            Err(error @ RecvError::Lagged(_)) => {
+                                tracing::warn!(%error, "internal signal stream lagging");
+                                continue
+                            }
+                        }
+                    }
+                    item = network_stream.recv() => {
+                      match item {
+                            Some(msg) => {
+                                let signal = P2PEvent::MessageReceived(msg).into();
+                                if predicate(&signal) {
+                                    let _ = sender.send(signal).await;
+                                }
+                            }
+                            None => {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        ReceiverStream::new(receiver)
     }
 }

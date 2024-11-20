@@ -4,7 +4,6 @@
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::Sender;
-use tokio_stream::wrappers::BroadcastStream;
 
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -104,35 +103,34 @@ impl MessageTransfer for P2PNetwork {
         }
     }
 
-    fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
+    fn as_receiver(&self) -> tokio::sync::mpsc::Receiver<Msg> {
         // This is the same capacity of `signal_tx` in the SignerContext,
         // which is typically used to create this P2PNetwork.
-        let (sender, receiver) = tokio::sync::broadcast::channel(SIGNER_CHANNEL_CAPACITY);
+        let (sender, receiver) = tokio::sync::mpsc::channel(SIGNER_CHANNEL_CAPACITY);
         let mut rx = self.signal_rx.resubscribe();
 
         tokio::spawn(async move {
             loop {
                 // Let's drain the stream first and then wait for a messages
                 while let Ok(msg) = rx.try_recv() {
-                    if let SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_))) = msg
+                    if let SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) =
+                        msg
                     {
                         // Because there could only be one receiver, an error from
                         // Sender::send means the channel is closed and cannot be
                         // re-opened. So we bail on these errors too.
-                        if sender.send(msg).is_err() {
+                        if sender.send(msg).await.is_err() {
                             tracing::debug!("could not send message, receivers dropped, bailing");
                             return;
                         }
                     }
                 }
                 match rx.recv().await {
-                    Ok(
-                        msg @ SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_))),
-                    ) => {
+                    Ok(SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg)))) => {
                         // Because there could only be one receiver, an error from
                         // Sender::send means the channel is closed and cannot be
                         // re-opened. So we bail on these errors too.
-                        if sender.send(msg).is_err() {
+                        if sender.send(msg).await.is_err() {
                             tracing::debug!("could not send message, receivers dropped, bailing");
                             return;
                         }
@@ -152,7 +150,7 @@ impl MessageTransfer for P2PNetwork {
                 }
             }
         });
-        BroadcastStream::new(receiver)
+        receiver
     }
 }
 

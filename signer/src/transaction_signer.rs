@@ -130,9 +130,9 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
 
 impl<C, N, Rng> TxSignerEventLoop<C, N, Rng>
 where
-    C: Context,
-    N: network::MessageTransfer,
-    Rng: rand::RngCore + rand::CryptoRng,
+    C: Context + 'static,
+    N: network::MessageTransfer + 'static,
+    Rng: rand::RngCore + rand::CryptoRng + 'static,
 {
     /// Run the signer event loop
     #[tracing::instrument(
@@ -145,13 +145,15 @@ where
             tracing::error!(%error, "error signalling event loop start");
             return Err(error);
         };
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self
+            .context
+            .as_signal_stream(&self.network, Self::run_loop_message_filter);
 
         loop {
             match signal_stream.next().await {
-                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
-                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
-                Some(Ok(SignerSignal::Event(event))) => match event {
+                Some(SignerSignal::Command(SignerCommand::Shutdown)) => break,
+                Some(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
+                Some(SignerSignal::Event(event)) => match event {
                     SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(msg))
                     | SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
@@ -160,17 +162,25 @@ where
                     }
                     _ => {}
                 },
-                // This means one of the braodcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Some(Err(error)) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
                 None => break,
             }
         }
 
         tracing::info!("transaction signer event loop has been stopped");
         Ok(())
+    }
+
+    /// This function defines which messages this event loop is unterested
+    /// in.
+    fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+        matches!(
+            signal,
+            SignerSignal::Command(SignerCommand::Shutdown)
+                | SignerSignal::Event(SignerEvent::TxCoordinator(
+                    TxCoordinatorEvent::MessageGenerated(_),
+                ))
+                | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+        )
     }
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
