@@ -267,6 +267,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         let storage = self.context.get_storage_mut();
         let bitcoin_client = self.context.get_bitcoin_client();
+        let stacks_client = self.context.get_stacks_client();
 
         tracing::info!("processing bitcoin block");
 
@@ -276,7 +277,7 @@ impl<C: Context, B> BlockObserver<C, B> {
         let until_bitcoin_height = match self.context.config().stacks.nakamoto_start_height {
             Some(height) => height,
             None => {
-                let pox_info = self.stacks_client.get_pox_info().await?;
+                let pox_info = stacks_client.get_pox_info().await?;
                 pox_info
                     .nakamoto_start_height()
                     .ok_or(Error::MissingNakamotoStartHeight)?
@@ -297,7 +298,7 @@ impl<C: Context, B> BlockObserver<C, B> {
         // we get here, but for now it's a good safety net.
         tracing::debug!("fetching unknown ancestral blocks from stacks-core");
         let stacks_blocks = crate::stacks::api::fetch_unknown_ancestors(
-            &self.stacks_client,
+            &stacks_client,
             &storage,
             tenure_info.tip_block_id,
             until_bitcoin_height,

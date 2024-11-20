@@ -534,55 +534,6 @@ impl StacksClient {
             .map(|x| x.result)
     }
 
-    /// Calls a read-only public function on a given smart contract.
-    #[tracing::instrument(skip_all)]
-    pub async fn call_read(
-        &self,
-        contract_principal: &StacksAddress,
-        contract_name: &ContractName,
-        fn_name: &ClarityName,
-        sender: &StacksAddress,
-    ) -> Result<Value, Error> {
-        let path = format!(
-            "/v2/contracts/call-read/{}/{}/{}?tip=latest",
-            contract_principal, contract_name, fn_name
-        );
-
-        let url = self
-            .endpoint
-            .join(&path)
-            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
-
-        let body = CallReadRequest {
-            sender: sender.to_string(),
-            arguments: vec![], // TODO: Add when needed
-        };
-
-        tracing::debug!(
-            %contract_principal,
-            %contract_name,
-            %fn_name,
-            "Fetching contract data variable"
-        );
-
-        let response = self
-            .client
-            .post(url)
-            .timeout(REQUEST_TIMEOUT)
-            .json(&body)
-            .send()
-            .await
-            .map_err(Error::StacksNodeRequest)?;
-
-        response
-            .error_for_status()
-            .map_err(Error::StacksNodeResponse)?
-            .json::<CallReadResponse>()
-            .await
-            .map_err(Error::UnexpectedStacksResponse)
-            .map(|x| x.result)
-    }
-
     /// Retrieve the latest value of a data variable from the specified contract.
     ///
     /// This is done by making a
@@ -1629,37 +1580,7 @@ mod tests {
             .expect(1)
             .create();
 
-        let client = StacksClient::new(stacks_node_server.url().parse().unwrap(), 20).unwrap();
-        let result = client
-            .get_sbtc_total_supply(
-                &StacksAddress::from_string("SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS").unwrap(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(result, Amount::from_sat(1337));
-        mock.assert();
-    }
-
-    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
-    #[tokio::test]
-    async fn get_sbtc_total_supply_works() {
-        let raw_json_response = r#"{
-            "okay": true,
-            "result": "0x070100000000000000000000000000000539"
-        }"#;
-
-        let mut stacks_node_server = mockito::Server::new_async().await;
-        let mock = stacks_node_server
-            .mock("POST", "/v2/contracts/call-read/SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS/sbtc-token/get-total-supply?tip=latest")
-            .with_status(200)
-            .with_header("content-type", "application/json")
-            .with_body(raw_json_response)
-            .expect(1)
-            .create();
-
-        let client = StacksClient::new(stacks_node_server.url().parse().unwrap(), 20).unwrap();
+        let client = StacksClient::new(stacks_node_server.url().parse().unwrap()).unwrap();
         let result = client
             .get_sbtc_total_supply(
                 &StacksAddress::from_string("SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS").unwrap(),
