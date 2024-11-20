@@ -405,7 +405,7 @@ impl super::DbRead for SharedStore {
         output_index: u32,
     ) -> Result<bool, Error> {
         let store = self.lock().await;
-        Ok(store.deposit_requests.get(&(*txid, output_index)).is_some())
+        Ok(store.deposit_requests.contains_key(&(*txid, output_index)))
     }
 
     async fn get_withdrawal_signers(
