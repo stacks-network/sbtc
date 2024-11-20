@@ -58,6 +58,7 @@ pub fn make_deposit_request<U>(
     depositor: &Recipient,
     amount: u64,
     utxo: U,
+    max_fee: u64,
     signers_public_key: XOnlyPublicKey,
 ) -> (Transaction, DepositRequest, DepositInfo)
 where
@@ -66,7 +67,7 @@ where
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
     let deposit_inputs = DepositScriptInputs {
         signers_public_key,
-        max_fee: amount / 2,
+        max_fee,
         recipient: PrincipalData::from(StacksAddress::burn_address(false)),
     };
     let reclaim_inputs = ReclaimScriptInputs::try_new(50, ScriptBuf::new()).unwrap();
@@ -181,11 +182,13 @@ fn deposits_add_to_controlled_amounts() {
     // Now lets make a deposit transaction and submit it
     let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
     let deposit_amount = 25_000_000;
+    let max_fee = deposit_amount / 2;
 
     let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_amount,
         depositor_utxo,
+        max_fee,
         signers_public_key,
     );
     rpc.send_raw_transaction(&deposit_tx).unwrap();

@@ -340,8 +340,6 @@ CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
     is_valid_tx BOOLEAN NOT NULL,
     -- Whether the signer will participate in a signing round for the sighash.
     will_sign BOOLEAN NOT NULL,
-    -- The version of the algorithm that was used to create the bitcoin transaction.
-    construction_version TEXT NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
@@ -359,8 +357,6 @@ CREATE TABLE sbtc_signer.bitcoin_withdrawals_outputs (
     stacks_block_hash BYTEA NOT NULL,
     -- The outcome of validation of the withdrawal request.
     validation_result TEXT NOT NULL,
-    -- The version of the algorithm that was used to create the bitcoin transaction.
-    construction_version TEXT NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     -- the primary key is a pair of request_id and stacks_block_hash because request_id

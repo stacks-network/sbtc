@@ -1211,9 +1211,6 @@ pub struct BitcoinTxSigHash {
     /// Whether the signer will participate in a signing round for the
     /// sighash.
     pub will_sign: bool,
-    /// The version of the algorithm that was used to create the bitcoin
-    /// transaction.
-    pub construction_version: ConstructionVersion,
 }
 
 /// An output that was created due to a withdrawal request.
@@ -1241,9 +1238,6 @@ pub struct BitcoinWithdrawalOutput {
     pub stacks_block_hash: StacksBlockHash,
     /// The outcome of validation of the withdrawal request.
     pub validation_result: WithdrawalValidationResult,
-    /// The version of the algorithm that was used to create the bitcoin
-    /// transaction.
-    pub construction_version: ConstructionVersion,
 }
 
 #[cfg(test)]
