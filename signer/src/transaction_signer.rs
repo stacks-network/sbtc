@@ -128,11 +128,24 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub rng: Rng,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Command(SignerCommand::Shutdown)
+            | SignerSignal::Event(SignerEvent::TxCoordinator(
+                TxCoordinatorEvent::MessageGenerated(_),
+            ))
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+    )
+}
+
 impl<C, N, Rng> TxSignerEventLoop<C, N, Rng>
 where
-    C: Context + 'static,
-    N: network::MessageTransfer + 'static,
-    Rng: rand::RngCore + rand::CryptoRng + 'static,
+    C: Context,
+    N: network::MessageTransfer,
+    Rng: rand::RngCore + rand::CryptoRng,
 {
     /// Run the signer event loop
     #[tracing::instrument(
@@ -147,7 +160,7 @@ where
         };
         let mut signal_stream = self
             .context
-            .as_signal_stream(&self.network, Self::run_loop_message_filter);
+            .as_signal_stream(&self.network, run_loop_message_filter);
 
         loop {
             match signal_stream.next().await {
@@ -168,19 +181,6 @@ where
 
         tracing::info!("transaction signer event loop has been stopped");
         Ok(())
-    }
-
-    /// This function defines which messages this event loop is unterested
-    /// in.
-    fn run_loop_message_filter(signal: &SignerSignal) -> bool {
-        matches!(
-            signal,
-            SignerSignal::Command(SignerCommand::Shutdown)
-                | SignerSignal::Event(SignerEvent::TxCoordinator(
-                    TxCoordinatorEvent::MessageGenerated(_),
-                ))
-                | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
-        )
     }
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
@@ -549,8 +549,8 @@ where
             // `std::collections::hash_map::Entry` type here to make things
             // more idiomatic. The issue with that approach is that it
             // requires a mutable reference of the `wsts_state_machines`
-            // self to be taken at the same time as an immunable reference.
-            // The compiler will complain about this so we silence the
+            // self to be taken at the same time as an immutable reference.
+            // The compiler will complain about this, so we silence the
             // warning.
             #[allow(clippy::map_entry)]
             WstsNetMessage::NonceRequest(_) => {

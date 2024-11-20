@@ -161,10 +161,21 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub is_epoch3: bool,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Event(SignerEvent::RequestDecider(
+            RequestDeciderEvent::NewRequestsHandled,
+        )) | SignerSignal::Command(SignerCommand::Shutdown)
+    )
+}
+
 impl<C, N> TxCoordinatorEventLoop<C, N>
 where
-    C: Context + 'static,
-    N: network::MessageTransfer + 'static,
+    C: Context,
+    N: network::MessageTransfer,
 {
     /// Run the coordinator event loop
     #[tracing::instrument(skip_all, name = "tx-coordinator")]
@@ -172,7 +183,7 @@ where
         tracing::info!("starting transaction coordinator event loop");
         let mut signal_stream = self
             .context
-            .as_signal_stream(&self.network, Self::run_loop_message_filter);
+            .as_signal_stream(&self.network, run_loop_message_filter);
 
         loop {
             match signal_stream.next().await {
@@ -203,16 +214,6 @@ where
         Ok(())
     }
 
-    /// This function defines which messages this event loop is unterested
-    /// in.
-    fn run_loop_message_filter(signal: &SignerSignal) -> bool {
-        matches!(
-            signal,
-            SignerSignal::Event(SignerEvent::RequestDecider(
-                RequestDeciderEvent::NewRequestsHandled,
-            )) | SignerSignal::Command(SignerCommand::Shutdown)
-        )
-    }
     /// A function that filters the [`Context::as_signal_stream`] stream
     /// for items that the coordinator might care about, which includes
     /// some network messages and transaction signer messages.

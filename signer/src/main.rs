@@ -268,7 +268,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
 }
 
 /// Run the transaction signer event-loop.
-async fn run_transaction_signer(ctx: impl Context + 'static) -> Result<(), Error> {
+async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);
 
@@ -286,7 +286,7 @@ async fn run_transaction_signer(ctx: impl Context + 'static) -> Result<(), Error
 }
 
 /// Run the transaction coordinator event-loop.
-async fn run_transaction_coordinator(ctx: impl Context + 'static) -> Result<(), Error> {
+async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
     let private_key = ctx.config().signer.private_key;
     let network = P2PNetwork::new(&ctx);
 
@@ -306,7 +306,7 @@ async fn run_transaction_coordinator(ctx: impl Context + 'static) -> Result<(), 
 }
 
 /// Run the request decider event-loop.
-async fn run_request_decider(ctx: impl Context + 'static) -> Result<(), Error> {
+async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);
 

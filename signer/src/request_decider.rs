@@ -50,11 +50,22 @@ pub struct RequestDeciderEventLoop<C, N, B> {
     pub context_window: u16,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Command(SignerCommand::Shutdown)
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+            | SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+    )
+}
+
 impl<C, N, B> RequestDeciderEventLoop<C, N, B>
 where
-    C: Context + 'static,
-    N: MessageTransfer + 'static,
-    B: BlocklistChecker + 'static,
+    C: Context,
+    N: MessageTransfer,
+    B: BlocklistChecker,
 {
     /// Run the request decider event loop
     #[tracing::instrument(
@@ -71,7 +82,7 @@ where
 
         let mut signal_stream = self
             .context
-            .as_signal_stream(&self.network, Self::run_loop_message_filter);
+            .as_signal_stream(&self.network, run_loop_message_filter);
 
         while let Some(message) = signal_stream.next().await {
             match message {
@@ -105,17 +116,6 @@ where
 
         tracing::info!("request decider event loop has been stopped");
         Ok(())
-    }
-
-    /// This function defines which messages this event loop is unterested
-    /// in.
-    fn run_loop_message_filter(signal: &SignerSignal) -> bool {
-        matches!(
-            signal,
-            SignerSignal::Command(SignerCommand::Shutdown)
-                | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
-                | SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
-        )
     }
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
