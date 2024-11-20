@@ -616,4 +616,8 @@ async fn get_deposit_request_works() {
     assert_eq!(request.reclaim_script, setup.reclaim.reclaim_script());
     assert_eq!(request.outpoint.txid, setup.tx.compute_txid());
     assert_eq!(request.outpoint.vout, 0);
+
+    // This one doesn't exist
+    let request = emily_client.get_deposit(&txid, 50).await.unwrap();
+    assert!(request.is_none());
 }
