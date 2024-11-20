@@ -2,21 +2,6 @@ version: '3.8'
 
 services:
 
-  # Builder for the sBTC repository.
-  sbtc-build:
-    build:
-      context: ../.. # Set the context to be root of the project.
-      dockerfile: docker/sbtc/Dockerfile.build
-      args:
-        # GIT_BRANCH:
-        # The branch that we use as a common root for this build. Note
-        # that this branch will be overwritten with the code within this local
-        # repository, but the sources from this branch will be pulled in, compiled,
-        # and then cached so that when the local repository is copied the build
-        # is starting from a place where the dependencies are already compiled.
-        GIT_BRANCH: main
-    image: sbtc-build:latest
-
   # DynamoDB Tables for the Emily API.
   emily-dynamodb:
     image: "amazon/dynamodb-local:latest"
@@ -26,19 +11,22 @@ services:
 
   # Modifies Emily's CDK template and creates DynamoDB Tables.
   emily-aws-setup:
-    build: emily-aws-setup
+    build:
+      context: ../..
+      dockerfile: docker/sbtc/Dockerfile
+      target: emily-aws-setup
     depends_on:
-      - sbtc-build
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
 
   # Runs the Emily server.
   emily-server:
-    build: emily-server
+    build:
+      context: ../..
+      dockerfile: docker/sbtc/Dockerfile
+      target: emily-server
     depends_on:
-      sbtc-build:
-        condition: service_completed_successfully
       emily-aws-setup:
         condition: service_completed_successfully
     environment:
@@ -52,10 +40,11 @@ services:
 
   # Runs the sBTC signer.
   signer:
-    build: signer
-    entrypoint: "/bin/bash -c '/usr/local/bin/signer --help'"
-    depends_on:
-      - sbtc-build
+    build:
+      context: ../..
+      dockerfile: docker/sbtc/Dockerfile
+      target: signer
+    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
     environment:
       RUST_LOG: info
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
@@ -65,9 +54,10 @@ services:
 
   # Runs the blocklist client.
   blocklist-client:
-    build: blocklist-client
-    depends_on:
-      - sbtc-build
+    build:
+      context: ../..
+      dockerfile: docker/sbtc/Dockerfile
+      target: blocklist-client
     volumes:
       - "../../blocklist-client/src/config/default.toml:/src/config/default.toml"
     environment:

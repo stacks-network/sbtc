@@ -5,7 +5,7 @@ ARG TABLES_ONLY=true
 WORKDIR /code/sbtc
 
 # TODO: Use make command to generate the cdk template.
-RUN pnpm --filter emily-cdk run synth
+RUN make emily-cdk-synth
 
 # Service.
 # --------
