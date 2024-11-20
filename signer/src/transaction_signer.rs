@@ -160,11 +160,11 @@ where
         };
         let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
-        loop {
-            match signal_stream.next().await {
-                Some(SignerSignal::Command(SignerCommand::Shutdown)) => break,
-                Some(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
-                Some(SignerSignal::Event(event)) => match event {
+        while let Some(message) = signal_stream.next().await {
+            match message {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => match event {
                     SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(msg))
                     | SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
@@ -173,7 +173,6 @@ where
                     }
                     _ => {}
                 },
-                None => break,
             }
         }
 

@@ -193,11 +193,11 @@ where
         tracing::info!("starting transaction coordinator event loop");
         let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
-        loop {
-            match signal_stream.next().await {
-                Some(SignerSignal::Command(SignerCommand::Shutdown)) => break,
-                Some(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
-                Some(SignerSignal::Event(event)) => {
+        while let Some(message) = signal_stream.next().await {
+            match message {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => {
                     if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
                         event
                     {
@@ -213,7 +213,6 @@ where
                             .signal(TxCoordinatorEvent::TenureCompleted.into())?;
                     }
                 }
-                None => break,
             }
         }
 
@@ -947,21 +946,14 @@ where
         tokio::pin!(signal_stream);
 
         coordinator_state_machine.save();
-        loop {
-            // Let's get the next message from the network or the
-            // TxSignerEventLoop.
-            //
-            // If signal_stream.next() returns None then one of the
-            // underlying streams has closed. That means either the
-            // network stream, the internal message stream, or the
-            // termination handler stream has closed. This is all bad,
-            // so we trigger a shutdown.
-            let Some(msg) = signal_stream.next().await else {
-                tracing::warn!("signal stream returned None, shutting down");
-                self.context.get_termination_handle().signal_shutdown();
-                return Err(Error::SignerShutdown);
-            };
-
+        // Let's get the next message from the network or the
+        // TxSignerEventLoop.
+        //
+        // If signal_stream.next() returns None then one of the underlying
+        // streams has closed. That means either the internal message
+        // channel, or the termination handler channel has closed. This is
+        // all bad, so we trigger a shutdown.
+        while let Some(msg) = signal_stream.next().await {
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
                 tracing::warn!(sender = %msg.signer_pub_key, "concurrent WSTS activity observed");
                 continue;
@@ -1020,6 +1012,10 @@ where
                 None => continue,
             }
         }
+
+        tracing::warn!("signal stream returned None, shutting down");
+        self.context.get_termination_handle().signal_shutdown();
+        Err(Error::SignerShutdown)
     }
 
     fn authenticate_message(
