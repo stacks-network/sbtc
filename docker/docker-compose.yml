@@ -212,6 +212,9 @@ services:
   # -----------------
   blocklist-client:
     build: sbtc/blocklist-client
+    environment:
+      - BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL
+      - BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY
     depends_on:
       sbtc-build:
         condition: service_completed_successfully
