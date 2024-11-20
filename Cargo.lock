@@ -18,6 +18,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
+name = "admin-emily-client"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.4",
+ "serde 1.0.203",
+ "serde_json",
+ "serde_repr",
+ "serde_with",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "aead"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1835,7 +1848,6 @@ dependencies = [
  "bitcoin",
  "clap",
  "config 0.11.0",
- "emily-client",
  "fake",
  "hex",
  "mockall 0.10.2",
@@ -1849,6 +1861,7 @@ dependencies = [
  "serde_json",
  "stacks-common",
  "test-case",
+ "testing-emily-client",
  "thiserror",
  "time 0.3.36",
  "tokio",
@@ -5985,7 +5998,6 @@ dependencies = [
  "clap",
  "clarity",
  "config 0.14.0",
- "emily-client",
  "fake",
  "futures",
  "hashbrown 0.14.5",
@@ -6006,6 +6018,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha2 0.10.8",
+ "signer-emily-client",
  "sqlx",
  "stacks-common",
  "stackslib",
@@ -6024,6 +6037,19 @@ dependencies = [
  "url",
  "wsts",
  "zeromq",
+]
+
+[[package]]
+name = "signer-emily-client"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.4",
+ "serde 1.0.203",
+ "serde_json",
+ "serde_repr",
+ "serde_with",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -6608,6 +6634,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.76",
+]
+
+[[package]]
+name = "testing-emily-client"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.4",
+ "serde 1.0.203",
+ "serde_json",
+ "serde_repr",
+ "serde_with",
+ "url",
+ "uuid",
 ]
 
 [[package]]

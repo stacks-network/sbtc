@@ -457,8 +457,8 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
 
     async fn update_deposits(
         &self,
-        update_deposits: Vec<emily_client::models::DepositUpdate>,
-    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        update_deposits: Vec<signer_emily_client::models::DepositUpdate>,
+    ) -> Result<signer_emily_client::models::UpdateDepositsResponse, Error> {
         self.inner
             .lock()
             .await
@@ -470,7 +470,7 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
         stacks_chain_tip: &'a StacksBlock,
-    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+    ) -> Result<signer_emily_client::models::UpdateDepositsResponse, Error> {
         self.inner
             .lock()
             .await
@@ -480,8 +480,8 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
 
     async fn create_withdrawals(
         &self,
-        create_withdrawals: Vec<emily_client::models::CreateWithdrawalRequestBody>,
-    ) -> Vec<Result<emily_client::models::Withdrawal, Error>> {
+        create_withdrawals: Vec<signer_emily_client::models::CreateWithdrawalRequestBody>,
+    ) -> Vec<Result<signer_emily_client::models::Withdrawal, Error>> {
         self.inner
             .lock()
             .await
@@ -491,8 +491,8 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
 
     async fn update_withdrawals(
         &self,
-        update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
-    ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
+        update_withdrawals: Vec<signer_emily_client::models::WithdrawalUpdate>,
+    ) -> Result<signer_emily_client::models::UpdateWithdrawalsResponse, Error> {
         self.inner
             .lock()
             .await
@@ -502,8 +502,8 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
 
     async fn set_chainstate(
         &self,
-        chainstate: emily_client::models::Chainstate,
-    ) -> Result<emily_client::models::Chainstate, Error> {
+        chainstate: signer_emily_client::models::Chainstate,
+    ) -> Result<signer_emily_client::models::Chainstate, Error> {
         self.inner.lock().await.set_chainstate(chainstate).await
     }
 }

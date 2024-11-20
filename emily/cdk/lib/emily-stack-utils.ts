@@ -129,6 +129,14 @@ export class EmilyStackUtils {
     }
 
     /*
+     * Returns true iff the current stack is a production stack. Note that production in
+     * this case is considered to be a mainnet stack.
+     */
+    public static isProductionStack(): boolean {
+        return this.getStageName() === Constants.PROD_STAGE_NAME;
+    }
+
+    /*
      * Return the path to the resource where the path provided to the input is the
      * path from workspace root.
      */

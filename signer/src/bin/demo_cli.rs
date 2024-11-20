@@ -13,13 +13,6 @@ use clarity::{
     types::{chainstate::StacksAddress, Address as _},
     vm::types::{PrincipalData, StandardPrincipalData},
 };
-use emily_client::{
-    apis::{
-        configuration::{ApiKey, Configuration},
-        deposit_api,
-    },
-    models::CreateDepositRequestBody,
-};
 use fake::Fake as _;
 use rand::rngs::OsRng;
 use sbtc::deposits::{DepositScriptInputs, ReclaimScriptInputs};
@@ -27,6 +20,11 @@ use secp256k1::PublicKey;
 use signer::config::Settings;
 use signer::keys::SignerScriptPubKey;
 use signer::storage::model::StacksPrincipal;
+use signer_emily_client::apis::configuration::ApiKey;
+use signer_emily_client::{
+    apis::{configuration::Configuration, deposit_api},
+    models::CreateDepositRequestBody,
+};
 
 #[derive(Debug, thiserror::Error)]
 #[allow(clippy::enum_variant_names)]
@@ -44,7 +42,7 @@ enum Error {
     #[error("SBTC error: {0}")]
     SbtcError(#[from] sbtc::error::Error),
     #[error("Emily deposit error: {0}")]
-    EmilyDeposit(#[from] emily_client::apis::Error<deposit_api::CreateDepositError>),
+    EmilyDeposit(#[from] signer_emily_client::apis::Error<deposit_api::CreateDepositError>),
     #[error("Invalid stacks address: {0}")]
     InvalidStacksAddress(String),
     #[error("Invalid signer key: {0}")]

@@ -21,11 +21,11 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::types::chainstate::SortitionId;
 use clarity::vm::costs::ExecutionCost;
-use emily_client::models::Chainstate;
-use emily_client::models::CreateWithdrawalRequestBody;
-use emily_client::models::Withdrawal;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
+use signer_emily_client::models::Chainstate;
+use signer_emily_client::models::CreateWithdrawalRequestBody;
+use signer_emily_client::models::Withdrawal;
 
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
@@ -433,8 +433,8 @@ impl EmilyInteract for TestHarness {
 
     async fn update_deposits(
         &self,
-        _update_deposits: Vec<emily_client::models::DepositUpdate>,
-    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+        _update_deposits: Vec<signer_emily_client::models::DepositUpdate>,
+    ) -> Result<signer_emily_client::models::UpdateDepositsResponse, Error> {
         unimplemented!()
     }
 
@@ -442,7 +442,7 @@ impl EmilyInteract for TestHarness {
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
         _stacks_chain_tip: &'a model::StacksBlock,
-    ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
+    ) -> Result<signer_emily_client::models::UpdateDepositsResponse, Error> {
         unimplemented!()
     }
 
@@ -455,8 +455,8 @@ impl EmilyInteract for TestHarness {
 
     async fn update_withdrawals(
         &self,
-        _update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
-    ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
+        _update_withdrawals: Vec<signer_emily_client::models::WithdrawalUpdate>,
+    ) -> Result<signer_emily_client::models::UpdateWithdrawalsResponse, Error> {
         unimplemented!()
     }
 

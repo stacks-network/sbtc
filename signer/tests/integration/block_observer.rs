@@ -14,9 +14,6 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
-use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api;
-use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt;
@@ -38,6 +35,9 @@ use signer::storage::model::TxPrevout;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite;
+use signer_emily_client::apis::deposit_api;
+use signer_emily_client::apis::testing_api;
+use signer_emily_client::models::CreateDepositRequestBody;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
@@ -359,7 +359,7 @@ async fn link_blocks() {
 async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Vec<TxOutput> {
     sqlx::query_as::<_, TxOutput>(
         r#"
-        SELECT 
+        SELECT
             txid
           , output_index
           , amount
@@ -378,7 +378,7 @@ async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Vec<TxOutput> 
 async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout> {
     sqlx::query_as::<_, TxPrevout>(
         r#"
-        SELECT 
+        SELECT
             txid
           , prevout_txid
           , prevout_output_index

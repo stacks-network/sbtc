@@ -183,7 +183,9 @@ where
                     .times(1..)
                     .returning(|_, _| {
                         Box::pin(async {
-                            Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                            Ok(signer_emily_client::models::UpdateDepositsResponse {
+                                deposits: vec![],
+                            })
                         })
                     });
             })
@@ -333,7 +335,9 @@ where
                     .times(1..)
                     .returning(|_, _| {
                         Box::pin(async {
-                            Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                            Ok(signer_emily_client::models::UpdateDepositsResponse {
+                                deposits: vec![],
+                            })
                         })
                     });
             })

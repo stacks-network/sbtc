@@ -1,9 +1,9 @@
 use std::cmp::Ordering;
 
 use crate::common::clean_setup;
-use emily_client::apis;
-use emily_client::apis::configuration::Configuration;
-use emily_client::models::{
+use testing_emily_client::apis;
+use testing_emily_client::apis::configuration::Configuration;
+use testing_emily_client::models::{
     CreateWithdrawalRequestBody, Fulfillment, Status, UpdateWithdrawalsRequestBody, Withdrawal,
     WithdrawalInfo, WithdrawalParameters, WithdrawalUpdate,
 };
@@ -151,7 +151,7 @@ async fn get_withdrawals() {
     // ----
     batch_create_withdrawals(&configuration, create_requests).await;
 
-    let status = emily_client::models::Status::Pending;
+    let status = testing_emily_client::models::Status::Pending;
     let mut next_token: Option<Option<String>> = None;
     let mut gotten_withdrawal_info_chunks: Vec<Vec<WithdrawalInfo>> = Vec::new();
     loop {

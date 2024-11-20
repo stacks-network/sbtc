@@ -43,7 +43,7 @@ warp_lambda.workspace = true
 fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
 
 [dev-dependencies]
-emily-client.workspace = true
+testing-emily-client.workspace = true
 rand = "0.8"
 mockito = "0.28"
 mockall = "0.10"

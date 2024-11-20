@@ -20,9 +20,6 @@ use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::types::chainstate::ConsensusHash;
 use clarity::types::chainstate::StacksBlockId;
-use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api::wipe_databases;
-use emily_client::models::CreateDepositRequestBody;
 use sbtc::testing::regtest::Recipient;
 use sha2::Digest as _;
 use signer::bitcoin::rpc::BitcoinTxInfo;
@@ -53,6 +50,9 @@ use signer::testing::dummy;
 use signer::testing::dummy::DepositTxConfig;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::storage::model::TestData;
+use signer_emily_client::apis::deposit_api;
+use signer_emily_client::apis::testing_api::wipe_databases;
+use signer_emily_client::models::CreateDepositRequestBody;
 
 use fake::Fake as _;
 use rand::SeedableRng;
@@ -529,7 +529,7 @@ async fn deposit_flow() {
 
     assert_eq!(
         fetched_deposit.status,
-        emily_client::models::Status::Pending
+        signer_emily_client::models::Status::Pending
     );
 
     // Wake coordinator up (again)
@@ -571,7 +571,7 @@ async fn deposit_flow() {
 
     assert_eq!(
         fetched_deposit.status,
-        emily_client::models::Status::Accepted
+        signer_emily_client::models::Status::Accepted
     );
     assert_eq!(
         fetched_deposit.last_update_block_hash,
