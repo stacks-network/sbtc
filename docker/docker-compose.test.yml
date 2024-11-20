@@ -76,52 +76,20 @@ services:
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
 
-  # # Runs the Emily server.
-  # emily-server:
-  #   build:
-  #     context: ../
-  #     dockerfile: docker/sbtc/Dockerfile
-  #     target: emily-server
-  #   depends_on:
-  #     emily-aws-setup:
-  #       condition: service_completed_successfully
-  #   environment:
-  #     - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-  #     - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
-  #     - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
-  #     - AWS_REGION=us-west-2
-  #     - PORT=3031
-  #   ports:
-  #     - "3031:3031"
-
-  # Runs the sBTC signer.
-  signer:
+  # Runs the Emily server.
+  emily-server:
     build:
       context: ../
       dockerfile: docker/sbtc/Dockerfile
-      target: signer
-    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
+      target: emily-server
+    depends_on:
+      emily-aws-setup:
+        condition: service_completed_successfully
     environment:
-      RUST_LOG: info
-      SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
-      SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
-      SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
-      SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
-
-  # Runs the blocklist client.
-  blocklist-client:
-    build:
-      context: ../
-      dockerfile: docker/sbtc/Dockerfile
-      target: blocklist-client
-    volumes:
-      - "../../blocklist-client/src/config/default.toml:/src/config/default.toml"
-    environment:
-      BLOCKLIST_CLIENT__SERVER__HOST: 0.0.0.0
-      BLOCKLIST_CLIENT__SERVER__PORT: 3032
-      BLOCKLIST_CLIENT__risk_analysis__API_URL: xxxxx
-      BLOCKLIST_CLIENT__RISK_ANALYSIS__API_KEY: xxxxx
+      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+      - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
+      - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
+      - AWS_REGION=us-west-2
+      - PORT=3031
     ports:
-      - "3032:3032"
-    # TODO(TBD): Add the environment variables or cli arguments that configure
-    # the blocklist client.
+      - "3031:3031"

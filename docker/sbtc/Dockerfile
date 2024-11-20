@@ -33,8 +33,6 @@ RUN make install && make build
 
 # Build Emily Server.
 # --------------------
-# TODO: Determine if we need this to be written explicitly or if it's covered
-# by the `make build` command.
 RUN cargo build --bin emily-server
 
 # Build Emily AWS setup.
