@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::future::try_join_all;
+use futures::Stream;
 use futures::StreamExt as _;
 use sha2::Digest;
 
@@ -846,12 +847,23 @@ where
             .start_signing_round(msg, signature_type)
             .map_err(Error::wsts_coordinator)?;
 
+        // We create a signal stream before sending a message so that there
+        // is no race condition with the steam and the getting a response.
+        let signal_stream = self
+            .context
+            .as_signal_stream(signed_message_filter)
+            .filter_map(Self::to_signed_message);
+
         let msg = message::WstsMessage { txid, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
-        let run_signing_round =
-            self.drive_wsts_state_machine(bitcoin_chain_tip, coordinator_state_machine, txid);
+        let run_signing_round = self.drive_wsts_state_machine(
+            signal_stream,
+            bitcoin_chain_tip,
+            coordinator_state_machine,
+            txid,
+        );
 
         let operation_result = tokio::time::timeout(max_duration, run_signing_round)
             .await
@@ -904,6 +916,13 @@ where
         let txid = bitcoin::Txid::from_byte_array(identifier);
         let msg = message::WstsMessage { txid, inner: outbound.msg };
 
+        // We create a signal stream before sending a message so that there
+        // is no race condition with the steam and the getting a response.
+        let signal_stream = self
+            .context
+            .as_signal_stream(signed_message_filter)
+            .filter_map(Self::to_signed_message);
+
         // This message effectively kicks off DKG. The `TxSignerEventLoop`s
         // running on the signers will pick up this message and act on it,
         // including our own. When they do they create a signing state
@@ -912,7 +931,8 @@ where
 
         // Now that DKG has "begun" we need to drive it to completion.
         let max_duration = self.dkg_max_duration;
-        let dkg_fut = self.drive_wsts_state_machine(chain_tip, &mut state_machine, txid);
+        let dkg_fut =
+            self.drive_wsts_state_machine(signal_stream, chain_tip, &mut state_machine, txid);
 
         let operation_result = tokio::time::timeout(max_duration, dkg_fut)
             .await
@@ -925,23 +945,22 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn drive_wsts_state_machine(
+    async fn drive_wsts_state_machine<S>(
         &mut self,
+        signal_stream: S,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
-    ) -> Result<WstsOperationResult, Error> {
+    ) -> Result<WstsOperationResult, Error>
+    where
+        S: Stream<Item = Signed<SignerMessage>>,
+    {
         // this assumes that the signer set doesn't change for the duration of this call,
         // but we're already assuming that the bitcoin chain tip doesn't change
         // alternately we could hit the DB every time we get a new message
         let (_, signer_set) = self
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
-
-        let signal_stream = self
-            .context
-            .as_signal_stream(signed_message_filter)
-            .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
 
