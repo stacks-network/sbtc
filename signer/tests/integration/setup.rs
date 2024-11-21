@@ -31,6 +31,7 @@ use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::EncryptedDkgShares;
+use signer::storage::model::QualifiedRequestId;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
@@ -555,6 +556,14 @@ impl TestSweepSetup2 {
             .iter()
             .map(|(info, _, _)| info.outpoint)
             .collect()
+    }
+
+    pub fn withdrawal_ids(&self) -> Vec<QualifiedRequestId> {
+        vec![QualifiedRequestId {
+            request_id: self.withdrawal_request.request_id,
+            txid: self.withdrawal_request.txid,
+            block_hash: self.withdrawal_request.block_hash,
+        }]
     }
 
     pub fn sweep_tx_info(&self) -> Option<&BitcoinTxInfo> {
