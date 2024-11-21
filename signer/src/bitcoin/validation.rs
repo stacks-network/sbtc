@@ -205,6 +205,7 @@ impl BitcoinTxContext {
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
 /// [`BitcoinSighash`].
+#[derive(Debug)]
 pub struct BitcoinTxValidationData {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
