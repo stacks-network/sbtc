@@ -195,10 +195,13 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
 
     // Build the swarm.
     tracing::debug!("building the libp2p swarm");
-    let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.private_key)
-        .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
-        .add_seed_addrs(&ctx.config().signer.p2p.seeds)
-        .build()?;
+    let config = ctx.config();
+    let mut swarm =
+        SignerSwarmBuilder::new(&config.signer.private_key, config.signer.p2p.enable_mdns)
+            .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
+            .add_seed_addrs(&ctx.config().signer.p2p.seeds)
+            .add_external_addresses(&ctx.config().signer.p2p.public_endpoints)
+            .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
     // received, or an unrecoverable error has occurred.
@@ -295,9 +298,9 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         context: ctx,
         context_window: 10000,
         private_key,
-        signing_round_max_duration: Duration::from_secs(10),
+        signing_round_max_duration: Duration::from_secs(15),
         threshold: 2,
-        dkg_max_duration: Duration::from_secs(10),
+        dkg_max_duration: Duration::from_secs(15),
         sbtc_contracts_deployed: false,
         is_epoch3: false,
     };
