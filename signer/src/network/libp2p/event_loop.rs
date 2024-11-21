@@ -82,14 +82,6 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Gossipsub(event)) => {
                         handle_gossipsub_event(&mut swarm, ctx, event)
                     }
-                    // AutoNAT client protocol events.
-                    // SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatClient(event)) => {
-                    //     handle_autonat_client_event(&mut swarm, ctx, event)
-                    // }
-                    // AutoNAT server protocol events.
-                    // SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatServer(event)) => {
-                    //     handle_autonat_server_event(&mut swarm, event)
-                    // }
                     SwarmEvent::NewListenAddr { address, .. } => {
                         tracing::info!(%address, "Listener started");
                     }
@@ -205,95 +197,6 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
 
     tracing::info!("libp2p event loop terminated");
 }
-
-// fn handle_autonat_client_event(
-//     _: &mut Swarm<SignerBehavior>,
-//     ctx: &impl Context,
-//     event: autonat::v2::client::Event,
-// ) {
-//     use autonat::v2::client::Event;
-
-//     match event {
-//         //  Match on successful AutoNAT test event
-//         Event {
-//             server,
-//             tested_addr,
-//             bytes_sent,
-//             result: Ok(()),
-//         } => {
-//             if !ctx.state().current_signer_set().is_allowed_peer(&server) {
-//                 tracing::debug!(
-//                     peer_id = %server,
-//                     %tested_addr,
-//                     %bytes_sent,
-//                     "AutoNAT (client) test successful, however the server is not a known signer; ignoring"
-//                 );
-//                 return;
-//             }
-
-//             tracing::trace!(peer_id = %server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful");
-//         }
-//         // Match on failed AutoNAT test event
-//         Event {
-//             server,
-//             tested_addr,
-//             bytes_sent,
-//             result: Err(error),
-//         } => {
-//             if !ctx.state().current_signer_set().is_allowed_peer(&server) {
-//                 tracing::debug!(
-//                     peer_id = %server,
-//                     %tested_addr,
-//                     %bytes_sent,
-//                     "AutoNAT (client) test failed, however the server is not a known signer; ignoring"
-//                 );
-//                 return;
-//             }
-
-//             tracing::trace!(
-//                 peer_id = %server, %tested_addr, %bytes_sent, %error, "AutoNAT (client) test failed"
-//             );
-//         }
-//     }
-// }
-
-// fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2::server::Event) {
-//     use autonat::v2::server::Event;
-
-//     match event {
-//         Event {
-//             all_addrs,
-//             client,
-//             tested_addr,
-//             data_amount,
-//             result: Ok(()),
-//         } => {
-//             tracing::trace!(
-//                 ?all_addrs,
-//                 %client,
-//                 %tested_addr,
-//                 %data_amount,
-//                 "AutoNAT (server) test successful"
-//             );
-//         }
-//         Event {
-//             all_addrs,
-//             client,
-//             tested_addr,
-//             data_amount,
-//             result: Err(error),
-//         } => {
-//             tracing::warn!(
-//                 ?all_addrs,
-//                 %client,
-//                 %tested_addr,
-//                 %data_amount,
-//                 %error,
-//                 "AutoNAT (server) test failed"
-//             );
-//         }
-//     }
-// }
 
 fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, event: mdns::Event) {
     use mdns::Event;

@@ -4,10 +4,6 @@ use std::time::Duration;
 
 use crate::context::Context;
 use crate::keys::PrivateKey;
-// use libp2p::autonat::v2::client::{
-//     Behaviour as AutoNatClientBehavior, Config as AutoNatClientConfig,
-// };
-//use libp2p::autonat::v2::server::Behaviour as AutoNatServerBehavior;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::behaviour::toggle::Toggle;
@@ -16,7 +12,6 @@ use libp2p::{
     gossipsub, identify, kad, mdns, noise, ping, /*relay,*/ tcp, yamux, Multiaddr, PeerId,
     Swarm, SwarmBuilder,
 };
-//use rand::rngs::OsRng;
 use tokio::sync::Mutex;
 
 use super::errors::SignerSwarmError;
@@ -29,10 +24,7 @@ pub struct SignerBehavior {
     mdns: Toggle<mdns::tokio::Behaviour>,
     kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
-    //relay: relay::Behaviour,
     identify: identify::Behaviour,
-    //autonat_server: AutoNatServerBehavior,
-    //autonat_client: AutoNatClientBehavior,
 }
 
 impl SignerBehavior {
@@ -69,16 +61,10 @@ impl SignerBehavior {
             mdns,
             kademlia: Self::kademlia(&keypair),
             ping: ping::Behaviour::default(),
-            //relay: relay::Behaviour::new(keypair.public().to_peer_id(), Default::default()),
             identify: identify::Behaviour::new(identify::Config::new(
                 identify::PUSH_PROTOCOL_NAME.to_string(),
                 keypair.public(),
             )),
-            //autonat_server: AutoNatServerBehavior::new(OsRng),
-            //autonat_client: AutoNatClientBehavior::new(
-            //    OsRng,
-            //    AutoNatClientConfig::default().with_probe_interval(Duration::from_secs(2)),
-            //),
         })
     }
 
