@@ -12,8 +12,8 @@ use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    gossipsub, identify, kad, mdns, noise, ping, relay, tcp, yamux, Multiaddr, PeerId,
-    Swarm, SwarmBuilder,
+    gossipsub, identify, kad, mdns, noise, ping, relay, tcp, yamux, Multiaddr, PeerId, Swarm,
+    SwarmBuilder,
 };
 use rand::rngs::OsRng;
 use tokio::sync::Mutex;
