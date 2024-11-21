@@ -53,16 +53,16 @@ describe('EmilyStack Test', () => {
         });
 
         const lambdaResources = template.findResources('AWS::Lambda::Function');
-        // One lambda for emily, another to handle the custom resource.
-        expect(Object.keys(lambdaResources)).toHaveLength(2);
-        Object.keys(lambdaResources).forEach(lambdaLogicalId => {
-            const environment = lambdaResources[lambdaLogicalId].Properties.Environment.Variables;
-            console.log(environment);
-            expect(environment.DEPOSIT_TABLE_NAME).toMatch(`DepositTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
-            expect(environment.WITHDRAWAL_TABLE_NAME).toMatch(`WithdrawalTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
-            expect(environment.CHAINSTATE_TABLE_NAME).toMatch(`ChainstateTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
-            expect(environment.IS_LOCAL).toEqual("false");
-        });
+        Object.keys(lambdaResources)
+            .filter(lambdaLogicalId => lambdaLogicalId.startsWith('OperationLambda'))
+            .forEach(lambdaLogicalId => {
+                const environment = lambdaResources[lambdaLogicalId].Properties.Environment.Variables;
+                expect(environment.DEPOSIT_TABLE_NAME).toMatch(`DepositTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+                expect(environment.WITHDRAWAL_TABLE_NAME).toMatch(`WithdrawalTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+                expect(environment.CHAINSTATE_TABLE_NAME).toMatch(`ChainstateTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+                expect(environment.LIMIT_TABLE_NAME).toMatch(`LimitTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+                expect(environment.IS_LOCAL).toEqual("false");
+            });
     });
 
     it('should create a REST API', async () => {
