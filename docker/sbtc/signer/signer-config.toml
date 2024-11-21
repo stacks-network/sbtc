@@ -63,23 +63,6 @@ block_hash_stream_endpoints = [
 ]
 
 # !! ==============================================================================
-# !! Block Notifier Configuration
-# !! ==============================================================================
-# Electrum server connection confirmation.
-[block_notifier]
-# The URI of the Electrum server to connect to.
-#
-# Format: "<protocol>://<host>:<port>"
-# Default: <none>
-# Required: true
-# Environment: SIGNER_BLOCK_NOTIFIER__SERVER
-server = "tcp://localhost:60401"
-retry_interval = 10
-max_retry_attempts = 5
-ping_interval = 60
-subscribe_interval = 10
-
-# !! ==============================================================================
 # !! Stacks Node Configuration
 # !! ==============================================================================
 [stacks]
