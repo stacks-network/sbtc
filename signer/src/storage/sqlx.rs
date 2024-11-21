@@ -8,7 +8,7 @@ use std::str::FromStr as _;
 
 use bitcoin::consensus::Decodable as _;
 use bitcoin::consensus::Encodable as _;
-use bitcoin::hashes::Hash;
+use bitcoin::hashes::Hash as _;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::postgres::PgArgumentBuffer;
