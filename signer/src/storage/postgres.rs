@@ -2690,7 +2690,7 @@ impl super::DbWrite for PgStore {
 
     async fn write_bitcoin_txs_sighashes(
         &self,
-        sighashes: Vec<model::BitcoinTxSigHash>,
+        sighashes: &[model::BitcoinTxSigHash],
     ) -> Result<(), Error> {
         if sighashes.is_empty() {
             return Ok(());
@@ -2781,7 +2781,7 @@ impl super::DbWrite for PgStore {
 
     async fn write_bitcoin_withdrawals_outputs(
         &self,
-        withdrawal_outputs: Vec<model::BitcoinWithdrawalOutput>,
+        withdrawal_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> Result<(), Error> {
         if withdrawal_outputs.is_empty() {
             return Ok(());

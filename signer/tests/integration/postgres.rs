@@ -3115,9 +3115,7 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
 
     let sighashes: Vec<BitcoinTxSigHash> = (0..5).map(|_| fake::Faker.fake()).collect();
 
-    db.write_bitcoin_txs_sighashes(sighashes.clone())
-        .await
-        .unwrap();
+    db.write_bitcoin_txs_sighashes(&sighashes).await.unwrap();
 
     let withdrawal_outputs_futures = sighashes
         .iter()
@@ -3140,7 +3138,7 @@ async fn can_write_and_get_multiple_bitcoin_withdrawal_outputs() {
 
     let outputs: Vec<BitcoinWithdrawalOutput> = (0..5).map(|_| fake::Faker.fake()).collect();
 
-    db.write_bitcoin_withdrawals_outputs(outputs.clone())
+    db.write_bitcoin_withdrawals_outputs(&outputs)
         .await
         .unwrap();
 
