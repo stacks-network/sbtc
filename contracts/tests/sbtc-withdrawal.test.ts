@@ -575,12 +575,7 @@ describe("Accepting a withdrawal request", () => {
       amount: defaultAmount,
       maxFee: defaultMaxFee,
       blockHeight: BigInt(simnet.blockHeight - 3),
-      status: {
-        isAccepted: true,
-        sweepTxid: sweepTxid,
-        sweepBurnHash: burnHash,
-        sweepBurnHeight: BigInt(burnHeight),
-      },
+      status: true,
     });
   });
   test("reject withdrawal sets withdrawal-status to false", () => {
@@ -653,12 +648,7 @@ describe("Accepting a withdrawal request", () => {
       amount: defaultAmount,
       maxFee: defaultMaxFee,
       blockHeight: BigInt(simnet.blockHeight - 3),
-      status: {
-        isAccepted: false,
-        sweepTxid: null,
-        sweepBurnHash: null,
-        sweepBurnHeight: null,
-      },
+      status: false,
     });
 
     // An event is emitted properly

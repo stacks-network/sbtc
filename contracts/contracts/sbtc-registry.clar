@@ -40,12 +40,16 @@
 ;; Data structure to map request-id to status
 ;; If status is `none`, the request is pending.
 ;; Otherwise, the boolean value indicates whether
-;; the deposit was accepted.
-(define-map withdrawal-status uint {
-  is-accepted: bool,
-  sweep-txid: (optional (buff 32)),
-  sweep-burn-hash: (optional (buff 32)),
-  sweep-burn-height: (optional uint),
+;; the withdrawal was accepted.
+(define-map withdrawal-status uint bool)
+
+;; Data structure to map successful withdrawal requests
+;; to their respective sweep transaction. Stores the 
+;; txid, burn hash, and burn height.
+(define-map completed-withdrawal-sweep uint {
+  sweep-txid: (buff 32),
+  sweep-burn-hash: (buff 32),
+  sweep-burn-height: uint,
 })
 
 ;; Internal data structure to store completed
@@ -86,6 +90,12 @@
     }))
     none
   )
+)
+
+;; Get a completed withdrawal sweep data by its request ID.
+;; This function returns the fields of the withdrawal-sweeps map.
+(define-read-only (get-completed-withdrawal-sweep-data (id uint))
+  (map-get? completed-withdrawal-sweep id)
 )
 
 ;; Get a completed deposit by its transaction ID & vout index.
@@ -185,11 +195,11 @@
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id {
-      is-accepted: true,
-      sweep-txid: (some sweep-txid),
-      sweep-burn-hash: (some burn-hash),
-      sweep-burn-height: (some burn-height),
+    (map-insert withdrawal-status request-id true)
+    (map-insert completed-withdrawal-sweep request-id {
+      sweep-txid: sweep-txid,
+      sweep-burn-hash: burn-hash,
+      sweep-burn-height: burn-height,
     })
     (print {
       topic: "withdrawal-accept",
@@ -219,12 +229,7 @@
   (begin 
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
-    (map-insert withdrawal-status request-id {
-      is-accepted: false,
-      sweep-txid: none,
-      sweep-burn-hash: none,
-      sweep-burn-height: none,
-    })
+    (map-insert withdrawal-status request-id false)
     (print {
       topic: "withdrawal-reject",
       request-id: request-id,
