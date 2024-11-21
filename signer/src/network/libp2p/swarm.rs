@@ -13,7 +13,7 @@ use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
     gossipsub, identify, kad, mdns, noise, ping, relay, tcp, yamux, Multiaddr, PeerId,
-    StreamProtocol, Swarm, SwarmBuilder,
+    Swarm, SwarmBuilder,
 };
 use rand::rngs::OsRng;
 use tokio::sync::Mutex;
@@ -64,7 +64,7 @@ impl SignerBehavior {
             ping: ping::Behaviour::default(),
             relay: relay::Behaviour::new(keypair.public().to_peer_id(), Default::default()),
             identify: identify::Behaviour::new(identify::Config::new(
-                "/sbtc-signer/identify/1.0.0".into(),
+                identify::PUSH_PROTOCOL_NAME.to_string(),
                 keypair.public(),
             )),
             autonat_server: AutoNatServerBehavior::new(OsRng),
@@ -76,7 +76,7 @@ impl SignerBehavior {
     }
 
     fn kademlia(keypair: &Keypair) -> kad::Behaviour<MemoryStore> {
-        let config = kad::Config::new(StreamProtocol::new("/sbtc-signer/kad/1.0.0"))
+        let config = kad::Config::new(kad::PROTOCOL_NAME)
             .disjoint_query_paths(true)
             .to_owned();
 
@@ -93,6 +93,7 @@ pub struct SignerSwarmBuilder<'a> {
     private_key: &'a PrivateKey,
     listen_on: Vec<Multiaddr>,
     seed_addrs: Vec<Multiaddr>,
+    external_addresses: Vec<Multiaddr>,
 }
 
 impl<'a> SignerSwarmBuilder<'a> {
@@ -102,6 +103,7 @@ impl<'a> SignerSwarmBuilder<'a> {
             private_key,
             listen_on: Vec::new(),
             seed_addrs: Vec::new(),
+            external_addresses: Vec::new(),
         }
     }
 
@@ -145,6 +147,24 @@ impl<'a> SignerSwarmBuilder<'a> {
         self
     }
 
+    /// Add an external address to the builder.
+    pub fn add_external_address(mut self, addr: Multiaddr) -> Self {
+        if !self.external_addresses.contains(&addr) {
+            self.external_addresses.push(addr);
+        }
+        self
+    }
+
+    /// Add multiple external addresses to the builder.
+    pub fn add_external_addresses(mut self, addrs: &[Multiaddr]) -> Self {
+        for addr in addrs {
+            if !self.external_addresses.contains(addr) {
+                self.external_addresses.push(addr.clone());
+            }
+        }
+        self
+    }
+
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
         let keypair: Keypair = (*self.private_key).into();
@@ -171,6 +191,7 @@ impl<'a> SignerSwarmBuilder<'a> {
             swarm: Arc::new(Mutex::new(swarm)),
             listen_addrs: self.listen_on,
             seed_addrs: self.seed_addrs,
+            external_addresses: self.external_addresses,
         })
     }
 }
@@ -180,6 +201,7 @@ pub struct SignerSwarm {
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
     listen_addrs: Vec<Multiaddr>,
     seed_addrs: Vec<Multiaddr>,
+    external_addresses: Vec<Multiaddr>,
 }
 
 impl SignerSwarm {
@@ -205,6 +227,14 @@ impl SignerSwarm {
 
         // Dial the seed addresses.
         for addr in self.seed_addrs.iter() {
+            self.swarm
+                .lock()
+                .await
+                .dial(addr.clone())
+                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+        }
+
+        for addr in self.external_addresses.iter() {
             self.swarm
                 .lock()
                 .await

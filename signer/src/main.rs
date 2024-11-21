@@ -198,6 +198,7 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.private_key)
         .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
         .add_seed_addrs(&ctx.config().signer.p2p.seeds)
+        .add_external_addresses(&ctx.config().signer.p2p.public_endpoints)
         .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
