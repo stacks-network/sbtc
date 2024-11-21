@@ -7,6 +7,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as cr from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 import { Constants } from './constants';
 import { EmilyStackProps } from './emily-stack-props';
@@ -82,7 +84,11 @@ export class EmilyStack extends cdk.Stack {
             chainstateTable.grantReadWriteData(operationLambda);
             limitTable.grantReadWriteData(operationLambda);
 
-            const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
+            const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(
+                operationLambda,
+                persistentResourceRemovalPolicy,
+                props,
+            );
         }
     }
 
@@ -302,8 +308,15 @@ export class EmilyStack extends cdk.Stack {
      */
     createOrUpdateApi(
         operationLambda: lambda.Function,
+        logRemovalPolicy: cdk.RemovalPolicy,
         props: EmilyStackProps
     ): apig.SpecRestApi {
+
+        const apiGatewayCloudWatchLogEnabler = this.createApiGatewayCloudWatchLogEnabler();
+        const logGroup = new logs.LogGroup(this, 'ApiGatewayLogs', {
+            retention: logs.RetentionDays.ONE_WEEK,
+            removalPolicy: logRemovalPolicy,
+        });
 
         const apiId: string  = "EmilyAPI";
         const api: apig.SpecRestApi = new apig.SpecRestApi(this, apiId, {
@@ -318,8 +331,26 @@ export class EmilyStack extends cdk.Stack {
                     ["OperationLambda", operationLambda]
                 ],
             ),
-            deployOptions: { stageName: props.stageName },
+            deployOptions: {
+                stageName: props.stageName,
+                // Enable logging.
+                accessLogDestination: new apig.LogGroupLogDestination(logGroup),
+                accessLogFormat: apig.AccessLogFormat.jsonWithStandardFields({
+                    caller: false,
+                    httpMethod: true,
+                    ip: true,
+                    protocol: false,
+                    requestTime: true,
+                    resourcePath: true,
+                    responseLength: true,
+                    status: true,
+                    user: false,
+                }),
+            },
         });
+
+        // Add the logsRoleSetup as a dependency to the API so that it runs before the API is created.
+        api.node.addDependency(apiGatewayCloudWatchLogEnabler);
 
         // Create a usage plan that will be used by the Signers. This will allow us to throttle
         // the general API more than the signers.
@@ -417,5 +448,73 @@ export class EmilyStack extends cdk.Stack {
 
         // Return api resource.
         return api;
+    }
+
+    /**
+     * Creates a custom resource to enable logging for the API Gateway.
+     * @param {apig.SpecRestApi} api The API Gateway resource.
+     * @param {cdk.RemovalPolicy} logRemovalPolicy The removal policy for the log group.
+     * @returns {cr.AwsCustomResource} The created custom resource.
+     * @post A custom resource that enables logging for the API Gateway is returned.
+     */
+    createApiGatewayCloudWatchLogEnabler(): cr.AwsCustomResource {
+
+        // Here we're going to do something a bit nuts because the CDK doesn't support
+        // adding the CloudWatch role to the API Gateway account settings without you
+        // either adding the permission for it manually, OR using a custom resource
+        // that effectively performs the manual task for you.
+        //
+        // So, we're going to create a custom resource, give it the permissions to
+        // update the account settings, and then use it to set the CloudWatch role.
+        //
+        // Any ApiGateway deployments should depend on this resource. Note that this
+        // permission is account level so any other API Gateway deployments on other
+        // stacks will use this role.
+
+        // Create an IAM role for API Gateway to push logs to CloudWatch.
+        const apiGatewayLogsRole = new iam.Role(this, 'ApiGatewayLogsRole', {
+            assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+            managedPolicies: [
+                iam.ManagedPolicy.fromAwsManagedPolicyName(
+                    'service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+                ),
+            ],
+        });
+
+        // Create the policy for the custom resource to allow it to perform the update.
+        const customResourcePolicy = cr.AwsCustomResourcePolicy.fromStatements([
+            new iam.PolicyStatement({
+                actions: ['apigateway:PATCH'],
+                resources: [`arn:aws:apigateway:${this.region}::/account`],
+                effect: iam.Effect.ALLOW,
+            }),
+            new iam.PolicyStatement({
+                actions: ['iam:PassRole'],
+                resources: [apiGatewayLogsRole.roleArn],
+                effect: iam.Effect.ALLOW,
+            }),
+        ]);
+
+        // Use the Custom Resource to set the CloudWatch Logs role ARN in API Gateway account settings
+        const apiGatewayCloudWatchLogEnabler = new cr.AwsCustomResource(this, 'SetCloudWatchLogsRole', {
+            policy: customResourcePolicy,
+            onUpdate: {
+                service: 'APIGateway',
+                action: 'updateAccount',
+                parameters: {
+                    patchOperations: [
+                        {
+                            op: 'replace',
+                            path: '/cloudwatchRoleArn',
+                            value: apiGatewayLogsRole.roleArn,
+                        },
+                    ],
+                },
+                physicalResourceId: cr.PhysicalResourceId.of('ApiGatewayLogsRole'),
+            },
+        });
+
+        // Return the custom resource that will setup the CloudWatch logs role.
+        return apiGatewayCloudWatchLogEnabler;
     }
 }
