@@ -1219,6 +1219,10 @@ pub struct BitcoinTxSigHash {
 pub struct BitcoinWithdrawalOutput {
     /// The ID of the transaction that includes this withdrawal output.
     pub bitcoin_txid: BitcoinTxId,
+    /// The bitcoin chain tip when the sign request was submitted. This is
+    /// used to ensure that we do not sign for more than one transaction
+    /// containing inputs
+    pub bitcoin_chain_tip: BitcoinBlockHash,
     /// The index of the referenced output in the transaction's outputs.
     #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
@@ -1238,6 +1242,9 @@ pub struct BitcoinWithdrawalOutput {
     pub stacks_block_hash: StacksBlockHash,
     /// The outcome of validation of the withdrawal request.
     pub validation_result: WithdrawalValidationResult,
+    /// Whether the transaction is valid. A transaction is invalid if any
+    /// of the inputs or outputs failed validation.
+    pub is_valid_tx: bool,
 }
 
 #[cfg(test)]

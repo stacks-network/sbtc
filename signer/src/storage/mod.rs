@@ -73,6 +73,14 @@ pub trait DbRead {
         signatures_required: u16,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
+    /// Check whether we have a record of the deposit request in our
+    /// database.
+    fn deposit_request_exists(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Get the deposit requests that the signer has accepted to sign
     fn get_accepted_deposit_requests(
         &self,
@@ -331,10 +339,10 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
 
     /// Get the bitcoin sighash output.
-    fn get_bitcoin_tx_sighash(
+    fn will_sign_bitcoin_tx_sighash(
         &self,
-        txid: &model::BitcoinTxId,
-    ) -> impl Future<Output = Result<Option<model::BitcoinTxSigHash>, Error>> + Send;
+        sighash: &model::SigHash,
+    ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
 
     /// Get the bitcoin withdrawal output.
     fn get_bitcoin_withdrawal_output(

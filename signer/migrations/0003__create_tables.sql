@@ -133,8 +133,7 @@ CREATE TABLE sbtc_signer.rotate_keys_transactions (
     -- This is one of those fields that might not be required in the future
     -- when Schnorr signatures are introduced.
     signatures_required INTEGER NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
 CREATE TABLE sbtc_signer.completed_deposit_events (
@@ -347,6 +346,10 @@ CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
 CREATE TABLE sbtc_signer.bitcoin_withdrawals_outputs (
     -- The ID of the bitcoin transaction that includes this withdrawal output.
     bitcoin_txid BYTEA NOT NULL,
+    -- The bitcoin chain tip when the sign request was submitted. This is
+    -- used to ensure that we do not sign for more than one transaction
+    -- containing inputs
+    bitcoin_chain_tip BYTEA NOT NULL,
     -- The index of the referenced output in the transaction's outputs.
     output_index INTEGER NOT NULL,
     -- The ID of the stacks transaction lead to the creation of the withdrawal request.
@@ -357,6 +360,8 @@ CREATE TABLE sbtc_signer.bitcoin_withdrawals_outputs (
     stacks_block_hash BYTEA NOT NULL,
     -- The outcome of validation of the withdrawal request.
     validation_result TEXT NOT NULL,
+    -- Whether the transaction is valid.
+    is_valid_tx BOOLEAN NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     -- the primary key is a pair of request_id and stacks_block_hash because request_id

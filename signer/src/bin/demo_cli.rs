@@ -14,7 +14,10 @@ use clarity::{
     vm::types::{PrincipalData, StandardPrincipalData},
 };
 use emily_client::{
-    apis::{configuration::Configuration, deposit_api},
+    apis::{
+        configuration::{ApiKey, Configuration},
+        deposit_api,
+    },
     models::CreateDepositRequestBody,
 };
 use fake::Fake as _;
@@ -105,16 +108,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let settings = Settings::new(Some("signer/src/config/default.toml"))?;
 
-    // Setup our Emily client configuration
+    // Setup our Emily client configuration by getting the first configured endpoint
+    // and using that to populate the client.
+    let emily_api_endpoint_config = settings
+        .emily
+        .endpoints
+        .first()
+        .expect("No Emily endpoints configured");
     let emily_client_config = Configuration {
-        base_path: settings
-            .emily
-            .endpoints
-            .first()
-            .expect("No Emily endpoints configured")
+        base_path: emily_api_endpoint_config
+            .endpoint
             .to_string()
             .trim_end_matches("/")
             .to_string(),
+        api_key: emily_api_endpoint_config
+            .api_key
+            .clone()
+            .map(|key_string| ApiKey { prefix: None, key: key_string }),
         ..Default::default()
     };
 

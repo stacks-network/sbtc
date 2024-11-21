@@ -71,7 +71,7 @@ pub const GET_POX_INFO_JSON: &str =
 #[test_case::test_case(1, 10; "one block ago")]
 #[test_case::test_case(5, 10; "five blocks ago")]
 #[tokio::test]
-async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64, horizon: usize) {
+async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64, horizon: u32) {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
