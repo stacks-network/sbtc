@@ -3,6 +3,8 @@ use std::ops::Deref;
 use std::sync::atomic::Ordering;
 
 use bitcoin::hashes::Hash as _;
+use rand::rngs::OsRng;
+use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
 
 use sbtc::testing::regtest;
@@ -306,6 +308,7 @@ async fn one_invalid_deposit_invalidates_tx() {
     assert!(!deposit2.is_valid_tx);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_invalid_withdrawal_invalidates_tx() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
@@ -426,6 +429,7 @@ async fn one_invalid_withdrawal_invalidates_tx() {
     assert_eq!(output.request_id, setup.withdrawal_request.request_id);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn cannot_sign_deposit_is_ok() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
@@ -578,6 +582,7 @@ async fn cannot_sign_deposit_is_ok() {
     assert_eq!(sighashes.deposits[1].1, deposit2.sighash);
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sighashes_match_from_sbtc_requests_object() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
@@ -698,4 +703,80 @@ async fn sighashes_match_from_sbtc_requests_object() {
     assert_eq!(sighashes.deposits.len(), 2);
     assert_eq!(sighashes.deposits[0].1, deposit1.sighash);
     assert_eq!(sighashes.deposits[1].1, deposit2.sighash);
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn outcome_is_independent_of_input_order() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = OsRng;
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    let signers = TestSignerSet::new(&mut rng);
+    let amounts = [
+        DepositAmounts {
+            amount: 1_500_000,
+            max_fee: 500_000,
+        },
+        DepositAmounts {
+            amount: 700_000,
+            max_fee: 500_000,
+        },
+        DepositAmounts {
+            amount: 1_000_000,
+            max_fee: 500_000,
+        },
+        DepositAmounts {
+            amount: 2_000_000,
+            max_fee: 500_000,
+        },
+    ];
+
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+
+    setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
+    setup.store_deposit_txs(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_deposit_decisions(&db).await;
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let chain_tip_block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
+
+    let aggregate_key = setup.signers.signer.keypair.public_key().into();
+
+    let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
+    let mut btc_ctx = BitcoinTxContext {
+        chain_tip: chain_tip_block.block_hash,
+        chain_tip_height: chain_tip_block.block_height,
+        request_packages: vec![TxRequestIds {
+            deposits: setup.deposit_outpoints(),
+            withdrawals: Vec::new(),
+        }],
+        signer_public_key: setup.signers.keys[0],
+        aggregate_key,
+        signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
+    };
+
+    // The outcome is independent of the ordering of the input IDs.
+    let valadation_data1 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let set1 = &valadation_data1[0];
+    let input_rows1 = set1.to_input_rows();
+
+    btc_ctx.request_packages[0].deposits.shuffle(&mut rng);
+    let valadation_data2 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let set2 = &valadation_data2[0];
+    let input_rows2 = set2.to_input_rows();
+
+    assert_eq!(input_rows1, input_rows2);
 }
