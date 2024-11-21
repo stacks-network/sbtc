@@ -1,8 +1,10 @@
 //! Test utilities for the block observer
 
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use bitcoin::hashes::Hash;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 use bitcoincore_rpc_json::GetTxOutResult;
@@ -424,9 +426,27 @@ impl StacksInteract for TestHarness {
             marf_proof: None,
         })
     }
+
+    async fn get_sbtc_total_supply(&self, _: &StacksAddress) -> Result<Amount, Error> {
+        Ok(Amount::from_sat(u64::MAX))
+    }
 }
 
 impl EmilyInteract for TestHarness {
+    async fn get_deposit(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<CreateDepositRequest>, Error> {
+        let deposit = self
+            .pending_deposits
+            .iter()
+            .find(|request| {
+                &request.outpoint.txid == txid.deref() && request.outpoint.vout == output_index
+            })
+            .cloned();
+        Ok(deposit)
+    }
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         Ok(self.pending_deposits.clone())
     }

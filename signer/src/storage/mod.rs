@@ -73,6 +73,14 @@ pub trait DbRead {
         signatures_required: u16,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
+    /// Check whether we have a record of the deposit request in our
+    /// database.
+    fn deposit_request_exists(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Get the deposit requests that the signer has accepted to sign
     fn get_accepted_deposit_requests(
         &self,

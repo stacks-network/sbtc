@@ -14,6 +14,8 @@ pub mod deposit;
 pub mod health;
 /// Internal handlers.
 pub mod internal;
+/// Limit handlers.
+pub mod limits;
 /// Testing handlers.
 #[cfg(feature = "testing")]
 pub mod testing;

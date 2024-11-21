@@ -161,30 +161,58 @@ pub struct BlocklistClientConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct EmilyClientConfig {
     /// Emily API endpoints.
-    #[serde(deserialize_with = "url_deserializer_vec")]
-    pub endpoints: Vec<Url>,
+    pub endpoints: Vec<EmilyEndpointConfig>,
+}
+
+/// Emily API endpoint configuration.
+#[derive(Deserialize, Clone, Debug)]
+pub struct EmilyEndpointConfig {
+    /// The emily API endpoint that the signer will use.
+    #[serde(deserialize_with = "url_deserializer_single")]
+    pub endpoint: Url,
+    /// API key for the Emily API endpoint.
+    /// If the api key is not provided we assume the API doesn't need one.
+    pub api_key: Option<String>,
+}
+
+impl Validatable for EmilyEndpointConfig {
+    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
+        // If an API key is provided it needs to be non-empty.
+        if let Some(api_key) = self.api_key.as_ref() {
+            if api_key.is_empty() {
+                return Err(ConfigError::Message(
+                    "[emily_client.endpoints] API key cannot be specified yet empty".to_string(),
+                ));
+            }
+        }
+
+        if !["http", "https"].contains(&self.endpoint.scheme()) {
+            return Err(ConfigError::Message(
+                "[emily_client.endpoints] Invalid URL scheme: must be HTTP or HTTPS".to_string(),
+            ));
+        }
+
+        if self.endpoint.host_str().is_none() {
+            return Err(ConfigError::Message(
+                "[emily_client.endpoints] Invalid URL: host is required".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
 }
 
 impl Validatable for EmilyClientConfig {
-    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
+    fn validate(&self, settings: &Settings) -> Result<(), ConfigError> {
+        // At least one endpoint must be provided.
         if self.endpoints.is_empty() {
             return Err(ConfigError::Message(
                 "[emily_client] At least one Emily API endpoint must be provided".to_string(),
             ));
         }
-
+        // Validate each endpoint configuration.
         for endpoint in &self.endpoints {
-            if !["http", "https"].contains(&endpoint.scheme()) {
-                return Err(ConfigError::Message(
-                    "[emily_client] Invalid URL scheme: must be HTTP or HTTPS".to_string(),
-                ));
-            }
-
-            if endpoint.host_str().is_none() {
-                return Err(ConfigError::Message(
-                    "[emily_client] Invalid URL: host is required".to_string(),
-                ));
-            }
+            endpoint.validate(settings)?;
         }
 
         Ok(())

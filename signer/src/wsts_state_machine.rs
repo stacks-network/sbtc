@@ -12,6 +12,7 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
 
+use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
 use wsts::state_machine::StateMachine as _;
@@ -182,7 +183,7 @@ impl std::ops::DerefMut for SignerStateMachine {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CoordinatorStateMachine(WstsCoordinator);
 
-type WstsCoordinator = wsts::state_machine::coordinator::frost::Coordinator<wsts::v2::Aggregator>;
+type WstsCoordinator = wsts::state_machine::coordinator::fire::Coordinator<wsts::v2::Aggregator>;
 
 impl CoordinatorStateMachine {
     /// Create a new state machine
@@ -203,7 +204,7 @@ impl CoordinatorStateMachine {
             .try_into()
             .expect("The number of signers is greater than u32::MAX?");
         let signer_key_ids = (0..num_signers)
-            .map(|signer_id| (signer_id, std::iter::once(signer_id).collect()))
+            .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
             .collect();
         let config = wsts::state_machine::coordinator::Config {
             num_signers,
@@ -253,66 +254,17 @@ impl CoordinatorStateMachine {
 
         let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
             BTreeMap::decode(encrypted_shares.public_shares.as_slice()).map_err(Error::Codec)?;
+        let party_polynomials = public_dkg_shares
+            .iter()
+            .flat_map(|(_, share)| share.comms.clone())
+            .collect::<Vec<(u32, PolyCommitment)>>();
 
         let mut coordinator = Self::new(signers, threshold, message_private_key);
 
-        // The `coordinator` is a state machine that starts off in the
-        // `IDLE` state, but we need to move it into a state where it can
-        // accept the above public DKG shares. To do that we need to move
-        // it to the `DKG_PUBLIC_GATHER` state and make sure that it is
-        // properly initialized. The way to do that is to process a
-        // `DKG_BEGIN` message, it will automatically move the state of the
-        // machine to the `DKG_PUBLIC_GATHER` state.
-        let packet = wsts::net::Packet {
-            msg: wsts::net::Message::DkgBegin(wsts::net::DkgBegin { dkg_id: 1 }),
-            sig: Vec::new(),
-        };
-        // If WSTS thinks that the we've already completed DKG for the
-        // given ID, then it will return with `(None, None)`. This only
-        // happens when the coordinator's `dkg_id` is greater than or equal
-        // to the value given in the message. But the coordinator's dkg_id
-        // starts at 0 and we start our's at 1.
-        let (Some(_), _) = coordinator
-            .process_message(&packet)
-            .map_err(Error::wsts_coordinator)?
-        else {
-            let msg = "Bad DKG id given".to_string();
-            let err = wsts::state_machine::coordinator::Error::BadStateChange(msg);
-            return Err(Error::wsts_coordinator(err));
-        };
-
-        // TODO(338): Replace this for-loop with a simpler method to set
-        // the public DKG shares.
-        //
-        // In this part we are trying to set the party_polynomials of the
-        // WstsCoordinator given all of the known public keys that we
-        // stored in the database.
-        for mut msg in public_dkg_shares.values().cloned() {
-            msg.dkg_id = 1;
-            let packet = wsts::net::Packet {
-                msg: wsts::net::Message::DkgPublicShares(msg),
-                sig: Vec::new(),
-            };
-
-            // We're in the state that can accept public keys, let's
-            // process them.
-            coordinator
-                .process_message(&packet)
-                .map_err(Error::wsts_coordinator)?;
-        }
-
-        // Once we've processed all DKG public shares for all participants,
-        // WSTS moves the state to `DKG_PRIVATE_GATHER` automatically.
-        // If this fails then we know that there is a mismatch between the
-        // stored public shares and the size of the input `signers`
-        // variable.
-        debug_assert_eq!(coordinator.0.state, WstsState::DkgPrivateGather);
-
-        // Okay we've already gotten the private keys, and we've set the
-        // `party_polynomials` variable in the `WstsCoordinator`. Now we
-        // can just set the aggregate key and move the state to the `IDLE`,
-        // which is the state after a successful DKG round.
-        coordinator.set_aggregate_public_key(Some(aggregate_key.into()));
+        coordinator
+            .set_key_and_party_polynomials(aggregate_key.into(), party_polynomials)
+            .map_err(Error::wsts_coordinator)?;
+        coordinator.current_dkg_id = 1;
 
         coordinator
             .move_to(WstsState::Idle)
