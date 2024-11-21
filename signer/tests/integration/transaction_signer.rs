@@ -609,12 +609,12 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
     // Check that the sighashes are stored in the database
     assert!(db
-        .get_bitcoin_tx_sighash(&model::BitcoinTxId::from(signer_digest.txid))
+        .will_sign_bitcoin_tx_sighash(&signer_digest.sighash.into())
         .await
         .is_ok());
 
     assert!(db
-        .get_bitcoin_tx_sighash(&model::BitcoinTxId::from(deposit_digest.txid))
+        .will_sign_bitcoin_tx_sighash(&deposit_digest.sighash.into())
         .await
         .is_ok());
 }
