@@ -15,7 +15,6 @@ use signer::bitcoin::validation::BitcoinTxContext;
 use signer::bitcoin::validation::BitcoinTxValidationData;
 use signer::bitcoin::validation::InputValidationResult;
 use signer::bitcoin::validation::TxRequestIds;
-use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::context::Context;
 use signer::error::Error;
 use signer::keys::PublicKey;
@@ -310,7 +309,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn one_invalid_withdrawal_invalidates_tx() {
+async fn one_withdrawal_errors_validation() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -369,64 +368,8 @@ async fn one_invalid_withdrawal_invalidates_tx() {
         signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
     };
 
-    let valadation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
-    // There a re a few invariants that we uphold for our validation data.
-    // These are things like "the transaction ID per package must be the
-    // same", we check for them here.
-    valadation_data.assert_invariants();
-    // We only had a package with one set of requests that were being
-    // handled.
-    assert_eq!(valadation_data.len(), 1);
-
-    // We didn't give any withdrawals so the outputs vector should be
-    // empty (it only has signer outputs).
-    let set = &valadation_data[0];
-    assert!(set.to_withdrawal_rows().is_empty());
-
-    // The signer won't sign any of the sighashes, even though all deposits
-    // have passed validation. The withdrawal will fail validation,
-    // invalidating the transaction.
-    let input_rows = set.to_input_rows();
-    let signer = input_rows.first().unwrap();
-    assert_eq!(signer.prevout_type, TxPrevoutType::SignersInput);
-    assert_eq!(signer.validation_result, InputValidationResult::Ok);
-    assert_eq!(signer.prevout_txid.deref(), &setup.donation.txid);
-    assert_eq!(signer.prevout_output_index, setup.donation.vout);
-    assert!(!signer.will_sign);
-    assert!(!signer.is_valid_tx);
-
-    let [deposit1, deposit2] = input_rows.last_chunk().unwrap();
-    let outpoint = setup.deposits[0].0.outpoint;
-    assert_eq!(input_rows.len(), 3);
-    assert_eq!(deposit1.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(deposit1.validation_result, InputValidationResult::Ok);
-    assert_eq!(deposit1.prevout_txid.deref(), &outpoint.txid);
-    assert_eq!(deposit1.prevout_output_index, outpoint.vout);
-    assert!(!deposit1.will_sign);
-    assert!(!deposit1.is_valid_tx);
-
-    let outpoint = setup.deposits[1].0.outpoint;
-    assert_eq!(deposit2.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(deposit2.validation_result, InputValidationResult::Ok);
-    assert_eq!(deposit2.prevout_txid.deref(), &outpoint.txid);
-    assert_eq!(deposit2.prevout_output_index, outpoint.vout);
-    assert!(!deposit2.will_sign);
-    assert!(!deposit2.is_valid_tx);
-
-    let withdrawal_rows = set.to_withdrawal_rows();
-    assert_eq!(withdrawal_rows.len(), 1);
-
-    let output = withdrawal_rows.first().unwrap();
-    assert_eq!(
-        output.validation_result,
-        WithdrawalValidationResult::Unsupported
-    );
-    assert_eq!(output.stacks_txid, setup.withdrawal_request.txid);
-    assert_eq!(
-        output.stacks_block_hash,
-        setup.withdrawal_request.block_hash
-    );
-    assert_eq!(output.request_id, setup.withdrawal_request.request_id);
+    let result = btc_ctx.construct_package_sighashes(&ctx).await;
+    assert!(result.is_err());
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
