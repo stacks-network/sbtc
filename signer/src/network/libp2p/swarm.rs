@@ -10,6 +10,7 @@ use libp2p::autonat::v2::client::{
 use libp2p::autonat::v2::server::Behaviour as AutoNatServerBehavior;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
     gossipsub, identify, kad, mdns, noise, ping, relay, tcp, yamux, Multiaddr, PeerId, Swarm,
@@ -25,7 +26,7 @@ use super::event_loop;
 #[derive(NetworkBehaviour)]
 pub struct SignerBehavior {
     pub gossipsub: gossipsub::Behaviour,
-    mdns: mdns::tokio::Behaviour,
+    mdns: Toggle<mdns::tokio::Behaviour>,
     kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
     relay: relay::Behaviour,
@@ -35,7 +36,7 @@ pub struct SignerBehavior {
 }
 
 impl SignerBehavior {
-    pub fn new(keypair: Keypair) -> Result<Self, SignerSwarmError> {
+    pub fn new(keypair: Keypair, enable_mdns: bool) -> Result<Self, SignerSwarmError> {
         let message_id_fn = |message: &gossipsub::Message| {
             let mut hasher = DefaultHasher::new();
             message.data.hash(&mut hasher);
@@ -49,17 +50,23 @@ impl SignerBehavior {
             .build()
             .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
 
+        let mdns = if enable_mdns {
+            Some(
+                mdns::tokio::Behaviour::new(mdns::Config::default(), keypair.public().to_peer_id())
+                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
+            )
+        } else {
+            None
+        }
+        .into();
+
         Ok(Self {
             gossipsub: gossipsub::Behaviour::new(
                 gossipsub::MessageAuthenticity::Signed(keypair.clone()),
                 gossipsub_config,
             )
             .map_err(SignerSwarmError::LibP2PMessage)?,
-            mdns: mdns::tokio::Behaviour::new(
-                mdns::Config::default(),
-                keypair.public().to_peer_id(),
-            )
-            .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
+            mdns,
             kademlia: Self::kademlia(&keypair),
             ping: ping::Behaviour::default(),
             relay: relay::Behaviour::new(keypair.public().to_peer_id(), Default::default()),
@@ -94,17 +101,25 @@ pub struct SignerSwarmBuilder<'a> {
     listen_on: Vec<Multiaddr>,
     seed_addrs: Vec<Multiaddr>,
     external_addresses: Vec<Multiaddr>,
+    use_mdns: bool,
 }
 
 impl<'a> SignerSwarmBuilder<'a> {
     /// Create a new [`SignerSwarmBuilder`] with the given private key.
-    pub fn new(private_key: &'a PrivateKey) -> Self {
+    pub fn new(private_key: &'a PrivateKey, use_mdns: bool) -> Self {
         Self {
             private_key,
             listen_on: Vec::new(),
             seed_addrs: Vec::new(),
             external_addresses: Vec::new(),
+            use_mdns,
         }
+    }
+
+    /// Sets whether or not this swarm should use mdns.
+    pub fn use_mdns(mut self, use_mdns: bool) -> Self {
+        self.use_mdns = use_mdns;
+        self
     }
 
     /// Add a listen endpoint to the builder.
@@ -168,7 +183,7 @@ impl<'a> SignerSwarmBuilder<'a> {
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
         let keypair: Keypair = (*self.private_key).into();
-        let behavior = SignerBehavior::new(keypair.clone())?;
+        let behavior = SignerBehavior::new(keypair.clone(), self.use_mdns)?;
 
         let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
             .with_tokio()
@@ -260,7 +275,7 @@ mod tests {
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         let private_key = PrivateKey::new(&mut rand::thread_rng());
         let keypair: Keypair = private_key.into();
-        let builder = SignerSwarmBuilder::new(&private_key)
+        let builder = SignerSwarmBuilder::new(&private_key, true)
             .add_listen_endpoint(addr.clone())
             .add_seed_addr(addr.clone());
         let swarm = builder.build().unwrap();
@@ -276,7 +291,7 @@ mod tests {
     #[tokio::test]
     async fn swarm_shuts_down_on_shutdown_signal() {
         let private_key = PrivateKey::new(&mut rand::thread_rng());
-        let builder = SignerSwarmBuilder::new(&private_key);
+        let builder = SignerSwarmBuilder::new(&private_key, true);
         let mut swarm = builder.build().unwrap();
 
         let ctx = TestContext::builder()

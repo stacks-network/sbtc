@@ -162,12 +162,12 @@ mod tests {
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();
 
-        let mut swarm1 = SignerSwarmBuilder::new(&key1)
+        let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
             .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
             .build()
             .expect("Failed to build swarm 1");
 
-        let mut swarm2 = SignerSwarmBuilder::new(&key2)
+        let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
             .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
             .build()
             .expect("Failed to build swarm 2");
