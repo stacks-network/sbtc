@@ -1846,27 +1846,18 @@ impl super::DbRead for PgStore {
         Ok(sweep_transactions)
     }
 
-    async fn get_bitcoin_tx_sighash(
+    async fn will_sign_bitcoin_tx_sighash(
         &self,
-        txid: &model::BitcoinTxId,
-    ) -> Result<Option<model::BitcoinTxSigHash>, Error> {
-        sqlx::query_as::<_, model::BitcoinTxSigHash>(
+        sighash: &model::SigHash,
+    ) -> Result<Option<bool>, Error> {
+        sqlx::query_scalar::<_, bool>(
             r#"
-                SELECT
-                    txid
-                  , chain_tip
-                  , prevout_txid
-                  , prevout_output_index
-                  , sighash
-                  , prevout_type
-                  , validation_result
-                  , is_valid_tx
-                  , will_sign
-                FROM sbtc_signer.bitcoin_tx_sighashes
-                WHERE txid = $1
-                "#,
+            SELECT will_sign
+            FROM sbtc_signer.bitcoin_tx_sighashes
+            WHERE sighash = $1
+            "#,
         )
-        .bind(txid)
+        .bind(sighash)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)

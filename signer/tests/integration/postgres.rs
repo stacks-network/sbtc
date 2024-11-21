@@ -3121,13 +3121,13 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
 
     let withdrawal_outputs_futures = sighashes
         .iter()
-        .map(|sighash| db.get_bitcoin_tx_sighash(&sighash.txid));
+        .map(|sighash| db.will_sign_bitcoin_tx_sighash(&sighash.sighash));
 
     let results = join_all(withdrawal_outputs_futures).await;
 
     for (output, result) in sighashes.iter().zip(results) {
         let result = result.unwrap().unwrap();
-        assert_eq!(result, *output);
+        assert_eq!(result, output.will_sign);
     }
     signer::testing::storage::drop_db(db).await;
 }

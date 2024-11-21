@@ -339,10 +339,10 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
 
     /// Get the bitcoin sighash output.
-    fn get_bitcoin_tx_sighash(
+    fn will_sign_bitcoin_tx_sighash(
         &self,
-        txid: &model::BitcoinTxId,
-    ) -> impl Future<Output = Result<Option<model::BitcoinTxSigHash>, Error>> + Send;
+        sighash: &model::SigHash,
+    ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
 
     /// Get the bitcoin withdrawal output.
     fn get_bitcoin_withdrawal_output(

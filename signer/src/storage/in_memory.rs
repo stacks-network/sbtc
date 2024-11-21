@@ -123,7 +123,7 @@ pub struct Store {
     pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
 
     /// Bitcoin signhashes
-    pub bitcoin_sighashes: HashMap<model::BitcoinTxId, model::BitcoinTxSigHash>,
+    pub bitcoin_sighashes: HashMap<model::SigHash, model::BitcoinTxSigHash>,
 
     /// Bitcoin withdrawal outputs
     pub bitcoin_withdrawal_outputs:
@@ -875,11 +875,16 @@ impl super::DbRead for SharedStore {
         Ok(Vec::new())
     }
 
-    async fn get_bitcoin_tx_sighash(
+    async fn will_sign_bitcoin_tx_sighash(
         &self,
-        txid: &model::BitcoinTxId,
-    ) -> Result<Option<model::BitcoinTxSigHash>, Error> {
-        Ok(self.lock().await.bitcoin_sighashes.get(txid).cloned())
+        sighash: &model::SigHash,
+    ) -> Result<Option<bool>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .bitcoin_sighashes
+            .get(sighash)
+            .map(|s| s.will_sign))
     }
 
     async fn get_bitcoin_withdrawal_output(
@@ -1213,7 +1218,7 @@ impl super::DbWrite for SharedStore {
     ) -> Result<(), Error> {
         let mut store = self.lock().await;
         sighashes.into_iter().for_each(|sighash| {
-            store.bitcoin_sighashes.insert(sighash.txid, sighash);
+            store.bitcoin_sighashes.insert(sighash.sighash, sighash);
         });
         Ok(())
     }
