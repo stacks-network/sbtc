@@ -9,10 +9,12 @@ use crate::context::Context;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TxSignerEvent;
+use crate::ecdsa::SignEcdsa as _;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
 use crate::network;
+use crate::network::MessageTransfer as _;
 use crate::storage;
 use crate::storage::model;
 use crate::storage::DbRead;
@@ -21,9 +23,6 @@ use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::transaction_coordinator;
 use crate::transaction_signer;
-
-use crate::ecdsa::SignEcdsa as _;
-use crate::network::MessageTransfer as _;
 
 use rand::SeedableRng as _;
 use sha2::Digest as _;

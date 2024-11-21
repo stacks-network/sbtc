@@ -849,6 +849,21 @@ where
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.signer_private_key)
     }
+
+    // -------------- \\
+    // Testing utils  \\
+    // -------------- \\
+
+    /// Public testing handler for [`Self::handle_sbtc_requests_context_message`]
+    #[cfg(feature = "testing")]
+    pub async fn handle_sbtc_requests_context_message_tester(
+        &mut self,
+        request: &message::SbtcRequestsContextMessage,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        self.handle_sbtc_requests_context_message(request, bitcoin_chain_tip)
+            .await
+    }
 }
 
 /// Relevant information for validating incoming messages
