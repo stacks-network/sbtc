@@ -30,16 +30,18 @@ use secp256k1::Keypair;
 use secp256k1::Message;
 use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
-use crate::message::FeesMessage;
 use crate::storage::model;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SignerVotes;
 use crate::storage::model::StacksBlockHash;
@@ -78,7 +80,7 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 const OP_RETURN_VERSION: u8 = 0;
 
 /// Describes the fees for a transaction.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Fees {
     /// The total fee paid in sats for the transaction.
     pub total: u64,
@@ -89,15 +91,6 @@ pub struct Fees {
 impl Fees {
     /// A zero-fee [`Fees`] instance.
     pub const ZERO: Self = Self { total: 0, rate: 0.0 };
-}
-
-impl From<FeesMessage> for Fees {
-    fn from(fees: FeesMessage) -> Self {
-        Self {
-            total: fees.total,
-            rate: fees.rate,
-        }
-    }
 }
 
 /// A trait for getting the fees for a given instance.
@@ -460,6 +453,15 @@ impl WithdrawalRequest {
             request_id: request.request_id,
             txid: request.txid,
             block_hash: request.block_hash,
+        }
+    }
+
+    /// Return the identifier for the withdrawal request.
+    pub fn qualified_id(&self) -> QualifiedRequestId {
+        QualifiedRequestId {
+            request_id: self.request_id,
+            txid: self.txid,
+            block_hash: self.block_hash,
         }
     }
 }

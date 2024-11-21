@@ -21,7 +21,6 @@ use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
-use crate::message::QualifiedRequestIdMessage;
 
 /// Represents a single transaction which is part of a sweep transaction package
 /// which has been broadcast to the Bitcoin network.
@@ -782,7 +781,7 @@ pub enum TxPrevoutType {
 ///
 /// A request-id and a Stacks Block ID is enough to uniquely identify the
 /// request, but we add in the transaction ID for completeness.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct QualifiedRequestId {
     /// The ID that was generated in the clarity contract call for the
     /// withdrawal request.
@@ -810,16 +809,6 @@ impl From<&BitcoinWithdrawalRequest> for QualifiedRequestId {
             request_id: request.request_id,
             txid: request.txid,
             block_hash: request.block_hash,
-        }
-    }
-}
-
-impl From<QualifiedRequestIdMessage> for QualifiedRequestId {
-    fn from(request: QualifiedRequestIdMessage) -> Self {
-        Self {
-            request_id: request.request_id,
-            txid: request.txid.into(),
-            block_hash: request.block_hash.into(),
         }
     }
 }
@@ -987,7 +976,7 @@ impl From<&BitcoinBlock> for BitcoinBlockRef {
 }
 
 /// The Stacks block ID. This is different from the block header hash.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct StacksBlockHash(StacksBlockId);
 
 impl Deref for StacksBlockHash {

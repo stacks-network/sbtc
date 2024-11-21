@@ -33,7 +33,6 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
 use crate::message::Payload;
-use crate::message::SbtcRequestsContext;
 use crate::message::SbtcRequestsContextMessage;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
@@ -416,7 +415,7 @@ where
         let sbtc_requests = SbtcRequestsContextMessage {
             requests: transaction_package
                 .iter()
-                .map(|tx| SbtcRequestsContext::from(&tx.requests))
+                .map(|tx| (&tx.requests).into())
                 .collect(),
             fee_rate: pending_requests.signer_state.fee_rate,
             last_fees: pending_requests.signer_state.last_fees.map(Into::into),
@@ -424,7 +423,8 @@ where
 
         // Share the list of requests with the signers.
         self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
-        // Wait for the signers to receive and process the requests.
+        // Wait to reduce chance that the other signers will receive the subsequent
+        // messages before the SbtcRequestsContextMessage one.
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         for mut transaction in transaction_package {

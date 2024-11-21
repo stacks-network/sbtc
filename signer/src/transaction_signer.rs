@@ -346,7 +346,7 @@ where
             signer_state,
             signer_public_key: self.signer_public_key(),
             aggregate_key,
-            request_packages: request.requests.iter().map(|r| r.clone().into()).collect(),
+            request_packages: request.requests.clone(),
         };
 
         let sighashes = bitcoin_tx_context

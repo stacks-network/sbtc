@@ -5,13 +5,15 @@ use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::XOnlyPublicKey;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
-use crate::message::SbtcRequestsContext;
+use crate::message::OutPointMessage;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxSigHash;
@@ -53,31 +55,23 @@ pub struct BitcoinTxContext {
 
 /// This type is a container for all deposits and withdrawals that are part
 /// of a transaction package.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TxRequestIds {
     /// The deposit requests associated with the inputs in the transaction.
-    pub deposits: Vec<OutPoint>,
+    pub deposits: Vec<OutPointMessage>,
     /// The withdrawal requests associated with the outputs in the current
     /// transaction.
     pub withdrawals: Vec<QualifiedRequestId>,
 }
 
-impl From<SbtcRequestsContext> for TxRequestIds {
-    fn from(requests: SbtcRequestsContext) -> Self {
-        let deposits = requests.deposits.into_iter().map(Into::into).collect();
-        let withdrawals = requests.withdrawals.into_iter().map(Into::into).collect();
-        TxRequestIds { deposits, withdrawals }
-    }
-}
-
-impl From<Requests<'_>> for TxRequestIds {
-    fn from(requests: Requests) -> Self {
+impl From<&Requests<'_>> for TxRequestIds {
+    fn from(requests: &Requests) -> Self {
         let mut deposits = Vec::new();
         let mut withdrawals = Vec::new();
         for request in requests.iter() {
             match request {
-                RequestRef::Deposit(deposit) => deposits.push(deposit.outpoint),
-                RequestRef::Withdrawal(withdrawal) => withdrawals.push((*withdrawal).into()),
+                RequestRef::Deposit(deposit) => deposits.push(deposit.outpoint.into()),
+                RequestRef::Withdrawal(withdrawal) => withdrawals.push(withdrawal.qualified_id()),
             }
         }
         TxRequestIds { deposits, withdrawals }

@@ -11,6 +11,7 @@ use secp256k1::Keypair;
 use signer::bitcoin::utxo::RequestRef;
 use signer::bitcoin::utxo::Requests;
 use signer::bitcoin::utxo::UnsignedTransaction;
+use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::SignerSignal;
@@ -21,7 +22,6 @@ use signer::error::Error;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::message;
-use signer::message::SbtcRequestsContext;
 use signer::message::SbtcRequestsContextMessage;
 use signer::message::StacksTransactionSignRequest;
 use signer::network::in_memory2::WanNetwork;
@@ -571,7 +571,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         rng: rand::rngs::StdRng::seed_from_u64(51),
     };
 
-    let sbtc_requests = SbtcRequestsContext {
+    let sbtc_requests: TxRequestIds = TxRequestIds {
         deposits: vec![setup.deposit_request.outpoint.into()],
         withdrawals: vec![],
     };
