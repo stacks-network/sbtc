@@ -29,4 +29,9 @@ export class Constants {
      * Default number of signer API keys to create.
      */
     static DEFAULT_NUM_SIGNER_API_KEYS: number = 3;
+
+    /**
+     * Prod stage name.
+     */
+    static PROD_STAGE_NAME: string = "prod";
 }

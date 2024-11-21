@@ -31,6 +31,7 @@ use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::EncryptedDkgShares;
+use signer::storage::model::QualifiedRequestId;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
@@ -557,6 +558,14 @@ impl TestSweepSetup2 {
             .collect()
     }
 
+    pub fn withdrawal_ids(&self) -> Vec<QualifiedRequestId> {
+        vec![QualifiedRequestId {
+            request_id: self.withdrawal_request.request_id,
+            txid: self.withdrawal_request.txid,
+            block_hash: self.withdrawal_request.block_hash,
+        }]
+    }
+
     pub fn sweep_tx_info(&self) -> Option<&BitcoinTxInfo> {
         Some(&self.sweep_tx_info.as_ref()?.tx_info)
     }
@@ -769,13 +778,11 @@ impl TestSweepSetup2 {
     }
 
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
-        let sweep = self.sweep_tx_info.as_ref().expect("no sweep tx info set");
-
         let block = model::StacksBlock {
             block_hash: self.withdrawal_request.block_hash,
-            block_height: sweep.block_height,
+            block_height: Faker.fake_with_rng::<u32, _>(&mut OsRng) as u64,
             parent_hash: Faker.fake_with_rng(&mut OsRng),
-            bitcoin_anchor: sweep.block_hash,
+            bitcoin_anchor: self.deposit_block_hash.into(),
         };
         db.write_stacks_block(&block).await.unwrap();
 

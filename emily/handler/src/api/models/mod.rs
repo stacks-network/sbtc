@@ -8,5 +8,7 @@ pub mod common;
 pub mod deposit;
 /// Api structures for health endpoint.
 pub mod health;
+/// Api structures for limits.
+pub mod limits;
 /// Api structures for withdrawals.
 pub mod withdrawal;

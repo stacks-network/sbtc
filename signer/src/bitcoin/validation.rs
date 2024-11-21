@@ -159,7 +159,7 @@ impl BitcoinTxContext {
             let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unknown.into_error(self));
+                return Err(WithdrawalValidationResult::Unsupported.into_error(self));
             };
 
             let votes = db
@@ -207,6 +207,7 @@ impl BitcoinTxContext {
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
 /// [`BitcoinSighash`].
+#[derive(Debug)]
 pub struct BitcoinTxValidationData {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
@@ -262,6 +263,10 @@ pub struct BitcoinSighash {
 pub struct BitcoinWithdrawalOutput {
     /// The ID of the transaction that includes this withdrawal output.
     pub txid: BitcoinTxId,
+    /// The bitcoin chain tip when the sign request was submitted. This is
+    /// used to ensure that we do not sign for more than one transaction
+    /// containing inputs
+    pub chain_tip: BitcoinBlockHash,
     /// The index of the referenced output in the transaction's outputs.
     pub output_index: u32,
     /// The request ID of the withdrawal request. These increment for each
@@ -277,6 +282,9 @@ pub struct BitcoinWithdrawalOutput {
     pub stacks_block_hash: StacksBlockHash,
     /// The outcome of validation of the withdrawal request.
     pub validation_result: WithdrawalValidationResult,
+    /// Whether the transaction is valid. A transaction is invalid if any
+    /// of the inputs or outputs failed validation.
+    pub is_valid_tx: bool,
 }
 
 impl BitcoinTxValidationData {
@@ -341,6 +349,8 @@ impl BitcoinTxValidationData {
     /// validation result.
     pub fn to_withdrawal_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
         let txid = self.tx.compute_txid().into();
+
+        let is_valid_tx = self.is_valid_tx();
         // If we ever construct a transaction with more than u32::MAX then
         // we are dealing with a very different Bitcoin and Stacks than we
         // started with, and there are other things that we need to change
@@ -351,11 +361,13 @@ impl BitcoinTxValidationData {
             .enumerate()
             .map(|(output_index, (_, report))| BitcoinWithdrawalOutput {
                 txid,
+                chain_tip: self.chain_tip,
                 output_index: output_index as u32,
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
                 validation_result: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
+                is_valid_tx,
             })
             .collect()
     }
@@ -377,7 +389,7 @@ impl BitcoinTxValidationData {
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
             match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
-                WithdrawalValidationResult::Unknown => false,
+                WithdrawalValidationResult::Unsupported => false,
             }
         });
 
@@ -471,7 +483,7 @@ impl InputValidationResult {
 pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
-    Unknown,
+    Unsupported,
 }
 
 impl WithdrawalValidationResult {
@@ -715,7 +727,7 @@ impl WithdrawalRequestReport {
     where
         F: FeeAssessment,
     {
-        WithdrawalValidationResult::Unknown
+        WithdrawalValidationResult::Unsupported
     }
 
     fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {

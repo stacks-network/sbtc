@@ -1690,6 +1690,33 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// The [`DbRead::deposit_request_exists`] function is return true we have
+/// a record of the deposit request and false otherwise.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_request_exists_works() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let deposit: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let exists = db
+        .deposit_request_exists(&deposit.txid, deposit.output_index)
+        .await
+        .unwrap();
+    assert!(!exists);
+
+    db.write_deposit_request(&deposit).await.unwrap();
+    let exists = db
+        .deposit_request_exists(&deposit.txid, deposit.output_index)
+        .await
+        .unwrap();
+    assert!(exists);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This tests that deposit requests where there is an associated sweep
 /// transaction will show up in the query results from
 /// [`DbRead::get_swept_deposit_requests`].
