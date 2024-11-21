@@ -901,6 +901,29 @@ export const contracts = {
           sweepTxid: Uint8Array;
         } | null
       >,
+      getCompletedWithdrawalSweepData: {
+        name: "get-completed-withdrawal-sweep-data",
+        access: "read_only",
+        args: [{ name: "id", type: "uint128" }],
+        outputs: {
+          type: {
+            optional: {
+              tuple: [
+                { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
+                { name: "sweep-burn-height", type: "uint128" },
+                { name: "sweep-txid", type: { buffer: { length: 32 } } },
+              ],
+            },
+          },
+        },
+      } as TypedAbiFunction<
+        [id: TypedAbiArg<number | bigint, "id">],
+        {
+          sweepBurnHash: Uint8Array;
+          sweepBurnHeight: bigint;
+          sweepTxid: Uint8Array;
+        } | null
+      >,
       getCurrentAggregatePubkey: {
         name: "get-current-aggregate-pubkey",
         access: "read_only",
@@ -973,28 +996,7 @@ export const contracts = {
                   },
                 },
                 { name: "sender", type: "principal" },
-                {
-                  name: "status",
-                  type: {
-                    optional: {
-                      tuple: [
-                        { name: "is-accepted", type: "bool" },
-                        {
-                          name: "sweep-burn-hash",
-                          type: { optional: { buffer: { length: 32 } } },
-                        },
-                        {
-                          name: "sweep-burn-height",
-                          type: { optional: "uint128" },
-                        },
-                        {
-                          name: "sweep-txid",
-                          type: { optional: { buffer: { length: 32 } } },
-                        },
-                      ],
-                    },
-                  },
-                },
+                { name: "status", type: { optional: "bool" } },
               ],
             },
           },
@@ -1010,12 +1012,7 @@ export const contracts = {
             version: Uint8Array;
           };
           sender: string;
-          status: {
-            isAccepted: boolean;
-            sweepBurnHash: Uint8Array | null;
-            sweepBurnHeight: bigint | null;
-            sweepTxid: Uint8Array | null;
-          } | null;
+          status: boolean | null;
         } | null
       >,
       isProtocolCaller: {
@@ -1070,6 +1067,24 @@ export const contracts = {
           sweepTxid: Uint8Array;
         }
       >,
+      completedWithdrawalSweep: {
+        name: "completed-withdrawal-sweep",
+        key: "uint128",
+        value: {
+          tuple: [
+            { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
+            { name: "sweep-burn-height", type: "uint128" },
+            { name: "sweep-txid", type: { buffer: { length: 32 } } },
+          ],
+        },
+      } as TypedAbiMap<
+        number | bigint,
+        {
+          sweepBurnHash: Uint8Array;
+          sweepBurnHeight: bigint;
+          sweepTxid: Uint8Array;
+        }
+      >,
       multiSigAddress: {
         name: "multi-sig-address",
         key: "principal",
@@ -1116,29 +1131,8 @@ export const contracts = {
       withdrawalStatus: {
         name: "withdrawal-status",
         key: "uint128",
-        value: {
-          tuple: [
-            { name: "is-accepted", type: "bool" },
-            {
-              name: "sweep-burn-hash",
-              type: { optional: { buffer: { length: 32 } } },
-            },
-            { name: "sweep-burn-height", type: { optional: "uint128" } },
-            {
-              name: "sweep-txid",
-              type: { optional: { buffer: { length: 32 } } },
-            },
-          ],
-        },
-      } as TypedAbiMap<
-        number | bigint,
-        {
-          isAccepted: boolean;
-          sweepBurnHash: Uint8Array | null;
-          sweepBurnHeight: bigint | null;
-          sweepTxid: Uint8Array | null;
-        }
-      >,
+        value: "bool",
+      } as TypedAbiMap<number | bigint, boolean>,
     },
     variables: {
       ERR_AGG_PUBKEY_REPLAY: {
