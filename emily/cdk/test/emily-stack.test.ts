@@ -53,7 +53,8 @@ describe('EmilyStack Test', () => {
         });
 
         const lambdaResources = template.findResources('AWS::Lambda::Function');
-        expect(Object.keys(lambdaResources)).toHaveLength(1);
+        // One lambda for emily, another to handle the custom resource.
+        expect(Object.keys(lambdaResources)).toHaveLength(2);
         Object.keys(lambdaResources).forEach(lambdaLogicalId => {
             const environment = lambdaResources[lambdaLogicalId].Properties.Environment.Variables;
             console.log(environment);
