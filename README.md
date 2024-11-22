@@ -159,6 +159,10 @@ dependencies.
 This project currently supports development on UNIX-based operating systems but
 does not support development on Windows or z/OS.
 
+## Security
+
+See [this](./SECURITY.md).
+
 [discord-badge]: https://img.shields.io/static/v1?logo=discord&label=discord&message=Join&color=blue
 [discord-link]: https://discord.gg/hHaz2gGX
 [gpl-v3-badge]: https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat
