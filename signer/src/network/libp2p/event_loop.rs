@@ -140,13 +140,17 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::debug!(%address, "External address expired");
                     }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-                        tracing::debug!(%peer_id, %address, "New external address of peer");
-                        let kad_addr = strip_peer_id(&address);
-                        tracing::debug!(%peer_id, %kad_addr, "Adding address to kademlia");
-                        swarm
-                            .behaviour_mut()
-                            .kademlia
-                            .add_address(&peer_id, kad_addr);
+                        if swarm.listeners().any(|addr| addr == &address) {
+                            tracing::debug!(%peer_id, %address, "ignoring our own external address");
+                        } else {
+                            tracing::debug!(%peer_id, %address, "New external address of peer");
+                            let kad_addr = strip_peer_id(&address);
+                            tracing::debug!(%peer_id, %kad_addr, "Adding address to kademlia");
+                            swarm
+                                .behaviour_mut()
+                                .kademlia
+                                .add_address(&peer_id, kad_addr);
+                        }
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
