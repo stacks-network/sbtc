@@ -22,8 +22,9 @@ use signer::error::Error;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::message;
-use signer::message::SbtcRequestsContextMessage;
+use signer::message::BitcoinPreSignRequest;
 use signer::message::StacksTransactionSignRequest;
+use signer::network::in_memory2::SignerNetwork;
 use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
@@ -522,7 +523,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let db = testing::storage::new_test_database(db_num, true).await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-
+    let fee_rate = 1.3;
     // Build the test context with mocked clients
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -536,15 +537,14 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         client
             .expect_estimate_fee_rate()
             .times(2)
-            .returning(|| Box::pin(async { Ok(1.3) }));
+            .returning(move || Box::pin(async move { Ok(fee_rate) }));
     })
     .await;
 
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
     // Create a test setup with a confirmed deposit transaction
-    let mut setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
-
+    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
     // Backfill the blockchain data into the database
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
@@ -552,21 +552,23 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
     let public_aggregate_key = setup.aggregated_signer.keypair.public_key().into();
 
-    // Fill the signer's UTXO in the database
+    // // Fill the signer's UTXO in the database
     fill_signers_utxo(&db, bitcoin_block.unwrap(), &public_aggregate_key, &mut rng).await;
 
     // Store the necessary data for passing validation
-    setup.store_happy_path_data(&db).await;
-    setup.store_withdrawal_decisions(&db).await;
+    setup.store_deposit_tx(&db).await;
+    setup.store_dkg_shares(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_deposit_decisions(&db).await;
 
     // Initialize the transaction signer event loop
-    let network = InMemoryNetwork::new();
+    let network = SignerNetwork::single();
     let mut tx_signer = TxSignerEventLoop {
-        network: network.connect(),
+        network: network.spawn(),
         context: ctx.clone(),
         context_window: 10000,
         wsts_state_machines: HashMap::new(),
-        signer_private_key: PrivateKey::new(&mut rng),
+        signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
     };
@@ -576,16 +578,11 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         withdrawals: vec![],
     };
 
-    let sbtc_context = SbtcRequestsContextMessage {
+    let sbtc_context = BitcoinPreSignRequest {
         requests: vec![sbtc_requests],
-        fee_rate: 10.0,
+        fee_rate: fee_rate,
         last_fees: None,
     };
-    let result = tx_signer
-        .handle_sbtc_requests_context_message_tester(&sbtc_context, &chain_tip)
-        .await;
-
-    assert!(result.is_ok());
 
     let sbtc_state = tx_signer
         .get_btc_state(&chain_tip, &public_aggregate_key)
@@ -607,14 +604,26 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     assert_eq!(deposit_digest.len(), 1);
     let deposit_digest = deposit_digest[0];
 
-    // Check that the sighashes are stored in the database
-    assert!(db
+    let result = tx_signer
+        .handle_sbtc_requests_context_message(&sbtc_context, &chain_tip)
+        .await;
+
+    assert!(result.is_ok());
+
+    // Check that the intentions to sign the requests sighashes
+    // are stored in the database
+    let will_sign = db
         .will_sign_bitcoin_tx_sighash(&signer_digest.sighash.into())
         .await
-        .is_ok());
+        .expect("query to check if signer sighash is stored failed")
+        .expect("signer sighash not stored");
 
-    assert!(db
+    assert!(will_sign);
+    let will_sign = db
         .will_sign_bitcoin_tx_sighash(&deposit_digest.sighash.into())
         .await
-        .is_ok());
+        .expect("query to check if deposit sighash is stored failed")
+        .expect("deposit sighash not stored");
+
+    assert!(will_sign);
 }

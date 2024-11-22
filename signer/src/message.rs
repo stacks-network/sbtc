@@ -43,7 +43,7 @@ pub enum Payload {
     /// Information about a new sweep transaction
     SweepTransactionInfo(SweepTransactionInfo),
     /// Information about a new Bitcoin block sign request
-    SbtcRequestsContextMessage(SbtcRequestsContextMessage),
+    BitcoinPreSignRequest(BitcoinPreSignRequest),
 }
 
 impl std::fmt::Display for Payload {
@@ -78,7 +78,7 @@ impl std::fmt::Display for Payload {
                 write!(f, ")")
             }
             Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
-            Self::SbtcRequestsContextMessage(_) => write!(f, "SbtcRequestsContextMessage(..)"),
+            Self::BitcoinPreSignRequest(_) => write!(f, "BitcoinPreSignRequest(..)"),
         }
     }
 }
@@ -141,9 +141,9 @@ impl From<SweepTransactionInfo> for Payload {
     }
 }
 
-impl From<SbtcRequestsContextMessage> for Payload {
-    fn from(value: SbtcRequestsContextMessage) -> Self {
-        Self::SbtcRequestsContextMessage(value)
+impl From<BitcoinPreSignRequest> for Payload {
+    fn from(value: BitcoinPreSignRequest) -> Self {
+        Self::BitcoinPreSignRequest(value)
     }
 }
 
@@ -361,7 +361,7 @@ impl From<OutPointMessage> for OutPoint {
 
 /// The transaction context needed by the signers to reconstruct the transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct SbtcRequestsContextMessage {
+pub struct BitcoinPreSignRequest {
     /// The set of sBTC requests with additional relevant
     /// information for the transaction.
     pub requests: Vec<TxRequestIds>,
@@ -370,10 +370,6 @@ pub struct SbtcRequestsContextMessage {
     /// The total fee amount and the fee rate for the last transaction that
     /// used this UTXO as an input.
     pub last_fees: Option<Fees>,
-    // /// The total fee paid in sats for the transaction.
-    // pub last_fee_total: Option<u64>,
-    // /// The fee rate paid in sats per virtual byte.
-    // pub last_fee_rate: Option<f64>,
 }
 
 /// A wsts message.
@@ -405,7 +401,7 @@ impl wsts::net::Signable for Payload {
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
             Self::StacksTransactionSignature(msg) => msg.hash(hasher),
             Self::SweepTransactionInfo(msg) => msg.hash(hasher),
-            Self::SbtcRequestsContextMessage(msg) => msg.hash(hasher),
+            Self::BitcoinPreSignRequest(msg) => msg.hash(hasher),
         }
     }
 }
@@ -533,19 +529,13 @@ impl wsts::net::Signable for TxRequestIds {
     }
 }
 
-impl wsts::net::Signable for SbtcRequestsContextMessage {
+impl wsts::net::Signable for BitcoinPreSignRequest {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         hasher.update("SIGNER_NEW_BITCOIN_TX_CONTEXT");
         for request in &self.requests {
             request.hash(hasher);
         }
         hasher.update(self.fee_rate.to_be_bytes());
-        // if let Some(fee_total) = self.last_fee_total {
-        //     hasher.update(fee_total.to_be_bytes());
-        // }
-        // if let Some(fee_rate) = self.last_fee_rate {
-        //     hasher.update(fee_rate.to_be_bytes());
-        // }
     }
 }
 

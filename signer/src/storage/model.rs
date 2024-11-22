@@ -14,7 +14,6 @@ use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
-use crate::bitcoin::utxo::WithdrawalRequest as BitcoinWithdrawalRequest;
 use crate::bitcoin::validation::InputValidationResult;
 use crate::bitcoin::validation::WithdrawalValidationResult;
 use crate::block_observer::Deposit;
@@ -791,26 +790,6 @@ pub struct QualifiedRequestId {
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     pub block_hash: StacksBlockHash,
-}
-
-impl From<BitcoinWithdrawalRequest> for QualifiedRequestId {
-    fn from(request: BitcoinWithdrawalRequest) -> Self {
-        Self {
-            request_id: request.request_id,
-            txid: request.txid,
-            block_hash: request.block_hash,
-        }
-    }
-}
-
-impl From<&BitcoinWithdrawalRequest> for QualifiedRequestId {
-    fn from(request: &BitcoinWithdrawalRequest) -> Self {
-        Self {
-            request_id: request.request_id,
-            txid: request.txid,
-            block_hash: request.block_hash,
-        }
-    }
 }
 
 /// A bitcoin transaction

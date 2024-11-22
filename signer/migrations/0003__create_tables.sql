@@ -322,7 +322,7 @@ CREATE UNIQUE INDEX uix_swept_deposits_req_txid_req_output_index_pkgd_txid
 
 CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
     -- The transaction ID of the bitcoin transaction.
-    txid BYTEA PRIMARY KEY,
+    txid BYTEA NOT NULL,
     -- The bitcoin chain tip when the sign request was submitted.
     chain_tip BYTEA NOT NULL,
     -- The txid that created the output that is being spent.
@@ -330,7 +330,7 @@ CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
     -- The index of the vout from the transaction that created this output.
     prevout_output_index INTEGER NOT NULL,
     -- The sighash associated with the prevout.
-    sighash BYTEA NOT NULL,
+    sighash BYTEA PRIMARY KEY,
     -- The type of prevout that we are dealing with.
     prevout_type sbtc_signer.prevout_type NOT NULL,
     -- The result of validation that was done on the input.

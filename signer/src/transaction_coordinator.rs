@@ -32,8 +32,8 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
-use crate::message::SbtcRequestsContextMessage;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::SweepTransactionInfo;
@@ -412,7 +412,7 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
         // Get the requests from the transaction package because they have been split into
         // multiple transactions.
-        let sbtc_requests = SbtcRequestsContextMessage {
+        let sbtc_requests = BitcoinPreSignRequest {
             requests: transaction_package
                 .iter()
                 .map(|tx| (&tx.requests).into())
@@ -424,7 +424,7 @@ where
         // Share the list of requests with the signers.
         self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
         // Wait to reduce chance that the other signers will receive the subsequent
-        // messages before the SbtcRequestsContextMessage one.
+        // messages before the BitcoinPreSignRequest one.
         tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         for mut transaction in transaction_package {

@@ -258,7 +258,7 @@ where
                     .await?;
             }
 
-            (message::Payload::SbtcRequestsContextMessage(requests), _, _) => {
+            (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
                 self.handle_sbtc_requests_context_message(requests, &msg.bitcoin_chain_tip)
                     .await?;
             }
@@ -317,10 +317,16 @@ where
         })
     }
 
-    #[tracing::instrument(skip(self, request))]
-    async fn handle_sbtc_requests_context_message(
+    /// Processes the [`BitcoinPreSignRequest`] message.
+    /// The signer reconstructs the sighashes for the provided requests
+    /// based on the current state of its UTXO and fee details obtained
+    /// from the coordinator.
+    /// It validates the transactions and records its intent to sign them
+    /// in the database.
+    #[tracing::instrument(skip_all)]
+    pub async fn handle_sbtc_requests_context_message(
         &mut self,
-        request: &message::SbtcRequestsContextMessage,
+        request: &message::BitcoinPreSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
         let bitcoin_block = self
@@ -336,9 +342,13 @@ where
             .await?;
         let aggregate_key = maybe_aggregate_key.ok_or(Error::NoDkgShares)?;
 
-        let signer_state = self
+        let mut signer_state = self
             .get_btc_state(bitcoin_chain_tip, &aggregate_key)
             .await?;
+        // Update the signer state with the fees and fee rate from the
+        // coordinator.
+        signer_state.last_fees = request.last_fees;
+        signer_state.fee_rate = request.fee_rate;
 
         let bitcoin_tx_context = BitcoinTxContext {
             chain_tip: *bitcoin_chain_tip,
@@ -374,7 +384,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self, request))]
+    #[tracing::instrument(skip_all)]
     async fn handle_bitcoin_transaction_sign_request(
         &mut self,
         request: &message::BitcoinTransactionSignRequest,
@@ -848,21 +858,6 @@ where
 
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.signer_private_key)
-    }
-
-    // -------------- \\
-    // Testing utils  \\
-    // -------------- \\
-
-    /// Public testing handler for [`Self::handle_sbtc_requests_context_message`]
-    #[cfg(feature = "testing")]
-    pub async fn handle_sbtc_requests_context_message_tester(
-        &mut self,
-        request: &message::SbtcRequestsContextMessage,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), Error> {
-        self.handle_sbtc_requests_context_message(request, bitcoin_chain_tip)
-            .await
     }
 }
 
