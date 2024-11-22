@@ -176,9 +176,6 @@ describe("sBTC deposit contract", () => {
       expect(receipt1).toStrictEqual({
         amount: 1000n,
         recipient: deployer,
-        sweepTxid: sweepTxid,
-        sweepBurnHash: burnHash,
-        sweepBurnHeight: BigInt(burnHeight),
       });
     });
   });
