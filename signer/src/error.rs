@@ -503,6 +503,10 @@ pub enum Error {
     /// Received coordinator message wasn't from coordinator for this chain tip
     #[error("not chain tip coordinator")]
     NotChainTipCoordinator,
+
+    /// Indicates that the request packages contain duplicate deposit or withdrawal entries.
+    #[error("The request packages contain duplicate deposit or withdrawal entries.")]
+    DuplicateRequests,
 }
 
 impl From<std::convert::Infallible> for Error {
