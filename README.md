@@ -1,6 +1,6 @@
 # sBTC
 
-> Note: This repo is in _beta_ and is not ready yet for production use.
+> Note: This repo is in _beta_ and is not yet ready for production use.
 
 [![License: GPL v3][gpl-v3-badge]][gpl-v3-link]
 [![Discord][discord-badge]][discord-link]
