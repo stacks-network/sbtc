@@ -105,10 +105,6 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                             continue;
                         }
                         tracing::info!(%peer_id, ?endpoint, "Connected to peer");
-                        swarm
-                            .behaviour_mut()
-                            .kademlia
-                            .add_address(&peer_id, strip_peer_id(endpoint.get_remote_address()));
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
                         tracing::info!(%peer_id, ?cause, ?endpoint, "Connection closed");
@@ -145,6 +141,10 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
                         tracing::debug!(%peer_id, %address, "New external address of peer");
+                        swarm
+                            .behaviour_mut()
+                            .kademlia
+                            .add_address(&peer_id, strip_peer_id(&address));
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
@@ -334,6 +334,8 @@ fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
+
+    use libp2p::PeerId;
 
     use super::*;
 
