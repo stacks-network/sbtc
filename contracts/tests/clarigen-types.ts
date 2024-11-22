@@ -875,21 +875,6 @@ export const contracts = {
           { name: "txid", type: { buffer: { length: 32 } } },
           { name: "vout-index", type: "uint128" },
         ],
-        outputs: { type: { optional: "bool" } },
-      } as TypedAbiFunction<
-        [
-          txid: TypedAbiArg<Uint8Array, "txid">,
-          voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
-        ],
-        boolean | null
-      >,
-      getCompletedDepositSweepData: {
-        name: "get-completed-deposit-sweep-data",
-        access: "read_only",
-        args: [
-          { name: "txid", type: { buffer: { length: 32 } } },
-          { name: "vout-index", type: "uint128" },
-        ],
         outputs: {
           type: {
             optional: {
@@ -990,6 +975,21 @@ export const contracts = {
           type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
         },
       } as TypedAbiFunction<[], Uint8Array[]>,
+      getDepositStatus: {
+        name: "get-deposit-status",
+        access: "read_only",
+        args: [
+          { name: "txid", type: { buffer: { length: 32 } } },
+          { name: "vout-index", type: "uint128" },
+        ],
+        outputs: { type: { optional: "bool" } },
+      } as TypedAbiFunction<
+        [
+          txid: TypedAbiArg<Uint8Array, "txid">,
+          voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
+        ],
+        boolean | null
+      >,
       getWithdrawalRequest: {
         name: "get-withdrawal-request",
         access: "read_only",
@@ -1052,8 +1052,8 @@ export const contracts = {
         key: { buffer: { length: 33 } },
         value: "bool",
       } as TypedAbiMap<Uint8Array, boolean>,
-      completedDepositSweep: {
-        name: "completed-deposit-sweep",
+      completedDeposits: {
+        name: "completed-deposits",
         key: {
           tuple: [
             { name: "txid", type: { buffer: { length: 32 } } },
