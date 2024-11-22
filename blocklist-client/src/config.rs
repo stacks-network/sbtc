@@ -1,6 +1,6 @@
 //! Configuration management for the Blocklist client
 
-use config::{Config, ConfigError, Environment, File};
+use config::{Config, ConfigError, Environment, File, FileFormat};
 use serde::Deserialize;
 use std::sync::LazyLock;
 
@@ -59,7 +59,10 @@ impl Settings {
     /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new() -> Result<Self, ConfigError> {
         let mut cfg = Config::new();
-        cfg.merge(File::with_name("./src/config/default"))?;
+        cfg.merge(File::from_str(
+            include_str!("config/default.toml"),
+            FileFormat::Toml,
+        ))?;
         let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
         cfg.merge(env)?;
         let settings: Settings = cfg.try_into()?;

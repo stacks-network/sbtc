@@ -73,7 +73,7 @@ services:
     environment:
       BLOCKLIST_CLIENT__SERVER__HOST: 0.0.0.0
       BLOCKLIST_CLIENT__SERVER__PORT: 3032
-      BLOCKLIST_CLIENT__risk_analysis__API_URL: xxxxx
+      BLOCKLIST_CLIENT__RISK_ANALYSIS__API_URL: xxxxx
       BLOCKLIST_CLIENT__RISK_ANALYSIS__API_KEY: xxxxx
     ports:
       - "3032:3032"
