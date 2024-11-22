@@ -135,6 +135,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     }
                     SwarmEvent::ExternalAddrConfirmed { address } => {
                         tracing::debug!(%address, "External address confirmed");
+                        swarm.add_external_address(address);
                     }
                     SwarmEvent::ExternalAddrExpired { address } => {
                         tracing::debug!(%address, "External address expired");
@@ -265,8 +266,7 @@ fn handle_identify_event(
                 tracing::debug!(%peer_id, "ignoring identify message from unknown peer");
                 return;
             }
-            tracing::debug!(%peer_id, "Received identify message from peer; adding to confirmed external addresses");
-            swarm.add_external_address(info.observed_addr.clone());
+            tracing::debug!(%peer_id, ?info, "Received identify message from peer");
         }
         Event::Pushed { connection_id, peer_id, info } => {
             tracing::trace!(%connection_id, %peer_id, ?info, "Pushed identify message to peer");
