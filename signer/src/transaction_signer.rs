@@ -472,10 +472,10 @@ where
         msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
-        tracing::info!("handling wsts message");
-
         match &msg.inner {
             WstsNetMessage::DkgBegin(_) => {
+                tracing::info!("handling DkgBegin");
+
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -496,6 +496,7 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPrivateBegin(_) => {
+                tracing::info!("handling DkgPrivateBegin");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -505,6 +506,10 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
+                tracing::info!(
+                    "handling DkgPublicShares from signer {}",
+                    dkg_public_shares.signer_id
+                );
                 let public_keys = match self.wsts_state_machines.get(&msg.txid) {
                     Some(state_machine) => &state_machine.public_keys,
                     None => return Err(Error::MissingStateMachine),
@@ -522,6 +527,10 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPrivateShares(dkg_private_shares) => {
+                tracing::info!(
+                    "handling DkgPrivateShares from signer {}",
+                    dkg_private_shares.signer_id
+                );
                 let public_keys = match self.wsts_state_machines.get(&msg.txid) {
                     Some(state_machine) => &state_machine.public_keys,
                     None => return Err(Error::MissingStateMachine),
@@ -539,6 +548,7 @@ where
                     .await?;
             }
             WstsNetMessage::DkgEndBegin(_) => {
+                tracing::info!("handling DkgEndBegin");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -555,6 +565,7 @@ where
             // warning.
             #[allow(clippy::map_entry)]
             WstsNetMessage::NonceRequest(_) => {
+                tracing::info!("handling NonceRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -581,6 +592,7 @@ where
                     .await?;
             }
             WstsNetMessage::SignatureShareRequest(_) => {
+                tracing::info!("handling SignatureShareRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -590,15 +602,19 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            WstsNetMessage::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) => {
-                tracing::info!("DKG ended in success");
-            }
-            WstsNetMessage::DkgEnd(DkgEnd {
-                status: DkgStatus::Failure(fail),
-                ..
-            }) => {
-                tracing::info!("DKG ended in failure: {fail:?}");
-                // TODO(#414): handle DKG failure
+            WstsNetMessage::DkgEnd(dkg_end) => {
+                match &dkg_end.status {
+                    DkgStatus::Success => {
+                        tracing::info!("handling DkgEnd success from signer {}", dkg_end.signer_id);
+                    }
+                    DkgStatus::Failure(fail) => {
+                        // TODO(#414): handle DKG failure
+                        tracing::info!(
+                            "handling DkgEnd failure {fail:?} from signer {}",
+                            dkg_end.signer_id
+                        );
+                    }
+                }
             }
             WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {
                 tracing::debug!("ignoring message");
