@@ -468,7 +468,7 @@ where
         &mut self,
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        msg_public_key: PublicKey,
+        _msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
         tracing::info!("handling wsts message");
@@ -497,40 +497,6 @@ where
                     return Ok(());
                 }
 
-                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
-                    .await?;
-            }
-            WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
-                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
-                    Some(state_machine) => &state_machine.public_keys,
-                    None => return Err(Error::MissingStateMachine),
-                };
-                let signer_public_key = match public_keys.signers.get(&dkg_public_shares.signer_id)
-                {
-                    Some(key) => PublicKey::from(key),
-                    None => return Err(Error::MissingPublicKey),
-                };
-
-                if signer_public_key != msg_public_key {
-                    return Err(Error::InvalidSignature);
-                }
-                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
-                    .await?;
-            }
-            WstsNetMessage::DkgPrivateShares(dkg_private_shares) => {
-                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
-                    Some(state_machine) => &state_machine.public_keys,
-                    None => return Err(Error::MissingStateMachine),
-                };
-                let signer_public_key = match public_keys.signers.get(&dkg_private_shares.signer_id)
-                {
-                    Some(key) => PublicKey::from(key),
-                    None => return Err(Error::MissingPublicKey),
-                };
-
-                if signer_public_key != msg_public_key {
-                    return Err(Error::InvalidSignature);
-                }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -594,7 +560,10 @@ where
                 tracing::info!("DKG ended in failure: {fail:?}");
                 // TODO(#414): handle DKG failure
             }
-            WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {
+            WstsNetMessage::DkgPublicShares(_)
+            | WstsNetMessage::DkgPrivateShares(_)
+            | WstsNetMessage::NonceResponse(_)
+            | WstsNetMessage::SignatureShareResponse(_) => {
                 tracing::debug!("ignoring message");
             }
         }

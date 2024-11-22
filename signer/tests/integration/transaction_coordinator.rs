@@ -1130,7 +1130,7 @@ async fn run_dkg_from_scratch() {
         testing::storage::drop_db(db).await;
     }
 }
-
+use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 /// Test that three signers can successfully sign and broadcast a bitcoin
 /// transaction.
 ///
@@ -1163,6 +1163,10 @@ async fn run_dkg_from_scratch() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sign_bitcoin_transaction() {
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::from_default_env())
+        .init();
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let (rpc, faucet) = regtest::initialize_blockchain();
 
