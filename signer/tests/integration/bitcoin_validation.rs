@@ -209,6 +209,8 @@ async fn one_tx_per_request_set() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_invalid_deposit_invalidates_tx() {
+    let low_fee = 10;
+
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -223,7 +225,10 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts { amount: 1_000_000, max_fee: 10 },
+        DepositAmounts {
+            amount: 1_000_000,
+            max_fee: low_fee,
+        },
         DepositAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
@@ -287,12 +292,16 @@ async fn one_invalid_deposit_invalidates_tx() {
     assert!(!signer.is_valid_tx);
 
     let [deposit1, deposit2] = input_rows.last_chunk().unwrap();
+
+    let (validation_result1, validation_result2) = if setup.deposits[0].0.max_fee == low_fee {
+        (InputValidationResult::FeeTooHigh, InputValidationResult::Ok)
+    } else {
+        (InputValidationResult::Ok, InputValidationResult::FeeTooHigh)
+    };
+
     let outpoint = setup.deposits[0].0.outpoint;
     assert_eq!(deposit1.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(
-        deposit1.validation_result,
-        InputValidationResult::FeeTooHigh
-    );
+    assert_eq!(deposit1.validation_result, validation_result1);
     assert_eq!(deposit1.prevout_txid.deref(), &outpoint.txid);
     assert_eq!(deposit1.prevout_output_index, outpoint.vout);
     assert!(!deposit1.will_sign);
@@ -300,7 +309,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let outpoint = setup.deposits[1].0.outpoint;
     assert_eq!(deposit2.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(deposit2.validation_result, InputValidationResult::Ok);
+    assert_eq!(deposit2.validation_result, validation_result2);
     assert_eq!(deposit2.prevout_txid.deref(), &outpoint.txid);
     assert_eq!(deposit2.prevout_output_index, outpoint.vout);
     assert!(!deposit2.will_sign);
