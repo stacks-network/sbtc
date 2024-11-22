@@ -532,7 +532,7 @@ where
         &mut self,
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        msg_public_key: PublicKey,
+        _msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
         match &msg.inner {
@@ -574,6 +574,7 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
+<<<<<<< HEAD
             WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
                 tracing::info!(
                     signer_id = %dkg_public_shares.signer_id,
@@ -616,6 +617,8 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
+=======
+>>>>>>> 6ac8fba2 (PoC embedding dkg shares into begin messages)
             WstsNetMessage::DkgEndBegin(_) => {
                 tracing::info!("handling DkgEndBegin");
                 if !chain_tip_report.sender_is_coordinator {
@@ -691,7 +694,11 @@ where
                     }
                 }
             }
-            WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {
+
+            WstsNetMessage::DkgPublicShares(_)
+            | WstsNetMessage::DkgPrivateShares(_)
+            | WstsNetMessage::NonceResponse(_)
+            | WstsNetMessage::SignatureShareResponse(_) => {
                 tracing::trace!("ignoring message");
             }
         }

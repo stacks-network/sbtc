@@ -132,6 +132,7 @@ impl fake::Dummy<fake::Faker> for message::WstsMessage {
             dkg_id: config.fake_with_rng(rng),
             signer_ids: config.fake_with_rng(rng),
             key_ids: config.fake_with_rng(rng),
+            dkg_private_shares: Default::default(),
         };
 
         Self {
