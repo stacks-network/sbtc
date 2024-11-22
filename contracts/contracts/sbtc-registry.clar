@@ -54,18 +54,15 @@
 
 ;; Internal data structure to store completed
 ;; deposit requests & avoid replay attacks.
-(define-map completed-deposits {txid: (buff 32), vout-index: uint}
-  {
-    amount: uint,
-    recipient: principal,
-  }
-)
+(define-map deposit-status {txid: (buff 32), vout-index: uint} bool)
 
 ;; Data structure to map successful deposit requests
 ;; to their respective sweep transaction. Stores the
 ;; txid, burn hash, and burn height.
 (define-map completed-deposit-sweep {txid: (buff 32), vout-index: uint}
   {
+    amount: uint,
+    recipient: principal,
     sweep-txid: (buff 32),
     sweep-burn-hash: (buff 32),
     sweep-burn-height: uint,
@@ -109,7 +106,7 @@
 ;; Get a completed deposit by its transaction ID & vout index.
 ;; This function returns the fields of the completed-deposits map.
 (define-read-only (get-completed-deposit (txid (buff 32)) (vout-index uint))
-  (map-get? completed-deposits {txid: txid, vout-index: vout-index})
+  (map-get? deposit-status {txid: txid, vout-index: vout-index})
 )
 
 ;; Get a completed deposit sweep data by its transaction ID & vout index.
@@ -272,11 +269,10 @@
   )
   (begin
     (try! (is-protocol-caller))
-    (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
+    (map-insert deposit-status {txid: txid, vout-index: vout-index} true)
+    (map-insert completed-deposit-sweep {txid: txid, vout-index: vout-index} {
       amount: amount,
       recipient: recipient,
-    })
-    (map-insert completed-deposit-sweep {txid: txid, vout-index: vout-index} {
       sweep-txid: sweep-txid,
       sweep-burn-hash: burn-hash,
       sweep-burn-height: burn-height,

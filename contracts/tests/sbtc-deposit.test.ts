@@ -173,10 +173,7 @@ describe("sBTC deposit contract", () => {
         }),
         deployer
       );
-      expect(receipt1).toStrictEqual({
-        amount: 1000n,
-        recipient: deployer,
-      });
+      expect(receipt1).toStrictEqual(true);
     });
   });
   describe("complete many deposits", () => {
