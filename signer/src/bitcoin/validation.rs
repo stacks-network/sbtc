@@ -1,5 +1,7 @@
 //! validation of bitcoin transactions.
 
+use std::collections::HashSet;
+
 use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -62,10 +64,14 @@ pub struct TxRequestIds {
 }
 
 /// Check that this does not contain duplicate deposits or withdrawals.
-///
-/// TODO: Implement.
-pub fn is_unique(_packages: &[TxRequestIds]) -> bool {
-    false
+pub fn is_unique(packages: &[TxRequestIds]) -> bool {
+    let mut deposits_set = HashSet::new();
+    let mut withdrawals_set = HashSet::new();
+    packages.iter().all(|reqs| {
+        let deposits = reqs.deposits.iter().all(|out| deposits_set.insert(out));
+        let withdrawals = reqs.withdrawals.iter().all(|id| withdrawals_set.insert(id));
+        deposits && withdrawals
+    })
 }
 
 impl BitcoinTxContext {
@@ -74,17 +80,13 @@ impl BitcoinTxContext {
     where
         C: Context + Send + Sync,
     {
-        let unique_requests = is_unique(&self.request_packages);
+        if !is_unique(&self.request_packages) {
+            return Err(Error::DuplicateRequests);
+        }
 
         // TODO: check that we have not received a different transaction
         // package during this tenure.
-
-        if unique_requests {
-            Ok(())
-        } else {
-            // TODO: Create a real one
-            Err(Error::ArithmeticOverflow)
-        }
+        Ok(())
     }
 
     /// Construct the reports for each request that this transaction will
@@ -686,8 +688,12 @@ mod tests {
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
     use bitcoin::TxIn;
+    use bitcoin::Txid;
     use bitcoin::Witness;
     use test_case::test_case;
+
+    use crate::storage::model::StacksBlockHash;
+    use crate::storage::model::StacksTxId;
 
     use super::*;
 
@@ -923,5 +929,87 @@ mod tests {
             .validate(mapping.chain_tip_height, &tx, TX_FEE);
 
         assert_eq!(status, mapping.status);
+    }
+
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([2; 32]),
+                }
+        ]}], true; "unique-requests")]
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+                OutPoint::new(Txid::from_byte_array([1; 32]), 0)
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([2; 32]),
+                }
+        ]}], false; "duplicate-deposits-in-same-tx")]
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                }
+        ]}], false; "duplicate-withdrawals-in-same-tx")]
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
+                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 1,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([2; 32]),
+                }
+        ]},
+        TxRequestIds {
+            deposits: vec![
+                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+            ],
+            withdrawals: vec![]
+        }], false; "duplicate-requests-in-different-txs")]
+    fn test_is_unique(requests: Vec<TxRequestIds>, result: bool) {
+        assert_eq!(is_unique(&requests), result);
     }
 }
