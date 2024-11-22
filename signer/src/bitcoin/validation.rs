@@ -159,7 +159,7 @@ impl BitcoinTxContext {
             let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unsupported.into_error(self));
+                return Err(WithdrawalValidationResult::Unknown.into_error(self));
             };
 
             let votes = db
@@ -389,7 +389,9 @@ impl BitcoinTxValidationData {
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
             match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
-                WithdrawalValidationResult::Unsupported => false,
+                WithdrawalValidationResult::Unsupported | WithdrawalValidationResult::Unknown => {
+                    false
+                }
             }
         });
 
@@ -483,6 +485,9 @@ impl InputValidationResult {
 pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
+    Unknown,
+    /// We do not support withdrawals at the moment so this is always
+    /// returned.
     Unsupported,
 }
 
