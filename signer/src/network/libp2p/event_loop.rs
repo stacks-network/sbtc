@@ -96,7 +96,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::warn!(%listener_id, %error, "Listener error");
                     }
                     SwarmEvent::Dialing { peer_id, connection_id } => {
-                        tracing::info!(peer_id = ?peer_id, %connection_id, "Dialing peer");
+                        tracing::info!(?peer_id, %connection_id, "Dialing peer");
                     }
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
                         if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
@@ -119,8 +119,8 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Ping(ping)) => {
                         tracing::trace!("ping received: {:?}", ping);
                     }
-                    SwarmEvent::OutgoingConnectionError { connection_id, error, .. } => {
-                        tracing::warn!(%connection_id, %error, "outgoing connection error");
+                    SwarmEvent::OutgoingConnectionError { connection_id, error, peer_id } => {
+                        tracing::warn!(%connection_id, %error, ?peer_id, "outgoing connection error");
                     }
                     SwarmEvent::IncomingConnectionError {
                         local_addr,
@@ -141,10 +141,12 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
                         tracing::debug!(%peer_id, %address, "New external address of peer");
+                        let kad_addr = strip_peer_id(&address);
+                        tracing::debug!(%peer_id, %kad_addr, "Adding address to kademlia");
                         swarm
                             .behaviour_mut()
                             .kademlia
-                            .add_address(&peer_id, strip_peer_id(&address));
+                            .add_address(&peer_id, kad_addr);
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
