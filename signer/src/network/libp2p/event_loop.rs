@@ -341,8 +341,6 @@ fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
 mod tests {
     use std::str::FromStr;
 
-    use libp2p::PeerId;
-
     use super::*;
 
     #[test]

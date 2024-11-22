@@ -9,8 +9,8 @@ use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    gossipsub, identify, kad, mdns, noise, ping, /*relay,*/ tcp, yamux, Multiaddr, PeerId,
-    Swarm, SwarmBuilder,
+    autonat, gossipsub, identify, kad, mdns, noise, ping, /*relay,*/ tcp, yamux, Multiaddr,
+    PeerId, Swarm, SwarmBuilder,
 };
 use tokio::sync::Mutex;
 
@@ -25,6 +25,7 @@ pub struct SignerBehavior {
     pub kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
     pub identify: identify::Behaviour,
+    pub autonat: autonat::Behaviour,
 }
 
 impl SignerBehavior {
@@ -52,6 +53,9 @@ impl SignerBehavior {
         }
         .into();
 
+        let autonat =
+            autonat::Behaviour::new(keypair.public().to_peer_id(), autonat::Config::default());
+
         Ok(Self {
             gossipsub: gossipsub::Behaviour::new(
                 gossipsub::MessageAuthenticity::Signed(keypair.clone()),
@@ -60,6 +64,7 @@ impl SignerBehavior {
             .map_err(SignerSwarmError::LibP2PMessage)?,
             mdns,
             kademlia: Self::kademlia(&keypair),
+            autonat,
             ping: ping::Behaviour::default(),
             identify: identify::Behaviour::new(identify::Config::new(
                 identify::PUSH_PROTOCOL_NAME.to_string(),
@@ -73,11 +78,14 @@ impl SignerBehavior {
             .disjoint_query_paths(true)
             .to_owned();
 
-        kad::Behaviour::with_config(
+        let mut kademlia = kad::Behaviour::with_config(
             keypair.public().to_peer_id(),
             MemoryStore::new(keypair.public().to_peer_id()),
             config,
-        )
+        );
+        kademlia.set_mode(Some(kad::Mode::Server));
+
+        kademlia
     }
 }
 
