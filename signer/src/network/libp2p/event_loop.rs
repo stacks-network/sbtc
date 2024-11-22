@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
+use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{gossipsub, identify, mdns, Swarm};
+use libp2p::{gossipsub, identify, mdns, Multiaddr, Swarm};
 use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
@@ -107,14 +108,14 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         swarm
                             .behaviour_mut()
                             .kademlia
-                            .add_address(&peer_id, endpoint.get_remote_address().clone());
+                            .add_address(&peer_id, strip_peer_id(endpoint.get_remote_address()));
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
                         tracing::info!(%peer_id, ?cause, ?endpoint, "Connection closed");
-                        swarm
-                            .behaviour_mut()
-                            .kademlia
-                            .remove_address(&peer_id, endpoint.get_remote_address());
+                        swarm.behaviour_mut().kademlia.remove_address(
+                            &peer_id,
+                            &strip_peer_id(endpoint.get_remote_address()),
+                        );
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
                         tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
@@ -317,5 +318,15 @@ fn handle_gossipsub_event(
         Event::GossipsubNotSupported { peer_id } => {
             tracing::warn!(%peer_id, "Peer does not support gossipsub");
         }
+    }
+}
+
+/// For a multiaddr that ends with a peer id, this strips this suffix. Rust-libp2p
+/// only supports dialing to an address without providing the peer id.
+fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
+    match addr.iter().last() {
+        Some(Protocol::P2p(peer_id)) => Multiaddr::from(Protocol::P2p(peer_id)),
+        Some(other) => Multiaddr::from(other),
+        None => addr.clone(),
     }
 }
