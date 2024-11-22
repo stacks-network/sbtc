@@ -324,9 +324,28 @@ fn handle_gossipsub_event(
 /// For a multiaddr that ends with a peer id, this strips this suffix. Rust-libp2p
 /// only supports dialing to an address without providing the peer id.
 fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
-    match addr.iter().last() {
-        Some(Protocol::P2p(peer_id)) => Multiaddr::from(Protocol::P2p(peer_id)),
-        Some(other) => Multiaddr::from(other),
-        None => addr.clone(),
+    let mut new_addr = Multiaddr::empty();
+    for protocol in addr.iter().take_while(|p| !matches!(p, Protocol::P2p(_))) {
+        new_addr.push(protocol);
+    }
+    new_addr
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn test_strip_peer_id() {
+        let endpoint =
+            "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N";
+        let addr = Multiaddr::from_str(endpoint).unwrap();
+
+        let stripped = strip_peer_id(&addr);
+
+        let stripped_str = "/ip4/198.51.100.0/tcp/4242";
+        assert_eq!(stripped.to_string(), stripped_str);
     }
 }
