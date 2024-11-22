@@ -1494,6 +1494,7 @@ async fn sign_bitcoin_transaction() {
 
     let (ctx, _, _, _) = signers.first().unwrap();
     let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
+    println!("{}", txids.len());
     assert_eq!(txids.len(), 1);
 
     let block_hash = faucet.generate_blocks(1).pop().unwrap();
