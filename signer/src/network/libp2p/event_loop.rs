@@ -13,7 +13,7 @@ use crate::network::Msg;
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
-#[tracing::instrument(skip_all, name = "p2p")]
+#[tracing::instrument(skip_all, name = "swarm")]
 pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // Subscribe to the gossipsub topic.
     let topic = TOPIC.clone();
@@ -23,6 +23,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
         .behaviour_mut()
         .gossipsub
         .subscribe(&TOPIC)
+        // If this doesn't succeed then nothing will work. It should never fail.
         .expect("failed to subscribe to topic");
 
     let mut term = ctx.get_termination_handle();
@@ -35,7 +36,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // messages to the network.
     let outbox = Mutex::new(Vec::<Msg>::new());
     let poll_outbound = async {
-        tracing::debug!("P2P outbound message polling started");
+        tracing::debug!("p2p outbound message polling started");
         loop {
             let Ok(SignerSignal::Command(SignerCommand::P2PPublish(payload))) =
                 signal_rx.recv().await
@@ -50,7 +51,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // Here we create a future that polls the libp2p swarm for events and also
     // publishes messages from the outbox to the network.
     let poll_swarm = async {
-        tracing::debug!("P2P network polling started");
+        tracing::debug!("p2p network polling started");
 
         loop {
             // Poll the libp2p swarm for events, waiting for a maximum of 5ms
@@ -83,33 +84,33 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         handle_gossipsub_event(&mut swarm, ctx, event)
                     }
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        tracing::info!(%address, "Listener started");
+                        tracing::info!(%address, "listener started");
                     }
                     SwarmEvent::ExpiredListenAddr { address, .. } => {
-                        tracing::debug!(%address, "Listener expired");
+                        tracing::debug!(%address, "listener expired");
                     }
                     SwarmEvent::ListenerClosed { addresses, reason, .. } => {
-                        tracing::info!(?addresses, ?reason, "Listener closed");
+                        tracing::debug!(?addresses, ?reason, "listener closed");
                     }
                     SwarmEvent::ListenerError { listener_id, error } => {
-                        tracing::warn!(%listener_id, %error, "Listener error");
+                        tracing::warn!(%listener_id, %error, "listener error");
                     }
                     SwarmEvent::Dialing { peer_id, connection_id } => {
-                        tracing::info!(peer_id = ?peer_id, %connection_id, "Dialing peer");
+                        tracing::debug!(peer_id = ?peer_id, %connection_id, "dialing peer");
                     }
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
                         if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                            tracing::warn!(%peer_id, ?endpoint, "Connected to peer, however it is not a known signer; disconnecting");
+                            tracing::warn!(%peer_id, ?endpoint, "connected to peer, however it is not a known signer; disconnecting");
                             let _ = swarm.disconnect_peer_id(peer_id);
                             continue;
                         }
-                        tracing::info!(%peer_id, ?endpoint, "Connected to peer");
+                        tracing::debug!(%peer_id, ?endpoint, "connected to peer");
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                        tracing::info!(%peer_id, ?cause, "Connection closed");
+                        tracing::debug!(%peer_id, ?cause, "connection closed");
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
-                        tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
+                        tracing::debug!(%local_addr, %send_back_addr, "incoming connection");
                     }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Ping(ping)) => {
                         tracing::trace!("ping received: {:?}", ping);
@@ -126,16 +127,16 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::warn!(%local_addr, %send_back_addr, %error, "incoming connection error");
                     }
                     SwarmEvent::NewExternalAddrCandidate { address } => {
-                        tracing::debug!(%address, "New external address candidate");
+                        tracing::debug!(%address, "new external address candidate");
                     }
                     SwarmEvent::ExternalAddrConfirmed { address } => {
-                        tracing::debug!(%address, "External address confirmed");
+                        tracing::debug!(%address, "external address confirmed (ours)");
                     }
                     SwarmEvent::ExternalAddrExpired { address } => {
-                        tracing::debug!(%address, "External address expired");
+                        tracing::debug!(%address, "external address expired (ours)");
                     }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-                        tracing::debug!(%peer_id, %address, "New external address of peer");
+                        tracing::debug!(%peer_id, %address, "new external address (peer)");
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
@@ -146,7 +147,6 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
             // Drain the outbox and publish the messages to the network.
             let outbox = outbox.lock().await.drain(..).collect::<Vec<_>>();
             for payload in outbox {
-                tracing::info!("publishing message");
                 let msg_id = payload.id();
 
                 // Attempt to encode the message payload into bytes
@@ -157,11 +157,21 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         // An error occurred while encoding the message.
                         // Log the error and send a failure signal to the application
                         // so that it can handle the failure as needed.
-                        tracing::warn!(%error, "Failed to encode message");
+                        tracing::warn!(%error, "failed to encode message");
                         let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
                         continue;
                     }
                 };
+
+                if tracing::enabled!(tracing::Level::TRACE) {
+                    tracing::trace!(
+                        msg_id = hex::encode(msg_id),
+                        msg = hex::encode(&encoded_msg),
+                        "publishing message"
+                    );
+                } else {
+                    tracing::debug!(msg_id = hex::encode(msg_id), "publishing message");
+                }
 
                 let _ = swarm
                     .lock()
@@ -173,14 +183,14 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         // An error occurred while attempting to publish.
                         // Log the error and send a failure signal to the application
                         // so that it can handle the failure as needed.
-                        tracing::warn!(%error, ?msg_id, "Failed to publish message");
+                        tracing::warn!(%error, ?msg_id, "failed to publish message");
                         let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
                     })
                     .inspect(|_| {
                         // The message was published successfully. Log the success
                         // and send a success signal to the application so that it can
                         // handle the success as needed.
-                        tracing::trace!(?msg_id, "Message published successfully");
+                        tracing::trace!(?msg_id, "message published successfully");
                         let _ = signal_tx.send(P2PEvent::PublishSuccess(msg_id).into());
                     });
             }
@@ -198,6 +208,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     tracing::info!("libp2p event loop terminated");
 }
 
+#[tracing::instrument(skip_all, name = "mdns")]
 fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, event: mdns::Event) {
     use mdns::Event;
 
@@ -214,11 +225,11 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
 
             for (peer_id, addr) in peers {
                 if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                    tracing::warn!(%peer_id, %addr, "Discovered peer via mDNS, however it is not a known signer; ignoring");
+                    tracing::debug!(%peer_id, %addr, "discovered peer via mDNS, however it is not a known signer; ignoring");
                     continue;
                 }
 
-                tracing::info!(%peer_id, %addr, "Discovered peer via mDNS");
+                tracing::debug!(%peer_id, %addr, "discovered peer via mDNS");
                 swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             }
         }
@@ -227,7 +238,7 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
         // expired and the peer's address has not been updated.
         Event::Expired(peers) => {
             for (peer_id, addr) in peers {
-                tracing::info!(%peer_id, %addr, "Expired peer via mDNS");
+                tracing::debug!(%peer_id, %addr, "expired peer via mDNS");
                 swarm
                     .behaviour_mut()
                     .gossipsub
@@ -237,6 +248,7 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
     }
 }
 
+#[tracing::instrument(skip_all, name = "identify")]
 fn handle_identify_event(
     swarm: &mut Swarm<SignerBehavior>,
     ctx: &impl Context,
@@ -250,21 +262,22 @@ fn handle_identify_event(
                 tracing::debug!(%peer_id, "ignoring identify message from unknown peer");
                 return;
             }
-            tracing::debug!(%peer_id, "Received identify message from peer; adding to confirmed external addresses");
+            tracing::debug!(%peer_id, "received identify message from peer; adding to confirmed external addresses");
             swarm.add_external_address(info.observed_addr.clone());
         }
         Event::Pushed { connection_id, peer_id, info } => {
-            tracing::trace!(%connection_id, %peer_id, ?info, "Pushed identify message to peer");
+            tracing::debug!(%connection_id, %peer_id, ?info, "pushed identify message to peer");
         }
         Event::Error { connection_id, peer_id, error } => {
-            tracing::warn!(%connection_id, %peer_id, %error, "Error handling identify message");
+            tracing::warn!(%connection_id, %peer_id, %error, "error handling identify message");
         }
         Event::Sent { connection_id, peer_id } => {
-            tracing::trace!(%connection_id, %peer_id, "Sent identify message to peer");
+            tracing::debug!(%connection_id, %peer_id, "sent identify message to peer");
         }
     }
 }
 
+#[tracing::instrument(skip_all, name = "gossipsub")]
 fn handle_gossipsub_event(
     swarm: &mut Swarm<SignerBehavior>,
     ctx: &impl Context,
@@ -283,31 +296,43 @@ fn handle_gossipsub_event(
                 return;
             }
 
-            tracing::trace!(local_peer_id = %swarm.local_peer_id(), %peer_id,
-                "Got message: '{}' with id: {id} from peer: {peer_id}",
-                hex::encode(&message.data),
-            );
+            if tracing::enabled!(tracing::Level::TRACE) {
+                tracing::trace!(
+                    local_peer_id = %swarm.local_peer_id(),
+                    %peer_id,
+                    msg_id = hex::encode(id.0),
+                    msg = hex::encode(&message.data),
+                    "message received",
+                );
+            } else {
+                tracing::debug!(
+                    local_peer_id = %swarm.local_peer_id(),
+                    %peer_id,
+                    msg_id = hex::encode(id.0),
+                    "message received",
+                );
+            }
 
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
                     let _ = ctx.get_signal_sender()
                         .send(P2PEvent::MessageReceived(msg).into())
                         .map_err(|error| {
-                            tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
+                            tracing::debug!(%error, "failed to send message to application; we are likely shutting down.");
                         });
                 })
                 .unwrap_or_else(|error| {
-                    tracing::warn!(?peer_id, %error, "Failed to decode message");
+                    tracing::warn!(?peer_id, %error, "failed to decode message");
                 });
         }
         Event::Subscribed { peer_id, topic } => {
-            tracing::info!(%peer_id, %topic, "Subscribed to topic");
+            tracing::debug!(%peer_id, %topic, "subscribed to topic");
         }
         Event::Unsubscribed { peer_id, topic } => {
-            tracing::info!(%peer_id, %topic, "Unsubscribed from topic");
+            tracing::debug!(%peer_id, %topic, "unsubscribed from topic");
         }
         Event::GossipsubNotSupported { peer_id } => {
-            tracing::warn!(%peer_id, "Peer does not support gossipsub");
+            tracing::warn!(%peer_id, "peer does not support gossipsub");
         }
     }
 }

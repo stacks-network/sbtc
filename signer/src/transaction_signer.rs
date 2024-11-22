@@ -476,7 +476,7 @@ where
         match &msg.inner {
             WstsNetMessage::DkgBegin(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -493,7 +493,7 @@ where
             }
             WstsNetMessage::DkgPrivateBegin(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -536,7 +536,7 @@ where
             }
             WstsNetMessage::DkgEndBegin(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
@@ -552,7 +552,7 @@ where
             #[allow(clippy::map_entry)]
             WstsNetMessage::NonceRequest(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
                 // TODO(296): Validate that message is the appropriate sighash
@@ -576,7 +576,7 @@ where
             }
             WstsNetMessage::SignatureShareRequest(_) => {
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
