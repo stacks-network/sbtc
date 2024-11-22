@@ -167,7 +167,7 @@ describe("sBTC deposit contract", () => {
         deployer
       );
       const receipt1 = rov(
-        registry.getCompletedDeposit({
+        registry.getDepositStatus({
           txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
         }),
