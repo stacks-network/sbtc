@@ -22,7 +22,7 @@ use super::event_loop;
 pub struct SignerBehavior {
     pub gossipsub: gossipsub::Behaviour,
     mdns: Toggle<mdns::tokio::Behaviour>,
-    kademlia: kad::Behaviour<MemoryStore>,
+    pub kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
     identify: identify::Behaviour,
 }
