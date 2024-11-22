@@ -290,7 +290,7 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
 
 /// Run the transaction coordinator event-loop.
 async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
-    let config= ctx.config().clone();
+    let config = ctx.config().clone();
     let private_key = config.signer.private_key;
     let network = P2PNetwork::new(&ctx);
 
