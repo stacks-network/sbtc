@@ -881,6 +881,31 @@ export const contracts = {
               tuple: [
                 { name: "amount", type: "uint128" },
                 { name: "recipient", type: "principal" },
+              ],
+            },
+          },
+        },
+      } as TypedAbiFunction<
+        [
+          txid: TypedAbiArg<Uint8Array, "txid">,
+          voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
+        ],
+        {
+          amount: bigint;
+          recipient: string;
+        } | null
+      >,
+      getCompletedDepositSweepData: {
+        name: "get-completed-deposit-sweep-data",
+        access: "read_only",
+        args: [
+          { name: "txid", type: { buffer: { length: 32 } } },
+          { name: "vout-index", type: "uint128" },
+        ],
+        outputs: {
+          type: {
+            optional: {
+              tuple: [
                 { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
                 { name: "sweep-burn-height", type: "uint128" },
                 { name: "sweep-txid", type: { buffer: { length: 32 } } },
@@ -894,8 +919,6 @@ export const contracts = {
           voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
         ],
         {
-          amount: bigint;
-          recipient: string;
           sweepBurnHash: Uint8Array;
           sweepBurnHeight: bigint;
           sweepTxid: Uint8Array;
@@ -1037,6 +1060,32 @@ export const contracts = {
         key: { buffer: { length: 33 } },
         value: "bool",
       } as TypedAbiMap<Uint8Array, boolean>,
+      completedDepositSweep: {
+        name: "completed-deposit-sweep",
+        key: {
+          tuple: [
+            { name: "txid", type: { buffer: { length: 32 } } },
+            { name: "vout-index", type: "uint128" },
+          ],
+        },
+        value: {
+          tuple: [
+            { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
+            { name: "sweep-burn-height", type: "uint128" },
+            { name: "sweep-txid", type: { buffer: { length: 32 } } },
+          ],
+        },
+      } as TypedAbiMap<
+        {
+          txid: Uint8Array;
+          voutIndex: number | bigint;
+        },
+        {
+          sweepBurnHash: Uint8Array;
+          sweepBurnHeight: bigint;
+          sweepTxid: Uint8Array;
+        }
+      >,
       completedDeposits: {
         name: "completed-deposits",
         key: {
@@ -1049,9 +1098,6 @@ export const contracts = {
           tuple: [
             { name: "amount", type: "uint128" },
             { name: "recipient", type: "principal" },
-            { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
-            { name: "sweep-burn-height", type: "uint128" },
-            { name: "sweep-txid", type: { buffer: { length: 32 } } },
           ],
         },
       } as TypedAbiMap<
@@ -1062,9 +1108,6 @@ export const contracts = {
         {
           amount: bigint;
           recipient: string;
-          sweepBurnHash: Uint8Array;
-          sweepBurnHeight: bigint;
-          sweepTxid: Uint8Array;
         }
       >,
       completedWithdrawalSweep: {

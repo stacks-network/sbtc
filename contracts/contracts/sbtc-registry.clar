@@ -58,6 +58,14 @@
   {
     amount: uint,
     recipient: principal,
+  }
+)
+
+;; Data structure to map successful deposit requests
+;; to their respective sweep transaction. Stores the
+;; txid, burn hash, and burn height.
+(define-map completed-deposit-sweep {txid: (buff 32), vout-index: uint}
+  {
     sweep-txid: (buff 32),
     sweep-burn-hash: (buff 32),
     sweep-burn-height: uint,
@@ -102,6 +110,12 @@
 ;; This function returns the fields of the completed-deposits map.
 (define-read-only (get-completed-deposit (txid (buff 32)) (vout-index uint))
   (map-get? completed-deposits {txid: txid, vout-index: vout-index})
+)
+
+;; Get a completed deposit sweep data by its transaction ID & vout index.
+;; This function returns the fields of the completed-deposit-sweep map.
+(define-read-only (get-completed-deposit-sweep-data (txid (buff 32)) (vout-index uint))
+  (map-get? completed-deposit-sweep {txid: txid, vout-index: vout-index})
 )
 
 ;; Get the current signer set.
@@ -261,6 +275,8 @@
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
       recipient: recipient,
+    })
+    (map-insert completed-deposit-sweep {txid: txid, vout-index: vout-index} {
       sweep-txid: sweep-txid,
       sweep-burn-hash: burn-hash,
       sweep-burn-height: burn-height,
