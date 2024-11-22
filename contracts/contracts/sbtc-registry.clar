@@ -266,8 +266,6 @@
     (try! (is-protocol-caller))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
-    ;; Check that the new address (multi-sig) is not already in the map
-    (asserts! (map-insert multi-sig-address new-address true) ERR_MULTI_SIG_REPLAY)
     ;; Update the current signer set
     (var-set current-signer-set new-keys)
     ;; Update the current multi-sig address
