@@ -155,7 +155,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
-                    _ => tracing::trace!("unhandled swarm event"),
+                    event => tracing::debug!(?event, "unhandled swarm event"),
                 }
             }
 
@@ -255,18 +255,18 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
 
 fn handle_identify_event(
     swarm: &mut Swarm<SignerBehavior>,
-    ctx: &impl Context,
+    _ctx: &impl Context,
     event: identify::Event,
 ) {
     use identify::Event;
 
     match event {
         Event::Received { peer_id, info, .. } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                tracing::debug!(%peer_id, "ignoring identify message from unknown peer");
-                return;
-            }
             tracing::debug!(%peer_id, ?info, "Received identify message from peer");
+            swarm
+                .behaviour_mut()
+                .kademlia
+                .add_address(&peer_id, info.observed_addr);
         }
         Event::Pushed { connection_id, peer_id, info } => {
             tracing::trace!(%connection_id, %peer_id, ?info, "Pushed identify message to peer");

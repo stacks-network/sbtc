@@ -24,7 +24,7 @@ pub struct SignerBehavior {
     mdns: Toggle<mdns::tokio::Behaviour>,
     pub kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
-    identify: identify::Behaviour,
+    pub identify: identify::Behaviour,
 }
 
 impl SignerBehavior {
