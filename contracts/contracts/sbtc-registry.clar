@@ -56,10 +56,6 @@
 ;; stored to avoid replay
 (define-map aggregate-pubkeys (buff 33) bool)
 
-;; Data structure to store the current signer set,
-;; stored to avoid replay
-(define-map multi-sig-address principal bool)
-
 ;; Data structure to store the active protocol contracts
 (define-map protocol-contracts principal bool)
 (map-set protocol-contracts .sbtc-bootstrap-signers true)
