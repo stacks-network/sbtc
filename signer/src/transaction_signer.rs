@@ -7,6 +7,7 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::time::Duration;
 
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -488,6 +489,9 @@ where
                     self.signer_private_key,
                 )?;
                 self.wsts_state_machines.insert(msg.txid, state_machine);
+                // Let's give the others some slack
+                tokio::time::sleep(Duration::from_secs(3)).await;
+
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -570,6 +574,8 @@ where
                     .await?;
 
                     self.wsts_state_machines.insert(msg.txid, state_machine);
+                    // Let's give the others some slack
+                    tokio::time::sleep(Duration::from_secs(3)).await;
                 }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;

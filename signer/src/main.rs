@@ -279,7 +279,7 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         network,
         context: ctx.clone(),
         context_window: 10000,
-        threshold: 2,
+        threshold: config.signer.bootstrap_signatures_required.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
@@ -290,7 +290,8 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
 
 /// Run the transaction coordinator event-loop.
 async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
-    let private_key = ctx.config().signer.private_key;
+    let config= ctx.config().clone();
+    let private_key = config.signer.private_key;
     let network = P2PNetwork::new(&ctx);
 
     let coord = transaction_coordinator::TxCoordinatorEventLoop {
@@ -298,9 +299,9 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         context: ctx,
         context_window: 10000,
         private_key,
-        signing_round_max_duration: Duration::from_secs(15),
-        threshold: 2,
-        dkg_max_duration: Duration::from_secs(15),
+        signing_round_max_duration: Duration::from_secs(30),
+        threshold: config.signer.bootstrap_signatures_required,
+        dkg_max_duration: Duration::from_secs(120),
         sbtc_contracts_deployed: false,
         is_epoch3: false,
     };
