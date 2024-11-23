@@ -7,6 +7,7 @@ use axum::routing::post;
 use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
+use clap::ValueEnum;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
@@ -28,6 +29,12 @@ use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LogOutputFormat {
+    Json,
+    Pretty,
+}
+
 /// Command line arguments for the signer.
 #[derive(Debug, Parser)]
 #[clap(name = "sBTC Signer")]
@@ -41,21 +48,29 @@ struct SignerArgs {
     /// pending migrations to the database on startup.
     #[clap(long)]
     migrate_db: bool,
+
+    #[clap(short = 'o', long = "output-format", default_value = "Pretty")]
+    output_format: Option<LogOutputFormat>,
 }
 
 #[tokio::main]
 #[tracing::instrument(name = "signer")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    // TODO(497): The whole logging thing should be revisited. We should support
-    //   enabling different layers, i.e. for pretty console, for opentelem, etc.
-    //sbtc::logging::setup_logging("info,signer=debug", false);
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init();
-
     // Parse the command line arguments.
     let args = SignerArgs::parse();
+
+    // Initialize logging
+    let tracing_filter = tracing_subscriber::EnvFilter::from_default_env();
+    if let Some(LogOutputFormat::Json) = args.output_format {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(tracing_filter)
+            .init();
+    } else {
+        tracing_subscriber::fmt()
+            .with_env_filter(tracing_filter)
+            .init();
+    }
 
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;

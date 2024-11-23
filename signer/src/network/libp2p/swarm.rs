@@ -30,6 +30,37 @@ pub struct SignerBehavior {
 
 impl SignerBehavior {
     pub fn new(keypair: Keypair, enable_mdns: bool) -> Result<Self, SignerSwarmError> {
+        let local_peer_id = keypair.public().to_peer_id();
+
+        let mdns = if enable_mdns {
+            Some(
+                mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)
+                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
+            )
+        } else {
+            None
+        }
+        .into();
+
+        let autonat = autonat::Behaviour::new(local_peer_id, autonat::Config::default());
+
+        let identify = identify::Behaviour::new(identify::Config::new(
+            identify::PUSH_PROTOCOL_NAME.to_string(),
+            keypair.public(),
+        ));
+
+        Ok(Self {
+            gossipsub: Self::gossipsub(&keypair)?,
+            mdns,
+            kademlia: Self::kademlia(&local_peer_id),
+            autonat,
+            ping: Default::default(),
+            identify,
+        })
+    }
+
+    /// Create a new gossipsub behavior.
+    fn gossipsub(keypair: &Keypair) -> Result<gossipsub::Behaviour, SignerSwarmError> {
         let message_id_fn = |message: &gossipsub::Message| {
             let mut hasher = DefaultHasher::new();
             message.data.hash(&mut hasher);
@@ -43,46 +74,21 @@ impl SignerBehavior {
             .build()
             .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
 
-        let mdns = if enable_mdns {
-            Some(
-                mdns::tokio::Behaviour::new(mdns::Config::default(), keypair.public().to_peer_id())
-                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
-            )
-        } else {
-            None
-        }
-        .into();
-
-        let autonat =
-            autonat::Behaviour::new(keypair.public().to_peer_id(), autonat::Config::default());
-
-        Ok(Self {
-            gossipsub: gossipsub::Behaviour::new(
-                gossipsub::MessageAuthenticity::Signed(keypair.clone()),
-                gossipsub_config,
-            )
-            .map_err(SignerSwarmError::LibP2PMessage)?,
-            mdns,
-            kademlia: Self::kademlia(&keypair),
-            autonat,
-            ping: ping::Behaviour::default(),
-            identify: identify::Behaviour::new(identify::Config::new(
-                identify::PUSH_PROTOCOL_NAME.to_string(),
-                keypair.public(),
-            )),
-        })
+        gossipsub::Behaviour::new(
+            gossipsub::MessageAuthenticity::Signed(keypair.clone()),
+            gossipsub_config,
+        )
+        .map_err(SignerSwarmError::LibP2PMessage)
     }
 
-    fn kademlia(keypair: &Keypair) -> kad::Behaviour<MemoryStore> {
+    /// Create a new kademlia behavior.
+    fn kademlia(peer_id: &PeerId) -> kad::Behaviour<MemoryStore> {
         let config = kad::Config::new(kad::PROTOCOL_NAME)
             .disjoint_query_paths(true)
             .to_owned();
 
-        let mut kademlia = kad::Behaviour::with_config(
-            keypair.public().to_peer_id(),
-            MemoryStore::new(keypair.public().to_peer_id()),
-            config,
-        );
+        let mut kademlia =
+            kad::Behaviour::with_config(*peer_id, MemoryStore::new(*peer_id), config);
         kademlia.set_mode(Some(kad::Mode::Server));
 
         kademlia
