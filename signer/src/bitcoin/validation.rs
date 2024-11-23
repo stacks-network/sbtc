@@ -15,6 +15,7 @@ use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::BitcoinPreSignRequest;
 use crate::message::OutPointMessage;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
@@ -29,6 +30,7 @@ use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
 use super::utxo::SignatureHash;
+use super::utxo::SignerUtxo;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
 
@@ -43,16 +45,12 @@ pub struct BitcoinTxContext {
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
-    /// This contains each of the requests for the entire transaction
-    /// package. Each element in the vector corresponds to the requests
-    /// that will be included in a single bitcoin transaction.
-    pub request_packages: Vec<TxRequestIds>,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
     /// The current aggregate key that was the output of DKG.
     pub aggregate_key: PublicKey,
-    /// The state of the signers.
-    pub signer_state: SignerBtcState,
+    /// The signers' UTXO.
+    pub utxo: SignerUtxo,
 }
 
 /// This type is a container for all deposits and withdrawals that are part
@@ -91,7 +89,7 @@ pub fn is_unique(packages: &[TxRequestIds]) -> bool {
     })
 }
 
-impl BitcoinTxContext {
+impl BitcoinPreSignRequest {
     /// Validate the current bitcoin transaction.
     pub async fn pre_validation<C>(&self, _ctx: &C) -> Result<(), Error>
     where
@@ -111,16 +109,24 @@ impl BitcoinTxContext {
     pub async fn construct_package_sighashes<C>(
         &self,
         ctx: &C,
+        btc_ctx: &BitcoinTxContext,
     ) -> Result<Vec<BitcoinTxValidationData>, Error>
     where
         C: Context + Send + Sync,
     {
-        let mut signer_state = self.signer_state;
+        self.pre_validation()?;
+        let mut signer_state = SignerBtcState {
+            fee_rate: self.fee_rate,
+            utxo: btc_ctx.utxo,
+            public_key: bitcoin::XOnlyPublicKey::from(btc_ctx.aggregate_key),
+            last_fees: self.last_fees,
+            magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
+        };
         let mut outputs = Vec::new();
 
-        for requests in self.request_packages.iter() {
+        for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(ctx, requests, signer_state)
+                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state)
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -138,6 +144,7 @@ impl BitcoinTxContext {
     async fn construct_tx_sighashes<C>(
         &self,
         ctx: &C,
+        btc_ctx: &BitcoinTxContext,
         requests: &TxRequestIds,
         signer_state: SignerBtcState,
     ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
@@ -146,9 +153,9 @@ impl BitcoinTxContext {
     {
         let db = ctx.get_storage();
 
-        let signer_public_key = &self.signer_public_key;
-        let aggregate_key = &self.aggregate_key;
-        let chain_tip = &self.chain_tip;
+        let signer_public_key = &btc_ctx.signer_public_key;
+        let aggregate_key = &btc_ctx.aggregate_key;
+        let chain_tip = &btc_ctx.chain_tip;
 
         let mut deposits = Vec::new();
         let mut withdrawals = Vec::new();
@@ -160,7 +167,7 @@ impl BitcoinTxContext {
                 db.get_deposit_request_report(chain_tip, &txid, output_index, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(InputValidationResult::Unknown.into_error(self));
+                return Err(InputValidationResult::Unknown.into_error(btc_ctx));
             };
 
             let votes = db
@@ -174,7 +181,7 @@ impl BitcoinTxContext {
             let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unknown.into_error(self));
+                return Err(WithdrawalValidationResult::Unknown.into_error(btc_ctx));
             };
 
             let votes = db
@@ -207,11 +214,11 @@ impl BitcoinTxContext {
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
-            chain_tip: self.chain_tip,
+            chain_tip: btc_ctx.chain_tip,
             tx: tx.tx.clone(),
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
-            chain_tip_height: self.chain_tip_height,
+            chain_tip_height: btc_ctx.chain_tip_height,
         };
 
         Ok((out, signer_state))
