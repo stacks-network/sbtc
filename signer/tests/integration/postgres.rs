@@ -15,7 +15,7 @@ use futures::StreamExt;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 
-use signer::bitcoin::validation::DepositRequestStatus;
+use signer::bitcoin::validation::DepositConfirmationStatus;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
 use signer::context::Context;
@@ -2698,7 +2698,7 @@ async fn deposit_report_with_only_deposit_request() {
     assert!(report.can_sign.is_none());
     // The transaction is not on the canonical bitcoin blockchain, so it
     // shows up as unconfirmed.
-    assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
+    assert_eq!(report.status, DepositConfirmationStatus::Unconfirmed);
 
     testing::storage::drop_db(db).await;
 }
@@ -2780,7 +2780,7 @@ async fn deposit_report_with_deposit_request_reorged() {
     assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
-    assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
+    assert_eq!(report.status, DepositConfirmationStatus::Unconfirmed);
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -2880,7 +2880,10 @@ async fn deposit_report_with_deposit_request_spent() {
     assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
-    assert_eq!(report.status, DepositRequestStatus::Spent(sweep_tx.txid));
+    assert_eq!(
+        report.status,
+        DepositConfirmationStatus::Spent(sweep_tx.txid)
+    );
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -2994,7 +2997,8 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 
     let confirmed_height = chain_tip_block.block_height - 1;
     let confirmed_block_hash = chain_tip_block.parent_hash;
-    let expected_status = DepositRequestStatus::Confirmed(confirmed_height, confirmed_block_hash);
+    let expected_status =
+        DepositConfirmationStatus::Confirmed(confirmed_height, confirmed_block_hash);
     assert_eq!(report.status, expected_status);
 
     // If we use the chain tip that confirms the sweep transaction, then we
@@ -3014,7 +3018,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
-    let expected_status = DepositRequestStatus::Spent(sweep_tx.txid);
+    let expected_status = DepositConfirmationStatus::Spent(sweep_tx.txid);
     assert_eq!(report.status, expected_status);
 
     signer::testing::storage::drop_db(db).await;
@@ -3093,7 +3097,8 @@ async fn deposit_report_with_deposit_request_confirmed() {
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
     let block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
-    let expected_status = DepositRequestStatus::Confirmed(block.block_height, block.block_hash);
+    let expected_status =
+        DepositConfirmationStatus::Confirmed(block.block_height, block.block_hash);
     assert_eq!(report.status, expected_status);
 
     signer::testing::storage::drop_db(db).await;
