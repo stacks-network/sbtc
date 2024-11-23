@@ -49,7 +49,7 @@ struct SignerArgs {
     #[clap(long)]
     migrate_db: bool,
 
-    #[clap(short = 'o', long = "output-format", default_value = "Pretty")]
+    #[clap(short = 'o', long = "output-format", default_value = "pretty")]
     output_format: Option<LogOutputFormat>,
 }
 
