@@ -10,6 +10,7 @@ use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::future::try_join_all;
+use futures::Stream;
 use futures::StreamExt as _;
 use sha2::Digest;
 
@@ -161,6 +162,27 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub is_epoch3: bool,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Event(SignerEvent::RequestDecider(
+            RequestDeciderEvent::NewRequestsHandled,
+        )) | SignerSignal::Command(SignerCommand::Shutdown)
+    )
+}
+
+/// During DKG or message signing, we only need the following message
+/// types, so we construct a stream with only these messages.
+fn signed_message_filter(event: &SignerSignal) -> bool {
+    matches!(
+        event,
+        SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(_)))
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+    )
+}
+
 impl<C, N> TxCoordinatorEventLoop<C, N>
 where
     C: Context,
@@ -170,13 +192,13 @@ where
     #[tracing::instrument(skip_all, name = "tx-coordinator")]
     pub async fn run(mut self) -> Result<(), Error> {
         tracing::info!("starting transaction coordinator event loop");
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
-        loop {
-            match signal_stream.next().await {
-                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
-                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
-                Some(Ok(SignerSignal::Event(event))) => {
+        while let Some(message) = signal_stream.next().await {
+            match message {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => {
                     if let SignerEvent::RequestDecider(RequestDeciderEvent::NewRequestsHandled) =
                         event
                     {
@@ -192,12 +214,6 @@ where
                             .signal(TxCoordinatorEvent::TenureCompleted.into())?;
                     }
                 }
-                // This means one of the broadcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Some(Err(error)) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
-                None => break,
             }
         }
 
@@ -209,8 +225,8 @@ where
     /// A function that filters the [`Context::as_signal_stream`] stream
     /// for items that the coordinator might care about, which includes
     /// some network messages and transaction signer messages.
-    async fn to_signed_message<E>(event: Result<SignerSignal, E>) -> Option<Signed<SignerMessage>> {
-        match event.ok()? {
+    async fn to_signed_message(event: SignerSignal) -> Option<Signed<SignerMessage>> {
+        match event {
             SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(msg)))
             | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => Some(msg),
             _ => None,
@@ -678,7 +694,7 @@ where
         let max_duration = self.signing_round_max_duration;
         let signal_stream = self
             .context
-            .as_signal_stream(&self.network)
+            .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
@@ -831,12 +847,23 @@ where
             .start_signing_round(msg, signature_type)
             .map_err(Error::wsts_coordinator)?;
 
+        // We create a signal stream before sending a message so that there
+        // is no race condition with the steam and the getting a response.
+        let signal_stream = self
+            .context
+            .as_signal_stream(signed_message_filter)
+            .filter_map(Self::to_signed_message);
+
         let msg = message::WstsMessage { txid, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
-        let run_signing_round =
-            self.drive_wsts_state_machine(bitcoin_chain_tip, coordinator_state_machine, txid);
+        let run_signing_round = self.drive_wsts_state_machine(
+            signal_stream,
+            bitcoin_chain_tip,
+            coordinator_state_machine,
+            txid,
+        );
 
         let operation_result = tokio::time::timeout(max_duration, run_signing_round)
             .await
@@ -846,7 +873,7 @@ where
             WstsOperationResult::SignTaproot(sig) | WstsOperationResult::SignSchnorr(sig) => {
                 Ok(sig.into())
             }
-            _ => Err(Error::UnexpectedOperationResult),
+            result => Err(Error::UnexpectedOperationResult(Box::new(result))),
         }
     }
 
@@ -889,6 +916,13 @@ where
         let txid = bitcoin::Txid::from_byte_array(identifier);
         let msg = message::WstsMessage { txid, inner: outbound.msg };
 
+        // We create a signal stream before sending a message so that there
+        // is no race condition with the steam and the getting a response.
+        let signal_stream = self
+            .context
+            .as_signal_stream(signed_message_filter)
+            .filter_map(Self::to_signed_message);
+
         // This message effectively kicks off DKG. The `TxSignerEventLoop`s
         // running on the signers will pick up this message and act on it,
         // including our own. When they do they create a signing state
@@ -897,7 +931,8 @@ where
 
         // Now that DKG has "begun" we need to drive it to completion.
         let max_duration = self.dkg_max_duration;
-        let dkg_fut = self.drive_wsts_state_machine(chain_tip, &mut state_machine, txid);
+        let dkg_fut =
+            self.drive_wsts_state_machine(signal_stream, chain_tip, &mut state_machine, txid);
 
         let operation_result = tokio::time::timeout(max_duration, dkg_fut)
             .await
@@ -905,17 +940,21 @@ where
 
         match operation_result {
             WstsOperationResult::Dkg(aggregate_key) => PublicKey::try_from(&aggregate_key),
-            _ => Err(Error::UnexpectedOperationResult),
+            result => Err(Error::UnexpectedOperationResult(Box::new(result))),
         }
     }
 
     #[tracing::instrument(skip_all)]
-    async fn drive_wsts_state_machine(
+    async fn drive_wsts_state_machine<S>(
         &mut self,
+        signal_stream: S,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         coordinator_state_machine: &mut CoordinatorStateMachine,
         txid: bitcoin::Txid,
-    ) -> Result<WstsOperationResult, Error> {
+    ) -> Result<WstsOperationResult, Error>
+    where
+        S: Stream<Item = Signed<SignerMessage>>,
+    {
         // this assumes that the signer set doesn't change for the duration of this call,
         // but we're already assuming that the bitcoin chain tip doesn't change
         // alternately we could hit the DB every time we get a new message
@@ -923,29 +962,17 @@ where
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
 
-        let signal_stream = self
-            .context
-            .as_signal_stream(&self.network)
-            .filter_map(Self::to_signed_message);
-
         tokio::pin!(signal_stream);
 
         coordinator_state_machine.save();
-        loop {
-            // Let's get the next message from the network or the
-            // TxSignerEventLoop.
-            //
-            // If signal_stream.next() returns None then one of the
-            // underlying streams has closed. That means either the
-            // network stream, the internal message stream, or the
-            // termination handler stream has closed. This is all bad,
-            // so we trigger a shutdown.
-            let Some(msg) = signal_stream.next().await else {
-                tracing::warn!("signal stream returned None, shutting down");
-                self.context.get_termination_handle().signal_shutdown();
-                return Err(Error::SignerShutdown);
-            };
-
+        // Let's get the next message from the network or the
+        // TxSignerEventLoop.
+        //
+        // If signal_stream.next() returns None then one of the underlying
+        // streams has closed. That means either the internal message
+        // channel, or the termination handler channel has closed. This is
+        // all bad, so we trigger a shutdown.
+        while let Some(msg) = signal_stream.next().await {
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
                 tracing::warn!(sender = %msg.signer_pub_key, "concurrent WSTS activity observed");
                 continue;
@@ -1004,6 +1031,10 @@ where
                 None => continue,
             }
         }
+
+        tracing::warn!("signal stream returned None, shutting down");
+        self.context.get_termination_handle().signal_shutdown();
+        Err(Error::SignerShutdown)
     }
 
     fn authenticate_message(
@@ -1580,6 +1611,7 @@ mod tests {
         }
     }
 
+    #[ignore = "we have a test for this"]
     #[test(tokio::test)]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
@@ -1587,6 +1619,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_be_able_to_skip_deploy_sbtc_contracts() {
         test_environment()

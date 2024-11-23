@@ -173,18 +173,18 @@ async fn one_tx_per_request_set() {
         signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
     };
 
-    let valadation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
-    // There a re a few invariants that we uphold for our validation data.
+    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
-    valadation_data.assert_invariants();
+    validation_data.assert_invariants();
     // We only had a package with one set of requests that were being
     // handled.
-    assert_eq!(valadation_data.len(), 1);
+    assert_eq!(validation_data.len(), 1);
 
     // We didn't give any withdrawals so the outputs vector should be
     // empty (it only has signer outputs).
-    let set = &valadation_data[0];
+    let set = &validation_data[0];
     assert!(set.to_withdrawal_rows().is_empty());
 
     // This transaction package
@@ -209,6 +209,8 @@ async fn one_tx_per_request_set() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_invalid_deposit_invalidates_tx() {
+    let low_fee = 10;
+
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -223,7 +225,10 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts { amount: 1_000_000, max_fee: 10 },
+        DepositAmounts {
+            amount: 1_000_000,
+            max_fee: low_fee,
+        },
         DepositAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
@@ -261,18 +266,18 @@ async fn one_invalid_deposit_invalidates_tx() {
         signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
     };
 
-    let valadation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
-    // There a re a few invariants that we uphold for our validation data.
+    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
-    valadation_data.assert_invariants();
+    validation_data.assert_invariants();
     // We only had a package with one set of requests that were being
     // handled.
-    assert_eq!(valadation_data.len(), 1);
+    assert_eq!(validation_data.len(), 1);
 
     // We didn't give any withdrawals so the outputs vector should be
     // empty (it only has signer outputs).
-    let set = &valadation_data[0];
+    let set = &validation_data[0];
     assert!(set.to_withdrawal_rows().is_empty());
 
     // The signer won't sign any of the sighashes, even though only one of
@@ -287,12 +292,16 @@ async fn one_invalid_deposit_invalidates_tx() {
     assert!(!signer.is_valid_tx);
 
     let [deposit1, deposit2] = input_rows.last_chunk().unwrap();
+
+    let (validation_result1, validation_result2) = if setup.deposits[0].0.max_fee == low_fee {
+        (InputValidationResult::FeeTooHigh, InputValidationResult::Ok)
+    } else {
+        (InputValidationResult::Ok, InputValidationResult::FeeTooHigh)
+    };
+
     let outpoint = setup.deposits[0].0.outpoint;
     assert_eq!(deposit1.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(
-        deposit1.validation_result,
-        InputValidationResult::FeeTooHigh
-    );
+    assert_eq!(deposit1.validation_result, validation_result1);
     assert_eq!(deposit1.prevout_txid.deref(), &outpoint.txid);
     assert_eq!(deposit1.prevout_output_index, outpoint.vout);
     assert!(!deposit1.will_sign);
@@ -300,7 +309,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let outpoint = setup.deposits[1].0.outpoint;
     assert_eq!(deposit2.prevout_type, TxPrevoutType::Deposit);
-    assert_eq!(deposit2.validation_result, InputValidationResult::Ok);
+    assert_eq!(deposit2.validation_result, validation_result2);
     assert_eq!(deposit2.prevout_txid.deref(), &outpoint.txid);
     assert_eq!(deposit2.prevout_output_index, outpoint.vout);
     assert!(!deposit2.will_sign);
@@ -405,7 +414,7 @@ async fn cannot_sign_deposit_is_ok() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     // Let's suppose that signer 0 cannot sign for the deposit, but that
     // they still accept the deposit. That means the bitmap at signer 0
-    // will have a 1, since that means the signer did not sign for all of
+    // will have a 1, since that means the signer did not sign for all
     // the inputs in the transaction.
     setup.deposits[0].1.signer_bitmap.set(0, true);
 
@@ -417,7 +426,7 @@ async fn cannot_sign_deposit_is_ok() {
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
-    // Here we update the database to specifically say that we cannot sign
+    // Here we update the database to specifically say that we cannot sign,
     // but we accept the deposit, so we would if we could.
     sqlx::query(
         "
@@ -455,22 +464,22 @@ async fn cannot_sign_deposit_is_ok() {
         signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
     };
 
-    let valadation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
     // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
-    valadation_data.assert_invariants();
+    validation_data.assert_invariants();
     // We only had a package with one set of requests that were being
     // handled.
-    assert_eq!(valadation_data.len(), 1);
+    assert_eq!(validation_data.len(), 1);
 
     // We didn't give any withdrawals so the outputs vector should be
     // empty (it only has signer outputs).
-    let set = &valadation_data[0];
+    let set = &validation_data[0];
     assert!(set.to_withdrawal_rows().is_empty());
 
     // The signer won't sign the sighashes where they cannot sign, but the
-    // transaction is still valid and they will sign the other sighashes.
+    // transaction is still valid, so they will sign the other sighashes.
     let input_rows = set.to_input_rows();
     let signer = input_rows.first().unwrap();
     assert_eq!(input_rows.len(), 3);
@@ -518,11 +527,11 @@ async fn cannot_sign_deposit_is_ok() {
 
     let tx = &txs[0];
     let sighashes = tx.construct_digests().unwrap();
-    assert_eq!(sighashes.signers, *signer.sighash);
+    assert_eq!(sighashes.signers, signer.sighash);
 
     assert_eq!(sighashes.deposits.len(), 2);
-    assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
-    assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
+    assert_eq!(sighashes.deposits[0].1, deposit1.sighash);
+    assert_eq!(sighashes.deposits[1].1, deposit2.sighash);
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -581,18 +590,18 @@ async fn sighashes_match_from_sbtc_requests_object() {
         signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
     };
 
-    let valadation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
-    // There a re a few invariants that we uphold for our validation data.
+    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
-    valadation_data.assert_invariants();
+    validation_data.assert_invariants();
     // We only had a package with one set of requests that were being
     // handled.
-    assert_eq!(valadation_data.len(), 1);
+    assert_eq!(validation_data.len(), 1);
 
     // We didn't give any withdrawals so the outputs vector should be
     // empty (it only has signer outputs).
-    let set = &valadation_data[0];
+    let set = &validation_data[0];
     assert!(set.to_withdrawal_rows().is_empty());
 
     // The signer won't sign any of the sighashes, even though all deposits
@@ -641,11 +650,11 @@ async fn sighashes_match_from_sbtc_requests_object() {
 
     let tx = &txs[0];
     let sighashes = tx.construct_digests().unwrap();
-    assert_eq!(sighashes.signers, *signer.sighash);
+    assert_eq!(sighashes.signers, signer.sighash);
 
     assert_eq!(sighashes.deposits.len(), 2);
-    assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
-    assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
+    assert_eq!(sighashes.deposits[0].1, deposit1.sighash);
+    assert_eq!(sighashes.deposits[1].1, deposit2.sighash);
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -712,13 +721,13 @@ async fn outcome_is_independent_of_input_order() {
     };
 
     // The outcome is independent of the ordering of the input IDs.
-    let valadation_data1 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
-    let set1 = &valadation_data1[0];
+    let validation_data1 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let set1 = &validation_data1[0];
     let input_rows1 = set1.to_input_rows();
 
     btc_ctx.request_packages[0].deposits.shuffle(&mut rng);
-    let valadation_data2 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
-    let set2 = &valadation_data2[0];
+    let validation_data2 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let set2 = &validation_data2[0];
     let input_rows2 = set2.to_input_rows();
 
     assert_eq!(input_rows1, input_rows2);

@@ -157,7 +157,7 @@ impl BitcoinTxContext {
             let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unsupported.into_error(self));
+                return Err(WithdrawalValidationResult::Unknown.into_error(self));
             };
 
             let votes = db
@@ -325,7 +325,9 @@ impl BitcoinTxValidationData {
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
             match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
-                WithdrawalValidationResult::Unsupported => false,
+                WithdrawalValidationResult::Unsupported | WithdrawalValidationResult::Unknown => {
+                    false
+                }
             }
         });
 
@@ -422,6 +424,9 @@ impl InputValidationResult {
 pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
+    Unknown,
+    /// We do not support withdrawals at the moment so this is always
+    /// returned.
     Unsupported,
 }
 
@@ -439,7 +444,7 @@ impl WithdrawalValidationResult {
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinSweepErrorMsg {
     /// The error has something to do with the inputs.
-    #[error("deposit error ")]
+    #[error("deposit error")]
     Deposit(InputValidationResult),
     /// The error has something to do with the outputs.
     #[error("withdrawal error")]
@@ -577,23 +582,26 @@ impl DepositRequestReport {
             return InputValidationResult::FeeTooHigh;
         }
 
-        // If we are here then can_sign is Some(true) so can_accept is
-        // Some(_). Let's check whether we rejected this deposit.
-        if self.can_accept != Some(true) {
-            return InputValidationResult::RejectedRequest;
-        }
-
-        match self.can_sign {
+        // Let's check whether we rejected this deposit.
+        match self.can_accept {
+            Some(true) => (),
             // If we are here, we know that we have a record for the
             // deposit request, but we have not voted on it yet, so we do
             // not know if we can sign for it.
             None => return InputValidationResult::NoVote,
+            Some(false) => return InputValidationResult::RejectedRequest,
+        }
+
+        match self.can_sign {
+            Some(true) => (),
             // In this case we know that we cannot sign for the deposit
             // because it is locked with a public key where the current
             // signer is not part of the signing set.
             Some(false) => return InputValidationResult::CannotSignUtxo,
-            // Yay.
-            Some(true) => (),
+            // We shouldn't ever get None here, since we know that we can
+            // accept the request. We do the check for whether we can sign
+            // the request at that the same time as the can_accept check.
+            None => return InputValidationResult::NoVote,
         }
 
         InputValidationResult::Ok
@@ -743,7 +751,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
-            can_accept: Some(true),
+            can_accept: None,
             amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),

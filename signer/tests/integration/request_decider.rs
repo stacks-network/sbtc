@@ -333,7 +333,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
 
-    let network = SignerNetwork::single();
+    let network = SignerNetwork::single(&ctx);
 
     let mut decider = RequestDeciderEventLoop {
         network: network.spawn(),

@@ -212,13 +212,15 @@ services:
   # -----------------
   blocklist-client:
     build: sbtc/blocklist-client
+    environment:
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL:-https://public.chainalysis.com}
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY}
+      BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
     depends_on:
       sbtc-build:
         condition: service_completed_successfully
-    # TODO(TBD): Add the environment variables or cli arguments that configure
-    # the blocklist client.
     ports:
-      - "3032:3032"
+      - "3030:3030"
     profiles:
       - default
 

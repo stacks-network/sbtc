@@ -9,11 +9,9 @@ use std::{
     sync::{atomic::AtomicU16, Arc},
 };
 
-use tokio::sync::{broadcast, Mutex};
-use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::broadcast;
+use tokio::sync::Mutex;
 
-use crate::context::P2PEvent;
-use crate::context::SignerSignal;
 use crate::error::Error;
 
 const BROADCAST_CHANNEL_CAPACITY: usize = 10_000;
@@ -104,30 +102,6 @@ impl super::MessageTransfer for MpmcBroadcaster {
         }
 
         Ok(msg)
-    }
-
-    fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
-        let (sender, receiver) = tokio::sync::broadcast::channel(1000);
-        let mut signal_rx = self.receiver.resubscribe();
-        let recently_sent = self.recently_sent.clone();
-        tokio::spawn(async move {
-            loop {
-                match signal_rx.recv().await {
-                    Ok(mut msg) => {
-                        while Some(&msg.id()) == recently_sent.lock().await.front() {
-                            recently_sent.lock().await.pop_front();
-                            msg = signal_rx.recv().await.map_err(Error::ChannelReceive)?;
-                        }
-                        let _ = sender.send(P2PEvent::MessageReceived(msg).into());
-                    }
-                    Err(error) => {
-                        tracing::error!(%error, "got a receive error");
-                        return Err::<(), _>(Error::SignerShutdown);
-                    }
-                }
-            }
-        });
-        BroadcastStream::new(receiver)
     }
 }
 

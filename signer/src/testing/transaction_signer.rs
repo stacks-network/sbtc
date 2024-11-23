@@ -9,10 +9,13 @@ use crate::context::Context;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TxSignerEvent;
+use crate::ecdsa::SignEcdsa as _;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
 use crate::network;
+use crate::network::in_memory2::WanNetwork;
+use crate::network::MessageTransfer;
 use crate::storage;
 use crate::storage::model;
 use crate::storage::DbRead;
@@ -21,9 +24,6 @@ use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::transaction_coordinator;
 use crate::transaction_signer;
-
-use crate::ecdsa::SignEcdsa as _;
-use crate::network::MessageTransfer as _;
 
 use rand::SeedableRng as _;
 use sha2::Digest as _;
@@ -34,20 +34,21 @@ use wsts::net::SignatureType;
 use super::context::*;
 
 /// A test harness for the signer event loop.
-pub struct TxSignerEventLoopHarness<Context, Rng> {
+pub struct TxSignerEventLoopHarness<Context, M, Rng> {
     context: Context,
-    event_loop: EventLoop<Context, Rng>,
+    event_loop: EventLoop<Context, M, Rng>,
 }
 
-impl<Ctx, Rng> TxSignerEventLoopHarness<Ctx, Rng>
+impl<Ctx, M, Rng> TxSignerEventLoopHarness<Ctx, M, Rng>
 where
     Ctx: Context + 'static,
     Rng: rand::RngCore + rand::CryptoRng + Send + Sync + 'static,
+    M: MessageTransfer + Send + Sync + 'static,
 {
     /// Create the test harness.
     pub fn create(
         context: Ctx,
-        network: network::in_memory::MpmcBroadcaster,
+        network: M,
         context_window: u16,
         signer_private_key: PrivateKey,
         threshold: u32,
@@ -116,8 +117,7 @@ where
     }
 }
 
-type EventLoop<Context, Rng> =
-    transaction_signer::TxSignerEventLoop<Context, network::in_memory::MpmcBroadcaster, Rng>;
+type EventLoop<Context, M, Rng> = transaction_signer::TxSignerEventLoop<Context, M, Rng>;
 
 impl blocklist_client::BlocklistChecker for () {
     async fn can_accept(
@@ -160,13 +160,15 @@ where
     /// with an acknowledge message
     pub async fn assert_should_respond_to_bitcoin_transaction_sign_requests_impl(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        let network = network::InMemoryNetwork::new();
+        let wan_network = WanNetwork::default();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
 
+        let network = wan_network.connect(&self.context);
+
         let event_loop_harness = TxSignerEventLoopHarness::create(
             self.context.clone(),
-            network.connect(),
+            network.spawn(),
             self.context_window,
             coordinator_signer_info.signer_private_key,
             self.signing_threshold,
@@ -229,7 +231,8 @@ where
         )
         .await;
 
-        let mut network_handle = network.connect();
+        let signer_instance = wan_network.connect(&self.context);
+        let mut network_handle = signer_instance.spawn();
 
         let transaction_sign_request_payload: message::Payload = transaction_sign_request.into();
 
@@ -264,14 +267,6 @@ where
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().unwrap().clone();
 
-        // A closure to build a new context for each signer
-        let build_context = || {
-            TestContext::builder()
-                .with_in_memory_storage()
-                .with_mocked_clients()
-                .build()
-        };
-
         // Create a new event-loop for each signer, based on the number of signers
         // defined in `self.num_signers`.
         let mut event_loop_handles: Vec<_> = signer_info
@@ -279,7 +274,7 @@ where
             .into_iter()
             .map(|signer_info| {
                 let event_loop_harness = TxSignerEventLoopHarness::create(
-                    build_context(), // NEED TO HAVE A NEW CONTEXT FOR EACH SIGNER
+                    TestContext::default_mocked(), // NEED TO HAVE A NEW CONTEXT FOR EACH SIGNER
                     network.connect(),
                     self.context_window,
                     signer_info.signer_private_key,
