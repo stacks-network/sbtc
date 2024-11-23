@@ -336,7 +336,7 @@ pub struct BitcoinTransactionSignAck {
 }
 
 /// The message version of an the [`OutPoint`].
-#[derive(Debug, Copy, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct OutPointMessage {
     /// The referenced transaction's txid.
     pub txid: bitcoin::Txid,

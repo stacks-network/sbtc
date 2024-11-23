@@ -1,5 +1,7 @@
 //! validation of bitcoin transactions.
 
+use std::collections::HashSet;
+
 use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -79,10 +81,14 @@ impl From<&Requests<'_>> for TxRequestIds {
 }
 
 /// Check that this does not contain duplicate deposits or withdrawals.
-///
-/// TODO: Implement.
-pub fn is_unique(_packages: &[TxRequestIds]) -> bool {
-    false
+pub fn is_unique(packages: &[TxRequestIds]) -> bool {
+    let mut deposits_set = HashSet::new();
+    let mut withdrawals_set = HashSet::new();
+    packages.iter().all(|reqs| {
+        let deposits = reqs.deposits.iter().all(|out| deposits_set.insert(out));
+        let withdrawals = reqs.withdrawals.iter().all(|id| withdrawals_set.insert(id));
+        deposits && withdrawals
+    })
 }
 
 impl BitcoinTxContext {
@@ -91,17 +97,13 @@ impl BitcoinTxContext {
     where
         C: Context + Send + Sync,
     {
-        let unique_requests = is_unique(&self.request_packages);
+        if !is_unique(&self.request_packages) {
+            return Err(Error::DuplicateRequests);
+        }
 
         // TODO: check that we have not received a different transaction
         // package during this tenure.
-
-        if unique_requests {
-            Ok(())
-        } else {
-            // TODO: Create a real one
-            Err(Error::ArithmeticOverflow)
-        }
+        Ok(())
     }
 
     /// Construct the reports for each request that this transaction will
@@ -172,7 +174,7 @@ impl BitcoinTxContext {
             let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unsupported.into_error(self));
+                return Err(WithdrawalValidationResult::Unknown.into_error(self));
             };
 
             let votes = db
@@ -339,7 +341,9 @@ impl BitcoinTxValidationData {
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
             match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
-                WithdrawalValidationResult::Unsupported => false,
+                WithdrawalValidationResult::Unsupported | WithdrawalValidationResult::Unknown => {
+                    false
+                }
             }
         });
 
@@ -380,10 +384,9 @@ impl SbtcReports {
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-#[strum(serialize_all = "snake_case")]
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
@@ -431,13 +434,15 @@ impl InputValidationResult {
 
 /// The responses for validation of the outputs of a sweep transaction on
 /// bitcoin.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-#[strum(serialize_all = "snake_case")]
 pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
+    Unknown,
+    /// We do not support withdrawals at the moment so this is always
+    /// returned.
     Unsupported,
 }
 
@@ -455,7 +460,7 @@ impl WithdrawalValidationResult {
 #[derive(Debug, thiserror::Error, PartialEq, Eq, Copy, Clone)]
 pub enum BitcoinSweepErrorMsg {
     /// The error has something to do with the inputs.
-    #[error("deposit error ")]
+    #[error("deposit error")]
     Deposit(InputValidationResult),
     /// The error has something to do with the outputs.
     #[error("withdrawal error")]
@@ -593,23 +598,26 @@ impl DepositRequestReport {
             return InputValidationResult::FeeTooHigh;
         }
 
-        // If we are here then can_sign is Some(true) so can_accept is
-        // Some(_). Let's check whether we rejected this deposit.
-        if self.can_accept != Some(true) {
-            return InputValidationResult::RejectedRequest;
-        }
-
-        match self.can_sign {
+        // Let's check whether we rejected this deposit.
+        match self.can_accept {
+            Some(true) => (),
             // If we are here, we know that we have a record for the
             // deposit request, but we have not voted on it yet, so we do
             // not know if we can sign for it.
             None => return InputValidationResult::NoVote,
+            Some(false) => return InputValidationResult::RejectedRequest,
+        }
+
+        match self.can_sign {
+            Some(true) => (),
             // In this case we know that we cannot sign for the deposit
             // because it is locked with a public key where the current
             // signer is not part of the signing set.
             Some(false) => return InputValidationResult::CannotSignUtxo,
-            // Yay.
-            Some(true) => (),
+            // We shouldn't ever get None here, since we know that we can
+            // accept the request. We do the check for whether we can sign
+            // the request at that the same time as the can_accept check.
+            None => return InputValidationResult::NoVote,
         }
 
         InputValidationResult::Ok
@@ -704,8 +712,12 @@ mod tests {
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
     use bitcoin::TxIn;
+    use bitcoin::Txid;
     use bitcoin::Witness;
     use test_case::test_case;
+
+    use crate::storage::model::StacksBlockHash;
+    use crate::storage::model::StacksTxId;
 
     use super::*;
 
@@ -755,7 +767,7 @@ mod tests {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
             can_sign: None,
-            can_accept: Some(true),
+            can_accept: None,
             amount: 100_000_000,
             max_fee: u64::MAX,
             lock_time: LockTime::from_height(u16::MAX),
@@ -941,5 +953,87 @@ mod tests {
             .validate(mapping.chain_tip_height, &tx, TX_FEE);
 
         assert_eq!(status, mapping.status);
+    }
+
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([2; 32]),
+                }
+        ]}], true; "unique-requests")]
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0}
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([2; 32]),
+                }
+        ]}], false; "duplicate-deposits-in-same-tx")]
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                }
+        ]}], false; "duplicate-withdrawals-in-same-tx")]
+    #[test_case(
+        vec![TxRequestIds {
+            deposits: vec![
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
+            ],
+            withdrawals: vec![
+                QualifiedRequestId {
+                    request_id: 0,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([1; 32]),
+                },
+                QualifiedRequestId {
+                    request_id: 1,
+                    txid: StacksTxId::from([1; 32]),
+                    block_hash: StacksBlockHash::from([2; 32]),
+                }
+        ]},
+        TxRequestIds {
+            deposits: vec![
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
+            ],
+            withdrawals: vec![]
+        }], false; "duplicate-requests-in-different-txs")]
+    fn test_is_unique(requests: Vec<TxRequestIds>, result: bool) {
+        assert_eq!(is_unique(&requests), result);
     }
 }

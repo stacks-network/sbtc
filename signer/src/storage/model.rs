@@ -1136,18 +1136,8 @@ impl std::fmt::Display for SigHash {
     }
 }
 
-/// The version of the algorithm that constructed the bitcoin transaction.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type, strum::Display)]
-#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
-#[strum(serialize_all = "snake_case")]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub enum ConstructionVersion {
-    /// The first version for constructing a UTXO
-    V0,
-}
-
 /// The sighash and enough metadata to piece together what happened.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinTxSigHash {
     /// The transaction ID of the bitcoin transaction that sweeps funds
@@ -1161,7 +1151,6 @@ pub struct BitcoinTxSigHash {
     pub prevout_txid: BitcoinTxId,
     /// The index of the vout from the transaction that created this
     /// output.
-    #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub prevout_output_index: u32,
     /// The sighash associated with the prevout.
@@ -1182,7 +1171,7 @@ pub struct BitcoinTxSigHash {
 }
 
 /// An output that was created due to a withdrawal request.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinWithdrawalOutput {
     /// The ID of the transaction that includes this withdrawal output.
@@ -1192,14 +1181,12 @@ pub struct BitcoinWithdrawalOutput {
     /// containing inputs
     pub bitcoin_chain_tip: BitcoinBlockHash,
     /// The index of the referenced output in the transaction's outputs.
-    #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub output_index: u32,
     /// The request ID of the withdrawal request. These increment for each
     /// withdrawal, but there can be duplicates if there is a reorg that
     /// affects a transaction that calls the `initiate-withdrawal-request`
     /// public function.
-    #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub request_id: u64,
     /// The stacks transaction ID that lead to the creation of the

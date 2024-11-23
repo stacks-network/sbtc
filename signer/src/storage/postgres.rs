@@ -1862,33 +1862,6 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)
     }
-
-    async fn get_bitcoin_withdrawal_output(
-        &self,
-        request_id: u64,
-        stacks_block_hash: &model::StacksBlockHash,
-    ) -> Result<Option<model::BitcoinWithdrawalOutput>, Error> {
-        sqlx::query_as::<_, model::BitcoinWithdrawalOutput>(
-            r#"
-            SELECT
-                bitcoin_txid
-              , bitcoin_chain_tip
-              , output_index
-              , request_id
-              , stacks_txid
-              , stacks_block_hash
-              , validation_result
-              , is_valid_tx
-            FROM sbtc_signer.bitcoin_withdrawals_outputs
-            WHERE request_id = $1 AND stacks_block_hash = $2
-            "#,
-        )
-        .bind(i64::try_from(request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(stacks_block_hash)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
 }
 
 impl super::DbWrite for PgStore {
@@ -2690,7 +2663,7 @@ impl super::DbWrite for PgStore {
 
     async fn write_bitcoin_txs_sighashes(
         &self,
-        sighashes: Vec<model::BitcoinTxSigHash>,
+        sighashes: &[model::BitcoinTxSigHash],
     ) -> Result<(), Error> {
         if sighashes.is_empty() {
             return Ok(());
@@ -2781,7 +2754,7 @@ impl super::DbWrite for PgStore {
 
     async fn write_bitcoin_withdrawals_outputs(
         &self,
-        withdrawal_outputs: Vec<model::BitcoinWithdrawalOutput>,
+        withdrawal_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> Result<(), Error> {
         if withdrawal_outputs.is_empty() {
             return Ok(());

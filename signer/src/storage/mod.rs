@@ -343,13 +343,6 @@ pub trait DbRead {
         &self,
         sighash: &model::SigHash,
     ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
-
-    /// Get the bitcoin withdrawal output.
-    fn get_bitcoin_withdrawal_output(
-        &self,
-        request_id: u64,
-        stacks_block_hash: &model::StacksBlockHash,
-    ) -> impl Future<Output = Result<Option<model::BitcoinWithdrawalOutput>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -489,12 +482,12 @@ pub trait DbWrite {
     /// Write the bitcoin transactions sighaes to the database.
     fn write_bitcoin_txs_sighashes(
         &self,
-        sighashes: Vec<model::BitcoinTxSigHash>,
+        sighashes: &[model::BitcoinTxSigHash],
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Write the bitcoin withdrawals outputs to the database.
     fn write_bitcoin_withdrawals_outputs(
         &self,
-        withdrawals_outputs: Vec<model::BitcoinWithdrawalOutput>,
+        withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }
