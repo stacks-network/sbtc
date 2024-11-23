@@ -203,12 +203,22 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
         }
     };
 
+    let log = async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let swarm = swarm.lock().await;
+            let peers = swarm.connected_peers().collect::<Vec<_>>();
+            tracing::debug!(?peers, "connected peers");
+        }
+    };
+
     tokio::select! {
         _ = term.wait_for_shutdown() => {
             tracing::info!("libp2p received a termination signal; stopping the libp2p swarm");
         },
         _ = poll_outbound => {},
         _ = poll_swarm => {},
+        _ = log => {},
     }
 
     tracing::info!("libp2p event loop terminated");
