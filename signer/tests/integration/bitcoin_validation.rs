@@ -148,7 +148,7 @@ async fn one_tx_per_request_set() {
         .construct_package_sighashes(&ctx, &btc_ctx)
         .await
         .unwrap();
-    // There a re a few invariants that we uphold for our validation data.
+    // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
     validation_data.assert_invariants();
@@ -250,7 +250,7 @@ async fn one_invalid_deposit_invalidates_tx() {
         .construct_package_sighashes(&ctx, &btc_ctx)
         .await
         .unwrap();
-    // There a re a few invariants that we uphold for our validation data.
+    // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
     validation_data.assert_invariants();
@@ -592,7 +592,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         .construct_package_sighashes(&ctx, &btc_ctx)
         .await
         .unwrap();
-    // There a re a few invariants that we uphold for our validation data.
+    // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
     validation_data.assert_invariants();
