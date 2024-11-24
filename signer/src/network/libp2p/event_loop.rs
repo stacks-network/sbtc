@@ -307,10 +307,11 @@ fn handle_gossipsub_event(
                 tracing::warn!(%peer_id, "ignoring message from unknown peer");
                 return;
             }
-
-            tracing::trace!(local_peer_id = %swarm.local_peer_id(), %peer_id,
-                "Got message: '{}' with id: {id} from peer: {peer_id}",
-                hex::encode(&message.data),
+            tracing::debug!(
+                local_peer_id = %swarm.local_peer_id(),
+                %peer_id,
+                message_id = hex::encode(id.0),
+                "received message",
             );
 
             Msg::decode(message.data.as_slice())
