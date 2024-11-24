@@ -9,6 +9,7 @@ use crate::emily_client::EmilyClientError;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
+use crate::storage::model::SigHash;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
@@ -75,9 +76,14 @@ pub enum Error {
     SigHashConversion(#[source] bitcoin::hashes::FromSliceError),
 
     /// This happens when the tx-signer is validating the sighash and it is
-    /// unknown or is known by has failed validation.
-    #[error("the given sighash is unknown or known and failed validation")]
-    InvalidSigHash,
+    /// known but has failed validation.
+    #[error("the given sighash is known and failed validation: {0}")]
+    InvalidSigHash(SigHash),
+
+    /// This happens when the tx-signer is validating the sighash and it
+    /// does not have a row for it in the database.
+    #[error("the given sighash is unknown: {0}")]
+    UnknownSigHash(SigHash),
 
     /// This should never happen
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]

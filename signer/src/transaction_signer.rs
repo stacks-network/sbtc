@@ -747,7 +747,7 @@ where
         Ok(())
     }
 
-    /// Check whether we will sign the message, which is supposed to be
+    /// Check whether we will sign the message, which is supposed to be a
     /// bitcoin sighash
     async fn validate_bitcoin_sign_request<D>(db: &D, message: &[u8]) -> Result<(), Error>
     where
@@ -757,12 +757,11 @@ where
             .map_err(Error::SigHashConversion)?
             .into();
 
-        if db.will_sign_bitcoin_tx_sighash(&sighash).await? != Some(true) {
-            tracing::warn!(%sighash, "sighash unknown or invalid");
-            return Err(Error::InvalidSigHash);
+        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
+            Some(true) => Ok(()),
+            Some(false) => Err(Error::InvalidSigHash(sighash)),
+            None => Err(Error::UnknownSigHash(sighash)),
         }
-
-        Ok(())
     }
 
     #[tracing::instrument(skip(self))]
