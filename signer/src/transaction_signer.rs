@@ -382,7 +382,7 @@ where
             .flat_map(|s| s.to_withdrawal_rows())
             .collect();
 
-        tracing::debug!("storing sigashes to the database");
+        tracing::debug!("storing sighashes to the database");
         db.write_bitcoin_txs_sighashes(&deposits_sighashes).await?;
 
         db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
@@ -747,7 +747,7 @@ where
         Ok(())
     }
 
-    /// Check whether we will sign the message, which is assumed to be
+    /// Check whether we will sign the message, which is supposed to be
     /// bitcoin sighash
     async fn validate_bitcoin_sign_request<D>(db: &D, message: &[u8]) -> Result<(), Error>
     where
