@@ -695,7 +695,7 @@ impl<'a> UnsignedTransaction<'a> {
     pub fn new(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction. This transaction's inputs have witness
         // data with dummy signatures so that our virtual size estimates
-        // are accurate. Afterwards we remove the witness data.
+        // are accurate. Afterward we remove the witness data.
         let mut unsigned = Self::new_stub(requests, state)?;
         // Now we can reset the witness data, since this is an unsigned
         // transaction.
@@ -715,8 +715,8 @@ impl<'a> UnsignedTransaction<'a> {
     ///   3. The signer output UTXO is the first output. The second output
     ///      is the OP_RETURN data output.
     ///   4. Each input has a fake signature in the witness data.
-    ///   5. With the exception of the fake signatures from (4), all
-    ///      witness data is correctly set.
+    ///   5. All witness data is correctly set, except for the fake
+    ///      signatures from (4).
     pub fn new_stub(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
