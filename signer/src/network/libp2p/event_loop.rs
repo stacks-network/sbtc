@@ -303,19 +303,16 @@ fn handle_gossipsub_event(
             message_id: id,
             message,
         } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                tracing::warn!(%peer_id, "ignoring message from unknown peer");
-                return;
-            }
-            tracing::debug!(
-                local_peer_id = %swarm.local_peer_id(),
-                %peer_id,
-                message_id = hex::encode(id.0),
-                "received message",
-            );
-
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
+                    tracing::debug!(
+                        local_peer_id = %swarm.local_peer_id(),
+                        %peer_id,
+                        message_id = hex::encode(id.0),
+                        %msg,
+                        "received message",
+                    );
+
                     let _ = ctx.get_signal_sender()
                         .send(P2PEvent::MessageReceived(msg).into())
                         .map_err(|error| {
