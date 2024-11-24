@@ -36,6 +36,8 @@ use crate::storage::DbRead as _;
 use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
 
+use bitcoin::hashes::Hash;
+use bitcoin::TapSighash;
 use futures::StreamExt;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -367,6 +369,7 @@ where
             aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
         };
 
+        tracing::debug!("validating bitcoin transaction pre-sign");
         let sighashes = request
             .construct_package_sighashes(&self.context, &btc_ctx)
             .await?;
@@ -379,6 +382,7 @@ where
             .flat_map(|s| s.to_withdrawal_rows())
             .collect();
 
+        tracing::debug!("storing sigashes to the database");
         db.write_bitcoin_txs_sighashes(deposits_sighashes).await?;
 
         db.write_bitcoin_withdrawals_outputs(withdrawals_outputs)
@@ -640,20 +644,30 @@ where
             // The compiler will complain about this, so we silence the
             // warning.
             #[allow(clippy::map_entry)]
-            WstsNetMessage::NonceRequest(_) => {
+            WstsNetMessage::NonceRequest(request) => {
                 tracing::info!("handling NonceRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
                 }
-                // TODO(296): Validate that message is the appropriate sighash
+
+                let db = self.context.get_storage();
+                let sighash = TapSighash::from_slice(&request.message)
+                    .map_err(Error::SigHashConversion)?
+                    .into();
+
+                if db.will_sign_bitcoin_tx_sighash(&sighash).await? != Some(true) {
+                    tracing::warn!(%sighash, txid = %msg.txid, "sighash unknown or invalid");
+                    return Err(Error::InvalidSigHash);
+                }
+
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
                         .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
                         .await?;
 
                     let state_machine = SignerStateMachine::load(
-                        &self.context.get_storage_mut(),
+                        &db,
                         maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
                         self.threshold,
                         self.signer_private_key,

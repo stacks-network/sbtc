@@ -69,6 +69,16 @@ pub enum Error {
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
+    /// This can only be thrown when the number of bytes for a sighash or
+    /// not exactly equal to 32. This should never occur.
+    #[error("could not convert message in nonce request to sighash {0}")]
+    SigHashConversion(#[source] bitcoin::hashes::FromSliceError),
+
+    /// This happens when the tx-signer is validating the sighash and it is
+    /// unknown or is known by has failed validation.
+    #[error("the given sighash is unknown or known and failed validation")]
+    InvalidSigHash,
+
     /// This should never happen
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,
