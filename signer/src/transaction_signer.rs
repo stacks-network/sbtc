@@ -32,7 +32,7 @@ use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
 
@@ -652,14 +652,7 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let sighash = TapSighash::from_slice(&request.message)
-                    .map_err(Error::SigHashConversion)?
-                    .into();
-
-                if db.will_sign_bitcoin_tx_sighash(&sighash).await? != Some(true) {
-                    tracing::warn!(%sighash, txid = %msg.txid, "sighash unknown or invalid");
-                    return Err(Error::InvalidSigHash);
-                }
+                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
 
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
@@ -679,14 +672,15 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            WstsNetMessage::SignatureShareRequest(_) => {
+            WstsNetMessage::SignatureShareRequest(request) => {
                 tracing::info!("handling SignatureShareRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
                 }
 
-                // TODO(296): Validate that message is the appropriate sighash
+                let db = self.context.get_storage();
+                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -748,6 +742,24 @@ where
             let msg = message::WstsMessage { txid, inner: outbound };
 
             self.send_message(msg, bitcoin_chain_tip).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Check whether we will sign the message, which is assumed to be
+    /// bitcoin sighash
+    async fn validate_bitcoin_sign_request<D>(db: &D, message: &[u8]) -> Result<(), Error>
+    where
+        D: DbRead,
+    {
+        let sighash = TapSighash::from_slice(message)
+            .map_err(Error::SigHashConversion)?
+            .into();
+
+        if db.will_sign_bitcoin_tx_sighash(&sighash).await? != Some(true) {
+            tracing::warn!(%sighash, "sighash unknown or invalid");
+            return Err(Error::InvalidSigHash);
         }
 
         Ok(())
