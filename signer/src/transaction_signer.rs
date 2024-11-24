@@ -383,9 +383,9 @@ where
             .collect();
 
         tracing::debug!("storing sigashes to the database");
-        db.write_bitcoin_txs_sighashes(deposits_sighashes).await?;
+        db.write_bitcoin_txs_sighashes(&deposits_sighashes).await?;
 
-        db.write_bitcoin_withdrawals_outputs(withdrawals_outputs)
+        db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
             .await?;
 
         Ok(())

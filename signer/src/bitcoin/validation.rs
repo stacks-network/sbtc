@@ -79,10 +79,10 @@ impl From<&Requests<'_>> for TxRequestIds {
 }
 
 /// Check that this does not contain duplicate deposits or withdrawals.
-pub fn is_unique(packages: &[TxRequestIds]) -> bool {
+pub fn is_unique(package: &[TxRequestIds]) -> bool {
     let mut deposits_set = HashSet::new();
     let mut withdrawals_set = HashSet::new();
-    packages.iter().all(|reqs| {
+    package.iter().all(|reqs| {
         let deposits = reqs.deposits.iter().all(|out| deposits_set.insert(out));
         let withdrawals = reqs.withdrawals.iter().all(|id| withdrawals_set.insert(id));
         deposits && withdrawals
@@ -91,16 +91,11 @@ pub fn is_unique(packages: &[TxRequestIds]) -> bool {
 
 impl BitcoinPreSignRequest {
     /// Validate the current bitcoin transaction.
-    pub async fn pre_validation<C>(&self, _ctx: &C) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        if !is_unique(&self.request_packages) {
+    pub fn pre_validation(&self) -> Result<(), Error> {
+        if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
         }
 
-        // TODO: check that we have not received a different transaction
-        // package during this tenure.
         Ok(())
     }
 
