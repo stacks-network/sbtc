@@ -180,6 +180,9 @@ async fn one_tx_per_request_set() {
     assert!(deposit.is_valid_tx);
 }
 
+/// Test that including a single invalid transaction in a set of requests
+/// results in the entire bitcoin transaction being invalid, and that will
+/// sign for the associated sighashes are all false.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_invalid_deposit_invalidates_tx() {
