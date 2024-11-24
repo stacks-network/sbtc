@@ -10,15 +10,12 @@ use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
-use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::validation::BitcoinTxContext;
 use signer::bitcoin::validation::BitcoinTxValidationData;
 use signer::bitcoin::validation::InputValidationResult;
 use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
-use signer::error::Error;
 use signer::message::BitcoinPreSignRequest;
-use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::DbRead as _;
 use signer::testing;
@@ -32,26 +29,26 @@ use crate::DATABASE_NUM;
 const TEST_FEE_RATE: f64 = 10.0;
 const TEST_CONTEXT_WINDOW: u16 = 1000;
 
-/// Fetch the signers' outstanding UTXO.
-///
-/// The returned state is the essential information for the signers
-/// UTXO
-async fn get_signer_utxo<C>(ctx: &C, chain_tip: &BitcoinBlockHash) -> Result<SignerUtxo, Error>
+/// Create the signers' Bitcoin state object.
+async fn signer_btc_state<C>(
+    ctx: &C,
+    request: &BitcoinPreSignRequest,
+    btc_ctx: &BitcoinTxContext,
+) -> SignerBtcState
 where
     C: Context + Send + Sync,
 {
-    ctx.get_storage()
-        .get_signer_utxo(chain_tip, TEST_CONTEXT_WINDOW)
-        .await?
-        .ok_or(Error::MissingSignerUtxo)
-}
-
-fn signer_btc_state(req: &BitcoinPreSignRequest, btc_ctx: &BitcoinTxContext) -> SignerBtcState {
+    let signer_utxo = ctx
+        .get_storage()
+        .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
+        .await
+        .unwrap()
+        .unwrap();
     SignerBtcState {
-        utxo: btc_ctx.utxo,
-        fee_rate: req.fee_rate,
+        utxo: signer_utxo,
+        fee_rate: request.fee_rate,
         public_key: btc_ctx.aggregate_key.into(),
-        last_fees: req.last_fees,
+        last_fees: request.last_fees,
         magic_bytes: [b'T', b'3'],
     }
 }
@@ -141,7 +138,7 @@ async fn one_tx_per_request_set() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        utxo: get_signer_utxo(&ctx, &chain_tip).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -243,7 +240,7 @@ async fn one_invalid_deposit_invalidates_tx() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        utxo: get_signer_utxo(&ctx, &chain_tip).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -360,7 +357,7 @@ async fn one_withdrawal_errors_validation() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        utxo: get_signer_utxo(&ctx, &chain_tip).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let result = request.construct_package_sighashes(&ctx, &btc_ctx).await;
@@ -452,7 +449,7 @@ async fn cannot_sign_deposit_is_ok() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        utxo: get_signer_utxo(&ctx, &chain_tip).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -513,7 +510,7 @@ async fn cannot_sign_deposit_is_ok() {
             .map(|(_, req, _)| req.clone())
             .collect(),
         withdrawals: Vec::new(),
-        signer_state: signer_btc_state(&request, &btc_ctx),
+        signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
     };
@@ -585,7 +582,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        utxo: get_signer_utxo(&ctx, &chain_tip).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -642,7 +639,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
             .map(|(_, req, _)| req.clone())
             .collect(),
         withdrawals: Vec::new(),
-        signer_state: signer_btc_state(&request, &btc_ctx),
+        signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
     };
@@ -722,7 +719,7 @@ async fn outcome_is_independent_of_input_order() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        utxo: get_signer_utxo(&ctx, &chain_tip).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data1 = request

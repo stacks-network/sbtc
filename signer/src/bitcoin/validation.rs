@@ -30,7 +30,6 @@ use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
 use super::utxo::SignatureHash;
-use super::utxo::SignerUtxo;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
 
@@ -45,12 +44,13 @@ pub struct BitcoinTxContext {
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for the signer UTXO.
+    pub context_window: u16,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
     /// The current aggregate key that was the output of DKG.
     pub aggregate_key: PublicKey,
-    /// The signers' UTXO.
-    pub utxo: SignerUtxo,
 }
 
 /// This type is a container for all deposits and withdrawals that are part
@@ -110,9 +110,15 @@ impl BitcoinPreSignRequest {
         C: Context + Send + Sync,
     {
         self.pre_validation()?;
+        let signer_utxo = ctx
+            .get_storage()
+            .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
+            .await?
+            .ok_or(Error::MissingSignerUtxo)?;
+
         let mut signer_state = SignerBtcState {
             fee_rate: self.fee_rate,
-            utxo: btc_ctx.utxo,
+            utxo: signer_utxo,
             public_key: bitcoin::XOnlyPublicKey::from(btc_ctx.aggregate_key),
             last_fees: self.last_fees,
             magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.

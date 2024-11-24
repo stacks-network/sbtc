@@ -356,15 +356,10 @@ where
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
 
-        let utxo = db
-            .get_signer_utxo(bitcoin_chain_tip, self.context_window)
-            .await?
-            .ok_or(Error::MissingSignerUtxo)?;
-
         let btc_ctx = BitcoinTxContext {
             chain_tip: *bitcoin_chain_tip,
             chain_tip_height: bitcoin_block.block_height,
-            utxo,
+            context_window: self.context_window,
             signer_public_key: self.signer_public_key(),
             aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
         };
