@@ -12,6 +12,8 @@ use libp2p::{
     autonat, gossipsub, identify, kad, mdns, noise, ping, /*relay,*/ tcp, yamux, Multiaddr,
     PeerId, Swarm, SwarmBuilder,
 };
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use tokio::sync::Mutex;
 
 use super::errors::SignerSwarmError;
@@ -25,7 +27,8 @@ pub struct SignerBehavior {
     pub kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
     pub identify: identify::Behaviour,
-    pub autonat: autonat::Behaviour,
+    pub autonat_client: autonat::v2::client::Behaviour<StdRng>,
+    pub autonat_server: autonat::v2::server::Behaviour<StdRng>,
 }
 
 impl SignerBehavior {
@@ -42,7 +45,13 @@ impl SignerBehavior {
         }
         .into();
 
-        let autonat = autonat::Behaviour::new(local_peer_id, autonat::Config::default());
+        let autonat_client = autonat::v2::client::Behaviour::new(
+            rand::rngs::StdRng::from_entropy(),
+            autonat::v2::client::Config::default(),
+        );
+
+        let autonat_server =
+            autonat::v2::server::Behaviour::new(rand::rngs::StdRng::from_entropy());
 
         let identify = identify::Behaviour::new(identify::Config::new(
             identify::PUSH_PROTOCOL_NAME.to_string(),
@@ -53,9 +62,10 @@ impl SignerBehavior {
             gossipsub: Self::gossipsub(&keypair)?,
             mdns,
             kademlia: Self::kademlia(&local_peer_id),
-            autonat,
             ping: Default::default(),
             identify,
+            autonat_client,
+            autonat_server,
         })
     }
 
