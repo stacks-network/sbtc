@@ -108,10 +108,10 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
                         tracing::info!(%peer_id, ?cause, ?endpoint, "Connection closed");
-                        swarm.behaviour_mut().kademlia.remove_address(
-                            &peer_id,
-                            &strip_peer_id(endpoint.get_remote_address()),
-                        );
+                        // swarm.behaviour_mut().kademlia.remove_address(
+                        //     &peer_id,
+                        //     &strip_peer_id(endpoint.get_remote_address()),
+                        // );
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
                         tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
@@ -135,7 +135,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     }
                     SwarmEvent::ExternalAddrConfirmed { address } => {
                         tracing::debug!(%address, "External address confirmed");
-                        swarm.add_external_address(address);
+                        // swarm.add_external_address(address);
                     }
                     SwarmEvent::ExternalAddrExpired { address } => {
                         tracing::debug!(%address, "External address expired");
@@ -146,11 +146,11 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         } else {
                             tracing::debug!(%peer_id, %address, "New external address of peer");
                             let kad_addr = strip_peer_id(&address);
-                            tracing::debug!(%peer_id, %kad_addr, "Adding address to kademlia");
-                            swarm
-                                .behaviour_mut()
-                                .kademlia
-                                .add_address(&peer_id, kad_addr);
+                            tracing::debug!(%peer_id, %kad_addr, "Adding address to kademlia (not really)");
+                            // swarm
+                            //     .behaviour_mut()
+                            //     .kademlia
+                            //     .add_address(&peer_id, kad_addr);
                         }
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
@@ -265,7 +265,7 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
 
 fn handle_identify_event(
     swarm: &mut Swarm<SignerBehavior>,
-    _ctx: &impl Context,
+    ctx: &impl Context,
     event: identify::Event,
 ) {
     use identify::Event;
@@ -273,10 +273,17 @@ fn handle_identify_event(
     match event {
         Event::Received { peer_id, info, .. } => {
             tracing::debug!(%peer_id, ?info, "Received identify message from peer");
-            swarm
-                .behaviour_mut()
-                .kademlia
-                .add_address(&peer_id, info.observed_addr);
+            // swarm
+            //     .behaviour_mut()
+            //     .kademlia
+            //     .add_address(&peer_id, info.observed_addr);
+
+            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+                tracing::debug!(%peer_id, "ignoring identify message from unknown peer");
+                return;
+            }
+            tracing::debug!(%peer_id, "Received identify message from peer; adding to confirmed external addresses");
+            swarm.add_external_address(info.observed_addr.clone());
         }
         Event::Pushed { connection_id, peer_id, info } => {
             tracing::trace!(%connection_id, %peer_id, ?info, "Pushed identify message to peer");
@@ -303,6 +310,11 @@ fn handle_gossipsub_event(
             message_id: id,
             message,
         } => {
+            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+                tracing::warn!(%peer_id, "ignoring message from unknown peer");
+                return;
+            }
+
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
                     tracing::debug!(

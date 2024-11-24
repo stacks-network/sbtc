@@ -490,6 +490,9 @@ where
                 )?;
                 self.wsts_state_machines.insert(msg.txid, state_machine);
                 // Let's give the others some slack
+                tracing::debug!(
+                    "Sleeping a bit to give the other peers some slack to get DkgBegin"
+                );
                 tokio::time::sleep(Duration::from_secs(3)).await;
 
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
@@ -586,6 +589,9 @@ where
 
                     self.wsts_state_machines.insert(msg.txid, state_machine);
                     // Let's give the others some slack
+                    tracing::debug!(
+                        "Sleeping a bit to give the other peers some slack to get NonceRequest"
+                    );
                     tokio::time::sleep(Duration::from_secs(3)).await;
                 }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)

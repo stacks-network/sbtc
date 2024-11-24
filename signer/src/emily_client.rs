@@ -323,6 +323,7 @@ impl EmilyInteract for EmilyClient {
     async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
         chainstate_api::set_chainstate(&self.config, chainstate)
             .await
+            .inspect_err(|e| tracing::info!(?e, "Error for set_chainstate"))
             .map_err(EmilyClientError::AddChainstateEntry)
             .map_err(Error::EmilyApi)
     }
