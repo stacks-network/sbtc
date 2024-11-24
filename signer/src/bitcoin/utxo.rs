@@ -157,14 +157,16 @@ impl SbtcRequests {
             })
             .map(RequestRef::Withdrawal);
 
-        // Now we filter deposit requests where the user's max fee could
-        // be less than the fee we may charge. This is simpler because
-        // deposit UTXOs have a known fixed size.
+        // Now we filter deposit requests where the user's max fee could be
+        // less than the fee we may charge. This is simpler because deposit
+        // UTXOs have a known fixed size. Also, the "actual" max fee must
+        // always be less than or equal to the deposit amount, so take the
+        // minimum of the max fee and the amount.
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
         let deposits = self
             .deposits
             .iter()
-            .filter(|req| req.max_fee >= minimum_deposit_fee)
+            .filter(|req| req.max_fee.min(req.amount) >= minimum_deposit_fee)
             .map(RequestRef::Deposit);
 
         // Create a list of requests where each request can be approved on its own.
