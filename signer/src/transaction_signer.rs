@@ -268,6 +268,8 @@ where
             (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
                 self.handle_sbtc_requests_context_message(requests, &msg.bitcoin_chain_tip)
                     .await?;
+                self.context
+                    .signal(TxSignerEvent::BitcoinPreSignRequestReceived.into())?;
             }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
