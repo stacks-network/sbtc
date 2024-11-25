@@ -540,8 +540,8 @@ where
             }
             WstsNetMessage::DkgPrivateShares(dkg_private_shares) => {
                 tracing::info!(
-                    "handling DkgPrivateShares from signer {}",
-                    dkg_private_shares.signer_id
+                    signer_id = %dkg_private_shares.signer_id,
+                    "handling DkgPrivateShares"
                 );
                 let public_keys = match self.wsts_state_machines.get(&msg.txid) {
                     Some(state_machine) => &state_machine.public_keys,
@@ -615,19 +615,23 @@ where
             WstsNetMessage::DkgEnd(dkg_end) => {
                 match &dkg_end.status {
                     DkgStatus::Success => {
-                        tracing::info!("handling DkgEnd success from signer {}", dkg_end.signer_id);
+                        tracing::info!(
+                            signer_id = %dkg_end.signer_id,
+                            "handling DkgEnd success from signer"
+                        );
                     }
                     DkgStatus::Failure(fail) => {
                         // TODO(#414): handle DKG failure
                         tracing::info!(
-                            "handling DkgEnd failure {fail:?} from signer {}",
-                            dkg_end.signer_id
+                            signer_id = %dkg_end.signer_id,
+                            reason = ?fail,
+                            "handling DkgEnd failure",
                         );
                     }
                 }
             }
             WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {
-                tracing::debug!("ignoring message");
+                tracing::trace!("ignoring message");
             }
         }
 
