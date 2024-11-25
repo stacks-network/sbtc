@@ -1,15 +1,15 @@
 
 CREATE TABLE sbtc_signer.bitcoin_tx_sighashes (
+    -- The sighash associated with the prevout.
+    sighash BYTEA PRIMARY KEY,
     -- The transaction ID of the bitcoin transaction.
-    txid BYTEA PRIMARY KEY,
+    txid BYTEA NOT NULL,
     -- The bitcoin chain tip when the sign request was submitted.
     chain_tip BYTEA NOT NULL,
     -- The txid that created the output that is being spent.
     prevout_txid BYTEA NOT NULL,
     -- The index of the vout from the transaction that created this output.
     prevout_output_index INTEGER NOT NULL,
-    -- The sighash associated with the prevout.
-    sighash BYTEA NOT NULL,
     -- The type of prevout that we are dealing with.
     prevout_type sbtc_signer.prevout_type NOT NULL,
     -- The result of validation that was done on the input.
@@ -43,7 +43,6 @@ CREATE TABLE sbtc_signer.bitcoin_withdrawals_outputs (
     is_valid_tx BOOLEAN NOT NULL,
     -- a timestamp of when this record was created in the database.
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    -- the primary key is a pair of request_id and stacks_block_hash because request_id
-    -- may not be unique in case of bitcoin forks.
-    PRIMARY KEY (request_id, stacks_block_hash)
+    -- The specific outpoint for the withdrawal.
+    PRIMARY KEY (bitcoin_txid, output_index)
 );
