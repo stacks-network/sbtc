@@ -299,6 +299,7 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         context_window: 10000,
         private_key,
         signing_round_max_duration: Duration::from_secs(15),
+        bitcoin_presign_request_max_duration: Duration::from_secs(15),
         threshold: 2,
         dkg_max_duration: Duration::from_secs(15),
         sbtc_contracts_deployed: false,
