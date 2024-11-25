@@ -431,6 +431,26 @@ pub async fn update_withdrawal(
 
 // Chainstate ------------------------------------------------------------------
 
+/// Adds a chainstate entry to the database with the specified number of retries.
+pub async fn add_chainstate_entry_with_retries(
+    context: &EmilyContext,
+    entry: &ChainstateEntry,
+    retries: u16,
+) -> Result<(), Error> {
+    for _ in 0..retries {
+        match add_chainstate_entry(context, entry).await {
+            Err(Error::VersionConflict) => {
+                // Retry.
+                continue;
+            }
+            otherwise => {
+                return otherwise;
+            }
+        }
+    }
+    Err(Error::TooManyInternalRetries)
+}
+
 /// Add a chainstate entry.
 pub async fn add_chainstate_entry(
     context: &EmilyContext,
@@ -478,9 +498,7 @@ pub async fn add_chainstate_entry(
         // back in time a bit and are now overwriting the old chainstate entries that we had put in before.
         // While the chainstate table is inconsistent with the current chainstate, it's actually a stable
         // state because we can resolve that inconsistency by just overwriting the old entry at that height.
-        Err(Error::InconsistentState(_)) if api_state.chaintip().key.height < entry.key.height => {
-            ()
-        }
+        Err(Error::InconsistentState(_)) if api_state.chaintip().key.height < entry.key.height => {}
         // ..otherwise exit here.
         irrecoverable_or_okay => {
             return irrecoverable_or_okay;

@@ -90,6 +90,10 @@ pub enum Error {
     #[error("Request timeout")]
     RequestTimeout,
 
+    /// Internal too many retries error.
+    #[error("Too many internal retries")]
+    TooManyInternalRetries,
+
     /// Inconsistent API state detected during request
     #[error("Inconsistent internal state: {0:?}")]
     InconsistentState(Inconsistency),
@@ -122,6 +126,7 @@ impl Error {
             Error::Debug(_) => StatusCode::IM_A_TEAPOT,
             Error::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
+            Error::TooManyInternalRetries => StatusCode::INTERNAL_SERVER_ERROR,
             Error::InconsistentState(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Reorganzing(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
