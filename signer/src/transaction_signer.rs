@@ -183,13 +183,18 @@ where
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
-        if matches!(
+        // The tx-signer does not handle these message types at all, the first two are
+        // handled by the request-decider (we should change to tx-checker or something)
+        // and the last two by the tx-coordinator.
+        let is_ignored_message = matches!(
             msg.payload,
             message::Payload::SignerDepositDecision(_)
-                | message::Payload::SignerWithdrawalDecision(_)
-                | message::Payload::StacksTransactionSignature(_)
-                | message::Payload::BitcoinTransactionSignAck(_)
-        ) {
+            | message::Payload::SignerWithdrawalDecision(_)
+            | message::Payload::StacksTransactionSignature(_)
+            | message::Payload::BitcoinTransactionSignAck(_)
+        );
+
+        if is_ignored_message {
             return Ok(());
         }
 
@@ -271,12 +276,6 @@ where
                     .write_sweep_transaction(&sweep_tx.into())
                     .await?;
             }
-
-            // Message types ignored by the transaction signer
-            (message::Payload::StacksTransactionSignature(_), _, _)
-            | (message::Payload::BitcoinTransactionSignAck(_), _, _)
-            | (message::Payload::SignerDepositDecision(_), _, _)
-            | (message::Payload::SignerWithdrawalDecision(_), _, _) => (),
 
             // Any other combination should be logged
             _ => {
