@@ -28,8 +28,6 @@ services:
     image: blockstack/sbtc:blocklist-client-0.0.1-dev-8
     entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
     volumes:
-      # TODO(762): It should not be necessary to provide a default configuration
-      - ./config/blocklist-client-default-config.toml:/src/config/default.toml:ro
       - ./config/blocklist-client-config.toml:/blocklist-client-config.toml
     ports:
       - "3032:3032"
