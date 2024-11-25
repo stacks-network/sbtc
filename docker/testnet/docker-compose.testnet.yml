@@ -9,7 +9,7 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - "./postgres:/var/lib/postgresql/data"
+      - ./postgres/data:/var/lib/postgresql/data
 
   sbtc-signer:
     image: blockstack/sbtc:signer-0.0.1-dev-8
@@ -19,10 +19,9 @@ services:
       - postgres
     environment:
       RUST_LOG: info,signer=debug
-    env_file: ./config/signer-config.env
     volumes:
       - ./config/signer-config.toml:/signer-config.toml:ro
-      - ./logs/sbtc_signer.logs:/logs/sbtc_signer.logs
+      - ./logs:/logs
     ports:
       - "4122:4122"
 
@@ -44,7 +43,7 @@ services:
       - ./logs:/logs
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
     environment:
-      STREAM_NAME: TODO # TODO: Set stream name.
+      STREAM_NAME: ${STREAM_NAME}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
       VECTOR_LOG: INFO
