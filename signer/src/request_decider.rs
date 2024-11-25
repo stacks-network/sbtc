@@ -50,6 +50,17 @@ pub struct RequestDeciderEventLoop<C, N, B> {
     pub context_window: u16,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Command(SignerCommand::Shutdown)
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+            | SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+    )
+}
+
 impl<C, N, B> RequestDeciderEventLoop<C, N, B>
 where
     C: Context,
@@ -69,13 +80,13 @@ where
             return Err(error);
         };
 
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
         while let Some(message) = signal_stream.next().await {
             match message {
-                Ok(SignerSignal::Command(SignerCommand::Shutdown)) => break,
-                Ok(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
-                Ok(SignerSignal::Event(event)) => match event {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => match event {
                     SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
                             tracing::error!(%error, "error handling signer message");
@@ -98,11 +109,6 @@ where
                     }
                     _ => {}
                 },
-                // This means one of the broadcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Err(error) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
             }
         }
 

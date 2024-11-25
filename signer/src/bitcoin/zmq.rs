@@ -42,7 +42,6 @@ use zeromq::SocketRecv as _;
 use zeromq::SubSocket;
 use zeromq::ZmqMessage;
 
-use crate::config::Settings;
 use crate::error::Error;
 
 /// These are the types of messages that we can get from bitcoin-core by
@@ -181,12 +180,6 @@ impl BitcoinCoreMessageStream {
         }
 
         Ok(Self::new_from_socket(socket))
-    }
-
-    /// Creat a new one using the endpoint(s) in the config. This only
-    /// subscribes to bitcoin blocks.
-    pub async fn new_from_config(settings: Settings) -> Result<Self, Error> {
-        Self::new_from_endpoint(&settings.block_notifier.server, &["rawblock"]).await
     }
 
     /// Convert this stream into one that returns only blocks

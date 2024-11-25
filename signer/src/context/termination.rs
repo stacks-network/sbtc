@@ -1,10 +1,5 @@
 //! Module that contains termination-related code for the [`Context`].
 
-use tokio_stream::wrappers::BroadcastStream;
-
-use super::SignerCommand;
-use super::SignerSignal;
-
 /// Handle to the termination signal. This can be used to signal the application
 /// to shutdown or to wait for a shutdown signal.
 pub struct TerminationHandle(
@@ -60,21 +55,5 @@ impl TerminationHandle {
                 break;
             }
         }
-    }
-
-    /// Get a stream for the shutdown signal
-    pub fn as_stream(&self) -> BroadcastStream<SignerSignal> {
-        let (sender, receiver) = tokio::sync::broadcast::channel(5);
-        let mut watch_receiver = self.0.subscribe();
-        tokio::spawn(async move {
-            loop {
-                let signal = SignerSignal::Command(SignerCommand::Shutdown);
-                let _ = watch_receiver.changed().await;
-                if *watch_receiver.borrow_and_update() {
-                    let _ = sender.send(signal);
-                }
-            }
-        });
-        BroadcastStream::new(receiver)
     }
 }

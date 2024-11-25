@@ -128,6 +128,19 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub rng: Rng,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Command(SignerCommand::Shutdown)
+            | SignerSignal::Event(SignerEvent::TxCoordinator(
+                TxCoordinatorEvent::MessageGenerated(_),
+            ))
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+    )
+}
+
 impl<C, N, Rng> TxSignerEventLoop<C, N, Rng>
 where
     C: Context,
@@ -145,13 +158,13 @@ where
             tracing::error!(%error, "error signalling event loop start");
             return Err(error);
         };
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
-        loop {
-            match signal_stream.next().await {
-                Some(Ok(SignerSignal::Command(SignerCommand::Shutdown))) => break,
-                Some(Ok(SignerSignal::Command(SignerCommand::P2PPublish(_)))) => {}
-                Some(Ok(SignerSignal::Event(event))) => match event {
+        while let Some(message) = signal_stream.next().await {
+            match message {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => match event {
                     SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(msg))
                     | SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
@@ -160,12 +173,6 @@ where
                     }
                     _ => {}
                 },
-                // This means one of the braodcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Some(Err(error)) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
-                None => break,
             }
         }
 
@@ -539,8 +546,8 @@ where
             // `std::collections::hash_map::Entry` type here to make things
             // more idiomatic. The issue with that approach is that it
             // requires a mutable reference of the `wsts_state_machines`
-            // self to be taken at the same time as an immunable reference.
-            // The compiler will complain about this so we silence the
+            // self to be taken at the same time as an immutable reference.
+            // The compiler will complain about this, so we silence the
             // warning.
             #[allow(clippy::map_entry)]
             WstsNetMessage::NonceRequest(_) => {
@@ -806,6 +813,7 @@ mod tests {
         }
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_respond_to_bitcoin_transaction_sign_requests() {
         test_environment()
@@ -813,6 +821,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_be_able_to_participate_in_dkg() {
         test_environment()
@@ -820,6 +829,7 @@ mod tests {
             .await;
     }
 
+    #[ignore = "we have a test for this"]
     #[tokio::test]
     async fn should_be_able_to_participate_in_signing_round() {
         test_environment()

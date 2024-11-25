@@ -779,14 +779,14 @@ pub enum TxPrevoutType {
 /// request, but we add in the transaction ID for completeness.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct QualifiedRequestId {
-    /// The Stacks block ID that includes the transaction that generated
-    /// the request.
-    pub block_hash: StacksBlockHash,
-    /// The txid that generated the request.
-    pub txid: StacksTxId,
     /// The ID that was generated in the clarity contract call for the
     /// withdrawal request.
     pub request_id: u64,
+    /// The txid that generated the request.
+    pub txid: StacksTxId,
+    /// The Stacks block ID that includes the transaction that generated
+    /// the request.
+    pub block_hash: StacksBlockHash,
 }
 
 /// A bitcoin transaction

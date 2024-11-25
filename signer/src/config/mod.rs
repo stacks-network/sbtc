@@ -88,8 +88,6 @@ impl NetworkKind {
 pub struct Settings {
     /// Blocklist client specific config
     pub blocklist_client: Option<BlocklistClientConfig>,
-    /// Electrum notifier specific config
-    pub block_notifier: BlockNotifierConfig,
     /// Signer-specific configuration
     pub signer: SignerConfig,
     /// Bitcoin core configuration
@@ -213,33 +211,6 @@ impl Validatable for EmilyClientConfig {
         // Validate each endpoint configuration.
         for endpoint in &self.endpoints {
             endpoint.validate(settings)?;
-        }
-
-        Ok(())
-    }
-}
-
-/// Electrum notifier specific config
-#[derive(Deserialize, Clone, Debug)]
-pub struct BlockNotifierConfig {
-    /// Electrum server address
-    pub server: String,
-    /// Retry interval in seconds
-    pub retry_interval: u64,
-    /// Maximum retry attempts
-    pub max_retry_attempts: u32,
-    /// Interval for pinging the server in seconds
-    pub ping_interval: u64,
-    /// Interval for subscribing to block headers in seconds
-    pub subscribe_interval: u64,
-}
-
-impl Validatable for BlockNotifierConfig {
-    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
-        if self.server.is_empty() {
-            return Err(ConfigError::Message(
-                "[block_notifier] Electrum server cannot be empty".to_string(),
-            ));
         }
 
         Ok(())
@@ -399,7 +370,6 @@ impl Settings {
 
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
-        self.block_notifier.validate(self)?;
         self.signer.validate(self)?;
 
         Ok(())
@@ -468,12 +438,6 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
         assert!(settings.blocklist_client.is_none());
-
-        assert_eq!(settings.block_notifier.server, "tcp://localhost:60401");
-        assert_eq!(settings.block_notifier.retry_interval, 10);
-        assert_eq!(settings.block_notifier.max_retry_attempts, 5);
-        assert_eq!(settings.block_notifier.ping_interval, 60);
-        assert_eq!(settings.block_notifier.subscribe_interval, 10);
 
         assert_eq!(
             settings.signer.private_key,

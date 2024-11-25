@@ -16,11 +16,12 @@ use sqlx::PgExecutor;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;
+use crate::bitcoin::validation::DepositConfirmationStatus;
 use crate::bitcoin::validation::DepositRequestReport;
-use crate::bitcoin::validation::DepositRequestStatus;
 use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -120,6 +121,12 @@ struct DepositStatusSummary {
     /// in the funds.
     #[sqlx(try_from = "i64")]
     max_fee: u64,
+    /// The deposit script used so that the signers' can spend funds.
+    deposit_script: model::ScriptPubKey,
+    /// The reclaim script for the deposit.
+    reclaim_script: model::ScriptPubKey,
+    /// The public key used in the deposit script.
+    signers_public_key: PublicKeyXOnly,
 }
 
 // A convenience struct for retriving the signers' UTXO
@@ -548,6 +555,9 @@ impl PgStore {
               , dr.amount
               , dr.max_fee
               , dr.lock_time
+              , dr.spend_script AS deposit_script
+              , dr.reclaim_script
+              , dr.signers_public_key
               , bc.block_height
               , bc.block_hash
             FROM sbtc_signer.deposit_requests AS dr 
@@ -1045,14 +1055,14 @@ impl super::DbRead for PgStore {
                     self.get_deposit_sweep_txid(chain_tip, txid, output_index, block_height);
 
                 match deposit_sweep_txid.await? {
-                    Some(txid) => DepositRequestStatus::Spent(txid),
-                    None => DepositRequestStatus::Confirmed(block_height, block_hash),
+                    Some(txid) => DepositConfirmationStatus::Spent(txid),
+                    None => DepositConfirmationStatus::Confirmed(block_height, block_hash),
                 }
             }
             // If we didn't grab the block height in the above query, then
             // we know that the deposit transaction is not on the
             // blockchain identified by the chain tip.
-            None => DepositRequestStatus::Unconfirmed,
+            None => DepositConfirmationStatus::Unconfirmed,
             // Block heights are stored as BIGINTs after conversion from
             // u64s, so converting back to u64s is actually safe.
             Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
@@ -1067,6 +1077,9 @@ impl super::DbRead for PgStore {
             lock_time: bitcoin::relative::LockTime::from_consensus(summary.lock_time)
                 .map_err(Error::DisabledLockTime)?,
             outpoint: bitcoin::OutPoint::new((*txid).into(), output_index),
+            deposit_script: summary.deposit_script.into(),
+            reclaim_script: summary.reclaim_script.into(),
+            signers_public_key: summary.signers_public_key.into(),
         }))
     }
 
@@ -1321,7 +1334,10 @@ impl super::DbRead for PgStore {
         _id: &model::QualifiedRequestId,
         _signer_public_key: &PublicKey,
     ) -> Result<Option<WithdrawalRequestReport>, Error> {
-        unimplemented!()
+        // Returning Ok(None) means that all withdrawals fail validation,
+        // because without a report we assume the withdrawal request does
+        // not exist.
+        Ok(None)
     }
 
     async fn get_bitcoin_blocks_with_transaction(
