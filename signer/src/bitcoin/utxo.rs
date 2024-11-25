@@ -61,11 +61,11 @@ const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
 const SOLO_DEPOSIT_TX_VSIZE: f64 = 267.0;
 
 /// This constant represents the virtual size (in vBytes) of a BTC
-/// transaction with only one input and two outputs. The input is the
-/// signers' input UTXO. The outputs include the withdrawal UTXO for a
-/// withdrawal request and the signers' new UTXO. This size assumes
-/// the script in the withdrawal UTXO is empty.
-const BASE_WITHDRAWAL_TX_VSIZE: f64 = 172.0;
+/// transaction servicing only one withdrawal request, except the
+/// withdrawal output is not in the transaction. This way the sweep
+/// transaction's OP_RETURN output is the right size and we can handle the
+/// variability of output sizes.
+const BASE_WITHDRAWAL_TX_VSIZE: f64 = 163.0;
 
 /// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
 /// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
@@ -153,7 +153,8 @@ impl SbtcRequests {
             .filter(|req| {
                 // This is the size for a BTC transaction servicing
                 // a single withdrawal.
-                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.script_pubkey.len() as f64;
+                let withdrawal_output = req.as_tx_output();
+                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + withdrawal_output.size() as f64;
                 req.max_fee >= self.compute_minimum_fee(tx_vsize)
             })
             .map(RequestRef::Withdrawal);
@@ -1564,7 +1565,7 @@ mod tests {
 
         // We need to zero out the withdrawal script since this value
         // changes depending on the user.
-        unsigned.tx.output[2].script_pubkey = ScriptBuf::new();
+        unsigned.tx.output.pop();
         testing::set_witness_data(&mut unsigned, keypair);
 
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
