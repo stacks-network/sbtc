@@ -563,7 +563,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     setup.store_deposit_decisions(&db).await;
 
     // Initialize the transaction signer event loop
-    let network = SignerNetwork::single();
+    let network = SignerNetwork::single(&ctx);
     let mut tx_signer = TxSignerEventLoop {
         network: network.spawn(),
         context: ctx.clone(),
