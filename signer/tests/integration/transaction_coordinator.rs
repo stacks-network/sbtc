@@ -1037,6 +1037,7 @@ async fn run_dkg_from_scratch() {
             wsts_state_machines: HashMap::new(),
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
+            dkg_begin_pause: None,
         });
 
     // We only proceed with the test after all processes have started, and
@@ -1347,6 +1348,7 @@ async fn sign_bitcoin_transaction() {
             wsts_state_machines: HashMap::new(),
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
+            dkg_begin_pause: None,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1744,6 +1746,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             wsts_state_machines: HashMap::new(),
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
+            dkg_begin_pause: None,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
