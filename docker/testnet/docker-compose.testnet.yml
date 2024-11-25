@@ -10,7 +10,7 @@ services:
       - 5432:5432
 
   sbtc-signer:
-    image: blockstack/sbtc:signer-0.0.1-dev-5
+    image: blockstack/sbtc:signer-0.0.1-dev-8
     entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
     depends_on:
       - postgres
@@ -23,7 +23,7 @@ services:
       - "4122:4122"
 
   blocklist-client:
-    image: blockstack/sbtc:blocklist-client-0.0.1-dev-6
+    image: blockstack/sbtc:blocklist-client-0.0.1-dev-8
     entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
     volumes:
       # TODO(762): It should not be necessary to provide a default configuration
