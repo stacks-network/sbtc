@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
+use aws_sdk_dynamodb::types::AttributeValue;
 use serde::{Deserialize, Serialize};
+use serde_dynamo::Item;
 
 use crate::{
     api::models::{
@@ -17,8 +19,7 @@ use crate::{
 };
 
 use super::{
-    EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
-    StatusEntry, VersionedEntryTrait,
+    EntryTrait, EntryUpdateTrait, ExecutableEntryUpdateTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait, StatusEntry, TableIndexTrait, UpdatableEntryTrait, UpdatableTableIndexTrait, VersionedEntryTrait, VersionedUpdatableTableIndexTrait
 };
 
 // Withdrawal entry ---------------------------------------------------------------

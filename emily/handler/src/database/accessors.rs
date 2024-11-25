@@ -19,6 +19,7 @@ use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
 use super::entries::withdrawal::ValidatedWithdrawalUpdate;
+use super::entries::VersionedUpdatableTableIndexTrait;
 use super::entries::{
     chainstate::{
         ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
@@ -149,93 +150,18 @@ pub async fn get_deposit_entries_for_transaction(
     .await
 }
 
-/// Pulls in a deposit entry and then updates it, retrying the specified number
-/// of times when there's a version conflict.
-///
-/// TODO(792): Combine this with the withdrawal version.
+/// Pull and update deposit with retry.
 pub async fn pull_and_update_deposit_with_retry(
     context: &EmilyContext,
     update: ValidatedDepositUpdate,
     retries: u16,
 ) -> Result<DepositEntry, Error> {
-    for _ in 0..retries {
-        // Get original deposit entry.
-        let deposit_entry = get_deposit_entry(context, &update.key).await?;
-        // Return the existing entry if no update is necessary.
-        if update.is_unnecessary(&deposit_entry) {
-            return Ok(deposit_entry);
-        }
-        // Make the update package.
-        let update_package: DepositUpdatePackage =
-            DepositUpdatePackage::try_from(&deposit_entry, update.clone())?;
-        // Attempt to update the deposit.
-        match update_deposit(context, &update_package).await {
-            Err(Error::VersionConflict) => {
-                // Retry.
-                continue;
-            }
-            otherwise => {
-                return otherwise;
-            }
-        }
-    }
-    // Failed to update due to a version conflict
-    Err(Error::VersionConflict)
-}
-
-/// Updates a deposit.
-pub async fn update_deposit(
-    context: &EmilyContext,
-    update: &DepositUpdatePackage,
-) -> Result<DepositEntry, Error> {
-    // Setup the update procedure.
-    let update_expression: &str = " SET
-        History = list_append(History, :new_event),
-        Version = Version + :one,
-        OpStatus = :new_op_status,
-        LastUpdateHeight = :new_height,
-        LastUpdateBlockHash = :new_hash
-    ";
-    // Ensure the version field is what we expect it to be.
-    let condition_expression = "attribute_exists(Version) AND Version = :expected_version";
-    // Make the key item.
-    let key_item: Item = serde_dynamo::to_item(&update.key)?;
-    // Get simplified status enum.
-    let status: Status = (&update.event.status).into();
-    // Build the update.
-    context
-        .dynamodb_client
-        .update_item()
-        .table_name(&context.settings.deposit_table_name)
-        .set_key(Some(key_item.into()))
-        .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
-        .expression_attribute_values(
-            ":new_height",
-            serde_dynamo::to_attribute_value(update.event.stacks_block_height)?,
-        )
-        .expression_attribute_values(
-            ":new_hash",
-            serde_dynamo::to_attribute_value(&update.event.stacks_block_hash)?,
-        )
-        .expression_attribute_values(
-            ":new_event",
-            serde_dynamo::to_attribute_value(vec![update.event.clone()])?,
-        )
-        .expression_attribute_values(
-            ":expected_version",
-            serde_dynamo::to_attribute_value(update.version)?,
-        )
-        .expression_attribute_values(":one", AttributeValue::N(1.to_string()))
-        .condition_expression(condition_expression)
-        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
-        .update_expression(update_expression)
-        .send()
-        .await?
-        .attributes
-        .ok_or(Error::Debug("Failed updating withdrawal".into()))
-        .and_then(|attributes| {
-            serde_dynamo::from_item::<Item, DepositEntry>(attributes.into()).map_err(Error::from)
-        })
+    DepositTablePrimaryIndex::update_entry_with_retry(
+        &context.dynamodb_client,
+        &context.settings,
+        &update,
+        retries,
+    ).await
 }
 
 // Withdrawal ------------------------------------------------------------------
@@ -789,6 +715,7 @@ async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
     // Return the items.
     Ok(items)
 }
+
 
 #[cfg(feature = "testing")]
 async fn wipe<T: TableIndexTrait>(context: &EmilyContext) -> Result<(), Error> {

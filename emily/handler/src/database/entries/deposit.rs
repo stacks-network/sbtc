@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
+use aws_sdk_dynamodb::types::AttributeValue;
 use serde::{Deserialize, Serialize};
+use serde_dynamo::Item;
 
 use crate::{
     api::models::{
@@ -17,8 +19,7 @@ use crate::{
 };
 
 use super::{
-    EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
-    StatusEntry, VersionedEntryTrait,
+    EntryTrait, EntryUpdateTrait, ExecutableEntryUpdateTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait, StatusEntry, TableIndexTrait, UpdatableEntryTrait, UpdatableTableIndexTrait, VersionedEntryTrait, VersionedUpdatableTableIndexTrait
 };
 
 // Deposit entry ---------------------------------------------------------------
@@ -552,6 +553,91 @@ impl DepositUpdatePackage {
         })
     }
 }
+
+impl UpdatableEntryTrait for DepositEntry {
+    type Update = ValidatedDepositUpdate;
+}
+
+impl ExecutableEntryUpdateTrait for DepositUpdatePackage {
+    type Key = DepositEntryKey;
+    fn key(&self) -> &Self::Key {
+        &self.key
+    }
+}
+
+impl EntryUpdateTrait for ValidatedDepositUpdate {
+    type Entry = DepositEntry;
+    type ExecutableUpdate = DepositUpdatePackage;
+    fn key(&self) -> &<Self::Entry as EntryTrait>::Key {
+        &self.key
+    }
+    fn is_unnecessary(&self, entry: &Self::Entry) -> bool {
+        self.is_unnecessary(entry)
+    }
+    fn make_executable_update(&self, entry: &DepositEntry) -> Result<Self::ExecutableUpdate, Error> {
+        DepositUpdatePackage::try_from(entry, self.clone())
+    }
+}
+
+impl UpdatableTableIndexTrait for DepositTablePrimaryIndex {
+    async fn execute_update(
+        dynamodb_client: &aws_sdk_dynamodb::Client,
+        settings: &crate::context::Settings,
+        executable_update: &<<Self::Entry as UpdatableEntryTrait>::Update as EntryUpdateTrait>::ExecutableUpdate,
+    ) -> Result<DepositEntry, Error> {
+    // Setup the update procedure.
+    let update_expression: &str = " SET
+        History = list_append(History, :new_event),
+        Version = Version + :one,
+        OpStatus = :new_op_status,
+        LastUpdateHeight = :new_height,
+        LastUpdateBlockHash = :new_hash
+    ";
+    // Ensure the version field is what we expect it to be.
+    let condition_expression = "attribute_exists(Version) AND Version = :expected_version";
+    // Make the key item.
+    let key_item: Item = serde_dynamo::to_item(&executable_update.key())?;
+    // Get simplified status enum.
+    let status: Status = (&executable_update.event.status).into();
+    // Get the table name.
+    let table_name = <Self as TableIndexTrait>::table_name(settings);
+    // Build the update.
+    dynamodb_client
+        .update_item()
+        .table_name(table_name)
+        .set_key(Some(key_item.into()))
+        .expression_attribute_values(":new_op_status", serde_dynamo::to_attribute_value(&status)?)
+        .expression_attribute_values(
+            ":new_height",
+            serde_dynamo::to_attribute_value(executable_update.event.stacks_block_height)?,
+        )
+        .expression_attribute_values(
+            ":new_hash",
+            serde_dynamo::to_attribute_value(&executable_update.event.stacks_block_hash)?,
+        )
+        .expression_attribute_values(
+            ":new_event",
+            serde_dynamo::to_attribute_value(vec![executable_update.event.clone()])?,
+        )
+        .expression_attribute_values(
+            ":expected_version",
+            serde_dynamo::to_attribute_value(executable_update.version)?,
+        )
+        .expression_attribute_values(":one", AttributeValue::N(1.to_string()))
+        .condition_expression(condition_expression)
+        .return_values(aws_sdk_dynamodb::types::ReturnValue::AllNew)
+        .update_expression(update_expression)
+        .send()
+        .await?
+        .attributes
+        .ok_or(Error::Debug("Failed updating withdrawal".into()))
+        .and_then(|attributes| {
+            serde_dynamo::from_item::<Item, DepositEntry>(attributes.into()).map_err(Error::from)
+        })
+    }
+}
+
+impl VersionedUpdatableTableIndexTrait for DepositTablePrimaryIndex {}
 
 #[cfg(test)]
 mod tests {

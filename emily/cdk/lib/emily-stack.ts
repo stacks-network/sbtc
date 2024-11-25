@@ -273,8 +273,14 @@ export class EmilyStack extends cdk.Stack {
                     ? "emily/cdk/test/assets/empty-lambda.zip"
                     : "target/lambda/emily-lambda/bootstrap.zip"
             )),
-            // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
-            timeout: cdk.Duration.seconds(5),
+            // // Uncomment the following line to enable the Lambda function to be invoked by the API Gateway.
+            // // Lambda should be very fast. Something is wrong if it takes > 5 seconds.
+            // timeout: cdk.Duration.seconds(5),
+
+            // Give the lambda an absurd amount of time to run to debug the fact that we're
+            // somehow getting no logs from the lambda.
+            timeout: cdk.Duration.seconds(90),
+            memorySize: 512,
             handler: "main",
             environment: {
                 // Give lambda access to the table name.
@@ -351,6 +357,14 @@ export class EmilyStack extends cdk.Stack {
             // Associate the API Key with the Usage Plan and specify stages
             signerApiUsagePlan.addApiKey(apiKey);
             api_keys.push(apiKey);
+        }
+
+        // Output the API Key value
+        if (EmilyStackUtils.isDevelopmentStack() && api_keys.length > 0) {
+            new cdk.CfnOutput(this, 'ApiKeyOutput', {
+                value: api_keys[0].keyId, // This outputs the generated API key's ID
+                description: 'An API Key ID for accessing the API',
+            });
         }
 
         // Give the the rest api execute ARN permission to invoke the lambda.

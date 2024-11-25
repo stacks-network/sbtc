@@ -125,7 +125,7 @@ pub struct SecondaryIndex<T>(pub T);
 // -----------------------------------------------------------------------------
 
 /// Trait common to entries.
-pub trait EntryTrait: serde::Serialize + for<'de> serde::Deserialize<'de> + Debug {
+pub trait EntryTrait: serde::Serialize + for<'de> serde::Deserialize<'de> + Debug + Clone {
     /// Key type for the entry.
     type Key: KeyTrait;
     /// Retrieves the entry key.
@@ -465,6 +465,103 @@ pub(crate) trait TableIndexTrait {
         }
     }
 }
+
+
+// Updatable Entries
+// -----------------------------------------------------------------------------
+
+pub(crate) trait UpdatableEntryTrait: EntryTrait {
+    /// The type of entry to update.
+    type Update: EntryUpdateTrait<Entry = Self>;
+}
+
+/// Trait for the object that is able to update an entry.
+pub(crate) trait EntryUpdateTrait {
+    /// The type of entry to update.
+    type Entry: UpdatableEntryTrait + EntryTrait;
+    /// The type of the executable update.
+    type ExecutableUpdate: ExecutableEntryUpdateTrait<Key=<Self::Entry as EntryTrait>::Key>;
+    /// Get the key that can be used to get the existing version of the entry
+    /// to update.
+    fn key(&self) -> &<Self::Entry as EntryTrait>::Key;
+    /// Returns true if the entry doesn't need to be updated.
+    fn is_unnecessary(&self, entry: &Self::Entry) -> bool;
+    /// Gets an executable update.
+    fn make_executable_update(&self, entry: &Self::Entry) -> Result<Self::ExecutableUpdate, Error> ;
+}
+
+/// Trait for the object that is able to update an entry.
+pub(crate) trait ExecutableEntryUpdateTrait {
+    /// The type of entry to update.
+    type Key: KeyTrait;
+    /// Get the key that can be used to get the existing version of the entry
+    /// to update.
+    fn key(&self) -> &Self::Key;
+}
+
+pub(crate) trait UpdatableTableIndexTrait: TableIndexTrait
+where
+    <Self as TableIndexTrait>::Entry: UpdatableEntryTrait,
+    <<Self as TableIndexTrait>::Entry as UpdatableEntryTrait>::Update: EntryUpdateTrait<Entry = Self::Entry>,
+{
+    /// Put generic table entry but add a version check.
+    async fn update_entry(
+        dynamodb_client: &aws_sdk_dynamodb::Client,
+        settings: &Settings,
+        update: &<Self::Entry as UpdatableEntryTrait>::Update,
+    ) -> Result<<Self as TableIndexTrait>::Entry, Error> {
+        // Get the existing entry.
+        let existing_entry = <Self as TableIndexTrait>::get_entry(
+            dynamodb_client,
+            settings,
+            update.key(),
+        ).await?;
+        // Exit early if the update is unnecessary.
+        if update.is_unnecessary(&existing_entry) {
+            return Ok(existing_entry.clone());
+        }
+        // Get the executable update.
+        let executable_update: <<<Self as TableIndexTrait>::Entry as UpdatableEntryTrait>::Update as EntryUpdateTrait>::ExecutableUpdate = update
+            .make_executable_update(&existing_entry)?;
+        // Execute the update.
+        Self::execute_update(dynamodb_client, settings, &executable_update).await
+    }
+    /// Execute update.
+    async fn execute_update(
+        dynamodb_client: &aws_sdk_dynamodb::Client,
+        settings: &Settings,
+        executable_update: &<<Self::Entry as UpdatableEntryTrait>::Update as EntryUpdateTrait>::ExecutableUpdate,
+    ) -> Result<<Self as TableIndexTrait>::Entry, Error>;
+}
+
+/// Versioned updatable table index trait. It allows for tables with versioned
+/// entries to be updated with retries.
+pub(crate) trait VersionedUpdatableTableIndexTrait: UpdatableTableIndexTrait
+where
+    Self::Entry: UpdatableEntryTrait + VersionedEntryTrait,
+{
+    /// Put generic table entry but add a version check.
+    async fn update_entry_with_retry(
+        dynamodb_client: &aws_sdk_dynamodb::Client,
+        settings: &Settings,
+        update: &<Self::Entry as UpdatableEntryTrait>::Update,
+        retries: u16,
+    ) -> Result<<Self as TableIndexTrait>::Entry, Error> {
+        for _ in 0..retries {
+            let result = Self::update_entry(dynamodb_client, settings, update)
+                .await;
+            if let Err(Error::VersionConflict) = result {
+                continue;
+            } else {
+                return result;
+            }
+        }
+        Err(Error::VersionConflict)
+    }
+}
+
+// Versioned Entries
+// -----------------------------------------------------------------------------
 
 /// Versioned entry trait.
 pub trait VersionedEntryTrait: EntryTrait {

@@ -22,6 +22,7 @@ base64.workspace = true
 bitcoin.workspace = true
 config.workspace = true
 clap.workspace = true
+futures = "0.3"
 hex.workspace = true
 openssl.workspace = true
 reqwest.workspace = true

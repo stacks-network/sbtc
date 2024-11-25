@@ -222,6 +222,19 @@ impl VersionedEntryTrait for ApiStateEntry {
     }
 }
 
+ApiStateUpdate {
+    pub new_chainstate: ChainstateEntry,
+}
+
+ApiStateUpdatePackage {
+    /// The new chainstate entry.
+    pub new_chainstate: ChainstateEntry,
+    /// The new version of the api state entry.
+    pub new_version: u64,
+}
+
+
+
 /// Primary index struct.
 pub struct SpecialApiStateIndexInner;
 /// Withdrawal table primary index type.
