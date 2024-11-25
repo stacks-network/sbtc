@@ -177,8 +177,12 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
             // Drain the outbox and publish the messages to the network.
             let outbox = outbox.lock().await.drain(..).collect::<Vec<_>>();
             for payload in outbox {
-                tracing::info!("publishing message");
                 let msg_id = payload.id();
+                tracing::trace!(
+                    message_id = hex::encode(msg_id),
+                    msg = %payload,
+                    "publishing message"
+                );
 
                 // Attempt to encode the message payload into bytes
                 // using the signer codec.
@@ -337,8 +341,8 @@ fn handle_gossipsub_event(
     match event {
         Event::Message {
             propagation_source: peer_id,
-            message_id: id,
             message,
+            ..
         } => {
             if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
                 tracing::warn!(%peer_id, "ignoring message from unknown peer");
@@ -347,10 +351,10 @@ fn handle_gossipsub_event(
 
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
-                    tracing::debug!(
+                    tracing::trace!(
                         local_peer_id = %swarm.local_peer_id(),
                         %peer_id,
-                        message_id = hex::encode(id.0),
+                        message_id = hex::encode(msg.id()),
                         %msg,
                         "received message",
                     );
