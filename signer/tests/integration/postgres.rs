@@ -11,6 +11,7 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
+use futures::future::join_all;
 use futures::StreamExt;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
@@ -40,6 +41,8 @@ use signer::storage;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
+use signer::storage::model::BitcoinTxSigHash;
+use signer::storage::model::BitcoinWithdrawalOutput;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::model::ScriptPubKey;
@@ -3100,6 +3103,44 @@ async fn deposit_report_with_deposit_request_confirmed() {
     let expected_status =
         DepositConfirmationStatus::Confirmed(block.block_height, block.block_hash);
     assert_eq!(report.status, expected_status);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let sighashes: Vec<BitcoinTxSigHash> = (0..5).map(|_| fake::Faker.fake()).collect();
+
+    db.write_bitcoin_txs_sighashes(&sighashes).await.unwrap();
+
+    let withdrawal_outputs_futures = sighashes
+        .iter()
+        .map(|sighash| db.will_sign_bitcoin_tx_sighash(&sighash.sighash));
+
+    let results = join_all(withdrawal_outputs_futures).await;
+
+    for (output, result) in sighashes.iter().zip(results) {
+        let result = result.unwrap().unwrap();
+        assert_eq!(result, output.will_sign);
+    }
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_write_multiple_bitcoin_withdrawal_outputs() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let outputs: Vec<BitcoinWithdrawalOutput> = (0..5).map(|_| fake::Faker.fake()).collect();
+
+    db.write_bitcoin_withdrawals_outputs(&outputs)
+        .await
+        .unwrap();
 
     signer::testing::storage::drop_db(db).await;
 }

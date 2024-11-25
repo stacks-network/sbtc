@@ -9,10 +9,13 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
 use serde::Deserialize;
 use serde::Serialize;
-use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
+use stacks_common::types::chainstate::BurnchainHeaderHash;
+use stacks_common::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::InputValidationResult;
+use crate::bitcoin::validation::WithdrawalValidationResult;
 use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -1108,6 +1111,96 @@ impl ScriptPubKey {
 
 /// Arbitrary bytes
 pub type Bytes = Vec<u8>;
+
+/// A signature hash for a bitcoin transaction.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SigHash(bitcoin::TapSighash);
+
+impl Deref for SigHash {
+    type Target = bitcoin::TapSighash;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<bitcoin::TapSighash> for SigHash {
+    fn from(value: bitcoin::TapSighash) -> Self {
+        Self(value)
+    }
+}
+
+impl std::fmt::Display for SigHash {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// The sighash and enough metadata to piece together what happened.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct BitcoinTxSigHash {
+    /// The transaction ID of the bitcoin transaction that sweeps funds
+    /// into and/or out of the signers' UTXO.
+    pub txid: BitcoinTxId,
+    /// The bitcoin chain tip when the sign request was submitted. This is
+    /// used to ensure that we do not sign for more than one transaction
+    /// containing inputs
+    pub chain_tip: BitcoinBlockHash,
+    /// The txid that created the output that is being spent.
+    pub prevout_txid: BitcoinTxId,
+    /// The index of the vout from the transaction that created this
+    /// output.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub prevout_output_index: u32,
+    /// The sighash associated with the prevout.
+    pub sighash: SigHash,
+    /// The type of prevout that we are dealing with.
+    pub prevout_type: TxPrevoutType,
+    /// The result of validation that was done on the input. For deposits,
+    /// this specifies whether validation succeeded and the first condition
+    /// that failed during validation. The signers' input is always valid,
+    /// since it is unconfirmed.
+    pub validation_result: InputValidationResult,
+    /// Whether the transaction is valid. A transaction is invalid if any
+    /// of the inputs or outputs failed validation.
+    pub is_valid_tx: bool,
+    /// Whether the signer will participate in a signing round for the
+    /// sighash.
+    pub will_sign: bool,
+}
+
+/// An output that was created due to a withdrawal request.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct BitcoinWithdrawalOutput {
+    /// The ID of the transaction that includes this withdrawal output.
+    pub bitcoin_txid: BitcoinTxId,
+    /// The bitcoin chain tip when the sign request was submitted. This is
+    /// used to ensure that we do not sign for more than one transaction
+    /// containing inputs
+    pub bitcoin_chain_tip: BitcoinBlockHash,
+    /// The index of the referenced output in the transaction's outputs.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub output_index: u32,
+    /// The request ID of the withdrawal request. These increment for each
+    /// withdrawal, but there can be duplicates if there is a reorg that
+    /// affects a transaction that calls the `initiate-withdrawal-request`
+    /// public function.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
+    pub request_id: u64,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub stacks_txid: StacksTxId,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
+    pub stacks_block_hash: StacksBlockHash,
+    /// The outcome of validation of the withdrawal request.
+    pub validation_result: WithdrawalValidationResult,
+    /// Whether the transaction is valid. A transaction is invalid if any
+    /// of the inputs or outputs failed validation.
+    pub is_valid_tx: bool,
+}
 
 #[cfg(test)]
 mod tests {

@@ -97,7 +97,7 @@ pub trait AssertConstantInvariants {
             let txids: HashSet<_> = input_rows
                 .iter()
                 .map(|row| row.txid)
-                .chain(withdrawal_rows.iter().map(|row| row.txid))
+                .chain(withdrawal_rows.iter().map(|row| row.bitcoin_txid))
                 .collect();
             let is_valid_tx: HashSet<_> = input_rows
                 .iter()
@@ -107,7 +107,7 @@ pub trait AssertConstantInvariants {
             let chain_tip: HashSet<_> = input_rows
                 .iter()
                 .map(|row| row.chain_tip)
-                .chain(withdrawal_rows.iter().map(|row| row.chain_tip))
+                .chain(withdrawal_rows.iter().map(|row| row.bitcoin_chain_tip))
                 .collect();
 
             assert_eq!(txids.len(), 1);
@@ -432,7 +432,7 @@ async fn cannot_sign_deposit_is_ok() {
         "
         UPDATE sbtc_signer.deposit_signers
            SET can_sign = FALSE
-             , can_accept = TRUE          
+             , can_accept = TRUE
          WHERE txid = $1
            AND output_index = $2
            AND signer_pub_key = $3
@@ -527,11 +527,11 @@ async fn cannot_sign_deposit_is_ok() {
 
     let tx = &txs[0];
     let sighashes = tx.construct_digests().unwrap();
-    assert_eq!(sighashes.signers, signer.sighash);
+    assert_eq!(sighashes.signers, *signer.sighash);
 
     assert_eq!(sighashes.deposits.len(), 2);
-    assert_eq!(sighashes.deposits[0].1, deposit1.sighash);
-    assert_eq!(sighashes.deposits[1].1, deposit2.sighash);
+    assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
+    assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -650,11 +650,11 @@ async fn sighashes_match_from_sbtc_requests_object() {
 
     let tx = &txs[0];
     let sighashes = tx.construct_digests().unwrap();
-    assert_eq!(sighashes.signers, signer.sighash);
+    assert_eq!(sighashes.signers, *signer.sighash);
 
     assert_eq!(sighashes.deposits.len(), 2);
-    assert_eq!(sighashes.deposits[0].1, deposit1.sighash);
-    assert_eq!(sighashes.deposits[1].1, deposit2.sighash);
+    assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
+    assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]

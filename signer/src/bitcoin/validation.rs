@@ -6,7 +6,6 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
-use bitcoin::TapSighash;
 use bitcoin::XOnlyPublicKey;
 
 use crate::bitcoin::utxo::FeeAssessment;
@@ -16,11 +15,10 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::BitcoinTxSigHash;
+use crate::storage::model::BitcoinWithdrawalOutput;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
-use crate::storage::model::StacksBlockHash;
-use crate::storage::model::StacksTxId;
-use crate::storage::model::TxPrevoutType;
 use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
@@ -206,8 +204,7 @@ impl BitcoinTxContext {
 
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
-/// [`BitcoinSighash`].
-#[derive(Debug)]
+/// [`BitcoinTxSigHash`].
 pub struct BitcoinTxValidationData {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
@@ -226,67 +223,6 @@ pub struct BitcoinTxValidationData {
     pub chain_tip_height: u64,
 }
 
-/// The sighash and enough metadata to piece together what happened.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BitcoinSighash {
-    /// The transaction ID of the bitcoin transaction that sweeps funds
-    /// into and/or out of the signers' UTXO.
-    pub txid: BitcoinTxId,
-    /// The bitcoin chain tip when the sign request was submitted. This is
-    /// used to ensure that we do not sign for more than one transaction
-    /// containing inputs
-    pub chain_tip: BitcoinBlockHash,
-    /// The txid that created the output that is being spent.
-    pub prevout_txid: BitcoinTxId,
-    /// The index of the vout from the transaction that created this
-    /// output.
-    pub prevout_output_index: u32,
-    /// The sighash associated with the prevout.
-    pub sighash: TapSighash,
-    /// The type of prevout that we are dealing with.
-    pub prevout_type: TxPrevoutType,
-    /// The result of validation that was done on the input. For deposits,
-    /// this specifies whether validation succeeded and the first condition
-    /// that failed during validation. The signers' input is always valid,
-    /// since it is unconfirmed.
-    pub validation_result: InputValidationResult,
-    /// Whether the transaction is valid. A transaction is invalid if any
-    /// of the inputs or outputs failed validation.
-    pub is_valid_tx: bool,
-    /// Whether the signer will participate in a signing round for the
-    /// sighash.
-    pub will_sign: bool,
-}
-
-/// An output that was created due to a withdrawal request.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BitcoinWithdrawalOutput {
-    /// The ID of the transaction that includes this withdrawal output.
-    pub txid: BitcoinTxId,
-    /// The bitcoin chain tip when the sign request was submitted. This is
-    /// used to ensure that we do not sign for more than one transaction
-    /// containing inputs
-    pub chain_tip: BitcoinBlockHash,
-    /// The index of the referenced output in the transaction's outputs.
-    pub output_index: u32,
-    /// The request ID of the withdrawal request. These increment for each
-    /// withdrawal, but there can be duplicates if there is a reorg that
-    /// affects a transaction that calls the `initiate-withdrawal-request`
-    /// public function.
-    pub request_id: u64,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub stacks_txid: StacksTxId,
-    /// Stacks block ID of the block that includes the transaction
-    /// associated with this withdrawal request.
-    pub stacks_block_hash: StacksBlockHash,
-    /// The outcome of validation of the withdrawal request.
-    pub validation_result: WithdrawalValidationResult,
-    /// Whether the transaction is valid. A transaction is invalid if any
-    /// of the inputs or outputs failed validation.
-    pub is_valid_tx: bool,
-}
-
 impl BitcoinTxValidationData {
     /// Construct the sighashes for the inputs of the associated
     /// transaction.
@@ -302,7 +238,7 @@ impl BitcoinTxValidationData {
     ///    withdrawals in the transaction.
     /// 3. That the signer is a party to signing set that controls the
     ///    public key locking the transaction output.
-    pub fn to_input_rows(&self) -> Vec<BitcoinSighash> {
+    pub fn to_input_rows(&self) -> Vec<BitcoinTxSigHash> {
         // If any of the inputs or outputs fail validation, then the
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
@@ -331,9 +267,9 @@ impl BitcoinTxValidationData {
         [(self.signer_sighash, InputValidationResult::Ok)]
             .into_iter()
             .chain(deposit_sighashes)
-            .map(|(sighash, validation_result)| BitcoinSighash {
+            .map(|(sighash, validation_result)| BitcoinTxSigHash {
                 txid: sighash.txid.into(),
-                sighash: sighash.sighash,
+                sighash: sighash.sighash.into(),
                 chain_tip: self.chain_tip,
                 prevout_txid: sighash.outpoint.txid.into(),
                 prevout_output_index: sighash.outpoint.vout,
@@ -348,7 +284,7 @@ impl BitcoinTxValidationData {
     /// Construct objects with withdrawal output identifier with the
     /// validation result.
     pub fn to_withdrawal_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
-        let txid = self.tx.compute_txid().into();
+        let bitcoin_txid = self.tx.compute_txid().into();
 
         let is_valid_tx = self.is_valid_tx();
         // If we ever construct a transaction with more than u32::MAX then
@@ -360,8 +296,8 @@ impl BitcoinTxValidationData {
             .iter()
             .enumerate()
             .map(|(output_index, (_, report))| BitcoinWithdrawalOutput {
-                txid,
-                chain_tip: self.chain_tip,
+                bitcoin_txid,
+                bitcoin_chain_tip: self.chain_tip,
                 output_index: output_index as u32,
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
@@ -432,8 +368,9 @@ impl SbtcReports {
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
-#[derive(Debug, PartialEq, Eq, Copy, Clone, strum::Display, strum::IntoStaticStr)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
@@ -481,7 +418,9 @@ impl InputValidationResult {
 
 /// The responses for validation of the outputs of a sweep transaction on
 /// bitcoin.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
