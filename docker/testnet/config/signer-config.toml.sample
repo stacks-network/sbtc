@@ -1,27 +1,28 @@
-[blocklist_client]
-endpoint = "http://blocklist-client:3032"
+# TODO: Enable blocklist client.
+# [blocklist_client]
+# endpoint = "http://blocklist-client:3032"
 
 [emily]
-# NOTE: Overridden by environmental variable.
+# TODO: Add your API key here.
 endpoints = [
-    "https://beta.emily-sbtc.com/"
+    {"endpoint": "https://beta.emily-sbtc.com/", "api_key": "TODO"}
 ]
 
 [bitcoin]
 # TODO: Change this to local bitcoin container
 rpc_endpoints = [
-    "http://52.209.21.13:18443",
+    "http://TODO:18443",
 ]
 
 # TODO: Change this to local bitcoin container
 block_hash_stream_endpoints = [
-    "tcp://52.209.21.13:28332"
+    "tcp://TODO:28332"
 ]
 
 [stacks]
 # TODO: Change this to local stacks container
 endpoints = [
-    "http://52.209.21.13:20443",
+    "http://TODO:20443",
 ]
 
 nakamoto_start_height = 56457
@@ -32,9 +33,9 @@ private_key = "0000000000000000000000000000000000000000000000000000000000000001"
 
 network = "testnet"
 
-deployer = "SN2ZNBHMSQDZCAFWTX2KYDSXG0TGV1MAJNZV2HSHS"
+deployer = "SNGWPN3XDAQE673MXYXF81016M50NHF5X5PWWM70"
 
-db_endpoint = "postgresql://postgres:postgres@postgres:5432/signer"
+db_endpoint = "postgresql://postgres:postgres@localhost:5432/signer"
 
 bootstrap_signing_set = [
     "03fc6197a1396680f7acc4241ac3935ba4af560deac0224abec45c47c5e73ea638",
@@ -51,26 +52,19 @@ bootstrap_signing_set = [
     "031c7e1267b272d5a11257f46c61e0e5005337ebcebb6f2b71798addfd04e5a38a",
     "02ae3a560f4f67ce8c0f4b2e46d24f51232a768cfc69cf08a02ea02426d77bd64c",
     "026fb0b3c3ea60a3197e94f2dcd37d7f302e6d33c75351f4f5024e9c31ac327c11",
-    "021e76df4930c83a8ed1bc78838dfce1df23c55353c13d1c8631016750d5d2a7c5",
+    "0374e256948a14799c2a788960ab6657dc5d322b070abae4ce83b2a0df4df2c727",
 ]
 
 bootstrap_signatures_required = 11
 
-bitcoin_processing_delay = 10
+bitcoin_processing_delay = 30
 
 [signer.event_observer]
-# NOTE: Set through Environment: SIGNER_SIGNER__EVENT_OBSERVER__BIND
 bind = "0.0.0.0:8801"
 
 [signer.p2p]
-seeds = ["tcp://52.209.21.13:4122", "quic-v1://52.209.21.13:4122"]
-listen_on = ["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
+seeds = [
+    "tcp://176.34.190.109:4122" # Bitcoin L2 Labs testnet signer
+]
+listen_on = ["tcp://0.0.0.0:4122"]
 public_endpoints = []
-
-[block_notifier]
-# TODO: This is not actually used, but the code requires it.
-server = "tcp://localhost:60401"
-retry_interval = 10
-max_retry_attempts = 5
-ping_interval = 60
-subscribe_interval = 10
