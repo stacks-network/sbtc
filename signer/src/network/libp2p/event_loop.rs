@@ -96,7 +96,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::warn!(%listener_id, %error, "Listener error");
                     }
                     SwarmEvent::Dialing { peer_id, connection_id } => {
-                        tracing::info!(?peer_id, %connection_id, "Dialing peer");
+                        tracing::trace!(?peer_id, %connection_id, "Dialing peer");
                     }
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
                         if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
@@ -107,16 +107,16 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::info!(%peer_id, ?endpoint, "Connected to peer");
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
-                        tracing::info!(%peer_id, ?cause, ?endpoint, "Connection closed");
+                        tracing::trace!(%peer_id, ?cause, ?endpoint, "Connection closed");
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
-                        tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
+                        tracing::trace!(%local_addr, %send_back_addr, "Incoming connection");
                     }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Ping(ping)) => {
                         tracing::trace!("ping received: {:?}", ping);
                     }
                     SwarmEvent::OutgoingConnectionError { connection_id, error, peer_id } => {
-                        tracing::warn!(%connection_id, %error, ?peer_id, "outgoing connection error");
+                        tracing::trace!(%connection_id, %error, ?peer_id, "outgoing connection error");
                     }
                     SwarmEvent::IncomingConnectionError {
                         local_addr,
@@ -124,7 +124,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         error,
                         ..
                     } => {
-                        tracing::warn!(%local_addr, %send_back_addr, %error, "incoming connection error");
+                        tracing::trace!(%local_addr, %send_back_addr, %error, "incoming connection error");
                     }
                     SwarmEvent::NewExternalAddrCandidate { address } => {
                         tracing::debug!(%address, "New external address candidate");
