@@ -127,6 +127,9 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub context_window: u16,
     /// Random number generator used for encryption
     pub rng: Rng,
+    /// The time the signer should pause for after receiving a DKG begin message
+    /// before relaying to give the other signers time to catch up.
+    pub dkg_begin_pause: Option<Duration>,
 }
 
 /// This function defines which messages this event loop is interested
@@ -498,11 +501,14 @@ where
                     self.signer_private_key,
                 )?;
                 self.wsts_state_machines.insert(msg.txid, state_machine);
-                // Let's give the others some slack
-                tracing::debug!(
-                    "Sleeping a bit to give the other peers some slack to get DkgBegin"
-                );
-                tokio::time::sleep(Duration::from_secs(10)).await;
+
+                if let Some(pause) = self.dkg_begin_pause {
+                    // Let's give the others some slack
+                    tracing::debug!(
+                        "Sleeping a bit to give the other peers some slack to get DkgBegin"
+                    );
+                    tokio::time::sleep(pause).await;
+                }
 
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
