@@ -135,14 +135,20 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
 /// This function defines which messages this event loop is interested
 /// in.
 fn run_loop_message_filter(signal: &SignerSignal) -> bool {
-    matches!(
-        signal,
+    match signal {
+        SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => !matches!(
+            msg.payload,
+            message::Payload::SignerDepositDecision(_)
+                | message::Payload::SignerWithdrawalDecision(_)
+                | message::Payload::StacksTransactionSignature(_)
+                | message::Payload::BitcoinTransactionSignAck(_)
+        ),
         SignerSignal::Command(SignerCommand::Shutdown)
-            | SignerSignal::Event(SignerEvent::TxCoordinator(
-                TxCoordinatorEvent::MessageGenerated(_),
-            ))
-            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
-    )
+        | SignerSignal::Event(SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(
+            _,
+        ))) => true,
+        _ => false,
+    }
 }
 
 impl<C, N, Rng> TxSignerEventLoop<C, N, Rng>
@@ -186,21 +192,6 @@ where
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
-        // The tx-signer does not handle these message types at all, the first two are
-        // handled by the request-decider (we should change to tx-checker or something)
-        // and the last two by the tx-coordinator.
-        let is_ignored_message = matches!(
-            msg.payload,
-            message::Payload::SignerDepositDecision(_)
-                | message::Payload::SignerWithdrawalDecision(_)
-                | message::Payload::StacksTransactionSignature(_)
-                | message::Payload::BitcoinTransactionSignAck(_)
-        );
-
-        if is_ignored_message {
-            return Ok(());
-        }
-
         if !msg.verify() {
             tracing::warn!("unable to verify message");
             return Err(Error::InvalidSignature);
