@@ -1294,6 +1294,7 @@ impl From<SignerMessage> for proto::SignerMessage {
             Payload::SweepTransactionInfo(inner) => {
                 proto::signer_message::Payload::SweepTransactionInfo(inner.into())
             }
+            Payload::BitcoinPreSignRequest(_) => todo!(),
         };
         proto::SignerMessage {
             bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),

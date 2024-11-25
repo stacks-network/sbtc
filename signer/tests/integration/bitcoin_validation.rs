@@ -165,7 +165,7 @@ async fn one_tx_per_request_set() {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
         request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoints(),
+            deposits: setup.deposit_outpoint_messages(),
             withdrawals: Vec::new(),
         }],
         signer_public_key: setup.signers.keys[0],
@@ -258,7 +258,7 @@ async fn one_invalid_deposit_invalidates_tx() {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
         request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoints(),
+            deposits: setup.deposit_outpoint_messages(),
             withdrawals: Vec::new(),
         }],
         signer_public_key: setup.signers.keys[0],
@@ -369,7 +369,7 @@ async fn one_withdrawal_errors_validation() {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
         request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoints(),
+            deposits: setup.deposit_outpoint_messages(),
             withdrawals: setup.withdrawal_ids(),
         }],
         signer_public_key: setup.signers.keys[0],
@@ -456,7 +456,7 @@ async fn cannot_sign_deposit_is_ok() {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
         request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoints(),
+            deposits: setup.deposit_outpoint_messages(),
             withdrawals: Vec::new(),
         }],
         signer_public_key: setup.signers.keys[0],
@@ -582,7 +582,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
         request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoints(),
+            deposits: setup.deposit_outpoint_messages(),
             withdrawals: Vec::new(),
         }],
         signer_public_key: setup.signers.keys[0],
@@ -712,7 +712,7 @@ async fn outcome_is_independent_of_input_order() {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
         request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoints(),
+            deposits: setup.deposit_outpoint_messages(),
             withdrawals: Vec::new(),
         }],
         signer_public_key: setup.signers.keys[0],

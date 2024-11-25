@@ -8,6 +8,10 @@ use futures::future::join_all;
 use rand::SeedableRng as _;
 
 use secp256k1::Keypair;
+use signer::bitcoin::utxo::RequestRef;
+use signer::bitcoin::utxo::Requests;
+use signer::bitcoin::utxo::UnsignedTransaction;
+use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
 use signer::context::SignerEvent;
 use signer::context::SignerSignal;
@@ -18,7 +22,9 @@ use signer::error::Error;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::message;
+use signer::message::BitcoinPreSignRequest;
 use signer::message::StacksTransactionSignRequest;
+use signer::network::in_memory2::SignerNetwork;
 use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
@@ -40,6 +46,7 @@ use signer::{bitcoin::MockBitcoinInteract, storage::postgres::PgStore};
 use test_log::test;
 
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::fill_signers_utxo;
 use crate::setup::TestSweepSetup;
 use crate::DATABASE_NUM;
 
@@ -509,6 +516,121 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         .await
         .unwrap_err();
     assert!(matches!(validation, Error::ValidationSignerSet(_)));
+
+    testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+pub async fn assert_should_be_able_to_handle_sbtc_requests() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let fee_rate = 1.3;
+    // Build the test context with mocked clients
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_bitcoin_client()
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
+        .build();
+
+    // Build the test context with mocked clients
+    ctx.with_bitcoin_client(|client| {
+        client
+            .expect_estimate_fee_rate()
+            .times(2)
+            .returning(move || Box::pin(async move { Ok(fee_rate) }));
+    })
+    .await;
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    // Create a test setup with a confirmed deposit transaction
+    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    // Backfill the blockchain data into the database
+    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    let bitcoin_block = db.get_bitcoin_block(&chain_tip).await.unwrap();
+
+    let public_aggregate_key = setup.aggregated_signer.keypair.public_key().into();
+
+    // // Fill the signer's UTXO in the database
+    fill_signers_utxo(&db, bitcoin_block.unwrap(), &public_aggregate_key, &mut rng).await;
+
+    // Store the necessary data for passing validation
+    setup.store_deposit_tx(&db).await;
+    setup.store_dkg_shares(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_deposit_decisions(&db).await;
+
+    // Initialize the transaction signer event loop
+    let network = SignerNetwork::single(&ctx);
+    let mut tx_signer = TxSignerEventLoop {
+        network: network.spawn(),
+        context: ctx.clone(),
+        context_window: 10000,
+        wsts_state_machines: HashMap::new(),
+        signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
+        threshold: 2,
+        rng: rand::rngs::StdRng::seed_from_u64(51),
+        dkg_begin_pause: None,
+    };
+
+    let sbtc_requests: TxRequestIds = TxRequestIds {
+        deposits: vec![setup.deposit_request.outpoint.into()],
+        withdrawals: vec![],
+    };
+
+    let sbtc_context = BitcoinPreSignRequest {
+        requests: vec![sbtc_requests],
+        fee_rate: fee_rate,
+        last_fees: None,
+    };
+
+    let sbtc_state = tx_signer
+        .get_btc_state(&chain_tip, &public_aggregate_key)
+        .await
+        .unwrap();
+
+    // Create an unsigned transaction with the deposit request
+    // to obtain the sighashes and corresponding txid that should
+    // be stored in the database
+    let unsigned_tx = UnsignedTransaction::new(
+        Requests::new(vec![RequestRef::Deposit(&setup.deposit_request)]),
+        &sbtc_state,
+    )
+    .unwrap();
+
+    let digests = unsigned_tx.construct_digests().unwrap();
+    let signer_digest = digests.signer_sighash();
+    let deposit_digest = digests.deposit_sighashes();
+    assert_eq!(deposit_digest.len(), 1);
+    let deposit_digest = deposit_digest[0];
+
+    let result = tx_signer
+        .handle_sbtc_requests_context_message(&sbtc_context, &chain_tip)
+        .await;
+
+    assert!(result.is_ok());
+
+    // Check that the intentions to sign the requests sighashes
+    // are stored in the database
+    let will_sign = db
+        .will_sign_bitcoin_tx_sighash(&signer_digest.sighash.into())
+        .await
+        .expect("query to check if signer sighash is stored failed")
+        .expect("signer sighash not stored");
+
+    assert!(will_sign);
+    let will_sign = db
+        .will_sign_bitcoin_tx_sighash(&deposit_digest.sighash.into())
+        .await
+        .expect("query to check if deposit sighash is stored failed")
+        .expect("deposit sighash not stored");
+
+    assert!(will_sign);
 
     testing::storage::drop_db(db).await;
 }
