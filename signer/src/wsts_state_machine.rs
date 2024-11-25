@@ -86,7 +86,7 @@ impl SignerStateMachine {
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
     where
-        S: storage::DbRead + storage::DbWrite,
+        S: storage::DbRead,
     {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(&aggregate_key)

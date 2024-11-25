@@ -9,10 +9,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use crate::bitcoin::utxo;
-use crate::bitcoin::utxo::GetFees;
 use crate::bitcoin::validation::BitcoinTxContext;
-use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::SignerCommand;
@@ -35,10 +32,12 @@ use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
 
+use bitcoin::hashes::Hash;
+use bitcoin::TapSighash;
 use futures::StreamExt;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -276,7 +275,7 @@ where
             }
 
             (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
-                self.handle_sbtc_requests_context_message(requests, &msg.bitcoin_chain_tip)
+                self.handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
                     .await?;
             }
             // Message types ignored by the transaction signer
@@ -341,14 +340,13 @@ where
     /// It validates the transactions and records its intent to sign them
     /// in the database.
     #[tracing::instrument(skip_all)]
-    pub async fn handle_sbtc_requests_context_message(
+    pub async fn handle_bitcoin_pre_sign_request(
         &mut self,
         request: &message::BitcoinPreSignRequest,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let bitcoin_block = self
-            .context
-            .get_storage()
+        let db = self.context.get_storage_mut();
+        let bitcoin_block = db
             .get_bitcoin_block(bitcoin_chain_tip)
             .await
             .map_err(|_| Error::NoChainTip)?
@@ -357,27 +355,18 @@ where
         let (maybe_aggregate_key, _signer_set) = self
             .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
             .await?;
-        let aggregate_key = maybe_aggregate_key.ok_or(Error::NoDkgShares)?;
 
-        let mut signer_state = self
-            .get_btc_state(bitcoin_chain_tip, &aggregate_key)
-            .await?;
-        // Update the signer state with the fees and fee rate from the
-        // coordinator.
-        signer_state.last_fees = request.last_fees;
-        signer_state.fee_rate = request.fee_rate;
-
-        let bitcoin_tx_context = BitcoinTxContext {
+        let btc_ctx = BitcoinTxContext {
             chain_tip: *bitcoin_chain_tip,
             chain_tip_height: bitcoin_block.block_height,
-            signer_state,
+            context_window: self.context_window,
             signer_public_key: self.signer_public_key(),
-            aggregate_key,
-            request_packages: request.requests.clone(),
+            aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
         };
 
-        let sighashes = bitcoin_tx_context
-            .construct_package_sighashes(&self.context)
+        tracing::debug!("validating bitcoin transaction pre-sign");
+        let sighashes = request
+            .construct_package_sighashes(&self.context, &btc_ctx)
             .await?;
 
         let deposits_sighashes: Vec<model::BitcoinTxSigHash> =
@@ -388,14 +377,10 @@ where
             .flat_map(|s| s.to_withdrawal_rows())
             .collect();
 
-        self.context
-            .get_storage_mut()
-            .write_bitcoin_txs_sighashes(&deposits_sighashes)
-            .await?;
+        tracing::debug!("storing sighashes to the database");
+        db.write_bitcoin_txs_sighashes(&deposits_sighashes).await?;
 
-        self.context
-            .get_storage_mut()
-            .write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
+        db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
             .await?;
 
         Ok(())
@@ -488,50 +473,6 @@ where
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         Ok(())
-    }
-
-    /// Constructs a new [`utxo::SignerBtcState`] based on the current market
-    /// fee rate, the signer's UTXO, and the last sweep package.
-    #[tracing::instrument(skip(self, aggregate_key))]
-    pub async fn get_btc_state(
-        &mut self,
-        chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
-    ) -> Result<utxo::SignerBtcState, Error> {
-        let bitcoin_client = self.context.get_bitcoin_client();
-        let fee_rate = bitcoin_client.estimate_fee_rate().await?;
-
-        // Retrieve the signer's current UTXO.
-        let utxo = self
-            .context
-            .get_storage()
-            .get_signer_utxo(chain_tip, self.context_window)
-            .await?
-            .ok_or(Error::MissingSignerUtxo)?;
-
-        // Retrieve the last sweep package for the above UTXO. These are
-        // transactions which exist in the mempool.
-        let last_sweep_package = self
-            .context
-            .get_storage()
-            .get_latest_unconfirmed_sweep_transactions(
-                chain_tip,
-                self.context_window,
-                &utxo.outpoint.txid.into(),
-            )
-            .await?;
-
-        // Calculate the last fees paid by the signer based on the latest sweep
-        // package.
-        let last_fees = last_sweep_package.get_fees()?;
-
-        Ok(utxo::SignerBtcState {
-            fee_rate,
-            utxo,
-            public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
-            last_fees,
-            magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
-        })
     }
 
     /// Check that the transaction is indeed valid. We specific checks that
@@ -698,20 +639,23 @@ where
             // The compiler will complain about this, so we silence the
             // warning.
             #[allow(clippy::map_entry)]
-            WstsNetMessage::NonceRequest(_) => {
+            WstsNetMessage::NonceRequest(request) => {
                 tracing::info!("handling NonceRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
                 }
-                // TODO(296): Validate that message is the appropriate sighash
+
+                let db = self.context.get_storage();
+                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
                         .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
                         .await?;
 
                     let state_machine = SignerStateMachine::load(
-                        &self.context.get_storage_mut(),
+                        &db,
                         maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
                         self.threshold,
                         self.signer_private_key,
@@ -723,14 +667,15 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            WstsNetMessage::SignatureShareRequest(_) => {
+            WstsNetMessage::SignatureShareRequest(request) => {
                 tracing::info!("handling SignatureShareRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
                 }
 
-                // TODO(296): Validate that message is the appropriate sighash
+                let db = self.context.get_storage();
+                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -795,6 +740,23 @@ where
         }
 
         Ok(())
+    }
+
+    /// Check whether we will sign the message, which is supposed to be a
+    /// bitcoin sighash
+    async fn validate_bitcoin_sign_request<D>(db: &D, message: &[u8]) -> Result<(), Error>
+    where
+        D: DbRead,
+    {
+        let sighash = TapSighash::from_slice(message)
+            .map_err(Error::SigHashConversion)?
+            .into();
+
+        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
+            Some(true) => Ok(()),
+            Some(false) => Err(Error::InvalidSigHash(sighash)),
+            None => Err(Error::UnknownSigHash(sighash)),
+        }
     }
 
     #[tracing::instrument(skip(self))]

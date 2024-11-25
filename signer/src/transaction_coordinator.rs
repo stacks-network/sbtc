@@ -429,7 +429,7 @@ where
         // Get the requests from the transaction package because they have been split into
         // multiple transactions.
         let sbtc_requests = BitcoinPreSignRequest {
-            requests: transaction_package
+            request_package: transaction_package
                 .iter()
                 .map(|tx| (&tx.requests).into())
                 .collect(),

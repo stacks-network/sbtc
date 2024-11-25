@@ -8,7 +8,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
 
 use sbtc::testing::regtest;
-use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::validation::BitcoinTxContext;
@@ -16,9 +15,7 @@ use signer::bitcoin::validation::BitcoinTxValidationData;
 use signer::bitcoin::validation::InputValidationResult;
 use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
-use signer::error::Error;
-use signer::keys::PublicKey;
-use signer::storage::model::BitcoinBlockHash;
+use signer::message::BitcoinPreSignRequest;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::DbRead as _;
 use signer::testing;
@@ -29,62 +26,30 @@ use crate::setup::{backfill_bitcoin_blocks, TestSignerSet};
 use crate::setup::{DepositAmounts, TestSweepSetup2};
 use crate::DATABASE_NUM;
 
-pub struct TestSignerState {
-    /// This signer's current view of the chain tip of the canonical
-    /// bitcoin blockchain. It is the block hash of the block on the
-    /// bitcoin blockchain with the greatest height.
-    pub chain_tip: BitcoinBlockHash,
-    /// How many bitcoin blocks back from the chain tip the signer will
-    /// look for requests.
-    pub context_window: u16,
-    /// The current market fee rate in sat/vByte.
-    pub fee_rate: f64,
-    /// The total fee amount and the fee rate for the last transaction that
-    /// used this UTXO as an input.
-    pub last_fee: Option<Fees>,
-    /// The current aggregate key that was the output of DKG.
-    pub aggregate_key: PublicKey,
-    /// Two byte prefix for BTC transactions that are related to the Stacks
-    /// blockchain.
-    pub magic_bytes: [u8; 2],
-}
+const TEST_FEE_RATE: f64 = 10.0;
+const TEST_CONTEXT_WINDOW: u16 = 1000;
 
-impl TestSignerState {
-    fn with_defaults(chain_tip: BitcoinBlockHash, aggregate_key: PublicKey) -> Self {
-        Self {
-            chain_tip,
-            context_window: 1000,
-            fee_rate: 10.0,
-            last_fee: None,
-            aggregate_key,
-            magic_bytes: [b'T', b'3'],
-        }
-    }
-    /// Fetch the signers' BTC state and the aggregate key.
-    ///
-    /// The returned state is the essential information for the signers
-    /// UTXO, and information about the current fees and any fees paid for
-    /// transactions currently in the mempool.
-    pub async fn get_btc_state<C>(&self, ctx: &C) -> Result<SignerBtcState, Error>
-    where
-        C: Context + Send + Sync,
-    {
-        // We need to know the signers UTXO, so let's fetch that.
-        let db = ctx.get_storage();
-        let utxo = db
-            .get_signer_utxo(&self.chain_tip, self.context_window)
-            .await?
-            .ok_or(Error::MissingSignerUtxo)?;
-
-        let btc_state = SignerBtcState {
-            fee_rate: self.fee_rate,
-            utxo,
-            public_key: bitcoin::XOnlyPublicKey::from(self.aggregate_key),
-            last_fees: self.last_fee,
-            magic_bytes: self.magic_bytes,
-        };
-
-        Ok(btc_state)
+/// Create the signers' Bitcoin state object.
+async fn signer_btc_state<C>(
+    ctx: &C,
+    request: &BitcoinPreSignRequest,
+    btc_ctx: &BitcoinTxContext,
+) -> SignerBtcState
+where
+    C: Context + Send + Sync,
+{
+    let signer_utxo = ctx
+        .get_storage()
+        .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
+        .await
+        .unwrap()
+        .unwrap();
+    SignerBtcState {
+        utxo: signer_utxo,
+        fee_rate: request.fee_rate,
+        public_key: btc_ctx.aggregate_key.into(),
+        last_fees: request.last_fees,
+        magic_bytes: [b'T', b'3'],
     }
 }
 
@@ -159,21 +124,27 @@ async fn one_tx_per_request_set() {
 
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 
-    let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
+    let request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
+            deposits: setup.deposit_outpoint_messages(),
+            withdrawals: Vec::new(),
+        }],
+        fee_rate: TEST_FEE_RATE,
+        last_fees: None,
+    };
 
     let btc_ctx = BitcoinTxContext {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
-        request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
-            withdrawals: Vec::new(),
-        }],
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
-    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
     // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
@@ -206,6 +177,9 @@ async fn one_tx_per_request_set() {
     assert!(deposit.is_valid_tx);
 }
 
+/// Test that including a single invalid transaction in a set of requests
+/// results in the entire bitcoin transaction being invalid, and that will
+/// sign for the associated sighashes are all false.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_invalid_deposit_invalidates_tx() {
@@ -252,21 +226,27 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 
-    let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
+    let request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
+            deposits: setup.deposit_outpoint_messages(),
+            withdrawals: Vec::new(),
+        }],
+        fee_rate: TEST_FEE_RATE,
+        last_fees: None,
+    };
 
     let btc_ctx = BitcoinTxContext {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
-        request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
-            withdrawals: Vec::new(),
-        }],
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
-    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
     // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
@@ -363,21 +343,25 @@ async fn one_withdrawal_errors_validation() {
 
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 
-    let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
+    let request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
+            deposits: setup.deposit_outpoint_messages(),
+            withdrawals: setup.withdrawal_ids(),
+        }],
+        fee_rate: TEST_FEE_RATE,
+        last_fees: None,
+    };
 
     let btc_ctx = BitcoinTxContext {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
-        request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
-            withdrawals: setup.withdrawal_ids(),
-        }],
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
-    let result = btc_ctx.construct_package_sighashes(&ctx).await;
+    let result = request.construct_package_sighashes(&ctx, &btc_ctx).await;
+
     assert!(result.is_err());
 }
 
@@ -450,21 +434,29 @@ async fn cannot_sign_deposit_is_ok() {
 
     // Now we construct the validation data, including the sighashes.
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
-    let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
+
+    let request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
+            deposits: setup.deposit_outpoint_messages(),
+            withdrawals: Vec::new(),
+        }],
+        fee_rate: TEST_FEE_RATE,
+        last_fees: None,
+    };
 
     let btc_ctx = BitcoinTxContext {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
-        request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
-            withdrawals: Vec::new(),
-        }],
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
-    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
+
     // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
@@ -518,7 +510,7 @@ async fn cannot_sign_deposit_is_ok() {
             .map(|(_, req, _)| req.clone())
             .collect(),
         withdrawals: Vec::new(),
-        signer_state: btc_ctx.signer_state,
+        signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
     };
@@ -576,21 +568,27 @@ async fn sighashes_match_from_sbtc_requests_object() {
 
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 
-    let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
+    let request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
+            deposits: setup.deposit_outpoint_messages(),
+            withdrawals: Vec::new(),
+        }],
+        fee_rate: TEST_FEE_RATE,
+        last_fees: None,
+    };
 
     let btc_ctx = BitcoinTxContext {
         chain_tip: chain_tip_block.block_hash,
         chain_tip_height: chain_tip_block.block_height,
-        request_packages: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
-            withdrawals: Vec::new(),
-        }],
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
+        context_window: TEST_CONTEXT_WINDOW,
     };
 
-    let validation_data = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
     // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
     // same", we check for them here.
@@ -641,7 +639,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
             .map(|(_, req, _)| req.clone())
             .collect(),
         withdrawals: Vec::new(),
-        signer_state: btc_ctx.signer_state,
+        signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
     };
@@ -707,26 +705,35 @@ async fn outcome_is_independent_of_input_order() {
 
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 
-    let test_state = TestSignerState::with_defaults(chain_tip, aggregate_key);
-    let mut btc_ctx = BitcoinTxContext {
-        chain_tip: chain_tip_block.block_hash,
-        chain_tip_height: chain_tip_block.block_height,
-        request_packages: vec![TxRequestIds {
+    let mut request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
             deposits: setup.deposit_outpoint_messages(),
             withdrawals: Vec::new(),
         }],
-        signer_public_key: setup.signers.keys[0],
-        aggregate_key,
-        signer_state: test_state.get_btc_state(&ctx).await.unwrap(),
+        fee_rate: TEST_FEE_RATE,
+        last_fees: None,
     };
 
-    // The outcome is independent of the ordering of the input IDs.
-    let validation_data1 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    let btc_ctx = BitcoinTxContext {
+        chain_tip: chain_tip_block.block_hash,
+        chain_tip_height: chain_tip_block.block_height,
+        signer_public_key: setup.signers.keys[0],
+        aggregate_key,
+        context_window: TEST_CONTEXT_WINDOW,
+    };
+
+    let validation_data1 = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
     let set1 = &validation_data1[0];
     let input_rows1 = set1.to_input_rows();
 
-    btc_ctx.request_packages[0].deposits.shuffle(&mut rng);
-    let validation_data2 = btc_ctx.construct_package_sighashes(&ctx).await.unwrap();
+    request.request_package[0].deposits.shuffle(&mut rng);
+    let validation_data2 = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
     let set2 = &validation_data2[0];
     let input_rows2 = set2.to_input_rows();
 
