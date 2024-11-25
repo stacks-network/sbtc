@@ -881,6 +881,9 @@ export const contracts = {
               tuple: [
                 { name: "amount", type: "uint128" },
                 { name: "recipient", type: "principal" },
+                { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
+                { name: "sweep-burn-height", type: "uint128" },
+                { name: "sweep-txid", type: { buffer: { length: 32 } } },
               ],
             },
           },
@@ -893,6 +896,32 @@ export const contracts = {
         {
           amount: bigint;
           recipient: string;
+          sweepBurnHash: Uint8Array;
+          sweepBurnHeight: bigint;
+          sweepTxid: Uint8Array;
+        } | null
+      >,
+      getCompletedWithdrawalSweepData: {
+        name: "get-completed-withdrawal-sweep-data",
+        access: "read_only",
+        args: [{ name: "id", type: "uint128" }],
+        outputs: {
+          type: {
+            optional: {
+              tuple: [
+                { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
+                { name: "sweep-burn-height", type: "uint128" },
+                { name: "sweep-txid", type: { buffer: { length: 32 } } },
+              ],
+            },
+          },
+        },
+      } as TypedAbiFunction<
+        [id: TypedAbiArg<number | bigint, "id">],
+        {
+          sweepBurnHash: Uint8Array;
+          sweepBurnHeight: bigint;
+          sweepTxid: Uint8Array;
         } | null
       >,
       getCurrentAggregatePubkey: {
@@ -946,6 +975,21 @@ export const contracts = {
           type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
         },
       } as TypedAbiFunction<[], Uint8Array[]>,
+      getDepositStatus: {
+        name: "get-deposit-status",
+        access: "read_only",
+        args: [
+          { name: "txid", type: { buffer: { length: 32 } } },
+          { name: "vout-index", type: "uint128" },
+        ],
+        outputs: { type: { optional: "bool" } },
+      } as TypedAbiFunction<
+        [
+          txid: TypedAbiArg<Uint8Array, "txid">,
+          voutIndex: TypedAbiArg<number | bigint, "voutIndex">,
+        ],
+        boolean | null
+      >,
       getWithdrawalRequest: {
         name: "get-withdrawal-request",
         access: "read_only",
@@ -1020,6 +1064,9 @@ export const contracts = {
           tuple: [
             { name: "amount", type: "uint128" },
             { name: "recipient", type: "principal" },
+            { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
+            { name: "sweep-burn-height", type: "uint128" },
+            { name: "sweep-txid", type: { buffer: { length: 32 } } },
           ],
         },
       } as TypedAbiMap<
@@ -1030,8 +1077,50 @@ export const contracts = {
         {
           amount: bigint;
           recipient: string;
+          sweepBurnHash: Uint8Array;
+          sweepBurnHeight: bigint;
+          sweepTxid: Uint8Array;
         }
       >,
+      completedWithdrawalSweep: {
+        name: "completed-withdrawal-sweep",
+        key: "uint128",
+        value: {
+          tuple: [
+            { name: "sweep-burn-hash", type: { buffer: { length: 32 } } },
+            { name: "sweep-burn-height", type: "uint128" },
+            { name: "sweep-txid", type: { buffer: { length: 32 } } },
+          ],
+        },
+      } as TypedAbiMap<
+        number | bigint,
+        {
+          sweepBurnHash: Uint8Array;
+          sweepBurnHeight: bigint;
+          sweepTxid: Uint8Array;
+        }
+      >,
+      depositStatus: {
+        name: "deposit-status",
+        key: {
+          tuple: [
+            { name: "txid", type: { buffer: { length: 32 } } },
+            { name: "vout-index", type: "uint128" },
+          ],
+        },
+        value: "bool",
+      } as TypedAbiMap<
+        {
+          txid: Uint8Array;
+          voutIndex: number | bigint;
+        },
+        boolean
+      >,
+      multiSigAddress: {
+        name: "multi-sig-address",
+        key: "principal",
+        value: "bool",
+      } as TypedAbiMap<string, boolean>,
       protocolContracts: {
         name: "protocol-contracts",
         key: "principal",
