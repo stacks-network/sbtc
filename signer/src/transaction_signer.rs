@@ -503,7 +503,7 @@ where
                 tracing::debug!(
                     "Sleeping a bit to give the other peers some slack to get DkgBegin"
                 );
-                tokio::time::sleep(Duration::from_secs(3)).await;
+                tokio::time::sleep(Duration::from_secs(10)).await;
 
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -520,8 +520,8 @@ where
             }
             WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
                 tracing::info!(
-                    "handling DkgPublicShares from signer {}",
-                    dkg_public_shares.signer_id
+                    signer_id = %dkg_public_shares.signer_id,
+                    "handling DkgPublicShares",
                 );
                 let public_keys = match self.wsts_state_machines.get(&msg.txid) {
                     Some(state_machine) => &state_machine.public_keys,
