@@ -439,7 +439,6 @@ async fn deposit_flow() {
         context_window,
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
-        bitcoin_presign_request_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: true,
         is_epoch3: true,

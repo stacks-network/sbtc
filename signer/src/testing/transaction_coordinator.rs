@@ -72,7 +72,6 @@ where
                 threshold,
                 sbtc_contracts_deployed,
                 signing_round_max_duration: Duration::from_secs(10),
-                bitcoin_presign_request_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
                 is_epoch3: true,
             },

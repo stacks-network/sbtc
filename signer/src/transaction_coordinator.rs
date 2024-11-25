@@ -16,7 +16,6 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
-use crate::bitcoin::utxo::SbtcRequests;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::TransactionLookupHint;
 use crate::context::Context;
@@ -153,9 +152,6 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
     pub signing_round_max_duration: Duration,
-    /// The maximum duration of a pre-sign request before the coordinator will
-    /// time out and start sending the requests to the signers.
-    pub bitcoin_presign_request_max_duration: Duration,
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
     pub dkg_max_duration: Duration,
@@ -392,63 +388,6 @@ where
         .map(|_| ())
     }
 
-    async fn construct_and_send_bitcoin_presign_request(
-        &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-        pending_requests: &SbtcRequests,
-        transaction_package: &[utxo::UnsignedTransaction<'_>],
-    ) -> Result<(), Error> {
-        // Create the BitcoinPreSignRequest from the transaction package
-        let sbtc_requests = BitcoinPreSignRequest {
-            requests: transaction_package
-                .iter()
-                .map(|tx| (&tx.requests).into())
-                .collect(),
-            fee_rate: pending_requests.signer_state.fee_rate,
-            last_fees: pending_requests.signer_state.last_fees.map(Into::into),
-        };
-
-        // Define the filter for presign request received events
-        let presign_ack_filter = |event: &SignerSignal| -> bool {
-            matches!(
-                event,
-                SignerSignal::Event(SignerEvent::TxSigner(
-                    TxSignerEvent::BitcoinPreSignRequestReceived
-                ))
-            )
-        };
-
-        // Create a signal stream with the defined filter
-        let signal_stream = self.context.as_signal_stream(presign_ack_filter);
-
-        // Send the presign request message
-        self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
-
-        tokio::pin!(signal_stream);
-        let future = async {
-            let mut num_acks = 1;
-            while num_acks < self.threshold {
-                // If signal_stream.next() returns None then one of the
-                // underlying streams has closed. That means either the
-                // network stream, the internal message stream, or the
-                // termination handler stream has closed. This is all bad,
-                // so we trigger a shutdown.
-                let Some(_) = signal_stream.next().await else {
-                    tracing::warn!("signal stream returned None, shutting down");
-                    self.context.get_termination_handle().signal_shutdown();
-                    return Err(Error::SignerShutdown);
-                };
-                num_acks += 1;
-            }
-            Ok(())
-        };
-
-        // Wait for the future to complete with a timeout
-        tokio::time::timeout(self.signing_round_max_duration, future)
-            .await
-            .map_err(|_| Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs()))?
-    }
-
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
     #[tracing::instrument(skip_all)]
@@ -480,7 +419,6 @@ where
             tracing::debug!("no requests to handle, exiting");
             return Ok(());
         };
-
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
@@ -488,13 +426,22 @@ where
         );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
+        // Get the requests from the transaction package because they have been split into
+        // multiple transactions.
+        let sbtc_requests = BitcoinPreSignRequest {
+            requests: transaction_package
+                .iter()
+                .map(|tx| (&tx.requests).into())
+                .collect(),
+            fee_rate: pending_requests.signer_state.fee_rate,
+            last_fees: pending_requests.signer_state.last_fees.map(Into::into),
+        };
 
-        self.construct_and_send_bitcoin_presign_request(
-            bitcoin_chain_tip,
-            &pending_requests,
-            &transaction_package,
-        )
-        .await?;
+        // Share the list of requests with the signers.
+        self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
+        // Wait to reduce chance that the other signers will receive the subsequent
+        // messages before the BitcoinPreSignRequest one.
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         for mut transaction in transaction_package {
             self.sign_and_broadcast(

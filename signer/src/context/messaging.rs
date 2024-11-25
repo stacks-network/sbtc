@@ -87,9 +87,6 @@ pub enum TxSignerEvent {
     /// Event which occurs when the transaction signer has started its event
     /// loop.
     EventLoopStarted,
-    /// Event which occurs when the transaction signer has received
-    /// BitcoinPreSignRequest.
-    BitcoinPreSignRequestReceived,
 }
 
 /// Events that can be triggered from the transaction coordinator.
