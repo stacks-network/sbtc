@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package stacks.signer.v1;
+
+import "bitcoin/bitcoin.proto";
+import "crypto/common.proto";
+import "crypto/wsts/wsts.proto";
+import "stacks/common.proto";
+import "stacks/signer/v1/decisions.proto";
+import "stacks/signer/v1/requests.proto";
+
+// Messages exchanged between signers
+message SignerMessage {
+  /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
+  bitcoin.BitcoinBlockHash bitcoin_chain_tip = 1;
+  // The message payload
+  oneof payload {
+    /// A decision related to signer deposit
+    SignerDepositDecision signer_deposit_decision = 2;
+    // A decision related to signer withdrawal
+    SignerWithdrawalDecision signer_withdrawal_decision = 3;
+    // A request to sign a Stacks transaction
+    StacksTransactionSignRequest stacks_transaction_sign_request = 4;
+    // A signature of a Stacks transaction
+    StacksTransactionSignature stacks_transaction_signature = 5;
+    // A request to sign a Bitcoin transaction
+    BitcoinTransactionSignRequest bitcoin_transaction_sign_request = 6;
+    // An acknowledgment of a signed Bitcoin transaction
+    BitcoinTransactionSignAck bitcoin_transaction_sign_ack = 7;
+    // Contains all variants for DKG and WSTS signing rounds
+    WstsMessage wsts_message = 8;
+    // Information about a new sweep transaction
+    SweepTransactionInfo sweep_transaction_info = 9;
+  }
+}
+
+// Represents information about a deposit request being swept-in by a sweep transaction.
+message SweptDeposit {
+  // The index of the deposit input in the sBTC sweep transaction.
+  uint32 input_index = 1;
+  // The Bitcoin txid of the deposit request UTXO being swept-in by this
+  // transaction.
+  bitcoin.BitcoinTxid deposit_request_txid = 2;
+  // The Bitcoin output index of the deposit request UTXO being swept-in by
+  // this transaction.
+  uint32 deposit_request_output_index = 3;
+}
+
+// Represents information about a withdrawal request being swept-out by a sweep transaction.
+message SweptWithdrawal {
+  // The index of the withdrawal output in the sBTC sweep transaction.
+  uint32 output_index = 1;
+  // The public request id of the withdrawal request serviced by this
+  // transaction.
+  uint64 withdrawal_request_id = 2;
+  // The Stacks block hash of the Stacks block which included the withdrawal
+  // request transaction.
+  stacks.StacksBlockId withdrawal_request_block_hash = 3;
+}
+
+// Represents information about a new sweep transaction.
+message SweepTransactionInfo {
+  // The Bitcoin transaction id of the sweep transaction.
+  bitcoin.BitcoinTxid txid = 1;
+  // The transaction id of the signer UTXO consumed by this transaction.
+  bitcoin.BitcoinTxid signer_prevout_txid = 2;
+  // The index of the signer UTXO consumed by this transaction.
+  uint32 signer_prevout_output_index = 3;
+  // The amount of the signer UTXO consumed by this transaction.
+  uint64 signer_prevout_amount = 4;
+  // The public key of the signer UTXO consumed by this transaction.
+  bytes signer_prevout_script_pubkey = 5;
+  // The total **output** amount of this transaction.
+  uint64 amount = 6;
+  // The fee paid for this transaction.
+  uint64 fee = 7;
+  // The virtual size of this transaction (in bytes).
+  uint32 vsize = 8;
+  // The Bitcoin block hash at which this transaction was created.
+  bitcoin.BitcoinBlockHash created_at_block_hash = 9;
+  // The market fee rate at the time of this transaction.
+  double market_fee_rate = 10;
+  // List of deposits which were swept-in by this transaction.
+  repeated SweptDeposit swept_deposits = 11;
+  // List of withdrawals which were swept-out by this transaction.
+  repeated SweptWithdrawal swept_withdrawals = 12;
+}
+
+// A wsts message.
+message WstsMessage {
+  // The transaction ID this message relates to, will be a dummy ID for DKG messages
+  bitcoin.BitcoinTxid txid = 1;
+  // The wsts message
+  oneof inner {
+    // Tell signers to begin DKG by sending DKG public shares
+    crypto.wsts.DkgBegin dkg_begin = 2;
+    // Send DKG public shares
+    crypto.wsts.SignerDkgPublicShares signer_dkg_public_shares = 3;
+    // Tell signers to send DKG private shares
+    crypto.wsts.DkgPrivateBegin dkg_private_begin = 4;
+    // Send DKG private shares
+    crypto.wsts.DkgPrivateShares dkg_private_shares = 5;
+    // Tell signers to compute shares and send DKG end
+    crypto.wsts.DkgEndBegin dkg_end_begin = 6;
+    // Tell coordinator that DKG is complete
+    crypto.wsts.DkgEnd dkg_end = 7;
+    // Tell signers to send signing nonces
+    crypto.wsts.NonceRequest nonce_request = 8;
+    // Tell coordinator signing nonces
+    crypto.wsts.NonceResponse nonce_response = 9;
+    // Tell signers to construct signature shares
+    crypto.wsts.SignatureShareRequest signature_share_request = 10;
+    // Tell coordinator signature shares
+    crypto.wsts.SignatureShareResponse signature_share_response = 11;
+  }
+}
+
+// Wraps an inner type with a public key and a signature,
+// allowing easy verification of the integrity of the inner data.
+message Signed {
+  // The public key of the signer.
+  crypto.PublicKey signer_pub_key = 1;
+  // A signature over the hash of the inner structure.
+  bytes signature = 2;
+  // The signed structure.
+  oneof inner {
+    SignerMessage signer_message = 3;
+  }
+}
