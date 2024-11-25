@@ -183,6 +183,16 @@ where
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
+        if matches!(
+            msg.payload,
+            message::Payload::SignerDepositDecision(_)
+                | message::Payload::SignerWithdrawalDecision(_)
+                | message::Payload::StacksTransactionSignature(_)
+                | message::Payload::BitcoinTransactionSignAck(_)
+        ) {
+            return Ok(());
+        }
+
         if !msg.verify() {
             tracing::warn!("unable to verify message");
             return Err(Error::InvalidSignature);
