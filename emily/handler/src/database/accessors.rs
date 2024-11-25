@@ -463,10 +463,24 @@ pub async fn add_chainstate_entry(
                 }
             });
 
-    // Exit here unless this chain height hasn't been detected before.
     match current_chainstate_entry_result {
         // Fall through if there is no existing entry..
         Err(Error::NotFound) => (),
+        // If the chainstate entry is already in the table but the api believes the chaintip is behind
+        // this entry, that means a reorg has occurred and the api got pulled back, but then it went
+        // back to the chain it had been following before the reorg. This is a stable state, and we
+        // will skip putting it into the table but will update the api state.
+        Ok(_) if api_state.chaintip().key.height < entry.key.height => {
+            api_state.api_status = ApiStatus::Stable(entry.clone());
+            return set_api_state(context, &api_state).await;
+        }
+        // If there's an inconsistency BUT the chaintip is behind the inconsistency, this means we've gone
+        // back in time a bit and are now overwriting the old chainstate entries that we had put in before.
+        // While the chainstate table is inconsistent with the current chainstate, it's actually a stable
+        // state because we can resolve that inconsistency by just overwriting the old entry at that height.
+        Err(Error::InconsistentState(_)) if api_state.chaintip().key.height < entry.key.height => {
+            ()
+        }
         // ..otherwise exit here.
         irrecoverable_or_okay => {
             return irrecoverable_or_okay;
