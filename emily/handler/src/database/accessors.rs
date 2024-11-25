@@ -769,7 +769,6 @@ where
     .await
 }
 
-#[cfg(feature = "testing")]
 async fn delete_entry<T: TableIndexTrait>(
     context: &EmilyContext,
     key: &<<T as TableIndexTrait>::Entry as EntryTrait>::Key,
