@@ -73,6 +73,14 @@ pub trait DbRead {
         signatures_required: u16,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
+    /// Check whether we have a record of the deposit request in our
+    /// database.
+    fn deposit_request_exists(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Get the deposit requests that the signer has accepted to sign
     fn get_accepted_deposit_requests(
         &self,
@@ -329,6 +337,12 @@ pub trait DbRead {
         context_window: u16,
         prevout_txid: &model::BitcoinTxId,
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
+
+    /// Get the bitcoin sighash output.
+    fn will_sign_bitcoin_tx_sighash(
+        &self,
+        sighash: &model::SigHash,
+    ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -463,5 +477,17 @@ pub trait DbWrite {
     fn write_tx_prevout(
         &self,
         prevout: &model::TxPrevout,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transactions sighaes to the database.
+    fn write_bitcoin_txs_sighashes(
+        &self,
+        sighashes: &[model::BitcoinTxSigHash],
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin withdrawals outputs to the database.
+    fn write_bitcoin_withdrawals_outputs(
+        &self,
+        withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }

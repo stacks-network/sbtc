@@ -258,6 +258,11 @@ impl From<sbtc::error::Error> for Error {
         Error::Debug(format!("sbtc::error::Error - {err:?}"))
     }
 }
+impl From<std::num::ParseIntError> for Error {
+    fn from(err: std::num::ParseIntError) -> Self {
+        Error::Debug(format!("std::num::ParseIntError - {err:?}"))
+    }
+}
 
 /// Structure representing an error response
 /// This is used to serialize error messages in HTTP responses

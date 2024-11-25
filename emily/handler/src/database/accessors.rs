@@ -1,5 +1,7 @@
 //! Accessors.
 
+use std::collections::HashMap;
+
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
 #[cfg(feature = "testing")]
@@ -7,11 +9,15 @@ use tracing::info;
 
 use tracing::warn;
 
+use crate::api::models::limits::{AccountLimits, Limits};
 use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::deposit::ValidatedDepositUpdate;
+use super::entries::limits::{
+    LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
+};
 use super::entries::withdrawal::ValidatedWithdrawalUpdate;
 use super::entries::{
     chainstate::{
@@ -561,6 +567,101 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
     put_entry_with_version::<SpecialApiStateIndex>(context, &mut api_state.clone()).await
 }
 
+// Limits ----------------------------------------------------------------------
+
+/// Note, this function provides the direct output structure for the api call
+/// to get the limits for the full sbtc system, and therefore is breaching the
+/// typical contract for these accessor functions. We do this here because the
+/// data for this sigular entry is spread across the entire table in a way that
+/// needs to be first gathered, then filtered. It does not neatly fit into a
+/// return type that is within the table as an entry.
+pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
+    // Get all the entries of the limit table. This table shouldn't be too large.
+    let all_entries =
+        LimitTablePrimaryIndex::get_all_entries(&context.dynamodb_client, &context.settings)
+            .await?;
+    // Create the default global cap.
+    let default_global_cap = context.settings.default_limits.clone();
+    let mut global_cap = LimitEntry {
+        key: LimitEntryKey {
+            account: GLOBAL_CAP_ACCOUNT.to_string(),
+            // Make the timestamp the smallest possible to any other timestamp
+            // will be greater than this.
+            timestamp: 0,
+        },
+        peg_cap: default_global_cap.peg_cap,
+        per_deposit_cap: default_global_cap.per_deposit_cap,
+        per_withdrawal_cap: default_global_cap.per_withdrawal_cap,
+    };
+    // Aggregate all the latest entries by account.
+    let mut limit_by_account: HashMap<String, LimitEntry> = HashMap::new();
+    for entry in all_entries.iter() {
+        let account = &entry.key.account;
+        if account == GLOBAL_CAP_ACCOUNT {
+            // If the account is the global cap account and either we haven't encountered
+            // the cap before or the cap we have encountered is older than the current one
+            // then set the global cap to the current entry.
+            if global_cap.key.timestamp < entry.key.timestamp {
+                global_cap = entry.clone();
+            }
+        } else if limit_by_account.contains_key(account) {
+            // If the account is already in the map then update the entry if the current
+            // entry is newer.
+            if let Some(existing_entry) = limit_by_account.get_mut(account) {
+                if existing_entry.key.timestamp < entry.key.timestamp {
+                    *existing_entry = entry.clone();
+                }
+            }
+        } else {
+            // If the account isn't in the map then insert it.
+            limit_by_account.insert(entry.key.account.clone(), entry.clone());
+        }
+    }
+    // Turn the account limits into the correct structure.
+    let account_caps = limit_by_account
+        .into_iter()
+        .filter(|(_, limit_entry)| !limit_entry.is_empty())
+        .map(|(account, limit_entry)| (account, AccountLimits::from(limit_entry)))
+        .collect();
+    // Get the global limit for the whole thing.
+    Ok(Limits {
+        peg_cap: global_cap.peg_cap,
+        per_deposit_cap: global_cap.per_deposit_cap,
+        per_withdrawal_cap: global_cap.per_withdrawal_cap,
+        account_caps,
+    })
+}
+
+/// Get the limit for a specific account.
+#[allow(clippy::ptr_arg)]
+pub async fn get_limit_for_account(
+    context: &EmilyContext,
+    account: &String,
+) -> Result<LimitEntry, Error> {
+    // Make the query.
+    let (mut entries, _) = query_with_partition_key::<LimitTablePrimaryIndex>(
+        context,
+        account,
+        None,
+        // Only get the most recent entry. The internals of this query uses
+        // scan_index_forward = false.
+        Some(1),
+    )
+    .await?;
+    // The limit is set to 1 so there should always only be one entry returned,
+    // but for the sake of redundancy also get the most recent entry.
+    entries.sort_by_key(|entry| entry.key.timestamp);
+    entries.pop().ok_or(Error::NotFound)
+}
+
+/// Set the limit for a specific account.
+pub async fn set_limit_for_account(
+    context: &EmilyContext,
+    limit: &LimitEntry,
+) -> Result<(), Error> {
+    put_entry::<LimitTablePrimaryIndex>(context, limit).await
+}
+
 // Testing ---------------------------------------------------------------------
 
 /// Wipes all the tables.
@@ -570,6 +671,7 @@ pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_deposit_table(context).await?;
     wipe_withdrawal_table(context).await?;
     wipe_chainstate_table(context).await?;
+    wipe_limit_table(context).await?;
     Ok(())
 }
 
@@ -590,6 +692,12 @@ async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
 async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
     delete_entry::<SpecialApiStateIndex>(context, &ApiStateEntry::key()).await?;
     wipe::<ChainstateTablePrimaryIndex>(context).await
+}
+
+/// Wipes the limit table.
+#[cfg(feature = "testing")]
+async fn wipe_limit_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe::<LimitTablePrimaryIndex>(context).await
 }
 
 // Generics --------------------------------------------------------------------

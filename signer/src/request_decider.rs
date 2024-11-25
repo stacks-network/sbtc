@@ -5,6 +5,7 @@
 //!
 //! For more details, see the [`RequestDeciderEventLoop`] documentation.
 
+use crate::block_observer::BlockObserver;
 use crate::blocklist_client::BlocklistChecker;
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -14,6 +15,7 @@ use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::ecdsa::SignEcdsa as _;
 use crate::ecdsa::Signed;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -48,6 +50,17 @@ pub struct RequestDeciderEventLoop<C, N, B> {
     pub context_window: u16,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Command(SignerCommand::Shutdown)
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+            | SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+    )
+}
+
 impl<C, N, B> RequestDeciderEventLoop<C, N, B>
 where
     C: Context,
@@ -67,13 +80,13 @@ where
             return Err(error);
         };
 
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
         while let Some(message) = signal_stream.next().await {
             match message {
-                Ok(SignerSignal::Command(SignerCommand::Shutdown)) => break,
-                Ok(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
-                Ok(SignerSignal::Event(event)) => match event {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => match event {
                     SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
                             tracing::error!(%error, "error handling signer message");
@@ -86,7 +99,7 @@ where
 
                         let message = RequestDeciderEvent::NewRequestsHandled.into();
                         // If there is an error here then the application
-                        // is on it's way down since
+                        // is on its way down since
                         // [`SignerContext::signal`] sends a shutdown
                         // signal on error. We've also logged the error
                         // already.
@@ -96,11 +109,6 @@ where
                     }
                     _ => {}
                 },
-                // This means one of the broadcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Err(error) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
             }
         }
 
@@ -215,10 +223,7 @@ where
             can_sign,
         };
 
-        self.context
-            .get_storage_mut()
-            .write_deposit_signer_decision(&signer_decision)
-            .await?;
+        db.write_deposit_signer_decision(&signer_decision).await?;
 
         self.send_message(msg, chain_tip).await?;
 
@@ -306,24 +311,62 @@ where
         Ok(can_accept)
     }
 
+    /// Save the given decision into the database
+    ///
+    /// If we do not have a record of the associated deposit request in our
+    /// database then we fetch it from Emily and then attempt to persist
+    /// it.
     #[tracing::instrument(skip_all, fields(sender = %signer_pub_key))]
-    async fn persist_received_deposit_decision(
+    pub async fn persist_received_deposit_decision(
         &mut self,
         decision: &SignerDepositDecision,
         signer_pub_key: PublicKey,
     ) -> Result<(), Error> {
+        let txid = decision.txid.into();
+        let output_index = decision.output_index;
         let signer_decision = DepositSigner {
-            txid: decision.txid.into(),
-            output_index: decision.output_index,
+            txid,
+            output_index,
             signer_pub_key,
             can_accept: decision.can_accept,
             can_sign: decision.can_sign,
         };
 
-        self.context
-            .get_storage_mut()
-            .write_deposit_signer_decision(&signer_decision)
-            .await?;
+        let db = self.context.get_storage_mut();
+        // Before storing a decision in the database, we first check to see
+        // if we have a record of the associated deposit request. If we
+        // don't have a record then fetch it from Emily and store it before
+        // storing the decision.
+        if !db.deposit_request_exists(&txid, output_index).await? {
+            tracing::debug!("no record of the deposit request, fetching from emily");
+            let processor = BlockObserver {
+                context: self.context.clone(),
+                horizon: 20,
+                bitcoin_blocks: (),
+            };
+            let deposit_request = self
+                .context
+                .get_emily_client()
+                .get_deposit(&txid, output_index)
+                .await?;
+
+            if let Some(request) = deposit_request {
+                processor.load_requests(&[request]).await?;
+            }
+        }
+        // We still might not have a record of the deposit request (perhaps
+        // it failed validation). In this case we do not persist the
+        // decision and move on.
+        if !db.deposit_request_exists(&txid, output_index).await? {
+            tracing::debug!(
+                %txid,
+                %output_index,
+                sender = %signer_pub_key,
+                "we still do not have a record of the deposit request"
+            );
+            return Ok(());
+        }
+        db.write_deposit_signer_decision(&signer_decision).await?;
 
         self.context
             .signal(RequestDeciderEvent::ReceivedDepositDecision.into())?;
@@ -344,6 +387,9 @@ where
             is_accepted: decision.accepted,
             txid: decision.txid,
         };
+
+        // TODO: we need to check to see if we have the withdrawal request
+        // first.
 
         self.context
             .get_storage_mut()

@@ -38,7 +38,7 @@
     (let 
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
-            (replay-fetch (contract-call? .sbtc-registry get-completed-deposit txid vout-index))    
+            (replay-fetch (contract-call? .sbtc-registry get-deposit-status txid vout-index))    
         )
 
         ;; Check that the caller is the current signer principal

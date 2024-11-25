@@ -7,6 +7,7 @@ use axum::routing::post;
 use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
+use clap::ValueEnum;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
@@ -28,6 +29,12 @@ use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
 
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LogOutputFormat {
+    Json,
+    Pretty,
+}
+
 /// Command line arguments for the signer.
 #[derive(Debug, Parser)]
 #[clap(name = "sBTC Signer")]
@@ -41,21 +48,20 @@ struct SignerArgs {
     /// pending migrations to the database on startup.
     #[clap(long)]
     migrate_db: bool,
+
+    #[clap(short = 'o', long = "output-format", default_value = "pretty")]
+    output_format: Option<LogOutputFormat>,
 }
 
 #[tokio::main]
 #[tracing::instrument(name = "signer")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    // TODO(497): The whole logging thing should be revisited. We should support
-    //   enabling different layers, i.e. for pretty console, for opentelem, etc.
-    //sbtc::logging::setup_logging("info,signer=debug", false);
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init();
-
     // Parse the command line arguments.
     let args = SignerArgs::parse();
+
+    // Configure the binary's stdout/err output based on the provided output format.
+    let pretty = matches!(args.output_format, Some(LogOutputFormat::Pretty));
+    signer::logging::setup_logging("", pretty);
 
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
@@ -195,10 +201,13 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
 
     // Build the swarm.
     tracing::debug!("building the libp2p swarm");
-    let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.private_key)
-        .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
-        .add_seed_addrs(&ctx.config().signer.p2p.seeds)
-        .build()?;
+    let config = ctx.config();
+    let mut swarm =
+        SignerSwarmBuilder::new(&config.signer.private_key, config.signer.p2p.enable_mdns)
+            .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
+            .add_seed_addrs(&ctx.config().signer.p2p.seeds)
+            .add_external_addresses(&ctx.config().signer.p2p.public_endpoints)
+            .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
     // received, or an unrecoverable error has occurred.
@@ -257,17 +266,10 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     .await
     .unwrap();
 
-    // TODO: Get clients from context when implemented
-    let emily_client: ApiFallbackClient<EmilyClient> =
-        TryFrom::try_from(&config.emily.endpoints[..])?;
-    let stacks_client: ApiFallbackClient<StacksClient> = TryFrom::try_from(&config)?;
-
     // TODO: We should have a new() method that builds from the context
     let block_observer = block_observer::BlockObserver {
         context: ctx,
         bitcoin_blocks: stream.to_block_hash_stream(),
-        stacks_client,
-        emily_client,
         horizon: 20,
     };
 
@@ -283,10 +285,11 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         network,
         context: ctx.clone(),
         context_window: 10000,
-        threshold: 2,
+        threshold: config.signer.bootstrap_signatures_required.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
+        dkg_begin_pause: Some(Duration::from_secs(10)),
     };
 
     signer.run().await
@@ -294,7 +297,8 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
 
 /// Run the transaction coordinator event-loop.
 async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
-    let private_key = ctx.config().signer.private_key;
+    let config = ctx.config().clone();
+    let private_key = config.signer.private_key;
     let network = P2PNetwork::new(&ctx);
 
     let coord = transaction_coordinator::TxCoordinatorEventLoop {
@@ -302,9 +306,9 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         context: ctx,
         context_window: 10000,
         private_key,
-        signing_round_max_duration: Duration::from_secs(10),
-        threshold: 2,
-        dkg_max_duration: Duration::from_secs(10),
+        signing_round_max_duration: Duration::from_secs(30),
+        threshold: config.signer.bootstrap_signatures_required,
+        dkg_max_duration: Duration::from_secs(120),
         sbtc_contracts_deployed: false,
         is_epoch3: false,
     };

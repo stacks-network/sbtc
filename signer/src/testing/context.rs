@@ -3,7 +3,7 @@
 use std::time::Duration;
 use std::{ops::Deref, sync::Arc};
 
-use bitcoin::Txid;
+use bitcoin::{Amount, Txid};
 use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
@@ -20,6 +20,7 @@ use tokio::time::error::Elapsed;
 use crate::bitcoin::GetTransactionFeeResult;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::model::BitcoinTxId;
 use crate::{
     bitcoin::{
         rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
@@ -448,9 +449,24 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .get_contract_source(address, contract_name)
             .await
     }
+
+    async fn get_sbtc_total_supply(&self, sender: &StacksAddress) -> Result<Amount, Error> {
+        self.inner.lock().await.get_sbtc_total_supply(sender).await
+    }
 }
 
 impl EmilyInteract for WrappedMock<MockEmilyInteract> {
+    async fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<sbtc::deposits::CreateDepositRequest>, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_deposit(txid, output_index)
+            .await
+    }
     async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         self.inner.lock().await.get_deposits().await
     }

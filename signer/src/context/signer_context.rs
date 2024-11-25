@@ -5,11 +5,12 @@ use url::Url;
 
 use crate::{
     bitcoin::BitcoinInteract,
-    config::Settings,
+    config::{EmilyClientConfig, Settings},
     emily_client::EmilyInteract,
     error::Error,
     stacks::api::StacksInteract,
     storage::{DbRead, DbWrite},
+    SIGNER_CHANNEL_CAPACITY,
 };
 
 use super::{Context, SignerSignal, SignerState, TerminationHandle};
@@ -49,17 +50,17 @@ where
     S: DbRead + DbWrite + Clone + Sync + Send + 'static,
     BC: for<'a> TryFrom<&'a [Url]> + BitcoinInteract + Clone + 'static,
     ST: for<'a> TryFrom<&'a Settings> + StacksInteract + Clone + Sync + Send + 'static,
-    EM: for<'a> TryFrom<&'a [Url]> + EmilyInteract + Clone + Sync + Send + 'static,
+    EM: for<'a> TryFrom<&'a EmilyClientConfig> + EmilyInteract + Clone + Sync + Send + 'static,
     Error: for<'a> From<<BC as TryFrom<&'a [Url]>>::Error>,
     Error: for<'a> From<<ST as TryFrom<&'a Settings>>::Error>,
-    Error: for<'a> From<<EM as TryFrom<&'a [Url]>>::Error>,
+    Error: for<'a> From<<EM as TryFrom<&'a EmilyClientConfig>>::Error>,
 {
     /// Initializes a new [`SignerContext`], automatically creating clients
     /// based on the provided types.
     pub fn init(config: Settings, db: S) -> Result<Self, Error> {
         let bc = BC::try_from(&config.bitcoin.rpc_endpoints)?;
         let st = ST::try_from(&config)?;
-        let em = EM::try_from(&config.emily.endpoints)?;
+        let em = EM::try_from(&config.emily)?;
 
         Ok(Self::new(config, db, bc, st, em))
     }
@@ -83,7 +84,7 @@ where
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
-        let (signal_tx, _) = tokio::sync::broadcast::channel(1024);
+        let (signal_tx, _) = tokio::sync::broadcast::channel(SIGNER_CHANNEL_CAPACITY);
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
         Self {

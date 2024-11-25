@@ -6,10 +6,12 @@ use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid;
 use emily_client::apis::chainstate_api;
+use emily_client::apis::configuration::ApiKey;
 use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
 use emily_client::apis::withdrawal_api;
 use emily_client::apis::Error as EmilyError;
+use emily_client::apis::ResponseContent;
 use emily_client::models::Chainstate;
 use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::DepositUpdate;
@@ -25,7 +27,10 @@ use url::Url;
 
 use crate::bitcoin::utxo::RequestRef;
 use crate::bitcoin::utxo::UnsignedTransaction;
+use crate::config::EmilyClientConfig;
+use crate::config::EmilyEndpointConfig;
 use crate::error::Error;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksBlock;
 use crate::util::ApiFallbackClient;
 
@@ -39,6 +44,10 @@ pub enum EmilyClientError {
     /// Host is required
     #[error("invalid URL: host is required: {0}")]
     InvalidUrlHostRequired(String),
+
+    /// An error occurred while getting a deposit request
+    #[error("error getting a deposit: {0}")]
+    GetDeposit(EmilyError<deposit_api::GetDepositError>),
 
     /// An error occurred while getting deposits
     #[error("error getting deposits: {0}")]
@@ -64,6 +73,13 @@ pub enum EmilyClientError {
 /// Trait describing the interactions with Emily API.
 #[cfg_attr(any(test, feature = "testing"), mockall::automock())]
 pub trait EmilyInteract: Sync + Send {
+    /// Get a deposit from Emily.
+    fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> impl std::future::Future<Output = Result<Option<CreateDepositRequest>, Error>> + Send;
+
     /// Get pending deposits from Emily.
     fn get_deposits(
         &self,
@@ -117,13 +133,30 @@ impl EmilyClient {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
 impl TryFrom<&Url> for EmilyClient {
+    type Error = Error;
+    /// Initialize a new Emily client from just a URL for testing scenarios.
+    fn try_from(url: &Url) -> Result<Self, Self::Error> {
+        let emily_endpoint_config = EmilyEndpointConfig {
+            endpoint: url.clone(),
+            api_key: None,
+        };
+        Self::try_from(&emily_endpoint_config)
+    }
+}
+
+impl TryFrom<&EmilyEndpointConfig> for EmilyClient {
     type Error = Error;
 
     /// Attempt to create an Emily client from a URL. Note that for the Signer,
     /// this should already have been validated by the configuration, but we do
     /// the checks here anyway to keep them close to the implementation.
-    fn try_from(url: &Url) -> Result<Self, Self::Error> {
+    fn try_from(endpoint_config: &EmilyEndpointConfig) -> Result<Self, Self::Error> {
+        // Extract the info.
+        let url = endpoint_config.endpoint.clone();
+        let maybe_api_key = endpoint_config.api_key.clone();
+
         // Must be HTTP or HTTPS
         if !["http", "https"].contains(&url.scheme()) {
             return Err(EmilyClientError::InvalidUrlScheme(url.to_string()).into());
@@ -139,11 +172,47 @@ impl TryFrom<&Url> for EmilyClient {
         // causing the api calls to have two leading slashes in the path (getting a 404)
         config.base_path = url.to_string().trim_end_matches("/").to_string();
 
+        // Add the API key if present.
+        if let Some(api_key) = maybe_api_key {
+            config.api_key = Some(ApiKey { prefix: None, key: api_key });
+        }
+
         Ok(Self { config })
     }
 }
 
 impl EmilyInteract for EmilyClient {
+    async fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<CreateDepositRequest>, Error> {
+        let txid_str = txid.to_string();
+        let index = output_index.to_string();
+
+        let resp = deposit_api::get_deposit(&self.config, &txid_str, &index).await;
+
+        let deposit = match resp {
+            Ok(deposit) => deposit,
+            Err(EmilyError::ResponseError(ResponseContent { status, .. }))
+                if status.as_u16() == 404 =>
+            {
+                return Ok(None)
+            }
+            error => error.map_err(EmilyClientError::GetDeposit)?,
+        };
+
+        Ok(Some(CreateDepositRequest {
+            outpoint: OutPoint {
+                txid: Txid::from_str(&deposit.bitcoin_txid).map_err(Error::DecodeHexTxid)?,
+                vout: deposit.bitcoin_tx_output_index,
+            },
+            reclaim_script: ScriptBuf::from_hex(&deposit.reclaim_script)
+                .map_err(Error::DecodeHexScript)?,
+            deposit_script: ScriptBuf::from_hex(&deposit.deposit_script)
+                .map_err(Error::DecodeHexScript)?,
+        }))
+    }
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         // TODO: hanlde pagination -- if the queried data is over 1MB DynamoDB will
         // paginate the results even if we pass `None` as page limit.
@@ -254,12 +323,22 @@ impl EmilyInteract for EmilyClient {
     async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
         chainstate_api::set_chainstate(&self.config, chainstate)
             .await
+            .inspect_err(|error| tracing::info!(?error, "error for set_chainstate"))
             .map_err(EmilyClientError::AddChainstateEntry)
             .map_err(Error::EmilyApi)
     }
 }
 
 impl EmilyInteract for ApiFallbackClient<EmilyClient> {
+    async fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<CreateDepositRequest>, Error> {
+        self.exec(|client, _| client.get_deposit(txid, output_index))
+            .await
+    }
+
     fn get_deposits(
         &self,
     ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> {
@@ -309,11 +388,12 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
     }
 }
 
-impl TryFrom<&[Url]> for ApiFallbackClient<EmilyClient> {
+impl TryFrom<&EmilyClientConfig> for ApiFallbackClient<EmilyClient> {
     type Error = Error;
 
-    fn try_from(urls: &[Url]) -> Result<Self, Self::Error> {
-        let clients = urls
+    fn try_from(config: &EmilyClientConfig) -> Result<Self, Self::Error> {
+        let clients = config
+            .endpoints
             .iter()
             .map(EmilyClient::try_from)
             .collect::<Result<Vec<_>, _>>()?;
@@ -327,9 +407,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn try_from_url() {
-        let url = Url::parse("http://localhost:8080").unwrap();
-        let client = EmilyClient::try_from(&url).unwrap();
+    fn try_from_url_with_key() {
+        // Arrange.
+        let url = Url::parse("http://localhost:8080/").unwrap();
+        let api_key = Some("test_key".to_string());
+        let emily_endpoint_config = EmilyEndpointConfig { endpoint: url, api_key };
+        // Act.
+        let client = EmilyClient::try_from(&emily_endpoint_config).unwrap();
+        // Assert.
         assert_eq!(client.config.base_path, "http://localhost:8080");
+        assert_eq!(client.config.api_key.unwrap().key, "test_key");
+    }
+
+    #[test]
+    fn try_from_url_without_key() {
+        // Arrange.
+        let url = Url::parse("http://localhost:8080").unwrap();
+        let emily_endpoint_config = EmilyEndpointConfig { endpoint: url, api_key: None };
+        // Act.
+        let client = EmilyClient::try_from(&emily_endpoint_config).unwrap();
+        // Assert.
+        assert_eq!(client.config.base_path, "http://localhost:8080");
+        assert!(client.config.api_key.is_none());
     }
 }

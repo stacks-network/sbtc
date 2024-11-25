@@ -78,8 +78,8 @@ exec_run() {
 
 exec_demo() {
   if [ -z "$1" ]; then
-    pubkey=`psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only`
-    pubkey=${pubkey:2}
+    pubkey=$(psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only)
+    pubkey=$(echo "$pubkey" | cut -c 2-)
     echo "Signers aggregate_key: $pubkey"
   else
     pubkey="$1"
@@ -90,8 +90,8 @@ exec_demo() {
 }
 
 exec_info() {
-  pubkey=`psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only`
-  pubkey=${pubkey:2}
+  pubkey=$(psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only)
+  pubkey=$(echo "$pubkey" | cut -c 2-)
   echo "Signers aggregate_key: $pubkey"
 
   cargo run -p signer --bin demo-cli info --signer-key "$pubkey"
@@ -123,7 +123,7 @@ main() {
       ;;
     # Stop all running signers by killing the processes.
     "stop")
-      ps -ef | awk '/[s]igner/{print $2}' | xargs kill -9
+      ps -ef | awk '/[s]igner --config/{print $2}' | xargs kill -9
     ;;
     *)
       printf "${RED}ERROR:${NC} Unknown command: $1\n"

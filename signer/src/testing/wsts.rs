@@ -12,7 +12,7 @@ use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
 use wsts::net::SignatureType;
 use wsts::state_machine::coordinator;
-use wsts::state_machine::coordinator::frost;
+use wsts::state_machine::coordinator::fire;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::StateMachine as _;
 
@@ -84,7 +84,7 @@ pub fn generate_signer_info<Rng: rand::RngCore + rand::CryptoRng>(
 /// Test coordinator that can operate over an `in_memory` network
 pub struct Coordinator {
     network: network::in_memory::MpmcBroadcaster,
-    wsts_coordinator: frost::Coordinator<wsts::v2::Aggregator>,
+    wsts_coordinator: fire::Coordinator<wsts::v2::Aggregator>,
     private_key: PrivateKey,
     num_signers: u32,
 }
@@ -107,7 +107,7 @@ impl Coordinator {
         let num_keys = num_signers;
         let dkg_threshold = num_keys;
         let signer_key_ids = (0..num_signers)
-            .map(|signer_id| (signer_id, std::iter::once(signer_id).collect()))
+            .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
             .collect();
         let config = wsts::state_machine::coordinator::Config {
             num_signers,
@@ -124,7 +124,7 @@ impl Coordinator {
             signer_public_keys,
         };
 
-        let wsts_coordinator = frost::Coordinator::new(config);
+        let wsts_coordinator = fire::Coordinator::new(config);
 
         Self {
             network,
