@@ -189,9 +189,9 @@ where
         let is_ignored_message = matches!(
             msg.payload,
             message::Payload::SignerDepositDecision(_)
-            | message::Payload::SignerWithdrawalDecision(_)
-            | message::Payload::StacksTransactionSignature(_)
-            | message::Payload::BitcoinTransactionSignAck(_)
+                | message::Payload::SignerWithdrawalDecision(_)
+                | message::Payload::StacksTransactionSignature(_)
+                | message::Payload::BitcoinTransactionSignAck(_)
         );
 
         if is_ignored_message {
