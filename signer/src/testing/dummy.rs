@@ -26,10 +26,19 @@ use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
 
+use crate::ecdsa::Signed;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
+use crate::message::SignerMessage;
+use crate::message::SweepTransactionInfo;
+use crate::message::SweptDeposit;
+use crate::message::SweptWithdrawal;
+use crate::stacks::contracts::AcceptWithdrawalV1;
+use crate::stacks::contracts::CompleteDepositV1;
+use crate::stacks::contracts::RejectWithdrawalV1;
+use crate::stacks::contracts::RotateKeysV1;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -612,6 +621,126 @@ impl fake::Dummy<SweepTxConfig> for model::Transaction {
             txid: bitcoin_tx.compute_txid().to_byte_array(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: fake::Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for Signed<SignerMessage> {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        Signed {
+            inner: config.fake_with_rng(rng),
+            signer_pub_key: config.fake_with_rng(rng),
+            signature: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for CompleteDepositV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        CompleteDepositV1 {
+            outpoint: OutPoint {
+                txid: txid(config, rng),
+                vout: rng.next_u32(),
+            },
+            amount: config.fake_with_rng(rng),
+            recipient: config.fake_with_rng::<StacksPrincipal, R>(rng).into(),
+            deployer: address,
+            sweep_txid: config.fake_with_rng(rng),
+            sweep_block_hash: config.fake_with_rng(rng),
+            sweep_block_height: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for AcceptWithdrawalV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        AcceptWithdrawalV1 {
+            request_id: config.fake_with_rng(rng),
+            outpoint: OutPoint {
+                txid: txid(config, rng),
+                vout: rng.next_u32(),
+            },
+            tx_fee: config.fake_with_rng(rng),
+            signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
+            deployer: address,
+            sweep_block_hash: config.fake_with_rng(rng),
+            sweep_block_height: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for RejectWithdrawalV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        RejectWithdrawalV1 {
+            request_id: config.fake_with_rng(rng),
+            signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
+            deployer: address,
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for RotateKeysV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        RotateKeysV1 {
+            new_keys: config.fake_with_rng(rng),
+            aggregate_key: config.fake_with_rng(rng),
+            deployer: address,
+            signatures_required: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for SweptDeposit {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        SweptDeposit {
+            input_index: config.fake_with_rng(rng),
+            deposit_request_txid: txid(config, rng),
+            deposit_request_output_index: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for SweptWithdrawal {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        SweptWithdrawal {
+            output_index: config.fake_with_rng(rng),
+            withdrawal_request_id: config.fake_with_rng(rng),
+            withdrawal_request_block_hash: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for SweepTransactionInfo {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        SweepTransactionInfo {
+            txid: txid(config, rng),
+            signer_prevout_txid: txid(config, rng),
+            signer_prevout_output_index: config.fake_with_rng(rng),
+            signer_prevout_amount: config.fake_with_rng(rng),
+            signer_prevout_script_pubkey: config.fake_with_rng::<ScriptPubKey, R>(rng).into(),
+            amount: config.fake_with_rng(rng),
+            fee: config.fake_with_rng(rng),
+            vsize: config.fake_with_rng(rng),
+            created_at_block_hash: block_hash(config, rng),
+            market_fee_rate: config.fake_with_rng(rng),
+            swept_deposits: config.fake_with_rng(rng),
+            swept_withdrawals: config.fake_with_rng(rng),
         }
     }
 }

@@ -405,7 +405,7 @@ where
     ) -> Result<(), Error> {
         // Create the BitcoinPreSignRequest from the transaction package
         let sbtc_requests = BitcoinPreSignRequest {
-            requests: transaction_package
+            request_package: transaction_package
                 .iter()
                 .map(|tx| (&tx.requests).into())
                 .collect(),
@@ -485,7 +485,6 @@ where
             tracing::debug!("no requests to handle, exiting");
             return Ok(());
         };
-
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
@@ -493,6 +492,22 @@ where
         );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
+        // Get the requests from the transaction package because they have been split into
+        // multiple transactions.
+        let sbtc_requests = BitcoinPreSignRequest {
+            request_package: transaction_package
+                .iter()
+                .map(|tx| (&tx.requests).into())
+                .collect(),
+            fee_rate: pending_requests.signer_state.fee_rate,
+            last_fees: pending_requests.signer_state.last_fees.map(Into::into),
+        };
+
+        // Share the list of requests with the signers.
+        self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
+        // Wait to reduce chance that the other signers will receive the subsequent
+        // messages before the BitcoinPreSignRequest one.
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         self.construct_and_send_bitcoin_presign_request(
             bitcoin_chain_tip,

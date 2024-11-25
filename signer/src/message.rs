@@ -362,9 +362,11 @@ impl From<OutPointMessage> for OutPoint {
 /// The transaction context needed by the signers to reconstruct the transaction.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinPreSignRequest {
-    /// The set of sBTC requests with additional relevant
-    /// information for the transaction.
-    pub requests: Vec<TxRequestIds>,
+    /// The set of sBTC request identifiers. This contains each of the
+    /// requests for the entire transaction package. Each element in the
+    /// vector corresponds to the requests that will be included in a
+    /// single bitcoin transaction.
+    pub request_package: Vec<TxRequestIds>,
     /// The current market fee rate in sat/vByte.
     pub fee_rate: f64,
     /// The total fee amount and the fee rate for the last transaction that
@@ -532,7 +534,7 @@ impl wsts::net::Signable for TxRequestIds {
 impl wsts::net::Signable for BitcoinPreSignRequest {
     fn hash(&self, hasher: &mut sha2::Sha256) {
         hasher.update("SIGNER_NEW_BITCOIN_TX_CONTEXT");
-        for request in &self.requests {
+        for request in &self.request_package {
             request.hash(hasher);
         }
         hasher.update(self.fee_rate.to_be_bytes());

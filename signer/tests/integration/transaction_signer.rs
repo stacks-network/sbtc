@@ -216,6 +216,7 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
             signer_private_key: private_key,
             threshold: 2,
             rng: rand::rngs::StdRng::seed_from_u64(51),
+            dkg_begin_pause: None,
         };
 
         contexts.push((ctx, db, net));
@@ -365,6 +366,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         signer_private_key: ctx.config().signer.private_key,
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
+        dkg_begin_pause: None,
     };
 
     // We need stacks blocks for the rotate-keys transactions.
@@ -475,6 +477,7 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
+        dkg_begin_pause: None,
     };
 
     // Let's create a proper sign request.
@@ -526,21 +529,12 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let fee_rate = 1.3;
     // Build the test context with mocked clients
-    let mut ctx = TestContext::builder()
+    let ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_mocked_bitcoin_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
-
-    // Build the test context with mocked clients
-    ctx.with_bitcoin_client(|client| {
-        client
-            .expect_estimate_fee_rate()
-            .times(2)
-            .returning(move || Box::pin(async move { Ok(fee_rate) }));
-    })
-    .await;
 
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
@@ -572,6 +566,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
+        dkg_begin_pause: None,
     };
 
     let sbtc_requests: TxRequestIds = TxRequestIds {
@@ -580,15 +575,23 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     };
 
     let sbtc_context = BitcoinPreSignRequest {
-        requests: vec![sbtc_requests],
-        fee_rate: fee_rate,
+        request_package: vec![sbtc_requests],
+        fee_rate,
         last_fees: None,
     };
 
-    let sbtc_state = tx_signer
-        .get_btc_state(&chain_tip, &public_aggregate_key)
-        .await
-        .unwrap();
+    let sbtc_state = signer::bitcoin::utxo::SignerBtcState {
+        utxo: ctx
+            .get_storage()
+            .get_signer_utxo(&chain_tip, 10000)
+            .await
+            .unwrap()
+            .unwrap(),
+        fee_rate,
+        last_fees: None,
+        public_key: setup.aggregated_signer.keypair.public_key().into(),
+        magic_bytes: [b'T', b'3'],
+    };
 
     // Create an unsigned transaction with the deposit request
     // to obtain the sighashes and corresponding txid that should
@@ -606,7 +609,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let deposit_digest = deposit_digest[0];
 
     let result = tx_signer
-        .handle_sbtc_requests_context_message(&sbtc_context, &chain_tip)
+        .handle_bitcoin_pre_sign_request(&sbtc_context, &chain_tip)
         .await;
 
     assert!(result.is_ok());
@@ -627,4 +630,6 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         .expect("deposit sighash not stored");
 
     assert!(will_sign);
+
+    testing::storage::drop_db(db).await;
 }

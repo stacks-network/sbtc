@@ -102,6 +102,28 @@ message DkgEnd {
   DkgStatus status = 3;
 }
 
+// Signature type
+// This maps to this type <https://github.com/Trust-Machines/wsts/blob/ebd7d7775ad5e44cdbf4f5c1fb468bdf6c467265/src/net.rs#L373-L382>
+message SignatureType {
+  oneof signature_type {
+    // FROST signature
+    FrostSignatureType frost = 1;
+    // BIP-340 Schnorr proof
+    SchnorrSignatureType schnorr = 2;
+    // BIP-341 Taproot style schnorr proof with a merkle root
+    TaprootSignatureType taproot = 3;
+  }
+}
+
+message FrostSignatureType {}
+
+message SchnorrSignatureType {}
+
+message TaprootSignatureType {
+  // Taproot merkle root. This field is optional
+  MerkleRoot merkle_root = 1;
+}
+
 // Nonce request message from coordinator to signers
 // This maps to this type <https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L265-L280>
 message NonceRequest {
@@ -113,10 +135,8 @@ message NonceRequest {
   uint64 sign_iter_id = 3;
   // The message to sign
   bytes message = 4;
-  // Whether to make a taproot signature
-  bool is_taproot = 5;
-  // Taproot merkle root. This field is optional
-  MerkleRoot merkle_root = 6;
+  // What type of signature to create
+  SignatureType signature_type = 5;
 }
 
 // Nonce response message from signers to coordinator
@@ -151,10 +171,8 @@ message SignatureShareRequest {
   repeated NonceResponse nonce_responses = 4;
   // Bytes to sign.
   bytes message = 5;
-  // Whether to make a taproot signature
-  bool is_taproot = 6;
-  // Taproot merkle root. This field is optional
-  MerkleRoot merkle_root = 7;
+  // What type of signature to create
+  SignatureType signature_type = 6;
 }
 
 // Signature share response message from signers to coordinator
