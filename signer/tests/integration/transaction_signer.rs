@@ -627,4 +627,6 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         .expect("deposit sighash not stored");
 
     assert!(will_sign);
+
+    testing::storage::drop_db(db).await;
 }
