@@ -498,17 +498,21 @@ pub async fn add_chainstate_entry(
         // back in time a bit and are now overwriting the old chainstate entries that we had put in before.
         // While the chainstate table is inconsistent with the current chainstate, it's actually a stable
         // state because we can resolve that inconsistency by just overwriting the old entry at that height.
-        Err(Error::InconsistentState(_)) if api_state.chaintip().key.height < entry.key.height => {}
+        Err(Error::InconsistentState(Inconsistency::Chainstate(chainstate)))
+            if api_state.chaintip().key.height < entry.key.height =>
+        {
+            let existing_entry: ChainstateEntry = chainstate.into();
+            // Remove the entry from the table.
+            delete_entry::<ChainstateTablePrimaryIndex>(context, &existing_entry.key).await?;
+        }
         // ..otherwise exit here.
         irrecoverable_or_okay => {
             return irrecoverable_or_okay;
         }
     };
 
-    info!("Did not find the current entry in the chain: {current_chainstate_entry_result:?}");
     let chaintip: ChainstateEntry = api_state.chaintip();
     let blocks_higher_than_current_tip = (entry.key.height as i128) - (chaintip.key.height as i128);
-
     if blocks_higher_than_current_tip == 1 || chaintip.key.height == 0 {
         api_state.api_status = ApiStatus::Stable(entry.clone());
         // Put the chainstate entry into the table. If two lambdas get exactly here at the same time
