@@ -1,0 +1,19 @@
+sources:
+  sbtc_signer_logs:
+    type: file
+    include:
+      - /logs/sbtc_signer.logs
+
+sinks:
+  cloudwatch_sbtc_signer_logs:
+    type: aws_cloudwatch_logs
+    create_missing_group: false
+    create_missing_stream: false
+    inputs:
+      - sbtc_signer_logs
+    region: eu-west-1
+    group_name: sbtc-testnet-partner-signers
+    stream_name: "${STREAM_NAME}"
+    healthcheck: false  # We don't give the user permission to describe groups
+    encoding:
+      codec: json

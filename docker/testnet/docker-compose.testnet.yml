@@ -13,21 +13,38 @@ services:
 
   sbtc-signer:
     image: blockstack/sbtc:signer-0.0.1-dev-8
-    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db -o json'"
+    # TODO: No need to install `ca-certificates` after new images are built.
+    entrypoint: "/bin/bash -c 'apt update && apt install -y ca-certificates && /usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs'"
     depends_on:
       - postgres
     environment:
       RUST_LOG: info,signer=debug
     env_file: ./config/signer-config.env
     volumes:
-      - ./config/signer-config.toml:/signer-config.toml
+      - ./config/signer-config.toml:/signer-config.toml:ro
+      - ./logs/sbtc_signer.logs:/logs/sbtc_signer.logs
     ports:
       - "4122:4122"
 
   blocklist-client:
     image: blockstack/sbtc:blocklist-client-0.0.1-dev-8
-    entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
+    # TODO: No need to install `ca-certificates` after new images are built.
+    entrypoint: "/bin/bash -c 'apt update && apt install -y ca-certificates && /usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
     volumes:
-      - ./config/blocklist-client-config.toml:/blocklist-client-config.toml
+      - ./config/blocklist-client-config.toml:/blocklist-client-config.toml:ro
     ports:
       - "3032:3032"
+    environment:
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY}
+
+  vector:
+    container_name: vector
+    image: timberio/vector:0.42.0-debian
+    volumes:
+      - ./logs:/logs
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+    environment:
+      STREAM_NAME: TODO # TODO: Set stream name.
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      VECTOR_LOG: INFO
