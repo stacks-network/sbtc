@@ -184,6 +184,9 @@ export class EmilyStackUtils {
 
     /*
      * Returns the string that idenfitifies the source code for the lambda.
+     *
+     * The following is a possible example of the git identifier:
+     * "https://github.com/stacks-network/sbtc.git | testnet-launch-emily-prs | 1ca2a11146b4141c983d026e1275a9bbc517e907"
      */
     public static getLambdaGitIdentifier(): string {
         if (this.lambdaGitIdentifier === undefined) {
