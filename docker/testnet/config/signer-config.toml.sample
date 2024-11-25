@@ -28,14 +28,15 @@ endpoints = [
 nakamoto_start_height = 56457
 
 [signer]
-# NOTE: Set through Environment: SIGNER_SIGNER__PRIVATE_KEY
+# TODO: Change this to signer private key
 private_key = "0000000000000000000000000000000000000000000000000000000000000001"
+
+# TODO: Change this to your Postgres URI
+db_endpoint = "postgresql://postgres:postgres@localhost:5432/signer"
 
 network = "testnet"
 
 deployer = "SNGWPN3XDAQE673MXYXF81016M50NHF5X5PWWM70"
-
-db_endpoint = "postgresql://postgres:postgres@localhost:5432/signer"
 
 bootstrap_signing_set = [
     "03fc6197a1396680f7acc4241ac3935ba4af560deac0224abec45c47c5e73ea638",
