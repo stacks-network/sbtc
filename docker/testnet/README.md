@@ -17,7 +17,7 @@ Clone this repository and `cd` to this directory.
 
 ### Configure the Postgresql database
 
-Copy the provided `data` folder within the `./postgres` directory.
+Copy the provided `data` folder to the `./postgres` directory.
 
 ### Add an event-listener to your Stacks node
 
@@ -34,7 +34,7 @@ events_keys = [
 
 ### Configure logging
 
-Add the following to a `.env` file in this directory:
+Add the following to the `.env` file in this directory:
 
 ```bash
 STREAM_NAME=<provided_stream_name>
@@ -45,7 +45,7 @@ AWS_SECRET_ACCESS_KEY=<provided_secret_access_key>
 ### Configure the blocklist client
 
 Add the API key obtained
-[here](https://go.chainalysis.com/crypto-sanctions-screening.html) to a `.env`
+[here](https://go.chainalysis.com/crypto-sanctions-screening.html) to the `.env`
 file in this directory:
 
 ```bash
