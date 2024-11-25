@@ -48,7 +48,7 @@ tokio = { workspace = true, features = ["signal", "macros", "rt-multi-thread"] }
 tokio-stream.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true }
 url.workspace = true
 # wsts.workspace = true
 wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "ebd7d7775ad5e44cdbf4f5c1fb468bdf6c467265" }

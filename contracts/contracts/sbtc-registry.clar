@@ -73,10 +73,6 @@
 ;; stored to avoid replay
 (define-map aggregate-pubkeys (buff 33) bool)
 
-;; Data structure to store the current signer set,
-;; stored to avoid replay
-(define-map multi-sig-address principal bool)
-
 ;; Data structure to store the active protocol contracts
 (define-map protocol-contracts principal bool)
 (map-set protocol-contracts .sbtc-bootstrap-signers true)
@@ -304,8 +300,6 @@
     (try! (is-protocol-caller))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
-    ;; Check that the new address (multi-sig) is not already in the map
-    (asserts! (map-insert multi-sig-address new-address true) ERR_MULTI_SIG_REPLAY)
     ;; Update the current signer set
     (var-set current-signer-set new-keys)
     ;; Update the current multi-sig address

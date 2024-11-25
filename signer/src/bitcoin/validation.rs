@@ -7,12 +7,15 @@ use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::XOnlyPublicKey;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::OutPointMessage;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxSigHash;
@@ -54,13 +57,27 @@ pub struct BitcoinTxContext {
 
 /// This type is a container for all deposits and withdrawals that are part
 /// of a transaction package.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TxRequestIds {
     /// The deposit requests associated with the inputs in the transaction.
-    pub deposits: Vec<OutPoint>,
+    pub deposits: Vec<OutPointMessage>,
     /// The withdrawal requests associated with the outputs in the current
     /// transaction.
     pub withdrawals: Vec<QualifiedRequestId>,
+}
+
+impl From<&Requests<'_>> for TxRequestIds {
+    fn from(requests: &Requests) -> Self {
+        let mut deposits = Vec::new();
+        let mut withdrawals = Vec::new();
+        for request in requests.iter() {
+            match request {
+                RequestRef::Deposit(deposit) => deposits.push(deposit.outpoint.into()),
+                RequestRef::Withdrawal(withdrawal) => withdrawals.push(withdrawal.qualified_id()),
+            }
+        }
+        TxRequestIds { deposits, withdrawals }
+    }
 }
 
 /// Check that this does not contain duplicate deposits or withdrawals.
@@ -174,7 +191,6 @@ impl BitcoinTxContext {
             withdrawals,
             signer_state,
         };
-
         let mut signer_state = signer_state;
         let tx = reports.create_transaction()?;
         let sighashes = tx.construct_digests()?;
@@ -942,8 +958,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -960,8 +976,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -978,8 +994,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -996,8 +1012,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -1013,7 +1029,7 @@ mod tests {
         ]},
         TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![]
         }], false; "duplicate-requests-in-different-txs")]

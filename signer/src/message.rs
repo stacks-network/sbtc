@@ -1,13 +1,17 @@
 //! Signer message definition for network communication
 
+use bitcoin::OutPoint;
 use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest;
 
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::TxRequestIds;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -38,6 +42,8 @@ pub enum Payload {
     WstsMessage(WstsMessage),
     /// Information about a new sweep transaction
     SweepTransactionInfo(SweepTransactionInfo),
+    /// Information about a new Bitcoin block sign request
+    BitcoinPreSignRequest(BitcoinPreSignRequest),
 }
 
 impl std::fmt::Display for Payload {
@@ -72,6 +78,7 @@ impl std::fmt::Display for Payload {
                 write!(f, ")")
             }
             Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
+            Self::BitcoinPreSignRequest(_) => write!(f, "BitcoinPreSignRequest(..)"),
         }
     }
 }
@@ -131,6 +138,12 @@ impl From<WstsMessage> for Payload {
 impl From<SweepTransactionInfo> for Payload {
     fn from(value: SweepTransactionInfo) -> Self {
         Self::SweepTransactionInfo(value)
+    }
+}
+
+impl From<BitcoinPreSignRequest> for Payload {
+    fn from(value: BitcoinPreSignRequest) -> Self {
+        Self::BitcoinPreSignRequest(value)
     }
 }
 
@@ -322,6 +335,43 @@ pub struct BitcoinTransactionSignAck {
     pub txid: bitcoin::Txid,
 }
 
+/// The message version of an the [`OutPoint`].
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct OutPointMessage {
+    /// The referenced transaction's txid.
+    pub txid: bitcoin::Txid,
+    /// The index of the referenced output in its transaction's vout.
+    pub vout: u32,
+}
+
+impl From<OutPoint> for OutPointMessage {
+    fn from(outpoint: OutPoint) -> Self {
+        OutPointMessage {
+            txid: outpoint.txid,
+            vout: outpoint.vout,
+        }
+    }
+}
+
+impl From<OutPointMessage> for OutPoint {
+    fn from(val: OutPointMessage) -> Self {
+        OutPoint { txid: val.txid, vout: val.vout }
+    }
+}
+
+/// The transaction context needed by the signers to reconstruct the transaction.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BitcoinPreSignRequest {
+    /// The set of sBTC requests with additional relevant
+    /// information for the transaction.
+    pub requests: Vec<TxRequestIds>,
+    /// The current market fee rate in sat/vByte.
+    pub fee_rate: f64,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fees: Option<Fees>,
+}
+
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WstsMessage {
@@ -351,6 +401,7 @@ impl wsts::net::Signable for Payload {
             Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
             Self::StacksTransactionSignature(msg) => msg.hash(hasher),
             Self::SweepTransactionInfo(msg) => msg.hash(hasher),
+            Self::BitcoinPreSignRequest(msg) => msg.hash(hasher),
         }
     }
 }
@@ -449,6 +500,42 @@ impl wsts::net::Signable for WstsMessage {
         hasher.update("SIGNER_WSTS_MESSAGE");
         hasher.update(self.txid);
         self.inner.hash(hasher);
+    }
+}
+
+impl wsts::net::Signable for OutPointMessage {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.txid);
+        hasher.update(self.vout.to_be_bytes());
+    }
+}
+
+impl wsts::net::Signable for QualifiedRequestId {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update(self.request_id.to_be_bytes());
+        hasher.update(self.txid.as_bytes());
+        hasher.update(self.block_hash.as_bytes());
+    }
+}
+
+impl wsts::net::Signable for TxRequestIds {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        for deposit in &self.deposits {
+            deposit.hash(hasher);
+        }
+        for withdrawal in &self.withdrawals {
+            withdrawal.hash(hasher);
+        }
+    }
+}
+
+impl wsts::net::Signable for BitcoinPreSignRequest {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_NEW_BITCOIN_TX_CONTEXT");
+        for request in &self.requests {
+            request.hash(hasher);
+        }
+        hasher.update(self.fee_rate.to_be_bytes());
     }
 }
 

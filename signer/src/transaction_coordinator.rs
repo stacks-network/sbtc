@@ -33,6 +33,7 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
@@ -418,7 +419,6 @@ where
             tracing::debug!("no requests to handle, exiting");
             return Ok(());
         };
-
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
@@ -426,6 +426,22 @@ where
         );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
+        // Get the requests from the transaction package because they have been split into
+        // multiple transactions.
+        let sbtc_requests = BitcoinPreSignRequest {
+            requests: transaction_package
+                .iter()
+                .map(|tx| (&tx.requests).into())
+                .collect(),
+            fee_rate: pending_requests.signer_state.fee_rate,
+            last_fees: pending_requests.signer_state.last_fees.map(Into::into),
+        };
+
+        // Share the list of requests with the signers.
+        self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
+        // Wait to reduce chance that the other signers will receive the subsequent
+        // messages before the BitcoinPreSignRequest one.
+        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
         for mut transaction in transaction_package {
             self.sign_and_broadcast(
@@ -763,7 +779,6 @@ where
             self.private_key,
         )
         .await?;
-
         let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
@@ -785,6 +800,15 @@ where
 
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
+
+            let mut coordinator_state_machine = CoordinatorStateMachine::load(
+                &mut self.context.get_storage_mut(),
+                *aggregate_key,
+                signer_public_keys.clone(),
+                self.threshold,
+                self.private_key,
+            )
+            .await?;
 
             let signature = self
                 .coordinate_signing_round(
