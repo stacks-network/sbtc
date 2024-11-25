@@ -7,6 +7,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as certificatemanager from 'aws-cdk-lib/aws-certificatemanager';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as cr from 'aws-cdk-lib/custom-resources';
 import { Construct } from 'constructs';
 import { Constants } from './constants';
 import { EmilyStackProps } from './emily-stack-props';
@@ -73,8 +75,15 @@ export class EmilyStack extends cdk.Stack {
                 withdrawalTableName,
                 chainstateTableName,
                 limitTableName,
+                persistentResourceRemovalPolicy,
                 props
             );
+
+            // Create an alias for the lambda.
+            const alias = new lambda.Alias(this, "OperationLambdaAlias", {
+                aliasName: "Current",
+                version: operationLambda.currentVersion,
+            });
 
             // Give the operation lambda full access to the DynamoDB tables.
             depositTable.grantReadWriteData(operationLambda);
@@ -82,7 +91,11 @@ export class EmilyStack extends cdk.Stack {
             chainstateTable.grantReadWriteData(operationLambda);
             limitTable.grantReadWriteData(operationLambda);
 
-            const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(operationLambda, props);
+            const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(
+                alias,
+                persistentResourceRemovalPolicy,
+                props,
+            );
         }
     }
 
@@ -260,6 +273,7 @@ export class EmilyStack extends cdk.Stack {
         withdrawalTableName: string,
         chainstateTableName: string,
         limitTableName: string,
+        removalPolicy: cdk.RemovalPolicy,
         props: EmilyStackProps
     ): lambda.Function {
 
@@ -286,6 +300,10 @@ export class EmilyStack extends cdk.Stack {
                 // deployments the AWS stack. SAM can only set environment variables that are
                 // already expected to be present in the lambda.
                 IS_LOCAL: "false",
+            },
+            description: `Emily Api Handler. ${EmilyStackUtils.getLambdaGitIdentifier()}`,
+            currentVersionOptions: {
+                removalPolicy,
             }
         });
 
@@ -301,7 +319,8 @@ export class EmilyStack extends cdk.Stack {
      * @post An API Gateway with execute permissions linked to the Lambda function is returned.
      */
     createOrUpdateApi(
-        operationLambda: lambda.Function,
+        operationLambda: lambda.Alias,
+        logRemovalPolicy: cdk.RemovalPolicy,
         props: EmilyStackProps
     ): apig.SpecRestApi {
 
