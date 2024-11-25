@@ -495,13 +495,18 @@ pub async fn add_chainstate_entry(
         // If there's an inconsistency BUT the chaintip is behind the inconsistency, this means we've gone
         // back in time a bit and are now overwriting the old chainstate entries that we had put in before.
         // While the chainstate table is inconsistent with the current chainstate, it's actually a stable
-        // state because we can resolve that inconsistency by just overwriting the old entry at that height.
-        Err(Error::InconsistentState(Inconsistency::Chainstate(chainstate)))
+        // state because we can resolve that inconsistency by just overwriting the old entry/s at that height.
+        // Note that it would be really odd for there to be multiple chainstates at the same height and for
+        // the chain tip to be behind them, but luckily in this scenario we can be fine by just deleting all
+        // the entries above.
+        Err(Error::InconsistentState(Inconsistency::Chainstates(chainstates)))
             if api_state.chaintip().key.height < entry.key.height =>
         {
-            let existing_entry: ChainstateEntry = chainstate.into();
-            // Remove the entry from the table.
-            delete_entry::<ChainstateTablePrimaryIndex>(context, &existing_entry.key).await?;
+            for chainstate in chainstates {
+                // Remove the entry from the table.
+                let existing_entry: ChainstateEntry = chainstate.into();
+                delete_entry::<ChainstateTablePrimaryIndex>(context, &existing_entry.key).await?;
+            }
         }
         // ..otherwise exit here.
         irrecoverable_or_okay => {

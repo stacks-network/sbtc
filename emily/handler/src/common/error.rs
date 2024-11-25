@@ -26,8 +26,6 @@ pub enum Inconsistency {
     /// but are not known to be correct. All chainstates in the vector
     /// are considered equally canonical.
     Chainstates(Vec<Chainstate>),
-    /// There is a chainstate inconsistency comprised of specifically one chainstate.
-    Chainstate(Chainstate),
     /// There is an inconsistency in the way an item is being updated.
     ItemUpdate(String),
 }
@@ -170,7 +168,7 @@ impl Error {
     }
     /// Makes an inconsistency error from a single chainstate entry.
     pub fn from_inconsistent_chainstate_entry(entry: ChainstateEntry) -> Self {
-        Error::InconsistentState(Inconsistency::Chainstate(entry.into()))
+        Error::InconsistentState(Inconsistency::Chainstates(vec![entry.into()]))
     }
 }
 
