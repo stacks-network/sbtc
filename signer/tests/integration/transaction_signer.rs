@@ -209,6 +209,7 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
             signer_private_key: private_key,
             threshold: 2,
             rng: rand::rngs::StdRng::seed_from_u64(51),
+            dkg_begin_pause: None,
         };
 
         contexts.push((ctx, db, net));
@@ -358,6 +359,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         signer_private_key: ctx.config().signer.private_key,
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
+        dkg_begin_pause: None,
     };
 
     // We need stacks blocks for the rotate-keys transactions.
@@ -468,6 +470,7 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
+        dkg_begin_pause: None,
     };
 
     // Let's create a proper sign request.

@@ -63,6 +63,7 @@ where
                 wsts_state_machines: HashMap::new(),
                 threshold,
                 rng,
+                dkg_begin_pause: None,
             },
             context,
         }

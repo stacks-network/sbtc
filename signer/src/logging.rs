@@ -37,9 +37,7 @@ fn setup_logging_json(directives: &str) {
 }
 
 fn setup_logging_pretty(directives: &str) {
-    let main_layer = tracing_subscriber::fmt::layer()
-        .pretty()
-        .with_timer(UtcTime::rfc_3339());
+    let main_layer = tracing_subscriber::fmt::layer().with_timer(UtcTime::rfc_3339());
 
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(directives)))
