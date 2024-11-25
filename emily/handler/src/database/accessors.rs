@@ -4,8 +4,6 @@ use std::collections::HashMap;
 
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
-#[cfg(feature = "testing")]
-use tracing::info;
 
 use tracing::{debug, warn};
 
