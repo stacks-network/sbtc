@@ -5,5 +5,5 @@ port = 3032
 [risk_analysis]
 api_url = "https://api.chainalysis.com"
 
-# TODO: Insert your API key here.
+# NOTE: This will be overriden by an environmental variable.
 api_key = "TODO"
