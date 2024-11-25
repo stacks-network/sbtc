@@ -59,18 +59,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse the command line arguments.
     let args = SignerArgs::parse();
 
-    // Initialize logging
-    let tracing_filter = tracing_subscriber::EnvFilter::from_default_env();
-    if let Some(LogOutputFormat::Json) = args.output_format {
-        tracing_subscriber::fmt()
-            .json()
-            .with_env_filter(tracing_filter)
-            .init();
-    } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(tracing_filter)
-            .init();
-    }
+    // Configure the binary's stdout/err output based on the provided output format.
+    let pretty = matches!(args.output_format, Some(LogOutputFormat::Pretty));
+    signer::logging::setup_logging("", pretty);
 
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
