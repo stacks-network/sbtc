@@ -176,7 +176,7 @@ pub async fn add_chainstate_entry_or_reorg(
     // Get chainstate as entry.
     let entry: ChainstateEntry = chainstate.clone().into();
     debug!("Attempting to add chainstate: {entry:?}");
-    match accessors::add_chainstate_entry_with_retries(context, &entry, 15).await {
+    match accessors::add_chainstate_entry_with_retry(context, &entry, 15).await {
         Err(Error::InconsistentState(Inconsistency::Chainstates(conflicting_chainstates))) => {
             info!("Inconsistent chainstate found; attempting reorg for {entry:?}");
             let execute_reorg_request = ExecuteReorgRequest {

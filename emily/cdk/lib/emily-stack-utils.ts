@@ -47,7 +47,7 @@ export class EmilyStackUtils {
     private static customRootDomainName?: string;
 
     /*
-     * The string that idenfitifies the source code for the lambda.
+     * The string that identifies the source code for the lambda.
      */
     private static lambdaGitIdentifier?: string;
 
@@ -183,7 +183,7 @@ export class EmilyStackUtils {
     }
 
     /*
-     * Returns the string that idenfitifies the source code for the lambda.
+     * Returns the string that identifies the source code of the lambda.
      *
      * The following is a possible example of the git identifier:
      * "https://github.com/stacks-network/sbtc.git | testnet-launch-emily-prs | 1ca2a11146b4141c983d026e1275a9bbc517e907"

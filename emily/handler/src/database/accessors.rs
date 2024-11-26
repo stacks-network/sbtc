@@ -430,7 +430,7 @@ pub async fn update_withdrawal(
 // Chainstate ------------------------------------------------------------------
 
 /// Adds a chainstate entry to the database with the specified number of retries.
-pub async fn add_chainstate_entry_with_retries(
+pub async fn add_chainstate_entry_with_retry(
     context: &EmilyContext,
     entry: &ChainstateEntry,
     retries: u16,
