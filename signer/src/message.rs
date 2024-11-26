@@ -1,6 +1,5 @@
 //! Signer message definition for network communication
 
-use bitcoin::OutPoint;
 use secp256k1::ecdsa::RecoverableSignature;
 
 use crate::bitcoin::utxo::Fees;
@@ -9,7 +8,6 @@ use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -328,32 +326,8 @@ pub struct BitcoinTransactionSignAck {
     pub txid: bitcoin::Txid,
 }
 
-/// The message version of an the [`OutPoint`].
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct OutPointMessage {
-    /// The referenced transaction's txid.
-    pub txid: bitcoin::Txid,
-    /// The index of the referenced output in its transaction's vout.
-    pub vout: u32,
-}
-
-impl From<OutPoint> for OutPointMessage {
-    fn from(outpoint: OutPoint) -> Self {
-        OutPointMessage {
-            txid: outpoint.txid,
-            vout: outpoint.vout,
-        }
-    }
-}
-
-impl From<OutPointMessage> for OutPoint {
-    fn from(val: OutPointMessage) -> Self {
-        OutPoint { txid: val.txid, vout: val.vout }
-    }
-}
-
 /// The transaction context needed by the signers to reconstruct the transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BitcoinPreSignRequest {
     /// The set of sBTC request identifiers. This contains each of the
     /// requests for the entire transaction package. Each element in the
