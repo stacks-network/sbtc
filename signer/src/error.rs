@@ -410,7 +410,7 @@ pub enum Error {
 
     /// Codec error
     #[error("codec error: {0}")]
-    Codec(#[source] codec::Error),
+    Codec(#[from] codec::CodecError),
 
     /// Type conversion error
     #[error("type conversion error")]

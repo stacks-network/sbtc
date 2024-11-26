@@ -26,11 +26,15 @@ use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
 
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::TxRequestIds;
 use crate::ecdsa::Signed;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
+use crate::message::BitcoinPreSignRequest;
+use crate::message::OutPointMessage;
 use crate::message::SignerMessage;
 use crate::message::SweepTransactionInfo;
 use crate::message::SweptDeposit;
@@ -50,6 +54,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::EncryptedDkgShares;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SigHash;
@@ -227,16 +232,12 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         parties: vec![(0, party_state)],
     };
 
-    let encoded = signer_state
-        .encode_to_vec()
-        .expect("encoding to vec failed");
+    let encoded = signer_state.encode_to_vec();
 
     let encrypted_private_shares =
         wsts::util::encrypt(signer_private_key, &encoded, rng).expect("failed to encrypt");
     let public_shares: BTreeMap<u32, wsts::net::DkgPublicShares> = BTreeMap::new();
-    let public_shares = public_shares
-        .encode_to_vec()
-        .expect("encoding to vec failed");
+    let public_shares = public_shares.encode_to_vec();
 
     model::EncryptedDkgShares {
         aggregate_key: group_key,
@@ -741,6 +742,53 @@ impl fake::Dummy<fake::Faker> for SweepTransactionInfo {
             market_fee_rate: config.fake_with_rng(rng),
             swept_deposits: config.fake_with_rng(rng),
             swept_withdrawals: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for QualifiedRequestId {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        QualifiedRequestId {
+            request_id: config.fake_with_rng(rng),
+            txid: config.fake_with_rng(rng),
+            block_hash: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for OutPointMessage {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        OutPointMessage {
+            txid: txid(config, rng),
+            vout: rng.next_u32(),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for TxRequestIds {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(_: &fake::Faker, _: &mut R) -> Self {
+        TxRequestIds {
+            deposits: fake::vec![OutPointMessage; 0..20],
+            withdrawals: fake::vec![QualifiedRequestId; 0..20],
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for Fees {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        Fees {
+            total: config.fake_with_rng(rng),
+            rate: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinPreSignRequest {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        BitcoinPreSignRequest {
+            request_package: fake::vec![TxRequestIds; 0..20],
+            fee_rate: config.fake_with_rng(rng),
+            last_fees: config.fake_with_rng(rng),
         }
     }
 }

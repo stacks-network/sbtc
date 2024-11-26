@@ -99,8 +99,7 @@ impl SignerStateMachine {
         )
         .map_err(|_| error::Error::Encryption)?;
 
-        let saved_state =
-            wsts::traits::SignerState::decode(decrypted.as_slice()).map_err(error::Error::Codec)?;
+        let saved_state = wsts::traits::SignerState::decode(decrypted.as_slice())?;
 
         // This may panic if the saved state doesn't contain exactly one party,
         // however, that should never be the case since wsts maintains this invariant
@@ -137,11 +136,8 @@ impl SignerStateMachine {
         // We require the public keys to be stored sorted in db
         signer_set_public_keys.sort();
 
-        let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
-        let public_shares = self
-            .dkg_public_shares
-            .encode_to_vec()
-            .map_err(error::Error::Codec)?;
+        let encoded = saved_state.encode_to_vec();
+        let public_shares = self.dkg_public_shares.clone().encode_to_vec();
 
         // After DKG, each of the signers will have "new public keys".
         let encrypted_private_shares =
@@ -253,7 +249,7 @@ impl CoordinatorStateMachine {
             .ok_or(Error::MissingDkgShares(aggregate_key))?;
 
         let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
-            BTreeMap::decode(encrypted_shares.public_shares.as_slice()).map_err(Error::Codec)?;
+            BTreeMap::decode(encrypted_shares.public_shares.as_slice())?;
         let party_polynomials = public_dkg_shares
             .iter()
             .flat_map(|(_, share)| share.comms.clone())

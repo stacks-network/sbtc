@@ -184,19 +184,8 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     "publishing message"
                 );
 
-                // Attempt to encode the message payload into bytes
-                // using the signer codec.
-                let encoded_msg = match payload.encode_to_vec() {
-                    Ok(msg) => msg,
-                    Err(error) => {
-                        // An error occurred while encoding the message.
-                        // Log the error and send a failure signal to the application
-                        // so that it can handle the failure as needed.
-                        tracing::warn!(%error, "Failed to encode message");
-                        let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
-                        continue;
-                    }
-                };
+                // Encode the message payload into bytes using the signer codec.
+                let encoded_msg = payload.encode_to_vec();
 
                 let _ = swarm
                     .lock()

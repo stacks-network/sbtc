@@ -4,6 +4,21 @@ use config::{Config, ConfigError, Environment, File, FileFormat};
 use serde::Deserialize;
 use std::sync::LazyLock;
 
+use clap::Parser;
+use std::path::PathBuf;
+
+/// Struct which represent command line arguments
+#[derive(Parser, Debug)]
+#[command(name = "Blocklist Client")]
+struct Cli {
+    /// Path to the configuration file
+    #[arg(short = 'c', long = "config", value_name = "PATH")]
+    config: Option<PathBuf>,
+}
+
+/// Command line arguments for the blocklist client
+static CLI: LazyLock<Cli> = LazyLock::new(Cli::parse);
+
 /// Top-level configuration for the Blocklist client
 #[derive(Deserialize, Clone, Debug)]
 pub struct Settings {
@@ -51,8 +66,12 @@ pub struct RiskAnalysisConfig {
 }
 
 /// Statically configured settings for the Blocklist client
-pub static SETTINGS: LazyLock<Settings> =
-    LazyLock::new(|| Settings::new().expect("Failed to load configuration"));
+pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| match &CLI.config {
+    Some(path) => {
+        Settings::new_from_path(path.to_str().unwrap()).expect("Failed to load configuration")
+    }
+    None => Settings::new().expect("Failed to load configuration"),
+});
 
 impl Settings {
     /// Initializing the global config first with default values and then with provided/overwritten environment variables.
@@ -63,6 +82,20 @@ impl Settings {
             include_str!("config/default.toml"),
             FileFormat::Toml,
         ))?;
+        let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
+        cfg.merge(env)?;
+        let settings: Settings = cfg.try_into()?;
+
+        settings.validate()?;
+
+        Ok(settings)
+    }
+
+    /// Initializing the global config with values from provided config file and then with provided/overwritten environment variables.
+    /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
+    pub fn new_from_path(path: &str) -> Result<Self, ConfigError> {
+        let mut cfg = Config::new();
+        cfg.merge(File::with_name(path))?;
         let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
         cfg.merge(env)?;
         let settings: Settings = cfg.try_into()?;

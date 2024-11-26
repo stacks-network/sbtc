@@ -165,6 +165,8 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// 3. If we are not in Nakamoto 3 or later, then the coordinator does
     /// not do any work.
     pub is_epoch3: bool,
+    /// TODO: Remove this, will be fixed in #956
+    pub pre_sign_pause: Option<Duration>,
 }
 
 /// This function defines which messages this event loop is interested
@@ -505,9 +507,12 @@ where
 
         // Share the list of requests with the signers.
         self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
-        // Wait to reduce chance that the other signers will receive the subsequent
-        // messages before the BitcoinPreSignRequest one.
-        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+        if let Some(pause) = self.pre_sign_pause {
+            // Wait to reduce chance that the other signers will receive the subsequent
+            // messages before the BitcoinPreSignRequest one.
+            tokio::time::sleep(pause).await;
+        }
 
         self.construct_and_send_bitcoin_presign_request(
             bitcoin_chain_tip,

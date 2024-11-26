@@ -57,17 +57,18 @@ const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
     bitcoin::policy::DEFAULT_INCREMENTAL_RELAY_FEE as f64 / 1000.0;
 
 /// This constant represents the virtual size (in vBytes) of a BTC
-/// transaction that includes two inputs and one output. The inputs
-/// consist of the signers' input UTXO and a UTXO for a deposit request.
-/// The output is the signers' new UTXO.
-const SOLO_DEPOSIT_TX_VSIZE: f64 = 234.0;
+/// transaction that includes two inputs and one output. The inputs consist
+/// of the signers' input UTXO and a UTXO for a deposit request. The output
+/// is the signers' new UTXO. The deposit request is such that the sweep
+/// transaction has the largest size of solo deposit sweep transactions.
+const SOLO_DEPOSIT_TX_VSIZE: f64 = 267.0;
 
 /// This constant represents the virtual size (in vBytes) of a BTC
-/// transaction with only one input and two outputs. The input is the
-/// signers' input UTXO. The outputs include the withdrawal UTXO for a
-/// withdrawal request and the signers' new UTXO. This size assumes
-/// the script in the withdrawal UTXO is empty.
-const BASE_WITHDRAWAL_TX_VSIZE: f64 = 172.0;
+/// transaction servicing only one withdrawal request, except the
+/// withdrawal output is not in the transaction. This way the sweep
+/// transaction's OP_RETURN output is the right size and we can handle the
+/// variability of output sizes.
+const BASE_WITHDRAWAL_TX_VSIZE: f64 = 163.0;
 
 /// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
 /// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
@@ -155,19 +156,22 @@ impl SbtcRequests {
             .filter(|req| {
                 // This is the size for a BTC transaction servicing
                 // a single withdrawal.
-                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.script_pubkey.len() as f64;
+                let withdrawal_output = req.as_tx_output();
+                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + withdrawal_output.size() as f64;
                 req.max_fee >= self.compute_minimum_fee(tx_vsize)
             })
             .map(RequestRef::Withdrawal);
 
-        // Now we filter deposit requests where the user's max fee could
-        // be less than the fee we may charge. This is simpler because
-        // deposit UTXOs have a known fixed size.
+        // Now we filter deposit requests where the user's max fee could be
+        // less than the fee we may charge. This is simpler because deposit
+        // UTXOs have a known fixed size. Also, the "actual" max fee must
+        // always be less than or equal to the deposit amount, so take the
+        // minimum of the max fee and the amount.
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
         let deposits = self
             .deposits
             .iter()
-            .filter(|req| req.max_fee >= minimum_deposit_fee)
+            .filter(|req| req.max_fee.min(req.amount) >= minimum_deposit_fee)
             .map(RequestRef::Deposit);
 
         // Create a list of requests where each request can be approved on its own.
@@ -704,7 +708,7 @@ impl<'a> UnsignedTransaction<'a> {
     pub fn new(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction. This transaction's inputs have witness
         // data with dummy signatures so that our virtual size estimates
-        // are accurate. Afterwards we remove the witness data.
+        // are accurate. Afterward we remove the witness data.
         let mut unsigned = Self::new_stub(requests, state)?;
         // Now we can reset the witness data, since this is an unsigned
         // transaction.
@@ -724,8 +728,8 @@ impl<'a> UnsignedTransaction<'a> {
     ///   3. The signer output UTXO is the first output. The second output
     ///      is the OP_RETURN data output.
     ///   4. Each input has a fake signature in the witness data.
-    ///   5. With the exception of the fake signatures from (4), all
-    ///      witness data is correctly set.
+    ///   5. All witness data is correctly set, except for the fake
+    ///      signatures from (4).
     pub fn new_stub(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
@@ -1414,10 +1418,13 @@ mod tests {
         let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
         signer_bitmap[..votes_against].fill(true);
 
+        let contract_name = std::iter::repeat('a').take(128).collect::<String>();
+        let principal_str = format!("{}.{contract_name}", StacksAddress::burn_address(false));
+
         let deposit_inputs = DepositScriptInputs {
             signers_public_key,
             max_fee: 10000,
-            recipient: PrincipalData::from(StacksAddress::burn_address(false)),
+            recipient: PrincipalData::parse(&principal_str).unwrap(),
         };
 
         DepositRequest {
@@ -1570,7 +1577,7 @@ mod tests {
 
         // We need to zero out the withdrawal script since this value
         // changes depending on the user.
-        unsigned.tx.output[2].script_pubkey = ScriptBuf::new();
+        unsigned.tx.output.pop();
         testing::set_witness_data(&mut unsigned, keypair);
 
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
@@ -1900,6 +1907,52 @@ mod tests {
             // transaction in that case.
             assert!(sbtc_data.is_empty());
         }
+    }
+
+    /// Deposit requests add to the signers' UTXO.
+    #[test]
+    fn deposits_with_low_amount_and_high_max_fee() {
+        // The bad deposit
+        let deposit_amount = 100;
+        let max_fee = 123456;
+
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: vec![
+                create_deposit(deposit_amount, max_fee, 0),
+                create_deposit(345678, 345678, 0),
+            ],
+            withdrawals: Vec::new(),
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: OutPoint::null(),
+                    amount: 55,
+                    public_key,
+                },
+                fee_rate: 1.0,
+                public_key,
+                last_fees: None,
+                magic_bytes: [0; 2],
+            },
+            num_signers: 10,
+            accept_threshold: 0,
+        };
+
+        // This should all be in one transaction since there are no votes
+        // against any of the requests.
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        // There should be two outputs, one for the signer and another for
+        // the one of the deposits.
+        let unsigned_tx = transactions.pop().unwrap();
+        assert_eq!(unsigned_tx.tx.output.len(), 2);
+
+        // The input amounts should be the sum of the signer amount and the
+        // one deposit amount.
+        let signer_amount = requests.signer_state.utxo.amount;
+        let input_amount = unsigned_tx.input_amounts();
+        assert_eq!(input_amount, signer_amount + 345678)
     }
 
     /// Deposit requests add to the signers' UTXO.

@@ -10,14 +10,15 @@ use warp::Filter;
 #[tokio::main]
 async fn main() {
     // Setup logging.
-    logging::setup_logging("info,emily-handler=debug", false);
+    // TODO(TBD): Make the logging configurable.
+    logging::setup_logging("info,emily_handler=debug", false);
 
     // Setup context.
     // TODO(389 + 358): Handle config pickup in a way that will only fail for the relevant call.
     let context: EmilyContext = EmilyContext::from_env()
         .await
         .unwrap_or_else(|e| panic!("{e}"));
-    info!("Lambda Context:\n{context:?}");
+    info!(lambdaContext = ?context);
 
     // Setup service filters.
     let service_filter = api::routes::routes_with_stage_prefix(context)
