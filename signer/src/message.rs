@@ -600,7 +600,7 @@ mod tests {
             .sign_ecdsa(&private_key)
             .expect("Failed to sign message");
 
-        let encoded = signed_message.encode_to_vec().expect("Failed to encode");
+        let encoded = signed_message.clone().encode_to_vec();
 
         let decoded =
             Signed::<SignerMessage>::decode(encoded.as_slice()).expect("Failed to decode");

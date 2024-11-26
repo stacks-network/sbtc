@@ -880,15 +880,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d965446196e3b7decd44aa7ee49e31d630118f90ef12f97900f262eb915c951d"
 
 [[package]]
-name = "bincode"
-version = "1.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
-dependencies = [
- "serde 1.0.203",
-]
-
-[[package]]
 name = "bindgen"
 version = "0.64.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5976,7 +5967,6 @@ dependencies = [
  "aquamarine",
  "axum 0.7.5",
  "backoff",
- "bincode",
  "bitcoin",
  "bitcoincore-rpc",
  "bitcoincore-rpc-json",

@@ -15,7 +15,6 @@ testing = ["fake", "mockall", "sbtc/testing"]
 aquamarine.workspace = true
 axum.workspace = true
 backoff.workspace = true
-bincode.workspace = true
 bitcoin = { workspace = true, features = ["rand-std"] }
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
