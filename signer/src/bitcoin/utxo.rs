@@ -1911,6 +1911,52 @@ mod tests {
 
     /// Deposit requests add to the signers' UTXO.
     #[test]
+    fn deposits_with_low_amount_and_high_max_fee() {
+        // The bad deposit
+        let deposit_amount = 100;
+        let max_fee = 123456;
+
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: vec![
+                create_deposit(deposit_amount, max_fee, 0),
+                create_deposit(345678, 345678, 0),
+            ],
+            withdrawals: Vec::new(),
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: OutPoint::null(),
+                    amount: 55,
+                    public_key,
+                },
+                fee_rate: 1.0,
+                public_key,
+                last_fees: None,
+                magic_bytes: [0; 2],
+            },
+            num_signers: 10,
+            accept_threshold: 0,
+        };
+
+        // This should all be in one transaction since there are no votes
+        // against any of the requests.
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+
+        // There should be two outputs, one for the signer and another for
+        // the one of the deposits.
+        let unsigned_tx = transactions.pop().unwrap();
+        assert_eq!(unsigned_tx.tx.output.len(), 2);
+
+        // The input amounts should be the sum of the signer amount and the
+        // one deposit amount.
+        let signer_amount = requests.signer_state.utxo.amount;
+        let input_amount = unsigned_tx.input_amounts();
+        assert_eq!(input_amount, signer_amount + 345678)
+    }
+
+    /// Deposit requests add to the signers' UTXO.
+    #[test]
     fn deposits_increase_signers_utxo_amount() {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
