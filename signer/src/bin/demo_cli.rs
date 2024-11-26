@@ -117,14 +117,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .expect("No Emily endpoints configured");
     let emily_client_config = Configuration {
         base_path: emily_api_endpoint_config
-            .endpoint
             .to_string()
             .trim_end_matches("/")
             .to_string(),
-        api_key: emily_api_endpoint_config
-            .api_key
-            .clone()
-            .map(|key_string| ApiKey { prefix: None, key: key_string }),
+        api_key: if emily_api_endpoint_config.username().is_empty() {
+            None
+        } else {
+            Some(ApiKey {
+                prefix: None,
+                key: emily_api_endpoint_config.username().to_string(),
+            })
+        },
         ..Default::default()
     };
 
