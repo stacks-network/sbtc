@@ -44,10 +44,18 @@ impl BlocklistClient {
     pub fn new(ctx: &impl Context) -> Option<Self> {
         let config = ctx.config().blocklist_client.as_ref()?;
 
-        let config = Configuration {
+        let mut config = Configuration {
             base_path: config.endpoint.to_string(),
             ..Default::default()
         };
+
+        // Url::parse defaults `path` to `/` even if the parsed url was without the trailing `/`
+        // causing the api calls to have two leading slashes in the path (getting a 404)
+        config.base_path = config
+            .base_path
+            .to_string()
+            .trim_end_matches("/")
+            .to_string();
 
         Some(BlocklistClient { config })
     }
@@ -65,10 +73,19 @@ impl BlocklistClient {
 
 #[cfg(test)]
 mod tests {
+    use crate::{
+        config::BlocklistClientConfig,
+        testing::context::{
+            self, BuildContext as _, ConfigureMockedClients, ConfigureSettings,
+            ConfigureStorage as _,
+        },
+    };
+
     use super::*;
     use mockito::{Server, ServerGuard};
     use serde_json::json;
     use tokio::sync::Mutex;
+    use url::Url;
 
     const ADDRESS: &str = "0x2337bBCD5766Bf2A9462D493E9A459b60b41B7f2";
     const SCREEN_PATH: &str = "/screen";
@@ -156,5 +173,39 @@ mod tests {
 
         let result = ctx.client.can_accept(ADDRESS).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn try_from_url_with_slash() {
+        let endpoint = Url::parse("http://localhost:8080/").unwrap();
+
+        let ctx = context::TestContext::builder()
+            .modify_settings(|config| {
+                config.blocklist_client = Some(BlocklistClientConfig { endpoint })
+            })
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let client = BlocklistClient::new(&ctx).unwrap();
+
+        assert_eq!(client.config.base_path, "http://localhost:8080");
+    }
+
+    #[test]
+    fn try_from_url_without_slash() {
+        let endpoint = Url::parse("http://localhost:8080").unwrap();
+
+        let ctx = context::TestContext::builder()
+            .modify_settings(|config| {
+                config.blocklist_client = Some(BlocklistClientConfig { endpoint })
+            })
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let client = BlocklistClient::new(&ctx).unwrap();
+
+        assert_eq!(client.config.base_path, "http://localhost:8080");
     }
 }
