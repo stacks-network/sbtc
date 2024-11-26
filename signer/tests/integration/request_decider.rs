@@ -161,8 +161,9 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
     // need a row in the dkg_shares table.
     setup.store_dkg_shares(&db).await;
 
+    let signer_public_key = setup.aggregated_signer.keypair.public_key().into();
     let mut requests = db
-        .get_pending_deposit_requests(&chain_tip, 100)
+        .get_pending_deposit_requests(&chain_tip, 100, &signer_public_key)
         .await
         .unwrap();
     // There should only be the one deposit request that we just fetched.
@@ -246,8 +247,9 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
     // signing set.
     setup.store_dkg_shares(&db).await;
 
+    let signer_public_key = setup.aggregated_signer.keypair.public_key().into();
     let mut requests = db
-        .get_pending_deposit_requests(&chain_tip, 100)
+        .get_pending_deposit_requests(&chain_tip, 100, &signer_public_key)
         .await
         .unwrap();
     // There should only be the one deposit request that we just fetched.
