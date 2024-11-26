@@ -6,21 +6,23 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
-use bitcoin::TapSighash;
 use bitcoin::XOnlyPublicKey;
+use serde::Deserialize;
+use serde::Serialize;
 
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::BitcoinPreSignRequest;
+use crate::message::OutPointMessage;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::BitcoinTxSigHash;
+use crate::storage::model::BitcoinWithdrawalOutput;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
-use crate::storage::model::StacksBlockHash;
-use crate::storage::model::StacksTxId;
-use crate::storage::model::TxPrevoutType;
 use crate::storage::DbRead;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
@@ -42,52 +44,58 @@ pub struct BitcoinTxContext {
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
-    /// This contains each of the requests for the entire transaction
-    /// package. Each element in the vector corresponds to the requests
-    /// that will be included in a single bitcoin transaction.
-    pub request_packages: Vec<TxRequestIds>,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for the signer UTXO.
+    pub context_window: u16,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
     /// The current aggregate key that was the output of DKG.
     pub aggregate_key: PublicKey,
-    /// The state of the signers.
-    pub signer_state: SignerBtcState,
 }
 
 /// This type is a container for all deposits and withdrawals that are part
 /// of a transaction package.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TxRequestIds {
     /// The deposit requests associated with the inputs in the transaction.
-    pub deposits: Vec<OutPoint>,
+    pub deposits: Vec<OutPointMessage>,
     /// The withdrawal requests associated with the outputs in the current
     /// transaction.
     pub withdrawals: Vec<QualifiedRequestId>,
 }
 
+impl From<&Requests<'_>> for TxRequestIds {
+    fn from(requests: &Requests) -> Self {
+        let mut deposits = Vec::new();
+        let mut withdrawals = Vec::new();
+        for request in requests.iter() {
+            match request {
+                RequestRef::Deposit(deposit) => deposits.push(deposit.outpoint.into()),
+                RequestRef::Withdrawal(withdrawal) => withdrawals.push(withdrawal.qualified_id()),
+            }
+        }
+        TxRequestIds { deposits, withdrawals }
+    }
+}
+
 /// Check that this does not contain duplicate deposits or withdrawals.
-pub fn is_unique(packages: &[TxRequestIds]) -> bool {
+pub fn is_unique(package: &[TxRequestIds]) -> bool {
     let mut deposits_set = HashSet::new();
     let mut withdrawals_set = HashSet::new();
-    packages.iter().all(|reqs| {
+    package.iter().all(|reqs| {
         let deposits = reqs.deposits.iter().all(|out| deposits_set.insert(out));
         let withdrawals = reqs.withdrawals.iter().all(|id| withdrawals_set.insert(id));
         deposits && withdrawals
     })
 }
 
-impl BitcoinTxContext {
+impl BitcoinPreSignRequest {
     /// Validate the current bitcoin transaction.
-    pub async fn pre_validation<C>(&self, _ctx: &C) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        if !is_unique(&self.request_packages) {
+    pub fn pre_validation(&self) -> Result<(), Error> {
+        if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
         }
 
-        // TODO: check that we have not received a different transaction
-        // package during this tenure.
         Ok(())
     }
 
@@ -96,16 +104,30 @@ impl BitcoinTxContext {
     pub async fn construct_package_sighashes<C>(
         &self,
         ctx: &C,
+        btc_ctx: &BitcoinTxContext,
     ) -> Result<Vec<BitcoinTxValidationData>, Error>
     where
         C: Context + Send + Sync,
     {
-        let mut signer_state = self.signer_state;
+        self.pre_validation()?;
+        let signer_utxo = ctx
+            .get_storage()
+            .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
+            .await?
+            .ok_or(Error::MissingSignerUtxo)?;
+
+        let mut signer_state = SignerBtcState {
+            fee_rate: self.fee_rate,
+            utxo: signer_utxo,
+            public_key: bitcoin::XOnlyPublicKey::from(btc_ctx.aggregate_key),
+            last_fees: self.last_fees,
+            magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
+        };
         let mut outputs = Vec::new();
 
-        for requests in self.request_packages.iter() {
+        for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(ctx, requests, signer_state)
+                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state)
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -123,6 +145,7 @@ impl BitcoinTxContext {
     async fn construct_tx_sighashes<C>(
         &self,
         ctx: &C,
+        btc_ctx: &BitcoinTxContext,
         requests: &TxRequestIds,
         signer_state: SignerBtcState,
     ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
@@ -131,9 +154,9 @@ impl BitcoinTxContext {
     {
         let db = ctx.get_storage();
 
-        let signer_public_key = &self.signer_public_key;
-        let aggregate_key = &self.aggregate_key;
-        let chain_tip = &self.chain_tip;
+        let signer_public_key = &btc_ctx.signer_public_key;
+        let aggregate_key = &btc_ctx.aggregate_key;
+        let chain_tip = &btc_ctx.chain_tip;
 
         let mut deposits = Vec::new();
         let mut withdrawals = Vec::new();
@@ -145,7 +168,7 @@ impl BitcoinTxContext {
                 db.get_deposit_request_report(chain_tip, &txid, output_index, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(InputValidationResult::Unknown.into_error(self));
+                return Err(InputValidationResult::Unknown.into_error(btc_ctx));
             };
 
             let votes = db
@@ -159,7 +182,7 @@ impl BitcoinTxContext {
             let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
 
             let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unknown.into_error(self));
+                return Err(WithdrawalValidationResult::Unknown.into_error(btc_ctx));
             };
 
             let votes = db
@@ -176,7 +199,6 @@ impl BitcoinTxContext {
             withdrawals,
             signer_state,
         };
-
         let mut signer_state = signer_state;
         let tx = reports.create_transaction()?;
         let sighashes = tx.construct_digests()?;
@@ -193,11 +215,11 @@ impl BitcoinTxContext {
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
-            chain_tip: self.chain_tip,
+            chain_tip: btc_ctx.chain_tip,
             tx: tx.tx.clone(),
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
-            chain_tip_height: self.chain_tip_height,
+            chain_tip_height: btc_ctx.chain_tip_height,
         };
 
         Ok((out, signer_state))
@@ -206,8 +228,7 @@ impl BitcoinTxContext {
 
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
-/// [`BitcoinSighash`].
-#[derive(Debug)]
+/// [`BitcoinTxSigHash`].
 pub struct BitcoinTxValidationData {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
@@ -226,67 +247,6 @@ pub struct BitcoinTxValidationData {
     pub chain_tip_height: u64,
 }
 
-/// The sighash and enough metadata to piece together what happened.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BitcoinSighash {
-    /// The transaction ID of the bitcoin transaction that sweeps funds
-    /// into and/or out of the signers' UTXO.
-    pub txid: BitcoinTxId,
-    /// The bitcoin chain tip when the sign request was submitted. This is
-    /// used to ensure that we do not sign for more than one transaction
-    /// containing inputs
-    pub chain_tip: BitcoinBlockHash,
-    /// The txid that created the output that is being spent.
-    pub prevout_txid: BitcoinTxId,
-    /// The index of the vout from the transaction that created this
-    /// output.
-    pub prevout_output_index: u32,
-    /// The sighash associated with the prevout.
-    pub sighash: TapSighash,
-    /// The type of prevout that we are dealing with.
-    pub prevout_type: TxPrevoutType,
-    /// The result of validation that was done on the input. For deposits,
-    /// this specifies whether validation succeeded and the first condition
-    /// that failed during validation. The signers' input is always valid,
-    /// since it is unconfirmed.
-    pub validation_result: InputValidationResult,
-    /// Whether the transaction is valid. A transaction is invalid if any
-    /// of the inputs or outputs failed validation.
-    pub is_valid_tx: bool,
-    /// Whether the signer will participate in a signing round for the
-    /// sighash.
-    pub will_sign: bool,
-}
-
-/// An output that was created due to a withdrawal request.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BitcoinWithdrawalOutput {
-    /// The ID of the transaction that includes this withdrawal output.
-    pub txid: BitcoinTxId,
-    /// The bitcoin chain tip when the sign request was submitted. This is
-    /// used to ensure that we do not sign for more than one transaction
-    /// containing inputs
-    pub chain_tip: BitcoinBlockHash,
-    /// The index of the referenced output in the transaction's outputs.
-    pub output_index: u32,
-    /// The request ID of the withdrawal request. These increment for each
-    /// withdrawal, but there can be duplicates if there is a reorg that
-    /// affects a transaction that calls the `initiate-withdrawal-request`
-    /// public function.
-    pub request_id: u64,
-    /// The stacks transaction ID that lead to the creation of the
-    /// withdrawal request.
-    pub stacks_txid: StacksTxId,
-    /// Stacks block ID of the block that includes the transaction
-    /// associated with this withdrawal request.
-    pub stacks_block_hash: StacksBlockHash,
-    /// The outcome of validation of the withdrawal request.
-    pub validation_result: WithdrawalValidationResult,
-    /// Whether the transaction is valid. A transaction is invalid if any
-    /// of the inputs or outputs failed validation.
-    pub is_valid_tx: bool,
-}
-
 impl BitcoinTxValidationData {
     /// Construct the sighashes for the inputs of the associated
     /// transaction.
@@ -302,7 +262,7 @@ impl BitcoinTxValidationData {
     ///    withdrawals in the transaction.
     /// 3. That the signer is a party to signing set that controls the
     ///    public key locking the transaction output.
-    pub fn to_input_rows(&self) -> Vec<BitcoinSighash> {
+    pub fn to_input_rows(&self) -> Vec<BitcoinTxSigHash> {
         // If any of the inputs or outputs fail validation, then the
         // transaction is invalid, so we won't sign any of the inputs or
         // outputs.
@@ -331,9 +291,9 @@ impl BitcoinTxValidationData {
         [(self.signer_sighash, InputValidationResult::Ok)]
             .into_iter()
             .chain(deposit_sighashes)
-            .map(|(sighash, validation_result)| BitcoinSighash {
+            .map(|(sighash, validation_result)| BitcoinTxSigHash {
                 txid: sighash.txid.into(),
-                sighash: sighash.sighash,
+                sighash: sighash.sighash.into(),
                 chain_tip: self.chain_tip,
                 prevout_txid: sighash.outpoint.txid.into(),
                 prevout_output_index: sighash.outpoint.vout,
@@ -348,7 +308,7 @@ impl BitcoinTxValidationData {
     /// Construct objects with withdrawal output identifier with the
     /// validation result.
     pub fn to_withdrawal_rows(&self) -> Vec<BitcoinWithdrawalOutput> {
-        let txid = self.tx.compute_txid().into();
+        let bitcoin_txid = self.tx.compute_txid().into();
 
         let is_valid_tx = self.is_valid_tx();
         // If we ever construct a transaction with more than u32::MAX then
@@ -360,8 +320,8 @@ impl BitcoinTxValidationData {
             .iter()
             .enumerate()
             .map(|(output_index, (_, report))| BitcoinWithdrawalOutput {
-                txid,
-                chain_tip: self.chain_tip,
+                bitcoin_txid,
+                bitcoin_chain_tip: self.chain_tip,
                 output_index: output_index as u32,
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
@@ -432,8 +392,9 @@ impl SbtcReports {
 }
 
 /// The responses for validation of a sweep transaction on bitcoin.
-#[derive(Debug, PartialEq, Eq, Copy, Clone, strum::Display, strum::IntoStaticStr)]
-#[strum(serialize_all = "snake_case")]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
@@ -481,7 +442,9 @@ impl InputValidationResult {
 
 /// The responses for validation of the outputs of a sweep transaction on
 /// bitcoin.
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
+#[sqlx(type_name = "TEXT", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
@@ -1003,8 +966,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -1021,8 +984,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -1039,8 +1002,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -1057,8 +1020,8 @@ mod tests {
     #[test_case(
         vec![TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 0),
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 0},
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![
                 QualifiedRequestId {
@@ -1074,7 +1037,7 @@ mod tests {
         ]},
         TxRequestIds {
             deposits: vec![
-                OutPoint::new(Txid::from_byte_array([1; 32]), 1)
+                OutPointMessage{txid: Txid::from_byte_array([1; 32]), vout: 1}
             ],
             withdrawals: vec![]
         }], false; "duplicate-requests-in-different-txs")]

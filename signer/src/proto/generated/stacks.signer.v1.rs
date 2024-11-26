@@ -88,22 +88,20 @@ pub struct StacksTransactionSignRequest {
     pub digest: ::core::option::Option<super::super::super::crypto::Uint256>,
     /// The transaction ID of the associated contract call transaction.
     #[prost(message, optional, tag = "5")]
-    pub txid: ::core::option::Option<super::super::super::crypto::Uint256>,
-    /// The contract call transaction to sign.
+    pub txid: ::core::option::Option<super::super::StacksTxid>,
+    /// The contract transaction to sign.
     #[prost(
-        oneof = "stacks_transaction_sign_request::ContractCall",
-        tags = "6, 7, 8, 9"
+        oneof = "stacks_transaction_sign_request::ContractTx",
+        tags = "6, 7, 8, 9, 10"
     )]
-    pub contract_call: ::core::option::Option<
-        stacks_transaction_sign_request::ContractCall,
-    >,
+    pub contract_tx: ::core::option::Option<stacks_transaction_sign_request::ContractTx>,
 }
 /// Nested message and enum types in `StacksTransactionSignRequest`.
 pub mod stacks_transaction_sign_request {
-    /// The contract call transaction to sign.
+    /// The contract transaction to sign.
     #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum ContractCall {
+    pub enum ContractTx {
         /// The `complete-deposit` contract call
         #[prost(message, tag = "6")]
         CompleteDeposit(super::CompleteDeposit),
@@ -116,6 +114,9 @@ pub mod stacks_transaction_sign_request {
         /// The `rotate-keys-wrapper` contract call
         #[prost(message, tag = "9")]
         RotateKeys(super::RotateKeys),
+        /// Ssmart contract deployment
+        #[prost(enumeration = "super::SmartContract", tag = "10")]
+        SmartContract(i32),
     }
 }
 /// For making a `complete-deposit` contract call in the sbtc-deposit
@@ -226,4 +227,258 @@ pub struct RotateKeys {
     /// The number of signatures required for the multi-sig wallet.
     #[prost(uint32, tag = "4")]
     pub signatures_required: u32,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SmartContract {
+    Unspecified = 0,
+    /// The sbtc-registry contract. This contract needs to be deployed
+    /// before any other contract.
+    SbtcRegistry = 1,
+    /// The sbtc-token contract. This contract needs to be deployed right
+    /// after the sbtc-registry contract.
+    SbtcToken = 2,
+    /// The sbtc-deposit contract. Can be deployed after the sbtc-token
+    /// contract.
+    SbtcDeposit = 3,
+    /// The sbtc-withdrawal contract. Can be deployed after the sbtc-token
+    /// contract.
+    SbtcWithdrawal = 4,
+    /// The sbtc-bootstrap-signers contract. Can be deployed after the
+    /// sbtc-token contract.
+    SbtcBootstrap = 5,
+}
+impl SmartContract {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            SmartContract::Unspecified => "SMART_CONTRACT_UNSPECIFIED",
+            SmartContract::SbtcRegistry => "SMART_CONTRACT_SBTC_REGISTRY",
+            SmartContract::SbtcToken => "SMART_CONTRACT_SBTC_TOKEN",
+            SmartContract::SbtcDeposit => "SMART_CONTRACT_SBTC_DEPOSIT",
+            SmartContract::SbtcWithdrawal => "SMART_CONTRACT_SBTC_WITHDRAWAL",
+            SmartContract::SbtcBootstrap => "SMART_CONTRACT_SBTC_BOOTSTRAP",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "SMART_CONTRACT_UNSPECIFIED" => Some(Self::Unspecified),
+            "SMART_CONTRACT_SBTC_REGISTRY" => Some(Self::SbtcRegistry),
+            "SMART_CONTRACT_SBTC_TOKEN" => Some(Self::SbtcToken),
+            "SMART_CONTRACT_SBTC_DEPOSIT" => Some(Self::SbtcDeposit),
+            "SMART_CONTRACT_SBTC_WITHDRAWAL" => Some(Self::SbtcWithdrawal),
+            "SMART_CONTRACT_SBTC_BOOTSTRAP" => Some(Self::SbtcBootstrap),
+            _ => None,
+        }
+    }
+}
+/// Messages exchanged between signers
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignerMessage {
+    /// / The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
+    #[prost(message, optional, tag = "1")]
+    pub bitcoin_chain_tip: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinBlockHash,
+    >,
+    /// The message payload
+    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 9")]
+    pub payload: ::core::option::Option<signer_message::Payload>,
+}
+/// Nested message and enum types in `SignerMessage`.
+pub mod signer_message {
+    /// The message payload
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Payload {
+        /// / A decision related to signer deposit
+        #[prost(message, tag = "2")]
+        SignerDepositDecision(super::SignerDepositDecision),
+        /// A decision related to signer withdrawal
+        #[prost(message, tag = "3")]
+        SignerWithdrawalDecision(super::SignerWithdrawalDecision),
+        /// A request to sign a Stacks transaction
+        #[prost(message, tag = "4")]
+        StacksTransactionSignRequest(super::StacksTransactionSignRequest),
+        /// A signature of a Stacks transaction
+        #[prost(message, tag = "5")]
+        StacksTransactionSignature(super::StacksTransactionSignature),
+        /// A request to sign a Bitcoin transaction
+        #[prost(message, tag = "6")]
+        BitcoinTransactionSignRequest(super::BitcoinTransactionSignRequest),
+        /// An acknowledgment of a signed Bitcoin transaction
+        #[prost(message, tag = "7")]
+        BitcoinTransactionSignAck(super::BitcoinTransactionSignAck),
+        /// Contains all variants for DKG and WSTS signing rounds
+        #[prost(message, tag = "8")]
+        WstsMessage(super::WstsMessage),
+        /// Information about a new sweep transaction
+        #[prost(message, tag = "9")]
+        SweepTransactionInfo(super::SweepTransactionInfo),
+    }
+}
+/// Represents information about a deposit request being swept-in by a sweep transaction.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SweptDeposit {
+    /// The index of the deposit input in the sBTC sweep transaction.
+    #[prost(uint32, tag = "1")]
+    pub input_index: u32,
+    /// The Bitcoin txid of the deposit request UTXO being swept-in by this
+    /// transaction.
+    #[prost(message, optional, tag = "2")]
+    pub deposit_request_txid: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinTxid,
+    >,
+    /// The Bitcoin output index of the deposit request UTXO being swept-in by
+    /// this transaction.
+    #[prost(uint32, tag = "3")]
+    pub deposit_request_output_index: u32,
+}
+/// Represents information about a withdrawal request being swept-out by a sweep transaction.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SweptWithdrawal {
+    /// The index of the withdrawal output in the sBTC sweep transaction.
+    #[prost(uint32, tag = "1")]
+    pub output_index: u32,
+    /// The public request id of the withdrawal request serviced by this
+    /// transaction.
+    #[prost(uint64, tag = "2")]
+    pub withdrawal_request_id: u64,
+    /// The Stacks block hash of the Stacks block which included the withdrawal
+    /// request transaction.
+    #[prost(message, optional, tag = "3")]
+    pub withdrawal_request_block_hash: ::core::option::Option<
+        super::super::StacksBlockId,
+    >,
+}
+/// Represents information about a new sweep transaction.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SweepTransactionInfo {
+    /// The Bitcoin transaction id of the sweep transaction.
+    #[prost(message, optional, tag = "1")]
+    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
+    /// The transaction id of the signer UTXO consumed by this transaction.
+    #[prost(message, optional, tag = "2")]
+    pub signer_prevout_txid: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinTxid,
+    >,
+    /// The index of the signer UTXO consumed by this transaction.
+    #[prost(uint32, tag = "3")]
+    pub signer_prevout_output_index: u32,
+    /// The amount of the signer UTXO consumed by this transaction.
+    #[prost(uint64, tag = "4")]
+    pub signer_prevout_amount: u64,
+    /// The public key of the signer UTXO consumed by this transaction.
+    #[prost(bytes = "vec", tag = "5")]
+    pub signer_prevout_script_pubkey: ::prost::alloc::vec::Vec<u8>,
+    /// The total **output** amount of this transaction.
+    #[prost(uint64, tag = "6")]
+    pub amount: u64,
+    /// The fee paid for this transaction.
+    #[prost(uint64, tag = "7")]
+    pub fee: u64,
+    /// The virtual size of this transaction (in bytes).
+    #[prost(uint32, tag = "8")]
+    pub vsize: u32,
+    /// The Bitcoin block hash at which this transaction was created.
+    #[prost(message, optional, tag = "9")]
+    pub created_at_block_hash: ::core::option::Option<
+        super::super::super::bitcoin::BitcoinBlockHash,
+    >,
+    /// The market fee rate at the time of this transaction.
+    #[prost(double, tag = "10")]
+    pub market_fee_rate: f64,
+    /// List of deposits which were swept-in by this transaction.
+    #[prost(message, repeated, tag = "11")]
+    pub swept_deposits: ::prost::alloc::vec::Vec<SweptDeposit>,
+    /// List of withdrawals which were swept-out by this transaction.
+    #[prost(message, repeated, tag = "12")]
+    pub swept_withdrawals: ::prost::alloc::vec::Vec<SweptWithdrawal>,
+}
+/// A wsts message.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WstsMessage {
+    /// The transaction ID this message relates to, will be a dummy ID for DKG messages
+    #[prost(message, optional, tag = "1")]
+    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
+    /// The wsts message
+    #[prost(oneof = "wsts_message::Inner", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
+    pub inner: ::core::option::Option<wsts_message::Inner>,
+}
+/// Nested message and enum types in `WstsMessage`.
+pub mod wsts_message {
+    /// The wsts message
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Inner {
+        /// Tell signers to begin DKG by sending DKG public shares
+        #[prost(message, tag = "2")]
+        DkgBegin(super::super::super::super::crypto::wsts::DkgBegin),
+        /// Send DKG public shares
+        #[prost(message, tag = "3")]
+        SignerDkgPublicShares(
+            super::super::super::super::crypto::wsts::SignerDkgPublicShares,
+        ),
+        /// Tell signers to send DKG private shares
+        #[prost(message, tag = "4")]
+        DkgPrivateBegin(super::super::super::super::crypto::wsts::DkgPrivateBegin),
+        /// Send DKG private shares
+        #[prost(message, tag = "5")]
+        DkgPrivateShares(super::super::super::super::crypto::wsts::DkgPrivateShares),
+        /// Tell signers to compute shares and send DKG end
+        #[prost(message, tag = "6")]
+        DkgEndBegin(super::super::super::super::crypto::wsts::DkgEndBegin),
+        /// Tell coordinator that DKG is complete
+        #[prost(message, tag = "7")]
+        DkgEnd(super::super::super::super::crypto::wsts::DkgEnd),
+        /// Tell signers to send signing nonces
+        #[prost(message, tag = "8")]
+        NonceRequest(super::super::super::super::crypto::wsts::NonceRequest),
+        /// Tell coordinator signing nonces
+        #[prost(message, tag = "9")]
+        NonceResponse(super::super::super::super::crypto::wsts::NonceResponse),
+        /// Tell signers to construct signature shares
+        #[prost(message, tag = "10")]
+        SignatureShareRequest(
+            super::super::super::super::crypto::wsts::SignatureShareRequest,
+        ),
+        /// Tell coordinator signature shares
+        #[prost(message, tag = "11")]
+        SignatureShareResponse(
+            super::super::super::super::crypto::wsts::SignatureShareResponse,
+        ),
+    }
+}
+/// Wraps an inner type with a public key and a signature,
+/// allowing easy verification of the integrity of the inner data.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Signed {
+    /// The public key of the signer.
+    #[prost(message, optional, tag = "1")]
+    pub signer_pub_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
+    /// A signature over the hash of the inner structure.
+    #[prost(bytes = "vec", tag = "2")]
+    pub signature: ::prost::alloc::vec::Vec<u8>,
+    /// The signed structure.
+    #[prost(oneof = "signed::Inner", tags = "3")]
+    pub inner: ::core::option::Option<signed::Inner>,
+}
+/// Nested message and enum types in `Signed`.
+pub mod signed {
+    /// The signed structure.
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Inner {
+        #[prost(message, tag = "3")]
+        SignerMessage(super::SignerMessage),
+    }
 }

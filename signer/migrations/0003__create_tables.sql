@@ -277,16 +277,16 @@ CREATE TABLE sbtc_signer.swept_withdrawals (
 
     PRIMARY KEY (sweep_transaction_txid, output_index),
 
-    FOREIGN KEY (sweep_transaction_txid) 
+    FOREIGN KEY (sweep_transaction_txid)
         REFERENCES sbtc_signer.sweep_transactions(txid),
 
-    FOREIGN KEY (withdrawal_request_id, withdrawal_request_block_hash) 
+    FOREIGN KEY (withdrawal_request_id, withdrawal_request_block_hash)
         REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash)
 );
 -- Our main index which will cover searches by 'withdrawal_request_id' and
 -- 'withdrawal_request_block_hash' while also restricting the combination to be
 -- unique per 'sweep_transaction_id'.
-CREATE UNIQUE INDEX uix_swept_req_id_req_block_hash_pkgd_txid 
+CREATE UNIQUE INDEX uix_swept_req_id_req_block_hash_pkgd_txid
     ON sbtc_signer.swept_withdrawals(withdrawal_request_id, withdrawal_request_block_hash, sweep_transaction_txid);
 
 -- Represents a single deposit request which has been included in a
@@ -310,7 +310,7 @@ CREATE TABLE sbtc_signer.swept_deposits (
     FOREIGN KEY (sweep_transaction_txid)
         REFERENCES sbtc_signer.sweep_transactions(txid),
 
-    FOREIGN KEY (deposit_request_txid, deposit_request_output_index) 
+    FOREIGN KEY (deposit_request_txid, deposit_request_output_index)
         REFERENCES sbtc_signer.deposit_requests(txid, output_index)
 );
 -- Our main index which will cover searches by 'deposit_request_txid' and

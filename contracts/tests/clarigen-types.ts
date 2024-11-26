@@ -1116,11 +1116,6 @@ export const contracts = {
         },
         boolean
       >,
-      multiSigAddress: {
-        name: "multi-sig-address",
-        key: "principal",
-        value: "bool",
-      } as TypedAbiMap<string, boolean>,
       protocolContracts: {
         name: "protocol-contracts",
         key: "principal",

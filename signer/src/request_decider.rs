@@ -166,6 +166,7 @@ where
             }
             Payload::StacksTransactionSignRequest(_)
             | Payload::BitcoinTransactionSignRequest(_)
+            | Payload::BitcoinPreSignRequest(_)
             | Payload::WstsMessage(_)
             | Payload::SweepTransactionInfo(_)
             | Payload::StacksTransactionSignature(_)

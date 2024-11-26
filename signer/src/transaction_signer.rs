@@ -7,7 +7,9 @@
 
 use std::collections::BTreeSet;
 use std::collections::HashMap;
+use std::time::Duration;
 
+use crate::bitcoin::validation::BitcoinTxContext;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::SignerCommand;
@@ -30,10 +32,12 @@ use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
 
+use bitcoin::hashes::Hash;
+use bitcoin::TapSighash;
 use futures::StreamExt;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -126,19 +130,28 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub context_window: u16,
     /// Random number generator used for encryption
     pub rng: Rng,
+    /// The time the signer should pause for after receiving a DKG begin message
+    /// before relaying to give the other signers time to catch up.
+    pub dkg_begin_pause: Option<Duration>,
 }
 
 /// This function defines which messages this event loop is interested
 /// in.
 fn run_loop_message_filter(signal: &SignerSignal) -> bool {
-    matches!(
-        signal,
+    match signal {
+        SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg))) => !matches!(
+            msg.payload,
+            message::Payload::SignerDepositDecision(_)
+                | message::Payload::SignerWithdrawalDecision(_)
+                | message::Payload::StacksTransactionSignature(_)
+                | message::Payload::BitcoinTransactionSignAck(_)
+        ),
         SignerSignal::Command(SignerCommand::Shutdown)
-            | SignerSignal::Event(SignerEvent::TxCoordinator(
-                TxCoordinatorEvent::MessageGenerated(_),
-            ))
-            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
-    )
+        | SignerSignal::Event(SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(
+            _,
+        ))) => true,
+        _ => false,
+    }
 }
 
 impl<C, N, Rng> TxSignerEventLoop<C, N, Rng>
@@ -261,6 +274,10 @@ where
                     .await?;
             }
 
+            (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
+                self.handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
+                    .await?;
+            }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
             | (message::Payload::BitcoinTransactionSignAck(_), _, _)
@@ -314,6 +331,59 @@ where
             chain_tip_status,
             chain_tip,
         })
+    }
+
+    /// Processes the [`BitcoinPreSignRequest`] message.
+    /// The signer reconstructs the sighashes for the provided requests
+    /// based on the current state of its UTXO and fee details obtained
+    /// from the coordinator.
+    /// It validates the transactions and records its intent to sign them
+    /// in the database.
+    #[tracing::instrument(skip_all)]
+    pub async fn handle_bitcoin_pre_sign_request(
+        &mut self,
+        request: &message::BitcoinPreSignRequest,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
+        let bitcoin_block = db
+            .get_bitcoin_block(bitcoin_chain_tip)
+            .await
+            .map_err(|_| Error::NoChainTip)?
+            .ok_or_else(|| Error::NoChainTip)?;
+
+        let (maybe_aggregate_key, _signer_set) = self
+            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
+            .await?;
+
+        let btc_ctx = BitcoinTxContext {
+            chain_tip: *bitcoin_chain_tip,
+            chain_tip_height: bitcoin_block.block_height,
+            context_window: self.context_window,
+            signer_public_key: self.signer_public_key(),
+            aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+        };
+
+        tracing::debug!("validating bitcoin transaction pre-sign");
+        let sighashes = request
+            .construct_package_sighashes(&self.context, &btc_ctx)
+            .await?;
+
+        let deposits_sighashes: Vec<model::BitcoinTxSigHash> =
+            sighashes.iter().flat_map(|s| s.to_input_rows()).collect();
+
+        let withdrawals_outputs: Vec<model::BitcoinWithdrawalOutput> = sighashes
+            .iter()
+            .flat_map(|s| s.to_withdrawal_rows())
+            .collect();
+
+        tracing::debug!("storing sighashes to the database");
+        db.write_bitcoin_txs_sighashes(&deposits_sighashes).await?;
+
+        db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
+            .await?;
+
+        Ok(())
     }
 
     #[tracing::instrument(skip_all)]
@@ -471,10 +541,10 @@ where
         msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
-        tracing::info!("handling wsts message");
-
         match &msg.inner {
             WstsNetMessage::DkgBegin(_) => {
+                tracing::info!("handling DkgBegin");
+
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -488,10 +558,20 @@ where
                     self.signer_private_key,
                 )?;
                 self.wsts_state_machines.insert(msg.txid, state_machine);
+
+                if let Some(pause) = self.dkg_begin_pause {
+                    // Let's give the others some slack
+                    tracing::debug!(
+                        "Sleeping a bit to give the other peers some slack to get DkgBegin"
+                    );
+                    tokio::time::sleep(pause).await;
+                }
+
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
             WstsNetMessage::DkgPrivateBegin(_) => {
+                tracing::info!("handling DkgPrivateBegin");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -501,6 +581,10 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
+                tracing::info!(
+                    signer_id = %dkg_public_shares.signer_id,
+                    "handling DkgPublicShares",
+                );
                 let public_keys = match self.wsts_state_machines.get(&msg.txid) {
                     Some(state_machine) => &state_machine.public_keys,
                     None => return Err(Error::MissingStateMachine),
@@ -518,6 +602,10 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPrivateShares(dkg_private_shares) => {
+                tracing::info!(
+                    signer_id = %dkg_private_shares.signer_id,
+                    "handling DkgPrivateShares"
+                );
                 let public_keys = match self.wsts_state_machines.get(&msg.txid) {
                     Some(state_machine) => &state_machine.public_keys,
                     None => return Err(Error::MissingStateMachine),
@@ -535,6 +623,7 @@ where
                     .await?;
             }
             WstsNetMessage::DkgEndBegin(_) => {
+                tracing::info!("handling DkgEndBegin");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
@@ -550,19 +639,23 @@ where
             // The compiler will complain about this, so we silence the
             // warning.
             #[allow(clippy::map_entry)]
-            WstsNetMessage::NonceRequest(_) => {
+            WstsNetMessage::NonceRequest(request) => {
+                tracing::info!("handling NonceRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
                 }
-                // TODO(296): Validate that message is the appropriate sighash
+
+                let db = self.context.get_storage();
+                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
                         .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
                         .await?;
 
                     let state_machine = SignerStateMachine::load(
-                        &self.context.get_storage_mut(),
+                        &db,
                         maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
                         self.threshold,
                         self.signer_private_key,
@@ -574,28 +667,38 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            WstsNetMessage::SignatureShareRequest(_) => {
+            WstsNetMessage::SignatureShareRequest(request) => {
+                tracing::info!("handling SignatureShareRequest");
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("Got coordinator message from wrong signer");
                     return Ok(());
                 }
 
-                // TODO(296): Validate that message is the appropriate sighash
+                let db = self.context.get_storage();
+                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            WstsNetMessage::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) => {
-                tracing::info!("DKG ended in success");
-            }
-            WstsNetMessage::DkgEnd(DkgEnd {
-                status: DkgStatus::Failure(fail),
-                ..
-            }) => {
-                tracing::info!("DKG ended in failure: {fail:?}");
-                // TODO(#414): handle DKG failure
+            WstsNetMessage::DkgEnd(dkg_end) => {
+                match &dkg_end.status {
+                    DkgStatus::Success => {
+                        tracing::info!(
+                            signer_id = %dkg_end.signer_id,
+                            "handling DkgEnd success from signer"
+                        );
+                    }
+                    DkgStatus::Failure(fail) => {
+                        // TODO(#414): handle DKG failure
+                        tracing::info!(
+                            signer_id = %dkg_end.signer_id,
+                            reason = ?fail,
+                            "handling DkgEnd failure",
+                        );
+                    }
+                }
             }
             WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {
-                tracing::debug!("ignoring message");
+                tracing::trace!("ignoring message");
             }
         }
 
@@ -637,6 +740,23 @@ where
         }
 
         Ok(())
+    }
+
+    /// Check whether we will sign the message, which is supposed to be a
+    /// bitcoin sighash
+    async fn validate_bitcoin_sign_request<D>(db: &D, message: &[u8]) -> Result<(), Error>
+    where
+        D: DbRead,
+    {
+        let sighash = TapSighash::from_slice(message)
+            .map_err(Error::SigHashConversion)?
+            .into();
+
+        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
+            Some(true) => Ok(()),
+            Some(false) => Err(Error::InvalidSigHash(sighash)),
+            None => Err(Error::UnknownSigHash(sighash)),
+        }
     }
 
     #[tracing::instrument(skip(self))]
