@@ -1006,11 +1006,6 @@ where
                 continue;
             }
 
-            if !msg.verify() {
-                tracing::warn!(?msg, "invalid signature");
-                continue;
-            }
-
             let Payload::WstsMessage(wsts_msg) = msg.inner.payload else {
                 continue;
             };
