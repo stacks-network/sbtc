@@ -16,7 +16,7 @@ struct Cli {
     config: Option<PathBuf>,
 }
 
-/// Statically configured settings for the Blocklist client
+/// Command line arguments for the blocklist client
 static CLI: LazyLock<Cli> = LazyLock::new(Cli::parse);
 
 /// Top-level configuration for the Blocklist client
