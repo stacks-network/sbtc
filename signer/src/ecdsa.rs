@@ -23,10 +23,21 @@
 //!
 //! struct SignableStr(&'static str);
 //!
-//! // Implementing `wsts::net::Signable` unlocks the signing functionality in this module.
-//! impl wsts::net::Signable for SignableStr {
-//!     fn hash(&self, hasher: &mut sha2::Sha256) {
-//!         hasher.update(self.0)
+//! // Implementing `ProtoSerializable` and conversion traits unlock the signing 
+//! // functionality in this module.
+//! #[allow(clippy::derive_partial_eq_without_eq)]
+//! #[derive(Clone, PartialEq, ::prost::Message)]
+//! pub struct ProtoSignableStr {
+//!     /// The string
+//!     #[prost(string, tag = "1")]
+//!     pub string: ::prost::alloc::string::String,
+//! }
+//! 
+//! impl ProtoSerializable for SignableStr {
+//!     type Message = ProtoSignableStr;
+//! 
+//!     fn type_tag(&self) -> &'static str {
+//!         "SBTC_SIGNABLE_STR"
 //!     }
 //! }
 //!
@@ -37,7 +48,7 @@
 //! let signed_msg = msg.sign_ecdsa(&private_key);
 //!
 //! // Verify the signed message.
-//! assert!(signed_msg.verify());
+//! assert_eq!(signed_msg.recover_ecdsa(), Ok(private_key.into()));
 
 use crate::codec::ProtoSerializable;
 use crate::keys::PrivateKey;
@@ -150,24 +161,27 @@ mod tests {
     fn verify_should_return_true_given_properly_signed_data() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
+        let bruce_wayne_public_key = PublicKey::from_private_key(&bruce_wayne_private_key);
 
         let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         // Bruce Wayne is Batman.
-        assert!(signed_msg.verify());
+        assert!(signed_msg.verify(bruce_wayne_public_key));
     }
 
     #[test]
     fn verify_should_return_false_given_tampered_data() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
+        let bruce_wayne_public_key = PublicKey::from_private_key(&bruce_wayne_private_key);
 
         let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
+        assert!(signed_msg.verify(bruce_wayne_public_key));
 
         signed_msg.inner = SignableStr("I'm Satoshi Nakamoto");
 
         // Bruce Wayne is not Satoshi Nakamoto.
-        assert!(!signed_msg.verify());
+        assert!(!signed_msg.verify(bruce_wayne_public_key));
     }
 
     #[test]
