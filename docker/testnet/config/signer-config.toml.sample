@@ -1,6 +1,5 @@
-# TODO: Enable blocklist client.
-# [blocklist_client]
-# endpoint = "http://blocklist-client:3032"
+[blocklist_client]
+endpoint = "http://blocklist-client:3032"
 
 [emily]
 # TODO: Add your API key here.
