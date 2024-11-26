@@ -11,6 +11,16 @@ allows to gradually decommission the "development" signer instances used to
 bootstrap the testnet and onboard external signers without having to re-run
 distributed key generation (DKG).
 
+## Requirements
+
+sBTC signers require both a Bitcoin node and a Stacks node. This repository
+includes examples of:
+
+- A [Bitcoin regtest config](./bitcoin/bitcoin.conf) and
+- A [Stacks primary testnet configuration](./stacks/Config.toml).
+
+You will need to customize the configuration based on your specific deployment.
+
 ## Configuration
 
 Clone this repository and `cd` to this directory.
