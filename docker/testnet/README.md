@@ -19,9 +19,9 @@ includes examples of:
 - A [Bitcoin regtest config](./bitcoin/bitcoin.conf) and
 - A [Stacks primary testnet configuration](./stacks/Config.toml).
 
-You will need to customize the configuration based on your specific deployment.
+You will need to customize the configurations based on your specific deployment.
 
-Syncing a Bitcoin regtest node at the time of writing takes roughly 5 hours. If
+Syncing a Bitcoin regtest node takes roughly 5 hours at the time of writing. If
 helpful, we can provide an archive of the chain-state to speed things up.
 
 You can also bootstrap the Stacks testnet node through an
@@ -36,10 +36,10 @@ Clone this repository and `cd` to this directory.
 - Copy `./config/signer-config.toml.sample` to `./config/signer-config.toml`.
 - Edit `./config/signer-config.toml` to add:
   - The provided Emily API key.
+  - The provided signer private key.
   - The host/port of your Bitcoin node RPC endpoint.
   - The host/port of your Bitcoin zmqpubhash endpoint.
   - The host/port of your Stacks RPC endpoint.
-  - The provided signer private key.
   - The URI to a Postgresql DB.
 
 ### Configure the Postgresql database
@@ -48,8 +48,8 @@ Copy the provided `data` folder to the `./postgres` directory.
 
 ### Add an event-listener to your Stacks node
 
-Note that the following Stacks address MUST be the one specified in the
-`deployer` key config of the Signer configuration.
+If you have used the [configuration](./stacks/Config.toml) from this repository,
+you are all set.
 
 ```toml
 [[events_observer]]
@@ -57,6 +57,19 @@ endpoint = "<your_signer_hostname>:8801"
 events_keys = [
     "SNGWPN3XDAQE673MXYXF81016M50NHF5X5PWWM70.sbtc-registry::print",
 ]
+```
+
+Note that the Stacks address above MUST be the one specified in the `deployer`
+key config of the Signer configuration.
+
+### Configure ZMQ endpoints for your Bitcoin node
+
+If you have used the [configuration](./bitcoin/bitcoin.conf) from this
+repository, you are all set.
+
+```conf
+zmqpubhashblock=tcp://*:28332
+zmqpubrawblock=tcp://*:28332
 ```
 
 ### Configure logging

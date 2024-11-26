@@ -12,9 +12,8 @@ services:
       - ./postgres/data:/var/lib/postgresql/data
 
   sbtc-signer:
-    image: blockstack/sbtc:signer-0.0.1-dev-8
-    # TODO: No need to install `ca-certificates` after new images are built.
-    entrypoint: "/bin/bash -c 'apt update && apt install -y ca-certificates && /usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs'"
+    image: blockstack/sbtc:signer-0.0.1-dev-9
+    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs'"
     depends_on:
       - postgres
     environment:
@@ -26,9 +25,8 @@ services:
       - "4122:4122"
 
   blocklist-client:
-    image: blockstack/sbtc:blocklist-client-0.0.1-dev-8
-    # TODO: No need to install `ca-certificates` after new images are built.
-    entrypoint: "/bin/bash -c 'apt update && apt install -y ca-certificates && /usr/local/bin/blocklist-client'"
+    image: blockstack/sbtc:blocklist-client-0.0.1-dev-9
+    entrypoint: "/usr/local/bin/blocklist-client'"
     ports:
       - "3032:3032"
     environment:
