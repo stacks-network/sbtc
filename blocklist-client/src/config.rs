@@ -7,12 +7,9 @@ use std::sync::LazyLock;
 use clap::Parser;
 use std::path::PathBuf;
 
-
 /// Struct which represent command line arguments
 #[derive(Parser, Debug)]
-#[command(
-    name = "Blocklist Client",
-)]
+#[command(name = "Blocklist Client")]
 struct Cli {
     /// Path to the configuration file
     #[arg(short = 'c', long = "config", value_name = "PATH")]
@@ -20,9 +17,7 @@ struct Cli {
 }
 
 /// Statically configured settings for the Blocklist client
-static CLI: LazyLock<Cli> =
-    LazyLock::new(|| Cli::parse());
-
+static CLI: LazyLock<Cli> = LazyLock::new(|| Cli::parse());
 
 /// Top-level configuration for the Blocklist client
 #[derive(Deserialize, Clone, Debug)]
@@ -71,13 +66,14 @@ pub struct RiskAnalysisConfig {
 }
 
 /// Statically configured settings for the Blocklist client
-pub static SETTINGS: LazyLock<Settings> =
-    LazyLock::new(|| {
-        match &CLI.config {
-            Some(path) => {return Settings::new_from_path(path.to_str().unwrap()).expect("Failed to load configuration");}
-            None => {return Settings::new().expect("Failed to load configuration");}
-
-        }
+pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| match &CLI.config {
+    Some(path) => {
+        return Settings::new_from_path(path.to_str().unwrap())
+            .expect("Failed to load configuration");
+    }
+    None => {
+        return Settings::new().expect("Failed to load configuration");
+    }
 });
 
 impl Settings {
