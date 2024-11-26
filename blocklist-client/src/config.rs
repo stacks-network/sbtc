@@ -68,12 +68,9 @@ pub struct RiskAnalysisConfig {
 /// Statically configured settings for the Blocklist client
 pub static SETTINGS: LazyLock<Settings> = LazyLock::new(|| match &CLI.config {
     Some(path) => {
-        return Settings::new_from_path(path.to_str().unwrap())
-            .expect("Failed to load configuration");
+        Settings::new_from_path(path.to_str().unwrap()).expect("Failed to load configuration")
     }
-    None => {
-        return Settings::new().expect("Failed to load configuration");
-    }
+    None => Settings::new().expect("Failed to load configuration"),
 });
 
 impl Settings {
