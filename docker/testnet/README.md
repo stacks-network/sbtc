@@ -1,5 +1,16 @@
 # `testnet` setup
 
+This `README` details how to set up a sBTC signer for a testnet deployment.
+
+In a production deployment, signers would perform a key ceremony to bootstrap
+the system: each would generate a private key and distribute the corresponding
+public key to the others.
+
+In testnet, instead, the signer bootstrap set has been pre-determined. This
+allows to gradually decommission the "development" signer instances used to
+bootstrap the testnet and onboard external signers without having to re-run
+distributed key generation (DKG).
+
 ## Configuration
 
 Clone this repository and `cd` to this directory.
