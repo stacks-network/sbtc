@@ -21,6 +21,12 @@ includes examples of:
 
 You will need to customize the configuration based on your specific deployment.
 
+Syncing a Bitcoin regtest node at the time of writing takes roughly 5 hours. If
+helpful, we can provide an archive of the chain-state to speed things up.
+
+You can also bootstrap the Stacks testnet node through an
+[archive](https://docs.stacks.co/guides-and-tutorials/running-a-signer#start-with-an-archive).
+
 ## Configuration
 
 Clone this repository and `cd` to this directory.
