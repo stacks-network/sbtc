@@ -776,6 +776,7 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> Result<Vec<model::DepositRequest>, Error> {
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
@@ -812,12 +813,18 @@ impl super::DbRead for PgStore {
               , deposit_requests.signers_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_requests deposit_requests ON
-                deposit_requests.txid = transactions.txid
+            JOIN sbtc_signer.deposit_requests deposit_requests
+              ON deposit_requests.txid = transactions.txid
+            LEFT JOIN sbtc_signer.deposit_signer AS ds
+              ON ds.txid = deposit_requests.txid
+             AND ds.output_index = deposit_requests.output_index
+             AND ds.signer_pub_key = $3
+            WHERE ds.txid IS NULL
             "#,
         )
         .bind(chain_tip)
         .bind(i32::from(context_window))
+        .bind(signer_public_key)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)

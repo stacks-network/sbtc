@@ -8,7 +8,7 @@ use futures::TryStreamExt as _;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
-use std::collections::HashSet;
+// use std::collections::HashSet;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
@@ -25,7 +25,7 @@ use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
-use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+// use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::util::get_utxo;
 
@@ -237,100 +237,103 @@ impl super::DbRead for SharedStore {
 
     async fn get_pending_deposit_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+        _signer_public_key: &PublicKey,
     ) -> Result<Vec<model::DepositRequest>, Error> {
-        let store = self.lock().await;
+        unimplemented!()
+        // let store = self.lock().await;
 
-        Ok((0..context_window)
-            // Find all tracked transaction IDs in the context window
-            .scan(chain_tip, |block_hash, _| {
-                let transaction_ids = store
-                    .bitcoin_block_to_transactions
-                    .get(*block_hash)
-                    .cloned()
-                    .unwrap_or_else(Vec::new);
+        // Ok((0..context_window)
+        //     // Find all tracked transaction IDs in the context window
+        //     .scan(chain_tip, |block_hash, _| {
+        //         let transaction_ids = store
+        //             .bitcoin_block_to_transactions
+        //             .get(*block_hash)
+        //             .cloned()
+        //             .unwrap_or_else(Vec::new);
 
-                let block = store.bitcoin_blocks.get(*block_hash)?;
-                *block_hash = &block.parent_hash;
+        //         let block = store.bitcoin_blocks.get(*block_hash)?;
+        //         *block_hash = &block.parent_hash;
 
-                Some(transaction_ids)
-            })
-            .flatten()
-            // Return all deposit requests associated with any of these transaction IDs
-            .flat_map(|txid| {
-                store
-                    .deposit_requests
-                    .values()
-                    .filter(move |req| req.txid == txid)
-                    .cloned()
-            })
-            .collect())
+        //         Some(transaction_ids)
+        //     })
+        //     .flatten()
+        //     // Return all deposit requests associated with any of these transaction IDs
+        //     .flat_map(|txid| {
+        //         store
+        //             .deposit_requests
+        //             .values()
+        //             .filter(move |req| req.txid == txid)
+        //             .cloned()
+        //     })
+        //     .collect())
     }
 
     async fn get_pending_accepted_deposit_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        threshold: u16,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+        _threshold: u16,
     ) -> Result<Vec<model::DepositRequest>, Error> {
-        let pending_deposit_requests = self
-            .get_pending_deposit_requests(chain_tip, context_window)
-            .await?;
+        unimplemented!()
+        // let pending_deposit_requests = self
+        //     .get_pending_deposit_requests(chain_tip, context_window)
+        //     .await?;
 
-        let threshold = threshold as usize;
-        let store = self.lock().await;
+        // let threshold = threshold as usize;
+        // let store = self.lock().await;
 
-        // Add one to the acceptable unlock height because the chain tip is at height one less
-        // than the height of the next block, which is the block for which we are assessing
-        // the threshold.
-        let minimum_acceptable_unlock_height =
-            store.bitcoin_blocks.get(chain_tip).unwrap().block_height as u32
-                + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
-                + 1;
+        // // Add one to the acceptable unlock height because the chain tip is at height one less
+        // // than the height of the next block, which is the block for which we are assessing
+        // // the threshold.
+        // let minimum_acceptable_unlock_height =
+        //     store.bitcoin_blocks.get(chain_tip).unwrap().block_height as u32
+        //         + DEPOSIT_LOCKTIME_BLOCK_BUFFER as u32
+        //         + 1;
 
-        // Get all canonical blocks in the context window.
-        let canonical_bitcoin_blocks = std::iter::successors(Some(chain_tip), |block_hash| {
-            store
-                .bitcoin_blocks
-                .get(block_hash)
-                .map(|block| &block.parent_hash)
-        })
-        .take(context_window as usize)
-        .collect::<HashSet<_>>();
+        // // Get all canonical blocks in the context window.
+        // let canonical_bitcoin_blocks = std::iter::successors(Some(chain_tip), |block_hash| {
+        //     store
+        //         .bitcoin_blocks
+        //         .get(block_hash)
+        //         .map(|block| &block.parent_hash)
+        // })
+        // .take(context_window as usize)
+        // .collect::<HashSet<_>>();
 
-        Ok(pending_deposit_requests
-            .into_iter()
-            .filter(|deposit_request| {
-                store
-                    .bitcoin_transactions_to_blocks
-                    .get(&deposit_request.txid)
-                    .unwrap_or(&Vec::new())
-                    .iter()
-                    .filter(|block_hash| canonical_bitcoin_blocks.contains(block_hash))
-                    .filter_map(|block_hash| store.bitcoin_blocks.get(block_hash))
-                    .map(|block_included: &model::BitcoinBlock| {
-                        let unlock_height =
-                            block_included.block_height as u32 + deposit_request.lock_time;
-                        unlock_height >= minimum_acceptable_unlock_height
-                    })
-                    .next()
-                    .unwrap_or(false)
-            })
-            .filter(|deposit_request| {
-                store
-                    .deposit_request_to_signers
-                    .get(&(deposit_request.txid, deposit_request.output_index))
-                    .map(|signers| {
-                        signers
-                            .iter()
-                            .filter(|signer| signer.can_accept && signer.can_sign)
-                            .count()
-                            >= threshold
-                    })
-                    .unwrap_or_default()
-            })
-            .collect())
+        // Ok(pending_deposit_requests
+        //     .into_iter()
+        //     .filter(|deposit_request| {
+        //         store
+        //             .bitcoin_transactions_to_blocks
+        //             .get(&deposit_request.txid)
+        //             .unwrap_or(&Vec::new())
+        //             .iter()
+        //             .filter(|block_hash| canonical_bitcoin_blocks.contains(block_hash))
+        //             .filter_map(|block_hash| store.bitcoin_blocks.get(block_hash))
+        //             .map(|block_included: &model::BitcoinBlock| {
+        //                 let unlock_height =
+        //                     block_included.block_height as u32 + deposit_request.lock_time;
+        //                 unlock_height >= minimum_acceptable_unlock_height
+        //             })
+        //             .next()
+        //             .unwrap_or(false)
+        //     })
+        //     .filter(|deposit_request| {
+        //         store
+        //             .deposit_request_to_signers
+        //             .get(&(deposit_request.txid, deposit_request.output_index))
+        //             .map(|signers| {
+        //                 signers
+        //                     .iter()
+        //                     .filter(|signer| signer.can_accept && signer.can_sign)
+        //                     .count()
+        //                     >= threshold
+        //             })
+        //             .unwrap_or_default()
+        //     })
+        //     .collect())
     }
 
     async fn get_accepted_deposit_requests(
