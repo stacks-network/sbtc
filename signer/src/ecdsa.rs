@@ -34,9 +34,7 @@
 //! let private_key = PrivateKey::try_from(&p256k1::scalar::Scalar::from(1337)).unwrap();
 //!
 //! // Sign the message.
-//! let signed_msg = msg
-//!     .sign_ecdsa(&private_key)
-//!     .expect("Failed to sign message");
+//! let signed_msg = msg.sign_ecdsa(&private_key);
 //!
 //! // Verify the signed message.
 //! assert!(signed_msg.verify());
@@ -48,7 +46,7 @@ use crate::signature::SighashDigest as _;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Signed<T> {
     /// The signed structure.
     pub inner: T,
@@ -214,6 +212,10 @@ mod tests {
 
     impl ProtoSerializable for SignableStr {
         type Message = ProtoSignableStr;
+
+        fn type_tag(&self) -> &'static str {
+            "SBTC_SIGNABLE_STR"
+        }
     }
 
     impl From<SignableStr> for ProtoSignableStr {

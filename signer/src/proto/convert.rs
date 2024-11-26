@@ -1756,18 +1756,43 @@ impl TryFrom<proto::DkgPublicShares> for BTreeMap<u32, DkgPublicShares> {
 
 impl codec::ProtoSerializable for SignerMessage {
     type Message = proto::SignerMessage;
+
+    fn type_tag(&self) -> &'static str {
+        match &self.payload {
+            Payload::SignerDepositDecision(_) => "SBTC_SIGNER_DEPOSIT_DECISION",
+            Payload::SignerWithdrawalDecision(_) => "SBTC_SIGNER_WITHDRAWAL_DECISION",
+            Payload::StacksTransactionSignRequest(_) => "SBTC_STACKS_TRANSACTION_SIGN_REQUEST",
+            Payload::StacksTransactionSignature(_) => "SBTC_STACKS_TRANSACTION_SIGNATURE",
+            Payload::BitcoinTransactionSignRequest(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_REQUEST",
+            Payload::BitcoinTransactionSignAck(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_ACK",
+            Payload::WstsMessage(_) => "SBTC_WSTS_MESSAGE",
+            Payload::SweepTransactionInfo(_) => "SBTC_SWEEP_TRANSACTION_INFO",
+        }
+    }
 }
 
 impl codec::ProtoSerializable for Signed<SignerMessage> {
     type Message = proto::Signed;
+
+    fn type_tag(&self) -> &'static str {
+        self.inner.type_tag()
+    }
 }
 
 impl codec::ProtoSerializable for SignerState {
     type Message = proto::SignerState;
+
+    fn type_tag(&self) -> &'static str {
+        "SBTC_SIGNER_STATE"
+    }
 }
 
 impl codec::ProtoSerializable for BTreeMap<u32, DkgPublicShares> {
     type Message = proto::DkgPublicShares;
+
+    fn type_tag(&self) -> &'static str {
+        "SBTC_DKG_PUBLIC_SHARES"
+    }
 }
 
 #[cfg(test)]

@@ -47,6 +47,8 @@ use crate::signature::SighashDigest;
 pub trait ProtoSerializable {
     /// The proto message type used for conversions
     type Message: ::prost::Message + Default;
+    /// A message type tag used for hashing the message before signing.
+    fn type_tag(&self) -> &'static str;
 }
 
 impl<T> SighashDigest for T
@@ -55,13 +57,14 @@ where
     T: Into<<T as ProtoSerializable>::Message>,
 {
     fn digest(&self) -> [u8; 32] {
-        let mut hasher = sha2::Sha256::new();
+        let mut hasher = sha2::Sha256::new_with_prefix(self.type_tag());
         let proto_message: <Self as ProtoSerializable>::Message = self.clone().into();
         let message = prost::Message::encode_to_vec(&proto_message);
         hasher.update(&message);
         hasher.finalize().into()
     }
 }
+
 
 /// Provides a method for encoding an object into a writer using a canonical serialization format.
 ///
@@ -145,6 +148,10 @@ mod tests {
 
     impl ProtoSerializable for PublicKey {
         type Message = proto::PublicKey;
+
+        fn type_tag(&self) -> &'static str {
+            "SBTC_PUBLIC_KEY"
+        }
     }
 
     #[test]
