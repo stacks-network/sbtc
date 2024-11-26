@@ -81,18 +81,13 @@ pub struct StacksTransactionSignRequest {
     /// The transaction fee in microSTX.
     #[prost(uint64, tag = "3")]
     pub tx_fee: u64,
-    /// The expected digest of the transaction than needs to be signed. It's
-    /// essentially a hash of the contract call struct, the nonce, the tx_fee
-    /// and a few other things.
-    #[prost(message, optional, tag = "4")]
-    pub digest: ::core::option::Option<super::super::super::crypto::Uint256>,
     /// The transaction ID of the associated contract call transaction.
-    #[prost(message, optional, tag = "5")]
+    #[prost(message, optional, tag = "4")]
     pub txid: ::core::option::Option<super::super::StacksTxid>,
     /// The contract transaction to sign.
     #[prost(
         oneof = "stacks_transaction_sign_request::ContractTx",
-        tags = "6, 7, 8, 9, 10"
+        tags = "5, 6, 7, 8, 9"
     )]
     pub contract_tx: ::core::option::Option<stacks_transaction_sign_request::ContractTx>,
 }
@@ -103,19 +98,19 @@ pub mod stacks_transaction_sign_request {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum ContractTx {
         /// The `complete-deposit` contract call
-        #[prost(message, tag = "6")]
+        #[prost(message, tag = "5")]
         CompleteDeposit(super::CompleteDeposit),
         /// The `accept-withdrawal-request` contract call
-        #[prost(message, tag = "7")]
+        #[prost(message, tag = "6")]
         AcceptWithdrawal(super::AcceptWithdrawal),
         /// The `reject-withdrawal-request` contract call
-        #[prost(message, tag = "8")]
+        #[prost(message, tag = "7")]
         RejectWithdrawal(super::RejectWithdrawal),
         /// The `rotate-keys-wrapper` contract call
-        #[prost(message, tag = "9")]
+        #[prost(message, tag = "8")]
         RotateKeys(super::RotateKeys),
         /// Ssmart contract deployment
-        #[prost(enumeration = "super::SmartContract", tag = "10")]
+        #[prost(enumeration = "super::SmartContract", tag = "9")]
         SmartContract(i32),
     }
 }
