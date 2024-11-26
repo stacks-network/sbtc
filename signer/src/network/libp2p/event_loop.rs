@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
 use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
+use crate::error::Error;
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
@@ -339,7 +340,8 @@ fn handle_gossipsub_event(
             }
 
             Msg::decode(message.data.as_slice())
-                .map(|msg| {
+                .map_err(Error::Codec)
+                .and_then(|msg| {
                     tracing::trace!(
                         local_peer_id = %swarm.local_peer_id(),
                         %peer_id,
@@ -348,14 +350,22 @@ fn handle_gossipsub_event(
                         "received message",
                     );
 
+                    let public_key = msg.recover_ecdsa()?;
+                    if peer_id != public_key.into() {
+                        tracing::error!(%peer_id, "connected peer sent an invalid message");
+                        return Err(Error::InvalidSignature)
+                    }
+
                     let _ = ctx.get_signal_sender()
                         .send(P2PEvent::MessageReceived(msg).into())
-                        .map_err(|error| {
+                        .inspect_err(|error| {
                             tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
                         });
+
+                    Ok::<_, Error>(())
                 })
                 .unwrap_or_else(|error| {
-                    tracing::warn!(?peer_id, %error, "Failed to decode message");
+                    tracing::warn!(%peer_id, %error, "Failed to decode message");
                 });
         }
         Event::Subscribed { peer_id, topic } => {
