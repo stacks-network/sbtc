@@ -41,9 +41,10 @@
 //! // Verify the signed message.
 //! assert!(signed_msg.verify());
 
+use crate::codec::ProtoSerializable;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
-use sha2::Digest as _;
+use crate::signature::SighashDigest as _;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
@@ -57,21 +58,22 @@ pub struct Signed<T> {
     pub signature: Vec<u8>,
 }
 
-impl<T: wsts::net::Signable> Signed<T> {
+impl<T> Signed<T>
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
     /// Verify the signature over the inner data.
     pub fn verify(&self) -> bool {
-        self.inner
-            .verify(&self.signature, &self.signer_pub_key.into())
+        let msg = secp256k1::Message::from_digest(self.inner.digest());
+        let sig = secp256k1::ecdsa::Signature::from_compact(&self.signature).unwrap();
+
+        self.signer_pub_key.verify(&msg, &sig)
     }
 
     /// Unique identifier for the signed message
     pub fn id(&self) -> [u8; 32] {
-        let mut hasher = sha2::Sha256::new();
-
-        self.hash(&mut hasher);
-        hasher.update(&self.signature);
-
-        hasher.finalize().into()
+        self.inner.digest()
     }
 }
 
@@ -95,15 +97,19 @@ pub trait SignEcdsa: Sized {
     fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error>;
 }
 
-impl<T: wsts::net::Signable> SignEcdsa for T {
-    /// Create a `Signed<T>` instance with a signature and public key constructed from `private_key`.
+impl<T> SignEcdsa for T
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
     fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error> {
-        let signature = self.sign(&private_key.into())?;
+        let msg = secp256k1::Message::from_digest(self.digest());
+        let signature = private_key.sign_ecdsa(&msg);
 
         Ok(Signed {
             inner: self,
             signer_pub_key: PublicKey::from_private_key(private_key),
-            signature,
+            signature: signature.serialize_compact().to_vec(),
         })
     }
 }
@@ -143,8 +149,6 @@ impl Signed<crate::message::SignerMessage> {
 mod tests {
     use super::*;
     use p256k1::scalar::Scalar;
-
-    use sha2::Digest;
 
     #[test]
     fn verify_should_return_true_given_properly_signed_data() {
@@ -202,11 +206,24 @@ mod tests {
         assert_eq!(signed_msg.len(), 10);
     }
 
+    #[derive(Clone, PartialEq)]
     struct SignableStr(&'static str);
 
-    impl wsts::net::Signable for SignableStr {
-        fn hash(&self, hasher: &mut sha2::Sha256) {
-            hasher.update(self.0)
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ProtoSignableStr {
+        /// The string
+        #[prost(string, tag = "1")]
+        pub string: ::prost::alloc::string::String,
+    }
+
+    impl ProtoSerializable for SignableStr {
+        type Message = ProtoSignableStr;
+    }
+
+    impl From<SignableStr> for ProtoSignableStr {
+        fn from(value: SignableStr) -> Self {
+            ProtoSignableStr { string: value.0.to_string() }
         }
     }
 

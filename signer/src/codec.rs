@@ -29,10 +29,16 @@
 
 use std::io;
 
-use crate::error::Error;
 use prost::Message as _;
+use sha2::Digest as _;
 
-/// Utility trait to specify mapping between internal types and proto counterparts. The implementation of `Encode` and `Decode` for a type `T` implementing `ProtoSerializable` assume `T: Into<Message> + TryFrom<Message>`.
+use crate::error::Error;
+use crate::signature::SighashDigest;
+
+/// Utility trait to specify mapping between internal types and proto
+/// counterparts. The implementation of `Encode` and `Decode` for a type
+/// `T` implementing `ProtoSerializable` assume `T: Into<Message> +
+/// TryFrom<Message>`.
 /// ```
 /// impl ProtoSerializable for PublicKey {
 ///    type Message = proto::PublicKey;
@@ -41,6 +47,20 @@ use prost::Message as _;
 pub trait ProtoSerializable {
     /// The proto message type used for conversions
     type Message: ::prost::Message + Default;
+}
+
+impl<T> SighashDigest for T
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
+    fn digest(&self) -> [u8; 32] {
+        let mut hasher = sha2::Sha256::new();
+        let proto_message: <Self as ProtoSerializable>::Message = self.clone().into();
+        let message = prost::Message::encode_to_vec(&proto_message);
+        hasher.update(&message);
+        hasher.finalize().into()
+    }
 }
 
 /// Provides a method for encoding an object into a writer using a canonical serialization format.
