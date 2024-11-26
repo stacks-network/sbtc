@@ -241,8 +241,7 @@ where
             .broadcast(
                 transaction_sign_request_payload
                     .to_message(bitcoin_chain_tip)
-                    .sign_ecdsa(&coordinator_private_key)
-                    .expect("failed to sign"),
+                    .sign_ecdsa(&coordinator_private_key),
             )
             .await
             .expect("broadcast failed");

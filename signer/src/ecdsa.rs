@@ -94,7 +94,7 @@ impl<T> std::ops::DerefMut for Signed<T> {
 /// Helper trait to provide the ability to construct a `Signed<T>`.
 pub trait SignEcdsa: Sized {
     /// Wrap this type into a [`Signed<Self>`]
-    fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error>;
+    fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self>;
 }
 
 impl<T> SignEcdsa for T
@@ -102,15 +102,15 @@ where
     T: ProtoSerializable + Clone,
     T: Into<<T as ProtoSerializable>::Message>,
 {
-    fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error> {
+    fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self> {
         let msg = secp256k1::Message::from_digest(self.digest());
         let signature = private_key.sign_ecdsa(&msg);
 
-        Ok(Signed {
+        Signed {
             inner: self,
             signer_pub_key: PublicKey::from_private_key(private_key),
             signature: signature.serialize_compact().to_vec(),
-        })
+        }
     }
 }
 
@@ -141,7 +141,6 @@ impl Signed<crate::message::SignerMessage> {
         let inner = crate::message::SignerMessage::random(rng);
         inner
             .sign_ecdsa(private_key)
-            .expect("Failed to sign message")
     }
 }
 
@@ -156,8 +155,7 @@ mod tests {
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
         let signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+            .sign_ecdsa(&bruce_wayne_private_key);
 
         // Bruce Wayne is Batman.
         assert!(signed_msg.verify());
@@ -169,8 +167,7 @@ mod tests {
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
         let mut signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+            .sign_ecdsa(&bruce_wayne_private_key);
 
         signed_msg.inner = SignableStr("I'm Satoshi Nakamoto");
 
@@ -185,8 +182,7 @@ mod tests {
         let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap();
 
         let mut signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+            .sign_ecdsa(&bruce_wayne_private_key);
 
         signed_msg.signer_pub_key = craig_wright_public_key.into();
 
@@ -200,8 +196,7 @@ mod tests {
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
         let signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+            .sign_ecdsa(&bruce_wayne_private_key);
 
         assert_eq!(signed_msg.len(), 10);
     }

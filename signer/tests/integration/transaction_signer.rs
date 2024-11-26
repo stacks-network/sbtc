@@ -309,8 +309,7 @@ async fn should_store_sweep_transaction_info_from_other_signers() {
     let payload: message::Payload = sweep_tx_info.clone().into();
     let msg = payload
         .to_message(bitcoin_chain_tip)
-        .sign_ecdsa(&coordinator_signer_info.secret_key().into())
-        .expect("failed to sign message");
+        .sign_ecdsa(&coordinator_signer_info.secret_key().into());
 
     // Broadcast the message to the network. We create a new instance so
     // that the message gets broadcast to all signers.

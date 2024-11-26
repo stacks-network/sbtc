@@ -1314,7 +1314,7 @@ where
         let msg = msg
             .into()
             .to_message(*bitcoin_chain_tip)
-            .sign_ecdsa(&self.private_key)?;
+            .sign_ecdsa(&self.private_key);
 
         self.network.broadcast(msg.clone()).await?;
         self.context
