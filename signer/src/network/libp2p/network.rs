@@ -197,7 +197,7 @@ mod tests {
             handle1.abort();
             handle2.abort();
             panic!(
-                r#"Test timed out, we waited for 30 seconds but this usually takes around 5 seconds. 
+                r#"Test timed out, we waited for 30 seconds but this usually takes around 5 seconds.
             This is generally due to connectivity issues between the two swarms."#
             );
         }
