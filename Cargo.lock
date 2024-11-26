@@ -1059,6 +1059,7 @@ dependencies = [
 name = "blocklist-client"
 version = "0.0.1"
 dependencies = [
+ "clap",
  "config 0.11.0",
  "mockito 0.28.0",
  "reqwest 0.11.27",
