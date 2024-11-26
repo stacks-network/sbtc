@@ -137,8 +137,7 @@ impl Signed<crate::message::SignerMessage> {
         private_key: &PrivateKey,
     ) -> Self {
         let inner = crate::message::SignerMessage::random(rng);
-        inner
-            .sign_ecdsa(private_key)
+        inner.sign_ecdsa(private_key)
     }
 }
 
@@ -152,8 +151,7 @@ mod tests {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
-        let signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key);
+        let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         // Bruce Wayne is Batman.
         assert!(signed_msg.verify());
@@ -164,8 +162,7 @@ mod tests {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
-        let mut signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key);
+        let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         signed_msg.inner = SignableStr("I'm Satoshi Nakamoto");
 
@@ -177,12 +174,11 @@ mod tests {
     fn verify_should_return_false_given_the_wrong_public_key() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
-        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap();
+        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338))
+            .unwrap()
+            .into();
 
-        let mut signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key);
-
-        signed_msg.signer_pub_key = craig_wright_public_key.into();
+        let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         // Craig Wright is not Batman.
         assert!(!signed_msg.verify());
@@ -193,8 +189,7 @@ mod tests {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
-        let signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key);
+        let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         assert_eq!(signed_msg.len(), 10);
     }

@@ -422,8 +422,8 @@ mod tests {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(1337);
         let private_key = PrivateKey::new(rng);
 
-        let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
-            .sign_ecdsa(&private_key);
+        let signed_message =
+            SignerMessage::random_with_payload_type::<P, _>(rng).sign_ecdsa(&private_key);
 
         assert!(signed_message.verify());
     }
@@ -435,8 +435,8 @@ mod tests {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(42);
         let private_key = PrivateKey::new(rng);
 
-        let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
-            .sign_ecdsa(&private_key);
+        let signed_message =
+            SignerMessage::random_with_payload_type::<P, _>(rng).sign_ecdsa(&private_key);
 
         let encoded = signed_message.clone().encode_to_vec();
 
