@@ -14,32 +14,12 @@ use crate::keys::PublicKey;
 #[derive(Debug, Default)]
 pub struct SignerState {
     current_signer_set: SignerSet,
-    current_limits: RwLock<SbtcLimits>,
 }
 
 impl SignerState {
     /// Get the current signer set.
     pub fn current_signer_set(&self) -> &SignerSet {
         &self.current_signer_set
-    }
-
-    /// Get the current sBTC limits.
-    pub fn get_current_limits(&self) -> SbtcLimits {
-        // We should never fail to acquire a lock from the RwLock so that it panics.
-        self.current_limits
-            .read()
-            .expect("BUG: Failed to acquire read lock")
-            .clone()
-    }
-
-    /// Update the current sBTC limits.
-    pub fn update_current_limits(&self, new_limits: SbtcLimits) {
-        // We should never fail to acquire a lock from the RwLock so that it panics.
-        let mut limits = self
-            .current_limits
-            .write()
-            .expect("BUG: Failed to acquire write lock");
-        *limits = new_limits;
     }
 }
 

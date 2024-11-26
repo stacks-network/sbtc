@@ -18,7 +18,6 @@ use signer::config::Settings;
 use signer::context::Context;
 use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
-use signer::emily_client::EmilyInteract;
 use signer::error::Error;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
@@ -91,10 +90,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.state().current_signer_set().add_signer(signer);
     }
 
-    // Update the initial sBTC peg limits for the signer. This call will block
-    // until we've successfully retrieved the limits from Emily.
-    update_initial_limits(&context).await;
-
     // Run the application components concurrently. We're `join!`ing them
     // here so that every component can shut itself down gracefully when
     // the shutdown signal is received.
@@ -111,7 +106,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_shutdown_signal_watcher(context.clone()),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
-        run_checked(run_update_limits, &context),
         run_checked(run_stacks_event_observer, &context),
         run_checked(run_libp2p_swarm, &context),
         run_checked(run_block_observer, &context),
@@ -336,73 +330,4 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
     };
 
     decider.run().await
-}
-
-/// Run the limit updater event-loop which will periodically poll Emily for
-/// updated sBTC peg limits.
-#[tracing::instrument(skip_all)]
-async fn run_update_limits(ctx: impl Context) -> Result<(), Error> {
-    let mut interval = tokio::time::interval(Duration::from_secs(300)); // 5 Minutes
-    let mut term = ctx.get_termination_handle();
-
-    let emily_client = ctx.get_emily_client();
-
-    loop {
-        tokio::select! {
-            _ = term.wait_for_shutdown() => {
-                tracing::info!("Shutdown signaled, stopping limit update");
-                break;
-            }
-            _ = interval.tick() => {
-                match emily_client.get_limits().await {
-                    Ok(limits) => {
-                        if limits == ctx.state().get_current_limits() {
-                            tracing::trace!(%limits, "sBTC limits have not changed");
-                            continue;
-                        }
-
-                        tracing::debug!(%limits, "updated sBTC limits from Emily");
-                        ctx.state().update_current_limits(limits);
-                    }
-                    Err(error) => {
-                        tracing::error!(%error, "failed to get limits from Emily");
-                    }
-                }
-            }
-        }
-    }
-
-    tracing::info!("sBTC-cap limit updater has stopped");
-
-    Ok(())
-}
-
-/// Update the initial limits for the signer upon startup. This method will
-/// re-try until it successfully fetches the limits from Emily.
-async fn update_initial_limits(ctx: &impl Context) {
-    let mut term = ctx.get_termination_handle();
-    let emily_client = ctx.get_emily_client();
-
-    let mut interval = tokio::time::interval(Duration::from_secs(10));
-
-    loop {
-        tokio::select! {
-            _ = term.wait_for_shutdown() => {
-                tracing::info!("Shutdown signaled, stopping limit update");
-                return;
-            }
-            _ = interval.tick() => {
-                match emily_client.get_limits().await {
-                    Ok(limits) => {
-                        tracing::debug!(%limits, "updated sBTC limits from Emily");
-                        ctx.state().update_current_limits(limits);
-                        return;
-                    }
-                    Err(error) => {
-                        tracing::warn!(%error, "failed to get limits from Emily, trying again");
-                    }
-                }
-            }
-        }
-    }
 }

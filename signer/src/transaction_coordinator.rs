@@ -5,7 +5,6 @@
 //!
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
-use std::cmp::max;
 use std::collections::BTreeSet;
 use std::time::Duration;
 
@@ -1241,7 +1240,8 @@ where
             return Ok(None);
         }
 
-        let sbtc_limits = self.context.state().get_current_limits();
+        // Get the total cap of sBTC that can be minted.
+        let sbtc_limits = self.context.get_emily_client().get_limits().await?;
         // If we can't get the total cap, we assume that the total cap is
         // the maximum possible amount of sBTC.
         let total_cap = sbtc_limits.total_cap().unwrap_or(Amount::MAX);

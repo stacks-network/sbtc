@@ -13,6 +13,7 @@ use serde::Serialize;
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
+use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
@@ -211,6 +212,7 @@ impl BitcoinPreSignRequest {
         // their fees anymore in order for them to be accepted by the
         // network.
         signer_state.last_fees = None;
+        let sbtc_limits = ctx.get_emily_client().get_limits().await?;
 
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
@@ -220,6 +222,8 @@ impl BitcoinPreSignRequest {
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
+            max_deposit_amount: sbtc_limits.per_deposit_cap().unwrap_or(Amount::MAX),
+            max_withdrawal_amount: sbtc_limits.per_withdrawal_cap().unwrap_or(Amount::MAX),
         };
 
         Ok((out, signer_state))
@@ -245,6 +249,10 @@ pub struct BitcoinTxValidationData {
     pub tx_fee: Amount,
     /// the chain tip height.
     pub chain_tip_height: u64,
+    /// Maximum amount of BTC allowed to be pegged-in per transaction.
+    pub max_deposit_amount: Amount,
+    /// Maximum amount of BTC allowed to be pegged-out per transaction.
+    pub max_withdrawal_amount: Amount,
 }
 
 impl BitcoinTxValidationData {
@@ -268,11 +276,14 @@ impl BitcoinTxValidationData {
         // outputs.
         let is_valid_tx = self.is_valid_tx();
 
-        let validation_results = self
-            .reports
-            .deposits
-            .iter()
-            .map(|(_, report)| report.validate(self.chain_tip_height, &self.tx, self.tx_fee));
+        let validation_results = self.reports.deposits.iter().map(|(_, report)| {
+            report.validate(
+                self.chain_tip_height,
+                &self.tx,
+                self.tx_fee,
+                self.max_deposit_amount,
+            )
+        });
 
         // just a sanity check
         debug_assert_eq!(self.deposit_sighashes.len(), self.reports.deposits.len());
@@ -326,7 +337,12 @@ impl BitcoinTxValidationData {
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
-                validation_result: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
+                validation_result: report.validate(
+                    self.chain_tip_height,
+                    &self.tx,
+                    self.tx_fee,
+                    self.max_withdrawal_amount,
+                ),
                 is_valid_tx,
             })
             .collect()
@@ -342,16 +358,26 @@ impl BitcoinTxValidationData {
     pub fn is_valid_tx(&self) -> bool {
         let deposit_validation_results = self.reports.deposits.iter().all(|(_, report)| {
             matches!(
-                report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
+                report.validate(
+                    self.chain_tip_height,
+                    &self.tx,
+                    self.tx_fee,
+                    self.max_deposit_amount
+                ),
                 InputValidationResult::Ok | InputValidationResult::CannotSignUtxo
             )
         });
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
-            match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
-                WithdrawalValidationResult::Unsupported | WithdrawalValidationResult::Unknown => {
-                    false
-                }
+            match report.validate(
+                self.chain_tip_height,
+                &self.tx,
+                self.tx_fee,
+                self.max_withdrawal_amount,
+            ) {
+                WithdrawalValidationResult::Unsupported
+                | WithdrawalValidationResult::Unknown
+                | WithdrawalValidationResult::AmountTooHigh => false,
             }
         });
 
@@ -398,6 +424,8 @@ impl SbtcReports {
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
+    /// The deposit request has an amount that is too high.
+    AmountTooHigh,
     /// The assessed fee exceeds the max-fee in the deposit request.
     FeeTooHigh,
     /// The signer is not part of the signer set that generated the
@@ -446,6 +474,8 @@ impl InputValidationResult {
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
+    /// The withdrawal request has an amount that is too high.
+    AmountTooHigh,
     /// The signer does not have a record of the withdrawal request in
     /// their database.
     Unknown,
@@ -559,7 +589,13 @@ pub struct DepositRequestReport {
 
 impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
-    fn validate<F>(&self, chain_tip_height: u64, tx: &F, tx_fee: Amount) -> InputValidationResult
+    fn validate<F>(
+        &self,
+        chain_tip_height: u64,
+        tx: &F,
+        tx_fee: Amount,
+        max_deposit_amount: Amount,
+    ) -> InputValidationResult
     where
         F: FeeAssessment,
     {
@@ -581,6 +617,10 @@ impl DepositRequestReport {
             // blockchain and remains unspent by us.
             DepositConfirmationStatus::Confirmed(block_height, _) => block_height,
         };
+
+        if self.amount > max_deposit_amount.to_sat() {
+            return InputValidationResult::AmountTooHigh;
+        }
 
         // We only sweep a deposit if the depositor cannot reclaim the
         // deposit within the next DEPOSIT_LOCKTIME_BLOCK_BUFFER blocks.
@@ -694,7 +734,13 @@ pub struct WithdrawalRequestReport {
 
 impl WithdrawalRequestReport {
     /// Validate that the withdrawal request is okay given the report.
-    pub fn validate<F>(&self, _: u64, _: &F, _: Amount) -> WithdrawalValidationResult
+    pub fn validate<F>(
+        &self,
+        _: u64,
+        _: &F,
+        _: Amount,
+        _max_withdrawal_amount: Amount,
+    ) -> WithdrawalValidationResult
     where
         F: FeeAssessment,
     {
@@ -958,7 +1004,7 @@ mod tests {
 
         let status = mapping
             .report
-            .validate(mapping.chain_tip_height, &tx, TX_FEE);
+            .validate(mapping.chain_tip_height, &tx, TX_FEE, Amount::MAX);
 
         assert_eq!(status, mapping.status);
     }
