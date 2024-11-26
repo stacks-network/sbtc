@@ -25,7 +25,7 @@ pub enum Inconsistency {
     /// in the vector are the chainstates that are present in the API
     /// but are not known to be correct. All chainstates in the vector
     /// are considered equally canonical.
-    Chainstate(Vec<Chainstate>),
+    Chainstates(Vec<Chainstate>),
     /// There is an inconsistency in the way an item is being updated.
     ItemUpdate(String),
 }
@@ -90,6 +90,10 @@ pub enum Error {
     #[error("Request timeout")]
     RequestTimeout,
 
+    /// Internal too many retries error.
+    #[error("Too many internal retries")]
+    TooManyInternalRetries,
+
     /// Inconsistent API state detected during request
     #[error("Inconsistent internal state: {0:?}")]
     InconsistentState(Inconsistency),
@@ -122,6 +126,7 @@ impl Error {
             Error::Debug(_) => StatusCode::IM_A_TEAPOT,
             Error::ServiceUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
+            Error::TooManyInternalRetries => StatusCode::INTERNAL_SERVER_ERROR,
             Error::InconsistentState(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Reorganzing(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
@@ -157,13 +162,13 @@ impl Error {
     }
     /// Makes an inconsistency error from a vector of chainstate entries.
     pub fn from_inconsistent_chainstate_entries(entries: Vec<ChainstateEntry>) -> Self {
-        Error::InconsistentState(Inconsistency::Chainstate(
+        Error::InconsistentState(Inconsistency::Chainstates(
             entries.into_iter().map(|entry| entry.into()).collect(),
         ))
     }
     /// Makes an inconsistency error from a single chainstate entry.
     pub fn from_inconsistent_chainstate_entry(entry: ChainstateEntry) -> Self {
-        Error::InconsistentState(Inconsistency::Chainstate(vec![entry.into()]))
+        Error::InconsistentState(Inconsistency::Chainstates(vec![entry.into()]))
     }
 }
 
