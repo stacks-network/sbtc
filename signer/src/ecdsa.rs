@@ -23,7 +23,7 @@
 //!
 //! struct SignableStr(&'static str);
 //!
-//! // Implementing `ProtoSerializable` and conversion traits unlock the signing
+//! // Implementing `ProtoSerializable` and conversion traits unlock the signing 
 //! // functionality in this module.
 //! #[allow(clippy::derive_partial_eq_without_eq)]
 //! #[derive(Clone, PartialEq, ::prost::Message)]
@@ -32,10 +32,10 @@
 //!     #[prost(string, tag = "1")]
 //!     pub string: ::prost::alloc::string::String,
 //! }
-//!
+//! 
 //! impl ProtoSerializable for SignableStr {
 //!     type Message = ProtoSignableStr;
-//!
+//! 
 //!     fn type_tag(&self) -> &'static str {
 //!         "SBTC_SIGNABLE_STR"
 //!     }
@@ -49,8 +49,6 @@
 //!
 //! // Verify the signed message.
 //! assert_eq!(signed_msg.recover_ecdsa(), Ok(private_key.into()));
-
-use secp256k1::SECP256K1;
 
 use secp256k1::ecdsa::RecoverableSignature;
 
@@ -149,8 +147,8 @@ where
     T: Into<<T as ProtoSerializable>::Message>,
 {
     /// Verify the signature over the inner data.
-    pub fn verify(&self) -> bool {
-        self.recover_ecdsa().is_ok()
+    pub fn verify(&self, public_key: PublicKey) -> bool {
+        self.recover_ecdsa().is_ok_and(|key| key == public_key)
     }
 }
 
@@ -163,25 +161,27 @@ mod tests {
     fn verify_should_return_true_given_properly_signed_data() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
+        let bruce_wayne_public_key = PublicKey::from_private_key(&bruce_wayne_private_key);
 
         let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         // Bruce Wayne is Batman.
-        assert!(signed_msg.verify());
+        assert!(signed_msg.verify(bruce_wayne_public_key));
     }
 
     #[test]
     fn verify_should_return_false_given_tampered_data() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
+        let bruce_wayne_public_key = PublicKey::from_private_key(&bruce_wayne_private_key);
 
         let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
-        assert!(signed_msg.verify());
+        assert!(signed_msg.verify(bruce_wayne_public_key));
 
         signed_msg.inner = SignableStr("I'm Satoshi Nakamoto");
 
         // Bruce Wayne is not Satoshi Nakamoto.
-        assert!(!signed_msg.verify());
+        assert!(!signed_msg.verify(bruce_wayne_public_key));
     }
 
     #[test]
