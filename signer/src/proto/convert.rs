@@ -1298,7 +1298,7 @@ impl From<TxRequestIds> for proto::TxRequestIds {
             deposits: value
                 .deposits
                 .into_iter()
-                .map(|v| OutPoint::from(v).into())
+                .map(proto::OutPoint::from)
                 .collect(),
             withdrawals: value.withdrawals.into_iter().map(|v| v.into()).collect(),
         }
@@ -1312,12 +1312,12 @@ impl TryFrom<proto::TxRequestIds> for TxRequestIds {
             deposits: value
                 .deposits
                 .into_iter()
-                .map(|v| Ok::<_, Error>(OutPoint::try_from(v)?.into()))
+                .map(OutPoint::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
             withdrawals: value
                 .withdrawals
                 .into_iter()
-                .map(|v| v.try_into())
+                .map(QualifiedRequestId::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
         })
     }

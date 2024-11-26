@@ -67,7 +67,7 @@ impl From<&Requests<'_>> for TxRequestIds {
         let mut withdrawals = Vec::new();
         for request in requests.iter() {
             match request {
-                RequestRef::Deposit(deposit) => deposits.push(deposit.outpoint.into()),
+                RequestRef::Deposit(deposit) => deposits.push(deposit.outpoint),
                 RequestRef::Withdrawal(withdrawal) => withdrawals.push(withdrawal.qualified_id()),
             }
         }
