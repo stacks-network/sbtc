@@ -1,8 +1,0 @@
-FROM debian:bookworm
-
-COPY --from=dobtc/bitcoin:25.1 /opt/bitcoin-*/bin /usr/local/bin
-
-RUN apt-get update && apt-get install -y curl jq zstd
-RUN apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-
-CMD ["/bin/bash"]
