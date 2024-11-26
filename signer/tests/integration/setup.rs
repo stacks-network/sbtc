@@ -149,6 +149,7 @@ impl TestSweepSetup {
             },
             accept_threshold: 4,
             num_signers: 7,
+            max_mintable: u64::MAX,
         };
 
         // There should only be one transaction here since there is only
@@ -748,6 +749,7 @@ impl TestSweepSetup2 {
             },
             accept_threshold: 4,
             num_signers: 7,
+            max_mintable: u64::MAX,
         };
 
         // There should only be one transaction here since there is only

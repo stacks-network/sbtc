@@ -355,7 +355,7 @@ async fn link_blocks() {
 async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Vec<TxOutput> {
     sqlx::query_as::<_, TxOutput>(
         r#"
-        SELECT 
+        SELECT
             txid
           , output_index
           , amount
@@ -374,7 +374,7 @@ async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Vec<TxOutput> 
 async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout> {
     sqlx::query_as::<_, TxPrevout>(
         r#"
-        SELECT 
+        SELECT
             txid
           , prevout_txid
           , prevout_output_index
@@ -617,6 +617,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         },
         accept_threshold: 4,
         num_signers: 7,
+        max_mintable: u64::MAX,
     };
 
     let mut transactions = requests.construct_transactions().unwrap();

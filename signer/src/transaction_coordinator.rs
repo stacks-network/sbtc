@@ -5,9 +5,11 @@
 //!
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
+use std::cmp::max;
 use std::collections::BTreeSet;
 use std::time::Duration;
 
+use bitcoin::Amount;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::future::try_join_all;
 use futures::Stream;
@@ -1198,6 +1200,12 @@ where
             .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
+        let sbtc_supply = self
+            .context
+            .get_stacks_client()
+            .get_sbtc_total_supply(&self.context.config().signer.deployer)
+            .await?;
+
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
@@ -1233,12 +1241,23 @@ where
             return Ok(None);
         }
 
+        let sbtc_limits = self.context.state().get_current_limits();
+        // If we can't get the total cap, we assume that the total cap is
+        // the maximum possible amount of sBTC.
+        let total_cap = sbtc_limits.total_cap().unwrap_or(Amount::MAX);
+        // The maximum amount of sBTC that can be minted in sats.
+        let max_mintable = total_cap
+            .checked_sub(sbtc_supply)
+            .unwrap_or(Amount::ZERO)
+            .to_sat();
+
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
             signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
             accept_threshold: threshold,
             num_signers,
+            max_mintable,
         }))
     }
 

@@ -513,6 +513,7 @@ async fn cannot_sign_deposit_is_ok() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
+        max_mintable: u64::MAX,
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
     assert_eq!(txs.len(), 1);
@@ -642,6 +643,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
+        max_mintable: u64::MAX,
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
     assert_eq!(txs.len(), 1);

@@ -133,6 +133,8 @@ pub struct SbtcRequests {
     pub accept_threshold: u16,
     /// The total number of signers.
     pub num_signers: u16,
+    /// The maximum amount of sBTC that can be minted in sats.
+    pub max_mintable: u64,
 }
 
 impl SbtcRequests {
@@ -164,12 +166,19 @@ impl SbtcRequests {
         // be less than the fee we may charge. This is simpler because
         // deposit UTXOs have a known fixed size.
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
-        let deposits = self
-            .deposits
-            .iter()
-            .filter(|req| req.max_fee >= minimum_deposit_fee)
-            .map(RequestRef::Deposit);
 
+        let mut amount_to_mint = 0;
+        let deposits = self.deposits.iter().filter_map(|req| {
+            let valid_fee = req.max_fee >= minimum_deposit_fee;
+            let valid_amount = amount_to_mint + req.amount <= self.max_mintable;
+
+            if valid_fee && valid_amount {
+                amount_to_mint += req.amount;
+                Some(RequestRef::Deposit(req))
+            } else {
+                None
+            }
+        });
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.chain(withdrawals);
 
@@ -1546,6 +1555,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 2,
+            max_mintable: u64::MAX,
         };
         let keypair = Keypair::new_global(&mut OsRng);
 
@@ -1644,6 +1654,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            max_mintable: u64::MAX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -1738,6 +1749,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            max_mintable: u64::MAX,
         };
 
         // We'll have the deposit get two vote against, and the withdrawals
@@ -1845,6 +1857,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            max_mintable: u64::MAX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1926,6 +1939,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            max_mintable: u64::MAX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -1975,6 +1989,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            max_mintable: u64::MAX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2021,6 +2036,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            max_mintable: u64::MAX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2079,6 +2095,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            max_mintable: u64::MAX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2177,6 +2194,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            max_mintable: u64::MAX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2241,6 +2259,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            max_mintable: u64::MAX,
         };
 
         let (old_fee_total, old_fee_rate) = {
@@ -2319,6 +2338,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            max_mintable: u64::MAX,
         };
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -2354,6 +2374,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            max_mintable: u64::MAX,
         };
 
         let transactions = requests.construct_transactions();
@@ -2410,6 +2431,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            max_mintable: u64::MAX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();

@@ -231,6 +231,7 @@ pub fn transaction_with_rbf(
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
+        max_mintable: u64::MAX,
     };
 
     // Okay, lets submit the transaction. We also do a sanity check where
