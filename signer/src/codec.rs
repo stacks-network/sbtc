@@ -114,12 +114,6 @@ pub enum CodecError {
     DecodeIOError(#[source] io::Error),
 }
 
-impl From<CodecError> for Error {
-    fn from(value: CodecError) -> Self {
-        Error::Codec(value)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use fake::Dummy as _;
