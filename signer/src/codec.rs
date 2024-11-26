@@ -65,6 +65,7 @@ where
     }
 }
 
+
 /// Provides a method for encoding an object into a writer using a canonical serialization format.
 ///
 /// This trait is designed to be implemented by types that need to serialize their data into a byte stream
