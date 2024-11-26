@@ -243,11 +243,6 @@ impl PublicKey {
             .map(Self)
             .map_err(Error::InvalidAggregateKey)
     }
-
-    /// Verify an ECDSA signature
-    pub fn verify(&self, msg: &secp256k1::Message, sig: &secp256k1::ecdsa::Signature) -> bool {
-        SECP256K1.verify_ecdsa(msg, sig, &self.0).is_ok()
-    }
 }
 
 impl std::fmt::Display for PublicKey {
