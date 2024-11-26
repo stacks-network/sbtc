@@ -121,6 +121,13 @@ pub struct Store {
 
     /// Bitcoin transaction inputs
     pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
+
+    /// Bitcoin signhashes
+    pub bitcoin_sighashes: HashMap<model::SigHash, model::BitcoinTxSigHash>,
+
+    /// Bitcoin withdrawal outputs
+    pub bitcoin_withdrawal_outputs:
+        HashMap<(u64, model::StacksBlockHash), model::BitcoinWithdrawalOutput>,
 }
 
 impl Store {
@@ -867,6 +874,18 @@ impl super::DbRead for SharedStore {
         // fees, but this seems OK for all current tests.
         Ok(Vec::new())
     }
+
+    async fn will_sign_bitcoin_tx_sighash(
+        &self,
+        sighash: &model::SigHash,
+    ) -> Result<Option<bool>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .bitcoin_sighashes
+            .get(sighash)
+            .map(|s| s.will_sign))
+    }
 }
 
 impl super::DbWrite for SharedStore {
@@ -1164,6 +1183,33 @@ impl super::DbWrite for SharedStore {
         let mut store = self.lock().await;
         store.sweep_transactions.push(tx.clone());
 
+        Ok(())
+    }
+
+    async fn write_bitcoin_withdrawals_outputs(
+        &self,
+        withdrawal_outputs: &[model::BitcoinWithdrawalOutput],
+    ) -> Result<(), Error> {
+        let mut store = self.lock().await;
+        withdrawal_outputs.iter().for_each(|output| {
+            store.bitcoin_withdrawal_outputs.insert(
+                (output.request_id, output.stacks_block_hash),
+                output.clone(),
+            );
+        });
+        Ok(())
+    }
+
+    async fn write_bitcoin_txs_sighashes(
+        &self,
+        sighashes: &[model::BitcoinTxSigHash],
+    ) -> Result<(), Error> {
+        let mut store = self.lock().await;
+        sighashes.iter().for_each(|sighash| {
+            store
+                .bitcoin_sighashes
+                .insert(sighash.sighash, sighash.clone());
+        });
         Ok(())
     }
 }

@@ -4,18 +4,16 @@ use std::time::Duration;
 
 use crate::context::Context;
 use crate::keys::PrivateKey;
-use libp2p::autonat::v2::client::{
-    Behaviour as AutoNatClientBehavior, Config as AutoNatClientConfig,
-};
-use libp2p::autonat::v2::server::Behaviour as AutoNatServerBehavior;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
+use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    gossipsub, identify, kad, mdns, noise, ping, relay, tcp, yamux, Multiaddr, PeerId,
-    StreamProtocol, Swarm, SwarmBuilder,
+    autonat, gossipsub, identify, kad, mdns, noise, ping, tcp, yamux, Multiaddr, PeerId, Swarm,
+    SwarmBuilder,
 };
-use rand::rngs::OsRng;
+use rand::rngs::StdRng;
+use rand::SeedableRng as _;
 use tokio::sync::Mutex;
 
 use super::errors::SignerSwarmError;
@@ -25,17 +23,54 @@ use super::event_loop;
 #[derive(NetworkBehaviour)]
 pub struct SignerBehavior {
     pub gossipsub: gossipsub::Behaviour,
-    mdns: mdns::tokio::Behaviour,
-    kademlia: kad::Behaviour<MemoryStore>,
+    mdns: Toggle<mdns::tokio::Behaviour>,
+    pub kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
-    relay: relay::Behaviour,
-    identify: identify::Behaviour,
-    autonat_server: AutoNatServerBehavior,
-    autonat_client: AutoNatClientBehavior,
+    pub identify: identify::Behaviour,
+    pub autonat_client: autonat::v2::client::Behaviour<StdRng>,
+    pub autonat_server: autonat::v2::server::Behaviour<StdRng>,
 }
 
 impl SignerBehavior {
-    pub fn new(keypair: Keypair) -> Result<Self, SignerSwarmError> {
+    pub fn new(keypair: Keypair, enable_mdns: bool) -> Result<Self, SignerSwarmError> {
+        let local_peer_id = keypair.public().to_peer_id();
+
+        let mdns = if enable_mdns {
+            Some(
+                mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)
+                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
+            )
+        } else {
+            None
+        }
+        .into();
+
+        let autonat_client = autonat::v2::client::Behaviour::new(
+            rand::rngs::StdRng::from_entropy(),
+            autonat::v2::client::Config::default(),
+        );
+
+        let autonat_server =
+            autonat::v2::server::Behaviour::new(rand::rngs::StdRng::from_entropy());
+
+        let identify = identify::Behaviour::new(identify::Config::new(
+            identify::PUSH_PROTOCOL_NAME.to_string(),
+            keypair.public(),
+        ));
+
+        Ok(Self {
+            gossipsub: Self::gossipsub(&keypair)?,
+            mdns,
+            kademlia: Self::kademlia(&local_peer_id),
+            ping: Default::default(),
+            identify,
+            autonat_client,
+            autonat_server,
+        })
+    }
+
+    /// Create a new gossipsub behavior.
+    fn gossipsub(keypair: &Keypair) -> Result<gossipsub::Behaviour, SignerSwarmError> {
         let message_id_fn = |message: &gossipsub::Message| {
             let mut hasher = DefaultHasher::new();
             message.data.hash(&mut hasher);
@@ -49,42 +84,23 @@ impl SignerBehavior {
             .build()
             .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
 
-        Ok(Self {
-            gossipsub: gossipsub::Behaviour::new(
-                gossipsub::MessageAuthenticity::Signed(keypair.clone()),
-                gossipsub_config,
-            )
-            .map_err(SignerSwarmError::LibP2PMessage)?,
-            mdns: mdns::tokio::Behaviour::new(
-                mdns::Config::default(),
-                keypair.public().to_peer_id(),
-            )
-            .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
-            kademlia: Self::kademlia(&keypair),
-            ping: ping::Behaviour::default(),
-            relay: relay::Behaviour::new(keypair.public().to_peer_id(), Default::default()),
-            identify: identify::Behaviour::new(identify::Config::new(
-                "/sbtc-signer/identify/1.0.0".into(),
-                keypair.public(),
-            )),
-            autonat_server: AutoNatServerBehavior::new(OsRng),
-            autonat_client: AutoNatClientBehavior::new(
-                OsRng,
-                AutoNatClientConfig::default().with_probe_interval(Duration::from_secs(2)),
-            ),
-        })
+        gossipsub::Behaviour::new(
+            gossipsub::MessageAuthenticity::Signed(keypair.clone()),
+            gossipsub_config,
+        )
+        .map_err(SignerSwarmError::LibP2PMessage)
     }
 
-    fn kademlia(keypair: &Keypair) -> kad::Behaviour<MemoryStore> {
-        let config = kad::Config::new(StreamProtocol::new("/sbtc-signer/kad/1.0.0"))
+    /// Create a new kademlia behavior.
+    fn kademlia(peer_id: &PeerId) -> kad::Behaviour<MemoryStore> {
+        let config = kad::Config::new(kad::PROTOCOL_NAME)
             .disjoint_query_paths(true)
             .to_owned();
 
-        kad::Behaviour::with_config(
-            keypair.public().to_peer_id(),
-            MemoryStore::new(keypair.public().to_peer_id()),
-            config,
-        )
+        let mut kademlia =
+            kad::Behaviour::with_config(*peer_id, MemoryStore::new(*peer_id), config);
+        kademlia.set_mode(Some(kad::Mode::Server));
+        kademlia
     }
 }
 
@@ -93,16 +109,26 @@ pub struct SignerSwarmBuilder<'a> {
     private_key: &'a PrivateKey,
     listen_on: Vec<Multiaddr>,
     seed_addrs: Vec<Multiaddr>,
+    external_addresses: Vec<Multiaddr>,
+    use_mdns: bool,
 }
 
 impl<'a> SignerSwarmBuilder<'a> {
     /// Create a new [`SignerSwarmBuilder`] with the given private key.
-    pub fn new(private_key: &'a PrivateKey) -> Self {
+    pub fn new(private_key: &'a PrivateKey, use_mdns: bool) -> Self {
         Self {
             private_key,
             listen_on: Vec::new(),
             seed_addrs: Vec::new(),
+            external_addresses: Vec::new(),
+            use_mdns,
         }
+    }
+
+    /// Sets whether or not this swarm should use mdns.
+    pub fn use_mdns(mut self, use_mdns: bool) -> Self {
+        self.use_mdns = use_mdns;
+        self
     }
 
     /// Add a listen endpoint to the builder.
@@ -145,10 +171,28 @@ impl<'a> SignerSwarmBuilder<'a> {
         self
     }
 
+    /// Add an external address to the builder.
+    pub fn add_external_address(mut self, addr: Multiaddr) -> Self {
+        if !self.external_addresses.contains(&addr) {
+            self.external_addresses.push(addr);
+        }
+        self
+    }
+
+    /// Add multiple external addresses to the builder.
+    pub fn add_external_addresses(mut self, addrs: &[Multiaddr]) -> Self {
+        for addr in addrs {
+            if !self.external_addresses.contains(addr) {
+                self.external_addresses.push(addr.clone());
+            }
+        }
+        self
+    }
+
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
         let keypair: Keypair = (*self.private_key).into();
-        let behavior = SignerBehavior::new(keypair.clone())?;
+        let behavior = SignerBehavior::new(keypair.clone(), self.use_mdns)?;
 
         let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
             .with_tokio()
@@ -171,6 +215,7 @@ impl<'a> SignerSwarmBuilder<'a> {
             swarm: Arc::new(Mutex::new(swarm)),
             listen_addrs: self.listen_on,
             seed_addrs: self.seed_addrs,
+            external_addresses: self.external_addresses,
         })
     }
 }
@@ -180,6 +225,7 @@ pub struct SignerSwarm {
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
     listen_addrs: Vec<Multiaddr>,
     seed_addrs: Vec<Multiaddr>,
+    external_addresses: Vec<Multiaddr>,
 }
 
 impl SignerSwarm {
@@ -212,6 +258,14 @@ impl SignerSwarm {
                 .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
         }
 
+        for addr in self.external_addresses.iter() {
+            self.swarm
+                .lock()
+                .await
+                .dial(addr.clone())
+                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+        }
+
         // Run the event loop, blocking until its completion.
         event_loop::run(ctx, Arc::clone(&self.swarm)).await;
 
@@ -230,7 +284,7 @@ mod tests {
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         let private_key = PrivateKey::new(&mut rand::thread_rng());
         let keypair: Keypair = private_key.into();
-        let builder = SignerSwarmBuilder::new(&private_key)
+        let builder = SignerSwarmBuilder::new(&private_key, true)
             .add_listen_endpoint(addr.clone())
             .add_seed_addr(addr.clone());
         let swarm = builder.build().unwrap();
@@ -246,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn swarm_shuts_down_on_shutdown_signal() {
         let private_key = PrivateKey::new(&mut rand::thread_rng());
-        let builder = SignerSwarmBuilder::new(&private_key);
+        let builder = SignerSwarmBuilder::new(&private_key, true);
         let mut swarm = builder.build().unwrap();
 
         let ctx = TestContext::builder()

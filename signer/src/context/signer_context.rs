@@ -10,6 +10,7 @@ use crate::{
     error::Error,
     stacks::api::StacksInteract,
     storage::{DbRead, DbWrite},
+    SIGNER_CHANNEL_CAPACITY,
 };
 
 use super::{Context, SignerSignal, SignerState, TerminationHandle};
@@ -83,7 +84,7 @@ where
         // TODO: Decide on the channel capacity and how we should handle slow consumers.
         // NOTE: Ideally consumers which require processing time should pull the relevent
         // messages into a local VecDequeue and process them in their own time.
-        let (signal_tx, _) = tokio::sync::broadcast::channel(1024);
+        let (signal_tx, _) = tokio::sync::broadcast::channel(SIGNER_CHANNEL_CAPACITY);
         let (term_tx, _) = tokio::sync::watch::channel(false);
 
         Self {

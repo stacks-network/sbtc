@@ -362,7 +362,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// When using the postgres storage, we need to make sure that this
     /// function is called after the `Self::write_bitcoin_block` function
     /// because of the foreign key constraints.
-    async fn extract_sbtc_transactions(
+    pub async fn extract_sbtc_transactions(
         &self,
         block_hash: BlockHash,
         txs: &[Transaction],
