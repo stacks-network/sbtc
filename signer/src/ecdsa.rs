@@ -148,7 +148,6 @@ where
     T: ProtoSerializable + Clone,
     T: Into<<T as ProtoSerializable>::Message>,
 {
-
     /// Verify the signature over the inner data.
     pub fn verify(&self) -> bool {
         self.recover_ecdsa().is_ok()
@@ -189,11 +188,11 @@ mod tests {
     fn verify_should_return_false_given_the_wrong_public_key() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
-        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap().into();
+        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338))
+            .unwrap()
+            .into();
 
-        let signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key);
-
+        let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         // Craig Wright is not Batman.
         assert_ne!(signed_msg.recover_ecdsa().unwrap(), craig_wright_public_key);
