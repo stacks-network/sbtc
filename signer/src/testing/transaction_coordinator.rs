@@ -74,6 +74,7 @@ where
                 signing_round_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
                 is_epoch3: true,
+                pre_sign_pause: Some(Duration::from_secs(1)),
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),
