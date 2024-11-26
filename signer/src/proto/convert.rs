@@ -1374,7 +1374,26 @@ impl TryFrom<proto::BitcoinPreSignRequest> for BitcoinPreSignRequest {
 
 impl From<SignerMessage> for proto::SignerMessage {
     fn from(value: SignerMessage) -> Self {
-        let payload = match value.payload {
+        proto::SignerMessage {
+            bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
+            payload: Some(value.payload.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerMessage> for SignerMessage {
+    type Error = Error;
+    fn try_from(value: proto::SignerMessage) -> Result<Self, Self::Error> {
+        Ok(SignerMessage {
+            bitcoin_chain_tip: value.bitcoin_chain_tip.required()?.try_into()?,
+            payload: value.payload.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<Payload> for proto::Payload {
+    fn from(value: Payload) -> Self {
+        match value {
             Payload::SignerDepositDecision(inner) => {
                 proto::signer_message::Payload::SignerDepositDecision(inner.into())
             }
@@ -1402,18 +1421,14 @@ impl From<SignerMessage> for proto::SignerMessage {
             Payload::BitcoinPreSignRequest(inner) => {
                 proto::signer_message::Payload::BitcoinPreSignRequest(inner.into())
             }
-        };
-        proto::SignerMessage {
-            bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
-            payload: Some(payload),
         }
     }
 }
 
-impl TryFrom<proto::SignerMessage> for SignerMessage {
+impl TryFrom<proto::Payload> for Payload {
     type Error = Error;
-    fn try_from(value: proto::SignerMessage) -> Result<Self, Self::Error> {
-        let payload = match value.payload.required()? {
+    fn try_from(value: proto::Payload) -> Result<Self, Self::Error> {
+        let payload = match value {
             proto::signer_message::Payload::SignerDepositDecision(inner) => {
                 Payload::SignerDepositDecision(inner.try_into()?)
             }
@@ -1442,10 +1457,7 @@ impl TryFrom<proto::SignerMessage> for SignerMessage {
                 Payload::BitcoinPreSignRequest(inner.try_into()?)
             }
         };
-        Ok(SignerMessage {
-            bitcoin_chain_tip: value.bitcoin_chain_tip.required()?.try_into()?,
-            payload,
-        })
+        Ok(payload)
     }
 }
 
@@ -1740,6 +1752,10 @@ impl TryFrom<proto::DkgPublicShares> for BTreeMap<u32, DkgPublicShares> {
             .map(|(v, k)| Ok((v, k.try_into()?)))
             .collect::<Result<BTreeMap<u32, DkgPublicShares>, Error>>()
     }
+}
+
+impl codec::ProtoSerializable for SignerMessage {
+    type Message = proto::SignerMessage;
 }
 
 impl codec::ProtoSerializable for Signed<SignerMessage> {
@@ -2150,6 +2166,7 @@ mod tests {
     #[test_case(PhantomData::<(RejectWithdrawalV1, proto::RejectWithdrawal)>; "RejectWithdrawal")]
     #[test_case(PhantomData::<(RotateKeysV1, proto::RotateKeys)>; "RotateKeys")]
     #[test_case(PhantomData::<(SmartContract, proto::SmartContract)>; "SmartContract")]
+    #[test_case(PhantomData::<(Payload, proto::Payload)>; "Payload")]
     #[test_case(PhantomData::<(StacksTransactionSignRequest, proto::StacksTransactionSignRequest)>; "StacksTransactionSignRequest")]
     #[test_case(PhantomData::<(BitcoinTransactionSignRequest, proto::BitcoinTransactionSignRequest)>; "BitcoinTransactionSignRequest")]
     #[test_case(PhantomData::<(WstsMessage, proto::WstsMessage)>; "WstsMessage")]
