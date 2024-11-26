@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::codec;
-use crate::ecdsa;
 use crate::emily_client::EmilyClientError;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
@@ -403,10 +402,6 @@ pub enum Error {
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,
-
-    /// ECDSA error
-    #[error("ECDSA error: {0}")]
-    Ecdsa(#[from] ecdsa::Error),
 
     /// Codec error
     #[error("codec error: {0}")]

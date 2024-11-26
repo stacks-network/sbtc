@@ -52,9 +52,13 @@
 
 use secp256k1::SECP256K1;
 
+use secp256k1::ecdsa::RecoverableSignature;
+
 use crate::codec::ProtoSerializable;
+use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::signature::RecoverableEcdsaSignature;
 use crate::signature::SighashDigest as _;
 
 /// Wraps an inner type with a public key and a signature,
@@ -63,10 +67,8 @@ use crate::signature::SighashDigest as _;
 pub struct Signed<T> {
     /// The signed structure.
     pub inner: T,
-    /// The public key of the signer.
-    pub signer_pub_key: PublicKey,
     /// A signature over the hash of the inner structure.
-    pub signature: Vec<u8>,
+    pub signature: RecoverableSignature,
 }
 
 impl<T> Signed<T>
@@ -74,14 +76,11 @@ where
     T: ProtoSerializable + Clone,
     T: Into<<T as ProtoSerializable>::Message>,
 {
-    /// Verify the signature over the inner data.
-    pub fn verify(&self) -> bool {
+    /// Determines the public key for which `sig` is a valid signature for
+    /// `msg`.
+    pub fn recover_ecdsa(&self) -> Result<PublicKey, Error> {
         let msg = secp256k1::Message::from_digest(self.inner.digest());
-        let Ok(sig) = secp256k1::ecdsa::Signature::from_compact(&self.signature) else {
-            return false;
-        };
-
-        self.signer_pub_key.verify(SECP256K1, &msg, &sig).is_ok()
+        self.signature.recover_ecdsa(&msg)
     }
 
     /// Unique identifier for the signed message
@@ -117,25 +116,12 @@ where
 {
     fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self> {
         let msg = secp256k1::Message::from_digest(self.digest());
-        let signature = private_key.sign_ecdsa(&msg);
 
         Signed {
+            signature: private_key.sign_ecdsa_recoverable(&msg),
             inner: self,
-            signer_pub_key: PublicKey::from_private_key(private_key),
-            signature: signature.serialize_compact().to_vec(),
         }
     }
-}
-
-/// Error occurring during signing
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    /// Key error
-    #[error("KeyError")]
-    KeyError(#[from] p256k1::keys::Error),
-    /// Sign error
-    #[error("SignError")]
-    SignError(#[from] p256k1::ecdsa::Error),
 }
 
 #[cfg(feature = "testing")]
@@ -153,6 +139,19 @@ impl Signed<crate::message::SignerMessage> {
     ) -> Self {
         let inner = crate::message::SignerMessage::random(rng);
         inner.sign_ecdsa(private_key)
+    }
+}
+
+#[cfg(feature = "testing")]
+impl<T> Signed<T>
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
+
+    /// Verify the signature over the inner data.
+    pub fn verify(&self) -> bool {
+        self.recover_ecdsa().is_ok()
     }
 }
 
@@ -190,14 +189,14 @@ mod tests {
     fn verify_should_return_false_given_the_wrong_public_key() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
-        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap();
+        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap().into();
 
-        let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
+        let signed_msg = msg
+            .sign_ecdsa(&bruce_wayne_private_key);
 
-        signed_msg.signer_pub_key = craig_wright_public_key.into();
 
         // Craig Wright is not Batman.
-        assert!(!signed_msg.verify());
+        assert_ne!(signed_msg.recover_ecdsa().unwrap(), craig_wright_public_key);
     }
 
     #[test]

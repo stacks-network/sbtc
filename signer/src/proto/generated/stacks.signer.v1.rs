@@ -460,14 +460,13 @@ pub mod wsts_message {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Signed {
-    /// The public key of the signer.
-    #[prost(message, optional, tag = "1")]
-    pub signer_pub_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
     /// A signature over the hash of the inner structure.
-    #[prost(bytes = "vec", tag = "2")]
-    pub signature: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "1")]
+    pub signature: ::core::option::Option<
+        super::super::super::crypto::RecoverableSignature,
+    >,
     /// The signed structure.
-    #[prost(oneof = "signed::Inner", tags = "3")]
+    #[prost(oneof = "signed::Inner", tags = "2")]
     pub inner: ::core::option::Option<signed::Inner>,
 }
 /// Nested message and enum types in `Signed`.
@@ -476,7 +475,7 @@ pub mod signed {
     #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Inner {
-        #[prost(message, tag = "3")]
+        #[prost(message, tag = "2")]
         SignerMessage(super::SignerMessage),
     }
 }

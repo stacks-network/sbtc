@@ -1462,8 +1462,7 @@ impl TryFrom<proto::Payload> for Payload {
 impl From<Signed<SignerMessage>> for proto::Signed {
     fn from(value: Signed<SignerMessage>) -> Self {
         proto::Signed {
-            signer_pub_key: Some(value.signer_pub_key.into()),
-            signature: value.signature,
+            signature: Some(value.signature.into()),
             inner: Some(proto::signed::Inner::SignerMessage(value.inner.into())),
         }
     }
@@ -1477,8 +1476,7 @@ impl TryFrom<proto::Signed> for Signed<SignerMessage> {
         };
         Ok(Signed {
             inner,
-            signer_pub_key: value.signer_pub_key.required()?.try_into()?,
-            signature: value.signature,
+            signature: value.signature.required()?.try_into()?,
         })
     }
 }

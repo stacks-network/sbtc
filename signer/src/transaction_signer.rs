@@ -194,13 +194,10 @@ where
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
-        if !msg.verify() {
-            tracing::warn!("unable to verify message");
-            return Err(Error::InvalidSignature);
-        }
+        let msg_signer_pub_key = msg.recover_ecdsa()?;
 
         let chain_tip_report = self
-            .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
+            .inspect_msg_chain_tip(msg_signer_pub_key, &msg.bitcoin_chain_tip)
             .await?;
         let MsgChainTipReport {
             sender_is_coordinator,
@@ -213,7 +210,7 @@ where
         tracing::trace!(
             %sender_is_coordinator,
             %chain_tip_status,
-            sender = %msg.signer_pub_key,
+            sender = %msg_signer_pub_key,
             payload = %msg.inner.payload,
             "handling message from signer"
         );
@@ -227,7 +224,7 @@ where
                 self.handle_stacks_transaction_sign_request(
                     request,
                     &msg.bitcoin_chain_tip,
-                    &msg.signer_pub_key,
+                    &msg_signer_pub_key,
                 )
                 .await?;
             }
@@ -246,7 +243,7 @@ where
                 self.handle_wsts_message(
                     wsts_msg,
                     &msg.bitcoin_chain_tip,
-                    msg.signer_pub_key,
+                    msg_signer_pub_key,
                     &chain_tip_report,
                 )
                 .await?;
