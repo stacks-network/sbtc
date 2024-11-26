@@ -68,8 +68,6 @@ services:
     build: blocklist-client
     depends_on:
       - sbtc-build
-    volumes:
-      - "../../blocklist-client/src/config/default.toml:/src/config/default.toml"
     environment:
       BLOCKLIST_CLIENT__SERVER__HOST: 0.0.0.0
       BLOCKLIST_CLIENT__SERVER__PORT: 3032
