@@ -100,13 +100,13 @@ impl super::MessageTransfer for MpmcBroadcaster {
 
     async fn receive(&mut self) -> Result<super::Msg, Error> {
         let mut encoded_msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
-        let mut msg = super::Msg::decode(encoded_msg.as_slice()).map_err(Error::Codec)?;
+        let mut msg = super::Msg::decode(encoded_msg.as_slice())?;
 
         tracing::trace!("[network{:0>2}] received: {}", self.id, msg);
         while Some(&msg.id()) == self.recently_sent.lock().await.front() {
             self.recently_sent.lock().await.pop_front();
             encoded_msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
-            msg = super::Msg::decode(encoded_msg.as_slice()).map_err(Error::Codec)?;
+            msg = super::Msg::decode(encoded_msg.as_slice())?;
         }
 
         Ok(msg)

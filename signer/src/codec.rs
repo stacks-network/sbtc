@@ -71,7 +71,7 @@ pub trait Decode: Sized {
     ///
     /// # Returns
     /// A `Result` which is `Ok` containing the decoded object, or an `Error` if decoding failed.
-    fn decode<R: io::Read>(reader: R) -> Result<Self, CodecError>;
+    fn decode<R: io::Read>(reader: R) -> Result<Self, Error>;
 }
 
 impl<T> Encode for T
@@ -90,7 +90,7 @@ where
     T: ProtoSerializable + Clone,
     T: TryFrom<<T as ProtoSerializable>::Message, Error = Error>,
 {
-    fn decode<R: io::Read>(mut reader: R) -> Result<Self, CodecError> {
+    fn decode<R: io::Read>(mut reader: R) -> Result<Self, Error> {
         let mut buf = Vec::new();
         reader
             .read_to_end(&mut buf)
@@ -99,25 +99,25 @@ where
         let message =
             <<T as ProtoSerializable>::Message>::decode(&*buf).map_err(CodecError::DecodeError)?;
 
-        T::try_from(message).map_err(|e| CodecError::InternalTypeConversionError(Box::new(e)))
+        T::try_from(message)
     }
 }
 
 /// The error used in the [`Encode`] and [`Decode`] trait.
 #[derive(thiserror::Error, Debug)]
 pub enum CodecError {
-    /// Encode error
-    #[error("Encode error: {0}")]
-    EncodeError(#[source] io::Error),
     /// Decode error
     #[error("Decode error: {0}")]
     DecodeError(#[source] ::prost::DecodeError),
     /// Decode error
     #[error("Decode error: {0}")]
     DecodeIOError(#[source] io::Error),
-    /// Internal type conversion error
-    #[error("Internal type conversion error: {0}")]
-    InternalTypeConversionError(#[from] Box<crate::error::Error>),
+}
+
+impl From<CodecError> for Error {
+    fn from(value: CodecError) -> Self {
+        Error::Codec(value)
+    }
 }
 
 #[cfg(test)]
