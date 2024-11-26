@@ -17,7 +17,7 @@ struct Cli {
 }
 
 /// Statically configured settings for the Blocklist client
-static CLI: LazyLock<Cli> = LazyLock::new(|| Cli::parse());
+static CLI: LazyLock<Cli> = LazyLock::new(Cli::parse());
 
 /// Top-level configuration for the Blocklist client
 #[derive(Deserialize, Clone, Debug)]
