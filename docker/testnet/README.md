@@ -44,7 +44,8 @@ Clone this repository and `cd` to this directory.
 
 ### Configure the Postgresql database
 
-Copy the provided `data` folder to the `./postgres` directory.
+Extract the provided `postgres.tar.gz` archive into the `./postgres` directory.
+You should now have `postgres/data`.
 
 ### Add an event-listener to your Stacks node
 
