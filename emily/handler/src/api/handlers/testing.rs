@@ -1,6 +1,7 @@
 //! Handlers for testing endpoint endpoints.
 
 use reqwest::StatusCode;
+use tracing::instrument;
 use warp::reply::Reply;
 
 use crate::common::error::Error;
@@ -23,6 +24,7 @@ use crate::database::accessors;
     ),
     security(("ApiGatewayKey" = []))
 )]
+#[instrument(skip(context))]
 pub async fn wipe_databases(context: EmilyContext) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(context: EmilyContext) -> Result<impl warp::reply::Reply, Error> {
