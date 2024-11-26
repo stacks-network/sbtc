@@ -251,8 +251,7 @@ where
             .await
             .expect("failed to receive message");
 
-        let coordinator_public_key = PublicKey::from_private_key(&coordinator_private_key);
-        assert!(msg.verify(coordinator_public_key));
+        assert!(msg.verify());
 
         assert!(matches!(
             msg.payload,

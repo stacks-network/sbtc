@@ -50,6 +50,8 @@
 //! // Verify the signed message.
 //! assert_eq!(signed_msg.recover_ecdsa(), Ok(private_key.into()));
 
+use secp256k1::SECP256K1;
+
 use crate::codec::ProtoSerializable;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -75,9 +77,11 @@ where
     /// Verify the signature over the inner data.
     pub fn verify(&self) -> bool {
         let msg = secp256k1::Message::from_digest(self.inner.digest());
-        let sig = secp256k1::ecdsa::Signature::from_compact(&self.signature).unwrap();
+        let Ok(sig) = secp256k1::ecdsa::Signature::from_compact(&self.signature) else {
+            return false;
+        };
 
-        self.signer_pub_key.verify(&msg, &sig)
+        self.signer_pub_key.verify(SECP256K1, &msg, &sig).is_ok()
     }
 
     /// Unique identifier for the signed message
@@ -161,38 +165,36 @@ mod tests {
     fn verify_should_return_true_given_properly_signed_data() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
-        let bruce_wayne_public_key = PublicKey::from_private_key(&bruce_wayne_private_key);
 
         let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         // Bruce Wayne is Batman.
-        assert!(signed_msg.verify(bruce_wayne_public_key));
+        assert!(signed_msg.verify());
     }
 
     #[test]
     fn verify_should_return_false_given_tampered_data() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
-        let bruce_wayne_public_key = PublicKey::from_private_key(&bruce_wayne_private_key);
 
         let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
-        assert!(signed_msg.verify(bruce_wayne_public_key));
+        assert!(signed_msg.verify());
 
         signed_msg.inner = SignableStr("I'm Satoshi Nakamoto");
 
         // Bruce Wayne is not Satoshi Nakamoto.
-        assert!(!signed_msg.verify(bruce_wayne_public_key));
+        assert!(!signed_msg.verify());
     }
 
     #[test]
     fn verify_should_return_false_given_the_wrong_public_key() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
-        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338))
-            .unwrap()
-            .into();
+        let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap();
 
-        let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
+        let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
+
+        signed_msg.signer_pub_key = craig_wright_public_key.into();
 
         // Craig Wright is not Batman.
         assert!(!signed_msg.verify());
