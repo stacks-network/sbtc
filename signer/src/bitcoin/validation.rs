@@ -1282,14 +1282,18 @@ mod tests {
             ..Default::default()
         };
 
-        cache.deposit_reports = deposit_amounts
-            .iter()
+        let deposit_reports: Vec<(DepositRequestReport, SignerVotes)> = deposit_amounts
+            .into_iter()
             .enumerate()
-            .map(|(idx, amount)| {
-                let (report, votes) = create_test_report(idx as u8, amount);
+            .map(|(idx, amount)| create_test_report(idx as u8, amount))
+            .collect();
+
+        cache.deposit_reports = deposit_reports
+            .iter()
+            .map(|(report, votes)| {
                 (
                     (&report.outpoint.txid, report.outpoint.vout),
-                    (report.clone(), votes),
+                    (report.clone(), votes.clone()),
                 )
             })
             .collect();
