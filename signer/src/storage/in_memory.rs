@@ -244,8 +244,7 @@ impl Store {
         let context_window_end_block = std::iter::successors(first_block, |block| {
             self.bitcoin_blocks.get(&block.parent_hash)
         })
-        .skip(context_window as usize)
-        .next();
+        .nth(context_window as usize);
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip) else {
             return Vec::new();
