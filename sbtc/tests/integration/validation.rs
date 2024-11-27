@@ -1,13 +1,21 @@
 //! Test deposit validation against bitcoin-core
 
 use bitcoin::absolute::LockTime;
+use bitcoin::opcodes;
 use bitcoin::script::PushBytes;
+use bitcoin::sighash::Prevouts;
+use bitcoin::sighash::SighashCache;
+use bitcoin::taproot::LeafVersion;
+use bitcoin::taproot::NodeInfo;
+use bitcoin::taproot::TaprootSpendInfo;
 use bitcoin::transaction::Version;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
+use bitcoin::TapLeafHash;
+use bitcoin::TapSighashType;
 use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
@@ -17,12 +25,18 @@ use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
 
+use clarity::types::chainstate::StacksAddress;
+use clarity::vm::types::PrincipalData;
+use rand::rngs::OsRng;
 use sbtc::deposits::CreateDepositRequest;
+use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
 use sbtc::testing::deposits::TxSetup;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Recipient;
+use secp256k1::SecretKey;
+use secp256k1::SECP256K1;
 
 /// Test the CreateDepositRequest::validate function.
 ///
@@ -385,4 +399,150 @@ fn op_csv_disabled() {
             if message.ends_with("(Locktime requirement not satisfied)") => {}
         err => panic!("{err}"),
     };
+}
+
+/// This validates that a user can disable OP_CSV checks if we allow them
+/// to submit any lock-time. It doesn't test much of the code in this
+/// crate, just that bitcoin-core will treat OP_CSV like a no-op if the
+/// [`sbtc::deposits::SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit is set to 1 in
+/// the input `lock_time`.
+///
+/// The test proceeds as follows:
+/// 1. Create and submit a transaction where the lock script uses a
+///    lock-time at least 50 blocks in the future but also disables OP_CSV.
+/// 2. Confirm the transaction and spend it immediately, proving that
+///    OP_CSV was disabled.
+/// 3. Create and submit another transaction where the lock script uses a
+///    lock-time where OP_CSV is not disabled.
+/// 4. Confirm that transaction and try to spend it immediately. The
+///    transaction that tries to spend the transaction from (3) should be
+///    rejected.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn reclaiming_rejected_deposits() {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 5;
+
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let depositor = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+    let outpoint = faucet.send_to(50_000_000, &depositor.address);
+    faucet.generate_blocks(1);
+
+    // There is only one UTXO under the depositor's name, so let's get it
+    let utxos = depositor.get_utxos(rpc, None);
+
+    let secret_key = SecretKey::new(&mut OsRng);
+
+    let deposit = DepositScriptInputs {
+        signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
+        recipient: PrincipalData::from(StacksAddress::burn_address(false)),
+        max_fee,
+    };
+    let x_only_key = depositor.keypair.public_key().x_only_public_key().0;
+    let reclaim_script = ScriptBuf::builder()
+        .push_opcode(opcodes::all::OP_DROP)
+        .push_slice(x_only_key.serialize())
+        .push_opcode(opcodes::all::OP_CHECKSIG)
+        .into_script();
+    let reclaim = ReclaimScriptInputs::try_new(lock_time, reclaim_script).unwrap();
+
+    let deposit_script = deposit.deposit_script();
+    let reclaim_script = reclaim.reclaim_script();
+    // This transaction is kinda invalid because it doesn't have any
+    // inputs. But it is fine for our purposes.
+
+    let deposit_utxo = TxOut {
+        value: Amount::from_sat(amount_sats),
+        script_pubkey: sbtc::deposits::to_script_pubkey(
+            deposit_script.clone(),
+            reclaim_script.clone(),
+        ),
+    };
+
+    let mut deposit_tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: vec![TxIn {
+            previous_output: outpoint,
+            sequence: Sequence::ZERO,
+            script_sig: ScriptBuf::new(),
+            witness: Witness::new(),
+        }],
+        output: vec![deposit_utxo.clone()],
+    };
+
+    regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &utxos, &depositor.keypair);
+    rpc.send_raw_transaction(&deposit_tx).unwrap();
+
+    faucet.generate_blocks(6);
+
+    //
+    let mut reclaim_tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::from_height(5).unwrap(),
+        input: vec![TxIn {
+            previous_output: OutPoint::new(deposit_tx.compute_txid(), 0),
+            sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+            script_sig: ScriptBuf::new(),
+            witness: Witness::new(),
+        }],
+        output: vec![TxOut {
+            value: Amount::from_sat(amount_sats - 30000),
+            script_pubkey: depositor.script_pubkey.clone(),
+        }],
+    };
+
+    let input_utxos: Vec<TxOut> = vec![deposit_utxo];
+
+    let prevouts = Prevouts::All(input_utxos.as_slice());
+    let sighash_type = TapSighashType::Default;
+    let mut sighasher = SighashCache::new(&reclaim_tx);
+    // The signers' UTXO is always the first input in the transaction.
+    // Moreover, the signers can only spend this UTXO using the taproot
+    // key-spend path of UTXO.
+    let leaf_hash = TapLeafHash::from_script(&reclaim_script, LeafVersion::TapScript);
+    let reclaim_sighash = sighasher
+        .taproot_script_spend_signature_hash(0, &prevouts, leaf_hash, sighash_type)
+        .unwrap();
+    let msg = secp256k1::Message::from(reclaim_sighash);
+
+    //
+
+    let signature = SECP256K1.sign_schnorr(&msg, &depositor.keypair);
+    let ver = LeafVersion::TapScript;
+    // For such a simple tree, we construct it by hand.
+    let leaf1 = NodeInfo::new_leaf_with_ver(deposit_script.clone(), ver);
+    let leaf2 = NodeInfo::new_leaf_with_ver(reclaim_script.clone(), ver);
+
+    // A Result::Err is returned by NodeInfo::combine if the depth of
+    // our taproot tree exceeds the maximum depth of taproot trees,
+    // which is 128. We have two nodes so the depth is 1 so this will
+    // never panic.
+    let node = NodeInfo::combine(leaf1, leaf2).expect("This tree depth greater than max of 128");
+    let internal_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
+
+    let taproot = TaprootSpendInfo::from_node_info(SECP256K1, internal_key, node);
+
+    // TaprootSpendInfo::control_block returns None if the key given,
+    // (script, version), is not in the tree. But this key is definitely
+    // in the tree (see the variable leaf1 in the `construct_taproot_info`
+    // function).
+    let control_block = taproot
+        .control_block(&(dbg!(reclaim_script.clone()), ver))
+        .unwrap();
+
+    let witness_data = [
+        signature.serialize().to_vec(),
+        reclaim_script.to_bytes(),
+        control_block.serialize(),
+    ];
+    reclaim_tx.input[0].witness = Witness::from_slice(&witness_data);
+
+    faucet.generate_blocks(6);
+
+    rpc.send_raw_transaction(&reclaim_tx).unwrap();
+    faucet.generate_blocks(1);
 }
