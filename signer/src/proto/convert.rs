@@ -7,7 +7,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::consensus::encode::serialize;
@@ -764,13 +763,13 @@ impl TryFrom<proto::BadPrivateShares> for hashbrown::HashMap<u32, BadPrivateShar
     }
 }
 
-fn hashset_to_zst(set: hashbrown::HashSet<u32>) -> HashMap<u32, proto::SetValueZst> {
+fn hashset_to_zst(set: hashbrown::HashSet<u32>) -> BTreeMap<u32, proto::SetValueZst> {
     set.into_iter()
         .map(|v| (v, proto::SetValueZst {}))
         .collect()
 }
 
-fn zst_to_hashset(set: HashMap<u32, proto::SetValueZst>) -> hashbrown::HashSet<u32> {
+fn zst_to_hashset(set: BTreeMap<u32, proto::SetValueZst>) -> hashbrown::HashSet<u32> {
     set.into_keys().collect()
 }
 
