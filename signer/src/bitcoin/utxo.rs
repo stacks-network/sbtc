@@ -162,9 +162,10 @@ impl SbtcRequests {
             })
             .map(RequestRef::Withdrawal);
 
-        // Now we filter deposit requests where the user's max fee could
-        // be less than the fee we may charge. This is simpler because
-        // deposit UTXOs have a known fixed size.
+        // Filter deposit requests based on two constraints:
+        // 1. The user's max fee must be >= our minimum required fee for deposits
+        //     (based on fixed deposit tx size)
+        // 2. The total amount being minted must stay under the maximum allowed mintable amount
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
 
         let mut amount_to_mint = 0;

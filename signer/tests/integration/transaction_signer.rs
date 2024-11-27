@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use bitcoin::Amount;
 use fake::Fake as _;
 use fake::Faker;
 use futures::future::join_all;
@@ -13,6 +14,7 @@ use signer::bitcoin::utxo::Requests;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
+use signer::context::SbtcLimits;
 use signer::context::SignerEvent;
 use signer::context::SignerSignal;
 use signer::context::TxSignerEvent;
@@ -529,12 +531,28 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let fee_rate = 1.3;
     // Build the test context with mocked clients
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_mocked_bitcoin_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .times(1)
+            .returning(|| Box::pin(async { Ok(SbtcLimits::new(None, None, None)) }));
+    })
+    .await;
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_sbtc_total_supply()
+            .times(1)
+            .returning(|_| Box::pin(async { Ok(Amount::ZERO) }));
+    })
+    .await;
 
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 

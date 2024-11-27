@@ -1,11 +1,13 @@
 //! validation of bitcoin transactions.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::Txid;
 use bitcoin::XOnlyPublicKey;
 use serde::Deserialize;
 use serde::Serialize;
@@ -13,11 +15,13 @@ use serde::Serialize;
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
-use crate::emily_client::EmilyInteract;
+use crate::context::SbtcLimits;
+use crate::emily_client::EmilyInteract as _;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
 use crate::message::OutPointMessage;
+use crate::stacks::api::StacksInteract as _;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxSigHash;
@@ -33,6 +37,14 @@ use super::utxo::Requests;
 use super::utxo::SignatureHash;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
+
+/// Cached validation data to avoid repeated DB queries
+#[derive(Default)]
+struct ValidationCache {
+    deposit_reports: HashMap<(Txid, u32), (DepositRequestReport, SignerVotes)>,
+    withdrawal_reports: HashMap<QualifiedRequestId, (WithdrawalRequestReport, SignerVotes)>,
+    sbtc_limits: SbtcLimits,
+}
 
 /// The necessary information for validating a bitcoin transaction.
 #[derive(Debug, Clone)]
@@ -92,9 +104,104 @@ pub fn is_unique(package: &[TxRequestIds]) -> bool {
 
 impl BitcoinPreSignRequest {
     /// Validate the current bitcoin transaction.
-    pub fn pre_validation(&self) -> Result<(), Error> {
+    async fn pre_validation<C>(
+        &self,
+        ctx: &C,
+        btc_ctx: &BitcoinTxContext,
+    ) -> Result<ValidationCache, Error>
+    where
+        C: Context + Send + Sync,
+    {
         if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
+        }
+        let cache = self.fetch_all_reports(ctx, btc_ctx).await?;
+
+        self.validate_max_mintable(ctx, &cache).await?;
+
+        Ok(cache)
+    }
+
+    async fn fetch_all_reports<C>(
+        &self,
+        ctx: &C,
+        btc_ctx: &BitcoinTxContext,
+    ) -> Result<ValidationCache, Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let db = ctx.get_storage();
+        let mut cache = ValidationCache {
+            sbtc_limits: ctx.get_emily_client().get_limits().await?,
+            ..Default::default()
+        };
+
+        // Fetch all deposit reports and votes
+        for requests in &self.request_package {
+            for outpoint in &requests.deposits {
+                let txid = outpoint.txid.into();
+                let output_index = outpoint.vout;
+
+                let report_future = db.get_deposit_request_report(
+                    &btc_ctx.chain_tip,
+                    &txid,
+                    output_index,
+                    &btc_ctx.signer_public_key,
+                );
+                let Some(report) = report_future.await? else {
+                    return Err(InputValidationResult::Unknown.into_error(btc_ctx));
+                };
+
+                let votes = db
+                    .get_deposit_request_signer_votes(&txid, output_index, &btc_ctx.aggregate_key)
+                    .await?;
+
+                cache
+                    .deposit_reports
+                    .insert((outpoint.txid, output_index), (report, votes));
+            }
+
+            // Fetch all withdrawal reports and votes
+            for id in &requests.withdrawals {
+                let report = db.get_withdrawal_request_report(
+                    &btc_ctx.chain_tip,
+                    id,
+                    &btc_ctx.signer_public_key,
+                );
+                let Some(report) = report.await? else {
+                    return Err(WithdrawalValidationResult::Unknown.into_error(btc_ctx));
+                };
+
+                let votes = db
+                    .get_withdrawal_request_signer_votes(id, &btc_ctx.aggregate_key)
+                    .await?;
+
+                cache.withdrawal_reports.insert(*id, (report, votes));
+            }
+        }
+        Ok(cache)
+    }
+
+    async fn validate_max_mintable<C>(&self, ctx: &C, cache: &ValidationCache) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let sbtc_supply = ctx
+            .get_stacks_client()
+            .get_sbtc_total_supply(&ctx.config().signer.deployer)
+            .await?;
+        let total_cap = cache.sbtc_limits.total_cap().unwrap_or(Amount::MAX_MONEY);
+        let max_mintable = total_cap
+            .checked_sub(sbtc_supply)
+            .unwrap_or(Amount::ZERO)
+            .to_sat();
+
+        let mut total_amount = 0;
+        for (report, _) in cache.deposit_reports.values() {
+            total_amount += report.amount;
+            if total_amount > max_mintable {
+                return Err(Error::ExceedsSbtcSupplyCap { total_amount, max_mintable });
+            }
         }
 
         Ok(())
@@ -110,7 +217,7 @@ impl BitcoinPreSignRequest {
     where
         C: Context + Send + Sync,
     {
-        self.pre_validation()?;
+        let mut cache = self.pre_validation(ctx, btc_ctx).await?;
         let signer_utxo = ctx
             .get_storage()
             .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
@@ -128,7 +235,7 @@ impl BitcoinPreSignRequest {
 
         for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state)
+                .construct_tx_sighashes(btc_ctx, requests, signer_state, &mut cache)
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -143,53 +250,32 @@ impl BitcoinPreSignRequest {
     /// This function returns the new signer bitcoin state if we were to
     /// sign and confirmed the bitcoin transaction created using the given
     /// inputs and outputs.
-    async fn construct_tx_sighashes<C>(
+    async fn construct_tx_sighashes(
         &self,
-        ctx: &C,
         btc_ctx: &BitcoinTxContext,
         requests: &TxRequestIds,
         signer_state: SignerBtcState,
-    ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        let db = ctx.get_storage();
-
-        let signer_public_key = &btc_ctx.signer_public_key;
-        let aggregate_key = &btc_ctx.aggregate_key;
-        let chain_tip = &btc_ctx.chain_tip;
-
-        let mut deposits = Vec::new();
-        let mut withdrawals = Vec::new();
+        cache: &mut ValidationCache,
+    ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error> {
+        let mut deposits = Vec::with_capacity(requests.deposits.len());
+        let mut withdrawals = Vec::with_capacity(requests.withdrawals.len());
 
         for outpoint in requests.deposits.iter() {
-            let txid = outpoint.txid.into();
-            let output_index = outpoint.vout;
-            let report_future =
-                db.get_deposit_request_report(chain_tip, &txid, output_index, signer_public_key);
-
-            let Some(report) = report_future.await? else {
-                return Err(InputValidationResult::Unknown.into_error(btc_ctx));
-            };
-
-            let votes = db
-                .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
-                .await?;
-
+            let key = (outpoint.txid, outpoint.vout);
+            let (report, votes) = cache
+                .deposit_reports
+                .remove(&key)
+                // This should never happen because we have already validated that we have all the reports.
+                .ok_or(InputValidationResult::Unknown.into_error(btc_ctx))?;
             deposits.push((report.to_deposit_request(&votes), report));
         }
 
         for id in requests.withdrawals.iter() {
-            let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
-
-            let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unknown.into_error(btc_ctx));
-            };
-
-            let votes = db
-                .get_withdrawal_request_signer_votes(id, aggregate_key)
-                .await?;
-
+            let (report, votes) = cache
+                .withdrawal_reports
+                .remove(id)
+                // This should never happen because we have already validated that we have all the reports.
+                .ok_or(WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
             withdrawals.push((report.to_withdrawal_request(&votes), report));
         }
 
@@ -212,7 +298,6 @@ impl BitcoinPreSignRequest {
         // their fees anymore in order for them to be accepted by the
         // network.
         signer_state.last_fees = None;
-        let sbtc_limits = ctx.get_emily_client().get_limits().await?;
 
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
@@ -222,8 +307,14 @@ impl BitcoinPreSignRequest {
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
-            max_deposit_amount: sbtc_limits.per_deposit_cap().unwrap_or(Amount::MAX),
-            max_withdrawal_amount: sbtc_limits.per_withdrawal_cap().unwrap_or(Amount::MAX),
+            max_deposit_amount: cache
+                .sbtc_limits
+                .per_deposit_cap()
+                .unwrap_or(Amount::MAX_MONEY),
+            max_withdrawal_amount: cache
+                .sbtc_limits
+                .per_withdrawal_cap()
+                .unwrap_or(Amount::MAX_MONEY),
         };
 
         Ok((out, signer_state))
@@ -1002,9 +1093,10 @@ mod tests {
             witness: Witness::new(),
         });
 
-        let status = mapping
-            .report
-            .validate(mapping.chain_tip_height, &tx, TX_FEE, Amount::MAX);
+        let status =
+            mapping
+                .report
+                .validate(mapping.chain_tip_height, &tx, TX_FEE, Amount::MAX_MONEY);
 
         assert_eq!(status, mapping.status);
     }

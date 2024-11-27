@@ -3,6 +3,7 @@ use std::ops::Deref;
 use std::sync::atomic::Ordering;
 
 use bitcoin::hashes::Hash as _;
+use bitcoin::Amount;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
@@ -15,6 +16,7 @@ use signer::bitcoin::validation::BitcoinTxValidationData;
 use signer::bitcoin::validation::InputValidationResult;
 use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
+use signer::context::SbtcLimits;
 use signer::message::BitcoinPreSignRequest;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::DbRead as _;
@@ -96,12 +98,26 @@ async fn one_tx_per_request_set() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .returning(|| Box::pin(async { Ok(SbtcLimits::new(None, None, None)) }));
+    })
+    .await;
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_sbtc_total_supply()
+            .returning(|_| Box::pin(async { Ok(Amount::ZERO) }));
+    })
+    .await;
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [DepositAmounts {
@@ -190,12 +206,26 @@ async fn one_invalid_deposit_invalidates_tx() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .returning(|| Box::pin(async { Ok(SbtcLimits::new(None, None, None)) }));
+    })
+    .await;
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_sbtc_total_supply()
+            .returning(|_| Box::pin(async { Ok(Amount::ZERO) }));
+    })
+    .await;
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -304,12 +334,26 @@ async fn one_withdrawal_errors_validation() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .returning(|| Box::pin(async { Ok(SbtcLimits::new(None, None, None)) }));
+    })
+    .await;
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_sbtc_total_supply()
+            .returning(|_| Box::pin(async { Ok(Amount::ZERO) }));
+    })
+    .await;
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -373,14 +417,29 @@ async fn cannot_sign_deposit_is_ok() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let ctx = TestContext::builder()
+    let signers = TestSignerSet::new(&mut rng);
+
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
 
-    let signers = TestSignerSet::new(&mut rng);
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .returning(|| Box::pin(async { Ok(SbtcLimits::new(None, None, None)) }));
+    })
+    .await;
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_sbtc_total_supply()
+            .returning(|_| Box::pin(async { Ok(Amount::ZERO) }));
+    })
+    .await;
+
     let amounts = [
         DepositAmounts {
             amount: 700_000,
@@ -535,12 +594,26 @@ async fn sighashes_match_from_sbtc_requests_object() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .returning(|| Box::pin(async { Ok(SbtcLimits::new(None, None, None)) }));
+    })
+    .await;
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_sbtc_total_supply()
+            .returning(|_| Box::pin(async { Ok(Amount::ZERO) }));
+    })
+    .await;
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -665,12 +738,26 @@ async fn outcome_is_independent_of_input_order() {
     let mut rng = OsRng;
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .returning(|| Box::pin(async { Ok(SbtcLimits::new(None, None, None)) }));
+    })
+    .await;
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_sbtc_total_supply()
+            .returning(|_| Box::pin(async { Ok(Amount::ZERO) }));
+    })
+    .await;
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
