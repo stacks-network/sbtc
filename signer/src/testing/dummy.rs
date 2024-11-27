@@ -759,8 +759,8 @@ impl fake::Dummy<fake::Faker> for TxRequestIds {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let take = (0..20).fake_with_rng(rng);
         let deposits = std::iter::repeat_with(|| OutPoint {
-            txid: config.fake_with_rng::<BitcoinTxId, _>(rng).into(),
-            vout: config.fake_with_rng(rng),
+            txid: txid(config, rng),
+            vout: rng.next_u32(),
         })
         .take(take)
         .collect();
