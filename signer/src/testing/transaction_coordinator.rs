@@ -21,15 +21,23 @@ use crate::stacks::api::AccountInfo;
 use crate::stacks::api::MockStacksInteract;
 use crate::stacks::api::SubmitTxResponse;
 use crate::storage::model;
+use crate::storage::model::ScriptPubKey;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::WithdrawalRequest;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
+use crate::testing::transaction_coordinator::model::QualifiedRequestId;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
+use clarity::types::chainstate::StacksAddress;
+use clarity::util::hash::Hash160;
+use clarity::vm::types::PrincipalData;
 use fake::Fake as _;
 use fake::Faker;
 use rand::SeedableRng as _;
@@ -283,6 +291,49 @@ where
 
         // Perform assertions
         assert_eq!(first_script_pubkey, aggregate_key.signers_script_pubkey());
+    }
+
+    /// Assert that a coordinator should be able to coordiante a signing round
+    pub async fn assert_should_ignore_withdrawals(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::InMemoryNetwork::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
+        let mut testing_signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+        let (_aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
+            .await;
+        let original_test_data = test_data.clone();
+        test_data.withdraw_requests.push(WithdrawalRequest {
+            request_id: 1,
+            txid: StacksTxId::from([1; 32]),
+            block_hash: StacksBlockHash::from([1; 32]),
+            recipient: ScriptPubKey::from_bytes(vec![1; 32]),
+            amount: 1,
+            max_fee: 1,
+            sender_address: StacksPrincipal::from(PrincipalData::from(StacksAddress {
+                version: 0,
+                bytes: Hash160([1; 20]),
+            })),
+        });
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
+        let storage = self.context.storage.clone();
+        let block_hash = bitcoin_chain_tip.block_hash;
+        let withdrawals = storage
+            .get_pending_withdrawal_requests(&block_hash, self.context_window)
+            .await
+            .unwrap();
+        // If we ignoring withdrawals, they should be pending forever
+        // Is 1 sec enough here???
+        std::thread::sleep(Duration::from_secs(1));
+        let withdrawals2 = storage
+            .get_pending_withdrawal_requests(&block_hash, self.context_window)
+            .await
+            .unwrap();
+        assert_eq!(withdrawals, withdrawals2);
     }
 
     /// Assert that a coordinator should be able to skip the deployment the sbtc contracts

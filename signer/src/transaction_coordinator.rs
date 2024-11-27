@@ -1197,12 +1197,6 @@ where
             .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let pending_withdraw_requests = self
-            .context
-            .get_storage()
-            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
-            .await?;
-
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
@@ -1216,18 +1210,7 @@ where
             deposits.push(deposit);
         }
 
-        let mut withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
-
-        for req in pending_withdraw_requests {
-            let votes = self
-                .context
-                .get_storage()
-                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
-                .await?;
-
-            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
-            withdrawals.push(withdrawal);
-        }
+        let withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
 
         let num_signers = signer_public_keys
             .len()
@@ -1640,6 +1623,37 @@ mod tests {
         }
     }
 
+    fn test_environment_no_withdrawals() -> TestEnvironment<
+        TestContext<
+            SharedStore,
+            WrappedMock<MockBitcoinInteract>,
+            WrappedMock<MockStacksInteract>,
+            WrappedMock<MockEmilyInteract>,
+        >,
+    > {
+        let test_model_parameters = testing::storage::model::Params {
+            num_bitcoin_blocks: 20,
+            num_stacks_blocks_per_bitcoin_block: 3,
+            num_deposit_requests_per_block: 5,
+            num_withdraw_requests_per_block: 0,
+            num_signers_per_request: 7,
+        };
+
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        // TODO: fix tech debt #893 then raise threshold to 5
+        TestEnvironment {
+            context,
+            context_window: 5,
+            num_signers: 7,
+            signing_threshold: 3,
+            test_model_parameters,
+        }
+    }
+
     #[ignore = "we have a test for this"]
     #[test(tokio::test)]
     async fn should_be_able_to_coordinate_signing_rounds() {
@@ -1682,6 +1696,12 @@ mod tests {
             .assert_should_be_able_to_coordinate_signing_rounds(delay)
             .await;
         more_asserts::assert_gt!(start.elapsed(), delay + baseline_elapsed);
+    }
+
+    #[tokio::test]
+    async fn should_ignore_withdrawals() {
+        let env = test_environment();
+        env.assert_should_ignore_withdrawals().await;
     }
 
     #[tokio::test]
