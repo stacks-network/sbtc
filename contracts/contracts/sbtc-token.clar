@@ -1,5 +1,7 @@
 (define-constant ERR_NOT_OWNER (err u4)) ;; `tx-sender` or `contract-caller` tried to move a token it does not own.
 (define-constant ERR_NOT_AUTH (err u5)) ;; `tx-sender` or `contract-caller` is not the protocol caller
+(define-constant ERR_TRANSFER_INDEX_PREFIX (unwrap-err! ERR_TRANSFER (err true)))
+(define-constant ERR_TRANSFER (err u6))
 
 (define-fungible-token sbtc-token)
 (define-fungible-token sbtc-token-locked)
@@ -108,6 +110,22 @@
 		(asserts! (or (is-eq tx-sender sender) (is-eq contract-caller sender)) ERR_NOT_OWNER)
 		(ft-transfer? sbtc-token amount sender recipient)
 	)
+)
+
+(define-public (transfer-many (recipients (list 200 { amount: uint, sender: principal, to: principal, memo: (optional (buff 34)) })))
+	(fold complete-individual-transfer recipients (ok u0))
+)
+
+(define-private (complete-individual-transfer (individual-transfer { amount: uint, sender: principal, to: principal, memo: (optional (buff 34)) }) (helper-response (response uint uint)))
+    (match helper-response 
+        index
+            (begin 
+                (unwrap! (transfer (get amount individual-transfer) (get sender individual-transfer) (get to individual-transfer) (get memo individual-transfer)) (err (+ ERR_TRANSFER_INDEX_PREFIX (+ u10 index))))
+                (ok (+ index u1))
+            )
+        err-response
+            (err err-response)
+    )
 )
 
 (define-read-only (get-name)

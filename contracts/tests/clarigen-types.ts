@@ -1264,6 +1264,48 @@ export const contracts = {
   },
   sbtcToken: {
     functions: {
+      completeIndividualTransfer: {
+        name: "complete-individual-transfer",
+        access: "private",
+        args: [
+          {
+            name: "individual-transfer",
+            type: {
+              tuple: [
+                { name: "amount", type: "uint128" },
+                {
+                  name: "memo",
+                  type: { optional: { buffer: { length: 34 } } },
+                },
+                { name: "sender", type: "principal" },
+                { name: "to", type: "principal" },
+              ],
+            },
+          },
+          {
+            name: "helper-response",
+            type: { response: { ok: "uint128", error: "uint128" } },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          individualTransfer: TypedAbiArg<
+            {
+              amount: number | bigint;
+              memo: Uint8Array | null;
+              sender: string;
+              to: string;
+            },
+            "individualTransfer"
+          >,
+          helperResponse: TypedAbiArg<
+            Response<number | bigint, number | bigint>,
+            "helperResponse"
+          >,
+        ],
+        Response<bigint, bigint>
+      >,
       protocolMintManyIter: {
         name: "protocol-mint-many-iter",
         access: "private",
@@ -1480,6 +1522,45 @@ export const contracts = {
         ],
         Response<boolean, bigint>
       >,
+      transferMany: {
+        name: "transfer-many",
+        access: "public",
+        args: [
+          {
+            name: "recipients",
+            type: {
+              list: {
+                type: {
+                  tuple: [
+                    { name: "amount", type: "uint128" },
+                    {
+                      name: "memo",
+                      type: { optional: { buffer: { length: 34 } } },
+                    },
+                    { name: "sender", type: "principal" },
+                    { name: "to", type: "principal" },
+                  ],
+                },
+                length: 200,
+              },
+            },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          recipients: TypedAbiArg<
+            {
+              amount: number | bigint;
+              memo: Uint8Array | null;
+              sender: string;
+              to: string;
+            }[],
+            "recipients"
+          >,
+        ],
+        Response<bigint, bigint>
+      >,
       getBalance: {
         name: "get-balance",
         access: "read_only",
@@ -1575,6 +1656,21 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_TRANSFER: {
+        name: "ERR_TRANSFER",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_TRANSFER_INDEX_PREFIX: {
+        name: "ERR_TRANSFER_INDEX_PREFIX",
+        type: "uint128",
+        access: "constant",
+      } as TypedAbiVariable<bigint>,
       tokenDecimals: {
         name: "token-decimals",
         type: "uint128",
@@ -1619,6 +1715,11 @@ export const contracts = {
         isOk: false,
         value: 4n,
       },
+      ERR_TRANSFER: {
+        isOk: false,
+        value: 6n,
+      },
+      ERR_TRANSFER_INDEX_PREFIX: 6n,
       tokenDecimals: 8n,
       tokenName: "sBTC",
       tokenSymbol: "sBTC",
