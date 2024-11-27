@@ -1250,7 +1250,7 @@ impl super::DbRead for PgStore {
             JOIN stacks_context_window sc USING (block_hash)
             LEFT JOIN sbtc_signer.withdrawal_signers AS ws
               ON ws.request_id = wr.request_id
-             AND ws.block_hash = deposit_requests.block_hash
+             AND ws.block_hash = wr.block_hash
              AND ws.signer_pub_key = $4
             WHERE ws.request_id IS NULL
             "#,

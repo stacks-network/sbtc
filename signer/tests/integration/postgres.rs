@@ -66,7 +66,11 @@ use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use test_case::test_case;
 use test_log::test;
 
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::DepositAmounts;
+use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
+use crate::setup::TestSweepSetup2;
 use crate::DATABASE_NUM;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -374,6 +378,113 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
     }
 
     signer::testing::storage::drop_db(pg_store).await;
+}
+
+/// Test that [`DbRead::get_pending_deposit_requests`] returns deposit
+/// requests that do not have a vote on them yet.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_pending_deposit_requests_only_pending() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(43);
+
+    let amounts = DepositAmounts { amount: 123456, max_fee: 12345 };
+    let signers = TestSignerSet::new(&mut rng);
+    let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+
+    // There aren't any deposit requests in the database.
+    let signer_public_key = setup.signers.signer_keys()[0];
+    let pending_requests = db
+        .get_pending_deposit_requests(&chain_tip, 1000, &signer_public_key)
+        .await
+        .unwrap();
+
+    assert!(pending_requests.is_empty());
+
+    // Now let's store a deposit request with no votes.
+    // `get_pending_deposit_requests` should return it now.
+    setup.store_deposit_txs(&db).await;
+    setup.store_deposit_request(&db).await;
+
+    let pending_requests = db
+        .get_pending_deposit_requests(&chain_tip, 1000, &signer_public_key)
+        .await
+        .unwrap();
+
+    assert_eq!(pending_requests.len(), 1);
+
+    // Okay now lets suppose we have a decision on it.
+    // `get_pending_deposit_requests` should not return it now.
+    setup.store_deposit_decisions(&db).await;
+
+    let pending_requests = db
+        .get_pending_deposit_requests(&chain_tip, 1000, &signer_public_key)
+        .await
+        .unwrap();
+
+    assert!(pending_requests.is_empty());
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// Test that [`DbRead::get_pending_withdrawal_requests`] returns
+/// withdrawal requests that do not have a vote on them yet.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_pending_withdrawal_requests_only_pending() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(43);
+
+    let amounts = DepositAmounts { amount: 123456, max_fee: 12345 };
+    let signers = TestSignerSet::new(&mut rng);
+    let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+
+    // There aren't any deposit requests in the database.
+    let signer_public_key = setup.signers.signer_keys()[0];
+    let pending_requests = db
+        .get_pending_withdrawal_requests(&chain_tip, 1000, &signer_public_key)
+        .await
+        .unwrap();
+
+    assert!(pending_requests.is_empty());
+
+    // Now let's store a withdrawal request with no votes.
+    // `get_pending_withdrawal_requests` should return it now.
+    setup.store_withdrawal_request(&db).await;
+
+    let pending_requests = db
+        .get_pending_withdrawal_requests(&chain_tip, 1000, &signer_public_key)
+        .await
+        .unwrap();
+
+    assert_eq!(pending_requests.len(), 1);
+
+    // Okay now lets suppose we have a decision on it.
+    // `get_pending_withdrawal_requests` should not return it now.
+    setup.store_withdrawal_decisions(&db).await;
+
+    let pending_requests = db
+        .get_pending_withdrawal_requests(&chain_tip, 1000, &signer_public_key)
+        .await
+        .unwrap();
+
+    assert!(pending_requests.is_empty());
+
+    signer::testing::storage::drop_db(db).await;
 }
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
