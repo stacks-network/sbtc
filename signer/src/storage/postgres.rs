@@ -813,8 +813,7 @@ impl super::DbRead for PgStore {
               , deposit_requests.signers_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_requests deposit_requests
-              ON deposit_requests.txid = transactions.txid
+            JOIN sbtc_signer.deposit_requests AS deposit_requests USING (txid)
             LEFT JOIN sbtc_signer.deposit_signers AS ds
               ON ds.txid = deposit_requests.txid
              AND ds.output_index = deposit_requests.output_index
