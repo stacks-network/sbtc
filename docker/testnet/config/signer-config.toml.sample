@@ -4,7 +4,7 @@ endpoint = "http://blocklist-client:3032"
 [emily]
 # TODO: Add your API key here.
 endpoints = [
-    { "endpoint" = "https://beta.emily-sbtc.com/", "api_key" = "TODO" }
+    { "endpoint" = "https://beta.sbtc-emily.com", "api_key" = "TODO" }
 ]
 
 [bitcoin]
