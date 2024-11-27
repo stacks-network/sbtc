@@ -366,6 +366,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
             .expect("failed to get pending deposit requests");
 
         pending_deposit_requests.sort();
+        assert!(!pending_deposit_requests.is_empty());
 
         let mut pg_pending_deposit_requests = pg_store
             .get_pending_deposit_requests(&chain_tip, context_window, signer_public_key)
@@ -453,7 +454,7 @@ async fn get_pending_withdrawal_requests_only_pending() {
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
-    // There aren't any deposit requests in the database.
+    // There aren't any withdrawal requests in the database.
     let signer_public_key = setup.signers.signer_keys()[0];
     let pending_requests = db
         .get_pending_withdrawal_requests(&chain_tip, 1000, &signer_public_key)
