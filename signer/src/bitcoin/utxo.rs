@@ -2692,4 +2692,68 @@ mod tests {
         // number-of-requests`.
         assert!(combined_fee <= (fee + Amount::from_sat(3u64)));
     }
+
+    #[test_case(vec![
+        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 100_000, 0),
+    ], 3, 30_000, 30_000; "should_accept_deposits_until_max_mintable_reached")]
+    #[test_case(vec![
+        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 100_000, 0),
+    ], 1, 10_000, 15_000; "should_accept_all_deposits_when_under_max_mintable")]
+    #[test_case(vec![
+        create_deposit(10_000, 100_000, 0),
+    ], 0, 0, 0; "should_handle_empty_deposit_list")]
+    #[test_case(vec![
+        create_deposit(10_000, 0, 0),
+        create_deposit(8_000, 100_000, 0),
+        create_deposit(5_000, 100_000, 0),
+    ], 1, 8000, 10000; "should_skip_invalid_fee_and_accept_valid_deposits")]
+    #[test_case(vec![
+        create_deposit(10_001, 100_000, 0),
+    ], 0, 0, 10_000; "should_reject_single_deposit_exceeding_max_mintable")]
+    #[tokio::test]
+    async fn test_construct_transactions_filters_deposits_over_max_mintable(
+        deposits: Vec<DepositRequest>,
+        num_accepted_requests: usize,
+        accepted_amount: u64,
+        max_mintable: u64,
+    ) {
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: deposits,
+            withdrawals: vec![],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000_000,
+                    public_key,
+                },
+                fee_rate: 25.0,
+                public_key,
+                last_fees: None,
+                magic_bytes: [0; 2],
+            },
+            num_signers: 10,
+            accept_threshold: 8,
+            max_mintable: max_mintable,
+        };
+        let txs = requests.construct_transactions().unwrap();
+        let nr_requests = txs.iter().map(|tx| tx.requests.len()).sum::<usize>();
+        let total_amount: u64 = txs
+            .iter()
+            .map(|tx| {
+                tx.requests
+                    .iter()
+                    .map(|req| req.as_deposit().unwrap().amount)
+            })
+            .flatten()
+            .sum();
+        assert_eq!(nr_requests, num_accepted_requests);
+        assert_eq!(total_amount, accepted_amount);
+    }
 }

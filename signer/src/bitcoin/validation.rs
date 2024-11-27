@@ -199,14 +199,26 @@ impl BitcoinPreSignRequest {
             .checked_sub(sbtc_supply)
             .unwrap_or(Amount::ZERO)
             .to_sat();
-
-        let mut total_amount = 0;
-        for (report, _) in cache.deposit_reports.values() {
-            total_amount += report.amount;
-            if total_amount > max_mintable {
-                return Err(Error::ExceedsSbtcSupplyCap { total_amount, max_mintable });
-            }
-        }
+        cache
+            .deposit_reports
+            .values()
+            .try_fold(0u64, |acc, (report, _)| {
+                acc.checked_add(report.amount)
+                    .ok_or(Error::ExceedsSbtcSupplyCap {
+                        total_amount: u64::MAX,
+                        max_mintable,
+                    })
+                    .and_then(|sum| {
+                        if sum > max_mintable {
+                            Err(Error::ExceedsSbtcSupplyCap {
+                                total_amount: sum,
+                                max_mintable,
+                            })
+                        } else {
+                            Ok(sum)
+                        }
+                    })
+            })?;
 
         Ok(())
     }
@@ -867,6 +879,7 @@ mod tests {
 
     use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksTxId;
+    use crate::testing::context::TestContext;
 
     use super::*;
 
@@ -1185,5 +1198,126 @@ mod tests {
         }], false; "duplicate-requests-in-different-txs")]
     fn test_is_unique(requests: Vec<TxRequestIds>, result: bool) {
         assert_eq!(is_unique(&requests), result);
+    }
+
+    fn create_test_report(idx: u8, amount: u64) -> (DepositRequestReport, SignerVotes) {
+        (
+            DepositRequestReport {
+                outpoint: OutPoint::new(Txid::from_byte_array([idx; 32]), 0),
+                status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([idx; 32])),
+                can_sign: Some(true),
+                can_accept: Some(true),
+                amount,
+                max_fee: 1000,
+                lock_time: LockTime::from_height(100),
+                deposit_script: ScriptBuf::new(),
+                reclaim_script: ScriptBuf::new(),
+                signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            },
+            SignerVotes::from(Vec::new()),
+        )
+    }
+
+    #[test_case(
+        vec![1000, 2000, 3000],
+        Amount::from_sat(10_000),
+        Amount::from_sat(1_000),
+        Ok(());
+        "should_accept_deposits_under_max_mintable"
+    )]
+    #[test_case(
+        vec![],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Ok(());
+        "should_accept_empty_deposits"
+    )]
+    #[test_case(
+        vec![10_000],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Ok(());
+        "should_accept_deposit_equal_to_max_mintable"
+    )]
+    #[test_case(
+        vec![5000, 5001],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Err(Error::ExceedsSbtcSupplyCap {
+            total_amount: 10_001,
+            max_mintable: 10_000
+        });
+        "should_reject_deposits_over_max_mintable"
+    )]
+    #[test_case(
+        vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
+        Amount::MAX_MONEY,
+        Amount::from_sat(1),
+        Err(Error::ExceedsSbtcSupplyCap {
+            total_amount: Amount::MAX_MONEY.to_sat(),
+            max_mintable: Amount::MAX_MONEY.to_sat() - 1
+        });
+        "should_handle_overflow_amounts"
+    )]
+    #[tokio::test]
+    async fn test_validate_max_mintable(
+        deposit_amounts: Vec<u64>,
+        total_cap: Amount,
+        sbtc_supply: Amount,
+        expected: Result<(), Error>,
+    ) {
+        // Create mock context
+        let mut context = TestContext::default_mocked();
+        context
+            .with_stacks_client(move |client| {
+                client
+                    .expect_get_sbtc_total_supply()
+                    .returning(move |_| Box::pin(async move { Ok(sbtc_supply) }));
+            })
+            .await;
+
+        // Create cache with test data
+        let mut cache = ValidationCache {
+            sbtc_limits: SbtcLimits::new(Some(total_cap), None, None),
+            ..Default::default()
+        };
+
+        cache.deposit_reports = deposit_amounts
+            .iter()
+            .enumerate()
+            .map(|(idx, amount)| {
+                let (report, votes) = create_test_report(idx as u8, amount);
+                (
+                    (&report.outpoint.txid, report.outpoint.vout),
+                    (report.clone(), votes),
+                )
+            })
+            .collect();
+
+        // Create request and validate
+        let request = BitcoinPreSignRequest {
+            request_package: vec![],
+            fee_rate: 2.0,
+            last_fees: None,
+        };
+        let result = request.validate_max_mintable(&context, &cache).await;
+
+        match (result, expected) {
+            (Ok(()), Ok(())) => {}
+            (
+                Err(Error::ExceedsSbtcSupplyCap {
+                    total_amount: a1,
+                    max_mintable: m1,
+                }),
+                Err(Error::ExceedsSbtcSupplyCap {
+                    total_amount: a2,
+                    max_mintable: m2,
+                }),
+            ) => {
+                assert_eq!(a1, a2);
+                assert_eq!(m1, m2);
+            }
+            (result, expected) => panic!("Expected {:?} but got {:?}", expected, result),
+        };
     }
 }
