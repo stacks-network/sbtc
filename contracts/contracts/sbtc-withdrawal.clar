@@ -293,7 +293,7 @@
     ;; Validate the `version`
     (asserts! (<= version-int MAX_ADDRESS_VERSION) ERR_INVALID_ADDR_VERSION)
     ;; Validate the length of `hashbytes`
-    (asserts! (if (<= (buff-to-uint-be version) MAX_ADDRESS_VERSION_BUFF_20)
+    (asserts! (if (<= version-int MAX_ADDRESS_VERSION_BUFF_20)
         ;; If version is <= 4, then hashbytes must be 20 bytes
         (is-eq (len hashbytes) u20)
         ;; Otherwise, hashbytes must be 32 bytes
