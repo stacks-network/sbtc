@@ -26,9 +26,9 @@ impl PgStore {
               , dr.lock_time
               , dr.signers_public_key
               , dr.sender_script_pub_keys
-            FROM sbtc_signer.bitcoin_blockchain_of($1, $2) AS bc
-            JOIN sbtc_signer.bitcoin_transactions ON USING (block_hash)
-            JOIN sbtc_signer.deposit_requests AS dr ON USING (txid)
+            FROM sbtc_signer.bitcoin_blockchain_of($1, $2)
+            JOIN sbtc_signer.bitcoin_transactions USING (block_hash)
+            JOIN sbtc_signer.deposit_requests AS dr USING (txid)
             "#,
         )
         .bind(chain_tip)
