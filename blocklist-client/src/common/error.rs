@@ -80,7 +80,7 @@ impl Error {
     pub fn error_message(&self) -> String {
         match self {
             Error::HttpRequest(_, msg) => msg.clone(),
-            Error::Network(_) => "Network error".to_string(),
+            Error::Network(e) => format!("Network error: {e}"),
             Error::Serialization(_) => "Error in processing the data".to_string(),
             Error::InvalidApiResponse => "Invalid API response structure".to_string(),
             Error::Unauthorized => "Unauthorized access - check your API key".to_string(),

@@ -281,16 +281,17 @@ async fn test_new_blocks_sends_set_chainstate_to_emily_skip_messages() {
     // Skip sending the 2nd event
     let skipped_event = events_iter.next().unwrap();
 
-    // Send 3th block event, should be ignored
+    // Send 3rd block event, should be included in the chain tip because emily can handle
+    // missing blocks.
     let event_3 = events_iter.next().unwrap();
     let status_code = new_block_handler(state.clone(), event_3.to_payload()).await;
     assert_eq!(status_code, StatusCode::OK);
 
     let resp = get_chain_tip(&emily_context).await.unwrap();
-    assert_eq!(resp.stacks_block_height, event_1.block_height);
-    assert_eq!(resp.stacks_block_hash, event_1.index_block_hash_hex);
+    assert_eq!(resp.stacks_block_height, event_3.block_height);
+    assert_eq!(resp.stacks_block_hash, event_3.index_block_hash_hex);
 
-    // Now send 2nd block, tip should change
+    // Now send 2nd block, tip should change because it thinks it's a reorg.
     let status_code = new_block_handler(state.clone(), skipped_event.to_payload()).await;
     assert_eq!(status_code, StatusCode::OK);
 
@@ -298,7 +299,7 @@ async fn test_new_blocks_sends_set_chainstate_to_emily_skip_messages() {
     assert_eq!(resp.stacks_block_height, skipped_event.block_height);
     assert_eq!(resp.stacks_block_hash, skipped_event.index_block_hash_hex);
 
-    // Send 3th block again, tip should change
+    // Send 3rd block again, tip should change
     let status_code = new_block_handler(state.clone(), event_3.to_payload()).await;
     assert_eq!(status_code, StatusCode::OK);
 

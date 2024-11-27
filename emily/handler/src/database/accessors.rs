@@ -4,10 +4,8 @@ use std::collections::HashMap;
 
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
-#[cfg(feature = "testing")]
-use tracing::info;
 
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::api::models::limits::{AccountLimits, Limits};
 use crate::common::error::{Error, Inconsistency};
@@ -60,10 +58,6 @@ pub async fn get_deposit_entry(
 ) -> Result<DepositEntry, Error> {
     let entry = get_entry::<DepositTablePrimaryIndex>(context, key).await?;
     #[cfg(feature = "testing")]
-    info!(
-        "Received deposit entry {}",
-        serde_json::to_string_pretty(&entry)?
-    );
     Ok(entry)
 }
 
@@ -273,12 +267,9 @@ pub async fn get_withdrawal_entry(
     // Return.
     match entries.as_slice() {
         [] => Err(Error::NotFound),
-        [withdrawal] => {
+        [withdrawal] =>
+        {
             #[cfg(feature = "testing")]
-            info!(
-                "Received withdrawal entry {}",
-                serde_json::to_string_pretty(withdrawal)?
-            );
             Ok(withdrawal.clone())
         }
         _ => {
@@ -438,6 +429,26 @@ pub async fn update_withdrawal(
 
 // Chainstate ------------------------------------------------------------------
 
+/// Adds a chainstate entry to the database with the specified number of retries.
+pub async fn add_chainstate_entry_with_retry(
+    context: &EmilyContext,
+    entry: &ChainstateEntry,
+    retries: u16,
+) -> Result<(), Error> {
+    for _ in 0..retries {
+        match add_chainstate_entry(context, entry).await {
+            Err(Error::VersionConflict) => {
+                // Retry.
+                continue;
+            }
+            otherwise => {
+                return otherwise;
+            }
+        }
+    }
+    Err(Error::TooManyInternalRetries)
+}
+
 /// Add a chainstate entry.
 pub async fn add_chainstate_entry(
     context: &EmilyContext,
@@ -445,8 +456,10 @@ pub async fn add_chainstate_entry(
 ) -> Result<(), Error> {
     // Get the current api state and give up if reorging.
     let mut api_state = get_api_state(context).await?;
+    debug!("Adding chainstate entry, current api state: {api_state:?}");
     if let ApiStatus::Reorg(reorg_chaintip) = &api_state.api_status {
         if reorg_chaintip != entry {
+            warn!("Attempting to update chainstate during a reorg [ new entry {entry:?} | reorg chaintip {reorg_chaintip:?} ]");
             return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
                 "Attempting to update chainstate during a reorg.".to_string(),
             )));
@@ -460,16 +473,41 @@ pub async fn add_chainstate_entry(
             .await
             .and_then(|existing_entry: ChainstateEntry| {
                 if &existing_entry != entry {
+                    debug!("Inconsistent state because of a conflict with the current interpretation of a height.");
+                    debug!("Existing entry: {existing_entry:?} | New entry: {entry:?}");
                     Err(Error::from_inconsistent_chainstate_entry(existing_entry))
                 } else {
                     Ok(())
                 }
             });
 
-    // Exit here unless this chain height hasn't been detected before.
     match current_chainstate_entry_result {
         // Fall through if there is no existing entry..
         Err(Error::NotFound) => (),
+        // If the chainstate entry is already in the table but the api believes the chaintip is behind
+        // this entry, that means a reorg has occurred and the api got pulled back, but then it went
+        // back to the chain it had been following before the reorg. This is a stable state, and we
+        // will skip putting it into the table but will update the api state.
+        Ok(_) if api_state.chaintip().key.height < entry.key.height => {
+            api_state.api_status = ApiStatus::Stable(entry.clone());
+            return set_api_state(context, &api_state).await;
+        }
+        // If there's an inconsistency BUT the chaintip is behind the inconsistency, this means we've gone
+        // back in time a bit and are now overwriting the old chainstate entries that we had put in before.
+        // While the chainstate table is inconsistent with the current chainstate, it's actually a stable
+        // state because we can resolve that inconsistency by just overwriting the old entry/s at that height.
+        // Note that it would be really odd for there to be multiple chainstates at the same height and for
+        // the chain tip to be behind them, but luckily in this scenario we can be fine by just deleting all
+        // the entries above.
+        Err(Error::InconsistentState(Inconsistency::Chainstates(chainstates)))
+            if api_state.chaintip().key.height < entry.key.height =>
+        {
+            for chainstate in chainstates {
+                // Remove the entry from the table.
+                let existing_entry: ChainstateEntry = chainstate.into();
+                delete_entry::<ChainstateTablePrimaryIndex>(context, &existing_entry.key).await?;
+            }
+        }
         // ..otherwise exit here.
         irrecoverable_or_okay => {
             return irrecoverable_or_okay;
@@ -478,7 +516,6 @@ pub async fn add_chainstate_entry(
 
     let chaintip: ChainstateEntry = api_state.chaintip();
     let blocks_higher_than_current_tip = (entry.key.height as i128) - (chaintip.key.height as i128);
-
     if blocks_higher_than_current_tip == 1 || chaintip.key.height == 0 {
         api_state.api_status = ApiStatus::Stable(entry.clone());
         // Put the chainstate entry into the table. If two lambdas get exactly here at the same time
@@ -489,11 +526,17 @@ pub async fn add_chainstate_entry(
         // Version locked api state prevents inconsistencies here.
         set_api_state(context, &api_state).await
     } else if blocks_higher_than_current_tip > 1 {
-        // Attempting to put an entry into the table that's significantly higher than the current
-        // known chain tip.
-        Err(Error::InconsistentState(Inconsistency::ItemUpdate("
-            Attempting to put an entry into the table that's significantly higher than the current known chain tip.".to_string(),
-        )))
+        warn!(
+            "Attempting to add a chaintip that is more than one block ({}) higher than the current tip. {:?} -> {:?}",
+            blocks_higher_than_current_tip,
+            chaintip,
+            entry,
+        );
+        // TODO(TBD): Determine the ramifications of allowing a chaintip to be added much
+        // higher than expected.
+        api_state.api_status = ApiStatus::Stable(entry.clone());
+        put_entry::<ChainstateTablePrimaryIndex>(context, entry).await?;
+        set_api_state(context, &api_state).await
     } else {
         // Current tip is higher than the entry we attempted to emplace
         // but there is no record of the chainstate at the current height.
@@ -731,7 +774,6 @@ where
     .await
 }
 
-#[cfg(feature = "testing")]
 async fn delete_entry<T: TableIndexTrait>(
     context: &EmilyContext,
     key: &<<T as TableIndexTrait>::Entry as EntryTrait>::Key,

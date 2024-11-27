@@ -15,6 +15,7 @@ pub fn compile_protos() {
         "protobufs/stacks/common.proto",
         "protobufs/stacks/signer/v1/decisions.proto",
         "protobufs/stacks/signer/v1/requests.proto",
+        "protobufs/stacks/signer/v1/messages.proto",
     ]
     .map(|path| workingdir.join(path));
 

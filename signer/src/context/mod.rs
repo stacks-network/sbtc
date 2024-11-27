@@ -5,17 +5,17 @@ mod signer_context;
 mod signer_state;
 mod termination;
 
-use futures::stream::SelectAll;
-use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::broadcast::error::RecvError;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
-use crate::network::MessageTransfer;
 use crate::stacks::api::StacksInteract;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
+use crate::SIGNER_CHANNEL_CAPACITY;
 
 pub use messaging::*;
 pub use signer_context::SignerContext;
@@ -58,14 +58,49 @@ pub trait Context: Clone + Sync + Send {
     /// later return `Some(_)`. But if [`StreamExt::next`] yields `None`
     /// three times then the stream is "fused" and will return `None`
     /// forever after.
-    fn as_signal_stream<M>(&self, network: &M) -> SelectAll<BroadcastStream<SignerSignal>>
+    fn as_signal_stream<F>(&self, predicate: F) -> ReceiverStream<SignerSignal>
     where
-        M: MessageTransfer,
+        F: Fn(&SignerSignal) -> bool + Send + Sync + 'static,
     {
-        let term = self.get_termination_handle().as_stream();
-        let signal_stream = BroadcastStream::new(self.get_signal_receiver());
-        let network_stream = network.receiver_stream();
+        let (sender, receiver) = tokio::sync::mpsc::channel(SIGNER_CHANNEL_CAPACITY);
 
-        futures::stream::select_all([term, signal_stream, network_stream])
+        let mut watch_receiver = self.get_termination_handle();
+        let mut signal_stream = self.get_signal_receiver();
+
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = watch_receiver.wait_for_shutdown() => {
+                        let signal = SignerSignal::Command(SignerCommand::Shutdown);
+                        // An error means that the channel has been closed.
+                        // This is most likely due to the receiver being
+                        // closed so we can bail.
+                        if sender.send(signal).await.is_err() {
+                            break;
+                        }
+                    }
+                    item = signal_stream.recv() => {
+                        match item {
+                            Ok(signal) if predicate(&signal) => {
+                                // See comment above, we can bail.
+                                if sender.send(signal).await.is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(_) => continue,
+                            Err(RecvError::Closed) => {
+                                tracing::warn!("internal signal stream closed");
+                                break;
+                            }
+                            Err(error @ RecvError::Lagged(_)) => {
+                                tracing::warn!(%error, "internal signal stream lagging");
+                                continue
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        ReceiverStream::new(receiver)
     }
 }

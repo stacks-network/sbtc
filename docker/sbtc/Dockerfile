@@ -46,12 +46,18 @@ RUN make emily-cdk-synth
 # ---------------------------------------
 FROM debian:bookworm-slim AS signer
 COPY --from=builder /code/sbtc/target/debug/signer /usr/local/bin/signer
+RUN apt-get update \
+    && apt-get install -y ca-certificates --no-install-recommends \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 ENTRYPOINT ["/usr/local/bin/signer --config /signer-config.toml --migrate-db"]
 
 # Create Docker image for the blocklist client.
 # ----------------------------------------------
 FROM debian:bookworm-slim AS blocklist-client
 COPY --from=builder /code/sbtc/target/debug/blocklist-client /usr/local/bin/blocklist-client
+RUN apt-get update \
+    && apt-get install -y ca-certificates --no-install-recommends \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 ENTRYPOINT ["/usr/local/bin/blocklist-client"]
 
 # Create Docker image to setup the AWS resources for Emily.
