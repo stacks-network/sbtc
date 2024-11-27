@@ -3,7 +3,6 @@
 use bitcoin::consensus::Decodable as _;
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use futures::StreamExt as _;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -235,25 +234,18 @@ impl Store {
         .cloned()
     }
 
-    async fn get_withdrawal_requests(
+    fn get_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Vec<model::WithdrawalRequest> {
-        let Some(bitcoin_chain_tip) = self.bitcoin_blocks.get(chain_tip) else {
-            return Vec::new();
-        };
+        let first_block = self.bitcoin_blocks.get(chain_tip);
 
-        let context_window_end_block =
-            futures::stream::unfold(bitcoin_chain_tip.block_hash, |block_hash| async move {
-                self.bitcoin_blocks
-                    .get(&block_hash)
-                    .map(|block| (block.clone(), block.parent_hash))
-            })
-            .skip(context_window as usize)
-            .boxed()
-            .next()
-            .await;
+        let context_window_end_block = std::iter::successors(first_block, |block| {
+            self.bitcoin_blocks.get(&block.parent_hash)
+        })
+        .skip(context_window as usize)
+        .next();
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip) else {
             return Vec::new();
@@ -511,9 +503,7 @@ impl super::DbRead for SharedStore {
         signer_public_key: &PublicKey,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         let store = self.lock().await;
-        let withdrawal_requests = store
-            .get_withdrawal_requests(chain_tip, context_window)
-            .await;
+        let withdrawal_requests = store.get_withdrawal_requests(chain_tip, context_window);
 
         // These are the withdrawal requests that this signer has voted on.
         let voted: HashSet<(u64, model::StacksBlockHash)> = store
@@ -542,10 +532,7 @@ impl super::DbRead for SharedStore {
         threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         let store = self.lock().await;
-        let withdraw_requests = store
-            .get_withdrawal_requests(chain_tip, context_window)
-            .await;
-
+        let withdraw_requests = store.get_withdrawal_requests(chain_tip, context_window);
         let threshold = threshold as usize;
 
         Ok(withdraw_requests
