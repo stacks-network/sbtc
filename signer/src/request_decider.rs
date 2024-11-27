@@ -139,7 +139,7 @@ where
         }
 
         let withdraw_requests = db
-            .get_pending_withdrawal_requests(&chain_tip, self.context_window)
+            .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
 
         for withdraw_request in withdraw_requests {

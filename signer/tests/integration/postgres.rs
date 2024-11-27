@@ -431,23 +431,26 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
             .expect("no chain tip"),
     );
 
-    let mut pending_withdraw_requests = in_memory_store
-        .get_pending_withdrawal_requests(&chain_tip, context_window)
-        .await
-        .expect("failed to get pending deposit requests");
+    for signer_public_key in signer_set.iter() {
+        let mut pending_withdraw_requests = in_memory_store
+            .get_pending_withdrawal_requests(&chain_tip, context_window, signer_public_key)
+            .await
+            .expect("failed to get pending deposit requests");
 
-    pending_withdraw_requests.sort();
+        pending_withdraw_requests.sort();
 
-    assert!(!pending_withdraw_requests.is_empty());
+        assert!(!pending_withdraw_requests.is_empty());
 
-    let mut pg_pending_withdraw_requests = pg_store
-        .get_pending_withdrawal_requests(&chain_tip, context_window)
-        .await
-        .expect("failed to get pending deposit requests");
+        let mut pg_pending_withdraw_requests = pg_store
+            .get_pending_withdrawal_requests(&chain_tip, context_window, signer_public_key)
+            .await
+            .expect("failed to get pending deposit requests");
 
-    pg_pending_withdraw_requests.sort();
+        pg_pending_withdraw_requests.sort();
 
-    assert_eq!(pending_withdraw_requests, pg_pending_withdraw_requests);
+        assert_eq!(pending_withdraw_requests, pg_pending_withdraw_requests);
+    }
+
     signer::testing::storage::drop_db(pg_store).await;
 }
 
