@@ -340,7 +340,6 @@ fn handle_gossipsub_event(
             }
 
             Msg::decode(message.data.as_slice())
-                .map_err(Error::Codec)
                 .and_then(|msg| {
                     tracing::trace!(
                         local_peer_id = %swarm.local_peer_id(),
@@ -362,7 +361,7 @@ fn handle_gossipsub_event(
                             tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
                         });
 
-                    Ok::<_, Error>(())
+                    Ok(())
                 })
                 .unwrap_or_else(|error| {
                     tracing::warn!(%peer_id, %error, "Failed to decode message");
