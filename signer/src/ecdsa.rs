@@ -23,7 +23,7 @@
 //!
 //! struct SignableStr(&'static str);
 //!
-//! // Implementing `ProtoSerializable` and conversion traits unlock the signing 
+//! // Implementing `ProtoSerializable` and conversion traits unlock the signing
 //! // functionality in this module.
 //! #[allow(clippy::derive_partial_eq_without_eq)]
 //! #[derive(Clone, PartialEq, ::prost::Message)]
@@ -32,10 +32,10 @@
 //!     #[prost(string, tag = "1")]
 //!     pub string: ::prost::alloc::string::String,
 //! }
-//! 
+//!
 //! impl ProtoSerializable for SignableStr {
 //!     type Message = ProtoSignableStr;
-//! 
+//!
 //!     fn type_tag(&self) -> &'static str {
 //!         "SBTC_SIGNABLE_STR"
 //!     }
