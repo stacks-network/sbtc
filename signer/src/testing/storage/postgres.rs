@@ -1,4 +1,4 @@
-//! A module with helper queryy functions.
+//! A module with helper query functions.
 //!
 
 use crate::error::Error;
@@ -15,41 +15,20 @@ impl PgStore {
     ) -> Result<Vec<model::DepositRequest>, Error> {
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
-            WITH RECURSIVE context_window AS (
-                -- Anchor member: Initialize the recursion with the chain tip
-                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                -- Recursive member: Fetch the parent block using the last block's parent_hash
-                SELECT parent.block_hash, parent.block_height, parent.parent_hash,
-                       parent.created_at, last.depth + 1
-                FROM sbtc_signer.bitcoin_blocks parent
-                JOIN context_window last ON parent.block_hash = last.parent_hash
-                WHERE last.depth < $2
-            ),
-            transactions_in_window AS (
-                SELECT transactions.txid
-                FROM context_window blocks_in_window
-                JOIN sbtc_signer.bitcoin_transactions transactions ON
-                    transactions.block_hash = blocks_in_window.block_hash
-            )
             SELECT
-                deposit_requests.txid
-              , deposit_requests.output_index
-              , deposit_requests.spend_script
-              , deposit_requests.reclaim_script
-              , deposit_requests.recipient
-              , deposit_requests.amount
-              , deposit_requests.max_fee
-              , deposit_requests.lock_time
-              , deposit_requests.signers_public_key
-              , deposit_requests.sender_script_pub_keys
-            FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_requests deposit_requests ON
-                deposit_requests.txid = transactions.txid
+                dr.txid
+              , dr.output_index
+              , dr.spend_script
+              , dr.reclaim_script
+              , dr.recipient
+              , dr.amount
+              , dr.max_fee
+              , dr.lock_time
+              , dr.signers_public_key
+              , dr.sender_script_pub_keys
+            FROM sbtc_signer.bitcoin_blockchain_of($1, $2) AS bc
+            JOIN sbtc_signer.bitcoin_transactions ON USING (block_hash)
+            JOIN sbtc_signer.deposit_requests AS dr ON USING (txid)
             "#,
         )
         .bind(chain_tip)
