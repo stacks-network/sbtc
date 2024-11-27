@@ -316,63 +316,65 @@ async fn checking_stacks_blocks_exists_works() {
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending deposit requests
-// #[ignore]
-// #[cfg_attr(not(feature = "integration-tests"), ignore)]
-// #[tokio::test]
-// async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
-//     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-//     let mut pg_store = testing::storage::new_test_database(db_num, true).await;
-//     let mut in_memory_store = storage::in_memory::Store::new_shared();
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let mut pg_store = testing::storage::new_test_database(db_num, true).await;
+    let mut in_memory_store = storage::in_memory::Store::new_shared();
 
-//     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
-//     let num_signers = 7;
-//     let context_window = 9;
-//     let test_model_params = testing::storage::model::Params {
-//         num_bitcoin_blocks: 20,
-//         num_stacks_blocks_per_bitcoin_block: 3,
-//         num_deposit_requests_per_block: 5,
-//         num_withdraw_requests_per_block: 5,
-//         num_signers_per_request: 0,
-//     };
-//     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
-//     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    let num_signers = 7;
+    let context_window = 9;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 5,
+        num_withdraw_requests_per_block: 5,
+        num_signers_per_request: 0,
+    };
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
-//     test_data.write_to(&mut in_memory_store).await;
-//     test_data.write_to(&mut pg_store).await;
+    test_data.write_to(&mut in_memory_store).await;
+    test_data.write_to(&mut pg_store).await;
 
-//     let chain_tip = in_memory_store
-//         .get_bitcoin_canonical_chain_tip()
-//         .await
-//         .expect("failed to get canonical chain tip")
-//         .expect("no chain tip");
+    let chain_tip = in_memory_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
 
-//     assert_eq!(
-//         pg_store
-//             .get_bitcoin_canonical_chain_tip()
-//             .await
-//             .expect("failed to get canonical chain tip")
-//             .expect("no chain tip"),
-//         chain_tip
-//     );
+    assert_eq!(
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        chain_tip
+    );
 
-//     let mut pending_deposit_requests = in_memory_store
-//         .get_pending_deposit_requests(&chain_tip, context_window)
-//         .await
-//         .expect("failed to get pending deposit requests");
+    for signer_public_key in signer_set.iter() {
+        let mut pending_deposit_requests = in_memory_store
+            .get_pending_deposit_requests(&chain_tip, context_window, signer_public_key)
+            .await
+            .expect("failed to get pending deposit requests");
 
-//     pending_deposit_requests.sort();
+        pending_deposit_requests.sort();
 
-//     let mut pg_pending_deposit_requests = pg_store
-//         .get_pending_deposit_requests(&chain_tip, context_window)
-//         .await
-//         .expect("failed to get pending deposit requests");
+        let mut pg_pending_deposit_requests = pg_store
+            .get_pending_deposit_requests(&chain_tip, context_window, signer_public_key)
+            .await
+            .expect("failed to get pending deposit requests");
 
-//     pg_pending_deposit_requests.sort();
+        pg_pending_deposit_requests.sort();
 
-//     assert_eq!(pending_deposit_requests, pg_pending_deposit_requests);
-//     signer::testing::storage::drop_db(pg_store).await;
-// }
+        assert_eq!(pending_deposit_requests, pg_pending_deposit_requests);
+    }
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending withdraw requests

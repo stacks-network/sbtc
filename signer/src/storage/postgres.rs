@@ -815,7 +815,7 @@ impl super::DbRead for PgStore {
             FROM transactions_in_window transactions
             JOIN sbtc_signer.deposit_requests deposit_requests
               ON deposit_requests.txid = transactions.txid
-            LEFT JOIN sbtc_signer.deposit_signer AS ds
+            LEFT JOIN sbtc_signer.deposit_signers AS ds
               ON ds.txid = deposit_requests.txid
              AND ds.output_index = deposit_requests.output_index
              AND ds.signer_pub_key = $3
