@@ -40,9 +40,9 @@ use super::utxo::WithdrawalRequest;
 
 /// Cached validation data to avoid repeated DB queries
 #[derive(Default)]
-struct ValidationCache {
-    deposit_reports: HashMap<(Txid, u32), (DepositRequestReport, SignerVotes)>,
-    withdrawal_reports: HashMap<QualifiedRequestId, (WithdrawalRequestReport, SignerVotes)>,
+struct ValidationCache<'a> {
+    deposit_reports: HashMap<(&'a Txid, u32), (DepositRequestReport, SignerVotes)>,
+    withdrawal_reports: HashMap<&'a QualifiedRequestId, (WithdrawalRequestReport, SignerVotes)>,
     sbtc_limits: SbtcLimits,
 }
 
@@ -158,7 +158,7 @@ impl BitcoinPreSignRequest {
 
                 cache
                     .deposit_reports
-                    .insert((outpoint.txid, output_index), (report, votes));
+                    .insert((&outpoint.txid, output_index), (report, votes));
             }
 
             // Fetch all withdrawal reports and votes
@@ -176,13 +176,17 @@ impl BitcoinPreSignRequest {
                     .get_withdrawal_request_signer_votes(id, &btc_ctx.aggregate_key)
                     .await?;
 
-                cache.withdrawal_reports.insert(*id, (report, votes));
+                cache.withdrawal_reports.insert(id, (report, votes));
             }
         }
         Ok(cache)
     }
 
-    async fn validate_max_mintable<C>(&self, ctx: &C, cache: &ValidationCache) -> Result<(), Error>
+    async fn validate_max_mintable<'a, C>(
+        &self,
+        ctx: &C,
+        cache: &ValidationCache<'a>,
+    ) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
@@ -250,18 +254,18 @@ impl BitcoinPreSignRequest {
     /// This function returns the new signer bitcoin state if we were to
     /// sign and confirmed the bitcoin transaction created using the given
     /// inputs and outputs.
-    async fn construct_tx_sighashes(
+    async fn construct_tx_sighashes<'a>(
         &self,
         btc_ctx: &BitcoinTxContext,
-        requests: &TxRequestIds,
+        requests: &'a TxRequestIds,
         signer_state: SignerBtcState,
-        cache: &mut ValidationCache,
+        cache: &mut ValidationCache<'a>,
     ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error> {
         let mut deposits = Vec::with_capacity(requests.deposits.len());
         let mut withdrawals = Vec::with_capacity(requests.withdrawals.len());
 
         for outpoint in requests.deposits.iter() {
-            let key = (outpoint.txid, outpoint.vout);
+            let key = (&outpoint.txid, outpoint.vout);
             let (report, votes) = cache
                 .deposit_reports
                 .remove(&key)

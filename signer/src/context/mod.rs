@@ -5,7 +5,6 @@ mod signer_context;
 mod signer_state;
 mod termination;
 
-use bitcoin::Amount;
 use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::wrappers::ReceiverStream;
 
@@ -49,25 +48,6 @@ pub trait Context: Clone + Sync + Send {
     /// Get a handle to an Emily client.
     fn get_emily_client(&self) -> impl EmilyInteract + Clone + 'static;
 
-    /// Get the amount of sBTC that can be currently minted.
-    /// This is the total cap received from Emily minus the current supply.
-    fn get_mintable_sbtc_amount(
-        &self,
-    ) -> impl std::future::Future<Output = Result<Amount, Error>> + Send {
-        async {
-            // Get the total supply of sBTC.
-            let sbtc_supply = self
-                .get_stacks_client()
-                .get_sbtc_total_supply(&self.config().signer.deployer)
-                .await?;
-            // Get the total cap of sBTC that can be minted.
-            let sbtc_limits = self.get_emily_client().get_limits().await?;
-            // If we can't get the total cap, we assume that the total cap is
-            // the maximum possible amount of sBTC.
-            let total_cap = sbtc_limits.total_cap().unwrap_or(Amount::MAX_MONEY);
-            Ok(total_cap.checked_sub(sbtc_supply).unwrap_or(Amount::ZERO))
-        }
-    }
     /// Create a new signal stream containing signer messages from:
     /// 1. The signer network, as defined by the given network object
     ///    implementing [`MessageTransfer`].

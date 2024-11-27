@@ -8,6 +8,7 @@
 use std::collections::BTreeSet;
 use std::time::Duration;
 
+use bitcoin::Amount;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::future::try_join_all;
 use futures::Stream;
@@ -1232,8 +1233,22 @@ where
         if deposits.is_empty() && withdrawals.is_empty() {
             return Ok(None);
         }
+        // Get the amount of sBTC that can be currently minted.
+        // This is the total cap received from Emily minus the current supply.
+        let sbtc_supply = self
+            .context
+            .get_stacks_client()
+            .get_sbtc_total_supply(&self.context.config().signer.deployer)
+            .await?;
+        let sbtc_limits = self.context.get_emily_client().get_limits().await?;
+        // If we can't get the total cap, we assume that the total cap is
+        // the maximum possible amount of sBTC.
+        let total_cap = sbtc_limits.total_cap().unwrap_or(Amount::MAX_MONEY);
 
-        let max_mintable = self.context.get_mintable_sbtc_amount().await?.to_sat();
+        let max_mintable = total_cap
+            .checked_sub(sbtc_supply)
+            .unwrap_or(Amount::ZERO)
+            .to_sat();
 
         Ok(Some(utxo::SbtcRequests {
             deposits,
