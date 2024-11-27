@@ -31,7 +31,7 @@ nakamoto_start_height = 56457
 private_key = "0000000000000000000000000000000000000000000000000000000000000001"
 
 # TODO: Change this to your Postgres URI
-db_endpoint = "postgresql://postgres:postgres@localhost:5432/signer"
+db_endpoint = "postgresql://postgres:postgres@postgres:5432/signer"
 
 network = "testnet"
 
