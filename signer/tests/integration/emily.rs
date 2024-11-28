@@ -34,6 +34,7 @@ use signer::emily_client::EmilyClient;
 use signer::emily_client::EmilyInteract;
 use signer::error::Error;
 use signer::keys;
+use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
 use signer::network;
 use signer::stacks::api::TenureBlocks;
@@ -447,9 +448,11 @@ async fn deposit_flow() {
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
     // There shouldn't be any request yet
+    let signer_public_key = PublicKey::from_private_key(&context.config().signer.private_key);
+    let chain_tip = bitcoin_chain_tip.block_hash;
     assert!(context
         .get_storage()
-        .get_pending_deposit_requests(&bitcoin_chain_tip.block_hash, context_window as u16)
+        .get_pending_deposit_requests(&chain_tip, context_window as u16, &signer_public_key)
         .await
         .unwrap()
         .is_empty());
@@ -478,9 +481,10 @@ async fn deposit_flow() {
         deposit_block_hash.into()
     );
     // and that now we have the deposit request
+    let deposit_block = deposit_block_hash.into();
     assert!(!context
         .get_storage()
-        .get_pending_deposit_requests(&deposit_block_hash.into(), context_window as u16)
+        .get_pending_deposit_requests(&deposit_block, context_window as u16, &signer_public_key)
         .await
         .unwrap()
         .is_empty());
