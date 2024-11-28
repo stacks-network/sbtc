@@ -96,7 +96,7 @@ fn tx_validation_from_mempool() {
 /// The test proceeds as follows:
 /// 1. Create and submit a transaction where the lock script has a
 ///    non-minimal push for the deposit.
-/// 2. Confirm the transaction and try spend it immediately. The
+/// 2. Confirm the transaction and try to spend it immediately. The
 ///    transaction spending the "deposit" should be rejected.
 ///
 /// We do not attempt to create an actual P2TR deposit, but an
@@ -160,7 +160,7 @@ fn minimal_push_check() {
     regtest::p2tr_sign_transaction(&mut tx0, 0, &[utxo], &depositor.keypair);
     rpc.send_raw_transaction(&tx0).unwrap();
 
-    // 2. Confirm the transaction and try spend it immediately. The
+    // 2. Confirm the transaction and try to spend it immediately. The
     //    transaction spending the "deposit" should be rejected.
     faucet.generate_blocks(1);
 
@@ -188,7 +188,7 @@ fn minimal_push_check() {
     };
     // We just created a transaction that spends the P2SH UTXO where we
     // spend a deposit that did not adhere to the minimal push rule. When
-    // bicoin-core attempts to validate the transaction it should fail.
+    // bitcoin-core attempts to validate the transaction it should fail.
     let expected = "non-mandatory-script-verify-flag (Data push larger than necessary)";
     match rpc.send_raw_transaction(&tx1).unwrap_err() {
         BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
@@ -409,7 +409,7 @@ fn op_csv_disabled() {
 /// 2. Wait locktime blocks after the first confirmation.
 /// 3. Create and submit another transaction reclaiming the funds.
 /// 4. Confirm the transaction and check that the balance is what it is
-///    supposed to be less bitcoin transaction fees.
+///    supposed to be, less the bitcoin transaction fees.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn reclaiming_rejected_deposits() {
@@ -429,7 +429,7 @@ fn reclaiming_rejected_deposits() {
     let utxos = depositor.get_utxos(rpc, None);
 
     assert_eq!(depositor.get_balance(rpc).to_sat(), 50_000_000);
-    // This is the "signers' secret". It doesn't matter for this test so we
+    // This is the "signers' secret". It doesn't matter for this test, so we
     // generate one randomly.
     let secret_key = SecretKey::new(&mut OsRng);
     let deposit = DepositScriptInputs {
@@ -482,10 +482,19 @@ fn reclaiming_rejected_deposits() {
     rpc.send_raw_transaction(&deposit_tx).unwrap();
     // Let's confirm it.
     faucet.generate_blocks(1);
-    //  the depositor spent all of their funds on the.
+    // Nice, the depositor spent all of their funds on the deposit.
     assert_eq!(depositor.get_balance(rpc).to_sat(), 0);
 
-    //  Let's confirm enough blocks for us to reclaim the funds. In this
+    // Let's check that this is a valid sBTC deposit.
+    let request = CreateDepositRequest {
+        outpoint: OutPoint::new(deposit_tx.compute_txid(), 0),
+        reclaim_script: reclaim_script.clone(),
+        deposit_script: deposit_script.clone(),
+    };
+
+    let _ = request.validate_tx(&deposit_tx).unwrap();
+
+    // Let's confirm enough blocks for us to reclaim the funds. In this
     // test scenario the signers have not swept the funds for some reason.
     faucet.generate_blocks(lock_time as u64);
     // Alright now we know the signers haven't moved our funds, so we
