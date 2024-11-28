@@ -11,6 +11,7 @@ use std::collections::HashMap;
 
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::consensus::encode::serialize;
+use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use clarity::codec::StacksMessageCodec as _;
 use clarity::vm::types::PrincipalData;
@@ -41,9 +42,13 @@ use wsts::net::SignatureType;
 use wsts::traits::PartyState;
 use wsts::traits::SignerState;
 
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::TxRequestIds;
+use crate::codec;
 use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::BitcoinPreSignRequest;
 use crate::message::BitcoinTransactionSignAck;
 use crate::message::BitcoinTransactionSignRequest;
 use crate::message::Payload;
@@ -66,6 +71,7 @@ use crate::stacks::contracts::SmartContract;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
@@ -1267,6 +1273,105 @@ impl TryFrom<proto::SweepTransactionInfo> for SweepTransactionInfo {
     }
 }
 
+impl From<QualifiedRequestId> for proto::QualifiedRequestId {
+    fn from(value: QualifiedRequestId) -> Self {
+        proto::QualifiedRequestId {
+            request_id: value.request_id,
+            txid: Some(value.txid.into()),
+            block_hash: Some(value.block_hash.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::QualifiedRequestId> for QualifiedRequestId {
+    type Error = Error;
+    fn try_from(value: proto::QualifiedRequestId) -> Result<Self, Self::Error> {
+        Ok(QualifiedRequestId {
+            request_id: value.request_id,
+            txid: StacksTxId::try_from(value.txid.required()?)?,
+            block_hash: value.block_hash.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<TxRequestIds> for proto::TxRequestIds {
+    fn from(value: TxRequestIds) -> Self {
+        proto::TxRequestIds {
+            deposits: value
+                .deposits
+                .into_iter()
+                .map(|v| OutPoint::from(v).into())
+                .collect(),
+            withdrawals: value.withdrawals.into_iter().map(|v| v.into()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::TxRequestIds> for TxRequestIds {
+    type Error = Error;
+    fn try_from(value: proto::TxRequestIds) -> Result<Self, Self::Error> {
+        Ok(TxRequestIds {
+            deposits: value
+                .deposits
+                .into_iter()
+                .map(|v| Ok::<_, Error>(OutPoint::try_from(v)?.into()))
+                .collect::<Result<Vec<_>, _>>()?,
+            withdrawals: value
+                .withdrawals
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+
+impl From<Fees> for proto::Fees {
+    fn from(value: Fees) -> Self {
+        proto::Fees {
+            total: value.total,
+            rate: value.rate,
+        }
+    }
+}
+
+impl From<proto::Fees> for Fees {
+    fn from(value: proto::Fees) -> Self {
+        Fees {
+            total: value.total,
+            rate: value.rate,
+        }
+    }
+}
+
+impl From<BitcoinPreSignRequest> for proto::BitcoinPreSignRequest {
+    fn from(value: BitcoinPreSignRequest) -> Self {
+        proto::BitcoinPreSignRequest {
+            request_package: value
+                .request_package
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+            fee_rate: value.fee_rate,
+            last_fees: value.last_fees.map(|v| v.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::BitcoinPreSignRequest> for BitcoinPreSignRequest {
+    type Error = Error;
+    fn try_from(value: proto::BitcoinPreSignRequest) -> Result<Self, Self::Error> {
+        Ok(BitcoinPreSignRequest {
+            request_package: value
+                .request_package
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            fee_rate: value.fee_rate,
+            last_fees: value.last_fees.map(|v| v.into()),
+        })
+    }
+}
+
 impl From<SignerMessage> for proto::SignerMessage {
     fn from(value: SignerMessage) -> Self {
         let payload = match value.payload {
@@ -1294,7 +1399,9 @@ impl From<SignerMessage> for proto::SignerMessage {
             Payload::SweepTransactionInfo(inner) => {
                 proto::signer_message::Payload::SweepTransactionInfo(inner.into())
             }
-            Payload::BitcoinPreSignRequest(_) => todo!(),
+            Payload::BitcoinPreSignRequest(inner) => {
+                proto::signer_message::Payload::BitcoinPreSignRequest(inner.into())
+            }
         };
         proto::SignerMessage {
             bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
@@ -1330,6 +1437,9 @@ impl TryFrom<proto::SignerMessage> for SignerMessage {
             }
             proto::signer_message::Payload::SweepTransactionInfo(inner) => {
                 Payload::SweepTransactionInfo(inner.try_into()?)
+            }
+            proto::signer_message::Payload::BitcoinPreSignRequest(inner) => {
+                Payload::BitcoinPreSignRequest(inner.try_into()?)
             }
         };
         Ok(SignerMessage {
@@ -1630,6 +1740,18 @@ impl TryFrom<proto::DkgPublicShares> for BTreeMap<u32, DkgPublicShares> {
             .map(|(v, k)| Ok((v, k.try_into()?)))
             .collect::<Result<BTreeMap<u32, DkgPublicShares>, Error>>()
     }
+}
+
+impl codec::ProtoSerializable for Signed<SignerMessage> {
+    type Message = proto::Signed;
+}
+
+impl codec::ProtoSerializable for SignerState {
+    type Message = proto::SignerState;
+}
+
+impl codec::ProtoSerializable for BTreeMap<u32, DkgPublicShares> {
+    type Message = proto::DkgPublicShares;
 }
 
 #[cfg(test)]
@@ -2036,6 +2158,10 @@ mod tests {
     #[test_case(PhantomData::<(SweepTransactionInfo, proto::SweepTransactionInfo)>; "SweepTransactionInfo")]
     #[test_case(PhantomData::<(SignerMessage, proto::SignerMessage)>; "SignerMessage")]
     #[test_case(PhantomData::<(Signed<SignerMessage>, proto::Signed)>; "Signed")]
+    #[test_case(PhantomData::<(QualifiedRequestId, proto::QualifiedRequestId)>; "QualifiedRequestId")]
+    #[test_case(PhantomData::<(TxRequestIds, proto::TxRequestIds)>; "TxRequestIds")]
+    #[test_case(PhantomData::<(Fees, proto::Fees)>; "Fees")]
+    #[test_case(PhantomData::<(BitcoinPreSignRequest, proto::BitcoinPreSignRequest)>; "BitcoinPreSignRequest")]
     fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
     where
         // `.unwrap()` requires that `E` implement `std::fmt::Debug` and

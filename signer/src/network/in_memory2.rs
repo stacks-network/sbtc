@@ -7,6 +7,8 @@ use futures::StreamExt;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::codec::Decode as _;
+use crate::codec::Encode as _;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::SignerEvent;
@@ -22,7 +24,7 @@ const DEFAULT_WAN_CAPACITY: usize = 10_000;
 pub struct WanNetwork {
     /// A sender that passes the message along with the ID of the signer
     /// that sent it.
-    tx: Sender<(u8, Msg)>,
+    tx: Sender<(u8, Vec<u8>)>,
     /// A variable with the last ID of the signers.
     id: AtomicU8,
 }
@@ -57,7 +59,7 @@ impl Default for WanNetwork {
 /// same network.
 #[derive(Debug, Clone)]
 pub struct SignerNetwork {
-    wan_tx: Sender<(u8, Msg)>,
+    wan_tx: Sender<(u8, Vec<u8>)>,
     signer_tx: Sender<SignerSignal>,
     id: u8,
 }
@@ -80,6 +82,13 @@ impl SignerNetwork {
                     // We do not send messages where the ID is the same as
                     // ours, since those originated with us.
                     Ok((id, msg)) if id != my_id => {
+                        let msg = match Msg::decode(msg.as_slice()) {
+                            Ok(msg) => msg,
+                            Err(error) => {
+                                tracing::error!(%error, "failed to decode the message");
+                                continue;
+                            }
+                        };
                         if let Err(error) = tx.send(P2PEvent::MessageReceived(msg).into()) {
                             tracing::error!(%error, "instance channel has been closed");
                         };
@@ -99,7 +108,7 @@ impl SignerNetwork {
     }
 
     /// Create a new in-memory signer network.
-    fn new<C: Context>(ctx: &C, wan_tx: Sender<(u8, Msg)>, id: u8) -> Self {
+    fn new<C: Context>(ctx: &C, wan_tx: Sender<(u8, Vec<u8>)>, id: u8) -> Self {
         // We create a new broadcast channel for this signer's network.
         let signer_tx = ctx.get_signal_sender();
 
@@ -108,9 +117,10 @@ impl SignerNetwork {
 
     /// Sends a message to the WAN network.
     fn send(&self, msg: Msg) -> Result<(), Error> {
+        let encoded_msg = msg.encode_to_vec();
         // Send the message out to the WAN.
         self.wan_tx
-            .send((self.id, msg))
+            .send((self.id, encoded_msg))
             .inspect_err(|error| tracing::error!(%error, "could not send over the network"))
             .map(|_| ())
             .map_err(|_| Error::SendMessage)

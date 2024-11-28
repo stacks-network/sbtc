@@ -311,6 +311,7 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         dkg_max_duration: Duration::from_secs(120),
         sbtc_contracts_deployed: false,
         is_epoch3: false,
+        pre_sign_pause: Some(Duration::from_secs(20)),
     };
 
     coord.run().await

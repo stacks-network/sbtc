@@ -43,11 +43,11 @@ x-postgres: &postgres
     - sbtc-postgres
 
 x-sbtc-signer: &sbtc-signer
-  build: sbtc/signer
+  build:
+    context: ../
+    dockerfile: docker/sbtc/Dockerfile
+    target: signer
   entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
-  depends_on: &sbtc-signer-depends_on
-    sbtc-build:
-      condition: service_completed_successfully
   environment: &sbtc-signer-environment
     RUST_LOG: info
     SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
@@ -82,24 +82,6 @@ x-stacks-signer: &stacks-signer
 # ------------------------------------------------------------------------------
 services:
 
-  # Builder for the sBTC repository.
-  sbtc-build:
-    build:
-      context: .. # Set the context to be root of the project.
-      dockerfile: docker/sbtc/Dockerfile.build
-      args:
-        # GIT_BRANCH:
-        # The branch that we use as a common root for this build. Note
-        # that this branch will be overwritten with the code within this local
-        # repository, but the sources from this branch will be pulled in, compiled,
-        # and then cached so that when the local repository is copied the build
-        # is starting from a place where the dependencies are already compiled.
-        GIT_BRANCH: main
-    image: sbtc-build:latest
-    profiles:
-      - default
-      - sbtc-signer
-
   # Emily API.
   # ----------
   # DynamoDB Tables for the Emily API.
@@ -113,31 +95,32 @@ services:
 
   # Modifies Emily's CDK template and creates DynamoDB Tables.
   emily-aws-setup:
-    build: sbtc/emily-aws-setup
+    build:
+      context: ../
+      dockerfile: docker/sbtc/Dockerfile
+      target: emily-aws-setup
     depends_on:
-      - sbtc-build
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-    profiles:
-      - default
 
   # Runs the Emily server.
   emily-server:
-    build: sbtc/emily-server
+    build:
+      context: ../
+      dockerfile: docker/sbtc/Dockerfile
+      target: emily-server
     depends_on:
-      sbtc-build:
-        condition: service_completed_successfully
       emily-aws-setup:
         condition: service_completed_successfully
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-      - HOST=0.0.0.0
+      - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
+      - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
+      - AWS_REGION=us-west-2
       - PORT=3031
     ports:
       - "3031:3031"
-    profiles:
-      - default
 
   # sBTC Signers.
   # ------------------
@@ -152,9 +135,7 @@ services:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
     container_name: sbtc-signer-1
     depends_on:
-      <<: *sbtc-signer-depends_on
-      postgres-1:
-        condition: service_started
+      - postgres-1
     environment:
       <<: *sbtc-signer-environment
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
@@ -174,9 +155,7 @@ services:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
     container_name: sbtc-signer-2
     depends_on:
-      <<: *sbtc-signer-depends_on
-      postgres-2:
-        condition: service_started
+      - postgres-2
     environment:
       <<: *sbtc-signer-environment
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
@@ -196,9 +175,7 @@ services:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
     container_name: sbtc-signer-3
     depends_on:
-      <<: *sbtc-signer-depends_on
-      postgres-3:
-        condition: service_started
+      - postgres-3
     environment:
       <<: *sbtc-signer-environment
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
@@ -207,18 +184,17 @@ services:
     ports:
       - "8803:8801"
 
-
   # Blocklist client.
   # -----------------
   blocklist-client:
-    build: sbtc/blocklist-client
+    build:
+      context: ../
+      dockerfile: docker/sbtc/Dockerfile
+      target: blocklist-client
     environment:
       BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL:-https://public.chainalysis.com}
-      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY}
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY:-}
       BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
-    depends_on:
-      sbtc-build:
-        condition: service_completed_successfully
     ports:
       - "3030:3030"
     profiles:
