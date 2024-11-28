@@ -1475,10 +1475,10 @@ impl TryFrom<proto::Signed> for Signed<SignerMessage> {
 
 impl From<Point> for proto::Point {
     fn from(value: Point) -> Self {
-        let x_coordinate = value.x().to_bytes();
+        let [parity, x_coordinate @ ..] = value.compress().data;
         proto::Point {
             x_coordinate: Some(proto::Uint256::from(x_coordinate)),
-            parity_is_odd: !value.has_even_y(),
+            parity_is_odd: parity == 3, // SECP256K1_TAG_PUBKEY_ODD
         }
     }
 }
@@ -2279,5 +2279,20 @@ mod tests {
 
         let original_from_proto = T::try_from(proto_original).unwrap();
         assert_eq!(wrapper(original), wrapper(original_from_proto));
+    }
+
+    #[test]
+    fn convert_protobuf_point() {
+        let number = [
+            143, 155, 8, 85, 229, 228, 1, 179, 39, 101, 245, 99, 113, 81, 250, 4, 15, 22, 126, 74,
+            137, 110, 198, 25, 250, 142, 202, 51, 0, 241, 238, 168,
+        ];
+        let scalar = p256k1::scalar::Scalar::from(number);
+
+        let original = Point::from(scalar);
+        let proto_original = proto::Point::from(original.clone());
+        let original_from_proto = Point::try_from(proto_original).unwrap();
+
+        assert_eq!(original, original_from_proto);
     }
 }
