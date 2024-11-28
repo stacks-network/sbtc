@@ -22,6 +22,7 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest as _;
@@ -277,8 +278,8 @@ where
             (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
                 self.handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
                     .await?;
-                self.context
-                    .signal(TxSignerEvent::BitcoinPreSignRequestReceived.into())?;
+                self.send_message(BitcoinPreSignAck, &msg.bitcoin_chain_tip)
+                    .await?;
             }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)

@@ -412,14 +412,20 @@ where
             fee_rate: pending_requests.signer_state.fee_rate,
             last_fees: pending_requests.signer_state.last_fees.map(Into::into),
         };
-
+        let taget_chain_tip = bitcoin_chain_tip.clone();
         // Define the filter for presign request received events
-        let presign_ack_filter = |event: &SignerSignal| -> bool {
+        let presign_ack_filter = move |event: &SignerSignal| -> bool {
             matches!(
                 event,
-                SignerSignal::Event(SignerEvent::TxSigner(
-                    TxSignerEvent::BitcoinPreSignRequestReceived
-                ))
+                SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(
+                    Signed {
+                        inner: SignerMessage {
+                            bitcoin_chain_tip,
+                            payload: Payload::BitcoinPreSignAck(_)
+                        },
+                        ..
+                    },
+                ))) if *bitcoin_chain_tip == taget_chain_tip
             )
         };
 

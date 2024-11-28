@@ -286,7 +286,7 @@ pub struct SignerMessage {
         super::super::super::bitcoin::BitcoinBlockHash,
     >,
     /// The message payload
-    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10")]
+    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
     pub payload: ::core::option::Option<signer_message::Payload>,
 }
 /// Nested message and enum types in `SignerMessage`.
@@ -322,6 +322,9 @@ pub mod signer_message {
         /// Information about a new sweep transaction
         #[prost(message, tag = "10")]
         BitcoinPreSignRequest(super::BitcoinPreSignRequest),
+        /// Represents an acknowledgment of a BitcoinPreSignRequest
+        #[prost(message, tag = "11")]
+        BitcoinPreSignAck(super::BitcoinPreSignAck),
     }
 }
 /// Represents information about a deposit request being swept-in by a sweep transaction.
@@ -503,6 +506,10 @@ pub struct BitcoinPreSignRequest {
     #[prost(message, optional, tag = "3")]
     pub last_fees: ::core::option::Option<Fees>,
 }
+/// Represents an acknowledgment of a BitcoinPreSignRequest.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BitcoinPreSignAck {}
 /// This type is a container for all deposits and withdrawals that are part
 /// of a transaction package.
 #[allow(clippy::derive_partial_eq_without_eq)]
