@@ -68,7 +68,7 @@ const SOLO_DEPOSIT_TX_VSIZE: f64 = 267.0;
 /// withdrawal output is not in the transaction. This way the sweep
 /// transaction's OP_RETURN output is the right size and we can handle the
 /// variability of output sizes.
-const BASE_WITHDRAWAL_TX_VSIZE: f64 = 163.0;
+const BASE_WITHDRAWAL_TX_VSIZE: f64 = 164.0;
 
 /// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
 /// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
