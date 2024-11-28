@@ -1,35 +1,48 @@
 //! New version of the in-memory network
 
-use std::{collections::VecDeque, sync::Arc, time::Duration};
+use std::sync::atomic::AtomicU8;
+use std::time::Duration;
 
+use futures::StreamExt;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::RwLock;
+use tokio_stream::wrappers::BroadcastStream;
 
+use crate::codec::Decode as _;
+use crate::codec::Encode as _;
+use crate::context::Context;
+use crate::context::P2PEvent;
+use crate::context::SignerEvent;
+use crate::context::SignerSignal;
 use crate::error::Error;
 
-use super::{MessageTransfer, Msg, MsgId};
+use super::MessageTransfer;
+use super::Msg;
 
 const DEFAULT_WAN_CAPACITY: usize = 10_000;
-const DEFAULT_SIGNER_CAPACITY: usize = 1_000;
-const DEDUP_BUFFER_SIZE: usize = 500;
 
 /// In-memory representation of a WAN network between different signers.
 pub struct WanNetwork {
-    tx: Sender<Msg>,
+    /// A sender that passes the message along with the ID of the signer
+    /// that sent it.
+    tx: Sender<(u8, Vec<u8>)>,
+    /// A variable with the last ID of the signers.
+    id: AtomicU8,
 }
 
 impl WanNetwork {
     /// Create a new in-memory WAN network with the specified channel capacity.
     pub fn new(capacity: usize) -> Self {
         let (tx, _) = tokio::sync::broadcast::channel(capacity);
-        Self { tx }
+        let id = AtomicU8::new(0);
+        Self { tx, id }
     }
 
     /// Connect to the in-memory WAN network, returning a new signer-scoped
     /// network instance.
-    pub async fn connect(&self) -> SignerNetwork {
-        let network = SignerNetwork::new(self.tx.clone());
-        network.start().await;
+    pub fn connect<C: Context>(&self, ctx: &C) -> SignerNetwork {
+        let id = self.id.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let network = SignerNetwork::new(ctx, self.tx.clone(), id);
+        network.start();
         network
     }
 }
@@ -44,83 +57,73 @@ impl Default for WanNetwork {
 /// network can send and receive messages to and from other signers and instances
 /// [`Self::spawn`]'d from this instance will not receive messages sent from this
 /// same network.
+#[derive(Debug, Clone)]
 pub struct SignerNetwork {
-    wan_tx: Sender<Msg>,
-    signer_tx: Sender<Msg>,
-    sent: Arc<RwLock<VecDeque<MsgId>>>,
-}
-
-impl Clone for SignerNetwork {
-    fn clone(&self) -> Self {
-        Self {
-            wan_tx: self.wan_tx.clone(),
-            signer_tx: self.signer_tx.clone(),
-            sent: Arc::clone(&self.sent),
-        }
-    }
+    wan_tx: Sender<(u8, Vec<u8>)>,
+    signer_tx: Sender<SignerSignal>,
+    id: u8,
 }
 
 impl SignerNetwork {
     /// Start the in-memory signer network
-    async fn start(&self) {
+    fn start(&self) {
         // We listen to the WAN network and forward messages to the signer network.
-        let mut rx = self.wan_tx.subscribe();
+        let mut rx = BroadcastStream::new(self.wan_tx.subscribe());
         // We clone the sender to the signer network to be able to send messages
         let tx = self.signer_tx.clone();
-        // We clone the inner state to be able to check if a message has been sent
-        let sent = Arc::clone(&self.sent);
 
         // We spawn a task that listens to the WAN network and forwards messages
         // to the signer network, but only if this signer instance isn't the
         // sender.
+        let my_id = self.id;
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(5));
-            loop {
-                while let Ok(msg) = rx.try_recv() {
-                    if sent.read().await.contains(&msg.id()) {
-                        continue;
+            while let Some(item) = rx.next().await {
+                match item {
+                    // We do not send messages where the ID is the same as
+                    // ours, since those originated with us.
+                    Ok((id, msg)) if id != my_id => {
+                        let msg = match Msg::decode(msg.as_slice()) {
+                            Ok(msg) => msg,
+                            Err(error) => {
+                                tracing::error!(%error, "failed to decode the message");
+                                continue;
+                            }
+                        };
+                        if let Err(error) = tx.send(P2PEvent::MessageReceived(msg).into()) {
+                            tracing::error!(%error, "instance channel has been closed");
+                        };
                     }
-                    tx.send(msg).unwrap();
+                    Ok(_) => {}
+                    Err(error) => tracing::error!(%error, "The channel is lagging"),
                 }
-                interval.tick().await;
             }
         });
     }
 
     /// Create a new in-memory signer network with a single signer instance.
     /// You can use this if you do not need to simulate multiple signers.
-    pub fn single() -> Self {
+    pub fn single<C: Context>(ctx: &C) -> Self {
         let (wan_tx, _) = tokio::sync::broadcast::channel(DEFAULT_WAN_CAPACITY);
-        Self::new(wan_tx)
+        Self::new(ctx, wan_tx, 0)
     }
 
     /// Create a new in-memory signer network.
-    fn new(wan_tx: Sender<Msg>) -> Self {
+    fn new<C: Context>(ctx: &C, wan_tx: Sender<(u8, Vec<u8>)>, id: u8) -> Self {
         // We create a new broadcast channel for this signer's network.
-        let (signer_tx, _) = tokio::sync::broadcast::channel(DEFAULT_SIGNER_CAPACITY);
+        let signer_tx = ctx.get_signal_sender();
 
-        Self {
-            wan_tx,
-            signer_tx,
-            sent: Arc::new(RwLock::new(VecDeque::new())),
-        }
+        Self { wan_tx, signer_tx, id }
     }
 
     /// Sends a message to the WAN network.
-    async fn send(&self, msg: &Msg) -> Result<(), Error> {
-        self.dedup_buffer(msg).await;
+    fn send(&self, msg: Msg) -> Result<(), Error> {
+        let encoded_msg = msg.encode_to_vec();
         // Send the message out to the WAN.
-        let _ = self.wan_tx.send(msg.clone());
-        Ok(())
-    }
-
-    /// Buffer a message to prevent it from being received by the same signer.
-    async fn dedup_buffer(&self, msg: &Msg) {
-        let mut sent_buffer = self.sent.write().await;
-        sent_buffer.push_back(msg.id());
-        if sent_buffer.len() > DEDUP_BUFFER_SIZE {
-            sent_buffer.pop_front();
-        }
+        self.wan_tx
+            .send((self.id, encoded_msg))
+            .inspect_err(|error| tracing::error!(%error, "could not send over the network"))
+            .map(|_| ())
+            .map_err(|_| Error::SendMessage)
     }
 
     /// Spawns a new instance of the in-memory signer network.
@@ -138,7 +141,7 @@ impl SignerNetwork {
 /// in-memory network and should behave as such.
 pub struct SignerNetworkInstance {
     signer_network: SignerNetwork,
-    instance_rx: tokio::sync::broadcast::Receiver<Msg>,
+    instance_rx: tokio::sync::broadcast::Receiver<SignerSignal>,
 }
 
 impl Clone for SignerNetworkInstance {
@@ -152,13 +155,15 @@ impl Clone for SignerNetworkInstance {
 
 impl MessageTransfer for SignerNetworkInstance {
     async fn broadcast(&mut self, msg: Msg) -> Result<(), Error> {
-        self.signer_network.send(&msg).await
+        self.signer_network.send(msg)
     }
 
     async fn receive(&mut self) -> Result<Msg, Error> {
         let mut interval = tokio::time::interval(Duration::from_millis(5));
         loop {
-            if let Ok(msg) = self.instance_rx.recv().await {
+            if let Ok(SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(msg)))) =
+                self.instance_rx.recv().await
+            {
                 return Ok(msg);
             }
             interval.tick().await;
@@ -169,18 +174,22 @@ impl MessageTransfer for SignerNetworkInstance {
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicU16, Ordering};
+    use std::sync::Arc;
 
     use futures::future::join_all;
     use rand::rngs::OsRng;
+
+    use crate::testing::context::TestContext;
 
     use super::*;
 
     #[tokio::test]
     async fn signer_2_can_receive_messages_from_signer_1() {
         let network = WanNetwork::new(100);
-
-        let signer_1 = network.connect().await;
-        let signer_2 = network.connect().await;
+        let ctx1 = TestContext::default_mocked();
+        let ctx2 = TestContext::default_mocked();
+        let signer_1 = network.connect(&ctx1);
+        let signer_2 = network.connect(&ctx2);
 
         let mut client_1 = signer_1.spawn();
         let mut client_2 = signer_2.spawn();
@@ -202,8 +211,10 @@ mod tests {
     async fn signer_2_can_receive_messages_from_signer_1_concurrent_send() {
         let network = WanNetwork::new(1_000);
 
-        let signer_1 = network.connect().await;
-        let signer_2 = network.connect().await;
+        let ctx1 = TestContext::default_mocked();
+        let ctx2 = TestContext::default_mocked();
+        let signer_1 = network.connect(&ctx1);
+        let signer_2 = network.connect(&ctx2);
 
         let mut client_1a = signer_1.spawn();
         let mut client_1b = signer_1.spawn();
@@ -242,7 +253,8 @@ mod tests {
     async fn network_instance_does_not_receive_messages_from_same_signer_network() {
         let network = WanNetwork::new(100);
 
-        let client = network.connect().await;
+        let ctx = TestContext::default_mocked();
+        let client = network.connect(&ctx);
 
         let mut client_a = client.spawn();
         let mut client_b = client.spawn();
@@ -264,8 +276,10 @@ mod tests {
     async fn two_clients_can_exchange_messages_simple() {
         let network = WanNetwork::new(100);
 
-        let client_1 = network.connect().await;
-        let client_2 = network.connect().await;
+        let ctx1 = TestContext::default_mocked();
+        let ctx2 = TestContext::default_mocked();
+        let client_1 = network.connect(&ctx1);
+        let client_2 = network.connect(&ctx2);
 
         let mut client_1 = client_1.spawn();
         let mut client_2 = client_2.spawn();
@@ -298,8 +312,10 @@ mod tests {
     async fn two_clients_can_exchange_messages_advanced() {
         let network = WanNetwork::new(100);
 
-        let client_1 = network.connect().await;
-        let client_2 = network.connect().await;
+        let ctx1 = TestContext::default_mocked();
+        let ctx2 = TestContext::default_mocked();
+        let client_1 = network.connect(&ctx1);
+        let client_2 = network.connect(&ctx2);
 
         let instance_1 = client_1.spawn();
         let instance_2 = client_2.spawn();

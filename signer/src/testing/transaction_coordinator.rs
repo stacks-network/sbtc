@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
-use crate::context::TxSignerEvent;
+use crate::context::RequestDeciderEvent;
 use crate::emily_client::MockEmilyInteract;
 use crate::error;
 use crate::keys;
@@ -74,6 +74,7 @@ where
                 signing_round_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
                 is_epoch3: true,
+                pre_sign_pause: Some(Duration::from_secs(1)),
             },
             context,
             is_started: Arc::new(AtomicBool::new(false)),
@@ -254,10 +255,10 @@ where
                 .await
         });
 
-        // Signal `TxSignerEvent::NewRequestsHandled` to trigger the coordinator.
+        // Signal `RequestDeciderEvent::NewRequestsHandled` to trigger the coordinator.
         handle
             .context
-            .signal(TxSignerEvent::NewRequestsHandled.into())
+            .signal(RequestDeciderEvent::NewRequestsHandled.into())
             .expect("failed to signal");
 
         // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
@@ -447,7 +448,7 @@ where
         // Signal `TxSignerEvent::NewRequestsHandled` to trigger the coordinator.
         handle
             .context
-            .signal(TxSignerEvent::NewRequestsHandled.into())
+            .signal(RequestDeciderEvent::NewRequestsHandled.into())
             .expect("failed to signal");
 
         // Await the `wait_for_tx_task` to receive the first transaction broadcasted.

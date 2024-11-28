@@ -209,6 +209,43 @@ pub struct DkgEnd {
     #[prost(message, optional, tag = "3")]
     pub status: ::core::option::Option<DkgStatus>,
 }
+/// Signature type
+/// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/ebd7d7775ad5e44cdbf4f5c1fb468bdf6c467265/src/net.rs#L373-L382>>
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SignatureType {
+    #[prost(oneof = "signature_type::SignatureType", tags = "1, 2, 3")]
+    pub signature_type: ::core::option::Option<signature_type::SignatureType>,
+}
+/// Nested message and enum types in `SignatureType`.
+pub mod signature_type {
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum SignatureType {
+        /// FROST signature
+        #[prost(message, tag = "1")]
+        Frost(super::FrostSignatureType),
+        /// BIP-340 Schnorr proof
+        #[prost(message, tag = "2")]
+        Schnorr(super::SchnorrSignatureType),
+        /// BIP-341 Taproot style schnorr proof with a merkle root
+        #[prost(message, tag = "3")]
+        Taproot(super::TaprootSignatureType),
+    }
+}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct FrostSignatureType {}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SchnorrSignatureType {}
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TaprootSignatureType {
+    /// Taproot merkle root. This field is optional
+    #[prost(message, optional, tag = "1")]
+    pub merkle_root: ::core::option::Option<MerkleRoot>,
+}
 /// Nonce request message from coordinator to signers
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L265-L280>>
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -226,12 +263,9 @@ pub struct NonceRequest {
     /// The message to sign
     #[prost(bytes = "vec", tag = "4")]
     pub message: ::prost::alloc::vec::Vec<u8>,
-    /// Whether to make a taproot signature
-    #[prost(bool, tag = "5")]
-    pub is_taproot: bool,
-    /// Taproot merkle root. This field is optional
-    #[prost(message, optional, tag = "6")]
-    pub merkle_root: ::core::option::Option<MerkleRoot>,
+    /// What type of signature to create
+    #[prost(message, optional, tag = "5")]
+    pub signature_type: ::core::option::Option<SignatureType>,
 }
 /// Nonce response message from signers to coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L309-L326>>
@@ -280,12 +314,9 @@ pub struct SignatureShareRequest {
     /// Bytes to sign.
     #[prost(bytes = "vec", tag = "5")]
     pub message: ::prost::alloc::vec::Vec<u8>,
-    /// Whether to make a taproot signature
-    #[prost(bool, tag = "6")]
-    pub is_taproot: bool,
-    /// Taproot merkle root. This field is optional
-    #[prost(message, optional, tag = "7")]
-    pub merkle_root: ::core::option::Option<MerkleRoot>,
+    /// What type of signature to create
+    #[prost(message, optional, tag = "6")]
+    pub signature_type: ::core::option::Option<SignatureType>,
 }
 /// Signature share response message from signers to coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L422-L435>>

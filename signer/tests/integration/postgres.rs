@@ -11,11 +11,12 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
+use futures::future::join_all;
 use futures::StreamExt;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 
-use signer::bitcoin::validation::DepositRequestStatus;
+use signer::bitcoin::validation::DepositConfirmationStatus;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::config::Settings;
 use signer::context::Context;
@@ -40,6 +41,8 @@ use signer::storage;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
+use signer::storage::model::BitcoinTxSigHash;
+use signer::storage::model::BitcoinWithdrawalOutput;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::model::ScriptPubKey;
@@ -1690,6 +1693,33 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// The [`DbRead::deposit_request_exists`] function is return true we have
+/// a record of the deposit request and false otherwise.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn deposit_request_exists_works() {
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let deposit: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let exists = db
+        .deposit_request_exists(&deposit.txid, deposit.output_index)
+        .await
+        .unwrap();
+    assert!(!exists);
+
+    db.write_deposit_request(&deposit).await.unwrap();
+    let exists = db
+        .deposit_request_exists(&deposit.txid, deposit.output_index)
+        .await
+        .unwrap();
+    assert!(exists);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This tests that deposit requests where there is an associated sweep
 /// transaction will show up in the query results from
 /// [`DbRead::get_swept_deposit_requests`].
@@ -2671,7 +2701,7 @@ async fn deposit_report_with_only_deposit_request() {
     assert!(report.can_sign.is_none());
     // The transaction is not on the canonical bitcoin blockchain, so it
     // shows up as unconfirmed.
-    assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
+    assert_eq!(report.status, DepositConfirmationStatus::Unconfirmed);
 
     testing::storage::drop_db(db).await;
 }
@@ -2753,7 +2783,7 @@ async fn deposit_report_with_deposit_request_reorged() {
     assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
-    assert_eq!(report.status, DepositRequestStatus::Unconfirmed);
+    assert_eq!(report.status, DepositConfirmationStatus::Unconfirmed);
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -2853,7 +2883,10 @@ async fn deposit_report_with_deposit_request_spent() {
     assert_eq!(report.max_fee, deposit_request.max_fee);
     assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
-    assert_eq!(report.status, DepositRequestStatus::Spent(sweep_tx.txid));
+    assert_eq!(
+        report.status,
+        DepositConfirmationStatus::Spent(sweep_tx.txid)
+    );
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -2967,7 +3000,8 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 
     let confirmed_height = chain_tip_block.block_height - 1;
     let confirmed_block_hash = chain_tip_block.parent_hash;
-    let expected_status = DepositRequestStatus::Confirmed(confirmed_height, confirmed_block_hash);
+    let expected_status =
+        DepositConfirmationStatus::Confirmed(confirmed_height, confirmed_block_hash);
     assert_eq!(report.status, expected_status);
 
     // If we use the chain tip that confirms the sweep transaction, then we
@@ -2987,7 +3021,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
-    let expected_status = DepositRequestStatus::Spent(sweep_tx.txid);
+    let expected_status = DepositConfirmationStatus::Spent(sweep_tx.txid);
     assert_eq!(report.status, expected_status);
 
     signer::testing::storage::drop_db(db).await;
@@ -3066,8 +3100,47 @@ async fn deposit_report_with_deposit_request_confirmed() {
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
     let block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
-    let expected_status = DepositRequestStatus::Confirmed(block.block_height, block.block_hash);
+    let expected_status =
+        DepositConfirmationStatus::Confirmed(block.block_height, block.block_hash);
     assert_eq!(report.status, expected_status);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let sighashes: Vec<BitcoinTxSigHash> = (0..5).map(|_| fake::Faker.fake()).collect();
+
+    db.write_bitcoin_txs_sighashes(&sighashes).await.unwrap();
+
+    let withdrawal_outputs_futures = sighashes
+        .iter()
+        .map(|sighash| db.will_sign_bitcoin_tx_sighash(&sighash.sighash));
+
+    let results = join_all(withdrawal_outputs_futures).await;
+
+    for (output, result) in sighashes.iter().zip(results) {
+        let result = result.unwrap().unwrap();
+        assert_eq!(result, output.will_sign);
+    }
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn can_write_multiple_bitcoin_withdrawal_outputs() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+
+    let outputs: Vec<BitcoinWithdrawalOutput> = (0..5).map(|_| fake::Faker.fake()).collect();
+
+    db.write_bitcoin_withdrawals_outputs(&outputs)
+        .await
+        .unwrap();
 
     signer::testing::storage::drop_db(db).await;
 }

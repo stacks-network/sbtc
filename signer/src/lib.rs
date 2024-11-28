@@ -21,6 +21,7 @@ pub mod logging;
 pub mod message;
 pub mod network;
 pub mod proto;
+pub mod request_decider;
 pub mod signature;
 pub mod stacks;
 pub mod storage;
@@ -62,3 +63,7 @@ const MAX_KEYS: u16 = 128;
 /// it were spendable on block 1002, then the signers WOULD attempt to sweep
 /// the deposit.
 pub const DEPOSIT_LOCKTIME_BLOCK_BUFFER: u16 = 3;
+
+/// This is the capacity of the channel used for messages sent within the
+/// signer.
+pub const SIGNER_CHANNEL_CAPACITY: usize = 1024;

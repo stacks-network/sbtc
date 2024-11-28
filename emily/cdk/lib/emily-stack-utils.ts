@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import { resolve } from "path";
 import { EmilyStackProps } from "./emily-stack-props";
 import { Constants } from "./constants";
+import { execSync } from "child_process";
 
 /**
  * This class provides utility methods for the Cloud Formation Stack.
@@ -29,6 +30,26 @@ export class EmilyStackUtils {
      * Whether only tables should be deployed.
      */
     private static tablesOnly?: boolean;
+
+    /*
+     * The number of signer API keys to create.
+     */
+    private static numSignerApiKeys?: number;
+
+    /*
+     * The hosted zone ID.
+     */
+    private static hostedZoneId?: string;
+
+    /*
+     * The custom root domain name.
+     */
+    private static customRootDomainName?: string;
+
+    /*
+     * The string that identifies the source code for the lambda.
+     */
+    private static lambdaGitIdentifier?: string;
 
     /*
      * Returns the current stage name.
@@ -77,6 +98,32 @@ export class EmilyStackUtils {
         return this.tablesOnly;
     }
 
+    /*
+     * Returns the number of signer API keys to create.
+     */
+    public static getNumSignerApiKeys(): number {
+        this.numSignerApiKeys ??= parseInt(process.env.NUM_SIGNER_API_KEYS ?? (Constants.DEFAULT_NUM_SIGNER_API_KEYS).toString());
+        if (this.numSignerApiKeys === undefined) {
+            throw new Error('Must define number of signer API keys');
+        }
+        return this.numSignerApiKeys
+    }
+
+    /*
+     * Returns the hosted zone ID or undefined if none is set.
+     */
+    public static getHostedZoneId(): string | undefined{
+        this.hostedZoneId ??= process.env.HOSTED_ZONE_ID;
+        return this.hostedZoneId;
+    }
+
+    /*
+     * Returns the custom root domain name or undefined if none is set.
+     */
+    public static getCustomRootDomainName(): string | undefined {
+        this.customRootDomainName ??= process.env.CUSTOM_ROOT_DOMAIN_NAME;
+        return this.customRootDomainName;
+    }
 
     /*
      * Returns true iff the current stack is a development stack / not a production stack.
@@ -135,6 +182,25 @@ export class EmilyStackUtils {
             : lambda.Architecture.ARM_64;
     }
 
+    /*
+     * Returns the string that identifies the source code of the lambda.
+     *
+     * The following is a possible example of the git identifier:
+     * "https://github.com/stacks-network/sbtc.git | testnet-launch-emily-prs | 1ca2a11146b4141c983d026e1275a9bbc517e907"
+     */
+    public static getLambdaGitIdentifier(): string {
+        if (this.lambdaGitIdentifier === undefined) {
+            const gitRepo = execSync('git config --get remote.origin.url').toString().trim();
+            const gitBranch = execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
+            const gitCommit = execSync('git rev-parse HEAD').toString().trim();
+            this.lambdaGitIdentifier = `${gitRepo} | ${gitBranch} | ${gitCommit}`;
+        }
+        if (this.lambdaGitIdentifier === undefined) {
+            throw new Error('Failed to get the git identifier for the lambda.');
+        }
+        return this.lambdaGitIdentifier;
+    }
+
     /**
      * @description Generate an api definition asset from a local OpenAPI definition and modifies the
      * template such that CloudFormation can replace the lambda identifiers with the correct lambda arn.
@@ -146,7 +212,7 @@ export class EmilyStackUtils {
      */
     public static restApiDefinitionWithLambdaIntegration(
         restApiPathOrFileDescriptor: fs.PathOrFileDescriptor,
-        apiLambdas: [lambdaIdentifier: string, lambdaFunction: lambda.Function][],
+        apiLambdas: [lambdaIdentifier: string, lambdaFunction: lambda.Alias][],
     ): ApiDefinition {
 
         // TODO(269): Change Emily API Lambda Integrations to use cdk constructs if possible instead

@@ -1,17 +1,21 @@
 //! Accessors.
 
+use std::collections::HashMap;
+
 use aws_sdk_dynamodb::types::AttributeValue;
 use serde_dynamo::Item;
-#[cfg(feature = "testing")]
-use tracing::info;
 
-use tracing::warn;
+use tracing::{debug, warn};
 
+use crate::api::models::limits::{AccountLimits, Limits};
 use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::deposit::ValidatedDepositUpdate;
+use super::entries::limits::{
+    LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
+};
 use super::entries::withdrawal::ValidatedWithdrawalUpdate;
 use super::entries::{
     chainstate::{
@@ -54,10 +58,6 @@ pub async fn get_deposit_entry(
 ) -> Result<DepositEntry, Error> {
     let entry = get_entry::<DepositTablePrimaryIndex>(context, key).await?;
     #[cfg(feature = "testing")]
-    info!(
-        "Received deposit entry {}",
-        serde_json::to_string_pretty(&entry)?
-    );
     Ok(entry)
 }
 
@@ -87,15 +87,15 @@ const ALL_STATUSES: &[Status] = &[
     Status::Reprocessing,
 ];
 
-/// Gets all deposit entries modified after a given height.
-pub async fn get_all_deposit_entries_modified_after_height(
+/// Gets all deposit entries modified from (on or after) a given height.
+pub async fn get_all_deposit_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
     maybe_page_size: Option<i32>,
 ) -> Result<Vec<DepositInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
-        let mut received = get_all_deposit_entries_modified_after_height_with_status(
+        let mut received = get_all_deposit_entries_modified_from_height_with_status(
             context,
             status,
             minimum_height,
@@ -108,8 +108,8 @@ pub async fn get_all_deposit_entries_modified_after_height(
     Ok(all)
 }
 
-/// Gets all deposit entries modified after a given height.
-pub async fn get_all_deposit_entries_modified_after_height_with_status(
+/// Gets all deposit entries modified from (on or after) a given height.
+pub async fn get_all_deposit_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
@@ -120,7 +120,7 @@ pub async fn get_all_deposit_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">",
+        ">=",
         maybe_page_size,
     )
     .await
@@ -267,12 +267,9 @@ pub async fn get_withdrawal_entry(
     // Return.
     match entries.as_slice() {
         [] => Err(Error::NotFound),
-        [withdrawal] => {
+        [withdrawal] =>
+        {
             #[cfg(feature = "testing")]
-            info!(
-                "Received withdrawal entry {}",
-                serde_json::to_string_pretty(withdrawal)?
-            );
             Ok(withdrawal.clone())
         }
         _ => {
@@ -303,15 +300,15 @@ pub async fn get_withdrawal_entries(
     .await
 }
 
-/// Gets all withdrawal entries modified after a given height.
-pub async fn get_all_withdrawal_entries_modified_after_height(
+/// Gets all withdrawal entries modified from (on or after) a given height.
+pub async fn get_all_withdrawal_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
     maybe_page_size: Option<i32>,
 ) -> Result<Vec<WithdrawalInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
-        let mut received = get_all_withdrawal_entries_modified_after_height_with_status(
+        let mut received = get_all_withdrawal_entries_modified_from_height_with_status(
             context,
             status,
             minimum_height,
@@ -324,8 +321,8 @@ pub async fn get_all_withdrawal_entries_modified_after_height(
     Ok(all)
 }
 
-/// Gets all withdrawal entries modified after a given height.
-pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
+/// Gets all withdrawal entries modified from (on or after) a given height.
+pub async fn get_all_withdrawal_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
@@ -336,7 +333,7 @@ pub async fn get_all_withdrawal_entries_modified_after_height_with_status(
         context,
         status,
         &minimum_height,
-        ">",
+        ">=",
         maybe_page_size,
     )
     .await
@@ -432,6 +429,26 @@ pub async fn update_withdrawal(
 
 // Chainstate ------------------------------------------------------------------
 
+/// Adds a chainstate entry to the database with the specified number of retries.
+pub async fn add_chainstate_entry_with_retry(
+    context: &EmilyContext,
+    entry: &ChainstateEntry,
+    retries: u16,
+) -> Result<(), Error> {
+    for _ in 0..retries {
+        match add_chainstate_entry(context, entry).await {
+            Err(Error::VersionConflict) => {
+                // Retry.
+                continue;
+            }
+            otherwise => {
+                return otherwise;
+            }
+        }
+    }
+    Err(Error::TooManyInternalRetries)
+}
+
 /// Add a chainstate entry.
 pub async fn add_chainstate_entry(
     context: &EmilyContext,
@@ -439,8 +456,10 @@ pub async fn add_chainstate_entry(
 ) -> Result<(), Error> {
     // Get the current api state and give up if reorging.
     let mut api_state = get_api_state(context).await?;
+    debug!("Adding chainstate entry, current api state: {api_state:?}");
     if let ApiStatus::Reorg(reorg_chaintip) = &api_state.api_status {
         if reorg_chaintip != entry {
+            warn!("Attempting to update chainstate during a reorg [ new entry {entry:?} | reorg chaintip {reorg_chaintip:?} ]");
             return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
                 "Attempting to update chainstate during a reorg.".to_string(),
             )));
@@ -454,16 +473,41 @@ pub async fn add_chainstate_entry(
             .await
             .and_then(|existing_entry: ChainstateEntry| {
                 if &existing_entry != entry {
+                    debug!("Inconsistent state because of a conflict with the current interpretation of a height.");
+                    debug!("Existing entry: {existing_entry:?} | New entry: {entry:?}");
                     Err(Error::from_inconsistent_chainstate_entry(existing_entry))
                 } else {
                     Ok(())
                 }
             });
 
-    // Exit here unless this chain height hasn't been detected before.
     match current_chainstate_entry_result {
         // Fall through if there is no existing entry..
         Err(Error::NotFound) => (),
+        // If the chainstate entry is already in the table but the api believes the chaintip is behind
+        // this entry, that means a reorg has occurred and the api got pulled back, but then it went
+        // back to the chain it had been following before the reorg. This is a stable state, and we
+        // will skip putting it into the table but will update the api state.
+        Ok(_) if api_state.chaintip().key.height < entry.key.height => {
+            api_state.api_status = ApiStatus::Stable(entry.clone());
+            return set_api_state(context, &api_state).await;
+        }
+        // If there's an inconsistency BUT the chaintip is behind the inconsistency, this means we've gone
+        // back in time a bit and are now overwriting the old chainstate entries that we had put in before.
+        // While the chainstate table is inconsistent with the current chainstate, it's actually a stable
+        // state because we can resolve that inconsistency by just overwriting the old entry/s at that height.
+        // Note that it would be really odd for there to be multiple chainstates at the same height and for
+        // the chain tip to be behind them, but luckily in this scenario we can be fine by just deleting all
+        // the entries above.
+        Err(Error::InconsistentState(Inconsistency::Chainstates(chainstates)))
+            if api_state.chaintip().key.height < entry.key.height =>
+        {
+            for chainstate in chainstates {
+                // Remove the entry from the table.
+                let existing_entry: ChainstateEntry = chainstate.into();
+                delete_entry::<ChainstateTablePrimaryIndex>(context, &existing_entry.key).await?;
+            }
+        }
         // ..otherwise exit here.
         irrecoverable_or_okay => {
             return irrecoverable_or_okay;
@@ -472,7 +516,6 @@ pub async fn add_chainstate_entry(
 
     let chaintip: ChainstateEntry = api_state.chaintip();
     let blocks_higher_than_current_tip = (entry.key.height as i128) - (chaintip.key.height as i128);
-
     if blocks_higher_than_current_tip == 1 || chaintip.key.height == 0 {
         api_state.api_status = ApiStatus::Stable(entry.clone());
         // Put the chainstate entry into the table. If two lambdas get exactly here at the same time
@@ -483,11 +526,17 @@ pub async fn add_chainstate_entry(
         // Version locked api state prevents inconsistencies here.
         set_api_state(context, &api_state).await
     } else if blocks_higher_than_current_tip > 1 {
-        // Attempting to put an entry into the table that's significantly higher than the current
-        // known chain tip.
-        Err(Error::InconsistentState(Inconsistency::ItemUpdate("
-            Attempting to put an entry into the table that's significantly higher than the current known chain tip.".to_string(),
-        )))
+        warn!(
+            "Attempting to add a chaintip that is more than one block ({}) higher than the current tip. {:?} -> {:?}",
+            blocks_higher_than_current_tip,
+            chaintip,
+            entry,
+        );
+        // TODO(TBD): Determine the ramifications of allowing a chaintip to be added much
+        // higher than expected.
+        api_state.api_status = ApiStatus::Stable(entry.clone());
+        put_entry::<ChainstateTablePrimaryIndex>(context, entry).await?;
+        set_api_state(context, &api_state).await
     } else {
         // Current tip is higher than the entry we attempted to emplace
         // but there is no record of the chainstate at the current height.
@@ -561,6 +610,101 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
     put_entry_with_version::<SpecialApiStateIndex>(context, &mut api_state.clone()).await
 }
 
+// Limits ----------------------------------------------------------------------
+
+/// Note, this function provides the direct output structure for the api call
+/// to get the limits for the full sbtc system, and therefore is breaching the
+/// typical contract for these accessor functions. We do this here because the
+/// data for this sigular entry is spread across the entire table in a way that
+/// needs to be first gathered, then filtered. It does not neatly fit into a
+/// return type that is within the table as an entry.
+pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
+    // Get all the entries of the limit table. This table shouldn't be too large.
+    let all_entries =
+        LimitTablePrimaryIndex::get_all_entries(&context.dynamodb_client, &context.settings)
+            .await?;
+    // Create the default global cap.
+    let default_global_cap = context.settings.default_limits.clone();
+    let mut global_cap = LimitEntry {
+        key: LimitEntryKey {
+            account: GLOBAL_CAP_ACCOUNT.to_string(),
+            // Make the timestamp the smallest possible to any other timestamp
+            // will be greater than this.
+            timestamp: 0,
+        },
+        peg_cap: default_global_cap.peg_cap,
+        per_deposit_cap: default_global_cap.per_deposit_cap,
+        per_withdrawal_cap: default_global_cap.per_withdrawal_cap,
+    };
+    // Aggregate all the latest entries by account.
+    let mut limit_by_account: HashMap<String, LimitEntry> = HashMap::new();
+    for entry in all_entries.iter() {
+        let account = &entry.key.account;
+        if account == GLOBAL_CAP_ACCOUNT {
+            // If the account is the global cap account and either we haven't encountered
+            // the cap before or the cap we have encountered is older than the current one
+            // then set the global cap to the current entry.
+            if global_cap.key.timestamp < entry.key.timestamp {
+                global_cap = entry.clone();
+            }
+        } else if limit_by_account.contains_key(account) {
+            // If the account is already in the map then update the entry if the current
+            // entry is newer.
+            if let Some(existing_entry) = limit_by_account.get_mut(account) {
+                if existing_entry.key.timestamp < entry.key.timestamp {
+                    *existing_entry = entry.clone();
+                }
+            }
+        } else {
+            // If the account isn't in the map then insert it.
+            limit_by_account.insert(entry.key.account.clone(), entry.clone());
+        }
+    }
+    // Turn the account limits into the correct structure.
+    let account_caps = limit_by_account
+        .into_iter()
+        .filter(|(_, limit_entry)| !limit_entry.is_empty())
+        .map(|(account, limit_entry)| (account, AccountLimits::from(limit_entry)))
+        .collect();
+    // Get the global limit for the whole thing.
+    Ok(Limits {
+        peg_cap: global_cap.peg_cap,
+        per_deposit_cap: global_cap.per_deposit_cap,
+        per_withdrawal_cap: global_cap.per_withdrawal_cap,
+        account_caps,
+    })
+}
+
+/// Get the limit for a specific account.
+#[allow(clippy::ptr_arg)]
+pub async fn get_limit_for_account(
+    context: &EmilyContext,
+    account: &String,
+) -> Result<LimitEntry, Error> {
+    // Make the query.
+    let (mut entries, _) = query_with_partition_key::<LimitTablePrimaryIndex>(
+        context,
+        account,
+        None,
+        // Only get the most recent entry. The internals of this query uses
+        // scan_index_forward = false.
+        Some(1),
+    )
+    .await?;
+    // The limit is set to 1 so there should always only be one entry returned,
+    // but for the sake of redundancy also get the most recent entry.
+    entries.sort_by_key(|entry| entry.key.timestamp);
+    entries.pop().ok_or(Error::NotFound)
+}
+
+/// Set the limit for a specific account.
+pub async fn set_limit_for_account(
+    context: &EmilyContext,
+    limit: &LimitEntry,
+) -> Result<(), Error> {
+    put_entry::<LimitTablePrimaryIndex>(context, limit).await
+}
+
 // Testing ---------------------------------------------------------------------
 
 /// Wipes all the tables.
@@ -570,6 +714,7 @@ pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_deposit_table(context).await?;
     wipe_withdrawal_table(context).await?;
     wipe_chainstate_table(context).await?;
+    wipe_limit_table(context).await?;
     Ok(())
 }
 
@@ -590,6 +735,12 @@ async fn wipe_withdrawal_table(context: &EmilyContext) -> Result<(), Error> {
 async fn wipe_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
     delete_entry::<SpecialApiStateIndex>(context, &ApiStateEntry::key()).await?;
     wipe::<ChainstateTablePrimaryIndex>(context).await
+}
+
+/// Wipes the limit table.
+#[cfg(feature = "testing")]
+async fn wipe_limit_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe::<LimitTablePrimaryIndex>(context).await
 }
 
 // Generics --------------------------------------------------------------------
@@ -623,7 +774,6 @@ where
     .await
 }
 
-#[cfg(feature = "testing")]
 async fn delete_entry<T: TableIndexTrait>(
     context: &EmilyContext,
     key: &<<T as TableIndexTrait>::Entry as EntryTrait>::Key,

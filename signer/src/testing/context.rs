@@ -3,7 +3,8 @@
 use std::time::Duration;
 use std::{ops::Deref, sync::Arc};
 
-use bitcoin::Txid;
+use bitcoin::{Amount, Txid};
+use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::{
     chainstate::{nakamoto::NakamotoBlock, stacks::StacksTransaction},
@@ -16,8 +17,10 @@ use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
+use crate::bitcoin::GetTransactionFeeResult;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::model::BitcoinTxId;
 use crate::{
     bitcoin::{
         rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
@@ -324,10 +327,35 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         &self,
         _outpoint: &bitcoin::OutPoint,
     ) -> Result<Vec<Txid>, Error> {
-        unimplemented!()
+        // TODO: We shouldn't return an empty vec here but doing it for now to
+        // satisfy some coordinator tests.
+        Ok(vec![])
     }
 
     async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+        _include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_fee(
+        &self,
+        _txid: &bitcoin::Txid,
+        _lookup_hint: Option<crate::bitcoin::TransactionLookupHint>,
+    ) -> Result<GetTransactionFeeResult, Error> {
+        unimplemented!()
+    }
+
+    async fn get_mempool_entry(
+        &self,
+        _txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
 }
@@ -421,9 +449,24 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .get_contract_source(address, contract_name)
             .await
     }
+
+    async fn get_sbtc_total_supply(&self, sender: &StacksAddress) -> Result<Amount, Error> {
+        self.inner.lock().await.get_sbtc_total_supply(sender).await
+    }
 }
 
 impl EmilyInteract for WrappedMock<MockEmilyInteract> {
+    async fn get_deposit(
+        &self,
+        txid: &BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<sbtc::deposits::CreateDepositRequest>, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_deposit(txid, output_index)
+            .await
+    }
     async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         self.inner.lock().await.get_deposits().await
     }

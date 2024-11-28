@@ -3,10 +3,8 @@
 use crate::context::EmilyContext;
 
 use super::handlers;
-use warp::Filter;
-
-#[cfg(feature = "testing")]
 use tracing::debug;
+use warp::Filter;
 
 /// Chainstate routes.
 mod chainstate;
@@ -14,11 +12,28 @@ mod chainstate;
 mod deposit;
 /// Health routes.
 mod health;
+/// Limit routes.
+mod limits;
 /// Testing routes.
 #[cfg(feature = "testing")]
 mod testing;
 /// Withdrawal routes.
 mod withdrawal;
+
+// Filter that will print the response to the logs if set to debug.
+fn log_response<T>(reply: T) -> (impl warp::Reply,)
+where
+    T: warp::Reply,
+{
+    let as_response = reply.into_response();
+    tracing::debug!(
+        event = ?"response",
+        status = ?as_response.status().as_u16(),
+        body = ?format!("{:?}", as_response.body()),
+        headers = ?format!("{:?}", as_response.headers()),
+    );
+    (as_response,)
+}
 
 /// This function sets up the Warp filters for handling all requests.
 #[cfg(feature = "testing")]
@@ -29,10 +44,12 @@ pub fn routes(
         .or(chainstate::routes(context.clone()))
         .or(deposit::routes(context.clone()))
         .or(withdrawal::routes(context.clone()))
+        .or(limits::routes(context.clone()))
         .or(testing::routes(context))
         .or(verbose_not_found_route())
         // Convert reply to tuple to that more routes can be added to the returned filter.
         .map(|reply| (reply,))
+        .map(log_response)
 }
 
 /// This function sets the Warp filters for handling all requests.
@@ -44,8 +61,10 @@ pub fn routes(
         .or(chainstate::routes(context.clone()))
         .or(deposit::routes(context.clone()))
         .or(withdrawal::routes(context))
+        .or(limits::routes(context.clone()))
         // Convert reply to tuple to that more routes can be added to the returned filter.
         .map(|reply| (reply,))
+        .map(log_response)
 }
 
 /// This function sets up the routes expecting the AWS stage to be passed in as the very

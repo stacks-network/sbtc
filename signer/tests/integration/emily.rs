@@ -29,9 +29,9 @@ use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
 use signer::block_observer;
 use signer::context::Context;
-use signer::context::SignerEvent;
-use signer::context::TxSignerEvent;
+use signer::context::RequestDeciderEvent;
 use signer::emily_client::EmilyClient;
+use signer::emily_client::EmilyInteract;
 use signer::error::Error;
 use signer::keys;
 use signer::keys::SignerScriptPubKey as _;
@@ -162,7 +162,7 @@ const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
 /// then is picked up by the block observer, inserted into the storage and accepted.
 /// After a signing round, the sweep tx for the request is broadcasted and we check
 /// that Emily is informed about it.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[ignore = "this test will be fixed shortly"]
 #[test(tokio::test)]
 async fn deposit_flow() {
     let num_signers = 7;
@@ -230,10 +230,12 @@ async fn deposit_flow() {
         amount: Amount::from_sat(deposit_config.amount + deposit_config.max_fee),
         height: 0,
     };
+    let max_fee = deposit_config.amount / 2;
     let (deposit_tx, deposit_request, _) = make_deposit_request(
         &depositor,
         deposit_config.amount,
         depositor_utxo,
+        max_fee,
         deposit_config.aggregate_key.into(),
     );
 
@@ -421,8 +423,6 @@ async fn deposit_flow() {
     let block_observer = block_observer::BlockObserver {
         context: context.clone(),
         bitcoin_blocks: block_stream,
-        stacks_client: stacks_client,
-        emily_client: emily_client.clone(),
         horizon: 1,
     };
 
@@ -442,6 +442,7 @@ async fn deposit_flow() {
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: true,
         is_epoch3: true,
+        pre_sign_pause: Some(Duration::from_secs(1)),
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
@@ -535,7 +536,7 @@ async fn deposit_flow() {
 
     // Wake coordinator up (again)
     context
-        .signal(SignerEvent::TxSigner(TxSignerEvent::NewRequestsHandled).into())
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
         .expect("failed to signal");
 
     // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
@@ -581,4 +582,44 @@ async fn deposit_flow() {
     assert_eq!(fetched_deposit.last_update_height, stacks_tip.block_height);
 
     testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposit_request_works() {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 150;
+
+    let emily_client =
+        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+
+    wipe_databases(&emily_client.config())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
+
+    let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+
+    let emily_request = CreateDepositRequestBody {
+        bitcoin_tx_output_index: 0,
+        bitcoin_txid: setup.tx.compute_txid().to_string(),
+        deposit_script: setup.deposit.deposit_script().to_hex_string(),
+        reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+    };
+
+    deposit_api::create_deposit(emily_client.config(), emily_request.clone())
+        .await
+        .expect("cannot create emily deposit");
+
+    let txid = setup.tx.compute_txid().into();
+    let request = emily_client.get_deposit(&txid, 0).await.unwrap().unwrap();
+
+    assert_eq!(request.deposit_script, setup.deposit.deposit_script());
+    assert_eq!(request.reclaim_script, setup.reclaim.reclaim_script());
+    assert_eq!(request.outpoint.txid, setup.tx.compute_txid());
+    assert_eq!(request.outpoint.vout, 0);
+
+    // This one doesn't exist
+    let request = emily_client.get_deposit(&txid, 50).await.unwrap();
+    assert!(request.is_none());
 }

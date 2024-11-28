@@ -19,6 +19,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositRequestReport;
+use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::stacks::events::CompletedDepositEvent;
@@ -71,6 +72,14 @@ pub trait DbRead {
         context_window: u16,
         signatures_required: u16,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
+
+    /// Check whether we have a record of the deposit request in our
+    /// database.
+    fn deposit_request_exists(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Get the deposit requests that the signer has accepted to sign
     fn get_accepted_deposit_requests(
@@ -147,6 +156,29 @@ pub trait DbRead {
         context_window: u16,
         threshold: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
+
+    /// This function returns a withdrawal request report that does the
+    /// following:
+    ///
+    /// 1. Check that the current signer accepted by the withdrawal
+    ///    request.
+    /// 2. Check that the transaction that created the withdrawal is in a
+    ///    stacks block anchored by a bitcoin block on the blockchain
+    ///    identified by the given chain tip.
+    /// 3. Check that the withdrawal has not been included on a sweep
+    ///    transaction that has been confirmed by block on the bitcoin
+    ///    blockchain identified by the given chain tip.
+    ///
+    ///  `Ok(None)` is returned if we do not have a record of the
+    /// withdrawal request.
+    ///
+    /// Note: The above list is probably not exhaustive.
+    fn get_withdrawal_request_report(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        id: &model::QualifiedRequestId,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<Option<WithdrawalRequestReport>, Error>> + Send;
 
     /// Get bitcoin blocks that include a particular transaction
     fn get_bitcoin_blocks_with_transaction(
@@ -305,6 +337,12 @@ pub trait DbRead {
         context_window: u16,
         prevout_txid: &model::BitcoinTxId,
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
+
+    /// Get the bitcoin sighash output.
+    fn will_sign_bitcoin_tx_sighash(
+        &self,
+        sighash: &model::SigHash,
+    ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -439,5 +477,17 @@ pub trait DbWrite {
     fn write_tx_prevout(
         &self,
         prevout: &model::TxPrevout,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transactions sighaes to the database.
+    fn write_bitcoin_txs_sighashes(
+        &self,
+        sighashes: &[model::BitcoinTxSigHash],
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin withdrawals outputs to the database.
+    fn write_bitcoin_withdrawals_outputs(
+        &self,
+        withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }

@@ -88,8 +88,6 @@ impl NetworkKind {
 pub struct Settings {
     /// Blocklist client specific config
     pub blocklist_client: Option<BlocklistClientConfig>,
-    /// Electrum notifier specific config
-    pub block_notifier: BlockNotifierConfig,
     /// Signer-specific configuration
     pub signer: SignerConfig,
     /// Bitcoin core configuration
@@ -129,6 +127,10 @@ pub struct P2PNetworkConfig {
     /// public endpoint(s).
     #[serde(deserialize_with = "p2p_multiaddr_deserializer_vec")]
     pub public_endpoints: Vec<Multiaddr>,
+    /// Enable mDNS discovery for the P2P network. This is useful for local
+    /// testing and development.
+    #[serde(default)]
+    pub enable_mdns: bool,
 }
 
 impl Validatable for P2PNetworkConfig {
@@ -157,57 +159,58 @@ pub struct BlocklistClientConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct EmilyClientConfig {
     /// Emily API endpoints.
-    #[serde(deserialize_with = "url_deserializer_vec")]
-    pub endpoints: Vec<Url>,
+    pub endpoints: Vec<EmilyEndpointConfig>,
 }
 
-impl Validatable for EmilyClientConfig {
+/// Emily API endpoint configuration.
+#[derive(Deserialize, Clone, Debug)]
+pub struct EmilyEndpointConfig {
+    /// The emily API endpoint that the signer will use.
+    #[serde(deserialize_with = "url_deserializer_single")]
+    pub endpoint: Url,
+    /// API key for the Emily API endpoint.
+    /// If the api key is not provided we assume the API doesn't need one.
+    pub api_key: Option<String>,
+}
+
+impl Validatable for EmilyEndpointConfig {
     fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
-        if self.endpoints.is_empty() {
+        // If an API key is provided it needs to be non-empty.
+        if let Some(api_key) = self.api_key.as_ref() {
+            if api_key.is_empty() {
+                return Err(ConfigError::Message(
+                    "[emily_client.endpoints] API key cannot be specified yet empty".to_string(),
+                ));
+            }
+        }
+
+        if !["http", "https"].contains(&self.endpoint.scheme()) {
             return Err(ConfigError::Message(
-                "[emily_client] At least one Emily API endpoint must be provided".to_string(),
+                "[emily_client.endpoints] Invalid URL scheme: must be HTTP or HTTPS".to_string(),
             ));
         }
 
-        for endpoint in &self.endpoints {
-            if !["http", "https"].contains(&endpoint.scheme()) {
-                return Err(ConfigError::Message(
-                    "[emily_client] Invalid URL scheme: must be HTTP or HTTPS".to_string(),
-                ));
-            }
-
-            if endpoint.host_str().is_none() {
-                return Err(ConfigError::Message(
-                    "[emily_client] Invalid URL: host is required".to_string(),
-                ));
-            }
+        if self.endpoint.host_str().is_none() {
+            return Err(ConfigError::Message(
+                "[emily_client.endpoints] Invalid URL: host is required".to_string(),
+            ));
         }
 
         Ok(())
     }
 }
 
-/// Electrum notifier specific config
-#[derive(Deserialize, Clone, Debug)]
-pub struct BlockNotifierConfig {
-    /// Electrum server address
-    pub server: String,
-    /// Retry interval in seconds
-    pub retry_interval: u64,
-    /// Maximum retry attempts
-    pub max_retry_attempts: u32,
-    /// Interval for pinging the server in seconds
-    pub ping_interval: u64,
-    /// Interval for subscribing to block headers in seconds
-    pub subscribe_interval: u64,
-}
-
-impl Validatable for BlockNotifierConfig {
-    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
-        if self.server.is_empty() {
+impl Validatable for EmilyClientConfig {
+    fn validate(&self, settings: &Settings) -> Result<(), ConfigError> {
+        // At least one endpoint must be provided.
+        if self.endpoints.is_empty() {
             return Err(ConfigError::Message(
-                "[block_notifier] Electrum server cannot be empty".to_string(),
+                "[emily_client] At least one Emily API endpoint must be provided".to_string(),
             ));
+        }
+        // Validate each endpoint configuration.
+        for endpoint in &self.endpoints {
+            endpoint.validate(settings)?;
         }
 
         Ok(())
@@ -367,7 +370,6 @@ impl Settings {
 
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
-        self.block_notifier.validate(self)?;
         self.signer.validate(self)?;
 
         Ok(())
@@ -436,12 +438,6 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
         assert!(settings.blocklist_client.is_none());
-
-        assert_eq!(settings.block_notifier.server, "tcp://localhost:60401");
-        assert_eq!(settings.block_notifier.retry_interval, 10);
-        assert_eq!(settings.block_notifier.max_retry_attempts, 5);
-        assert_eq!(settings.block_notifier.ping_interval, 60);
-        assert_eq!(settings.block_notifier.subscribe_interval, 10);
 
         assert_eq!(
             settings.signer.private_key,

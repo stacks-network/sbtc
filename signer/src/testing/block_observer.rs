@@ -1,10 +1,13 @@
 //! Test utilities for the block observer
 
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use bitcoin::hashes::Hash;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
+use bitcoincore_rpc_json::GetTxOutResult;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
@@ -30,6 +33,8 @@ use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::GetTransactionFeeResult;
+use crate::bitcoin::TransactionLookupHint;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -239,6 +244,29 @@ impl BitcoinInteract for TestHarness {
     async fn find_mempool_descendants(&self, _txid: &Txid) -> Result<Vec<Txid>, Error> {
         unimplemented!()
     }
+
+    async fn get_transaction_output(
+        &self,
+        _outpoint: &bitcoin::OutPoint,
+        _include_mempool: bool,
+    ) -> Result<Option<GetTxOutResult>, Error> {
+        unimplemented!()
+    }
+
+    async fn get_transaction_fee(
+        &self,
+        _txid: &bitcoin::Txid,
+        _lookup_hint: Option<TransactionLookupHint>,
+    ) -> Result<GetTransactionFeeResult, Error> {
+        unimplemented!()
+    }
+
+    async fn get_mempool_entry(
+        &self,
+        _txid: &Txid,
+    ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for TestHarness {
@@ -398,9 +426,27 @@ impl StacksInteract for TestHarness {
             marf_proof: None,
         })
     }
+
+    async fn get_sbtc_total_supply(&self, _: &StacksAddress) -> Result<Amount, Error> {
+        Ok(Amount::from_sat(u64::MAX))
+    }
 }
 
 impl EmilyInteract for TestHarness {
+    async fn get_deposit(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<CreateDepositRequest>, Error> {
+        let deposit = self
+            .pending_deposits
+            .iter()
+            .find(|request| {
+                &request.outpoint.txid == txid.deref() && request.outpoint.vout == output_index
+            })
+            .cloned();
+        Ok(deposit)
+    }
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         Ok(self.pending_deposits.clone())
     }

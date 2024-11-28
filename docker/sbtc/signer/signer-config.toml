@@ -24,8 +24,9 @@
 # Default: <none>
 # Required: true
 # Environment: SIGNER_EMILY__ENDPOINTS
+# Environment Example: '{"endpoint":"https://api.emilyexample.com","api_key":"1234567890abcdef"},..'
 endpoints = [
-    "http://emily-server:3031"
+    { endpoint = "http://emily-server:3031" },
 ]
 
 # !! ==============================================================================
@@ -60,23 +61,6 @@ rpc_endpoints = [
 block_hash_stream_endpoints = [
     "tcp://bitcoin:28332"
 ]
-
-# !! ==============================================================================
-# !! Block Notifier Configuration
-# !! ==============================================================================
-# Electrum server connection confirmation.
-[block_notifier]
-# The URI of the Electrum server to connect to.
-#
-# Format: "<protocol>://<host>:<port>"
-# Default: <none>
-# Required: true
-# Environment: SIGNER_BLOCK_NOTIFIER__SERVER
-server = "tcp://localhost:60401"
-retry_interval = 10
-max_retry_attempts = 5
-ping_interval = 60
-subscribe_interval = 10
 
 # !! ==============================================================================
 # !! Stacks Node Configuration
@@ -231,3 +215,12 @@ listen_on = []
 # Required: false
 # Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
 public_endpoints = []
+
+# Enables/disables mDNS (multicast DNS) discovery. mDNS allows sBTC signers
+# running on the same local network to discover each other without explicitly
+# providing them as seed nodes.
+#
+# Default: false
+# Required: false
+# Environment: SIGNER_SIGNER__P2P__ENABLE_MDNS
+enable_mdns = false

@@ -1,5 +1,5 @@
 //! Integration testing helper functions
-//!  
+//!
 
 use bitcoin::absolute::LockTime;
 use bitcoin::key::TapTweak;
