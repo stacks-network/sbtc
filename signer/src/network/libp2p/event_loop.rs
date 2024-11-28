@@ -2,8 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
+use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{gossipsub, identify, mdns, Swarm};
+use libp2p::{gossipsub, identify, kad, mdns, Multiaddr, Swarm};
 use tokio::sync::Mutex;
 
 use crate::codec::{Decode, Encode};
@@ -96,7 +97,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::warn!(%listener_id, %error, "listener error");
                     }
                     SwarmEvent::Dialing { peer_id, connection_id } => {
-                        tracing::debug!(peer_id = ?peer_id, %connection_id, "dialing peer");
+                        tracing::trace!(?peer_id, %connection_id, "dialing peer");
                     }
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
                         if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
@@ -106,17 +107,17 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         }
                         tracing::debug!(%peer_id, ?endpoint, "connected to peer");
                     }
-                    SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                        tracing::debug!(%peer_id, ?cause, "connection closed");
+                    SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
+                        tracing::trace!(%peer_id, ?cause, ?endpoint, "connection closed");
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
-                        tracing::debug!(%local_addr, %send_back_addr, "incoming connection");
+                        tracing::trace!(%local_addr, %send_back_addr, "incoming connection");
                     }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Ping(ping)) => {
                         tracing::trace!("ping received: {:?}", ping);
                     }
-                    SwarmEvent::OutgoingConnectionError { connection_id, error, .. } => {
-                        tracing::warn!(%connection_id, %error, "outgoing connection error");
+                    SwarmEvent::OutgoingConnectionError { connection_id, error, peer_id } => {
+                        tracing::trace!(%connection_id, %error, ?peer_id, "outgoing connection error");
                     }
                     SwarmEvent::IncomingConnectionError {
                         local_addr,
@@ -124,7 +125,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         error,
                         ..
                     } => {
-                        tracing::warn!(%local_addr, %send_back_addr, %error, "incoming connection error");
+                        tracing::trace!(%local_addr, %send_back_addr, %error, "incoming connection error");
                     }
                     SwarmEvent::NewExternalAddrCandidate { address } => {
                         tracing::debug!(%address, "new external address candidate");
@@ -136,11 +137,41 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::debug!(%address, "external address expired (ours)");
                     }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-                        tracing::debug!(%peer_id, %address, "new external address (peer)");
+                        if swarm.listeners().any(|addr| addr == &address) {
+                            tracing::debug!(%peer_id, %address, "ignoring our own external address");
+                        } else {
+                            tracing::debug!(%peer_id, %address, "new external address of peer");
+                            let kad_addr = strip_peer_id(&address);
+                            tracing::debug!(%peer_id, %kad_addr, "adding address to kademlia");
+                            swarm
+                                .behaviour_mut()
+                                .kademlia
+                                .add_address(&peer_id, kad_addr);
+                        }
+                    }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::Kademlia(event)) => {
+                        handle_kademlia_event(event);
+                    }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatClient(event)) => {
+                        tracing::debug!(
+                            tested_addr = ?event.tested_addr,
+                            server = ?event.server,
+                            result = ?event.result,
+                            "autonat client event"
+                        );
+                    }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatServer(event)) => {
+                        tracing::debug!(
+                            all_addrs = ?event.all_addrs,
+                            tested_addr = ?event.tested_addr,
+                            client = ?event.client,
+                            result = ?event.result,
+                            "autonat server event"
+                        );
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
-                    _ => tracing::trace!("unhandled swarm event"),
+                    event => tracing::trace!(?event, "unhandled swarm event"),
                 }
             }
 
@@ -148,30 +179,14 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
             let outbox = outbox.lock().await.drain(..).collect::<Vec<_>>();
             for payload in outbox {
                 let msg_id = payload.id();
+                tracing::trace!(
+                    message_id = hex::encode(msg_id),
+                    msg = %payload,
+                    "publishing message"
+                );
 
-                // Attempt to encode the message payload into bytes
-                // using the signer codec.
-                let encoded_msg = match payload.encode_to_vec() {
-                    Ok(msg) => msg,
-                    Err(error) => {
-                        // An error occurred while encoding the message.
-                        // Log the error and send a failure signal to the application
-                        // so that it can handle the failure as needed.
-                        tracing::warn!(%error, "failed to encode message");
-                        let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
-                        continue;
-                    }
-                };
-
-                if tracing::enabled!(tracing::Level::TRACE) {
-                    tracing::trace!(
-                        msg_id = hex::encode(msg_id),
-                        msg = hex::encode(&encoded_msg),
-                        "publishing message"
-                    );
-                } else {
-                    tracing::debug!(msg_id = hex::encode(msg_id), "publishing message");
-                }
+                // Encode the message payload into bytes using the signer codec.
+                let encoded_msg = payload.encode_to_vec();
 
                 let _ = swarm
                     .lock()
@@ -197,15 +212,48 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
         }
     };
 
+    let log = async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let swarm = swarm.lock().await;
+            let peers = swarm.connected_peers().collect::<Vec<_>>();
+            tracing::debug!(?peers, "connected peers");
+        }
+    };
+
     tokio::select! {
         _ = term.wait_for_shutdown() => {
             tracing::info!("libp2p received a termination signal; stopping the libp2p swarm");
         },
         _ = poll_outbound => {},
         _ = poll_swarm => {},
+        _ = log => {},
     }
 
     tracing::info!("libp2p event loop terminated");
+}
+
+#[tracing::instrument(skip_all, name = "kademlia")]
+fn handle_kademlia_event(event: kad::Event) {
+    match event {
+        kad::Event::RoutingUpdated {
+            peer,
+            is_new_peer,
+            addresses,
+            bucket_range,
+            old_peer,
+        } => {
+            tracing::debug!(
+                %peer,
+                is_new_peer,
+                ?addresses,
+                ?bucket_range,
+                ?old_peer,
+                "kademlia routing table updated"
+            );
+        }
+        _ => tracing::trace!(?event, "kademlia event"),
+    }
 }
 
 #[tracing::instrument(skip_all, name = "mdns")]
@@ -251,19 +299,18 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
 #[tracing::instrument(skip_all, name = "identify")]
 fn handle_identify_event(
     swarm: &mut Swarm<SignerBehavior>,
-    ctx: &impl Context,
+    _: &impl Context,
     event: identify::Event,
 ) {
     use identify::Event;
 
     match event {
         Event::Received { peer_id, info, .. } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                tracing::debug!(%peer_id, "ignoring identify message from unknown peer");
-                return;
-            }
-            tracing::debug!(%peer_id, "received identify message from peer; adding to confirmed external addresses");
-            swarm.add_external_address(info.observed_addr.clone());
+            tracing::debug!(%peer_id, ?info, "received identify message from peer");
+            swarm
+                .behaviour_mut()
+                .kademlia
+                .add_address(&peer_id, strip_peer_id(&info.observed_addr));
         }
         Event::Pushed { connection_id, peer_id, info } => {
             tracing::debug!(%connection_id, %peer_id, ?info, "pushed identify message to peer");
@@ -288,8 +335,8 @@ fn handle_gossipsub_event(
     match event {
         Event::Message {
             propagation_source: peer_id,
-            message_id: id,
             message,
+            ..
         } => {
             if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
                 tracing::warn!(%peer_id, "ignoring message from unknown peer");
@@ -315,6 +362,14 @@ fn handle_gossipsub_event(
 
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
+                    tracing::trace!(
+                        local_peer_id = %swarm.local_peer_id(),
+                        %peer_id,
+                        message_id = hex::encode(msg.id()),
+                        %msg,
+                        "received message",
+                    );
+
                     let _ = ctx.get_signal_sender()
                         .send(P2PEvent::MessageReceived(msg).into())
                         .map_err(|error| {
@@ -334,5 +389,63 @@ fn handle_gossipsub_event(
         Event::GossipsubNotSupported { peer_id } => {
             tracing::warn!(%peer_id, "peer does not support gossipsub");
         }
+    }
+}
+
+/// For a multiaddr that ends with a peer id, this strips this suffix. Rust-libp2p
+/// only supports dialing to an address without providing the peer id.
+fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
+    let mut new_addr = Multiaddr::empty();
+    for protocol in addr.iter().take_while(|p| !matches!(p, Protocol::P2p(_))) {
+        new_addr.push(protocol);
+    }
+    new_addr
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn test_strip_peer_id() {
+        let endpoint =
+            "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N";
+        let addr = Multiaddr::from_str(endpoint).unwrap();
+
+        let stripped = strip_peer_id(&addr);
+
+        let stripped_str = "/ip4/198.51.100.0/tcp/4242";
+        assert_eq!(stripped.to_string(), stripped_str);
+    }
+}
+
+/// For a multiaddr that ends with a peer id, this strips this suffix. Rust-libp2p
+/// only supports dialing to an address without providing the peer id.
+fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
+    let mut new_addr = Multiaddr::empty();
+    for protocol in addr.iter().take_while(|p| !matches!(p, Protocol::P2p(_))) {
+        new_addr.push(protocol);
+    }
+    new_addr
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn test_strip_peer_id() {
+        let endpoint =
+            "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N";
+        let addr = Multiaddr::from_str(endpoint).unwrap();
+
+        let stripped = strip_peer_id(&addr);
+
+        let stripped_str = "/ip4/198.51.100.0/tcp/4242";
+        assert_eq!(stripped.to_string(), stripped_str);
     }
 }

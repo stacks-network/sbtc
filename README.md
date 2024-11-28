@@ -1,6 +1,6 @@
 # sBTC
 
-> Note: This repo is still in early development and is not ready for production use.
+> Note: This repo is in _beta_ and is not yet ready for production use.
 
 [![License: GPL v3][gpl-v3-badge]][gpl-v3-link]
 [![Discord][discord-badge]][discord-link]
@@ -158,6 +158,10 @@ dependencies.
 
 This project currently supports development on UNIX-based operating systems but
 does not support development on Windows or z/OS.
+
+## Security
+
+See [this](./SECURITY.md).
 
 [discord-badge]: https://img.shields.io/static/v1?logo=discord&label=discord&message=Join&color=blue
 [discord-link]: https://discord.gg/hHaz2gGX

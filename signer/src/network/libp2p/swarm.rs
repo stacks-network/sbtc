@@ -9,9 +9,11 @@ use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    gossipsub, identify, kad, mdns, noise, ping, /*relay,*/ tcp, yamux, Multiaddr, PeerId,
-    Swarm, SwarmBuilder,
+    autonat, gossipsub, identify, kad, mdns, noise, ping, tcp, yamux, Multiaddr, PeerId, Swarm,
+    SwarmBuilder,
 };
+use rand::rngs::StdRng;
+use rand::SeedableRng as _;
 use tokio::sync::Mutex;
 
 use super::errors::SignerSwarmError;
@@ -22,13 +24,53 @@ use super::event_loop;
 pub struct SignerBehavior {
     pub gossipsub: gossipsub::Behaviour,
     mdns: Toggle<mdns::tokio::Behaviour>,
-    kademlia: kad::Behaviour<MemoryStore>,
+    pub kademlia: kad::Behaviour<MemoryStore>,
     ping: ping::Behaviour,
-    identify: identify::Behaviour,
+    pub identify: identify::Behaviour,
+    pub autonat_client: autonat::v2::client::Behaviour<StdRng>,
+    pub autonat_server: autonat::v2::server::Behaviour<StdRng>,
 }
 
 impl SignerBehavior {
     pub fn new(keypair: Keypair, enable_mdns: bool) -> Result<Self, SignerSwarmError> {
+        let local_peer_id = keypair.public().to_peer_id();
+
+        let mdns = if enable_mdns {
+            Some(
+                mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)
+                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
+            )
+        } else {
+            None
+        }
+        .into();
+
+        let autonat_client = autonat::v2::client::Behaviour::new(
+            rand::rngs::StdRng::from_entropy(),
+            autonat::v2::client::Config::default(),
+        );
+
+        let autonat_server =
+            autonat::v2::server::Behaviour::new(rand::rngs::StdRng::from_entropy());
+
+        let identify = identify::Behaviour::new(identify::Config::new(
+            identify::PUSH_PROTOCOL_NAME.to_string(),
+            keypair.public(),
+        ));
+
+        Ok(Self {
+            gossipsub: Self::gossipsub(&keypair)?,
+            mdns,
+            kademlia: Self::kademlia(&local_peer_id),
+            ping: Default::default(),
+            identify,
+            autonat_client,
+            autonat_server,
+        })
+    }
+
+    /// Create a new gossipsub behavior.
+    fn gossipsub(keypair: &Keypair) -> Result<gossipsub::Behaviour, SignerSwarmError> {
         let message_id_fn = |message: &gossipsub::Message| {
             let mut hasher = DefaultHasher::new();
             message.data.hash(&mut hasher);
@@ -42,42 +84,23 @@ impl SignerBehavior {
             .build()
             .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
 
-        let mdns = if enable_mdns {
-            Some(
-                mdns::tokio::Behaviour::new(mdns::Config::default(), keypair.public().to_peer_id())
-                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
-            )
-        } else {
-            None
-        }
-        .into();
-
-        Ok(Self {
-            gossipsub: gossipsub::Behaviour::new(
-                gossipsub::MessageAuthenticity::Signed(keypair.clone()),
-                gossipsub_config,
-            )
-            .map_err(SignerSwarmError::LibP2PMessage)?,
-            mdns,
-            kademlia: Self::kademlia(&keypair),
-            ping: ping::Behaviour::default(),
-            identify: identify::Behaviour::new(identify::Config::new(
-                identify::PUSH_PROTOCOL_NAME.to_string(),
-                keypair.public(),
-            )),
-        })
+        gossipsub::Behaviour::new(
+            gossipsub::MessageAuthenticity::Signed(keypair.clone()),
+            gossipsub_config,
+        )
+        .map_err(SignerSwarmError::LibP2PMessage)
     }
 
-    fn kademlia(keypair: &Keypair) -> kad::Behaviour<MemoryStore> {
+    /// Create a new kademlia behavior.
+    fn kademlia(peer_id: &PeerId) -> kad::Behaviour<MemoryStore> {
         let config = kad::Config::new(kad::PROTOCOL_NAME)
             .disjoint_query_paths(true)
             .to_owned();
 
-        kad::Behaviour::with_config(
-            keypair.public().to_peer_id(),
-            MemoryStore::new(keypair.public().to_peer_id()),
-            config,
-        )
+        let mut kademlia =
+            kad::Behaviour::with_config(*peer_id, MemoryStore::new(*peer_id), config);
+        kademlia.set_mode(Some(kad::Mode::Server));
+        kademlia
     }
 }
 
