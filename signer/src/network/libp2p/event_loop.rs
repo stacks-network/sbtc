@@ -339,6 +339,18 @@ fn handle_gossipsub_event(
                 return;
             }
 
+            // The message may have originated from someone else, let's
+            // check that peerId too. If we haven't been told the source
+            // then we distrust the message and ignore it.
+            let Some(origin_peer_id) = message.source else {
+                return;
+            };
+
+            if !ctx.state().current_signer_set().is_allowed_peer(&origin_peer_id) {
+                tracing::warn!(%origin_peer_id, "ignoring message from unknown origin peer");
+                return;
+            }
+
             Msg::decode(message.data.as_slice())
                 .and_then(|msg| {
                     tracing::trace!(
@@ -350,8 +362,8 @@ fn handle_gossipsub_event(
                     );
 
                     let public_key = msg.recover_ecdsa()?;
-                    if peer_id != public_key.into() {
-                        tracing::error!(%peer_id, "connected peer sent an invalid message");
+                    if origin_peer_id != public_key.into() {
+                        tracing::error!(%origin_peer_id, "connected peer sent an invalid message");
                         return Err(Error::InvalidSignature)
                     }
 
