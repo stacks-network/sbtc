@@ -401,22 +401,15 @@ fn op_csv_disabled() {
     };
 }
 
-/// This validates that a user can disable OP_CSV checks if we allow them
-/// to submit any lock-time. It doesn't test much of the code in this
-/// crate, just that bitcoin-core will treat OP_CSV like a no-op if the
-/// [`sbtc::deposits::SEQUENCE_LOCKTIME_DISABLE_FLAG`] bit is set to 1 in
-/// the input `lock_time`.
+/// This validates that a user can reclaim their funds after the locktime.
 ///
 /// The test proceeds as follows:
-/// 1. Create and submit a transaction where the lock script uses a
-///    lock-time at least 50 blocks in the future but also disables OP_CSV.
-/// 2. Confirm the transaction and spend it immediately, proving that
-///    OP_CSV was disabled.
-/// 3. Create and submit another transaction where the lock script uses a
-///    lock-time where OP_CSV is not disabled.
-/// 4. Confirm that transaction and try to spend it immediately. The
-///    transaction that tries to spend the transaction from (3) should be
-///    rejected.
+/// 1. Spend all the user's funds for am sBTC deposit. Check that the
+///    balance is zero.
+/// 2. Wait locktime blocks after the first confirmation.
+/// 3. Create and submit another transaction reclaiming the funds.
+/// 4. Confirm the transaction and check that the balance is what it is
+///    supposed to be less bitcoin transaction fees.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn reclaiming_rejected_deposits() {
@@ -426,6 +419,7 @@ fn reclaiming_rejected_deposits() {
 
     let (rpc, faucet) = regtest::initialize_blockchain();
     let depositor = Recipient::new(AddressType::P2tr);
+    assert_eq!(depositor.get_balance(rpc).to_sat(), 0);
 
     // Start off with some initial UTXOs to work with.
     let outpoint = faucet.send_to(50_000_000, &depositor.address);
@@ -434,26 +428,34 @@ fn reclaiming_rejected_deposits() {
     // There is only one UTXO under the depositor's name, so let's get it
     let utxos = depositor.get_utxos(rpc, None);
 
+    assert_eq!(depositor.get_balance(rpc).to_sat(), 50_000_000);
+    // This is the "signers' secret". It doesn't matter for this test so we
+    // generate one randomly.
     let secret_key = SecretKey::new(&mut OsRng);
-
     let deposit = DepositScriptInputs {
         signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
         recipient: PrincipalData::from(StacksAddress::burn_address(false)),
         max_fee,
     };
+
+    // Now the depositor's reclaim script is locked with a P2PK script that
+    // is locked with an x-only public key. This means we need to use a
+    // BIP-341 Schnorr signature to spend the funds.
     let x_only_key = depositor.keypair.public_key().x_only_public_key().0;
     let reclaim_script = ScriptBuf::builder()
         .push_opcode(opcodes::all::OP_DROP)
         .push_slice(x_only_key.serialize())
         .push_opcode(opcodes::all::OP_CHECKSIG)
         .into_script();
+    // The full reclaim path script includes an OP_CSV lock, so let's
+    // create one.
     let reclaim = ReclaimScriptInputs::try_new(lock_time, reclaim_script).unwrap();
 
+    // Now we have both scripts in the taproot scriptPubKey.
     let deposit_script = deposit.deposit_script();
     let reclaim_script = reclaim.reclaim_script();
-    // This transaction is kinda invalid because it doesn't have any
-    // inputs. But it is fine for our purposes.
 
+    // This is a valid deposit UTXO for sBTC.
     let deposit_utxo = TxOut {
         value: Amount::from_sat(amount_sats),
         script_pubkey: sbtc::deposits::to_script_pubkey(
@@ -462,6 +464,8 @@ fn reclaiming_rejected_deposits() {
         ),
     };
 
+    // This is a full transaction including our deposit UTXO. Let's sign
+    // and submit it.
     let mut deposit_tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
@@ -476,64 +480,65 @@ fn reclaiming_rejected_deposits() {
 
     regtest::p2tr_sign_transaction(&mut deposit_tx, 0, &utxos, &depositor.keypair);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
+    // Let's confirm it.
+    faucet.generate_blocks(1);
+    //  the depositor spent all of their funds on the.
+    assert_eq!(depositor.get_balance(rpc).to_sat(), 0);
 
-    faucet.generate_blocks(6);
-
-    //
+    //  Let's confirm enough blocks for us to reclaim the funds. In this
+    // test scenario the signers have not swept the funds for some reason.
+    faucet.generate_blocks(lock_time as u64);
+    // Alright now we know the signers haven't moved our funds, so we
+    // reclaim it. We construct a transaction spending the funds back to
+    // ourselves.
+    let reclaim_tx_fee = 30000;
     let mut reclaim_tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::from_height(5).unwrap(),
         input: vec![TxIn {
             previous_output: OutPoint::new(deposit_tx.compute_txid(), 0),
-            sequence: Sequence::ENABLE_RBF_NO_LOCKTIME,
+            sequence: Sequence::from_consensus(reclaim.lock_time()),
             script_sig: ScriptBuf::new(),
             witness: Witness::new(),
         }],
         output: vec![TxOut {
-            value: Amount::from_sat(amount_sats - 30000),
+            value: Amount::from_sat(amount_sats - reclaim_tx_fee),
             script_pubkey: depositor.script_pubkey.clone(),
         }],
     };
 
+    // Now we need to sign our input. We construct the sighash and create a
+    // BIP-341 Schnorr signature. This part is not obvious.
     let input_utxos: Vec<TxOut> = vec![deposit_utxo];
 
     let prevouts = Prevouts::All(input_utxos.as_slice());
     let sighash_type = TapSighashType::Default;
     let mut sighasher = SighashCache::new(&reclaim_tx);
-    // The signers' UTXO is always the first input in the transaction.
-    // Moreover, the signers can only spend this UTXO using the taproot
-    // key-spend path of UTXO.
+
     let leaf_hash = TapLeafHash::from_script(&reclaim_script, LeafVersion::TapScript);
     let reclaim_sighash = sighasher
         .taproot_script_spend_signature_hash(0, &prevouts, leaf_hash, sighash_type)
         .unwrap();
     let msg = secp256k1::Message::from(reclaim_sighash);
 
-    //
-
+    // Now we sign the sighash
     let signature = SECP256K1.sign_schnorr(&msg, &depositor.keypair);
+
+    // Now we need to construct the merkle path proving that the merkle
+    // tree is what we say it is.
     let ver = LeafVersion::TapScript;
     // For such a simple tree, we construct it by hand.
     let leaf1 = NodeInfo::new_leaf_with_ver(deposit_script.clone(), ver);
     let leaf2 = NodeInfo::new_leaf_with_ver(reclaim_script.clone(), ver);
 
-    // A Result::Err is returned by NodeInfo::combine if the depth of
-    // our taproot tree exceeds the maximum depth of taproot trees,
-    // which is 128. We have two nodes so the depth is 1 so this will
-    // never panic.
-    let node = NodeInfo::combine(leaf1, leaf2).expect("This tree depth greater than max of 128");
+    let node = NodeInfo::combine(leaf1, leaf2).unwrap();
     let internal_key = *sbtc::UNSPENDABLE_TAPROOT_KEY;
 
     let taproot = TaprootSpendInfo::from_node_info(SECP256K1, internal_key, node);
-
-    // TaprootSpendInfo::control_block returns None if the key given,
-    // (script, version), is not in the tree. But this key is definitely
-    // in the tree (see the variable leaf1 in the `construct_taproot_info`
-    // function).
     let control_block = taproot
-        .control_block(&(dbg!(reclaim_script.clone()), ver))
+        .control_block(&(reclaim_script.clone(), ver))
         .unwrap();
-
+    // Now we can set the witness data.
     let witness_data = [
         signature.serialize().to_vec(),
         reclaim_script.to_bytes(),
@@ -541,8 +546,11 @@ fn reclaiming_rejected_deposits() {
     ];
     reclaim_tx.input[0].witness = Witness::from_slice(&witness_data);
 
-    faucet.generate_blocks(6);
-
     rpc.send_raw_transaction(&reclaim_tx).unwrap();
     faucet.generate_blocks(1);
+
+    assert_eq!(
+        depositor.get_balance(rpc).to_sat(),
+        amount_sats - reclaim_tx_fee
+    );
 }
