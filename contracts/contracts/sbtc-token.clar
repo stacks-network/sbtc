@@ -101,6 +101,38 @@
 )
 
 ;; --- Public functions
+(define-public (transfer-many 
+				(recipients (list 200 { 
+					amount: uint, 
+					sender: principal, 
+					to: principal, 
+					memo: (optional (buff 34)) })))
+	(fold complete-individual-transfer recipients (ok u0))
+)
+
+(define-private (complete-individual-transfer 
+					(individual-transfer { 
+						amount: uint, 
+						sender: principal, 
+						to: principal, 
+						memo: (optional (buff 34)) }) 
+					(helper-response (response uint uint)))
+    (match helper-response 
+        index
+            (begin 
+                (unwrap! 
+					(transfer 
+						(get amount individual-transfer) 
+						(get sender individual-transfer) 
+						(get to individual-transfer) 
+						(get memo individual-transfer)) 
+				(err (+ ERR_TRANSFER_INDEX_PREFIX (+ u10 index))))
+                (ok (+ index u1))
+            )
+        err-response
+            (err err-response)
+    )
+)
 
 ;; sip-010-trait
 
@@ -110,22 +142,6 @@
 		(asserts! (or (is-eq tx-sender sender) (is-eq contract-caller sender)) ERR_NOT_OWNER)
 		(ft-transfer? sbtc-token amount sender recipient)
 	)
-)
-
-(define-public (transfer-many (recipients (list 200 { amount: uint, sender: principal, to: principal, memo: (optional (buff 34)) })))
-	(fold complete-individual-transfer recipients (ok u0))
-)
-
-(define-private (complete-individual-transfer (individual-transfer { amount: uint, sender: principal, to: principal, memo: (optional (buff 34)) }) (helper-response (response uint uint)))
-    (match helper-response 
-        index
-            (begin 
-                (unwrap! (transfer (get amount individual-transfer) (get sender individual-transfer) (get to individual-transfer) (get memo individual-transfer)) (err (+ ERR_TRANSFER_INDEX_PREFIX (+ u10 index))))
-                (ok (+ index u1))
-            )
-        err-response
-            (err err-response)
-    )
 )
 
 (define-read-only (get-name)
