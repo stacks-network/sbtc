@@ -343,23 +343,6 @@ fn handle_gossipsub_event(
                 return;
             }
 
-            if tracing::enabled!(tracing::Level::TRACE) {
-                tracing::trace!(
-                    local_peer_id = %swarm.local_peer_id(),
-                    %peer_id,
-                    msg_id = hex::encode(id.0),
-                    msg = hex::encode(&message.data),
-                    "message received",
-                );
-            } else {
-                tracing::debug!(
-                    local_peer_id = %swarm.local_peer_id(),
-                    %peer_id,
-                    msg_id = hex::encode(id.0),
-                    "message received",
-                );
-            }
-
             Msg::decode(message.data.as_slice())
                 .map(|msg| {
                     tracing::trace!(
@@ -389,35 +372,6 @@ fn handle_gossipsub_event(
         Event::GossipsubNotSupported { peer_id } => {
             tracing::warn!(%peer_id, "peer does not support gossipsub");
         }
-    }
-}
-
-/// For a multiaddr that ends with a peer id, this strips this suffix. Rust-libp2p
-/// only supports dialing to an address without providing the peer id.
-fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
-    let mut new_addr = Multiaddr::empty();
-    for protocol in addr.iter().take_while(|p| !matches!(p, Protocol::P2p(_))) {
-        new_addr.push(protocol);
-    }
-    new_addr
-}
-
-#[cfg(test)]
-mod tests {
-    use std::str::FromStr;
-
-    use super::*;
-
-    #[test]
-    fn test_strip_peer_id() {
-        let endpoint =
-            "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N";
-        let addr = Multiaddr::from_str(endpoint).unwrap();
-
-        let stripped = strip_peer_id(&addr);
-
-        let stripped_str = "/ip4/198.51.100.0/tcp/4242";
-        assert_eq!(stripped.to_string(), stripped_str);
     }
 }
 
