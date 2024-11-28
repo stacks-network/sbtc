@@ -240,7 +240,7 @@ where
         if self.is_epoch3 {
             return Ok(true);
         }
-        tracing::debug!("checked for whether we are in Epoch 3 or later");
+        tracing::debug!("checked for whether we are in epoch 3 or later");
         let pox_info = self.context.get_stacks_client().get_pox_info().await?;
 
         let Some(nakamoto_start_height) = pox_info.nakamoto_start_height() else {
@@ -250,7 +250,7 @@ where
         let is_epoch3 = pox_info.current_burnchain_block_height > nakamoto_start_height;
         if is_epoch3 {
             self.is_epoch3 = is_epoch3;
-            tracing::debug!("we are in Epoch 3 or later; time to do work");
+            tracing::debug!("we are in epoch 3 or later; time to do work");
         }
         Ok(is_epoch3)
     }
@@ -266,7 +266,7 @@ where
 
         let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
         if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("sleeping before processing new Bitcoin block.");
+            tracing::debug!("sleeping before processing new bitcoin block");
             tokio::time::sleep(bitcoin_processing_delay).await;
         }
 
@@ -370,7 +370,7 @@ where
 
         // If the latest DKG aggregate key matches on-chain data, nothing to do here
         if Some(last_dkg.aggregate_key) == current_aggregate_key {
-            tracing::debug!("stacks-core is up to date with the current aggregate key");
+            tracing::debug!("stacks node is up to date with the current aggregate key");
             return Ok(());
         }
 
@@ -1187,7 +1187,7 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
-        tracing::debug!("Fetching pending deposit and withdrawal requests");
+        tracing::debug!("fetching pending deposit and withdrawal requests");
         let context_window = self.context_window;
         let threshold = self.threshold;
 
@@ -1341,7 +1341,7 @@ where
         }
 
         // The contract is not deployed yet, so we can proceed
-        tracing::info!("Contract not deployed yet, proceeding with deployment");
+        tracing::info!("contract not deployed yet, proceeding with deployment");
 
         let sign_request_fut = self.construct_deploy_contracts_stacks_sign_request(
             contract_deploy,
