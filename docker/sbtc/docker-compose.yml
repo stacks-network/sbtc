@@ -58,8 +58,6 @@ services:
       context: ../..
       dockerfile: docker/sbtc/Dockerfile
       target: blocklist-client
-    volumes:
-      - "../../blocklist-client/src/config/default.toml:/src/config/default.toml"
     environment:
       BLOCKLIST_CLIENT__SERVER__HOST: 0.0.0.0
       BLOCKLIST_CLIENT__SERVER__PORT: 3032
