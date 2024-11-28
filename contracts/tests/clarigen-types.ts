@@ -548,14 +548,7 @@ export const contracts = {
           { name: "burn-height", type: "uint128" },
           { name: "sweep-txid", type: { buffer: { length: 32 } } },
         ],
-        outputs: {
-          type: {
-            response: {
-              ok: { response: { ok: "bool", error: "uint128" } },
-              error: "uint128",
-            },
-          },
-        },
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           txid: TypedAbiArg<Uint8Array, "txid">,
@@ -566,7 +559,7 @@ export const contracts = {
           burnHeight: TypedAbiArg<number | bigint, "burnHeight">,
           sweepTxid: TypedAbiArg<Uint8Array, "sweepTxid">,
         ],
-        Response<Response<boolean, bigint>, bigint>
+        Response<boolean, bigint>
       >,
       completeDepositsWrapper: {
         name: "complete-deposits-wrapper",
