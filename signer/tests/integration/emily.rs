@@ -652,6 +652,7 @@ async fn get_limits_works() {
         Some(Amount::from_sat(100)),
         Some(Amount::from_sat(90)),
         Some(Amount::from_sat(80)),
+        None,
     );
 
     assert_eq!(limits, expected);

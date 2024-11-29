@@ -25,6 +25,7 @@ use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
+use signer::context::SbtcLimits;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::keys::SignerScriptPubKey as _;
@@ -102,6 +103,11 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
             .expect_get_deposits()
             .times(1..)
             .returning(move || Box::pin(std::future::ready(Ok(emily_client_response.clone()))));
+
+        client
+            .expect_get_limits()
+            .times(1..)
+            .returning(|| Box::pin(async { Ok(SbtcLimits::default()) }));
     })
     .await;
 
@@ -617,7 +623,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        max_mintable: u64::MAX,
+        sbtc_limits: SbtcLimits::default(),
     };
 
     let mut transactions = requests.construct_transactions().unwrap();

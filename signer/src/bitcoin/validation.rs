@@ -15,13 +15,10 @@ use serde::Serialize;
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
-use crate::context::SbtcLimits;
-use crate::emily_client::EmilyInteract as _;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
 use crate::message::OutPointMessage;
-use crate::stacks::api::StacksInteract as _;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxSigHash;
@@ -43,7 +40,6 @@ use super::utxo::WithdrawalRequest;
 struct ValidationCache<'a> {
     deposit_reports: HashMap<(&'a Txid, u32), (DepositRequestReport, SignerVotes)>,
     withdrawal_reports: HashMap<&'a QualifiedRequestId, (WithdrawalRequestReport, SignerVotes)>,
-    sbtc_limits: SbtcLimits,
 }
 
 /// The necessary information for validating a bitcoin transaction.
@@ -131,10 +127,7 @@ impl BitcoinPreSignRequest {
         C: Context + Send + Sync,
     {
         let db = ctx.get_storage();
-        let mut cache = ValidationCache {
-            sbtc_limits: ctx.get_emily_client().get_limits().await?,
-            ..Default::default()
-        };
+        let mut cache = ValidationCache::default();
 
         // Fetch all deposit reports and votes
         for requests in &self.request_package {
@@ -190,15 +183,14 @@ impl BitcoinPreSignRequest {
     where
         C: Context + Send + Sync,
     {
-        let sbtc_supply = ctx
-            .get_stacks_client()
-            .get_sbtc_total_supply(&ctx.config().signer.deployer)
-            .await?;
-        let total_cap = cache.sbtc_limits.total_cap().unwrap_or(Amount::MAX_MONEY);
-        let max_mintable = total_cap
-            .checked_sub(sbtc_supply)
-            .unwrap_or(Amount::ZERO)
+        // if the cap is None, then we assume that it is unlimited.
+        let max_mintable = ctx
+            .state()
+            .get_current_limits()
+            .max_mintable_cap()
+            .unwrap_or(Amount::MAX_MONEY)
             .to_sat();
+
         cache
             .deposit_reports
             .values()
@@ -251,7 +243,7 @@ impl BitcoinPreSignRequest {
 
         for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(btc_ctx, requests, signer_state, &mut cache)
+                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state, &mut cache)
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -266,13 +258,17 @@ impl BitcoinPreSignRequest {
     /// This function returns the new signer bitcoin state if we were to
     /// sign and confirmed the bitcoin transaction created using the given
     /// inputs and outputs.
-    async fn construct_tx_sighashes<'a>(
+    async fn construct_tx_sighashes<'a, C>(
         &self,
+        ctx: &C,
         btc_ctx: &BitcoinTxContext,
         requests: &'a TxRequestIds,
         signer_state: SignerBtcState,
         cache: &mut ValidationCache<'a>,
-    ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error> {
+    ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
+    where
+        C: Context + Send + Sync,
+    {
         let mut deposits = Vec::with_capacity(requests.deposits.len());
         let mut withdrawals = Vec::with_capacity(requests.withdrawals.len());
 
@@ -314,7 +310,7 @@ impl BitcoinPreSignRequest {
         // their fees anymore in order for them to be accepted by the
         // network.
         signer_state.last_fees = None;
-
+        let sbtc_limits = ctx.state().get_current_limits();
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
@@ -323,12 +319,9 @@ impl BitcoinPreSignRequest {
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
-            max_deposit_amount: cache
-                .sbtc_limits
-                .per_deposit_cap()
-                .unwrap_or(Amount::MAX_MONEY),
-            max_withdrawal_amount: cache
-                .sbtc_limits
+            // If the cap is None, then we assume that it is unlimited.
+            max_deposit_amount: sbtc_limits.per_deposit_cap().unwrap_or(Amount::MAX_MONEY),
+            max_withdrawal_amount: sbtc_limits
                 .per_withdrawal_cap()
                 .unwrap_or(Amount::MAX_MONEY),
         };
@@ -877,6 +870,7 @@ mod tests {
     use bitcoin::Witness;
     use test_case::test_case;
 
+    use crate::context::SbtcLimits;
     use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksTxId;
     use crate::testing::context::TestContext;
@@ -1267,20 +1261,15 @@ mod tests {
         expected: Result<(), Error>,
     ) {
         // Create mock context
-        let mut context = TestContext::default_mocked();
-        context
-            .with_stacks_client(move |client| {
-                client
-                    .expect_get_sbtc_total_supply()
-                    .returning(move |_| Box::pin(async move { Ok(sbtc_supply) }));
-            })
-            .await;
-
+        let context = TestContext::default_mocked();
+        context.state().update_current_limits(SbtcLimits::new(
+            Some(total_cap),
+            None,
+            None,
+            Some(total_cap - sbtc_supply),
+        ));
         // Create cache with test data
-        let mut cache = ValidationCache {
-            sbtc_limits: SbtcLimits::new(Some(total_cap), None, None),
-            ..Default::default()
-        };
+        let mut cache = ValidationCache::default();
 
         let deposit_reports: Vec<(DepositRequestReport, SignerVotes)> = deposit_amounts
             .into_iter()
