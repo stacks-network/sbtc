@@ -20,6 +20,7 @@ use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::utxo::WithdrawalRequest;
+use signer::context::SbtcLimits;
 use signer::message::SweepTransactionInfo;
 use signer::storage::model;
 use signer::storage::model::ScriptPubKey;
@@ -231,6 +232,7 @@ pub fn transaction_with_rbf(
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
+        sbtc_limits: SbtcLimits::default(),
     };
 
     // Okay, lets submit the transaction. We also do a sanity check where

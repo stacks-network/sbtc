@@ -296,24 +296,6 @@ where
         &self,
         req: &model::WithdrawalRequest,
     ) -> Result<bool, Error> {
-        // If the withdrawal request is larger than the allowed per-withdrawal cap
-        // then no signer should accept this deposit.
-        if let Some(cap) = self
-            .context
-            .state()
-            .get_current_limits()
-            .per_withdrawal_cap()
-        {
-            if req.amount > cap.to_sat() {
-                tracing::info!(
-                    request_id = req.request_id,
-                    amount = %req.amount,
-                    "withdrawal request exceeds per-withdrawal cap"
-                );
-                return Ok(false);
-            }
-        }
-
         // If we have not configured a blocklist checker, then we can
         // return early.
         let Some(client) = self.blocklist_checker.as_ref() else {
@@ -329,20 +311,6 @@ where
     }
 
     async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
-        // If the deposit request is larger than the allowed per-deposit cap
-        // then no signer should accept this deposit.
-        if let Some(per_deposit_cap) = self.context.state().get_current_limits().per_deposit_cap() {
-            if req.amount > per_deposit_cap.to_sat() {
-                tracing::info!(
-                    txid = %req.txid,
-                    outpoint = %req.outpoint(),
-                    amount = %req.amount,
-                    "deposit request exceeds per-deposit cap"
-                );
-                return Ok(false);
-            }
-        }
-
         // If we have not configured a blocklist checker, then we can
         // return early.
         let Some(client) = self.blocklist_checker.as_ref() else {

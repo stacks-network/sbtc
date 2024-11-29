@@ -356,6 +356,7 @@ impl EmilyInteract for EmilyClient {
             total_cap,
             per_deposit_cap,
             per_withdrawal_cap,
+            None,
         ))
     }
 }

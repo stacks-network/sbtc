@@ -34,6 +34,7 @@ use crate::storage::model;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
@@ -153,6 +154,11 @@ where
                     tracing::info!("loading latest deposit requests from Emily");
                     if let Err(error) = self.load_latest_deposit_requests().await {
                         tracing::warn!(%error, "could not load latest deposit requests from Emily");
+                    }
+
+                    if let Err(error) = self.update_sbtc_limits().await {
+                        tracing::warn!(%error, "could not update sBTC limits");
+                        continue;
                     }
 
                     self.context
@@ -470,6 +476,34 @@ impl<C: Context, B> BlockObserver<C, B> {
         self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
             .await?;
 
+        Ok(())
+    }
+
+    /// Update the sBTC peg limits from Emily
+    async fn update_sbtc_limits(&self) -> Result<(), Error> {
+        let mut limits = self.context.get_emily_client().get_limits().await?;
+        let max_mintable = match limits.total_cap() {
+            None => Amount::MAX_MONEY,
+            Some(total_cap) => {
+                let sbtc_supply = self
+                    .context
+                    .get_stacks_client()
+                    .get_sbtc_total_supply(&self.context.config().signer.deployer)
+                    .await?;
+                // The maximum amount of sBTC that can be minted is the total cap
+                // minus the current supply.
+                total_cap.checked_sub(sbtc_supply).unwrap_or(Amount::ZERO)
+            }
+        };
+        limits.set_max_mintable_cap(Some(max_mintable));
+
+        let signer_state = self.context.state();
+        if limits == signer_state.get_current_limits() {
+            tracing::trace!(%limits, "sBTC limits have not changed");
+        } else {
+            tracing::debug!(%limits, "updated sBTC limits from Emily");
+            signer_state.update_current_limits(limits);
+        }
         Ok(())
     }
 }
