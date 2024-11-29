@@ -557,9 +557,11 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     setup.store_deposit_decisions(&db).await;
 
     // Initialize the transaction signer event loop
-    let network = SignerNetwork::single(&ctx);
+    let network = WanNetwork::default();
+
+    let net = network.connect(&ctx);
     let mut tx_signer = TxSignerEventLoop {
-        network: network.spawn(),
+        network: net.spawn(),
         context: ctx.clone(),
         context_window: 10000,
         wsts_state_machines: HashMap::new(),
@@ -608,9 +610,18 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     assert_eq!(deposit_digest.len(), 1);
     let deposit_digest = deposit_digest[0];
 
+    let mut handle = network.connect(&ctx).spawn();
+
     let result = tx_signer
         .handle_bitcoin_pre_sign_request(&sbtc_context, &chain_tip)
         .await;
+
+    // check if we are receving an Ack from the signer
+    tokio::time::timeout(Duration::from_secs(2), async move {
+        handle.receive().await.unwrap();
+    })
+    .await
+    .unwrap();
 
     assert!(result.is_ok());
 

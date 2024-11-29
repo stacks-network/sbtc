@@ -278,8 +278,6 @@ where
             (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
                 self.handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
                     .await?;
-                self.send_message(BitcoinPreSignAck, &msg.bitcoin_chain_tip)
-                    .await?;
             }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
@@ -386,6 +384,8 @@ where
         db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
             .await?;
 
+        self.send_message(BitcoinPreSignAck, bitcoin_chain_tip)
+            .await?;
         Ok(())
     }
 

@@ -1379,10 +1379,9 @@ impl From<BitcoinPreSignAck> for proto::BitcoinPreSignAck {
     }
 }
 
-impl TryFrom<proto::BitcoinPreSignAck> for BitcoinPreSignAck {
-    type Error = Error;
-    fn try_from(_: proto::BitcoinPreSignAck) -> Result<Self, Self::Error> {
-        Ok(BitcoinPreSignAck {})
+impl From<proto::BitcoinPreSignAck> for BitcoinPreSignAck {
+    fn from(_: proto::BitcoinPreSignAck) -> Self {
+        BitcoinPreSignAck {}
     }
 }
 
@@ -1459,7 +1458,7 @@ impl TryFrom<proto::SignerMessage> for SignerMessage {
                 Payload::BitcoinPreSignRequest(inner.try_into()?)
             }
             proto::signer_message::Payload::BitcoinPreSignAck(inner) => {
-                Payload::BitcoinPreSignAck(inner.try_into()?)
+                Payload::BitcoinPreSignAck(inner.into())
             }
         };
         Ok(SignerMessage {

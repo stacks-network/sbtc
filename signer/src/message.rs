@@ -417,7 +417,7 @@ impl wsts::net::Signable for Payload {
             Self::StacksTransactionSignature(msg) => msg.hash(hasher),
             Self::SweepTransactionInfo(msg) => msg.hash(hasher),
             Self::BitcoinPreSignRequest(msg) => msg.hash(hasher),
-            Self::BitcoinPreSignAck(_) => hasher.update("SIGNER_BITCOIN_PRE_SIGN_ACK"),
+            Self::BitcoinPreSignAck(msg) => msg.hash(hasher),
         }
     }
 }
@@ -552,6 +552,12 @@ impl wsts::net::Signable for BitcoinPreSignRequest {
             request.hash(hasher);
         }
         hasher.update(self.fee_rate.to_be_bytes());
+    }
+}
+
+impl wsts::net::Signable for BitcoinPreSignAck {
+    fn hash(&self, hasher: &mut sha2::Sha256) {
+        hasher.update("SIGNER_BITCOIN_PRE_SIGN_ACK")
     }
 }
 

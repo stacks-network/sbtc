@@ -412,46 +412,42 @@ where
             fee_rate: pending_requests.signer_state.fee_rate,
             last_fees: pending_requests.signer_state.last_fees.map(Into::into),
         };
-        let presign_ack_filter = {
-            let target_tip = *bitcoin_chain_tip;
-            move |event: &SignerSignal| {
-                matches!(
-                    event,
-                    SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(
-                        Signed {
-                            inner: SignerMessage {
-                                bitcoin_chain_tip,
-                                payload: Payload::BitcoinPreSignAck(_),
-                            },
-                            ..
-                        },
-                    ))) if *bitcoin_chain_tip == target_tip
-                )
-            }
-        };
-
         // Create a signal stream with the defined filter
-        let signal_stream = self.context.as_signal_stream(presign_ack_filter);
+        let signal_stream = self
+            .context
+            .as_signal_stream(signed_message_filter)
+            .filter_map(Self::to_signed_message);
 
         // Send the presign request message
         self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
 
         tokio::pin!(signal_stream);
         let future = async {
-            let mut num_acks = 1;
-            while num_acks < self.threshold {
-                // If signal_stream.next() returns None then one of the
-                // underlying streams has closed. That means either the
-                // network stream, the internal message stream, or the
-                // termination handler stream has closed. This is all bad,
-                // so we trigger a shutdown.
-                let Some(_) = signal_stream.next().await else {
-                    tracing::warn!("signal stream returned None, shutting down");
-                    self.context.get_termination_handle().signal_shutdown();
-                    return Err(Error::SignerShutdown);
+            let target_tip = *bitcoin_chain_tip;
+            let mut acknowledged_signers = hashbrown::HashSet::new();
+
+            while acknowledged_signers.len() < self.threshold as usize {
+                match signal_stream.next().await {
+                    Some(Signed {
+                        inner:
+                            SignerMessage {
+                                bitcoin_chain_tip,
+                                payload: Payload::BitcoinPreSignAck(_),
+                            },
+                        signer_pub_key,
+                        ..
+                    }) if bitcoin_chain_tip == target_tip => {
+                        acknowledged_signers.insert(signer_pub_key)
+                    }
+                    None => {
+                        tracing::warn!("signal stream closed unexpectedly, initiating shutdown");
+                        self.context.get_termination_handle().signal_shutdown();
+                        return Err(Error::SignerShutdown);
+                    }
+                    _ => continue,
                 };
-                num_acks += 1;
             }
+
             Ok(())
         };
 
