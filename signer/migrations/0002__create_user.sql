@@ -1,4 +1,6 @@
 -- Create the user if it doesn't exist
+-- NOTE: this default user is removed in `0006__remove_default_user.sql`
+
 DO
 $do$
 BEGIN
