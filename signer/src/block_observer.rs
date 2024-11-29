@@ -158,6 +158,7 @@ where
 
                     if let Err(error) = self.update_sbtc_limits().await {
                         tracing::warn!(%error, "could not update sBTC limits");
+                        continue;
                     }
 
                     self.context
