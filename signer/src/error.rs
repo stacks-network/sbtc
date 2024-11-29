@@ -525,7 +525,7 @@ pub enum Error {
     DuplicateRequests,
 
     /// Error when deposit requests would exceed sBTC supply cap
-    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap ({max_mintable} sats)")]
+    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
     ExceedsSbtcSupplyCap {
         /// Total deposit amount in sats
         total_amount: u64,
