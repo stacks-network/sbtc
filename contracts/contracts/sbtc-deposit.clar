@@ -98,7 +98,16 @@
     (match helper-response 
         index
             (begin 
-                (unwrap! (complete-deposit-wrapper (get txid deposit) (get vout-index deposit) (get amount deposit) (get recipient deposit) (get burn-hash deposit) (get burn-height deposit) (get sweep-txid deposit)) (err (+ ERR_DEPOSIT_INDEX_PREFIX (+ u10 index))))
+                (unwrap! 
+                    (complete-deposit-wrapper 
+                        (get txid deposit) 
+                        (get vout-index deposit) 
+                        (get amount deposit) 
+                        (get recipient deposit) 
+                        (get burn-hash deposit) 
+                        (get burn-height deposit) 
+                        (get sweep-txid deposit)) 
+                (err (+ ERR_DEPOSIT_INDEX_PREFIX (+ u10 index))))
                 (ok (+ index u1))
             )
         err-response
