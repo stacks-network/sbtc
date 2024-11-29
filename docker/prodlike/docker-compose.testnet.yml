@@ -34,9 +34,7 @@ services:
 
   blocklist-client:
     image: blockstack/sbtc:blocklist-client-0.0.1-dev-4
-    entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client -c /blocklist-client-config.toml'"
-    volumes:
-      - ./config/blocklist-client-config.toml:/blocklist-client-config.toml
+    entrypoint: "/bin/bash -c '/usr/local/bin/blocklist-client'"
     ports:
       - "3032:3032"
 

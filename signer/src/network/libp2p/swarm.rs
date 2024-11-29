@@ -238,7 +238,7 @@ impl SignerSwarm {
     /// swarm is stopped (either by receiving a shutdown signal or an unrecoverable error).
     pub async fn start(&mut self, ctx: &impl Context) -> Result<(), SignerSwarmError> {
         let local_peer_id = *self.swarm.lock().await.local_peer_id();
-        tracing::info!("Starting SignerSwarm with peer ID: {}", local_peer_id);
+        tracing::info!(%local_peer_id, "starting signer swarm");
 
         // Start listening on the listen addresses.
         for addr in self.listen_addrs.iter() {

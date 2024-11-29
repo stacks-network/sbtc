@@ -1,4 +1,5 @@
 //! Handlers for withdrawal endpoints.
+use tracing::instrument;
 use warp::reply::{json, with_status, Reply};
 
 use crate::api::models::common::Status;
@@ -35,6 +36,7 @@ use warp::http::StatusCode;
         (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
+#[instrument(skip(context))]
 pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
@@ -75,6 +77,7 @@ pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp
         (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
+#[instrument(skip(context))]
 pub async fn get_withdrawals(
     context: EmilyContext,
     query: GetWithdrawalsQuery,
@@ -123,6 +126,7 @@ pub async fn get_withdrawals(
     ),
     security(("ApiGatewayKey" = []))
 )]
+#[instrument(skip(context))]
 pub async fn create_withdrawal(
     context: EmilyContext,
     body: CreateWithdrawalRequestBody,
@@ -202,6 +206,7 @@ pub async fn create_withdrawal(
     ),
     security(("ApiGatewayKey" = []))
 )]
+#[instrument(skip(context))]
 pub async fn update_withdrawals(
     context: EmilyContext,
     body: UpdateWithdrawalsRequestBody,
