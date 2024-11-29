@@ -635,12 +635,8 @@ async fn get_deposit_request_works() {
 async fn get_limits_works() {
     let url = Url::parse("http://localhost:3031").unwrap();
     let emily_client = EmilyClient::try_from(&url).unwrap();
-    let mut config = emily_client::apis::configuration::Configuration::new();
-    // Url::parse defaults `path` to `/` even if the parsed url was without the trailing `/`
-    // causing the api calls to have two leading slashes in the path (getting a 404)
-    config.base_path = url.to_string().trim_end_matches("/").to_string();
     emily_client::apis::limits_api::set_limits(
-        &config,
+        &emily_client.config(),
         Limits {
             peg_cap: Some(Some(100)),
             per_deposit_cap: Some(Some(90)),

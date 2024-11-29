@@ -83,28 +83,23 @@ impl SbtcLimits {
     }
 
     /// Get the total cap for all pegged-in BTC/sBTC.
-    pub fn total_cap(&self) -> Option<Amount> {
-        self.total_cap
+    pub fn total_cap(&self) -> Amount {
+        self.total_cap.unwrap_or(Amount::MAX_MONEY)
     }
 
     /// Get the maximum amount of BTC allowed to be pegged-in per transaction.
-    pub fn per_deposit_cap(&self) -> Option<Amount> {
-        self.per_deposit_cap
+    pub fn per_deposit_cap(&self) -> Amount {
+        self.per_deposit_cap.unwrap_or(Amount::MAX_MONEY)
     }
 
     /// Get the maximum amount of sBTC allowed to be pegged-out per transaction.
-    pub fn per_withdrawal_cap(&self) -> Option<Amount> {
-        self.per_withdrawal_cap
+    pub fn per_withdrawal_cap(&self) -> Amount {
+        self.per_withdrawal_cap.unwrap_or(Amount::MAX_MONEY)
     }
 
     /// Get the maximum amount of sBTC that can currently be minted.
-    pub fn max_mintable_cap(&self) -> Option<Amount> {
-        self.max_mintable_cap
-    }
-
-    /// Set the total cap for sBTC that can currently be minted.
-    pub fn set_max_mintable_cap(&mut self, max_mintable_cap: Option<Amount>) {
-        self.max_mintable_cap = max_mintable_cap;
+    pub fn max_mintable_cap(&self) -> Amount {
+        self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
 }
 

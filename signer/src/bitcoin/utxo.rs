@@ -171,26 +171,21 @@ impl SbtcRequests {
         // 2. The deposit amount must be less than the per-deposit limit
         // 3. The total amount being minted must stay under the maximum allowed mintable amount
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
+        println!("Minimum deposit fee: {}", minimum_deposit_fee);
 
-        // If the caps are not set, we default to the maximum amount of sats.
-        let max_mintable_cap = self
-            .sbtc_limits
-            .max_mintable_cap()
-            .unwrap_or(Amount::MAX_MONEY)
-            .to_sat();
-        let per_deposit_cap = self
-            .sbtc_limits
-            .per_deposit_cap()
-            .unwrap_or(Amount::MAX_MONEY)
-            .to_sat();
+        let max_mintable_cap = self.sbtc_limits.max_mintable_cap().to_sat();
+        let per_deposit_cap = self.sbtc_limits.per_deposit_cap().to_sat();
 
         let mut amount_to_mint: u64 = 0;
         let deposits = self.deposits.iter().filter_map(|req| {
-            let is_fee_valid = req.max_fee >= minimum_deposit_fee;
+            let is_fee_valid = req.max_fee.min(req.amount) >= minimum_deposit_fee;
             let is_within_per_deposit_cap = req.amount <= per_deposit_cap;
             let is_within_max_mintable_cap =
-                amount_to_mint.saturating_add(req.amount) <= max_mintable_cap;
-
+                if let Some(new_amount) = amount_to_mint.checked_add(req.amount) {
+                    new_amount <= max_mintable_cap
+                } else {
+                    false
+                };
             if is_fee_valid && is_within_per_deposit_cap && is_within_max_mintable_cap {
                 amount_to_mint += req.amount;
                 Some(RequestRef::Deposit(req))
@@ -2762,29 +2757,29 @@ mod tests {
     }
 
     #[test_case(vec![
-        create_deposit(10_000, 100_000, 0),
-        create_deposit(10_000, 100_000, 0),
-        create_deposit(10_000, 100_000, 0),
-        create_deposit(10_000, 100_000, 0),
-        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
     ], 3, 30_000, 10_000, 30_000; "should_accept_deposits_until_max_mintable_reached")]
     #[test_case(vec![
-        create_deposit(10_000, 100_000, 0),
-        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
     ], 1, 10_000, 10_000, 15_000; "should_accept_all_deposits_when_under_max_mintable")]
     #[test_case(vec![
-        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 10_000, 0),
     ], 0, 0, 0, 0; "should_handle_empty_deposit_list")]
     #[test_case(vec![
         create_deposit(10_000, 0, 0),
-        create_deposit(11_000, 100_000, 0),
-        create_deposit(5_000, 100_000, 0),
-    ], 1, 5000, 10000, 10000; "should_skip_invalid_fee_and_accept_valid_deposits")]
+        create_deposit(11_000, 10_000, 0),
+        create_deposit(9_000, 10_000, 0),
+    ], 1, 9_000, 10_000, 10_000; "should_skip_invalid_fee_and_accept_valid_deposits")]
     #[test_case(vec![
-        create_deposit(10_001, 100_000, 0),
+        create_deposit(10_001, 10_000, 0),
     ], 0, 0, 10_001, 10_000; "should_reject_single_deposit_exceeding_max_mintable")]
     #[test_case(vec![
-        create_deposit(10_000, 100_000, 0),
+        create_deposit(10_000, 10_000, 0),
     ], 0, 0, 8_000, 10_000; "should_reject_single_deposit_exceeding_per_deposit_cap")]
     #[tokio::test]
     async fn test_construct_transactions_filters_deposits_over_max_mintable(

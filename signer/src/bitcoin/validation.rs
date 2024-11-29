@@ -100,33 +100,25 @@ pub fn is_unique(package: &[TxRequestIds]) -> bool {
 
 impl BitcoinPreSignRequest {
     /// Validate the current bitcoin transaction.
-    async fn pre_validation<C>(
-        &self,
-        ctx: &C,
-        btc_ctx: &BitcoinTxContext,
-    ) -> Result<ValidationCache, Error>
+    async fn pre_validation<'a, C>(&self, ctx: &C, cache: &ValidationCache<'a>) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
         if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
         }
-        let cache = self.fetch_all_reports(ctx, btc_ctx).await?;
-
         self.validate_max_mintable(ctx, &cache).await?;
-
-        Ok(cache)
+        Ok(())
     }
 
-    async fn fetch_all_reports<C>(
+    async fn fetch_all_reports<D>(
         &self,
-        ctx: &C,
+        db: &D,
         btc_ctx: &BitcoinTxContext,
     ) -> Result<ValidationCache, Error>
     where
-        C: Context + Send + Sync,
+        D: DbRead,
     {
-        let db = ctx.get_storage();
         let mut cache = ValidationCache::default();
 
         // Fetch all deposit reports and votes
@@ -183,13 +175,7 @@ impl BitcoinPreSignRequest {
     where
         C: Context + Send + Sync,
     {
-        // if the cap is None, then we assume that it is unlimited.
-        let max_mintable = ctx
-            .state()
-            .get_current_limits()
-            .max_mintable_cap()
-            .unwrap_or(Amount::MAX_MONEY)
-            .to_sat();
+        let max_mintable = ctx.state().get_current_limits().max_mintable_cap().to_sat();
 
         cache
             .deposit_reports
@@ -225,7 +211,10 @@ impl BitcoinPreSignRequest {
     where
         C: Context + Send + Sync,
     {
-        let mut cache = self.pre_validation(ctx, btc_ctx).await?;
+        let cache = self.fetch_all_reports(&ctx.get_storage(), btc_ctx).await?;
+
+        self.pre_validation(ctx, &cache).await?;
+
         let signer_utxo = ctx
             .get_storage()
             .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
@@ -243,7 +232,7 @@ impl BitcoinPreSignRequest {
 
         for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state, &mut cache)
+                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state, &cache)
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -264,7 +253,7 @@ impl BitcoinPreSignRequest {
         btc_ctx: &BitcoinTxContext,
         requests: &'a TxRequestIds,
         signer_state: SignerBtcState,
-        cache: &mut ValidationCache<'a>,
+        cache: &ValidationCache<'a>,
     ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
     where
         C: Context + Send + Sync,
@@ -276,19 +265,19 @@ impl BitcoinPreSignRequest {
             let key = (&outpoint.txid, outpoint.vout);
             let (report, votes) = cache
                 .deposit_reports
-                .remove(&key)
+                .get(&key)
                 // This should never happen because we have already validated that we have all the reports.
                 .ok_or(InputValidationResult::Unknown.into_error(btc_ctx))?;
-            deposits.push((report.to_deposit_request(&votes), report));
+            deposits.push((report.to_deposit_request(&votes), report.clone()));
         }
 
         for id in requests.withdrawals.iter() {
             let (report, votes) = cache
                 .withdrawal_reports
-                .remove(id)
+                .get(id)
                 // This should never happen because we have already validated that we have all the reports.
                 .ok_or(WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
-            withdrawals.push((report.to_withdrawal_request(&votes), report));
+            withdrawals.push((report.to_withdrawal_request(&votes), report.clone()));
         }
 
         deposits.sort_by_key(|(request, _)| request.outpoint);
@@ -320,10 +309,8 @@ impl BitcoinPreSignRequest {
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
             // If the cap is None, then we assume that it is unlimited.
-            max_deposit_amount: sbtc_limits.per_deposit_cap().unwrap_or(Amount::MAX_MONEY),
-            max_withdrawal_amount: sbtc_limits
-                .per_withdrawal_cap()
-                .unwrap_or(Amount::MAX_MONEY),
+            max_deposit_amount: sbtc_limits.per_deposit_cap(),
+            max_withdrawal_amount: sbtc_limits.per_withdrawal_cap(),
         };
 
         Ok((out, signer_state))
@@ -524,7 +511,7 @@ impl SbtcReports {
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
-    /// The deposit request has an amount that is too high.
+    /// The deposit request amount exceeds the allowed per-deposit cap.
     AmountTooHigh,
     /// The assessed fee exceeds the max-fee in the deposit request.
     FeeTooHigh,
@@ -574,7 +561,7 @@ impl InputValidationResult {
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
-    /// The withdrawal request has an amount that is too high.
+    /// The withdrawal request amount exceeds the allowed per-withdrawal cap
     AmountTooHigh,
     /// The signer does not have a record of the withdrawal request in
     /// their database.
@@ -1251,7 +1238,7 @@ mod tests {
             total_amount: Amount::MAX_MONEY.to_sat(),
             max_mintable: Amount::MAX_MONEY.to_sat() - 1
         });
-        "should_handle_overflow_amounts"
+        "filter_out_deposits_over_max_mintable"
     )]
     #[tokio::test]
     async fn test_validate_max_mintable(

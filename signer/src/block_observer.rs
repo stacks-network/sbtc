@@ -24,6 +24,7 @@ use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::TxDeconstructor as _;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
+use crate::context::SbtcLimits;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
@@ -151,14 +152,14 @@ where
                         }
                     }
 
-                    tracing::info!("loading latest deposit requests from Emily");
-                    if let Err(error) = self.load_latest_deposit_requests().await {
-                        tracing::warn!(%error, "could not load latest deposit requests from Emily");
-                    }
-
                     if let Err(error) = self.update_sbtc_limits().await {
                         tracing::warn!(%error, "could not update sBTC limits");
                         continue;
+                    }
+
+                    tracing::info!("loading latest deposit requests from Emily");
+                    if let Err(error) = self.load_latest_deposit_requests().await {
+                        tracing::warn!(%error, "could not load latest deposit requests from Emily");
                     }
 
                     self.context
@@ -481,10 +482,10 @@ impl<C: Context, B> BlockObserver<C, B> {
 
     /// Update the sBTC peg limits from Emily
     async fn update_sbtc_limits(&self) -> Result<(), Error> {
-        let mut limits = self.context.get_emily_client().get_limits().await?;
+        let limits = self.context.get_emily_client().get_limits().await?;
         let max_mintable = match limits.total_cap() {
-            None => Amount::MAX_MONEY,
-            Some(total_cap) => {
+            Amount::MAX_MONEY => Amount::MAX_MONEY,
+            total_cap => {
                 let sbtc_supply = self
                     .context
                     .get_stacks_client()
@@ -495,7 +496,13 @@ impl<C: Context, B> BlockObserver<C, B> {
                 total_cap.checked_sub(sbtc_supply).unwrap_or(Amount::ZERO)
             }
         };
-        limits.set_max_mintable_cap(Some(max_mintable));
+
+        let limits = SbtcLimits::new(
+            Some(limits.total_cap()),
+            Some(limits.per_deposit_cap()),
+            Some(limits.per_withdrawal_cap()),
+            Some(max_mintable),
+        );
 
         let signer_state = self.context.state();
         if limits == signer_state.get_current_limits() {
