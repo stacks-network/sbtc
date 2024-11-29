@@ -30,7 +30,6 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
-use crate::testing::transaction_coordinator::model::QualifiedRequestId;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 
