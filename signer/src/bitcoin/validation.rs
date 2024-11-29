@@ -107,7 +107,7 @@ impl BitcoinPreSignRequest {
         if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
         }
-        self.validate_max_mintable(ctx, &cache).await?;
+        self.validate_max_mintable(ctx, cache).await?;
         Ok(())
     }
 
@@ -268,7 +268,7 @@ impl BitcoinPreSignRequest {
                 .get(&key)
                 // This should never happen because we have already validated that we have all the reports.
                 .ok_or(InputValidationResult::Unknown.into_error(btc_ctx))?;
-            deposits.push((report.to_deposit_request(&votes), report.clone()));
+            deposits.push((report.to_deposit_request(votes), report.clone()));
         }
 
         for id in requests.withdrawals.iter() {
@@ -277,7 +277,7 @@ impl BitcoinPreSignRequest {
                 .get(id)
                 // This should never happen because we have already validated that we have all the reports.
                 .ok_or(WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
-            withdrawals.push((report.to_withdrawal_request(&votes), report.clone()));
+            withdrawals.push((report.to_withdrawal_request(votes), report.clone()));
         }
 
         deposits.sort_by_key(|(request, _)| request.outpoint);
