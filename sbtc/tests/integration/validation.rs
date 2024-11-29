@@ -552,8 +552,10 @@ fn reclaiming_rejected_deposits() {
     ];
     reclaim_tx.input[0].witness = Witness::from_slice(&witness_data);
 
-    // Not enough time has passed so the submitting the reclaim transaction
-    // should fail.
+    // Let's generate almost enough blocks, but where not enough so that
+    // submitting the reclaim transaction should fail.
+    faucet.generate_blocks(lock_time as u64 - 2);
+
     match rpc.send_raw_transaction(&reclaim_tx).unwrap_err() {
         BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
             if message == "non-BIP68-final" => {}
@@ -562,13 +564,22 @@ fn reclaiming_rejected_deposits() {
 
     assert_eq!(depositor.get_balance(rpc).to_sat(), 0);
 
-    // Let's confirm enough blocks for us to reclaim the funds. In this
-    // test scenario the signers have not swept the funds for some reason.
-    faucet.generate_blocks(lock_time as u64);
-
-    rpc.send_raw_transaction(&reclaim_tx).unwrap();
+    // Let's confirm enough blocks for us to submit transaction to reclaim
+    // the funds. In this test scenario the signers have not swept the
+    // funds for some reason.
     faucet.generate_blocks(1);
+    rpc.send_raw_transaction(&reclaim_tx).unwrap();
 
+    // Okay, the reclaim transaction is in the mempool and should be able
+    // to be confirmed in the next block. Since this is regtest, it will be
+    // confirmed because the block has plenty of space for it.
+    let reclaim_txid = reclaim_tx.compute_txid();
+    let block_hash = faucet.generate_blocks(1)[0];
+    let tx_info = rpc
+        .get_raw_transaction_info(&reclaim_txid, Some(&block_hash))
+        .unwrap();
+
+    assert_eq!(tx_info.blockhash, Some(block_hash));
     assert_eq!(
         depositor.get_balance(rpc).to_sat(),
         amount_sats - reclaim_tx_fee
