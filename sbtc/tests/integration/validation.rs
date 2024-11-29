@@ -404,7 +404,7 @@ fn op_csv_disabled() {
 /// This validates that a user can reclaim their funds after the locktime.
 ///
 /// The test proceeds as follows:
-/// 1. Spend all the user's funds for am sBTC deposit. Check that the
+/// 1. Spend all the user's funds for a sBTC deposit. Check that the
 ///    balance is zero.
 /// 2. Wait locktime blocks after the first confirmation.
 /// 3. Create and submit another transaction reclaiming the funds.
@@ -494,9 +494,6 @@ fn reclaiming_rejected_deposits() {
 
     let _ = request.validate_tx(&deposit_tx).unwrap();
 
-    // Let's confirm enough blocks for us to reclaim the funds. In this
-    // test scenario the signers have not swept the funds for some reason.
-    faucet.generate_blocks(lock_time as u64);
     // Alright now we know the signers haven't moved our funds, so we
     // reclaim it. We construct a transaction spending the funds back to
     // ourselves.
@@ -554,6 +551,20 @@ fn reclaiming_rejected_deposits() {
         control_block.serialize(),
     ];
     reclaim_tx.input[0].witness = Witness::from_slice(&witness_data);
+
+    // Not enough time has passed so the submitting the reclaim transaction
+    // should fail.
+    match rpc.send_raw_transaction(&reclaim_tx).unwrap_err() {
+        BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -26, message, .. }))
+            if message == "non-BIP68-final" => {}
+        err => panic!("{err}"),
+    };
+
+    assert_eq!(depositor.get_balance(rpc).to_sat(), 0);
+
+    // Let's confirm enough blocks for us to reclaim the funds. In this
+    // test scenario the signers have not swept the funds for some reason.
+    faucet.generate_blocks(lock_time as u64);
 
     rpc.send_raw_transaction(&reclaim_tx).unwrap();
     faucet.generate_blocks(1);
