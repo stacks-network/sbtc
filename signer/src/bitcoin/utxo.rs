@@ -171,8 +171,6 @@ impl SbtcRequests {
         // 2. The deposit amount must be less than the per-deposit limit
         // 3. The total amount being minted must stay under the maximum allowed mintable amount
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
-        println!("Minimum deposit fee: {}", minimum_deposit_fee);
-
         let max_mintable_cap = self.sbtc_limits.max_mintable_cap().to_sat();
         let per_deposit_cap = self.sbtc_limits.per_deposit_cap().to_sat();
 
