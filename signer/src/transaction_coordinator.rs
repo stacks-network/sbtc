@@ -452,9 +452,11 @@ where
         };
 
         // Wait for the future to complete with a timeout
-        tokio::time::timeout(self.signing_round_max_duration, future)
+        tokio::time::timeout(self.bitcoin_presign_request_max_duration, future)
             .await
-            .map_err(|_| Error::CoordinatorTimeout(self.signing_round_max_duration.as_secs()))?
+            .map_err(|_| {
+                Error::CoordinatorTimeout(self.bitcoin_presign_request_max_duration.as_secs())
+            })?
     }
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
