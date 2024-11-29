@@ -1623,37 +1623,6 @@ mod tests {
         }
     }
 
-    fn test_environment_no_withdrawals() -> TestEnvironment<
-        TestContext<
-            SharedStore,
-            WrappedMock<MockBitcoinInteract>,
-            WrappedMock<MockStacksInteract>,
-            WrappedMock<MockEmilyInteract>,
-        >,
-    > {
-        let test_model_parameters = testing::storage::model::Params {
-            num_bitcoin_blocks: 20,
-            num_stacks_blocks_per_bitcoin_block: 3,
-            num_deposit_requests_per_block: 5,
-            num_withdraw_requests_per_block: 0,
-            num_signers_per_request: 7,
-        };
-
-        let context = TestContext::builder()
-            .with_in_memory_storage()
-            .with_mocked_clients()
-            .build();
-
-        // TODO: fix tech debt #893 then raise threshold to 5
-        TestEnvironment {
-            context,
-            context_window: 5,
-            num_signers: 7,
-            signing_threshold: 3,
-            test_model_parameters,
-        }
-    }
-
     #[ignore = "we have a test for this"]
     #[test(tokio::test)]
     async fn should_be_able_to_coordinate_signing_rounds() {
