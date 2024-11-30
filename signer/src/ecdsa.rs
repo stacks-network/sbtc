@@ -77,6 +77,13 @@ impl Signed<SignerMessage> {
         self.signature.recover_ecdsa(&msg)
     }
 
+    /// Determines the public key for which `sig` is a valid signature for
+    /// `msg`.
+    pub fn recover_ecdsa_with_digest(&self, digest: [u8; 32]) -> Result<PublicKey, Error> {
+        let msg = secp256k1::Message::from_digest(digest);
+        self.signature.recover_ecdsa(&msg)
+    }
+
     /// Unique identifier for the signed message
     pub fn id(&self) -> [u8; 32] {
         self.inner.to_digest()
