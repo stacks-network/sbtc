@@ -436,14 +436,23 @@ where
                             },
                         signer_pub_key,
                         ..
-                    }) if bitcoin_chain_tip == target_tip => {
-                        acknowledged_signers.insert(signer_pub_key)
+                    }) => {
+                        if bitcoin_chain_tip == target_tip {
+                            acknowledged_signers.insert(signer_pub_key);
+                        } else {
+                            tracing::warn!(
+                                signer = %signer_pub_key,
+                                received_chain_tip = %bitcoin_chain_tip,
+                                "bitcoin presign ack observed for a different chain tip"
+                            );
+                        }
                     }
                     None => {
                         tracing::warn!("signal stream closed unexpectedly, initiating shutdown");
                         self.context.get_termination_handle().signal_shutdown();
                         return Err(Error::SignerShutdown);
                     }
+                    // Ignore all other messages
                     _ => continue,
                 };
             }
