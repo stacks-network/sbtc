@@ -22,13 +22,22 @@ use crate::stacks::api::AccountInfo;
 use crate::stacks::api::MockStacksInteract;
 use crate::stacks::api::SubmitTxResponse;
 use crate::storage::model;
+use crate::storage::model::ScriptPubKey;
+use crate::storage::model::StacksBlock;
+use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::WithdrawalRequest;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
+use crate::testing::dummy::stacks_block;
 use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
+use clarity::types::chainstate::StacksAddress;
+use clarity::util::hash::Hash160;
+use clarity::vm::types::PrincipalData;
 
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use emily_client::models::deposit;
@@ -305,6 +314,8 @@ where
             .await
             .unwrap()
             .unwrap();
+
+        println!("old hash: {:?}", block_hash);
         let withdrawals = storage
             .get_pending_withdrawal_requests(&block_hash, self.context_window)
             .await
@@ -316,6 +327,7 @@ where
         // Ensure that there are withdrawals to test
         assert!(!withdrawals.is_empty());
         let original_test_data = test_data.clone();
+
         let tx = bitcoin::Transaction {
             output: vec![
                 bitcoin::TxOut {
@@ -340,6 +352,29 @@ where
             &block_ref,
             vec![(model::TransactionType::SbtcTransaction, tx.clone())],
         );
+        test_data.withdraw_requests.push(WithdrawalRequest {
+            request_id: 1,
+            txid: StacksTxId::from([1; 32]),
+            block_hash: StacksBlockHash::from([1; 32]),
+            recipient: ScriptPubKey::from_bytes(vec![1; 20]),
+            amount: 42,
+            max_fee: 1,
+            sender_address: StacksPrincipal::from(PrincipalData::from(StacksAddress {
+                version: 0,
+                bytes: Hash160::from([1; 20]),
+            })),
+        });
+
+
+        let stacks_tip = original_test_data.stacks_blocks.last().unwrap();
+
+        test_data.stacks_blocks.push(StacksBlock {
+            block_hash: StacksBlockHash::from([1; 32]),
+            parent_hash: stacks_tip.block_hash,
+            block_height: stacks_tip.block_height + 1,
+            bitcoin_anchor: block_hash,
+        });
+
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
         let block_hash2 = storage
