@@ -466,18 +466,8 @@ pub struct Signed {
         super::super::super::crypto::RecoverableSignature,
     >,
     /// The signed structure.
-    #[prost(oneof = "signed::Inner", tags = "2")]
-    pub inner: ::core::option::Option<signed::Inner>,
-}
-/// Nested message and enum types in `Signed`.
-pub mod signed {
-    /// The signed structure.
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Inner {
-        #[prost(message, tag = "2")]
-        SignerMessage(super::SignerMessage),
-    }
+    #[prost(message, optional, tag = "2")]
+    pub signer_message: ::core::option::Option<SignerMessage>,
 }
 /// Information about a new Bitcoin block sign request
 #[allow(clippy::derive_partial_eq_without_eq)]

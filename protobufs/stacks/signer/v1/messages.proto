@@ -123,9 +123,7 @@ message Signed {
   // A signature over the hash of the inner structure.
   crypto.RecoverableSignature signature = 1;
   // The signed structure.
-  oneof inner {
-    SignerMessage signer_message = 2;
-  }
+  SignerMessage signer_message = 2;
 }
 
 // Information about a new Bitcoin block sign request

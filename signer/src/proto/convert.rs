@@ -1463,7 +1463,7 @@ impl From<Signed<SignerMessage>> for proto::Signed {
     fn from(value: Signed<SignerMessage>) -> Self {
         proto::Signed {
             signature: Some(value.signature.into()),
-            inner: Some(proto::signed::Inner::SignerMessage(value.inner.into())),
+            signer_message: Some(value.inner.into()),
         }
     }
 }
@@ -1471,9 +1471,7 @@ impl From<Signed<SignerMessage>> for proto::Signed {
 impl TryFrom<proto::Signed> for Signed<SignerMessage> {
     type Error = Error;
     fn try_from(value: proto::Signed) -> Result<Self, Self::Error> {
-        let inner: SignerMessage = match value.inner.required()? {
-            proto::signed::Inner::SignerMessage(inner) => inner.try_into()?,
-        };
+        let inner: SignerMessage = value.signer_message.required()?.try_into()?;
         Ok(Signed {
             inner,
             signature: value.signature.required()?.try_into()?,
