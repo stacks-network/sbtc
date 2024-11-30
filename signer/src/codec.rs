@@ -116,8 +116,8 @@ where
 impl Signed<SignerMessage> {
     /// Decodes an encoded protobuf message returning the decoded and
     /// transformed type with the digest that was signed over.
-    pub fn decode_with_digest(data: Vec<u8>) -> Result<(Self, [u8; 32]), Error> {
-        let mut buf = data.as_slice();
+    pub fn decode_with_digest(data: &[u8]) -> Result<(Self, [u8; 32]), Error> {
+        let mut buf = data;
 
         let mut message = proto::Signed::default();
         let ctx = prost::encoding::DecodeContext::default();
@@ -167,13 +167,15 @@ pub enum CodecError {
 
 #[cfg(test)]
 mod tests {
-    use bitcoin::hashes::Hash;
+    use std::marker::PhantomData;
+
     use fake::Dummy as _;
+    use fake::Fake as _;
     use rand::{rngs::OsRng, SeedableRng as _};
 
     use crate::ecdsa::SignEcdsa;
     use crate::keys::{PrivateKey, PublicKey};
-    use crate::message::{BitcoinTransactionSignAck, SignerMessage};
+    use crate::message;
     use crate::proto;
     use crate::signature::RecoverableEcdsaSignature as _;
     use crate::storage::model::BitcoinBlockHash;
@@ -200,70 +202,62 @@ mod tests {
         assert_eq!(decoded, message);
     }
 
-    #[test]
-    fn testme() {
+    /// These tests check that if we sign a message with a private key,
+    /// that [`Signed::<SignerMessage>::decode_with_digest`] will give the
+    /// correct message and recover the correct public key that signed it.
+    #[test_case::test_case(PhantomData::<message::SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case::test_case(PhantomData::<message::SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case::test_case(PhantomData::<message::StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case::test_case(PhantomData::<message::StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case::test_case(PhantomData::<message::BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case::test_case(PhantomData::<message::BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case::test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
+    #[test_case::test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case::test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    fn payload_signing_recovery<T>(_: PhantomData<T>)
+    where
+        T: Into<message::Payload> + fake::Dummy<fake::Faker>,
+    {
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
         let original_message = SignerMessage {
             bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
-            payload: crate::message::Payload::BitcoinTransactionSignAck(
-                BitcoinTransactionSignAck {
-                    txid: bitcoin::Txid::from_byte_array([3; 32]),
-                },
-            ),
+            payload: fake::Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
         };
 
-        let ans = proto::Signed {
-            signature: None,
-            signer_message: Some(original_message.clone().into()),
-        };
+        // We sign a payload digest. It should always be what this function
+        // returned **but only for the signer who is signing the digest**.
+        // The signer that receives the message may not be able to
+        // reproduce the orignal digest that was signed after deserializing
+        // the protobuf. This is why we use the
+        // Signed::<SignerMessage>::decode_with_digest function.
+        let original_digest = original_message.to_digest();
 
-        let proto_original = ans.clone().encode_to_vec();
+        let signed_message: Signed<SignerMessage> = original_message.sign_ecdsa(&private_key);
+        let buf = signed_message.clone().encode_to_vec();
 
-        let mut hasher = sha2::Sha256::new_with_prefix(original_message.type_tag());
-        hasher.update(&proto_original);
-        let original_digest: [u8; 32] = hasher.finalize().into();
+        let proto_message = proto::Signed::decode(&mut buf.as_slice()).unwrap();
+        let msg = Signed::<SignerMessage>::try_from(proto_message).unwrap();
 
-        // let sig = private_key.sign_ecdsa_recoverable(&secp256k1::Message::from_digest(original_digest));
-
-        let signed_message = original_message.sign_ecdsa(&private_key);
-        let buf2 = signed_message.clone().encode_to_vec();
-        let buf = &mut buf2.as_slice();
-
-        let mut message = proto::Signed::default();
-        let ctx = prost::encoding::DecodeContext::default();
-        let (tag, wire_type) = prost::encoding::decode_key(buf).unwrap();
-        message
-            .merge_field(tag, wire_type, buf, ctx.clone())
-            .unwrap();
-        let pre_hashed_bytes = buf.to_vec();
-        let (tag, wire_type) = dbg!(prost::encoding::decode_key(buf).unwrap());
-
-        message
-            .merge_field(tag, wire_type, buf, ctx.clone())
-            .unwrap();
-
-        dbg!((proto_original.len(), pre_hashed_bytes.len()));
-        assert_eq!(proto_original, pre_hashed_bytes);
-
-        let msg = Signed::<crate::message::SignerMessage>::try_from(message).unwrap();
-
+        // We should have the same signed message. This just tests protobuf
+        // deserialization.
         assert_eq!(signed_message, msg);
+        let (msg2, digest) = Signed::<SignerMessage>::decode_with_digest(&buf).unwrap();
 
-        let mut hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
-        // let mut hasher = sha2::Sha256::new();
-        hasher.update(&pre_hashed_bytes);
-        let digest: [u8; 32] = hasher.finalize().into();
+        // The decode_with_digest function is not the most intuitive, so
+        // lets check that it works the way that we expect, which is that
+        // it deserializes just like protobuf deserialization but returns
+        // the digest that was signed.
+        assert_eq!(msg2, msg);
+        assert_eq!(digest, original_digest);
 
-        assert_eq!(original_digest, digest);
-
+        // Okay, now we need to check that the digest returned from
+        // decode_with_digest was indeed what it was supposed to be. The
+        // only way to check that is to attempt to recover the public key
+        // that signed it. If the digest was wrong we'll get either an
+        // error (so a panic) or the wrong public key.
         let digest = secp256k1::Message::from_digest(digest);
         let public_key = msg.signature.recover_ecdsa(&digest).unwrap();
-
         assert_eq!(public_key, keypair.public_key().into());
-
-        let (msg2, digest2) = Signed::<SignerMessage>::decode_with_digest(buf2).unwrap();
-        assert_eq!(msg2, msg);
-        assert_eq!(digest2, original_digest);
     }
 }

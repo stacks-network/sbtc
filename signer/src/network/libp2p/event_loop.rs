@@ -355,7 +355,7 @@ fn handle_gossipsub_event(
                 return;
             }
 
-            Msg::decode_with_digest(message.data)
+            Msg::decode_with_digest(&message.data)
                 .and_then(|(msg, digest)| {
                     tracing::trace!(
                         local_peer_id = %swarm.local_peer_id(),
