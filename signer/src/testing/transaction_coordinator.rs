@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
@@ -30,6 +31,7 @@ use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
+use emily_client::models::deposit;
 use fake::Fake as _;
 use fake::Faker;
 use rand::SeedableRng as _;
@@ -294,24 +296,73 @@ where
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
                 network.connect()
             });
-        let (_aggregate_key, bitcoin_chain_tip, _test_data) = self
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
         let storage = self.context.storage.clone();
-        let block_hash = bitcoin_chain_tip.block_hash;
+        let block_hash = storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .unwrap()
+            .unwrap();
         let withdrawals = storage
             .get_pending_withdrawal_requests(&block_hash, self.context_window)
             .await
             .unwrap();
-        // If pending deposits is empty we can't check if we ignoring them
-        assert!(!withdrawals.is_empty());
-        // If we ignoring withdrawals, they should be pending forever
-        // Is 1 sec enough here???
-        std::thread::sleep(Duration::from_secs(1));
-        let withdrawals2 = storage
-            .get_pending_withdrawal_requests(&block_hash, self.context_window)
+        let deposits = storage
+            .get_pending_deposit_requests(&block_hash, self.context_window)
             .await
             .unwrap();
+        // Ensure that there are withdrawals to test
+        assert!(!withdrawals.is_empty());
+        let original_test_data = test_data.clone();
+        let tx = bitcoin::Transaction {
+            output: vec![
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(42),
+                    script_pubkey: aggregate_key.signers_script_pubkey(),
+                },
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(123),
+                    script_pubkey: bitcoin::ScriptBuf::new(),
+                },
+            ],
+            ..EMPTY_BITCOIN_TX
+        };
+        let (block, block_ref) = test_data.new_block(
+            &mut rng,
+            &testing_signer_set.signer_keys(),
+            &self.test_model_parameters,
+            Some(&bitcoin_chain_tip),
+        );
+        test_data.push(block);
+        test_data.push_bitcoin_txs(
+            &block_ref,
+            vec![(model::TransactionType::SbtcTransaction, tx.clone())],
+        );
+        test_data.remove(original_test_data);
+        self.write_test_data(&test_data).await;
+        let block_hash2 = storage
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .unwrap()
+            .unwrap();
+        println!("new hash: {:?}", block_hash2);
+        let withdrawals2 = self.context.storage
+            .get_pending_withdrawal_requests(&block_hash2, self.context_window)
+            .await
+            .unwrap();
+        let deposits2 = self.context.storage
+            .get_pending_deposit_requests(&block_hash2, self.context_window)
+            .await
+            .unwrap();
+
+        // Check that we actually test something.
+        let deposits_set = deposits.iter().collect::<std::collections::HashSet<_>>();
+        let deposits2_set = deposits2.iter().collect::<std::collections::HashSet<_>>();
+        assert_ne!(deposits, deposits2);
+        assert!(!deposits_set.is_subset(&deposits2_set));
+        // Check that the withdrawals are the same
         assert_eq!(withdrawals, withdrawals2);
     }
 
@@ -330,23 +381,6 @@ where
         let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
-
-        let original_test_data = test_data.clone();
-
-        let tx_1 = bitcoin::Transaction {
-            output: vec![bitcoin::TxOut {
-                value: bitcoin::Amount::from_sat(1_337_000_000_000),
-                script_pubkey: aggregate_key.signers_script_pubkey(),
-            }],
-            ..EMPTY_BITCOIN_TX
-        };
-        test_data.push_bitcoin_txs(
-            &bitcoin_chain_tip,
-            vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
-        );
-
-        test_data.remove(original_test_data);
-        self.write_test_data(&test_data).await;
 
         self.context
             .with_bitcoin_client(|client| {
