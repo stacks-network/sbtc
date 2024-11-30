@@ -32,8 +32,10 @@ use std::io;
 use prost::Message as _;
 use sha2::Digest as _;
 
+use crate::ecdsa::Signed;
 use crate::error::Error;
-use crate::signature::SighashDigest;
+use crate::message::SignerMessage;
+use crate::proto;
 
 /// Utility trait to specify mapping between internal types and proto
 /// counterparts. The implementation of `Encode` and `Decode` for a type
@@ -49,20 +51,6 @@ pub trait ProtoSerializable {
     type Message: ::prost::Message + Default;
     /// A message type tag used for hashing the message before signing.
     fn type_tag(&self) -> &'static str;
-}
-
-impl<T> SighashDigest for T
-where
-    T: ProtoSerializable + Clone,
-    T: Into<<T as ProtoSerializable>::Message>,
-{
-    fn digest(&self) -> [u8; 32] {
-        let mut hasher = sha2::Sha256::new_with_prefix(self.type_tag());
-        let proto_message: <Self as ProtoSerializable>::Message = self.clone().into();
-        let message = prost::Message::encode_to_vec(&proto_message);
-        hasher.update(&message);
-        hasher.finalize().into()
-    }
 }
 
 /// Provides a method for encoding an object into a writer using a canonical serialization format.
@@ -125,6 +113,51 @@ where
     }
 }
 
+impl Signed<SignerMessage> {
+    /// Decodes an encoded protobuf message returning the decoded and
+    /// transformed type with the digest that was signed over.
+    pub fn decode_with_digest(data: Vec<u8>) -> Result<(Self, [u8; 32]), Error> {
+        let mut buf = data.as_slice();
+
+        let mut message = proto::Signed::default();
+        let ctx = prost::encoding::DecodeContext::default();
+        let (tag, wire_type) = prost::encoding::decode_key(&mut buf).unwrap();
+        message
+            .merge_field(tag, wire_type, &mut buf, ctx.clone())
+            .unwrap();
+
+        let pre_hash_data = buf;
+        let (tag, wire_type) = prost::encoding::decode_key(&mut buf).unwrap();
+        
+        message
+            .merge_field(tag, wire_type, &mut buf, ctx.clone())
+            .unwrap();
+
+        let msg = Signed::<crate::message::SignerMessage>::try_from(message).unwrap();
+        let mut hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
+
+        hasher.update(pre_hash_data);
+        let digest: [u8; 32] = hasher.finalize().into();
+
+        Ok((msg, digest))
+    }
+}
+
+impl SignerMessage {
+    /// Transform this into the digest that needs to be signed
+    pub fn to_digest(&self) -> [u8; 32] {
+        let mut hasher = sha2::Sha256::new_with_prefix(self.type_tag());
+
+        let ans = crate::proto::Signed {
+            signature: None,
+            signer_message: Some(self.clone().into()),
+        };
+
+        hasher.update(ans.encode_to_vec());
+        hasher.finalize().into()
+    }
+}
+
 /// The error used in the [`Encode`] and [`Decode`] trait.
 #[derive(thiserror::Error, Debug)]
 pub enum CodecError {
@@ -138,10 +171,16 @@ pub enum CodecError {
 
 #[cfg(test)]
 mod tests {
+    use bitcoin::hashes::Hash;
     use fake::Dummy as _;
-    use rand::SeedableRng as _;
+    use rand::{rngs::OsRng, SeedableRng as _};
 
-    use crate::{keys::PublicKey, proto};
+    use crate::ecdsa::SignEcdsa;
+    use crate::keys::{PrivateKey, PublicKey};
+    use crate::message::{BitcoinTransactionSignAck, SignerMessage};
+    use crate::proto;
+    use crate::signature::RecoverableEcdsaSignature as _;
+    use crate::storage::model::BitcoinBlockHash;
 
     use super::*;
 
@@ -163,5 +202,72 @@ mod tests {
         let decoded = <PublicKey as Decode>::decode(encoded.as_slice()).unwrap();
 
         assert_eq!(decoded, message);
+    }
+
+    #[test]
+    fn testme() {
+        let keypair = secp256k1::Keypair::new_global(&mut OsRng);
+        let private_key: PrivateKey = keypair.secret_key().into();
+        let original_message = SignerMessage {
+            bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
+            payload: crate::message::Payload::BitcoinTransactionSignAck(
+                BitcoinTransactionSignAck {
+                    txid: bitcoin::Txid::from_byte_array([3; 32]),
+                },
+            ),
+        };
+
+        let ans = proto::Signed {
+            signature: None,
+            signer_message: Some(original_message.clone().into()),
+        };
+
+        let proto_original = ans.clone().encode_to_vec();
+
+        let mut hasher = sha2::Sha256::new_with_prefix(original_message.type_tag());
+        hasher.update(&proto_original);
+        let original_digest: [u8; 32] = hasher.finalize().into();
+
+        // let sig = private_key.sign_ecdsa_recoverable(&secp256k1::Message::from_digest(original_digest));
+
+        let signed_message = original_message.sign_ecdsa(&private_key);
+        let buf2 = signed_message.clone().encode_to_vec();
+        let buf = &mut buf2.as_slice();
+
+        let mut message = proto::Signed::default();
+        let ctx = prost::encoding::DecodeContext::default();
+        let (tag, wire_type) = prost::encoding::decode_key(buf).unwrap();
+        message
+            .merge_field(tag, wire_type, buf, ctx.clone())
+            .unwrap();
+        let pre_hashed_bytes = buf.to_vec();
+        let (tag, wire_type) = dbg!(prost::encoding::decode_key(buf).unwrap());
+
+        message
+            .merge_field(tag, wire_type, buf, ctx.clone())
+            .unwrap();
+
+        dbg!((proto_original.len(), pre_hashed_bytes.len()));
+        assert_eq!(proto_original, pre_hashed_bytes);
+
+        let msg = Signed::<crate::message::SignerMessage>::try_from(message).unwrap();
+
+        assert_eq!(signed_message, msg);
+
+        let mut hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
+        // let mut hasher = sha2::Sha256::new();
+        hasher.update(&pre_hashed_bytes);
+        let digest: [u8; 32] = hasher.finalize().into();
+
+        assert_eq!(original_digest, digest);
+
+        let digest = secp256k1::Message::from_digest(digest);
+        let public_key = msg.signature.recover_ecdsa(&digest).unwrap();
+
+        assert_eq!(public_key, keypair.public_key().into());
+
+        let (msg2, digest2) = Signed::<SignerMessage>::decode_with_digest(buf2).unwrap();
+        assert_eq!(msg2, msg);
+        assert_eq!(digest2, original_digest);
     }
 }
