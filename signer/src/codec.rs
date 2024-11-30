@@ -121,19 +121,15 @@ impl Signed<SignerMessage> {
 
         let mut message = proto::Signed::default();
         let ctx = prost::encoding::DecodeContext::default();
-        let (tag, wire_type) = prost::encoding::decode_key(&mut buf).unwrap();
-        message
-            .merge_field(tag, wire_type, &mut buf, ctx.clone())
-            .unwrap();
+        let (tag, wire_type) = prost::encoding::decode_key(&mut buf)?;
+        message.merge_field(tag, wire_type, &mut buf, ctx.clone())?;
 
         let pre_hash_data = buf;
-        let (tag, wire_type) = prost::encoding::decode_key(&mut buf).unwrap();
-        
-        message
-            .merge_field(tag, wire_type, &mut buf, ctx.clone())
-            .unwrap();
+        let (tag, wire_type) = prost::encoding::decode_key(&mut buf)?;
 
-        let msg = Signed::<crate::message::SignerMessage>::try_from(message).unwrap();
+        message.merge_field(tag, wire_type, &mut buf, ctx.clone())?;
+
+        let msg = Signed::<crate::message::SignerMessage>::try_from(message)?;
         let mut hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
 
         hasher.update(pre_hash_data);

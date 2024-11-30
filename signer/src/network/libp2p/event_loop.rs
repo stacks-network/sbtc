@@ -7,7 +7,7 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{gossipsub, identify, kad, mdns, Multiaddr, Swarm};
 use tokio::sync::Mutex;
 
-use crate::codec::{Decode, Encode};
+use crate::codec::Encode;
 use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
 use crate::error::Error;
 use crate::network::Msg;
@@ -346,7 +346,11 @@ fn handle_gossipsub_event(
                 return;
             };
 
-            if !ctx.state().current_signer_set().is_allowed_peer(&origin_peer_id) {
+            if !ctx
+                .state()
+                .current_signer_set()
+                .is_allowed_peer(&origin_peer_id)
+            {
                 tracing::warn!(%origin_peer_id, "ignoring message from unknown origin peer");
                 return;
             }
