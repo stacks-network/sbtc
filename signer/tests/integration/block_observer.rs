@@ -211,7 +211,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
     let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip_info.hash.into(), 100)
+        .get_deposit_requests(&chain_tip_info.hash.into(), 100)
         .await
         .unwrap();
 
@@ -246,10 +246,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         .await
         .unwrap()
         .is_some());
-    let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip, 100)
-        .await
-        .unwrap();
+    let deposit_requests = db.get_deposit_requests(&chain_tip, 100).await.unwrap();
 
     assert_eq!(deposit_requests.len(), 2);
     let req_outpoints: HashSet<OutPoint> =

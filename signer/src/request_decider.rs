@@ -124,11 +124,13 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        let signer_public_key = self.signer_public_key();
+
         let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(chain_tip));
 
         let deposit_requests = db
-            .get_pending_deposit_requests(&chain_tip, self.context_window)
+            .get_pending_deposit_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
 
         for deposit_request in deposit_requests {
@@ -137,7 +139,7 @@ where
         }
 
         let withdraw_requests = db
-            .get_pending_withdrawal_requests(&chain_tip, self.context_window)
+            .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
 
         for withdraw_request in withdraw_requests {

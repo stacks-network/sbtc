@@ -1,7 +1,12 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
+use axum::http::Request;
+use axum::http::Response;
 use axum::routing::get;
 use axum::routing::post;
 use axum::Router;
@@ -28,6 +33,9 @@ use signer::transaction_coordinator;
 use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
+use tower_http::trace::TraceLayer;
+use tracing::Instrument;
+use tracing::Span;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
 enum LogOutputFormat {
@@ -106,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_shutdown_signal_watcher(context.clone()),
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
-        run_checked(run_stacks_event_observer, &context),
+        run_checked(run_api, &context),
         run_checked(run_libp2p_swarm, &context),
         run_checked(run_block_observer, &context),
         run_checked(run_request_decider, &context),
@@ -195,7 +203,7 @@ async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
 }
 
 /// Runs the libp2p swarm.
-#[tracing::instrument(skip(ctx))]
+#[tracing::instrument(skip_all, name = "p2p")]
 async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     tracing::info!("initializing the p2p network");
 
@@ -212,27 +220,50 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     // Start the libp2p swarm. This will run until either the shutdown signal is
     // received, or an unrecoverable error has occurred.
     tracing::info!("starting the libp2p swarm");
-    swarm.start(&ctx).await.map_err(Error::SignerSwarm)
+    swarm
+        .start(&ctx)
+        .in_current_span()
+        .await
+        .map_err(Error::SignerSwarm)
 }
 
-/// Runs the Stacks event observer server.
-#[tracing::instrument(skip_all, name = "stacks-event-observer")]
-async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Error> {
+/// Runs the the signer's API server, which includes the Stacks event observer.
+#[tracing::instrument(skip_all, name = "api")]
+async fn run_api(ctx: impl Context + 'static) -> Result<(), Error> {
     let socket_addr = ctx.config().signer.event_observer.bind;
-    tracing::info!(%socket_addr, "initializing the Stacks event observer server");
+    tracing::info!(%socket_addr, "initializing the signer API server");
 
     let state = ApiState { ctx: ctx.clone() };
+
+    let request_id = Arc::new(AtomicU64::new(0));
 
     // Build the signer API application
     let app = Router::new()
         .route("/", get(api::status_handler))
         .route("/new_block", post(api::new_block_handler))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &Request<_>| {
+                    tracing::info_span!("api-request",
+                        uri = %request.uri(),
+                        method = %request.method(),
+                        id = tracing::field::Empty,
+                    )
+                })
+                .on_request(move |_: &Request<_>, span: &Span| {
+                    span.record("id", request_id.fetch_add(1, Ordering::SeqCst));
+                    tracing::trace!("processing request");
+                })
+                .on_response(|_: &Response<_>, duration: Duration, _: &Span| {
+                    tracing::trace!(duration_ms = duration.as_millis(), "request completed");
+                }),
+        )
         .with_state(state);
 
     // Bind to the configured address and port
     let listener = tokio::net::TcpListener::bind(socket_addr)
         .await
-        .expect("failed to retrieve event observer bind address from config");
+        .expect("failed to bind the signer API to configured address");
 
     // Get the termination signal handle.
     let mut term = ctx.get_termination_handle();
@@ -243,11 +274,11 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
             // Listen for an application shutdown signal. We need to loop here
             // because we may receive other signals (which we will ignore here).
             term.wait_for_shutdown().await;
-            tracing::info!("stopping the Stacks event observer server");
+            tracing::info!("stopping the signer API server");
         })
         .await
         .map_err(|error| {
-            tracing::error!(%error, "error running Stacks event observer server");
+            tracing::error!(%error, "error running the signer API server");
             ctx.get_termination_handle().signal_shutdown();
             error.into()
         })

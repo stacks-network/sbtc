@@ -75,8 +75,9 @@ enum UpdateResult {
 /// fixed number of times.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
+#[tracing::instrument(skip_all, name = "new-block")]
 pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
-    tracing::debug!("Received a new block event from stacks-core");
+    tracing::debug!("received a new block event from stacks-core");
     let api = state.0;
 
     let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
@@ -149,7 +150,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
                 handle_key_rotation(&api.ctx, event, tx_info.txid.into()).await
             }
             Err(error) => {
-                tracing::error!(%error, "Got an error when transforming the event ClarityValue");
+                tracing::error!(%error, "got an error when transforming the event ClarityValue");
                 return StatusCode::OK;
             }
         };
@@ -158,14 +159,14 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         // So we return a non success status code so that the node retries
         // in a second.
         if let Err(Error::SqlxQuery(error)) = res {
-            tracing::error!(%error, "Got an error when writing event to database");
+            tracing::error!(%error, "got an error when writing event to database");
             return StatusCode::INTERNAL_SERVER_ERROR;
         // If we got an error processing the event, we log the error and
         // return a success status code so that the node does not retry the
         // webhook. We rely on the redundancy of the other sBTC signers to
         // ensure that the update is sent to Emily.
         } else if let Err(error) = res {
-            tracing::error!(%error, "Got an error when processing event");
+            tracing::error!(%error, "got an error when processing event");
         }
     }
 
@@ -176,7 +177,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     // Create chainstate first so that we're sure that Emily is viewing the chain state
     // the same way.
     if let Err(error) = emily_client.set_chainstate(chainstate).await {
-        tracing::error!(%error, "Failed to set chainstate in Emily");
+        tracing::error!(%error, "failed to set chainstate in Emily");
     }
 
     // Create any new withdrawal instances. We do this before performing any updates
@@ -188,7 +189,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         .into_iter()
         .for_each(|create_withdrawal_result| {
             if let Err(error) = create_withdrawal_result {
-                tracing::error!(%error, "Failed to create withdrawal in Emily");
+                tracing::error!(%error, "failed to create withdrawal in Emily");
             }
         });
 
@@ -213,10 +214,10 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     for result in results {
         match result {
             UpdateResult::Deposit(Err(error)) => {
-                tracing::warn!(%error, "Failed to update deposits in Emily");
+                tracing::warn!(%error, "failed to update deposits in Emily");
             }
             UpdateResult::Withdrawal(Err(error)) => {
-                tracing::warn!(%error, "Failed to update withdrawals in Emily");
+                tracing::warn!(%error, "failed to update withdrawals in Emily");
             }
             _ => {} // Ignore successful results.
         }

@@ -549,7 +549,7 @@ where
                 tracing::info!("handling DkgBegin");
 
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -576,7 +576,7 @@ where
             WstsNetMessage::DkgPrivateBegin(_) => {
                 tracing::info!("handling DkgPrivateBegin");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -628,7 +628,7 @@ where
             WstsNetMessage::DkgEndBegin(_) => {
                 tracing::info!("handling DkgEndBegin");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
@@ -645,7 +645,7 @@ where
             WstsNetMessage::NonceRequest(request) => {
                 tracing::info!("handling NonceRequest");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -673,7 +673,7 @@ where
             WstsNetMessage::SignatureShareRequest(request) => {
                 tracing::info!("handling SignatureShareRequest");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
