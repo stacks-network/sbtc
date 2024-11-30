@@ -24,7 +24,6 @@ use signer::keys::PublicKey;
 use signer::message;
 use signer::message::BitcoinPreSignRequest;
 use signer::message::StacksTransactionSignRequest;
-use signer::network::in_memory2::SignerNetwork;
 use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
