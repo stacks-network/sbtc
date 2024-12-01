@@ -44,7 +44,6 @@ message EcdsaSignature {
   Uint256 upper_bits = 2;
 }
 
-
 // Scalar maps to a nonnegative number less than the order of the secp256k1
 // curve.
 message Scalar {
