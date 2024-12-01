@@ -364,16 +364,17 @@ mod tests {
     use crate::keys::PrivateKey;
 
     use rand::SeedableRng;
+    use test_case::test_case;
 
-    #[test_case::test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
-    #[test_case::test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
-    #[test_case::test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
-    #[test_case::test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
-    #[test_case::test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
-    #[test_case::test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
-    #[test_case::test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
     fn signer_messages_should_be_signable_with_type<P>(_: PhantomData<P>)
     where
         P: fake::Dummy<fake::Faker> + Into<Payload>,
@@ -388,15 +389,15 @@ mod tests {
         assert!(signed_message.verify(public_key));
     }
 
-    #[test_case::test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
-    #[test_case::test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
-    #[test_case::test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
-    #[test_case::test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
-    #[test_case::test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
-    #[test_case::test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
-    #[test_case::test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
     fn signer_messages_should_be_encodable_with_type<P>(_: PhantomData<P>)
     where
         P: fake::Dummy<fake::Faker> + Into<Payload>,

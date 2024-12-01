@@ -8,7 +8,7 @@
 //!
 //! - **Signed**: A generic wrapper that binds a piece of data (`inner`) with its ECDSA signature and the public key
 //!   of the signer. It provides a method to verify the integrity and authenticity of the data.
-//! - **SignECDSA**: A trait implemented by data types that can be signed using ECDSA. It is automatically implemented for any type implementing `wsts::net::Signable`.
+//! - **SignECDSA**: A trait implemented by data types that can be signed using ECDSA.
 //!
 
 use prost::bytes::Buf as _;
@@ -55,29 +55,31 @@ impl Signed<SignerMessage> {
     }
 
     /// Decodes an encoded protobuf message, transforming it into a
-    /// [`Signed<SignerMessage>`], and returning the signed message and
-    /// with the digest that the signature was signed over.
+    /// [`Signed<SignerMessage>`], returning the signed message with the
+    /// digest that was signed.
     ///
     /// # Notes
     ///
     /// This function uses the fact that the protobuf [`proto::Signed`]
-    /// type has a particular layout to decode the message and get the
-    /// bytes that were signed by the signer that generated the message. It
-    /// does the following:
+    /// type has a particular layout when decoding the message to
+    /// efficiently get the bytes that were signed by the signer that
+    /// generated the message. It does the following:
     /// 1. Decode the first field using the given bytes. This field is the
     ///    signature field.
     /// 2. Takes a reference to the bytes after the protobuf signature
-    ///    bytes. These were supposed to be used generate the digest that
+    ///    field. These were supposed to be used generate the digest that
     ///    was signed over.
     /// 3. Finish decoding the given bytes into the signed message.
-    /// 4. Transform the protobuf rust type into the local rust type.
-    /// 5. Use the local rust type along with the bytes from (2) to create
-    ///    the signed digest.
+    /// 4. Transform the protobuf type into the local type.
+    /// 5. Use the local type along with the bytes from (2) to create the
+    ///    signed digest.
     ///
     /// One of the assumptions is that repeated serialization of prost
     /// types generate the same bytes. It also assumes that fields are
-    /// serialized in order by their tag. This is not true for protobuf
-    /// generally, but it is for the prost protobuf implementation.
+    /// serialized in order by their tag. This is not true for protobufs
+    /// generally, but it is for the prost protobuf implementation. The
+    /// implementation was checked by inspecting the output of `cargo
+    /// expand`.
     /// <https://protobuf.dev/programming-guides/serialization-not-canonical/>
     /// <https://protobuf.dev/programming-guides/encoding/#order>
     /// <https://github.com/tokio-rs/prost/blob/v0.12.6/prost/src/message.rs#L108-L134>
@@ -93,10 +95,14 @@ impl Signed<SignerMessage> {
         while buf.has_remaining() {
             let (tag, wire_type) = prost::encoding::decode_key(&mut buf)?;
             message.merge_field(tag, wire_type, &mut buf, ctx.clone())?;
-            // This is the only part here that is not in prost. The field
-            // with tag 1 is the signature field. We note a reference to
-            // the remaining bytes because these bytes were used to create
-            // the digest that was signed over.
+            // This part here is not in prost. The purpose is to note the
+            // pre-hashed-data that is hashed and then signed, and the
+            // underlying assumption is that all non-signature field bytes
+            // are signed. The approach here assumes that protobuf fields
+            // are serialized in order of their tag and the field with tag
+            // 1 is the signature field. We copy a reference to the
+            // remaining bytes because these bytes were used to create the
+            // digest that was signed over.
             if tag == 1 {
                 pre_hash_data = buf;
             }
@@ -197,19 +203,20 @@ mod tests {
     use crate::storage::model::BitcoinBlockHash;
 
     use super::*;
+    use test_case::test_case;
 
     /// These tests check that if we sign a message with a private key,
     /// that [`Signed::<SignerMessage>::decode_with_digest`] will give the
     /// correct message and recover the correct public key that signed it.
-    #[test_case::test_case(PhantomData::<message::SignerDepositDecision> ; "SignerDepositDecision")]
-    #[test_case::test_case(PhantomData::<message::SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
-    #[test_case::test_case(PhantomData::<message::StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<message::StacksTransactionSignature> ; "StacksTransactionSignature")]
-    #[test_case::test_case(PhantomData::<message::BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<message::BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
-    #[test_case::test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
-    #[test_case::test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
-    #[test_case::test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<message::SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<message::SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<message::StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<message::StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<message::BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<message::BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
     fn payload_signing_recovery<T>(_: PhantomData<T>)
     where
         T: Into<message::Payload> + fake::Dummy<fake::Faker>,
@@ -261,15 +268,15 @@ mod tests {
     /// that [`Signed::<SignerMessage>::decode_with_digest`] will give the
     /// correct message but the recoverable signature will not yield the
     /// correct public key that signed it.
-    #[test_case::test_case(PhantomData::<message::SignerDepositDecision> ; "SignerDepositDecision")]
-    #[test_case::test_case(PhantomData::<message::SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
-    #[test_case::test_case(PhantomData::<message::StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<message::StacksTransactionSignature> ; "StacksTransactionSignature")]
-    #[test_case::test_case(PhantomData::<message::BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
-    #[test_case::test_case(PhantomData::<message::BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
-    #[test_case::test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
-    #[test_case::test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
-    #[test_case::test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<message::SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<message::SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<message::StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<message::StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<message::BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<message::BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
     fn payload_signing_failing_validation<T>(_: PhantomData<T>)
     where
         T: Into<message::Payload> + fake::Dummy<fake::Faker>,
