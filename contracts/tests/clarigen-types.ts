@@ -1320,16 +1320,33 @@ export const contracts = {
       isProtocolCaller: {
         name: "is-protocol-caller",
         access: "read_only",
-        args: [],
+        args: [
+          {
+            name: "contract-flag",
+            type: { optional: { buffer: { length: 1 } } },
+          },
+        ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
-      } as TypedAbiFunction<[], Response<boolean, bigint>>,
+      } as TypedAbiFunction<
+        [contractFlag: TypedAbiArg<Uint8Array | null, "contractFlag">],
+        Response<boolean, bigint>
+      >,
       validateProtocolCaller: {
         name: "validate-protocol-caller",
         access: "read_only",
-        args: [{ name: "caller", type: "principal" }],
+        args: [
+          {
+            name: "contract-flag",
+            type: { optional: { buffer: { length: 1 } } },
+          },
+          { name: "caller", type: "principal" },
+        ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
-        [caller: TypedAbiArg<string, "caller">],
+        [
+          contractFlag: TypedAbiArg<Uint8Array | null, "contractFlag">,
+          caller: TypedAbiArg<string, "caller">,
+        ],
         Response<boolean, bigint>
       >,
     },
