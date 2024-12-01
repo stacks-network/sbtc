@@ -540,7 +540,7 @@ mod tests {
         // keys while p256k1::scalar::Scalar does, so we start with a that
         // library to make sure that we always generate a valid public key
         // when using PublicKey::try_from below (although it's extremely
-        // unlikely that we would generate an invalid one anyway). 
+        // unlikely that we would generate an invalid one anyway).
         let sk = secp256k1::SecretKey::new(&mut OsRng);
         let scalar = p256k1::scalar::Scalar::from(sk.secret_bytes());
         let point1 = p256k1::point::Point::from(scalar);
