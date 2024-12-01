@@ -39,8 +39,7 @@ impl Signed<SignerMessage> {
     /// Determines the public key for which `sig` is a valid signature for
     /// `msg`.
     pub fn recover_ecdsa(&self) -> Result<PublicKey, Error> {
-        let msg = secp256k1::Message::from_digest(self.inner.digest());
-        self.signature.recover_ecdsa(&msg)
+        self.recover_ecdsa_with_digest(self.inner.digest())
     }
 
     /// Determines the public key for which `sig` is a valid signature for
@@ -203,8 +202,8 @@ mod tests {
     use crate::storage::model::{BitcoinBlockHash, StacksBlockHash, StacksTxId};
 
     use super::*;
-    use test_case::test_case;
     use fake::Faker;
+    use test_case::test_case;
 
     /// These tests check that if we sign a message with a private key,
     /// that [`Signed::<SignerMessage>::decode_with_digest`] will give the
