@@ -338,8 +338,22 @@ fn handle_gossipsub_event(
             message,
             ..
         } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+            let current_signer_set = ctx.state().current_signer_set();
+            if !current_signer_set.is_allowed_peer(&peer_id) {
                 tracing::warn!(%peer_id, "ignoring message from unknown peer");
+                return;
+            }
+
+            // The message may have originated from someone else, let's
+            // check that peer ID too. If we haven't been told the source
+            // then we distrust the message and ignore it.
+            let Some(origin_peer_id) = message.source else {
+                tracing::warn!(%peer_id, "origin peer id unknown, ignoring message");
+                return;
+            };
+
+            if !current_signer_set.is_allowed_peer(&origin_peer_id) {
+                tracing::warn!(%origin_peer_id, "ignoring message from unknown origin peer");
                 return;
             }
 
