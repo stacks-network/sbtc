@@ -354,7 +354,7 @@ fn handle_gossipsub_event(
             }
 
             Msg::decode_with_digest(&message.data)
-                .and_then(|(msg, digest)| {
+                .and_then(|(msg, _)| {
                     tracing::trace!(
                         local_peer_id = %swarm.local_peer_id(),
                         %peer_id,
@@ -363,7 +363,7 @@ fn handle_gossipsub_event(
                         "received message",
                     );
 
-                    let public_key = msg.recover_ecdsa_with_digest(digest)?;
+                    let public_key = msg.signer_public_key()?;
                     if origin_peer_id != public_key.into() {
                         tracing::error!(%origin_peer_id, "connected peer sent an invalid message");
                         return Err(Error::InvalidSignature)

@@ -150,7 +150,7 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn handle_signer_message(&mut self, msg: &Signed<SignerMessage>) -> Result<(), Error> {
-        let msg_signer_pub_key = msg.recover_ecdsa()?;
+        let msg_signer_pub_key = msg.signer_public_key()?;
 
         tracing::trace!(payload = %msg.inner.payload, "handling message");
         match &msg.inner.payload {

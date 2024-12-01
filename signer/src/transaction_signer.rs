@@ -194,7 +194,7 @@ where
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
-        let msg_signer_pub_key = msg.recover_ecdsa()?;
+        let msg_signer_pub_key = msg.signer_public_key()?;
 
         let chain_tip_report = self
             .inspect_msg_chain_tip(msg_signer_pub_key, &msg.bitcoin_chain_tip)

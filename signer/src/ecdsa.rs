@@ -81,13 +81,15 @@ pub struct Signed<T> {
     pub inner: T,
     /// A signature over the hash of the inner structure.
     pub signature: RecoverableSignature,
+    /// The public key of the signer that generated the message.
+    pub signer_public_key: Option<PublicKey>,
 }
 
 impl Signed<SignerMessage> {
     /// Determines the public key for which `sig` is a valid signature for
     /// `msg`.
-    pub fn recover_ecdsa(&self) -> Result<PublicKey, Error> {
-        self.recover_ecdsa_with_digest(self.inner.digest())
+    pub fn signer_public_key(&self) -> Result<PublicKey, Error> {
+        self.signer_public_key.ok_or(Error::MissingPublicKey)
     }
 
     /// Determines the public key for which `sig` is a valid signature for
@@ -141,8 +143,11 @@ impl Signed<SignerMessage> {
         let ctx = prost::encoding::DecodeContext::default();
 
         while buf.has_remaining() {
-            let (tag, wire_type) = prost::encoding::decode_key(&mut buf)?;
-            message.merge_field(tag, wire_type, &mut buf, ctx.clone())?;
+            let (tag, wire_type) =
+                prost::encoding::decode_key(&mut buf).map_err(Error::DecodeProtobuf)?;
+            message
+                .merge_field(tag, wire_type, &mut buf, ctx.clone())
+                .map_err(Error::DecodeProtobuf)?;
             // This part here is not in prost. The purpose is to note the
             // pre-hashed-data that is hashed and then signed, and the
             // underlying assumption is that all non-signature field bytes
@@ -157,12 +162,15 @@ impl Signed<SignerMessage> {
         }
 
         // Okay now we transform the protobuf type into our local type.
-        let msg = Signed::<SignerMessage>::try_from(message)?;
+        let mut msg = Signed::<SignerMessage>::try_from(message)?;
         // Now we construct the digest that was signed over.
         let mut hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
         hasher.update(pre_hash_data);
 
-        Ok((msg, hasher.finalize().into()))
+        let digest = hasher.finalize().into();
+        msg.signer_public_key = Some(msg.recover_ecdsa_with_digest(digest)?);
+
+        Ok((msg, digest))
     }
 }
 
@@ -200,13 +208,14 @@ pub trait SignEcdsa: Sized {
     fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self>;
 }
 
-impl<T: SighashDigest> SignEcdsa for T {
+impl SignEcdsa for SignerMessage {
     fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self> {
         let msg = secp256k1::Message::from_digest(self.digest());
 
         Signed {
             signature: private_key.sign_ecdsa_recoverable(&msg),
             inner: self,
+            signer_public_key: Some(PublicKey::from_private_key(private_key)),
         }
     }
 }
@@ -230,7 +239,7 @@ impl Signed<SignerMessage> {
 
     /// Verify the signature over the inner data.
     pub fn verify(&self, public_key: PublicKey) -> bool {
-        self.recover_ecdsa().is_ok_and(|key| key == public_key)
+        self.signer_public_key().is_ok_and(|key| key == public_key)
     }
 }
 

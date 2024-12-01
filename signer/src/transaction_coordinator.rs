@@ -729,10 +729,8 @@ where
                     self.context.get_termination_handle().signal_shutdown();
                     return Err(Error::SignerShutdown);
                 };
-                // TODO: We need to verify these messages, but it is best
-                // to do that at the source when we receive the message.
 
-                let msg_signer_pub_key = msg.recover_ecdsa()?;
+                let msg_signer_pub_key = msg.signer_public_key()?;
                 if &msg.bitcoin_chain_tip != chain_tip {
                     tracing::warn!(
                         sender = %msg_signer_pub_key,
@@ -1000,7 +998,7 @@ where
         // channel, or the termination handler channel has closed. This is
         // all bad, so we trigger a shutdown.
         while let Some(msg) = signal_stream.next().await {
-            let msg_signer_pub_key = msg.recover_ecdsa()?;
+            let msg_signer_pub_key = msg.signer_public_key()?;
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
                 tracing::warn!(sender = %msg_signer_pub_key, "concurrent WSTS activity observed");
                 continue;

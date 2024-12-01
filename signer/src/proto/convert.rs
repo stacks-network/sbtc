@@ -1474,6 +1474,7 @@ impl TryFrom<proto::Signed> for Signed<SignerMessage> {
         Ok(Signed {
             inner,
             signature: value.signature.required()?.try_into()?,
+            signer_public_key: None,
         })
     }
 }

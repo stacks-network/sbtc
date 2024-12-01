@@ -13,9 +13,9 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// Indicates that a sweep transaction with the specified txid could not be found.
-    #[error("sweep transaction not found: {0}")]
-    DecodeProtobuf(#[from] prost::DecodeError),
+    /// Indicates an error when decoding a protobuf
+    #[error("could not decode protobuf {0}")]
+    DecodeProtobuf(#[source] prost::DecodeError),
 
     /// Attempted division by zero
     #[error("attempted division by zero")]
