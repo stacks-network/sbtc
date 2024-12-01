@@ -412,11 +412,18 @@ where
             fee_rate: pending_requests.signer_state.fee_rate,
             last_fees: pending_requests.signer_state.last_fees.map(Into::into),
         };
+
+        let presign_ack_filter = |event: &SignerSignal| {
+            matches!(
+                event,
+                SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(_)))
+                    | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+                    | SignerSignal::Command(SignerCommand::Shutdown)
+            )
+        };
+
         // Create a signal stream with the defined filter
-        let signal_stream = self
-            .context
-            .as_signal_stream(signed_message_filter)
-            .filter_map(Self::to_signed_message);
+        let signal_stream = self.context.as_signal_stream(presign_ack_filter);
 
         // Send the presign request message
         self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
@@ -428,32 +435,38 @@ where
 
             while acknowledged_signers.len() < self.threshold as usize {
                 match signal_stream.next().await {
-                    Some(Signed {
-                        inner:
-                            SignerMessage {
-                                bitcoin_chain_tip,
-                                payload: Payload::BitcoinPreSignAck(_),
-                            },
-                        signer_pub_key,
-                        ..
-                    }) => {
-                        if bitcoin_chain_tip == target_tip {
-                            acknowledged_signers.insert(signer_pub_key);
-                        } else {
-                            tracing::warn!(
-                                signer = %signer_pub_key,
-                                received_chain_tip = %bitcoin_chain_tip,
-                                "bitcoin presign ack observed for a different chain tip"
-                            );
-                        }
-                    }
                     None => {
-                        tracing::warn!("signal stream closed unexpectedly, initiating shutdown");
-                        self.context.get_termination_handle().signal_shutdown();
+                        tracing::warn!("signer signal stream closed unexpectedly, shutting down");
                         return Err(Error::SignerShutdown);
                     }
-                    // Ignore all other messages
-                    _ => continue,
+                    Some(SignerSignal::Command(SignerCommand::Shutdown)) => {
+                        tracing::warn!("signer shutdown signal received, shutting down");
+                        return Err(Error::SignerShutdown);
+                    }
+                    Some(event) => match Self::to_signed_message(event).await {
+                        Some(Signed {
+                            inner:
+                                SignerMessage {
+                                    bitcoin_chain_tip,
+                                    payload: Payload::BitcoinPreSignAck(_),
+                                    ..
+                                },
+                            signer_pub_key,
+                            ..
+                        }) => {
+                            if bitcoin_chain_tip == target_tip {
+                                acknowledged_signers.insert(signer_pub_key);
+                            } else {
+                                tracing::warn!(
+                                    signer = %signer_pub_key,
+                                    received_chain_tip = %bitcoin_chain_tip,
+                                    "bitcoin presign ack observed for a different chain tip"
+                                );
+                            }
+                        }
+                        // We can ignore other types of payload
+                        _ => continue,
+                    },
                 };
             }
 
