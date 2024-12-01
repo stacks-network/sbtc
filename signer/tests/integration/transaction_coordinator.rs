@@ -9,6 +9,7 @@ use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::AddressType;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Transaction;
 use bitcoincore_rpc::RpcApi as _;
@@ -480,6 +481,11 @@ async fn process_complete_deposit() {
                 .expect_estimate_fees()
                 .once()
                 .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
+
+            client
+                .expect_get_sbtc_total_supply()
+                .once()
+                .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
         })
         .await;
 
@@ -1313,6 +1319,11 @@ async fn sign_bitcoin_transaction() {
                     Ok(SubmitTxResponse::Acceptance(txid))
                 })
             });
+            // The coordinator will get the total supply of sBTC to
+            // determine the amount of mintable sBTC.
+            client
+                .expect_get_sbtc_total_supply()
+                .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
         })
         .await;
     }

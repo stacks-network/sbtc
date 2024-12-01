@@ -36,6 +36,7 @@ use serde::Serialize;
 use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
+use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
@@ -134,6 +135,8 @@ pub struct SbtcRequests {
     pub accept_threshold: u16,
     /// The total number of signers.
     pub num_signers: u16,
+    /// The maximum amount of sBTC that can be minted in sats.
+    pub sbtc_limits: SbtcLimits,
 }
 
 impl SbtcRequests {
@@ -162,18 +165,32 @@ impl SbtcRequests {
             })
             .map(RequestRef::Withdrawal);
 
-        // Now we filter deposit requests where the user's max fee could be
-        // less than the fee we may charge. This is simpler because deposit
-        // UTXOs have a known fixed size. Also, the "actual" max fee must
-        // always be less than or equal to the deposit amount, so take the
-        // minimum of the max fee and the amount.
+        // Filter deposit requests based on two constraints:
+        // 1. The user's max fee must be >= our minimum required fee for deposits
+        //     (based on fixed deposit tx size)
+        // 2. The deposit amount must be less than the per-deposit limit
+        // 3. The total amount being minted must stay under the maximum allowed mintable amount
         let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
-        let deposits = self
-            .deposits
-            .iter()
-            .filter(|req| req.max_fee.min(req.amount) >= minimum_deposit_fee)
-            .map(RequestRef::Deposit);
+        let max_mintable_cap = self.sbtc_limits.max_mintable_cap().to_sat();
+        let per_deposit_cap = self.sbtc_limits.per_deposit_cap().to_sat();
 
+        let mut amount_to_mint: u64 = 0;
+        let deposits = self.deposits.iter().filter_map(|req| {
+            let is_fee_valid = req.max_fee.min(req.amount) >= minimum_deposit_fee;
+            let is_within_per_deposit_cap = req.amount <= per_deposit_cap;
+            let is_within_max_mintable_cap =
+                if let Some(new_amount) = amount_to_mint.checked_add(req.amount) {
+                    new_amount <= max_mintable_cap
+                } else {
+                    false
+                };
+            if is_fee_valid && is_within_per_deposit_cap && is_within_max_mintable_cap {
+                amount_to_mint += req.amount;
+                Some(RequestRef::Deposit(req))
+            } else {
+                None
+            }
+        });
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.chain(withdrawals);
 
@@ -1553,6 +1570,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 2,
+            sbtc_limits: SbtcLimits::default(),
         };
         let keypair = Keypair::new_global(&mut OsRng);
 
@@ -1651,6 +1669,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         // This should all be in one transaction since there are no votes
@@ -1745,6 +1764,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         // We'll have the deposit get two vote against, and the withdrawals
@@ -1852,6 +1872,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1936,6 +1957,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         // This should all be in one transaction since there are no votes
@@ -1979,6 +2001,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         // This should all be in one transaction since there are no votes
@@ -2028,6 +2051,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2074,6 +2098,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2132,6 +2157,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2230,6 +2256,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2294,6 +2321,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let (old_fee_total, old_fee_rate) = {
@@ -2372,6 +2400,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            sbtc_limits: SbtcLimits::default(),
         };
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -2407,6 +2436,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let transactions = requests.construct_transactions();
@@ -2463,6 +2493,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2721,5 +2752,78 @@ mod tests {
         // Their fees, in sats, should not add up to more than `fee +
         // number-of-requests`.
         assert!(combined_fee <= (fee + Amount::from_sat(3u64)));
+    }
+
+    #[test_case(vec![
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+    ], 3, 30_000, 10_000, 30_000; "should_accept_deposits_until_max_mintable_reached")]
+    #[test_case(vec![
+        create_deposit(10_000, 10_000, 0),
+        create_deposit(10_000, 10_000, 0),
+    ], 1, 10_000, 10_000, 15_000; "should_accept_all_deposits_when_under_max_mintable")]
+    #[test_case(vec![
+        create_deposit(10_000, 10_000, 0),
+    ], 0, 0, 0, 0; "should_handle_empty_deposit_list")]
+    #[test_case(vec![
+        create_deposit(10_000, 0, 0),
+        create_deposit(11_000, 10_000, 0),
+        create_deposit(9_000, 10_000, 0),
+    ], 1, 9_000, 10_000, 10_000; "should_skip_invalid_fee_and_accept_valid_deposits")]
+    #[test_case(vec![
+        create_deposit(10_001, 10_000, 0),
+    ], 0, 0, 10_001, 10_000; "should_reject_single_deposit_exceeding_max_mintable")]
+    #[test_case(vec![
+        create_deposit(10_000, 10_000, 0),
+    ], 0, 0, 8_000, 10_000; "should_reject_single_deposit_exceeding_per_deposit_cap")]
+    #[tokio::test]
+    async fn test_construct_transactions_filters_deposits_over_max_mintable(
+        deposits: Vec<DepositRequest>,
+        num_accepted_requests: usize,
+        accepted_amount: u64,
+        per_deposit_cap: u64,
+        max_mintable: u64,
+    ) {
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        let requests = SbtcRequests {
+            deposits: deposits,
+            withdrawals: vec![],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000_000,
+                    public_key,
+                },
+                fee_rate: 25.0,
+                public_key,
+                last_fees: None,
+                magic_bytes: [0; 2],
+            },
+            num_signers: 10,
+            accept_threshold: 8,
+            sbtc_limits: SbtcLimits::new(
+                None,
+                Some(Amount::from_sat(per_deposit_cap)),
+                None,
+                Some(Amount::from_sat(max_mintable)),
+            ),
+        };
+        let txs = requests.construct_transactions().unwrap();
+        let nr_requests = txs.iter().map(|tx| tx.requests.len()).sum::<usize>();
+        let total_amount: u64 = txs
+            .iter()
+            .map(|tx| {
+                tx.requests
+                    .iter()
+                    .map(|req| req.as_deposit().unwrap().amount)
+            })
+            .flatten()
+            .sum();
+        assert_eq!(nr_requests, num_accepted_requests);
+        assert_eq!(total_amount, accepted_amount);
     }
 }
