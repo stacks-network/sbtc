@@ -6,6 +6,9 @@ import {
   randomPublicKeys,
   registry,
   signers,
+  depositUpdate,
+  getCurrentBurnInfo,
+  deposit
 } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, txErr, rov, filterEvents } from "@clarigen/test";
@@ -221,4 +224,52 @@ describe("sBTC bootstrap signers contract", () => {
       });
     });
   });
+
+  describe("Update deposit contract", () => {
+    test("Can update deposit contract & call into new version", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      // Call into the new contract
+      const receipt2 = txOk(
+        depositUpdate.testFunction({
+        }),
+        deployer
+      );
+      expect(receipt2.value).toEqual(0n);
+    });
+    test("Can not call into previous deposit contract", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
+      const receipt = txErr(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(31).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      expect(receipt.value).toEqual(errors.deposit.ERR_TXID_LEN);
+    });
+  });
+
 });
