@@ -29,6 +29,7 @@
 
 use std::io;
 
+use prost::bytes::Buf as _;
 use prost::Message as _;
 use sha2::Digest as _;
 
@@ -114,28 +115,61 @@ where
 }
 
 impl Signed<SignerMessage> {
-    /// Decodes an encoded protobuf message returning the decoded and
-    /// transformed type with the digest that was signed over.
+    /// Decodes an encoded protobuf message, transforming it into a
+    /// [`Signed<SignerMessage>`], and returning the signed message and
+    /// with the digest that the signature was signed over.
+    ///
+    /// # Notes
+    ///
+    /// This function uses the fact that the protobuf [`proto::Signed`]
+    /// type has a particular layout to decode the message and get the
+    /// bytes that were signed by the signer that generated the message. It
+    /// does the following:
+    /// 1. Decode the first field using the given bytes. This field is the
+    ///    signature field.
+    /// 2. Takes a reference to the bytes after the protobuf signature
+    ///    bytes. These were supposed to be used generate the digest that
+    ///    was signed over.
+    /// 3. Finish decoding the given bytes into the signed message.
+    /// 4. Transform the protobuf rust type into the local rust type.
+    /// 5. Use the local rust type along with the bytes from (2) to create
+    ///    the signed digest.
+    ///
+    /// One of the assumptions is that repeated serialization of prost
+    /// types generate the same bytes. It also assumes that fields are
+    /// serialized in order by their tag. This is not true for protobuf
+    /// generally, but it is for the prost protobuf implementation.
+    /// <https://protobuf.dev/programming-guides/serialization-not-canonical/>
+    /// <https://protobuf.dev/programming-guides/encoding/#order>
+    /// <https://github.com/tokio-rs/prost/blob/v0.12.6/prost/src/message.rs#L108-L134>
     pub fn decode_with_digest(data: &[u8]) -> Result<(Self, [u8; 32]), Error> {
         let mut buf = data;
+        let mut pre_hash_data = data;
 
+        // This is almost exactly what prost does when decoding protobuf
+        // bytes.
         let mut message = proto::Signed::default();
         let ctx = prost::encoding::DecodeContext::default();
-        let (tag, wire_type) = prost::encoding::decode_key(&mut buf)?;
-        message.merge_field(tag, wire_type, &mut buf, ctx.clone())?;
 
-        let pre_hash_data = buf;
-        let (tag, wire_type) = prost::encoding::decode_key(&mut buf)?;
+        while buf.has_remaining() {
+            let (tag, wire_type) = prost::encoding::decode_key(&mut buf)?;
+            message.merge_field(tag, wire_type, &mut buf, ctx.clone())?;
+            // This is the only part here that is not in prost. The field
+            // with tag 1 is the signature field. We note a reference to
+            // the remaining bytes because these bytes were used to create
+            // the digest that was signed over.
+            if tag == 1 {
+                pre_hash_data = buf;
+            }
+        }
 
-        message.merge_field(tag, wire_type, &mut buf, ctx.clone())?;
-
-        let msg = Signed::<crate::message::SignerMessage>::try_from(message)?;
+        // Okay now we transform the protobuf type into our local type.
+        let msg = Signed::<SignerMessage>::try_from(message)?;
+        // Now we construct the digest that was signed over.
         let mut hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
-
         hasher.update(pre_hash_data);
-        let digest: [u8; 32] = hasher.finalize().into();
 
-        Ok((msg, digest))
+        Ok((msg, hasher.finalize().into()))
     }
 }
 
@@ -144,7 +178,7 @@ impl SignerMessage {
     pub fn to_digest(&self) -> [u8; 32] {
         let mut hasher = sha2::Sha256::new_with_prefix(self.type_tag());
 
-        let ans = crate::proto::Signed {
+        let ans = proto::Signed {
             signature: None,
             signer_message: Some(self.clone().into()),
         };
@@ -228,7 +262,7 @@ mod tests {
         // We sign a payload digest. It should always be what this function
         // returned **but only for the signer who is signing the digest**.
         // The signer that receives the message may not be able to
-        // reproduce the orignal digest that was signed after deserializing
+        // reproduce the original digest that was signed after deserializing
         // the protobuf. This is why we use the
         // Signed::<SignerMessage>::decode_with_digest function.
         let original_digest = original_message.to_digest();
