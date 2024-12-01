@@ -8,7 +8,8 @@ import {
   signers,
   depositUpdate,
   getCurrentBurnInfo,
-  deposit
+  deposit,
+  alice,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, txErr, rov, filterEvents } from "@clarigen/test";
@@ -237,12 +238,22 @@ describe("sBTC bootstrap signers contract", () => {
       );
       expect(receipt1.value).toEqual(true);
       // Call into the new contract
+      const defaultAmount = 1000n;
+      const defaultMaxFee = 10n;
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
       const receipt2 = txOk(
-        depositUpdate.testFunction({
+        depositUpdate.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: defaultAmount + defaultMaxFee,
+          recipient: alice,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
         }),
         deployer
       );
-      expect(receipt2.value).toEqual(0n);
+      expect(receipt2.value).toEqual(true);
     });
     test("Can not call into previous deposit contract", () => {
       // Switch out active deposit contract
