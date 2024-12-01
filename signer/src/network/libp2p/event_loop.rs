@@ -339,6 +339,11 @@ fn handle_gossipsub_event(
             ..
         } => {
             let current_signer_set = ctx.state().current_signer_set();
+            // The following check should be unnecessary. In order to
+            // receive a message the peer needs to establish a connection,
+            // and in order to do that the peer needs to be in the current
+            // signer set. When we implement the signing set changing code,
+            // we should re-evaluate whether we should remove this check.
             if !current_signer_set.is_allowed_peer(&peer_id) {
                 tracing::warn!(%peer_id, "ignoring message from unknown peer");
                 return;
