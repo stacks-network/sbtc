@@ -6,6 +6,13 @@
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
 (define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
 (define-constant ERR_MULTI_SIG_REPLAY (err u403))
+(define-constant ERR_INVALID_PROTOCOL_ID (err u404))
+
+
+;; protocol contract type
+(define-constant governance 0x00)
+(define-constant deposit 0x01)
+(define-constant withdrawal 0x02)
 
 ;; Variables
 
@@ -14,6 +21,11 @@
 (define-data-var current-signer-set (list 128 (buff 33)) (list))
 (define-data-var current-aggregate-pubkey (buff 33) 0x00)
 (define-data-var current-signer-principal principal tx-sender)
+(define-data-var active-protocol-contracts {governance: principal, deposit: principal, withdrawal: principal} {
+    governance: .sbtc-bootstrap-signers,
+    deposit: .sbtc-deposit,
+    withdrawal: .sbtc-withdrawal
+})
 
 
 ;; Maps
@@ -138,6 +150,10 @@
   (var-get current-signer-set)
 )
 
+(define-read-only (get-active-protocol-contracts)
+  (var-get active-protocol-contracts)
+)
+
 
 ;; Public functions
 
@@ -260,7 +276,7 @@
     (sweep-txid (buff 32))
   )
   (begin
-    (try! (is-protocol-caller))
+    (asserts! (is-eq contract-caller (get deposit (var-get active-protocol-contracts))) ERR_UNAUTHORIZED)
     (map-insert deposit-status {txid: txid, vout-index: vout-index} true)
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
@@ -314,8 +330,35 @@
   )
 )
 
-;; Private functions
+;; Update protocol contract
+;; This function can only be called by the active bootstrap-signers contract
+(define-public (update-protocol-contract
+    (contract-type (buff 1))
+    (new-contract principal)
+  )
+  (let
+    (
+      (active-contracts (var-get active-protocol-contracts))
+    )
+    (asserts! (is-eq contract-caller (get governance active-contracts)) ERR_UNAUTHORIZED)
+    (asserts! (and (>= contract-type governance) (<= contract-type withdrawal)) ERR_INVALID_PROTOCOL_ID)
+    (if (is-eq contract-type governance)
+      (var-set active-protocol-contracts (merge active-contracts {governance: new-contract}))
+      (if (is-eq contract-type deposit)
+        (var-set active-protocol-contracts (merge active-contracts {deposit: new-contract}))
+        (var-set active-protocol-contracts (merge active-contracts {withdrawal: new-contract}))
+      )
+    )
+    (print {
+      topic: "update-protocol-contract",
+      contract-type: contract-type,
+      new-contract: new-contract,
+    })
+    (ok true)
+  )
+)
 
+;; Private functions
 ;; Increment the last withdrawal request ID and
 ;; return the new value.
 (define-private (increment-last-withdrawal-request-id)
