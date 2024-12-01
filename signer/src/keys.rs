@@ -140,6 +140,10 @@ impl TryFrom<&p256k1::point::Point> for PublicKey {
     type Error = Error;
     fn try_from(value: &p256k1::point::Point) -> Result<Self, Self::Error> {
         let data = value.compress().data;
+        // Under the hood secp256k1::PublicKey::from_slice uses
+        // secp256k1_ec_pubkey_parse from libsecp256k1, which accepts
+        // either a compressed or uncompressed public key:
+        // https://github.com/bitcoin-core/secp256k1/blob/v0.4.0/include/secp256k1.h#L418-L437
         let public_key =
             secp256k1::PublicKey::from_slice(&data).map_err(Error::InvalidPublicKey)?;
         Ok(Self(public_key))
@@ -534,20 +538,22 @@ mod tests {
     fn regular_point_conversion() {
         // secp256k1::SecretKey::new does not allow for invalid private
         // keys while p256k1::scalar::Scalar does, so we start with a that
-        // library.
+        // library to make sure that we always generate a valid public key
+        // when using PublicKey::try_from below (although it's extremely
+        // unlikely that we would generate an invalid one anyway). 
         let sk = secp256k1::SecretKey::new(&mut OsRng);
         let scalar = p256k1::scalar::Scalar::from(sk.secret_bytes());
         let point1 = p256k1::point::Point::from(scalar);
         // Because we started with a valid private key, the point is not
         // the point at infinity, so we will have a valid public key.
         let public_key1 = PublicKey::try_from(&point1).unwrap();
-        // These two libraries should map to the same public key givent he
-        // same secret key.
+        // These two libraries should map to the same public key given the
+        // same private key.
         let public_key2 = sk.public_key(SECP256K1).into();
         assert_eq!(public_key1, public_key2);
         // We map back to make sure that this works
         let point2 = p256k1::point::Point::from(public_key1);
-        assert_eq!(point1, point2)
+        assert_eq!(point1, point2);
     }
 
     // The private key used here gave p256k1 some trouble before the fix.
