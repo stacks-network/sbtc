@@ -540,9 +540,13 @@ mod tests {
         let point1 = p256k1::point::Point::from(scalar);
         // Because we started with a valid private key, the point is not
         // the point at infinity, so we will have a valid public key.
-        let public_key = PublicKey::try_from(&point1).unwrap();
+        let public_key1 = PublicKey::try_from(&point1).unwrap();
+        // These two libraries should map to the same public key givent he
+        // same secret key.
+        let public_key2 = sk.public_key(SECP256K1).into();
+        assert_eq!(public_key1, public_key2);
         // We map back to make sure that this works
-        let point2 = p256k1::point::Point::from(public_key);
+        let point2 = p256k1::point::Point::from(public_key1);
         assert_eq!(point1, point2)
     }
 
