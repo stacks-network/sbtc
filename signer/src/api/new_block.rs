@@ -246,6 +246,8 @@ async fn handle_completed_deposit(
     ctx.get_storage_mut()
         .write_completed_deposit_event(&event)
         .await?;
+    // If the deposit request is not found, we don't want to update Emily about it because
+    // we don't have the necessary information to compute the fee.
     let deposit_request = ctx
         .get_storage()
         .get_deposit_request(&event.outpoint.txid.into(), event.outpoint.vout)

@@ -28,7 +28,7 @@ use signer::stacks::events::RegistryEvent;
 use signer::stacks::events::TxInfo;
 use signer::stacks::webhooks::NewBlockEvent;
 use signer::storage::in_memory::Store;
-use signer::storage::model::SweepTransaction;
+use signer::storage::model::DepositRequest;
 use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::BuildContext;
@@ -421,19 +421,18 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
 
     let bitcoin_txid = deposit_completed_event.outpoint.txid.to_string();
 
-    // Insert a dummy sweep transaction into the database. This will be retrieved by
-    // handle_completed_deposit, using the txid from the event to retrieve the tx fee.
-    let mut sweep = fake::Faker.fake_with_rng::<SweepTransaction, _>(&mut OsRng);
-    sweep.txid = deposit_completed_event.sweep_txid.into();
-    sweep.created_at_block_hash = deposit_completed_event.sweep_block_hash.into();
-    // A real sweep transaction would have the relevant deposits. For this test, we don't need them.
-    sweep.swept_deposits = vec![];
-    sweep.swept_withdrawals = vec![];
+    // Insert a dummy deposit request into the database. This will be retrieved by
+    // handle_completed_deposit to compute the fee paid.
+    let mut deposit: DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
+    deposit.amount = deposit_completed_event.amount + 100;
+    deposit.txid = deposit_completed_event.outpoint.txid.into();
+    deposit.output_index = deposit_completed_event.outpoint.vout;
+
     context
         .get_storage_mut()
-        .write_sweep_transaction(&sweep)
+        .write_deposit_request(&deposit)
         .await
-        .expect("failed to insert dummy sweep transaction");
+        .expect("failed to insert dummy deposit request");
 
     // Add the deposit request to Emily
     let tx_setup: TxSetup = sbtc::testing::deposits::tx_setup(15_000, 500_000, 150);
