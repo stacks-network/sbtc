@@ -875,17 +875,17 @@ impl super::DbRead for SharedStore {
         Ok(Vec::new())
     }
 
-    async fn get_sweep_transaction_fee(
+    async fn get_deposit_request(
         &self,
         txid: &model::BitcoinTxId,
-    ) -> Result<Option<u64>, Error> {
+        output_index: u32,
+    ) -> Result<Option<model::DepositRequest>, Error> {
         Ok(self
             .lock()
             .await
-            .sweep_transactions
-            .iter()
-            .find(|tx| &tx.txid == txid)
-            .map(|tx| tx.fee))
+            .deposit_requests
+            .get(&(*txid, output_index))
+            .cloned())
     }
 
     async fn will_sign_bitcoin_tx_sighash(

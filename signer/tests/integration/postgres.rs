@@ -3147,7 +3147,7 @@ async fn can_write_multiple_bitcoin_withdrawal_outputs() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn get_sweep_transaction_fee_returns_none_for_missing_tx() {
+async fn get_deposit_request_returns_none_for_missing_deposit() {
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -3155,44 +3155,43 @@ async fn get_sweep_transaction_fee_returns_none_for_missing_tx() {
     // Create a random txid
     let txid: model::BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
 
-    // Fetch the fee for the non-existent sweep transaction
-    let fetched_fee = db.get_sweep_transaction_fee(&txid).await.unwrap();
+    // Fetch the deposit request for the fake txid
+    let fetched_deposit = db.get_deposit_request(&txid, 0).await.unwrap();
 
     // Assert that the fetched fee is None
-    assert_eq!(fetched_fee, None);
+    assert_eq!(fetched_deposit, None);
 
     signer::testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn get_sweep_transaction_fee_return_right_fee() {
+async fn get_deposit_request_returns_returns_inserted_deposit_request() {
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    // Create multiple sweep transactions with specific fees
-    let mut sweep_tx1: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
-    sweep_tx1.fee = 1000;
-    sweep_tx1.swept_deposits = vec![];
-    sweep_tx1.swept_withdrawals = vec![];
+    // Create multiple deposit requests
+    let deposit_request1: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let deposit_request2: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
 
-    let mut sweep_tx2: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
-    sweep_tx2.fee = 2000;
-    sweep_tx2.swept_deposits = vec![];
-    sweep_tx2.swept_withdrawals = vec![];
+    // Insert the deposit requests into the database
+    db.write_deposit_request(&deposit_request1).await.unwrap();
+    db.write_deposit_request(&deposit_request2).await.unwrap();
 
-    // Insert the sweep transactions into the database
-    db.write_sweep_transaction(&sweep_tx1).await.unwrap();
-    db.write_sweep_transaction(&sweep_tx2).await.unwrap();
-
-    // Fetch the fees for the sweep transactions
-    let fetched_fee1 = db.get_sweep_transaction_fee(&sweep_tx1.txid).await.unwrap();
-    let fetched_fee2 = db.get_sweep_transaction_fee(&sweep_tx2.txid).await.unwrap();
+    // Fetch deposit requests from the database
+    let fetched_deposit1 = db
+        .get_deposit_request(&deposit_request1.txid, deposit_request1.output_index)
+        .await
+        .unwrap();
+    let fetched_deposit2 = db
+        .get_deposit_request(&deposit_request2.txid, deposit_request2.output_index)
+        .await
+        .unwrap();
 
     // Assert that the fetched fees match the inserted fees
-    assert_eq!(fetched_fee1, Some(sweep_tx1.fee));
-    assert_eq!(fetched_fee2, Some(sweep_tx2.fee));
+    assert_eq!(fetched_deposit1, Some(deposit_request1));
+    assert_eq!(fetched_deposit2, Some(deposit_request2));
 
     signer::testing::storage::drop_db(db).await;
 }

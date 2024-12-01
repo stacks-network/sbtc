@@ -338,11 +338,12 @@ pub trait DbRead {
         prevout_txid: &model::BitcoinTxId,
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
 
-    /// Get the fee, in sats, paid for the sweep transaction.
-    fn get_sweep_transaction_fee(
+    /// Get the deposit request given the transaction id and output index.
+    fn get_deposit_request(
         &self,
         txid: &model::BitcoinTxId,
-    ) -> impl Future<Output = Result<Option<u64>, Error>> + Send;
+        output_index: u32,
+    ) -> impl Future<Output = Result<Option<model::DepositRequest>, Error>> + Send;
 
     /// Get the bitcoin sighash output.
     fn will_sign_bitcoin_tx_sighash(
