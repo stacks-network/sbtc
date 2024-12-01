@@ -60,13 +60,13 @@ export const contracts = {
           { name: "contract-type", type: { buffer: { length: 1 } } },
           { name: "contract-address", type: "principal" },
         ],
-        outputs: { type: { response: { ok: "bool", error: "none" } } },
+        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           contractType: TypedAbiArg<Uint8Array, "contractType">,
           contractAddress: TypedAbiArg<string, "contractAddress">,
         ],
-        Response<boolean, null>
+        Response<boolean, bigint>
       >,
       bytesLen: {
         name: "bytes-len",
