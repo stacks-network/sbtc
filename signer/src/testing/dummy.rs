@@ -631,8 +631,8 @@ impl fake::Dummy<fake::Faker> for Signed<SignerMessage> {
         let digest: [u8; 32] = config.fake_with_rng(rng);
         Signed {
             inner: config.fake_with_rng(rng),
-            signature: pk.sign_ecdsa_recoverable(&secp256k1::Message::from_digest(digest)),
-            signer_public_key: Some(PublicKey::from_private_key(&pk)),
+            signature: pk.sign_ecdsa(&secp256k1::Message::from_digest(digest)),
+            signer_public_key: PublicKey::from_private_key(&pk),
         }
     }
 }

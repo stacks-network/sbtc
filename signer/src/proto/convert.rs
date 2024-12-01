@@ -184,6 +184,38 @@ impl TryFrom<proto::RecoverableSignature> for RecoverableSignature {
     }
 }
 
+impl From<secp256k1::ecdsa::Signature> for proto::EcdsaSignature {
+    fn from(value: secp256k1::ecdsa::Signature) -> Self {
+        let mut lower_bits = [0; 32];
+        let mut upper_bits = [0; 32];
+
+        let bytes = value.serialize_compact();
+
+        lower_bits.copy_from_slice(&bytes[..32]);
+        upper_bits.copy_from_slice(&bytes[32..]);
+
+        Self {
+            lower_bits: Some(proto::Uint256::from(lower_bits)),
+            upper_bits: Some(proto::Uint256::from(upper_bits)),
+        }
+    }
+}
+
+impl TryFrom<proto::EcdsaSignature> for secp256k1::ecdsa::Signature {
+    type Error = Error;
+    fn try_from(value: proto::EcdsaSignature) -> Result<Self, Self::Error> {
+        let mut data = [0; 64];
+
+        let lower_bits: [u8; 32] = value.lower_bits.required()?.into();
+        let upper_bits: [u8; 32] = value.upper_bits.required()?.into();
+
+        data[..32].copy_from_slice(&lower_bits);
+        data[32..].copy_from_slice(&upper_bits);
+
+        secp256k1::ecdsa::Signature::from_compact(&data).map_err(Error::InvalidEcdsaSignatureBytes)
+    }
+}
+
 impl From<BitcoinTxId> for proto::BitcoinTxid {
     fn from(value: BitcoinTxId) -> Self {
         proto::BitcoinTxid {
@@ -1462,6 +1494,7 @@ impl From<Signed<SignerMessage>> for proto::Signed {
     fn from(value: Signed<SignerMessage>) -> Self {
         proto::Signed {
             signature: Some(value.signature.into()),
+            signer_public_key: Some(value.signer_public_key.into()),
             signer_message: Some(value.inner.into()),
         }
     }
@@ -1474,7 +1507,7 @@ impl TryFrom<proto::Signed> for Signed<SignerMessage> {
         Ok(Signed {
             inner,
             signature: value.signature.required()?.try_into()?,
-            signer_public_key: None,
+            signer_public_key: value.signer_public_key.required()?.try_into()?,
         })
     }
 }
@@ -1822,6 +1855,14 @@ mod tests {
             let private_key = PrivateKey::new(rng);
             let msg = secp256k1::Message::from_digest([0; 32]);
             private_key.sign_ecdsa_recoverable(&msg)
+        }
+    }
+
+    impl Dummy<Unit> for secp256k1::ecdsa::Signature {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            let private_key = PrivateKey::new(rng);
+            let msg = secp256k1::Message::from_digest([0; 32]);
+            private_key.sign_ecdsa(&msg)
         }
     }
 
@@ -2228,6 +2269,7 @@ mod tests {
     /// except we cannot implement Dummy<Faker> on these types.
     #[test_case(PhantomData::<(bitcoin::OutPoint, proto::OutPoint)>; "OutPoint")]
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
+    #[test_case(PhantomData::<(secp256k1::ecdsa::Signature, proto::EcdsaSignature)>; "EcdsaSignature")]
     #[test_case(PhantomData::<(StacksAddress, proto::StacksAddress)>; "StacksAddress")]
     #[test_case(PhantomData::<(Point, proto::Point)>; "Point")]
     #[test_case(PhantomData::<(Scalar, proto::Scalar)>; "Scalar")]

@@ -243,6 +243,10 @@ pub enum Error {
     #[error("invalid private key length={0}, expected 32.")]
     InvalidPrivateKeyLength(usize),
 
+    /// The given signature was invalid
+    #[error("could not convert the given compact bytes into an ECDSA signature: {0}")]
+    InvalidEcdsaSignatureBytes(#[source] secp256k1::Error),
+
     /// This happens when we attempt to convert a `[u8; 65]` into a
     /// recoverable EDCSA signature.
     #[error("could not recover the public key from the signature: {0}")]
@@ -406,6 +410,10 @@ pub enum Error {
     /// Invalid signature
     #[error("invalid signature")]
     InvalidSignature,
+
+    /// Invalid ECDSA signature
+    #[error("invalid ECDSA signature")]
+    InvalidEcdsaSignature(#[source] secp256k1::Error),
 
     /// Codec error
     #[error("codec error: {0}")]

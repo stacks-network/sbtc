@@ -730,10 +730,9 @@ where
                     return Err(Error::SignerShutdown);
                 };
 
-                let msg_signer_pub_key = msg.signer_public_key()?;
                 if &msg.bitcoin_chain_tip != chain_tip {
                     tracing::warn!(
-                        sender = %msg_signer_pub_key,
+                        sender = %msg.signer_public_key,
                         "concurrent signing round message observed"
                     );
                     continue;
@@ -748,7 +747,7 @@ where
                     tracing::warn!(
                         %txid,
                         %error,
-                        offending_public_key = %msg_signer_pub_key,
+                        offending_public_key = %msg.signer_public_key,
                         "got an invalid signature"
                     );
                 }
@@ -998,9 +997,8 @@ where
         // channel, or the termination handler channel has closed. This is
         // all bad, so we trigger a shutdown.
         while let Some(msg) = signal_stream.next().await {
-            let msg_signer_pub_key = msg.signer_public_key()?;
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(sender = %msg_signer_pub_key, "concurrent WSTS activity observed");
+                tracing::warn!(sender = %msg.signer_public_key, "concurrent WSTS activity observed");
                 continue;
             }
 
@@ -1013,7 +1011,7 @@ where
                 sig: Vec::new(),
             };
 
-            let msg_public_key = msg_signer_pub_key;
+            let msg_public_key = msg.signer_public_key;
 
             let sender_is_coordinator =
                 given_key_is_coordinator(msg_public_key, bitcoin_chain_tip, &signer_set);

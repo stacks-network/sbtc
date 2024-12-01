@@ -150,16 +150,14 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn handle_signer_message(&mut self, msg: &Signed<SignerMessage>) -> Result<(), Error> {
-        let msg_signer_pub_key = msg.signer_public_key()?;
-
         tracing::trace!(payload = %msg.inner.payload, "handling message");
         match &msg.inner.payload {
             Payload::SignerDepositDecision(decision) => {
-                self.persist_received_deposit_decision(decision, msg_signer_pub_key)
+                self.persist_received_deposit_decision(decision, msg.signer_public_key)
                     .await?;
             }
             Payload::SignerWithdrawalDecision(decision) => {
-                self.persist_received_withdraw_decision(decision, msg_signer_pub_key)
+                self.persist_received_withdraw_decision(decision, msg.signer_public_key)
                     .await?;
             }
             Payload::StacksTransactionSignRequest(_)

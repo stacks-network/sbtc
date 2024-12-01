@@ -61,7 +61,6 @@
 
 use prost::bytes::Buf as _;
 use prost::Message as _;
-use secp256k1::ecdsa::RecoverableSignature;
 use sha2::Digest as _;
 
 use crate::codec::ProtoSerializable;
@@ -70,8 +69,6 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message::SignerMessage;
 use crate::proto;
-use crate::signature::RecoverableEcdsaSignature;
-use crate::signature::SighashDigest;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
@@ -80,28 +77,25 @@ pub struct Signed<T> {
     /// The signed structure.
     pub inner: T,
     /// A signature over the hash of the inner structure.
-    pub signature: RecoverableSignature,
+    pub signature: secp256k1::ecdsa::Signature,
     /// The public key of the signer that generated the message.
-    pub signer_public_key: Option<PublicKey>,
+    pub signer_public_key: PublicKey,
 }
 
 impl Signed<SignerMessage> {
-    /// Determines the public key for which `sig` is a valid signature for
-    /// `msg`.
-    pub fn signer_public_key(&self) -> Result<PublicKey, Error> {
-        self.signer_public_key.ok_or(Error::MissingPublicKey)
-    }
-
-    /// Determines the public key for which `sig` is a valid signature for
-    /// `msg`.
-    pub fn recover_ecdsa_with_digest(&self, digest: [u8; 32]) -> Result<PublicKey, Error> {
-        let msg = secp256k1::Message::from_digest(digest);
-        self.signature.recover_ecdsa(&msg)
-    }
-
     /// Unique identifier for the signed message
     pub fn id(&self) -> [u8; 32] {
-        self.inner.digest()
+        self.inner.to_digest(self.signer_public_key)
+    }
+
+    /// Verify that the signature was created over the given digest with
+    /// the public key in this struct.
+    pub fn verify_digest(&self, digest: [u8; 32]) -> Result<(), Error> {
+        let msg = secp256k1::Message::from_digest(digest);
+
+        self.signature
+            .verify(&msg, &self.signer_public_key)
+            .map_err(Error::InvalidEcdsaSignature)
     }
 
     /// Decodes an encoded protobuf message, transforming it into a
@@ -162,24 +156,22 @@ impl Signed<SignerMessage> {
         }
 
         // Okay now we transform the protobuf type into our local type.
-        let mut msg = Signed::<SignerMessage>::try_from(message)?;
+        let msg = Signed::<SignerMessage>::try_from(message)?;
         // Now we construct the digest that was signed over.
         let mut hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
         hasher.update(pre_hash_data);
 
-        let digest = hasher.finalize().into();
-        msg.signer_public_key = Some(msg.recover_ecdsa_with_digest(digest)?);
-
-        Ok((msg, digest))
+        Ok((msg, hasher.finalize().into()))
     }
 }
 
-impl SighashDigest for SignerMessage {
-    fn digest(&self) -> [u8; 32] {
+impl SignerMessage {
+    fn to_digest(&self, public_key: PublicKey) -> [u8; 32] {
         let mut hasher = sha2::Sha256::new_with_prefix(self.type_tag());
 
         let ans = proto::Signed {
             signature: None,
+            signer_public_key: Some(public_key.into()),
             signer_message: Some(self.clone().into()),
         };
 
@@ -210,12 +202,13 @@ pub trait SignEcdsa: Sized {
 
 impl SignEcdsa for SignerMessage {
     fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self> {
-        let msg = secp256k1::Message::from_digest(self.digest());
+        let public_key = PublicKey::from_private_key(private_key);
+        let msg = secp256k1::Message::from_digest(self.to_digest(public_key));
 
         Signed {
-            signature: private_key.sign_ecdsa_recoverable(&msg),
+            signature: private_key.sign_ecdsa(&msg),
             inner: self,
-            signer_public_key: Some(PublicKey::from_private_key(private_key)),
+            signer_public_key: public_key,
         }
     }
 }
@@ -239,7 +232,8 @@ impl Signed<SignerMessage> {
 
     /// Verify the signature over the inner data.
     pub fn verify(&self, public_key: PublicKey) -> bool {
-        self.signer_public_key().is_ok_and(|key| key == public_key)
+        let digest = self.inner.to_digest(public_key);
+        self.verify_digest(digest).is_ok()
     }
 }
 
@@ -255,7 +249,6 @@ mod tests {
     use crate::keys::PrivateKey;
     use crate::message;
     use crate::proto;
-    use crate::signature::RecoverableEcdsaSignature as _;
     use crate::storage::model::{BitcoinBlockHash, StacksBlockHash, StacksTxId};
 
     use super::*;
@@ -280,6 +273,7 @@ mod tests {
     {
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
+        let public_key: PublicKey = keypair.public_key().into();
         let original_message = SignerMessage {
             bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
             payload: fake::Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
@@ -291,7 +285,7 @@ mod tests {
         // reproduce the original digest that was signed after deserializing
         // the protobuf. This is why we use the
         // Signed::<SignerMessage>::decode_with_digest function.
-        let original_digest = original_message.digest();
+        let original_digest = original_message.to_digest(public_key);
 
         let signed_message: Signed<SignerMessage> = original_message.sign_ecdsa(&private_key);
         let buf = signed_message.clone().encode_to_vec();
@@ -301,8 +295,7 @@ mod tests {
 
         // We should have the same signed message. This just tests protobuf
         // deserialization.
-        assert_eq!(signed_message.inner, msg.inner);
-        assert_eq!(signed_message.signature, msg.signature);
+        assert_eq!(signed_message, msg);
         let (msg2, digest) = Signed::<SignerMessage>::decode_with_digest(&buf).unwrap();
 
         // The decode_with_digest function is not the most intuitive, so
@@ -317,9 +310,8 @@ mod tests {
         // only way to check that is to attempt to recover the public key
         // that signed it. If the digest was wrong we'll get either an
         // error (so a panic) or the wrong public key.
-        let digest = secp256k1::Message::from_digest(digest);
-        let public_key = msg.signature.recover_ecdsa(&digest).unwrap();
-        assert_eq!(public_key, keypair.public_key().into());
+        msg.verify_digest(digest).unwrap();
+        assert_eq!(msg.signer_public_key, keypair.public_key().into());
     }
 
     /// These tests check that if we sign a message with a private key,
@@ -341,6 +333,7 @@ mod tests {
     {
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
+        let public_key: PublicKey = keypair.public_key().into();
         let original_message = SignerMessage {
             bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
             payload: fake::Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
@@ -352,7 +345,7 @@ mod tests {
         // reproduce the original digest that was signed after deserializing
         // the protobuf. This is why we use the
         // Signed::<SignerMessage>::decode_with_digest function.
-        let original_digest = original_message.digest();
+        let original_digest = original_message.to_digest(public_key);
 
         let mut signed_message: Signed<SignerMessage> = original_message.sign_ecdsa(&private_key);
         // Let's change one byte of the signed payload
@@ -366,8 +359,7 @@ mod tests {
 
         // We should have the same signed message. This only tests protobuf
         // deserialization, so everything should be fine.
-        assert_eq!(signed_message.inner, msg.inner);
-        assert_eq!(signed_message.signature, msg.signature);
+        assert_eq!(signed_message, msg);
         let (msg2, digest) = Signed::<SignerMessage>::decode_with_digest(&buf).unwrap();
 
         // The decode_with_digest function is not the most intuitive, so
@@ -380,15 +372,8 @@ mod tests {
         assert_ne!(digest, original_digest);
 
         // Okay, we changed one of the bytes, let's make sure that the
-        // public key does not match either.
-        let digest = secp256k1::Message::from_digest(digest);
-        // I don't think that this will return an error, but I don't know
-        // for sure that it cannot. If it returns an error then that counts
-        // as the message failing validation so.
-        match msg.signature.recover_ecdsa(&digest) {
-            Ok(public_key) => assert_ne!(public_key, keypair.public_key().into()),
-            Err(_) => (),
-        };
+        // signatures do not verify the digest.
+        msg.verify_digest(digest).unwrap_err();
     }
 
     #[allow(clippy::derive_partial_eq_without_eq)]
@@ -402,16 +387,17 @@ mod tests {
     #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct SignedUpgraded {
-        /// A signature over the hash of the inner structure.
         #[prost(message, optional, tag = "1")]
-        pub signature: Option<proto::RecoverableSignature>,
-        /// The signed structure.
+        pub signature: Option<proto::EcdsaSignature>,
         #[prost(message, optional, tag = "2")]
+        pub signer_public_key: Option<proto::PublicKey>,
+        /// The signed structure.
+        #[prost(message, optional, tag = "3")]
         pub signer_message: Option<proto::SignerMessage>,
         /// An additional field for timestamps. Maybe we use this to
         /// prevent replay attacks. This field is a backwards compatible
         /// upgrade.
-        #[prost(message, optional, tag = "3")]
+        #[prost(message, optional, tag = "4")]
         pub timestamp: Option<Timestamp>,
     }
 
@@ -437,6 +423,7 @@ mod tests {
         // consumption by another signer.
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
+        let public_key: PublicKey = keypair.public_key().into();
         let original_message = SignerMessage {
             bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
             payload: Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
@@ -448,6 +435,7 @@ mod tests {
         let unix_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
         let mut signed_message_v2 = SignedUpgraded {
             signature: None,
+            signer_public_key: Some(public_key.into()),
             signer_message: Some(original_message.clone().into()),
             timestamp: Some(Timestamp { unix_timestamp }),
         };
@@ -458,7 +446,7 @@ mod tests {
         hasher.update(signed_message_v2.encode_to_vec());
         let digest = hasher.finalize().into();
         let msg = secp256k1::Message::from_digest(digest);
-        signed_message_v2.signature = Some(private_key.sign_ecdsa_recoverable(&msg).into());
+        signed_message_v2.signature = Some(private_key.sign_ecdsa(&msg).into());
 
         // Okay now we have a signed upgraded message. We encoded it and
         // send it out.
@@ -470,11 +458,10 @@ mod tests {
         // fail.
         let (msg, digest) = Signed::<SignerMessage>::decode_with_digest(&received_data).unwrap();
 
-        // We can recover the public key using the returned digest, it
-        // should match what we expect, even though we sent an upgraded
+        // We can verify the signature, even though we sent an upgraded
         // protobuf message.
-        let public_key = msg.recover_ecdsa_with_digest(digest).unwrap();
-        assert_eq!(public_key, keypair.public_key().into());
+        msg.verify_digest(digest).unwrap();
+        assert_eq!(msg.signer_public_key, keypair.public_key().into());
 
         // The received message can be decoded correctly if the signer had
         // the right definition.
@@ -487,13 +474,15 @@ mod tests {
     #[derive(Clone, PartialEq, ::prost::Message)]
     struct SignedUpgraded2 {
         #[prost(message, optional, tag = "1")]
-        pub signature: Option<proto::RecoverableSignature>,
+        pub signature: Option<proto::EcdsaSignature>,
         #[prost(message, optional, tag = "2")]
+        pub signer_public_key: Option<proto::PublicKey>,
+        #[prost(message, optional, tag = "3")]
         pub signer_message: Option<SignerMessageUpgraded>,
         /// An additional field for timestamps. Maybe we use this to
         /// prevent replay attacks. This field is a backwards compatible
         /// upgrade.
-        #[prost(message, optional, tag = "3")]
+        #[prost(message, optional, tag = "4")]
         pub timestamp: Option<Timestamp>,
     }
 
@@ -536,6 +525,7 @@ mod tests {
         // consumption by another signer.
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
+        let public_key: PublicKey = keypair.public_key().into();
 
         // The upgraded signer sends messages with an additional field for
         // the SignerWithdrawalDecision and for the proto::Signed type.
@@ -562,6 +552,7 @@ mod tests {
         let unix_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
         let mut signed_message_v2 = SignedUpgraded2 {
             signature: None,
+            signer_public_key: Some(public_key.into()),
             signer_message: Some(SignerMessageUpgraded {
                 bitcoin_chain_tip: Some(BitcoinBlockHash::from([1; 32]).into()),
                 payload: Some(PayloadUpgraded::SignerWithdrawalDecisioUpgraded(decision)),
@@ -579,7 +570,7 @@ mod tests {
         let digest = hasher.finalize().into();
         let msg = secp256k1::Message::from_digest(digest);
         // Let's add the signature.
-        signed_message_v2.signature = Some(private_key.sign_ecdsa_recoverable(&msg).into());
+        signed_message_v2.signature = Some(private_key.sign_ecdsa(&msg).into());
 
         // Okay now we have a signed upgraded message. We encoded it and
         // send it out.
@@ -592,11 +583,9 @@ mod tests {
         // fail.
         let (msg, digest) = Signed::<SignerMessage>::decode_with_digest(&received_data).unwrap();
 
-        // We can recover the public key using the returned digest, it
-        // should match what we expect, even though we sent an upgraded
-        // protobuf message.
-        let public_key = msg.recover_ecdsa_with_digest(digest).unwrap();
-        assert_eq!(public_key, keypair.public_key().into());
+        // The signature should verify with the returned digest
+        msg.verify_digest(digest).unwrap();
+        assert_eq!(msg.signer_public_key, keypair.public_key().into());
 
         // The received message can be decoded correctly if the signer had
         // the right definition.

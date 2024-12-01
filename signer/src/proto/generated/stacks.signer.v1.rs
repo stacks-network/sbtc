@@ -462,11 +462,14 @@ pub mod wsts_message {
 pub struct Signed {
     /// A signature over the hash of the inner structure.
     #[prost(message, optional, tag = "1")]
-    pub signature: ::core::option::Option<
-        super::super::super::crypto::RecoverableSignature,
+    pub signature: ::core::option::Option<super::super::super::crypto::EcdsaSignature>,
+    /// The public key of the signer that generated the signature.
+    #[prost(message, optional, tag = "2")]
+    pub signer_public_key: ::core::option::Option<
+        super::super::super::crypto::PublicKey,
     >,
     /// The signed structure.
-    #[prost(message, optional, tag = "2")]
+    #[prost(message, optional, tag = "3")]
     pub signer_message: ::core::option::Option<SignerMessage>,
 }
 /// Information about a new Bitcoin block sign request
