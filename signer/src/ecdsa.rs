@@ -198,13 +198,13 @@ mod tests {
     use crate::ecdsa::SignEcdsa;
     use crate::keys::PrivateKey;
     use crate::message;
-    use crate::message::SignerWithdrawalDecision;
     use crate::proto;
     use crate::signature::RecoverableEcdsaSignature as _;
-    use crate::storage::model::BitcoinBlockHash;
+    use crate::storage::model::{BitcoinBlockHash, StacksBlockHash, StacksTxId};
 
     use super::*;
     use test_case::test_case;
+    use fake::Faker;
 
     /// These tests check that if we sign a message with a private key,
     /// that [`Signed::<SignerMessage>::decode_with_digest`] will give the
@@ -357,22 +357,31 @@ mod tests {
         pub timestamp: Option<Timestamp>,
     }
 
-    /// In these tests, we check what would happen if we upgraded one of
-    /// the [`proto::Signed`] type. We pretend to be a signer who is using
-    /// an updated protobuf schema and sending a message to another signer.
-    /// Here we check that the receiving signer can properly decode the
-    /// message and verify the signature.
-    #[test]
-    fn backwards_compatible_updates() {
+    /// In these tests, we check what would happen if we upgraded the
+    /// [`proto::Signed`] type. We pretend to be a signer who is using an
+    /// updated protobuf schema and sending a message to another signer who
+    /// has not upgraded. Here we check that the receiving signer can
+    /// properly decode the message and verify the signature.
+    #[test_case(PhantomData::<message::SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<message::SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<message::StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<message::StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<message::BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<message::BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    fn backwards_compatible_updates<T>(_: PhantomData<T>)
+    where
+        T: Into<message::Payload> + fake::Dummy<fake::Faker>,
+    {
         // This is the upgraded signer. They will construct a message for
         // consumption by another signer.
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
         let original_message = SignerMessage {
             bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
-            payload: fake::Faker
-                .fake_with_rng::<SignerWithdrawalDecision, _>(&mut OsRng)
-                .into(),
+            payload: Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
         };
 
         // The upgraded signer sends messages with an additional field.
@@ -412,6 +421,128 @@ mod tests {
         // The received message can be decoded correctly if the signer had
         // the right definition.
         let original_proto = SignedUpgraded::decode(received_data.as_slice()).unwrap();
+
+        assert_eq!(signed_message_v2, original_proto);
+    }
+
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct SignedUpgraded2 {
+        #[prost(message, optional, tag = "1")]
+        pub signature: Option<proto::RecoverableSignature>,
+        #[prost(message, optional, tag = "2")]
+        pub signer_message: Option<SignerMessageUpgraded>,
+        /// An additional field for timestamps. Maybe we use this to
+        /// prevent replay attacks. This field is a backwards compatible
+        /// upgrade.
+        #[prost(message, optional, tag = "3")]
+        pub timestamp: Option<Timestamp>,
+    }
+
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    struct SignerMessageUpgraded {
+        #[prost(message, optional, tag = "1")]
+        pub bitcoin_chain_tip: Option<proto::BitcoinBlockHash>,
+        #[prost(oneof = "PayloadUpgraded", tags = "3")]
+        pub payload: Option<PayloadUpgraded>,
+    }
+
+    /// The message payload
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum PayloadUpgraded {
+        #[prost(message, tag = "3")]
+        SignerWithdrawalDecisioUpgraded(SignerWithdrawalDecisionUpgraded),
+    }
+
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct SignerWithdrawalDecisionUpgraded {
+        #[prost(uint64, tag = "1")]
+        pub request_id: u64,
+        #[prost(message, optional, tag = "2")]
+        pub block_id: Option<proto::StacksBlockId>,
+        #[prost(message, optional, tag = "3")]
+        pub txid: Option<proto::StacksTxid>,
+        #[prost(bool, tag = "4")]
+        pub accepted: bool,
+        /// Some new map field. It is added in a backwards compatible way.
+        #[prost(map = "uint32, message", tag = "5")]
+        pub new_field: std::collections::HashMap<u32, proto::SetValueZst>,
+    }
+
+    #[test]
+    fn backwards_compatible_updates2() {
+        // This is the upgraded signer. They will construct a message for
+        // consumption by another signer.
+        let keypair = secp256k1::Keypair::new_global(&mut OsRng);
+        let private_key: PrivateKey = keypair.secret_key().into();
+
+        // The upgraded signer sends messages with an additional field for
+        // the SignerWithdrawalDecision and for the proto::Signed type.
+        // Let's generate it. Note that we always hash all of the message
+        // bytes except for the signature field and then sign it.
+
+        // This new field is a map field. Let's populate it with some
+        // values.
+        let mut new_field = std::collections::HashMap::new();
+        for _ in 0..100 {
+            new_field.insert(Faker.fake_with_rng(&mut OsRng), proto::SetValueZst {});
+        }
+        let block_hash = Faker.fake_with_rng::<StacksBlockHash, _>(&mut OsRng);
+        let txid = Faker.fake_with_rng::<StacksTxId, _>(&mut OsRng);
+        let decision = SignerWithdrawalDecisionUpgraded {
+            request_id: 102,
+            block_id: Some(proto::StacksBlockId::from(block_hash)),
+            txid: Some(proto::StacksTxid::from(txid)),
+            accepted: true,
+            new_field,
+        };
+
+        // Now we prepare to sign the upgraded message.
+        let unix_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
+        let mut signed_message_v2 = SignedUpgraded2 {
+            signature: None,
+            signer_message: Some(SignerMessageUpgraded {
+                bitcoin_chain_tip: Some(BitcoinBlockHash::from([1; 32]).into()),
+                payload: Some(PayloadUpgraded::SignerWithdrawalDecisioUpgraded(decision)),
+            }),
+            timestamp: Some(Timestamp { unix_timestamp }),
+        };
+
+        // That signer needs to add a signature, let's do it. The type tag
+        // should not change when we update our payload types, and we are
+        // sending an updated withdrawal decision.
+        let mut hasher = sha2::Sha256::new_with_prefix("SBTC_SIGNER_WITHDRAWAL_DECISION");
+        // We hash all but the signature field to get the digest to be
+        // signed.
+        hasher.update(signed_message_v2.encode_to_vec());
+        let digest = hasher.finalize().into();
+        let msg = secp256k1::Message::from_digest(digest);
+        // Let's add the signature.
+        signed_message_v2.signature = Some(private_key.sign_ecdsa_recoverable(&msg).into());
+
+        // Okay now we have a signed upgraded message. We encoded it and
+        // send it out.
+        let received_data = signed_message_v2.encode_to_vec();
+        // Now the other signer receives it. This signer does not have the
+        // "new" `SignedUpgraded2` protobuf definition, nor do they have
+        // the SignerWithdrawalDecisionUpgraded. The implementation in
+        // Signed::<SignerMessage>::decode_with_digest uses the
+        // proto::Signed type for decoding. Still, this function shouldn't
+        // fail.
+        let (msg, digest) = Signed::<SignerMessage>::decode_with_digest(&received_data).unwrap();
+
+        // We can recover the public key using the returned digest, it
+        // should match what we expect, even though we sent an upgraded
+        // protobuf message.
+        let public_key = msg.recover_ecdsa_with_digest(digest).unwrap();
+        assert_eq!(public_key, keypair.public_key().into());
+
+        // The received message can be decoded correctly if the signer had
+        // the right definition.
+        let original_proto = SignedUpgraded2::decode(received_data.as_slice()).unwrap();
 
         assert_eq!(signed_message_v2, original_proto);
     }
