@@ -273,7 +273,7 @@ mod tests {
             .expect("Failed to build swarm 3");
 
         let mut network1 = P2PNetwork::new(&context1);
-        let _network2 = P2PNetwork::new(&context2);
+        let mut network2 = P2PNetwork::new(&context2);
         let mut network3 = P2PNetwork::new(&context3);
 
         // Start three swarms.
@@ -291,19 +291,32 @@ mod tests {
         // them a bit of time to connect.
         tokio::time::sleep(Duration::from_secs(1)).await;
 
+        // Let's generate some messages for signer 3 to try to send to signer 1.
         let number_of_messages = 10;
-        let mut signed_messages: Vec<Msg> = std::iter::repeat_with(|| Msg::random(&mut rng))
-            .take(number_of_messages)
-            .collect();
+        let mut signed_messages: Vec<Msg> =
+            std::iter::repeat_with(|| Msg::random_with_private_key(&mut rng, &key3))
+                .take(number_of_messages)
+                .collect();
         signed_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
 
         let (broadcast_signer_msg, rx) = tokio::sync::broadcast::channel(20);
-        let signer_msg_stream = BroadcastStream::new(rx);
+        let origin_msg_stream = BroadcastStream::new(rx);
+
+        let (gossip_signer_msg, rx) = tokio::sync::broadcast::channel(20);
+        let gossip_msg_stream = BroadcastStream::new(rx);
 
         let broadcast_messages = signed_messages.clone();
         tokio::spawn(async move {
             for msg in broadcast_messages {
                 network3.broadcast(msg).await.expect("Failed to broadcast");
+            }
+        });
+
+        // Let's make sure that signer 2 is getting the messages as well.
+        tokio::spawn(async move {
+            loop {
+                let message = network2.receive().await.expect("Failed to receive message");
+                gossip_signer_msg.send(message).unwrap();
             }
         });
 
@@ -316,7 +329,7 @@ mod tests {
         });
 
         // The swarms have 4-seconds to exchange messages.
-        let mut received_messages = signer_msg_stream
+        let mut gossiped_messages = gossip_msg_stream
             .take(number_of_messages)
             .take_until(tokio::time::sleep(Duration::from_secs(4)))
             .collect::<Vec<_>>()
@@ -325,9 +338,20 @@ mod tests {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
 
+        let mut received_messages = origin_msg_stream
+            .take(number_of_messages)
+            .take_until(tokio::time::sleep(Duration::from_secs(4)))
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        gossiped_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
         received_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
 
         assert_eq!(received_messages, signed_messages);
+        assert_eq!(gossiped_messages, signed_messages);
     }
 
     #[test(tokio::test)]
@@ -394,7 +418,7 @@ mod tests {
             .expect("Failed to build swarm 3");
 
         let mut network1 = P2PNetwork::new(&context1);
-        let _network2 = P2PNetwork::new(&context2);
+        let mut network2 = P2PNetwork::new(&context2);
         let mut network3 = P2PNetwork::new(&context3);
 
         // Start three swarms.
@@ -412,15 +436,21 @@ mod tests {
         // them a bit of time to connect.
         tokio::time::sleep(Duration::from_secs(1)).await;
 
+        // Let's generate some messages for signer 3 to try to send to signer 1.
         let number_of_messages = 10;
-        let mut signed_messages: Vec<Msg> = std::iter::repeat_with(|| Msg::random(&mut rng))
-            .take(number_of_messages)
-            .collect();
+        let mut signed_messages: Vec<Msg> =
+            std::iter::repeat_with(|| Msg::random_with_private_key(&mut rng, &key3))
+                .take(number_of_messages)
+                .collect();
         signed_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
 
-        let (broadcast_signer_msg, rx) = tokio::sync::broadcast::channel(20);
-        let signer_msg_stream = BroadcastStream::new(rx);
+        let (origin_signer_msg, rx) = tokio::sync::broadcast::channel(20);
+        let origin_msg_stream = BroadcastStream::new(rx);
 
+        let (gossip_signer_msg, rx) = tokio::sync::broadcast::channel(20);
+        let gossip_msg_stream = BroadcastStream::new(rx);
+
+        // Okay let's have signer 3 broadcast the messages.
         let broadcast_messages = signed_messages.clone();
         tokio::spawn(async move {
             for msg in broadcast_messages {
@@ -428,20 +458,51 @@ mod tests {
             }
         });
 
+        // Let's make sure that signer 2 is getting the messages as well.
         tokio::spawn(async move {
             loop {
-                let message = network1.receive().await.expect("Failed to receive message");
-                broadcast_signer_msg.send(message).unwrap();
+                let message = network2.receive().await.expect("Failed to receive message");
+                gossip_signer_msg.send(message).unwrap();
             }
         });
 
-        // We wait for our first message, but not for too long, life is short.
-        let received_messages = signer_msg_stream
+        // Signer 1 shouldn't receive anything, but let's set him up to
+        // try.
+        tokio::spawn(async move {
+            loop {
+                let message = network1.receive().await.expect("Failed to receive message");
+                origin_signer_msg.send(message).unwrap();
+            }
+        });
+
+        // This is the connected signer, signer 2, it should receive all
+        // messages pretty quicky.
+        let mut gossiped_messages = gossip_msg_stream
+            .take(number_of_messages)
+            .take_until(tokio::time::sleep(Duration::from_secs(4)))
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        // This is for signer 1, who does not have signer 3 in it's signer
+        // set. It should not get any messages in receive(). To check the
+        // expected behavior we wait for our first message, but not for too
+        // long, life is short.
+        let received_messages = origin_msg_stream
             .take(1)
             .take_until(tokio::time::sleep(Duration::from_secs(4)))
             .collect::<Vec<_>>()
             .await;
 
+        // Messages from signer 3 should not be propogated to signer 1,
+        // since it is not in that signer's signing set.
         assert!(received_messages.is_empty());
+
+        // Now let's check that the gossipped messages are received and
+        // accepted by signer 2.
+        gossiped_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
+        assert_eq!(gossiped_messages, signed_messages);
     }
 }
