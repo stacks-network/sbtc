@@ -92,11 +92,6 @@
     )
 )
 
-;; Updated contract test function 
-(define-public (test-function)
-    (ok u0)
-)
-
 ;; private functions
 ;; #[allow(unchecked_data)]
 (define-private (complete-individual-deposits-helper (deposit {txid: (buff 32), vout-index: uint, amount: uint, recipient: principal, burn-hash: (buff 32), burn-height: uint, sweep-txid: (buff 32)}) (helper-response (response uint uint)))

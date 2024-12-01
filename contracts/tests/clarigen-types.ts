@@ -855,12 +855,6 @@ export const contracts = {
         ],
         Response<bigint, bigint>
       >,
-      testFunction: {
-        name: "test-function",
-        access: "public",
-        args: [],
-        outputs: { type: { response: { ok: "uint128", error: "none" } } },
-      } as TypedAbiFunction<[], Response<bigint, null>>,
       getBurnHeader: {
         name: "get-burn-header",
         access: "read_only",
