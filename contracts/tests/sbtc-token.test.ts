@@ -1,4 +1,4 @@
-import { alice, bob, charlie, deployer, deposit, errors, getCurrentBurnInfo, token } from "./helpers";
+import { alice, bob, charlie, deployer, deposit, errors, getCurrentBurnInfo, token, tokenTest } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from "@clarigen/core";
@@ -101,7 +101,7 @@ describe("sBTC token contract", () => {
       expect(receipt2.value).toEqual(999n);
     });
 
-    test("Mint & transfer multiple sbtc token", () => {
+    test("Mint & transfer multiple sbtc token, standard principal", () => {
       const { burnHeight, burnHash } = getCurrentBurnInfo();
       const receipt = txOk(
         deposit.completeDepositWrapper({
@@ -169,6 +169,70 @@ describe("sBTC token contract", () => {
         charlie
       );
       expect(receipt3.value).toEqual(100n);
+    });
+
+    test("Mint & transfer multiple sbtc token, contract principal", () => {
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+      const receipt = txOk(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: tokenTest.identifier,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      const printEvents = filterEvents(
+        receipt.events,
+        CoreNodeEventType.ContractEvent
+      );
+      const [print] = printEvents;
+      const printData = cvToValue<{
+        topic: string;
+        txid: string;
+        voutIndex: bigint;
+        amount: bigint;
+      }>(print.data.value);
+      expect(printData).toStrictEqual({
+        topic: "completed-deposit",
+        bitcoinTxid: new Uint8Array(32).fill(0),
+        outputIndex: 0n,
+        amount: 1000n,
+        burnHash,
+        burnHeight: BigInt(burnHeight),
+        sweepTxid: new Uint8Array(32).fill(1),
+      });
+      const receipt1 = txOk(
+        tokenTest.sendManySbtcTokens({
+          recipients: [alice, bob, charlie],
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(3n);
+      const receipt2 = rov(
+        token.getBalance({
+          who: alice,
+        }),
+        bob
+      );
+      expect(receipt2.value).toEqual(100n);
+      const receipt3 = rov(
+        token.getBalance({
+          who: bob,
+        }),
+        charlie
+      );
+      expect(receipt3.value).toEqual(100n);
+      const receipt4 = rov(
+        token.getBalance({
+          who: charlie,
+        }),
+        charlie
+      );
+      expect(receipt4.value).toEqual(100n);
     });
 
     test("Fail a non-protocol principal calling protocol-mint", () => {

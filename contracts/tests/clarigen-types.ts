@@ -1731,6 +1731,32 @@ export const contracts = {
     clarity_version: "Clarity3",
     contractName: "sbtc-token",
   },
+  sbtcTokenTest: {
+    functions: {
+      sendManySbtcTokens: {
+        name: "send-many-sbtc-tokens",
+        access: "public",
+        args: [
+          {
+            name: "recipients",
+            type: { list: { type: "principal", length: 10 } },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [recipients: TypedAbiArg<string[], "recipients">],
+        Response<bigint, bigint>
+      >,
+    },
+    maps: {},
+    variables: {},
+    constants: {},
+    non_fungible_tokens: [],
+    fungible_tokens: [],
+    epoch: "Epoch30",
+    clarity_version: "Clarity3",
+    contractName: "sbtc-token-test",
+  },
   sbtcWithdrawal: {
     functions: {
       completeIndividualWithdrawalHelper: {
@@ -2148,6 +2174,7 @@ export const identifiers = {
   sbtcDeposit: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit",
   sbtcRegistry: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-registry",
   sbtcToken: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token",
+  sbtcTokenTest: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token-test",
   sbtcWithdrawal: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-withdrawal",
 } as const;
 
@@ -2179,6 +2206,12 @@ export const deployments = {
   sbtcToken: {
     devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token",
     simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token",
+    testnet: null,
+    mainnet: null,
+  },
+  sbtcTokenTest: {
+    devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token-test",
+    simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token-test",
     testnet: null,
     mainnet: null,
   },
