@@ -159,7 +159,7 @@ impl SignEcdsa for SignerMessage {
 }
 
 #[cfg(feature = "testing")]
-impl Signed<crate::message::SignerMessage> {
+impl Signed<SignerMessage> {
     /// Generate a random signed message
     pub fn random<R: rand::CryptoRng + rand::Rng>(rng: &mut R) -> Self {
         let private_key = PrivateKey::new(rng);
@@ -171,21 +171,13 @@ impl Signed<crate::message::SignerMessage> {
         rng: &mut R,
         private_key: &PrivateKey,
     ) -> Self {
-        let inner = crate::message::SignerMessage::random(rng);
+        let inner = SignerMessage::random(rng);
         inner.sign_ecdsa(private_key)
     }
-}
 
-#[cfg(feature = "testing")]
-impl<T> Signed<T>
-where
-    T: ProtoSerializable + Clone,
-    T: Into<<T as ProtoSerializable>::Message>,
-{
     /// Verify the signature over the inner data.
-    pub fn verify(&self, _public_key: PublicKey) -> bool {
-        unimplemented!()
-        // self.recover_ecdsa().is_ok_and(|key| key == public_key)
+    pub fn verify(&self, public_key: PublicKey) -> bool {
+        self.recover_ecdsa().is_ok_and(|key| key == public_key)
     }
 }
 
