@@ -875,6 +875,19 @@ impl super::DbRead for SharedStore {
         Ok(Vec::new())
     }
 
+    async fn get_sweep_transaction_fee(
+        &self,
+        txid: &model::BitcoinTxId,
+    ) -> Result<Option<u64>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .sweep_transactions
+            .iter()
+            .find(|tx| &tx.txid == txid)
+            .map(|tx| tx.fee))
+    }
+
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,

@@ -35,6 +35,7 @@ use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::DbRead;
 use crate::storage::DbWrite;
 
 use super::ApiState;
@@ -245,6 +246,11 @@ async fn handle_completed_deposit(
     ctx.get_storage_mut()
         .write_completed_deposit_event(&event)
         .await?;
+    let btc_fee = ctx
+        .get_storage()
+        .get_sweep_transaction_fee(&event.sweep_txid.into())
+        .await?
+        .ok_or(Error::MissingSweepTransaction(event.sweep_txid))?;
 
     Ok(DepositUpdate {
         bitcoin_tx_output_index: event.outpoint.vout,
@@ -255,7 +261,7 @@ async fn handle_completed_deposit(
             bitcoin_block_height: event.sweep_block_height,
             bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
-            btc_fee: 1, // TODO (#712): We need to get the fee from the transaction. Currently missing from the event.
+            btc_fee,
             stacks_txid: event.txid.to_hex(),
         }))),
         status_message: format!("Included in block {}", event.block_id.to_hex()),
@@ -400,6 +406,7 @@ mod tests {
 
     use crate::storage::in_memory::Store;
     use crate::storage::model::StacksPrincipal;
+    use crate::storage::model::SweepTransaction;
     use crate::testing::context::*;
     use crate::testing::storage::model::TestData;
 
@@ -607,6 +614,17 @@ mod tests {
         let stacks_chaintip = &test_data.stacks_blocks[0];
         let stacks_txid = test_data.stacks_transactions[0].txid;
 
+        // Insert a dummy sweep transaction into the database. This will be retrieved by
+        // handle_completed_deposit, using the txid from the event.
+        let mut sweep = fake::Faker.fake_with_rng::<SweepTransaction, _>(&mut rng);
+        sweep.txid = txid.into();
+        sweep.created_at_block_hash = bitcoin_block.block_hash.into();
+        sweep.swept_deposits = vec![];
+        sweep.swept_withdrawals = vec![];
+        db.write_sweep_transaction(&sweep)
+            .await
+            .expect("failed to insert dummy sweep transaction");
+
         let outpoint = OutPoint { txid: *txid, vout: 0 };
         let event = CompletedDepositEvent {
             outpoint: outpoint.clone(),
@@ -626,7 +644,7 @@ mod tests {
                 bitcoin_block_height: bitcoin_block.block_height,
                 bitcoin_tx_index: event.outpoint.vout,
                 bitcoin_txid: txid.to_string(),
-                btc_fee: 1,
+                btc_fee: sweep.fee,
                 stacks_txid: stacks_txid.to_hex(),
             }))),
             status_message: format!("Included in block {}", stacks_chaintip.block_hash.to_hex()),
@@ -634,9 +652,56 @@ mod tests {
             last_update_height: stacks_chaintip.block_height,
         };
         let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
-
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expectation);
+        let db = db.lock().await;
+        assert_eq!(db.completed_deposit_events.len(), 1);
+        assert!(db.completed_deposit_events.get(&outpoint).is_some());
+    }
+
+    /// Tests handling a completed deposit event.
+    /// This function validates that a completed deposit is correctly processed,
+    /// including verifying the successful database update.
+    #[tokio::test]
+    async fn test_handle_completed_deposit_fails_if_no_sweep_tx() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 1,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 1,
+            num_withdraw_requests_per_block: 1,
+            num_signers_per_request: 0,
+        };
+        let db = ctx.inner_storage();
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+
+        let txid = test_data.bitcoin_transactions[0].txid;
+        let bitcoin_block = &test_data.bitcoin_blocks[0];
+        let stacks_chaintip = &test_data.stacks_blocks[0];
+        let stacks_txid = test_data.stacks_transactions[0].txid;
+
+        let outpoint = OutPoint { txid: *txid, vout: 0 };
+        let event = CompletedDepositEvent {
+            outpoint: outpoint.clone(),
+            txid: *stacks_txid,
+            block_id: *stacks_chaintip.block_hash,
+            amount: 100,
+            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_height: bitcoin_block.block_height,
+            sweep_txid: *txid,
+        };
+        let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
+        assert!(res.is_err());
+        assert!(matches!(
+            res.unwrap_err(),
+            Error::MissingSweepTransaction(missing_txid) if missing_txid == *txid
+        ));
         let db = db.lock().await;
         assert_eq!(db.completed_deposit_events.len(), 1);
         assert!(db.completed_deposit_events.get(&outpoint).is_some());

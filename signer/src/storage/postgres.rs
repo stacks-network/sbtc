@@ -1846,6 +1846,24 @@ impl super::DbRead for PgStore {
         Ok(sweep_transactions)
     }
 
+    async fn get_sweep_transaction_fee(
+        &self,
+        txid: &model::BitcoinTxId,
+    ) -> Result<Option<u64>, Error> {
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT fee
+            FROM sweep_transactions
+            WHERE txid = $1
+            "#,
+        )
+        .bind(txid)
+        .fetch_optional(&self.0)
+        .await
+        .map(|fee| fee.map(|fee| fee as u64))
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
