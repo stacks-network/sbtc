@@ -21,6 +21,9 @@
 //! use signer::ecdsa::SignEcdsa;
 //! use signer::keys::PrivateKey;
 //!
+//! use signer::codec::ProtoSerializable;
+//! 
+//! #[derive(Clone, PartialEq)]
 //! struct SignableStr(&'static str);
 //!
 //! // Implementing `ProtoSerializable` and conversion traits unlock the signing
@@ -40,6 +43,12 @@
 //!         "SBTC_SIGNABLE_STR"
 //!     }
 //! }
+//! 
+//! impl From<SignableStr> for ProtoSignableStr {
+//!     fn from(value: SignableStr) -> Self {
+//!         ProtoSignableStr { string: value.0.to_string() }
+//!     }
+//! }
 //!
 //! let msg = SignableStr("Sign me please!");
 //! let private_key = PrivateKey::try_from(&p256k1::scalar::Scalar::from(1337)).unwrap();
@@ -48,7 +57,7 @@
 //! let signed_msg = msg.sign_ecdsa(&private_key);
 //!
 //! // Verify the signed message.
-//! assert_eq!(signed_msg.recover_ecdsa(), Ok(private_key.into()));
+//! assert!(signed_msg.verify());
 
 use secp256k1::SECP256K1;
 

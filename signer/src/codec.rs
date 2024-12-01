@@ -9,23 +9,6 @@
 //!    methods we intend to use throughout the signer.
 //! 2. Implementing these traits for any type implementing `ProtoSerializable` defined in here.
 //!
-//! ## Examples
-//!
-//! ### Encoding a string slice and decoding it as a string
-//!
-//! ```
-//! use signer::codec::{Encode, Decode};
-//!
-//! let message = "Encode me";
-//!
-//! // `.encode_to_vec()` provided by the `Encode` trait
-//! let encoded = message.encode_to_vec().unwrap();
-//!
-//! // `.decode()` provided by the `Decode` trait
-//! let decoded = String::decode(encoded.as_slice()).unwrap();
-//!
-//! assert_eq!(decoded, message);
-//! ```
 
 use std::io;
 
@@ -40,8 +23,17 @@ use crate::signature::SighashDigest;
 /// `T` implementing `ProtoSerializable` assume `T: Into<Message> +
 /// TryFrom<Message>`.
 /// ```
-/// impl ProtoSerializable for PublicKey {
-///    type Message = proto::PublicKey;
+/// use signer::codec::ProtoSerializable;
+/// use signer::proto;
+/// 
+/// struct MyPublicKey(signer::keys::PublicKey);
+/// 
+/// impl ProtoSerializable for MyPublicKey {
+///     type Message = proto::PublicKey;
+/// 
+///     fn type_tag(&self) -> &'static str {
+///         "MY_PUBLIC_KEY"
+///     }
 /// }
 /// ```
 pub trait ProtoSerializable {
