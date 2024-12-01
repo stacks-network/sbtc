@@ -1859,6 +1859,35 @@ impl super::DbRead for PgStore {
         Ok(sweep_transactions)
     }
 
+    async fn get_deposit_request(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<model::DepositRequest>, Error> {
+        sqlx::query_as::<_, model::DepositRequest>(
+            r#"
+            SELECT txid
+                 , output_index
+                 , spend_script
+                 , reclaim_script
+                 , recipient
+                 , amount
+                 , max_fee
+                 , lock_time
+                 , signers_public_key
+                 , sender_script_pub_keys
+            FROM sbtc_signer.deposit_requests
+            WHERE txid = $1
+              AND output_index = $2
+            "#,
+        )
+        .bind(txid)
+        .bind(i32::try_from(output_index).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,

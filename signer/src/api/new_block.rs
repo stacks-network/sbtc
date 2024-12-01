@@ -35,6 +35,7 @@ use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::DbRead;
 use crate::storage::DbWrite;
 
 use super::ApiState;
@@ -246,6 +247,18 @@ async fn handle_completed_deposit(
     ctx.get_storage_mut()
         .write_completed_deposit_event(&event)
         .await?;
+    // If the deposit request is not found, we don't want to update Emily about it because
+    // we don't have the necessary information to compute the fee.
+    let deposit_request = ctx
+        .get_storage()
+        .get_deposit_request(&event.outpoint.txid.into(), event.outpoint.vout)
+        .await?
+        .ok_or(Error::MissingDepositRequest(event.outpoint))?;
+
+    // The fee paid by the user is the difference between the deposit request amount
+    // and the amount minted in the completed deposit event.
+    // This should never be negative, but we use saturating_sub just in case.
+    let btc_fee = deposit_request.amount.saturating_sub(event.amount);
 
     Ok(DepositUpdate {
         bitcoin_tx_output_index: event.outpoint.vout,
@@ -256,7 +269,7 @@ async fn handle_completed_deposit(
             bitcoin_block_height: event.sweep_block_height,
             bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
-            btc_fee: 1, // TODO (#712): We need to get the fee from the transaction. Currently missing from the event.
+            btc_fee,
             stacks_txid: event.txid.to_hex(),
         }))),
         status_message: format!("Included in block {}", event.block_id.to_hex()),
@@ -400,6 +413,7 @@ mod tests {
     use test_case::test_case;
 
     use crate::storage::in_memory::Store;
+    use crate::storage::model::DepositRequest;
     use crate::storage::model::StacksPrincipal;
     use crate::testing::context::*;
     use crate::testing::storage::model::TestData;
@@ -608,12 +622,20 @@ mod tests {
         let stacks_chaintip = &test_data.stacks_blocks[0];
         let stacks_txid = test_data.stacks_transactions[0].txid;
 
-        let outpoint = OutPoint { txid: *txid, vout: 0 };
+        let mut deposit_request: DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+        deposit_request.txid = txid.into();
+        deposit_request.output_index = 0;
+        deposit_request.amount = 1000;
+        let btc_fee = 100;
+        db.write_deposit_request(&deposit_request)
+            .await
+            .expect("Failed to write deposit request");
+
         let event = CompletedDepositEvent {
-            outpoint: outpoint.clone(),
+            outpoint: deposit_request.outpoint(),
             txid: *stacks_txid,
             block_id: *stacks_chaintip.block_hash,
-            amount: 100,
+            amount: deposit_request.amount - btc_fee,
             sweep_block_hash: *bitcoin_block.block_hash,
             sweep_block_height: bitcoin_block.block_height,
             sweep_txid: *txid,
@@ -627,7 +649,7 @@ mod tests {
                 bitcoin_block_height: bitcoin_block.block_height,
                 bitcoin_tx_index: event.outpoint.vout,
                 bitcoin_txid: txid.to_string(),
-                btc_fee: 1,
+                btc_fee,
                 stacks_txid: stacks_txid.to_hex(),
             }))),
             status_message: format!("Included in block {}", stacks_chaintip.block_hash.to_hex()),
@@ -635,9 +657,59 @@ mod tests {
             last_update_height: stacks_chaintip.block_height,
         };
         let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
-
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expectation);
+        let db = db.lock().await;
+        assert_eq!(db.completed_deposit_events.len(), 1);
+        assert!(db
+            .completed_deposit_events
+            .get(&deposit_request.outpoint())
+            .is_some());
+    }
+
+    /// Tests handling a completed deposit event.
+    /// This function validates that a completed deposit is correctly processed,
+    /// including verifying the successful database update.
+    #[tokio::test]
+    async fn test_handle_completed_deposit_fails_if_no_deposit_request() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let test_params = crate::testing::storage::model::Params {
+            num_bitcoin_blocks: 1,
+            num_stacks_blocks_per_bitcoin_block: 1,
+            num_deposit_requests_per_block: 1,
+            num_withdraw_requests_per_block: 1,
+            num_signers_per_request: 0,
+        };
+        let db = ctx.inner_storage();
+        let test_data = TestData::generate(&mut rng, &[], &test_params);
+
+        let txid = test_data.bitcoin_transactions[0].txid;
+        let bitcoin_block = &test_data.bitcoin_blocks[0];
+        let stacks_chaintip = &test_data.stacks_blocks[0];
+        let stacks_txid = test_data.stacks_transactions[0].txid;
+
+        let outpoint = OutPoint { txid: *txid, vout: 0 };
+        let event = CompletedDepositEvent {
+            outpoint: outpoint.clone(),
+            txid: *stacks_txid,
+            block_id: *stacks_chaintip.block_hash,
+            amount: 100,
+            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_height: bitcoin_block.block_height,
+            sweep_txid: *txid,
+        };
+        let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
+        assert!(res.is_err());
+        assert!(matches!(
+            res.unwrap_err(),
+            Error::MissingDepositRequest(missing_outpoint) if missing_outpoint == outpoint
+        ));
         let db = db.lock().await;
         assert_eq!(db.completed_deposit_events.len(), 1);
         assert!(db.completed_deposit_events.get(&outpoint).is_some());

@@ -26,6 +26,10 @@ pub enum Error {
     #[error("sweep transaction not found: {0}")]
     MissingSweepTransaction(bitcoin::Txid),
 
+    /// Indicates that a deposit request with the specified txid and vout could not be found.
+    #[error("deposit request not found: {0}")]
+    MissingDepositRequest(bitcoin::OutPoint),
+
     /// Received an error in response to gettxout RPC call
     #[error("bitcoin-core gettxout error for outpoint {1} (search mempool? {2}): {0}")]
     BitcoinCoreGetTxOut(#[source] bitcoincore_rpc::Error, bitcoin::OutPoint, bool),

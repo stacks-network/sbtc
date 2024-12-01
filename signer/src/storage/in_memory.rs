@@ -910,6 +910,19 @@ impl super::DbRead for SharedStore {
         Ok(Vec::new())
     }
 
+    async fn get_deposit_request(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> Result<Option<model::DepositRequest>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .deposit_requests
+            .get(&(*txid, output_index))
+            .cloned())
+    }
+
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
