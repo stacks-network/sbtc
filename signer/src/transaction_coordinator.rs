@@ -6,6 +6,7 @@
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
@@ -16,7 +17,6 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
-use crate::bitcoin::utxo::SbtcRequests;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::TransactionLookupHint;
 use crate::context::Context;
@@ -400,7 +400,7 @@ where
     async fn construct_and_send_bitcoin_presign_request(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        pending_requests: &SbtcRequests,
+        signer_btc_state: &utxo::SignerBtcState,
         transaction_package: &[utxo::UnsignedTransaction<'_>],
     ) -> Result<(), Error> {
         // Create the BitcoinPreSignRequest from the transaction package
@@ -409,8 +409,8 @@ where
                 .iter()
                 .map(|tx| (&tx.requests).into())
                 .collect(),
-            fee_rate: pending_requests.signer_state.fee_rate,
-            last_fees: pending_requests.signer_state.last_fees.map(Into::into),
+            fee_rate: signer_btc_state.fee_rate,
+            last_fees: signer_btc_state.last_fees.map(Into::into),
         };
 
         let presign_ack_filter = |event: &SignerSignal| {
@@ -431,7 +431,7 @@ where
         tokio::pin!(signal_stream);
         let future = async {
             let target_tip = *bitcoin_chain_tip;
-            let mut acknowledged_signers = hashbrown::HashSet::new();
+            let mut acknowledged_signers = HashSet::new();
 
             while acknowledged_signers.len() < self.threshold as usize {
                 match signal_stream.next().await {
@@ -440,7 +440,7 @@ where
                         return Err(Error::SignerShutdown);
                     }
                     Some(SignerSignal::Command(SignerCommand::Shutdown)) => {
-                        tracing::warn!("signer shutdown signal received, shutting down");
+                        tracing::info!("signer shutdown signal received, shutting down");
                         return Err(Error::SignerShutdown);
                     }
                     Some(event) => match Self::to_signed_message(event).await {
@@ -522,7 +522,7 @@ where
 
         self.construct_and_send_bitcoin_presign_request(
             bitcoin_chain_tip,
-            &pending_requests,
+            &pending_requests.signer_state,
             &transaction_package,
         )
         .await?;
