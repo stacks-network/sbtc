@@ -776,6 +776,7 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> Result<Vec<model::DepositRequest>, Error> {
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
@@ -812,12 +813,17 @@ impl super::DbRead for PgStore {
               , deposit_requests.signers_public_key
               , deposit_requests.sender_script_pub_keys
             FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_requests deposit_requests ON
-                deposit_requests.txid = transactions.txid
+            JOIN sbtc_signer.deposit_requests AS deposit_requests USING (txid)
+            LEFT JOIN sbtc_signer.deposit_signers AS ds
+              ON ds.txid = deposit_requests.txid
+             AND ds.output_index = deposit_requests.output_index
+             AND ds.signer_pub_key = $3
+            WHERE ds.txid IS NULL
             "#,
         )
         .bind(chain_tip)
         .bind(i32::from(context_window))
+        .bind(signer_public_key)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1186,6 +1192,7 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
@@ -1239,12 +1246,18 @@ impl super::DbRead for PgStore {
               , wr.max_fee
               , wr.sender_address
             FROM sbtc_signer.withdrawal_requests wr
-            JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
+            JOIN stacks_context_window sc USING (block_hash)
+            LEFT JOIN sbtc_signer.withdrawal_signers AS ws
+              ON ws.request_id = wr.request_id
+             AND ws.block_hash = wr.block_hash
+             AND ws.signer_pub_key = $4
+            WHERE ws.request_id IS NULL
             "#,
         )
         .bind(chain_tip)
         .bind(stacks_chain_tip.block_hash)
         .bind(i32::from(context_window))
+        .bind(signer_public_key)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)

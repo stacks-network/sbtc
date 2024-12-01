@@ -54,10 +54,15 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Option<model::StacksBlock>, Error>> + Send;
 
     /// Get pending deposit requests
+    ///
+    /// These are deposit requests that have been added to our database but
+    /// where the current signer has not made a decision on whether they
+    /// will sign for the deposit and sweep in the funds.
     fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
     /// Get pending deposit requests that have been accepted by at least
@@ -142,10 +147,15 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::WithdrawalSigner>, Error>> + Send;
 
     /// Get pending withdrawal requests
+    ///
+    /// These are withdrawal requests that have been added to our database
+    /// but where the current signer has not made a decision on whether
+    /// they will sweep out the withdrawal funds and sweep transaction.
     fn get_pending_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
     /// Get pending withdrawal requests that have been accepted by at least

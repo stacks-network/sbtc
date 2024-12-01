@@ -1,11 +1,13 @@
 //! validation of bitcoin transactions.
 
+use std::collections::HashMap;
 use std::collections::HashSet;
 
 use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::Txid;
 use bitcoin::XOnlyPublicKey;
 use serde::Deserialize;
 use serde::Serialize;
@@ -32,6 +34,13 @@ use super::utxo::Requests;
 use super::utxo::SignatureHash;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
+
+/// Cached validation data to avoid repeated DB queries
+#[derive(Default)]
+struct ValidationCache<'a> {
+    deposit_reports: HashMap<(&'a Txid, u32), (DepositRequestReport, SignerVotes)>,
+    withdrawal_reports: HashMap<&'a QualifiedRequestId, (WithdrawalRequestReport, SignerVotes)>,
+}
 
 /// The necessary information for validating a bitcoin transaction.
 #[derive(Debug, Clone)]
@@ -91,10 +100,103 @@ pub fn is_unique(package: &[TxRequestIds]) -> bool {
 
 impl BitcoinPreSignRequest {
     /// Validate the current bitcoin transaction.
-    pub fn pre_validation(&self) -> Result<(), Error> {
+    async fn pre_validation<'a, C>(&self, ctx: &C, cache: &ValidationCache<'a>) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
         if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
         }
+        self.validate_max_mintable(ctx, cache).await?;
+        Ok(())
+    }
+
+    async fn fetch_all_reports<D>(
+        &self,
+        db: &D,
+        btc_ctx: &BitcoinTxContext,
+    ) -> Result<ValidationCache, Error>
+    where
+        D: DbRead,
+    {
+        let mut cache = ValidationCache::default();
+
+        // Fetch all deposit reports and votes
+        for requests in &self.request_package {
+            for outpoint in &requests.deposits {
+                let txid = outpoint.txid.into();
+                let output_index = outpoint.vout;
+
+                let report_future = db.get_deposit_request_report(
+                    &btc_ctx.chain_tip,
+                    &txid,
+                    output_index,
+                    &btc_ctx.signer_public_key,
+                );
+                let Some(report) = report_future.await? else {
+                    return Err(InputValidationResult::Unknown.into_error(btc_ctx));
+                };
+
+                let votes = db
+                    .get_deposit_request_signer_votes(&txid, output_index, &btc_ctx.aggregate_key)
+                    .await?;
+
+                cache
+                    .deposit_reports
+                    .insert((&outpoint.txid, output_index), (report, votes));
+            }
+
+            // Fetch all withdrawal reports and votes
+            for id in &requests.withdrawals {
+                let report = db.get_withdrawal_request_report(
+                    &btc_ctx.chain_tip,
+                    id,
+                    &btc_ctx.signer_public_key,
+                );
+                let Some(report) = report.await? else {
+                    return Err(WithdrawalValidationResult::Unknown.into_error(btc_ctx));
+                };
+
+                let votes = db
+                    .get_withdrawal_request_signer_votes(id, &btc_ctx.aggregate_key)
+                    .await?;
+
+                cache.withdrawal_reports.insert(id, (report, votes));
+            }
+        }
+        Ok(cache)
+    }
+
+    async fn validate_max_mintable<'a, C>(
+        &self,
+        ctx: &C,
+        cache: &ValidationCache<'a>,
+    ) -> Result<(), Error>
+    where
+        C: Context + Send + Sync,
+    {
+        let max_mintable = ctx.state().get_current_limits().max_mintable_cap().to_sat();
+
+        cache
+            .deposit_reports
+            .values()
+            .try_fold(0u64, |acc, (report, _)| {
+                acc.checked_add(report.amount)
+                    .ok_or(Error::ExceedsSbtcSupplyCap {
+                        total_amount: u64::MAX,
+                        max_mintable,
+                    })
+                    .and_then(|sum| {
+                        if sum > max_mintable {
+                            Err(Error::ExceedsSbtcSupplyCap {
+                                total_amount: sum,
+                                max_mintable,
+                            })
+                        } else {
+                            Ok(sum)
+                        }
+                    })
+            })?;
 
         Ok(())
     }
@@ -109,7 +211,10 @@ impl BitcoinPreSignRequest {
     where
         C: Context + Send + Sync,
     {
-        self.pre_validation()?;
+        let cache = self.fetch_all_reports(&ctx.get_storage(), btc_ctx).await?;
+
+        self.pre_validation(ctx, &cache).await?;
+
         let signer_utxo = ctx
             .get_storage()
             .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
@@ -127,7 +232,7 @@ impl BitcoinPreSignRequest {
 
         for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state)
+                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state, &cache)
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -142,54 +247,37 @@ impl BitcoinPreSignRequest {
     /// This function returns the new signer bitcoin state if we were to
     /// sign and confirmed the bitcoin transaction created using the given
     /// inputs and outputs.
-    async fn construct_tx_sighashes<C>(
+    async fn construct_tx_sighashes<'a, C>(
         &self,
         ctx: &C,
         btc_ctx: &BitcoinTxContext,
-        requests: &TxRequestIds,
+        requests: &'a TxRequestIds,
         signer_state: SignerBtcState,
+        cache: &ValidationCache<'a>,
     ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
     where
         C: Context + Send + Sync,
     {
-        let db = ctx.get_storage();
-
-        let signer_public_key = &btc_ctx.signer_public_key;
-        let aggregate_key = &btc_ctx.aggregate_key;
-        let chain_tip = &btc_ctx.chain_tip;
-
-        let mut deposits = Vec::new();
-        let mut withdrawals = Vec::new();
+        let mut deposits = Vec::with_capacity(requests.deposits.len());
+        let mut withdrawals = Vec::with_capacity(requests.withdrawals.len());
 
         for outpoint in requests.deposits.iter() {
-            let txid = outpoint.txid.into();
-            let output_index = outpoint.vout;
-            let report_future =
-                db.get_deposit_request_report(chain_tip, &txid, output_index, signer_public_key);
-
-            let Some(report) = report_future.await? else {
-                return Err(InputValidationResult::Unknown.into_error(btc_ctx));
-            };
-
-            let votes = db
-                .get_deposit_request_signer_votes(&txid, output_index, aggregate_key)
-                .await?;
-
-            deposits.push((report.to_deposit_request(&votes), report));
+            let key = (&outpoint.txid, outpoint.vout);
+            let (report, votes) = cache
+                .deposit_reports
+                .get(&key)
+                // This should never happen because we have already validated that we have all the reports.
+                .ok_or(InputValidationResult::Unknown.into_error(btc_ctx))?;
+            deposits.push((report.to_deposit_request(votes), report.clone()));
         }
 
         for id in requests.withdrawals.iter() {
-            let report_future = db.get_withdrawal_request_report(chain_tip, id, signer_public_key);
-
-            let Some(report) = report_future.await? else {
-                return Err(WithdrawalValidationResult::Unknown.into_error(btc_ctx));
-            };
-
-            let votes = db
-                .get_withdrawal_request_signer_votes(id, aggregate_key)
-                .await?;
-
-            withdrawals.push((report.to_withdrawal_request(&votes), report));
+            let (report, votes) = cache
+                .withdrawal_reports
+                .get(id)
+                // This should never happen because we have already validated that we have all the reports.
+                .ok_or(WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
+            withdrawals.push((report.to_withdrawal_request(votes), report.clone()));
         }
 
         deposits.sort_by_key(|(request, _)| request.outpoint);
@@ -211,7 +299,7 @@ impl BitcoinPreSignRequest {
         // their fees anymore in order for them to be accepted by the
         // network.
         signer_state.last_fees = None;
-
+        let sbtc_limits = ctx.state().get_current_limits();
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
@@ -220,6 +308,9 @@ impl BitcoinPreSignRequest {
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
+            // If the cap is None, then we assume that it is unlimited.
+            max_deposit_amount: sbtc_limits.per_deposit_cap(),
+            max_withdrawal_amount: sbtc_limits.per_withdrawal_cap(),
         };
 
         Ok((out, signer_state))
@@ -245,6 +336,10 @@ pub struct BitcoinTxValidationData {
     pub tx_fee: Amount,
     /// the chain tip height.
     pub chain_tip_height: u64,
+    /// Maximum amount of BTC allowed to be pegged-in per transaction.
+    pub max_deposit_amount: Amount,
+    /// Maximum amount of BTC allowed to be pegged-out per transaction.
+    pub max_withdrawal_amount: Amount,
 }
 
 impl BitcoinTxValidationData {
@@ -268,11 +363,14 @@ impl BitcoinTxValidationData {
         // outputs.
         let is_valid_tx = self.is_valid_tx();
 
-        let validation_results = self
-            .reports
-            .deposits
-            .iter()
-            .map(|(_, report)| report.validate(self.chain_tip_height, &self.tx, self.tx_fee));
+        let validation_results = self.reports.deposits.iter().map(|(_, report)| {
+            report.validate(
+                self.chain_tip_height,
+                &self.tx,
+                self.tx_fee,
+                self.max_deposit_amount,
+            )
+        });
 
         // just a sanity check
         debug_assert_eq!(self.deposit_sighashes.len(), self.reports.deposits.len());
@@ -326,7 +424,12 @@ impl BitcoinTxValidationData {
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
-                validation_result: report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
+                validation_result: report.validate(
+                    self.chain_tip_height,
+                    &self.tx,
+                    self.tx_fee,
+                    self.max_withdrawal_amount,
+                ),
                 is_valid_tx,
             })
             .collect()
@@ -342,16 +445,26 @@ impl BitcoinTxValidationData {
     pub fn is_valid_tx(&self) -> bool {
         let deposit_validation_results = self.reports.deposits.iter().all(|(_, report)| {
             matches!(
-                report.validate(self.chain_tip_height, &self.tx, self.tx_fee),
+                report.validate(
+                    self.chain_tip_height,
+                    &self.tx,
+                    self.tx_fee,
+                    self.max_deposit_amount
+                ),
                 InputValidationResult::Ok | InputValidationResult::CannotSignUtxo
             )
         });
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
-            match report.validate(self.chain_tip_height, &self.tx, self.tx_fee) {
-                WithdrawalValidationResult::Unsupported | WithdrawalValidationResult::Unknown => {
-                    false
-                }
+            match report.validate(
+                self.chain_tip_height,
+                &self.tx,
+                self.tx_fee,
+                self.max_withdrawal_amount,
+            ) {
+                WithdrawalValidationResult::Unsupported
+                | WithdrawalValidationResult::Unknown
+                | WithdrawalValidationResult::AmountTooHigh => false,
             }
         });
 
@@ -398,6 +511,8 @@ impl SbtcReports {
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
+    /// The deposit request amount exceeds the allowed per-deposit cap.
+    AmountTooHigh,
     /// The assessed fee exceeds the max-fee in the deposit request.
     FeeTooHigh,
     /// The signer is not part of the signer set that generated the
@@ -446,6 +561,8 @@ impl InputValidationResult {
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
+    /// The withdrawal request amount exceeds the allowed per-withdrawal cap
+    AmountTooHigh,
     /// The signer does not have a record of the withdrawal request in
     /// their database.
     Unknown,
@@ -559,7 +676,13 @@ pub struct DepositRequestReport {
 
 impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
-    fn validate<F>(&self, chain_tip_height: u64, tx: &F, tx_fee: Amount) -> InputValidationResult
+    fn validate<F>(
+        &self,
+        chain_tip_height: u64,
+        tx: &F,
+        tx_fee: Amount,
+        max_deposit_amount: Amount,
+    ) -> InputValidationResult
     where
         F: FeeAssessment,
     {
@@ -581,6 +704,10 @@ impl DepositRequestReport {
             // blockchain and remains unspent by us.
             DepositConfirmationStatus::Confirmed(block_height, _) => block_height,
         };
+
+        if self.amount > max_deposit_amount.to_sat() {
+            return InputValidationResult::AmountTooHigh;
+        }
 
         // We only sweep a deposit if the depositor cannot reclaim the
         // deposit within the next DEPOSIT_LOCKTIME_BLOCK_BUFFER blocks.
@@ -694,7 +821,13 @@ pub struct WithdrawalRequestReport {
 
 impl WithdrawalRequestReport {
     /// Validate that the withdrawal request is okay given the report.
-    pub fn validate<F>(&self, _: u64, _: &F, _: Amount) -> WithdrawalValidationResult
+    pub fn validate<F>(
+        &self,
+        _: u64,
+        _: &F,
+        _: Amount,
+        _max_withdrawal_amount: Amount,
+    ) -> WithdrawalValidationResult
     where
         F: FeeAssessment,
     {
@@ -724,8 +857,10 @@ mod tests {
     use bitcoin::Witness;
     use test_case::test_case;
 
+    use crate::context::SbtcLimits;
     use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksTxId;
+    use crate::testing::context::TestContext;
 
     use super::*;
 
@@ -956,9 +1091,10 @@ mod tests {
             witness: Witness::new(),
         });
 
-        let status = mapping
-            .report
-            .validate(mapping.chain_tip_height, &tx, TX_FEE);
+        let status =
+            mapping
+                .report
+                .validate(mapping.chain_tip_height, &tx, TX_FEE, Amount::MAX_MONEY);
 
         assert_eq!(status, mapping.status);
     }
@@ -1043,5 +1179,125 @@ mod tests {
         }], false; "duplicate-requests-in-different-txs")]
     fn test_is_unique(requests: Vec<TxRequestIds>, result: bool) {
         assert_eq!(is_unique(&requests), result);
+    }
+
+    fn create_test_report(idx: u8, amount: u64) -> (DepositRequestReport, SignerVotes) {
+        (
+            DepositRequestReport {
+                outpoint: OutPoint::new(Txid::from_byte_array([idx; 32]), 0),
+                status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([idx; 32])),
+                can_sign: Some(true),
+                can_accept: Some(true),
+                amount,
+                max_fee: 1000,
+                lock_time: LockTime::from_height(100),
+                deposit_script: ScriptBuf::new(),
+                reclaim_script: ScriptBuf::new(),
+                signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            },
+            SignerVotes::from(Vec::new()),
+        )
+    }
+
+    #[test_case(
+        vec![1000, 2000, 3000],
+        Amount::from_sat(10_000),
+        Amount::from_sat(1_000),
+        Ok(());
+        "should_accept_deposits_under_max_mintable"
+    )]
+    #[test_case(
+        vec![],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Ok(());
+        "should_accept_empty_deposits"
+    )]
+    #[test_case(
+        vec![10_000],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Ok(());
+        "should_accept_deposit_equal_to_max_mintable"
+    )]
+    #[test_case(
+        vec![5000, 5001],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Err(Error::ExceedsSbtcSupplyCap {
+            total_amount: 10_001,
+            max_mintable: 10_000
+        });
+        "should_reject_deposits_over_max_mintable"
+    )]
+    #[test_case(
+        vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
+        Amount::MAX_MONEY,
+        Amount::from_sat(1),
+        Err(Error::ExceedsSbtcSupplyCap {
+            total_amount: Amount::MAX_MONEY.to_sat(),
+            max_mintable: Amount::MAX_MONEY.to_sat() - 1
+        });
+        "filter_out_deposits_over_max_mintable"
+    )]
+    #[tokio::test]
+    async fn test_validate_max_mintable(
+        deposit_amounts: Vec<u64>,
+        total_cap: Amount,
+        sbtc_supply: Amount,
+        expected: Result<(), Error>,
+    ) {
+        // Create mock context
+        let context = TestContext::default_mocked();
+        context.state().update_current_limits(SbtcLimits::new(
+            Some(total_cap),
+            None,
+            None,
+            Some(total_cap - sbtc_supply),
+        ));
+        // Create cache with test data
+        let mut cache = ValidationCache::default();
+
+        let deposit_reports: Vec<(DepositRequestReport, SignerVotes)> = deposit_amounts
+            .into_iter()
+            .enumerate()
+            .map(|(idx, amount)| create_test_report(idx as u8, amount))
+            .collect();
+
+        cache.deposit_reports = deposit_reports
+            .iter()
+            .map(|(report, votes)| {
+                (
+                    (&report.outpoint.txid, report.outpoint.vout),
+                    (report.clone(), votes.clone()),
+                )
+            })
+            .collect();
+
+        // Create request and validate
+        let request = BitcoinPreSignRequest {
+            request_package: vec![],
+            fee_rate: 2.0,
+            last_fees: None,
+        };
+        let result = request.validate_max_mintable(&context, &cache).await;
+
+        match (result, expected) {
+            (Ok(()), Ok(())) => {}
+            (
+                Err(Error::ExceedsSbtcSupplyCap {
+                    total_amount: a1,
+                    max_mintable: m1,
+                }),
+                Err(Error::ExceedsSbtcSupplyCap {
+                    total_amount: a2,
+                    max_mintable: m2,
+                }),
+            ) => {
+                assert_eq!(a1, a2);
+                assert_eq!(m1, m2);
+            }
+            (result, expected) => panic!("Expected {:?} but got {:?}", expected, result),
+        };
     }
 }
