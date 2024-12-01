@@ -140,16 +140,9 @@ impl From<PublicKey> for p256k1::point::Point {
 impl TryFrom<&p256k1::point::Point> for PublicKey {
     type Error = Error;
     fn try_from(value: &p256k1::point::Point) -> Result<Self, Self::Error> {
-        let x_data = value.x().to_bytes();
-
-        let pk = secp256k1::XOnlyPublicKey::from_slice(&x_data).map_err(Error::InvalidPublicKey)?;
-        let parity = if value.has_even_y() {
-            Parity::Even
-        } else {
-            Parity::Odd
-        };
-
-        let public_key = secp256k1::PublicKey::from_x_only_public_key(pk, parity);
+        let data = value.compress().data;
+        let public_key =
+            secp256k1::PublicKey::from_slice(&data).map_err(Error::InvalidPublicKey)?;
         Ok(Self(public_key))
     }
 }
