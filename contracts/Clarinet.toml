@@ -20,13 +20,18 @@ path = 'contracts/sbtc-registry.clar'
 clarity_version = 3
 epoch = 3.0
 
-[contracts.sbtc-withdrawal]
-path = 'contracts/sbtc-withdrawal.clar'
+[contracts.sbtc-token]
+path = 'contracts/sbtc-token.clar'
 clarity_version = 3
 epoch = 3.0
 
-[contracts.sbtc-token]
-path = 'contracts/sbtc-token.clar'
+[contracts.sbtc-token-test]
+path = 'contracts/sbtc-token-test.clar'
+clarity_version = 2
+epoch = 2.5
+
+[contracts.sbtc-withdrawal]
+path = 'contracts/sbtc-withdrawal.clar'
 clarity_version = 3
 epoch = 3.0
 [repl.analysis]
