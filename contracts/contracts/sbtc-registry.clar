@@ -177,7 +177,8 @@
     (
       (id (increment-last-withdrawal-request-id))
     )
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller (some withdrawal)))
+    ;; #[allow(unchecked_data)]
     (map-insert withdrawal-requests id {
       amount: amount,
       max-fee: max-fee,
@@ -214,7 +215,7 @@
     (sweep-txid (buff 32))
   )
   (begin 
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller (some withdrawal)))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id true)
     (map-insert completed-withdrawal-sweep request-id {
@@ -247,7 +248,7 @@
     (signer-bitmap uint)
   )
   (begin 
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller (some withdrawal)))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id false)
     (print {
@@ -308,7 +309,7 @@
   )
   (begin
     ;; Check that caller is protocol contract
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller (some governance)))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
     ;; Update the current signer set
@@ -340,7 +341,8 @@
     (
       (active-contracts (var-get active-protocol-contracts))
     )
-    (asserts! (is-eq contract-caller (get governance active-contracts)) ERR_UNAUTHORIZED)
+    ;; Check that caller is protocol contract
+    (try! (is-protocol-caller (some governance)))
     (asserts! (and (>= contract-type governance) (<= contract-type withdrawal)) ERR_INVALID_PROTOCOL_ID)
     (if (is-eq contract-type governance)
       (var-set active-protocol-contracts (merge active-contracts {governance: new-contract}))
@@ -372,11 +374,35 @@
 )
 
 ;; Checks whether the contract-caller is a protocol contract
-(define-read-only (is-protocol-caller)
-  (validate-protocol-caller contract-caller)
+(define-read-only (is-protocol-caller (contract-flag (optional (buff 1))))
+  (validate-protocol-caller contract-flag contract-caller)
 )
 
 ;; Validate that a given principal is a protocol contract
-(define-read-only (validate-protocol-caller (caller principal))
-  (ok (asserts! (is-some (map-get? protocol-contracts caller)) ERR_UNAUTHORIZED))
+(define-read-only (validate-protocol-caller (contract-flag (optional (buff 1))) (caller principal))
+  (let 
+    (
+      (active-contracts (var-get active-protocol-contracts))
+    )
+    (match contract-flag 
+      flag
+      (ok (asserts! 
+        (if (is-eq flag governance)
+          (is-eq caller (get governance active-contracts))
+          (if (is-eq flag deposit)
+            (is-eq caller (get deposit active-contracts))
+            (if (is-eq flag withdrawal)
+              (is-eq caller (get withdrawal active-contracts))
+              false
+            )
+          )
+        )
+      ERR_UNAUTHORIZED))
+      (ok (asserts! (or 
+        (is-eq caller (get governance active-contracts))
+        (is-eq caller (get deposit active-contracts))
+        (is-eq caller (get withdrawal active-contracts))
+      ) ERR_UNAUTHORIZED))
+    )
+  )
 )
