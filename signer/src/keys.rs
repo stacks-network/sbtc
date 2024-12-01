@@ -33,7 +33,6 @@ use std::str::FromStr;
 
 use bitcoin::ScriptBuf;
 use bitcoin::TapTweakHash;
-use secp256k1::Parity;
 use secp256k1::SECP256K1;
 use serde::Deserialize;
 use serde::Serialize;
@@ -455,6 +454,7 @@ mod tests {
     use super::*;
 
     use rand::rngs::OsRng;
+    use secp256k1::Parity;
     use secp256k1::SecretKey;
     use stacks_common::util::secp256k1::Secp256k1PrivateKey;
     use stacks_common::util::secp256k1::Secp256k1PublicKey;
