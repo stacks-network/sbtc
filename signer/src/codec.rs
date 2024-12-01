@@ -25,12 +25,12 @@ use crate::signature::SighashDigest;
 /// ```
 /// use signer::codec::ProtoSerializable;
 /// use signer::proto;
-/// 
+///
 /// struct MyPublicKey(signer::keys::PublicKey);
-/// 
+///
 /// impl ProtoSerializable for MyPublicKey {
 ///     type Message = proto::PublicKey;
-/// 
+///
 ///     fn type_tag(&self) -> &'static str {
 ///         "MY_PUBLIC_KEY"
 ///     }

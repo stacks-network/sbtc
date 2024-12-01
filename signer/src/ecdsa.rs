@@ -22,7 +22,7 @@
 //! use signer::keys::PrivateKey;
 //!
 //! use signer::codec::ProtoSerializable;
-//! 
+//!
 //! #[derive(Clone, PartialEq)]
 //! struct SignableStr(&'static str);
 //!
@@ -43,7 +43,7 @@
 //!         "SBTC_SIGNABLE_STR"
 //!     }
 //! }
-//! 
+//!
 //! impl From<SignableStr> for ProtoSignableStr {
 //!     fn from(value: SignableStr) -> Self {
 //!         ProtoSignableStr { string: value.0.to_string() }
