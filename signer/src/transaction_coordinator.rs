@@ -1237,13 +1237,13 @@ where
         if deposits.is_empty() && withdrawals.is_empty() {
             return Ok(None);
         }
-
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
             signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
             accept_threshold: threshold,
             num_signers,
+            sbtc_limits: self.context.state().get_current_limits(),
         }))
     }
 

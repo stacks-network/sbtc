@@ -18,6 +18,7 @@ use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
 use crate::bitcoin::GetTransactionFeeResult;
+use crate::context::SbtcLimits;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model::BitcoinTxId;
@@ -521,6 +522,10 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
         chainstate: emily_client::models::Chainstate,
     ) -> Result<emily_client::models::Chainstate, Error> {
         self.inner.lock().await.set_chainstate(chainstate).await
+    }
+
+    async fn get_limits(&self) -> Result<SbtcLimits, Error> {
+        self.inner.lock().await.get_limits().await
     }
 }
 

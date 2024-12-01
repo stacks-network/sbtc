@@ -523,6 +523,15 @@ pub enum Error {
     /// Indicates that the request packages contain duplicate deposit or withdrawal entries.
     #[error("The request packages contain duplicate deposit or withdrawal entries.")]
     DuplicateRequests,
+
+    /// Error when deposit requests would exceed sBTC supply cap
+    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
+    ExceedsSbtcSupplyCap {
+        /// Total deposit amount in sats
+        total_amount: u64,
+        /// Maximum sBTC mintable
+        max_mintable: u64,
+    },
 }
 
 impl From<std::convert::Infallible> for Error {

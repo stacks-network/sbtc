@@ -119,6 +119,9 @@ services:
       - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
       - AWS_REGION=us-west-2
       - PORT=3031
+      - DEFAULT_PEG_CAP=100000000000
+      - DEFAULT_PER_DEPOSIT_CAP=100000000
+      - DEFAULT_PER_WITHDRAWAL_CAP=100000000
     ports:
       - "3031:3031"
 
