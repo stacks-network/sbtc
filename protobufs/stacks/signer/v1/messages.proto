@@ -33,6 +33,8 @@ message SignerMessage {
     SweepTransactionInfo sweep_transaction_info = 9;
     // Information about a new sweep transaction
     BitcoinPreSignRequest bitcoin_pre_sign_request = 10;
+    // Represents an acknowledgment of a BitcoinPreSignRequest
+    BitcoinPreSignAck bitcoin_pre_sign_ack = 11;
   }
 }
 
@@ -143,6 +145,9 @@ message BitcoinPreSignRequest {
   // used this UTXO as an input.
   Fees last_fees = 3;
 }
+
+// Represents an acknowledgment of a BitcoinPreSignRequest.
+message BitcoinPreSignAck {}
 
 // This type is a container for all deposits and withdrawals that are part
 // of a transaction package.

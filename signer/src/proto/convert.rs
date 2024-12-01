@@ -47,6 +47,7 @@ use crate::codec;
 use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
 use crate::message::BitcoinTransactionSignAck;
 use crate::message::BitcoinTransactionSignRequest;
@@ -1369,6 +1370,18 @@ impl TryFrom<proto::BitcoinPreSignRequest> for BitcoinPreSignRequest {
     }
 }
 
+impl From<BitcoinPreSignAck> for proto::BitcoinPreSignAck {
+    fn from(_: BitcoinPreSignAck) -> Self {
+        proto::BitcoinPreSignAck {}
+    }
+}
+
+impl From<proto::BitcoinPreSignAck> for BitcoinPreSignAck {
+    fn from(_: proto::BitcoinPreSignAck) -> Self {
+        BitcoinPreSignAck {}
+    }
+}
+
 impl From<SignerMessage> for proto::SignerMessage {
     fn from(value: SignerMessage) -> Self {
         proto::SignerMessage {
@@ -1418,6 +1431,9 @@ impl From<Payload> for proto::Payload {
             Payload::BitcoinPreSignRequest(inner) => {
                 proto::signer_message::Payload::BitcoinPreSignRequest(inner.into())
             }
+            Payload::BitcoinPreSignAck(inner) => {
+                proto::signer_message::Payload::BitcoinPreSignAck(inner.into())
+            }
         }
     }
 }
@@ -1453,6 +1469,9 @@ impl TryFrom<proto::Payload> for Payload {
             proto::signer_message::Payload::BitcoinPreSignRequest(inner) => {
                 Payload::BitcoinPreSignRequest(inner.try_into()?)
             }
+            proto::signer_message::Payload::BitcoinPreSignAck(inner) => {
+                Payload::BitcoinPreSignAck(inner.into())
+            }
         };
         Ok(payload)
     }
@@ -1484,10 +1503,10 @@ impl TryFrom<proto::Signed> for Signed<SignerMessage> {
 
 impl From<Point> for proto::Point {
     fn from(value: Point) -> Self {
-        let x_coordinate = value.x().to_bytes();
+        let [parity, x_coordinate @ ..] = value.compress().data;
         proto::Point {
             x_coordinate: Some(proto::Uint256::from(x_coordinate)),
-            parity_is_odd: !value.has_even_y(),
+            parity_is_odd: parity == 3, // SECP256K1_TAG_PUBKEY_ODD
         }
     }
 }
@@ -1765,6 +1784,7 @@ impl codec::ProtoSerializable for SignerMessage {
             Payload::WstsMessage(_) => "SBTC_WSTS_MESSAGE",
             Payload::SweepTransactionInfo(_) => "SBTC_SWEEP_TRANSACTION_INFO",
             Payload::BitcoinPreSignRequest(_) => "SBTC_BITCOIN_PRE_SIGN_REQUEST",
+            Payload::BitcoinPreSignAck(_) => "SBTC_BITCOIN_PRE_SIGN_ACK",
         }
     }
 }
@@ -2202,6 +2222,7 @@ mod tests {
     #[test_case(PhantomData::<(TxRequestIds, proto::TxRequestIds)>; "TxRequestIds")]
     #[test_case(PhantomData::<(Fees, proto::Fees)>; "Fees")]
     #[test_case(PhantomData::<(BitcoinPreSignRequest, proto::BitcoinPreSignRequest)>; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<(BitcoinPreSignAck, proto::BitcoinPreSignAck)>; "BitcoinPreSignAck")]
     fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
     where
         // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
@@ -2319,5 +2340,20 @@ mod tests {
 
         let original_from_proto = T::try_from(proto_original).unwrap();
         assert_eq!(wrapper(original), wrapper(original_from_proto));
+    }
+
+    #[test]
+    fn convert_protobuf_point() {
+        let number = [
+            143, 155, 8, 85, 229, 228, 1, 179, 39, 101, 245, 99, 113, 81, 250, 4, 15, 22, 126, 74,
+            137, 110, 198, 25, 250, 142, 202, 51, 0, 241, 238, 168,
+        ];
+        let scalar = p256k1::scalar::Scalar::from(number);
+
+        let original = Point::from(scalar);
+        let proto_original = proto::Point::from(original.clone());
+        let original_from_proto = Point::try_from(proto_original).unwrap();
+
+        assert_eq!(original, original_from_proto);
     }
 }
