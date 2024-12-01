@@ -531,6 +531,41 @@ mod tests {
     }
 
     #[test]
+    fn regular_point_conversion() {
+        // secp256k1::SecretKey::new does not allow for invalid private
+        // keys while p256k1::scalar::Scalar does, so we start with a that
+        // library.
+        let sk = secp256k1::SecretKey::new(&mut OsRng);
+        let scalar = p256k1::scalar::Scalar::from(sk.secret_bytes());
+        let point1 = p256k1::point::Point::from(scalar);
+        // Because we started with a valid private key, the point is not
+        // the point at infinity, so we will have a valid public key.
+        let public_key = PublicKey::try_from(&point1).unwrap();
+        // We map back to make sure that this works
+        let point2 = p256k1::point::Point::from(public_key);
+        assert_eq!(point1, point2)
+    }
+
+    // The private key used here gave p256k1 some trouble before the fix.
+    // Let's test against it here. This is almost the same test in the commit
+    // that fixed the bug
+    // <https://github.com/Trust-Machines/p256k1/commit/e9db1c475d25b84ed1e3b1ecb6f05af326ac13ff>
+    #[test]
+    fn point_parity_check() {
+        let private_key = [
+            143, 155, 8, 85, 229, 228, 1, 179, 39, 101, 245, 99, 113, 81, 250, 4, 15, 22, 126, 74,
+            137, 110, 198, 25, 250, 142, 202, 51, 0, 241, 238, 168,
+        ];
+        let scalar = p256k1::scalar::Scalar::from(private_key);
+        let point1 = p256k1::point::Point::from(scalar);
+        let public_key = PublicKey::try_from(&point1).unwrap();
+
+        let point2 = p256k1::point::Point::from(&public_key);
+
+        assert_eq!(point1, point2);
+    }
+
+    #[test]
     fn usually_scalar_invalid_p256k1_public_key() {
         let bytes = [0; 32];
         let scalar = p256k1::scalar::Scalar::from(bytes);
