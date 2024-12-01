@@ -40,9 +40,9 @@ fn main() {
         api::handlers::chainstate::update_chainstate,
         // Limit endpoints.
         api::handlers::limits::get_limits,
-        api::handlers::limits::set_limits,
+        // api::handlers::limits::set_limits,
         api::handlers::limits::get_limits_for_account,
-        api::handlers::limits::set_limits_for_account,
+        // api::handlers::limits::set_limits_for_account,
         // Testing endpoints.
         api::handlers::testing::wipe_databases,
     ),
