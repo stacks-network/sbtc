@@ -10,6 +10,54 @@
 //!   of the signer. It provides a method to verify the integrity and authenticity of the data.
 //! - **SignECDSA**: A trait implemented by data types that can be signed using ECDSA.
 //!
+//! ## Examples
+//!
+//! ### Signing and Verifying a String
+//!
+//! The following example demonstrates how to sign a simple string and then verify its signature:
+//!
+//! ```
+//! use sha2::Digest;
+//! use signer::ecdsa::SignEcdsa;
+//! use signer::keys::PrivateKey;
+//!
+//! use signer::codec::ProtoSerializable;
+//!
+//! #[derive(Clone, PartialEq)]
+//! struct SignableStr(&'static str);
+//!
+//! // Implementing `ProtoSerializable` and conversion traits unlock the signing
+//! // functionality in this module.
+//! #[allow(clippy::derive_partial_eq_without_eq)]
+//! #[derive(Clone, PartialEq, ::prost::Message)]
+//! pub struct ProtoSignableStr {
+//!     /// The string
+//!     #[prost(string, tag = "1")]
+//!     pub string: ::prost::alloc::string::String,
+//! }
+//!
+//! impl ProtoSerializable for SignableStr {
+//!     type Message = ProtoSignableStr;
+//!
+//!     fn type_tag(&self) -> &'static str {
+//!         "SBTC_SIGNABLE_STR"
+//!     }
+//! }
+//!
+//! impl From<SignableStr> for ProtoSignableStr {
+//!     fn from(value: SignableStr) -> Self {
+//!         ProtoSignableStr { string: value.0.to_string() }
+//!     }
+//! }
+//!
+//! let msg = SignableStr("Sign me please!");
+//! let private_key = PrivateKey::try_from(&p256k1::scalar::Scalar::from(1337)).unwrap();
+//!
+//! // Sign the message.
+//! let signed_msg = msg.sign_ecdsa(&private_key);
+//!
+//! // Verify the signed message.
+//! assert!(signed_msg.verify());
 
 use prost::bytes::Buf as _;
 use prost::Message as _;
