@@ -105,8 +105,11 @@ impl MessageTransfer for P2PNetwork {
 #[cfg(test)]
 mod tests {
     use core::panic;
+    use std::time::Duration;
 
+    use futures::StreamExt;
     use test_log::test;
+    use tokio_stream::wrappers::BroadcastStream;
 
     use super::*;
 
@@ -205,5 +208,240 @@ mod tests {
         // Ensure we're shutting down
         term1.signal_shutdown();
         term2.signal_shutdown();
+    }
+
+    #[test(tokio::test)]
+    async fn connected_peers_gossip_to_one_another() {
+        clear_env();
+
+        let mut rng = rand::rngs::OsRng;
+        let key1 = PrivateKey::new(&mut rng);
+        let key2 = PrivateKey::new(&mut rng);
+        let key3 = PrivateKey::new(&mut rng);
+
+        let context1 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = key1;
+            })
+            .build();
+        let context2 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = key2;
+            })
+            .build();
+        let context3 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = key3;
+            })
+            .build();
+
+        // Let's make sure all signers know about all other signers.
+        let current_signer_set1 = context1.state().current_signer_set();
+        let current_signer_set2 = context2.state().current_signer_set();
+        let current_signer_set3 = context3.state().current_signer_set();
+
+        for key in [key1, key2, key3] {
+            current_signer_set1.add_signer(PublicKey::from_private_key(&key));
+            current_signer_set2.add_signer(PublicKey::from_private_key(&key));
+            current_signer_set3.add_signer(PublicKey::from_private_key(&key));
+        }
+
+        // Configure the swarms to listen on hard-coded ports
+        let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/23001".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/23002".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 1");
+
+        let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/23002".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/23001".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/23003".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 2");
+
+        let mut swarm3 = SignerSwarmBuilder::new(&key3, true)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/23003".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/23002".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 3");
+
+        let mut network1 = P2PNetwork::new(&context1);
+        let _network2 = P2PNetwork::new(&context2);
+        let mut network3 = P2PNetwork::new(&context3);
+
+        // Start three swarms.
+        tokio::spawn(async move {
+            swarm1.start(&context1).await.unwrap();
+        });
+        tokio::spawn(async move {
+            swarm2.start(&context2).await.unwrap();
+        });
+        tokio::spawn(async move {
+            swarm3.start(&context3).await.unwrap();
+        });
+
+        // The swarms are discovering themselves via mDNS, so we need to give
+        // them a bit of time to connect.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let number_of_messages = 10;
+        let mut signed_messages: Vec<Msg> = std::iter::repeat_with(|| Msg::random(&mut rng))
+            .take(number_of_messages)
+            .collect();
+        signed_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
+
+        let (broadcast_signer_msg, rx) = tokio::sync::broadcast::channel(20);
+        let signer_msg_stream = BroadcastStream::new(rx);
+
+        let broadcast_messages = signed_messages.clone();
+        tokio::spawn(async move {
+            for msg in broadcast_messages {
+                network3.broadcast(msg).await.expect("Failed to broadcast");
+            }
+        });
+
+        // Signer 1 let's us know when it receives a message
+        tokio::spawn(async move {
+            loop {
+                let message = network1.receive().await.expect("Failed to receive message");
+                broadcast_signer_msg.send(message).unwrap();
+            }
+        });
+
+        // The swarms have 4-seconds to exchange messages.
+        let mut received_messages = signer_msg_stream
+            .take(number_of_messages)
+            .take_until(tokio::time::sleep(Duration::from_secs(4)))
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        received_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
+
+        assert_eq!(received_messages, signed_messages);
+    }
+
+    #[test(tokio::test)]
+    async fn signers_check_source_peer_ids() {
+        clear_env();
+
+        let mut rng = rand::rngs::OsRng;
+        let key1 = PrivateKey::new(&mut rng);
+        let key2 = PrivateKey::new(&mut rng);
+        let key3 = PrivateKey::new(&mut rng);
+
+        let context1 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = key1;
+            })
+            .build();
+        let context2 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = key2;
+            })
+            .build();
+        let context3 = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|settings| {
+                settings.signer.private_key = key3;
+            })
+            .build();
+
+        let current_signer_set1 = context1.state().current_signer_set();
+        let current_signer_set2 = context2.state().current_signer_set();
+        let current_signer_set3 = context3.state().current_signer_set();
+
+        // The first signer does not have signer 3 in it's signer set.
+        current_signer_set1.add_signer(PublicKey::from_private_key(&key1));
+        current_signer_set1.add_signer(PublicKey::from_private_key(&key2));
+
+        for key in [key1, key2, key3] {
+            current_signer_set2.add_signer(PublicKey::from_private_key(&key));
+            current_signer_set3.add_signer(PublicKey::from_private_key(&key));
+        }
+
+        let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/25001".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/25002".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 1");
+
+        let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/25002".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/25001".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/25003".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 2");
+
+        let mut swarm3 = SignerSwarmBuilder::new(&key3, true)
+            .add_listen_endpoint("/ip4/0.0.0.0/tcp/25003".parse().unwrap())
+            .add_seed_addr("/ip4/0.0.0.0/tcp/25002".parse().unwrap())
+            .build()
+            .expect("Failed to build swarm 3");
+
+        let mut network1 = P2PNetwork::new(&context1);
+        let _network2 = P2PNetwork::new(&context2);
+        let mut network3 = P2PNetwork::new(&context3);
+
+        // Start three swarms.
+        tokio::spawn(async move {
+            swarm1.start(&context1).await.unwrap();
+        });
+        tokio::spawn(async move {
+            swarm2.start(&context2).await.unwrap();
+        });
+        tokio::spawn(async move {
+            swarm3.start(&context3).await.unwrap();
+        });
+
+        // The swarms are discovering themselves via mDNS, so we need to give
+        // them a bit of time to connect.
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        let number_of_messages = 10;
+        let mut signed_messages: Vec<Msg> = std::iter::repeat_with(|| Msg::random(&mut rng))
+            .take(number_of_messages)
+            .collect();
+        signed_messages.sort_by_cached_key(|x| x.inner.bitcoin_chain_tip);
+
+        let (broadcast_signer_msg, rx) = tokio::sync::broadcast::channel(20);
+        let signer_msg_stream = BroadcastStream::new(rx);
+
+        let broadcast_messages = signed_messages.clone();
+        tokio::spawn(async move {
+            for msg in broadcast_messages {
+                network3.broadcast(msg).await.expect("Failed to broadcast");
+            }
+        });
+
+        tokio::spawn(async move {
+            loop {
+                let message = network1.receive().await.expect("Failed to receive message");
+                broadcast_signer_msg.send(message).unwrap();
+            }
+        });
+
+        // We wait for our first message, but not for too long, life is short.
+        let received_messages = signer_msg_stream
+            .take(1)
+            .take_until(tokio::time::sleep(Duration::from_secs(4)))
+            .collect::<Vec<_>>()
+            .await;
+
+        assert!(received_messages.is_empty());
     }
 }
