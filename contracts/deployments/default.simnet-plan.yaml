@@ -33,6 +33,9 @@ genesis:
 plan:
   batches:
     - id: 0
+      transactions: []
+      epoch: "2.5"
+    - id: 1
       transactions:
         - emulated-contract-publish:
             contract-name: sbtc-registry
@@ -55,8 +58,31 @@ plan:
             path: contracts/sbtc-deposit.clar
             clarity-version: 3
         - emulated-contract-publish:
+            contract-name: sbtc-token-test
+            emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
+            path: contracts/sbtc-token-test.clar
+            clarity-version: 3
+        - emulated-contract-publish:
             contract-name: sbtc-withdrawal
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-withdrawal.clar
             clarity-version: 3
+      epoch: "3.0"
+    - id: 2
+      transactions: []
+      epoch: "3.0"
+    - id: 3
+      transactions: []
+      epoch: "3.0"
+    - id: 4
+      transactions: []
+      epoch: "3.0"
+    - id: 5
+      transactions: []
+      epoch: "3.0"
+    - id: 6
+      transactions: []
+      epoch: "3.0"
+    - id: 7
+      transactions: []
       epoch: "3.0"
