@@ -252,10 +252,7 @@ async fn handle_completed_deposit(
         .get_storage()
         .get_deposit_request(&event.outpoint.txid.into(), event.outpoint.vout)
         .await?
-        .ok_or(Error::MissingDepositRequest(
-            event.outpoint.txid,
-            event.outpoint.vout,
-        ))?;
+        .ok_or(Error::MissingDepositRequest(event.outpoint))?;
 
     // The fee paid by the user is the difference between the deposit request amount
     // and the amount minted in the completed deposit event.
@@ -710,7 +707,7 @@ mod tests {
         assert!(res.is_err());
         assert!(matches!(
             res.unwrap_err(),
-            Error::MissingDepositRequest(missing_txid, vout) if missing_txid == *txid && vout == 0
+            Error::MissingDepositRequest(missing_outpoint) if missing_outpoint == outpoint
         ));
         let db = db.lock().await;
         assert_eq!(db.completed_deposit_events.len(), 1);
