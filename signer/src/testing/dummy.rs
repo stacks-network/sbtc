@@ -33,6 +33,7 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
+use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
 use crate::message::OutPointMessage;
 use crate::message::SignerMessage;
@@ -790,5 +791,11 @@ impl fake::Dummy<fake::Faker> for BitcoinPreSignRequest {
             fee_rate: config.fake_with_rng(rng),
             last_fees: config.fake_with_rng(rng),
         }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinPreSignAck {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(_config: &fake::Faker, _rng: &mut R) -> Self {
+        BitcoinPreSignAck {}
     }
 }

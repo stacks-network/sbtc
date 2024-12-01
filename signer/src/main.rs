@@ -338,11 +338,11 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         context_window: 10000,
         private_key,
         signing_round_max_duration: Duration::from_secs(30),
+        bitcoin_presign_request_max_duration: Duration::from_secs(30),
         threshold: config.signer.bootstrap_signatures_required,
         dkg_max_duration: Duration::from_secs(120),
         sbtc_contracts_deployed: false,
         is_epoch3: false,
-        pre_sign_pause: Some(Duration::from_secs(20)),
     };
 
     coord.run().await

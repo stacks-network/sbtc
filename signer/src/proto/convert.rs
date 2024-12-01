@@ -48,6 +48,7 @@ use crate::codec;
 use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
 use crate::message::BitcoinTransactionSignAck;
 use crate::message::BitcoinTransactionSignRequest;
@@ -1372,6 +1373,18 @@ impl TryFrom<proto::BitcoinPreSignRequest> for BitcoinPreSignRequest {
     }
 }
 
+impl From<BitcoinPreSignAck> for proto::BitcoinPreSignAck {
+    fn from(_: BitcoinPreSignAck) -> Self {
+        proto::BitcoinPreSignAck {}
+    }
+}
+
+impl From<proto::BitcoinPreSignAck> for BitcoinPreSignAck {
+    fn from(_: proto::BitcoinPreSignAck) -> Self {
+        BitcoinPreSignAck {}
+    }
+}
+
 impl From<SignerMessage> for proto::SignerMessage {
     fn from(value: SignerMessage) -> Self {
         let payload = match value.payload {
@@ -1401,6 +1414,9 @@ impl From<SignerMessage> for proto::SignerMessage {
             }
             Payload::BitcoinPreSignRequest(inner) => {
                 proto::signer_message::Payload::BitcoinPreSignRequest(inner.into())
+            }
+            Payload::BitcoinPreSignAck(inner) => {
+                proto::signer_message::Payload::BitcoinPreSignAck(inner.into())
             }
         };
         proto::SignerMessage {
@@ -1440,6 +1456,9 @@ impl TryFrom<proto::SignerMessage> for SignerMessage {
             }
             proto::signer_message::Payload::BitcoinPreSignRequest(inner) => {
                 Payload::BitcoinPreSignRequest(inner.try_into()?)
+            }
+            proto::signer_message::Payload::BitcoinPreSignAck(inner) => {
+                Payload::BitcoinPreSignAck(inner.into())
             }
         };
         Ok(SignerMessage {
@@ -2162,6 +2181,7 @@ mod tests {
     #[test_case(PhantomData::<(TxRequestIds, proto::TxRequestIds)>; "TxRequestIds")]
     #[test_case(PhantomData::<(Fees, proto::Fees)>; "Fees")]
     #[test_case(PhantomData::<(BitcoinPreSignRequest, proto::BitcoinPreSignRequest)>; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<(BitcoinPreSignAck, proto::BitcoinPreSignAck)>; "BitcoinPreSignAck")]
     fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
     where
         // `.unwrap()` requires that `E` implement `std::fmt::Debug` and

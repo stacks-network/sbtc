@@ -22,6 +22,7 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
 use crate::signature::SighashDigest as _;
@@ -383,6 +384,8 @@ where
         db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
             .await?;
 
+        self.send_message(BitcoinPreSignAck, bitcoin_chain_tip)
+            .await?;
         Ok(())
     }
 
