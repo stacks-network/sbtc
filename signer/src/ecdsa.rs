@@ -301,7 +301,8 @@ mod tests {
 
         // We should have the same signed message. This just tests protobuf
         // deserialization.
-        assert_eq!(signed_message, msg);
+        assert_eq!(signed_message.inner, msg.inner);
+        assert_eq!(signed_message.signature, msg.signature);
         let (msg2, digest) = Signed::<SignerMessage>::decode_with_digest(&buf).unwrap();
 
         // The decode_with_digest function is not the most intuitive, so
@@ -365,7 +366,8 @@ mod tests {
 
         // We should have the same signed message. This only tests protobuf
         // deserialization, so everything should be fine.
-        assert_eq!(signed_message, msg);
+        assert_eq!(signed_message.inner, msg.inner);
+        assert_eq!(signed_message.signature, msg.signature);
         let (msg2, digest) = Signed::<SignerMessage>::decode_with_digest(&buf).unwrap();
 
         // The decode_with_digest function is not the most intuitive, so
