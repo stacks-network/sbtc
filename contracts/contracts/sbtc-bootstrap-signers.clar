@@ -62,13 +62,11 @@
     (let 
         (
             (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
-            ;;(new-signer-principal (pubkeys-to-principal new-keys new-signature-threshold))
         )
         ;; Check that the caller is the current signer principal
-        ;;(asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
-        (ok true)
+        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
         ;; Call into .sbtc-registry to update the protocol contract
-        ;;(ok (try! (contract-call? .sbtc-registry update-protocol-contract contract-type contract-address)))
+        (ok (try! (contract-call? .sbtc-registry update-protocol-contract contract-type contract-address)))
     )
 )
 

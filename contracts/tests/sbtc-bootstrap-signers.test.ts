@@ -258,7 +258,7 @@ describe("sBTC bootstrap signers contract", () => {
 
       const receipt = txErr(
         deposit.completeDepositWrapper({
-          txid: new Uint8Array(31).fill(0),
+          txid: new Uint8Array(32).fill(0),
           voutIndex: 0,
           amount: 1000n,
           recipient: deployer,
@@ -268,7 +268,7 @@ describe("sBTC bootstrap signers contract", () => {
         }),
         deployer
       );
-      expect(receipt.value).toEqual(errors.deposit.ERR_TXID_LEN);
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
     });
   });
 
