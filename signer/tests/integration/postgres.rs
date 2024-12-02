@@ -3262,3 +3262,54 @@ async fn can_write_multiple_bitcoin_withdrawal_outputs() {
 
     signer::testing::storage::drop_db(db).await;
 }
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposit_request_returns_none_for_missing_deposit() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // Create a random txid
+    let txid: model::BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
+
+    // Fetch the deposit request for the fake txid
+    let fetched_deposit = db.get_deposit_request(&txid, 0).await.unwrap();
+
+    // Assert that the fetched fee is None
+    assert_eq!(fetched_deposit, None);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposit_request_returns_returns_inserted_deposit_request() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // Create multiple deposit requests
+    let deposit_request1: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+    let deposit_request2: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
+
+    // Insert the deposit requests into the database
+    db.write_deposit_request(&deposit_request1).await.unwrap();
+    db.write_deposit_request(&deposit_request2).await.unwrap();
+
+    // Fetch deposit requests from the database
+    let fetched_deposit1 = db
+        .get_deposit_request(&deposit_request1.txid, deposit_request1.output_index)
+        .await
+        .unwrap();
+    let fetched_deposit2 = db
+        .get_deposit_request(&deposit_request2.txid, deposit_request2.output_index)
+        .await
+        .unwrap();
+
+    // Assert that the fetched fees match the inserted fees
+    assert_eq!(fetched_deposit1, Some(deposit_request1));
+    assert_eq!(fetched_deposit2, Some(deposit_request2));
+
+    signer::testing::storage::drop_db(db).await;
+}
