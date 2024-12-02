@@ -137,6 +137,7 @@ where
 {
     /// Asserts that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
     pub async fn assert_ignore_withdrawals(mut self) {
+        // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
@@ -147,6 +148,8 @@ where
         let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
+
+        // Add signer utxo to storage
         let tx_1 = bitcoin::Transaction {
             output: vec![bitcoin::TxOut {
                 value: bitcoin::Amount::from_sat(1_337_000_000_000),
@@ -159,6 +162,8 @@ where
             vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
         );
         self.write_test_data(&test_data).await;
+
+        // Add estimate_fee_rate
         self.context
             .with_bitcoin_client(|client| {
                 client
@@ -167,6 +172,8 @@ where
                     .returning(|| Box::pin(async { Ok(1.3) }));
             })
             .await;
+
+        // Create the coordinator
         let signer_network = SignerNetwork::single(&self.context);
         let mut coordinator = TxCoordinatorEventLoop {
             context: self.context,
@@ -180,6 +187,8 @@ where
             sbtc_contracts_deployed: true,
             is_epoch3: true,
         };
+
+        // Get pending withdrawals from coordinator
         let pending_requests = coordinator
             .get_pending_requests(
                 &bitcoin_chain_tip.block_hash,
@@ -192,8 +201,9 @@ where
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
-
         let withdrawals = pending_requests.withdrawals;
+
+        // Get pending withdrawals from storage
         let withdrawals_in_storage = coordinator
             .context
             .get_storage()
