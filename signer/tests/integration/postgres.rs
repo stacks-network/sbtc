@@ -2290,7 +2290,8 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     signer::testing::storage::drop_db(db).await;
 }
 
-async fn transaction_coordinator_test_environment(
+/// Creates transaction coordinator test environment with real db
+pub async fn transaction_coordinator_test_environment(
     store: PgStore,
 ) -> testing::transaction_coordinator::TestEnvironment<
     TestContext<
