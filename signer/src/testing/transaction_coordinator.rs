@@ -147,7 +147,6 @@ where
         let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
-        let original_test_data = test_data.clone();
         let tx_1 = bitcoin::Transaction {
             output: vec![bitcoin::TxOut {
                 value: bitcoin::Amount::from_sat(1_337_000_000_000),
@@ -159,7 +158,6 @@ where
             &bitcoin_chain_tip,
             vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
         );
-        test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
         self.context
             .with_bitcoin_client(|client| {
@@ -171,7 +169,7 @@ where
             .await;
         let signer_network = SignerNetwork::single(&self.context);
         let mut coordinator = TxCoordinatorEventLoop {
-            context: self.context,
+            context: self.context.clone(),
             network: signer_network.spawn(),
             private_key: Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info),
             threshold: self.signing_threshold,
@@ -194,8 +192,22 @@ where
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
+
         let withdrawals = pending_requests.withdrawals;
+        let withdrawals_in_storage = coordinator
+            .context
+            .get_storage()
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_chain_tip.block_hash,
+                self.context_window,
+                self.signing_threshold,
+            )
+            .await
+            .expect("Error extracting withdrawals from db");
+
+        // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
         assert!(withdrawals.is_empty());
+        assert!(!withdrawals_in_storage.is_empty());
     }
 
     /// Assert that a coordinator should be able to coordiante a signing round
