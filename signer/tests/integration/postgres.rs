@@ -2290,8 +2290,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     signer::testing::storage::drop_db(db).await;
 }
 
-/// Creates transaction coordinator test environment with real db
-pub async fn transaction_coordinator_test_environment(
+async fn transaction_coordinator_test_environment(
     store: PgStore,
 ) -> testing::transaction_coordinator::TestEnvironment<
     TestContext<
@@ -2321,6 +2320,21 @@ pub async fn transaction_coordinator_test_environment(
         signing_threshold: 5,
         test_model_parameters,
     }
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test(tokio::test)]
+/// Tests that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
+async fn should_ignore_withdrawals() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+    let store = testing::storage::new_test_database(db_num, true).await;
+
+    transaction_coordinator_test_environment(store.clone())
+        .await
+        .assert_ignore_withdrawals()
+        .await;
+
+    testing::storage::drop_db(store).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
