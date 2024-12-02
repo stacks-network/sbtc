@@ -277,7 +277,7 @@
     (sweep-txid (buff 32))
   )
   (begin
-    (asserts! (is-eq contract-caller (get deposit (var-get active-protocol-contracts))) ERR_UNAUTHORIZED)
+    (try! (is-protocol-caller (some deposit)))
     (map-insert deposit-status {txid: txid, vout-index: vout-index} true)
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
