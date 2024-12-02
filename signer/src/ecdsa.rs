@@ -267,6 +267,7 @@ mod tests {
     #[test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
     #[test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
     #[test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<message::BitcoinPreSignAck> ; "BitcoinPreSignAck")]
     fn payload_signing_recovery<T>(_: PhantomData<T>)
     where
         T: Into<message::Payload> + fake::Dummy<fake::Faker>,
@@ -327,6 +328,7 @@ mod tests {
     #[test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
     #[test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
     #[test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<message::BitcoinPreSignAck> ; "BitcoinPreSignAck")]
     fn payload_signing_failing_validation<T>(_: PhantomData<T>)
     where
         T: Into<message::Payload> + fake::Dummy<fake::Faker>,
@@ -415,6 +417,7 @@ mod tests {
     #[test_case(PhantomData::<message::WstsMessage> ; "WstsMessage")]
     #[test_case(PhantomData::<message::SweepTransactionInfo> ; "SweepTransactionInfo")]
     #[test_case(PhantomData::<message::BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<message::BitcoinPreSignAck> ; "BitcoinPreSignAck")]
     fn backwards_compatible_updates<T>(_: PhantomData<T>)
     where
         T: Into<message::Payload> + fake::Dummy<fake::Faker>,
