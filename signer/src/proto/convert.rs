@@ -14,6 +14,7 @@ use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use clarity::codec::StacksMessageCodec as _;
 use clarity::vm::types::PrincipalData;
+use hashbrown::HashMap;
 use p256k1::point::Point;
 use p256k1::scalar::Scalar;
 use polynomial::Polynomial;
@@ -649,20 +650,34 @@ impl From<proto::DkgBegin> for DkgBegin {
 
 impl From<DkgPrivateBegin> for proto::DkgPrivateBegin {
     fn from(value: DkgPrivateBegin) -> Self {
+        let shares = value
+            .dkg_public_shares
+            .iter()
+            .map(|(i, s)| (*i, proto::SignerDkgPublicShares::from(s.clone())))
+            .collect();
+        let dkg_public_shares = Some(proto::DkgPublicShares { shares });
         proto::DkgPrivateBegin {
             dkg_id: value.dkg_id,
             signer_ids: value.signer_ids,
             key_ids: value.key_ids,
+            dkg_public_shares,
         }
     }
 }
 
 impl From<proto::DkgPrivateBegin> for DkgPrivateBegin {
     fn from(value: proto::DkgPrivateBegin) -> Self {
+        let mut dkg_public_shares = HashMap::new();
+        if let Some(shares) = value.dkg_public_shares {
+            for (id, share) in shares.shares {
+                dkg_public_shares.insert(id, DkgPublicShares::try_from(share).unwrap());
+            }
+        }
         DkgPrivateBegin {
             dkg_id: value.dkg_id,
             signer_ids: value.signer_ids,
             key_ids: value.key_ids,
+            dkg_public_shares,
         }
     }
 }
@@ -720,6 +735,11 @@ impl From<DkgEndBegin> for proto::DkgEndBegin {
             dkg_id: value.dkg_id,
             signer_ids: value.signer_ids,
             key_ids: value.key_ids,
+            dkg_private_shares: value
+                .dkg_private_shares
+                .iter()
+                .map(|(i, s)| (*i, proto::DkgPrivateShares::from(s.clone())))
+                .collect(),
         }
     }
 }
@@ -730,6 +750,11 @@ impl From<proto::DkgEndBegin> for DkgEndBegin {
             dkg_id: value.dkg_id,
             signer_ids: value.signer_ids,
             key_ids: value.key_ids,
+            dkg_private_shares: value
+                .dkg_private_shares
+                .iter()
+                .map(|(id, shares)| (*id, DkgPrivateShares::try_from(shares.clone()).unwrap()))
+                .collect(),
         }
     }
 }

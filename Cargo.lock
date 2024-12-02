@@ -3147,7 +3147,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c2a198fb6b0eada2a8df47933734e6d35d350665a33a3593d7164fa52c75c19"
 dependencies = [
  "cfg-if 1.0.0",
- "windows-targets 0.52.5",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4400,9 +4400,9 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p256k1"
-version = "7.1.0"
+version = "7.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a40a031a559eb38c35a14096f21c366254501a06d41c4b327d2a7515d713a5b7"
+checksum = "f8641765697df03a529cd21181fbccd1cad9f66086c24252b91c16bf38cdddd6"
 dependencies = [
  "bindgen",
  "bitvec",
@@ -7759,8 +7759,8 @@ dependencies = [
 
 [[package]]
 name = "wsts"
-version = "10.0.0"
-source = "git+https://github.com/Trust-Machines/wsts.git?rev=c90232f929e1433f0eac8175512541be32d4e2c0#c90232f929e1433f0eac8175512541be32d4e2c0"
+version = "11.0.0"
+source = "git+https://github.com/Trust-Machines/wsts.git?rev=e78101f923f517440e389f9da7bbf0e89bd901c8#e78101f923f517440e389f9da7bbf0e89bd901c8"
 dependencies = [
  "aes-gcm",
  "bs58 0.5.1",

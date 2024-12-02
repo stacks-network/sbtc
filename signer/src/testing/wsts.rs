@@ -1,5 +1,6 @@
 //! Test utilities for running a wsts signer and coordinator.
 
+use rand::rngs::OsRng;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::time::Duration;
@@ -122,6 +123,7 @@ impl Coordinator {
             sign_timeout: None,
             signer_key_ids,
             signer_public_keys,
+            embed_public_private_shares: true,
         };
 
         let wsts_coordinator = fire::Coordinator::new(config);
@@ -313,6 +315,7 @@ impl Signer {
     /// Participate in a DKG round and return the result
     pub async fn run_until_dkg_end(mut self) -> Self {
         let future = async move {
+            let mut rng = OsRng;
             loop {
                 let msg = self.network.receive().await.expect("network error");
                 let bitcoin_chain_tip = msg.bitcoin_chain_tip;
@@ -328,12 +331,12 @@ impl Signer {
 
                 let outbound_packets = self
                     .wsts_signer
-                    .process_inbound_messages(&[packet])
+                    .process_inbound_messages(&[packet], &mut rng)
                     .expect("message processing failed");
 
                 for packet in outbound_packets {
                     self.wsts_signer
-                        .process_inbound_messages(&[packet.clone()])
+                        .process_inbound_messages(&[packet.clone()], &mut rng)
                         .expect("message processing failed");
 
                     self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
@@ -353,6 +356,7 @@ impl Signer {
     /// Participate in a signing round and return the result
     pub async fn run_until_signature_share_response(mut self) -> Self {
         let future = async move {
+            let mut rng = OsRng;
             loop {
                 let msg = self.network.receive().await.expect("network error");
                 let bitcoin_chain_tip = msg.bitcoin_chain_tip;
@@ -368,12 +372,12 @@ impl Signer {
 
                 let outbound_packets = self
                     .wsts_signer
-                    .process_inbound_messages(&[packet])
+                    .process_inbound_messages(&[packet], &mut rng)
                     .expect("message processing failed");
 
                 for packet in outbound_packets {
                     self.wsts_signer
-                        .process_inbound_messages(&[packet.clone()])
+                        .process_inbound_messages(&[packet.clone()], &mut rng)
                         .expect("message processing failed");
 
                     self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())

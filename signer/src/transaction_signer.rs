@@ -39,6 +39,7 @@ use crate::wsts_state_machine::SignerStateMachine;
 use bitcoin::hashes::Hash;
 use bitcoin::TapSighash;
 use futures::StreamExt;
+use rand::rngs::OsRng;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -574,51 +575,6 @@ where
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-<<<<<<< HEAD
-            WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
-                tracing::info!(
-                    signer_id = %dkg_public_shares.signer_id,
-                    "handling DkgPublicShares",
-                );
-                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
-                    Some(state_machine) => &state_machine.public_keys,
-                    None => return Err(Error::MissingStateMachine),
-                };
-                let signer_public_key = match public_keys.signers.get(&dkg_public_shares.signer_id)
-                {
-                    Some(key) => PublicKey::from(key),
-                    None => return Err(Error::MissingPublicKey),
-                };
-
-                if signer_public_key != msg_public_key {
-                    return Err(Error::InvalidSignature);
-                }
-                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
-                    .await?;
-            }
-            WstsNetMessage::DkgPrivateShares(dkg_private_shares) => {
-                tracing::info!(
-                    signer_id = %dkg_private_shares.signer_id,
-                    "handling DkgPrivateShares"
-                );
-                let public_keys = match self.wsts_state_machines.get(&msg.txid) {
-                    Some(state_machine) => &state_machine.public_keys,
-                    None => return Err(Error::MissingStateMachine),
-                };
-                let signer_public_key = match public_keys.signers.get(&dkg_private_shares.signer_id)
-                {
-                    Some(key) => PublicKey::from(key),
-                    None => return Err(Error::MissingPublicKey),
-                };
-
-                if signer_public_key != msg_public_key {
-                    return Err(Error::InvalidSignature);
-                }
-                self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
-                    .await?;
-            }
-=======
->>>>>>> 6ac8fba2 (PoC embedding dkg shares into begin messages)
             WstsNetMessage::DkgEndBegin(_) => {
                 tracing::info!("handling DkgEndBegin");
                 if !chain_tip_report.sender_is_coordinator {
@@ -718,12 +674,13 @@ where
             return Ok(());
         };
 
-        let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
+        let mut rng = OsRng;
+        let outbound_messages = state_machine.process(msg, &mut rng).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
             // The WSTS state machine assume we read our own messages
             state_machine
-                .process(outbound_message)
+                .process(outbound_message, &mut rng)
                 .map_err(Error::Wsts)?;
         }
 

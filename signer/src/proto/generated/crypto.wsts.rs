@@ -137,6 +137,9 @@ pub struct DkgPrivateBegin {
     /// Key IDs who responded in time for this DKG round
     #[prost(uint32, repeated, tag = "3")]
     pub key_ids: ::prost::alloc::vec::Vec<u32>,
+    /// Public shares from all signers in this DKG round
+    #[prost(message, optional, tag = "4")]
+    pub dkg_public_shares: ::core::option::Option<DkgPublicShares>,
 }
 /// DKG private shares message from signer to all signers and coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L185-L195>>
@@ -193,6 +196,9 @@ pub struct DkgEndBegin {
     /// Key IDs who responded in time for this DKG round
     #[prost(uint32, repeated, tag = "3")]
     pub key_ids: ::prost::alloc::vec::Vec<u32>,
+    /// Private shares from all signers in this DKG round
+    #[prost(btree_map = "uint32, message", tag = "4")]
+    pub dkg_private_shares: ::prost::alloc::collections::BTreeMap<u32, DkgPrivateShares>,
 }
 /// DKG end message from signers to coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L246-L255>>

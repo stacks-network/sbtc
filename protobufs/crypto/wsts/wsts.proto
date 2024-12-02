@@ -47,6 +47,8 @@ message DkgPrivateBegin {
   repeated uint32 signer_ids = 2;
   // Key IDs who responded in time for this DKG round
   repeated uint32 key_ids = 3;
+  // Public shares from all signers in this DKG round
+  DkgPublicShares dkg_public_shares = 4;
 }
 
 // DKG private shares message from signer to all signers and coordinator
@@ -89,6 +91,8 @@ message DkgEndBegin {
   repeated uint32 signer_ids = 2;
   // Key IDs who responded in time for this DKG round
   repeated uint32 key_ids = 3;
+  // Private shares from all signers in this DKG round
+  map<uint32, DkgPrivateShares> dkg_private_shares = 4;
 }
 
 // DKG end message from signers to coordinator

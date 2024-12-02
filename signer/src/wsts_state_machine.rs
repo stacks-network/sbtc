@@ -12,6 +12,7 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
 
+use rand::rngs::OsRng;
 use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
@@ -65,6 +66,7 @@ impl SignerStateMachine {
             return Err(error::Error::InvalidConfiguration);
         };
 
+        let mut rng = OsRng;
         let state_machine = WstsStateMachine::new(
             threshold,
             num_parties,
@@ -73,6 +75,8 @@ impl SignerStateMachine {
             key_ids,
             signer_private_key.into(),
             public_keys,
+            true,
+            &mut rng,
         );
 
         Ok(Self(state_machine))
@@ -215,6 +219,7 @@ impl CoordinatorStateMachine {
             sign_timeout: None,
             signer_key_ids,
             signer_public_keys,
+            embed_public_private_shares: true,
         };
 
         let wsts_coordinator = WstsCoordinator::new(config);
