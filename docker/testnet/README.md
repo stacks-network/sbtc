@@ -13,21 +13,21 @@ distributed key generation (DKG).
 
 ## Requirements
 
-sBTC signers require both a Bitcoin node and a Stacks node. This repository
-includes examples of:
+> **NOTE:** You will *need* to run a regtest node in order to run an sBTC signer.
+> This differs from what the stacks testnet signer needs.
 
-- A [Bitcoin regtest config](./bitcoin/bitcoin.conf) and
-- A [Stacks primary testnet configuration](./stacks/Config.toml).
+sBTC signers require both a Bitcoin node and a Stacks node. You can find example configs at
+the links in the table below, but **you will need to customize the configurations based on your specific deployment.**
 
-You will need to customize the configurations based on your specific deployment.
-
-Syncing a Bitcoin regtest node takes roughly 5 hours at the time of writing. If
-helpful, we can provide an archive of the chain-state to speed things up.
-
-You can also bootstrap the Stacks testnet node through an
-[archive](https://docs.stacks.co/guides-and-tutorials/running-a-signer#start-with-an-archive).
+| Network | Archive | Example Config |
+|-|-|-|
+|Bitcoin regtest|[archive](https://drive.google.com/drive/u/3/folders/1KvpmIxvX8Rh7H8Th91qbc_HsbhQLi13V)|[example config](./bitcoin/bitcoin.conf)|
+|Stacks testnet|[archive](https://docs.stacks.co/guides-and-tutorials/running-a-signer#start-with-an-archive)|[example config](./stacks/Config.toml)|
 
 ## Configuration
+
+> **NOTE:** We will provide the following fields once most of your infrastructure is up and running:
+> `STREAM_NAME, SIGNER_SIGNER__PRIVATE_KEY, EMILY_API_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY`
 
 Clone this repository and `cd` to this directory.
 
@@ -84,6 +84,9 @@ AWS_SECRET_ACCESS_KEY=<provided_secret_access_key>
 ```
 
 ### Configure the blocklist client
+
+> **NOTE:** You will need to send a request to chainanalysis to get an API key, which
+> is as simple as providing your contact info and waiting for an email with the key.
 
 Add the API key obtained
 [here](https://go.chainalysis.com/crypto-sanctions-screening.html) to the `.env`
