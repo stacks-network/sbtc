@@ -270,14 +270,14 @@ mod tests {
     #[test_case(PhantomData::<message::BitcoinPreSignAck> ; "BitcoinPreSignAck")]
     fn payload_signing_recovery<T>(_: PhantomData<T>)
     where
-        T: Into<message::Payload> + fake::Dummy<fake::Faker>,
+        T: Into<message::Payload> + fake::Dummy<Faker>,
     {
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
         let public_key: PublicKey = keypair.public_key().into();
         let original_message = SignerMessage {
             bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
-            payload: fake::Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
+            payload: Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
         };
 
         // We sign a payload digest. It should always be what this function
@@ -331,14 +331,14 @@ mod tests {
     #[test_case(PhantomData::<message::BitcoinPreSignAck> ; "BitcoinPreSignAck")]
     fn payload_signing_failing_validation<T>(_: PhantomData<T>)
     where
-        T: Into<message::Payload> + fake::Dummy<fake::Faker>,
+        T: Into<message::Payload> + fake::Dummy<Faker>,
     {
         let keypair = secp256k1::Keypair::new_global(&mut OsRng);
         let private_key: PrivateKey = keypair.secret_key().into();
         let public_key: PublicKey = keypair.public_key().into();
         let original_message = SignerMessage {
             bitcoin_chain_tip: BitcoinBlockHash::from([1; 32]),
-            payload: fake::Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
+            payload: Faker.fake_with_rng::<T, _>(&mut OsRng).into(),
         };
 
         // We sign a payload digest. It should always be what this function
@@ -420,7 +420,7 @@ mod tests {
     #[test_case(PhantomData::<message::BitcoinPreSignAck> ; "BitcoinPreSignAck")]
     fn backwards_compatible_updates<T>(_: PhantomData<T>)
     where
-        T: Into<message::Payload> + fake::Dummy<fake::Faker>,
+        T: Into<message::Payload> + fake::Dummy<Faker>,
     {
         // This is the upgraded signer. They will construct a message for
         // consumption by another signer.
