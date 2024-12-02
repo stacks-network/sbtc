@@ -169,7 +169,7 @@ where
             .await;
         let signer_network = SignerNetwork::single(&self.context);
         let mut coordinator = TxCoordinatorEventLoop {
-            context: self.context.clone(),
+            context: self.context,
             network: signer_network.spawn(),
             private_key: Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info),
             threshold: self.signing_threshold,
