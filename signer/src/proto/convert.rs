@@ -1814,6 +1814,7 @@ impl codec::ProtoSerializable for SignerMessage {
             Payload::WstsMessage(_) => "SBTC_WSTS_MESSAGE",
             Payload::SweepTransactionInfo(_) => "SBTC_SWEEP_TRANSACTION_INFO",
             Payload::BitcoinPreSignRequest(_) => "SBTC_BITCOIN_PRE_SIGN_REQUEST",
+            Payload::BitcoinPreSignAck(_) => "SBTC_BITCOIN_PRE_SIGN_ACK",
         }
     }
 }

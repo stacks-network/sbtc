@@ -450,14 +450,14 @@ where
                                     payload: Payload::BitcoinPreSignAck(_),
                                     ..
                                 },
-                            signer_pub_key,
+                            signer_public_key,
                             ..
                         }) => {
                             if bitcoin_chain_tip == target_tip {
-                                acknowledged_signers.insert(signer_pub_key);
+                                acknowledged_signers.insert(signer_public_key);
                             } else {
                                 tracing::warn!(
-                                    signer = %signer_pub_key,
+                                    signer = %signer_public_key,
                                     received_chain_tip = %bitcoin_chain_tip,
                                     "bitcoin presign ack observed for a different chain tip"
                                 );
