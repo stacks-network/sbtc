@@ -40,6 +40,8 @@ pub enum Payload {
     SweepTransactionInfo(SweepTransactionInfo),
     /// Information about a new Bitcoin block sign request
     BitcoinPreSignRequest(BitcoinPreSignRequest),
+    /// An acknowledgment of a BitconPreSignRequest
+    BitcoinPreSignAck(BitcoinPreSignAck),
 }
 
 impl std::fmt::Display for Payload {
@@ -75,6 +77,7 @@ impl std::fmt::Display for Payload {
             }
             Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
             Self::BitcoinPreSignRequest(_) => write!(f, "BitcoinPreSignRequest(..)"),
+            Self::BitcoinPreSignAck(_) => write!(f, "BitcoinPreSignAck(..)"),
         }
     }
 }
@@ -140,6 +143,12 @@ impl From<SweepTransactionInfo> for Payload {
 impl From<BitcoinPreSignRequest> for Payload {
     fn from(value: BitcoinPreSignRequest) -> Self {
         Self::BitcoinPreSignRequest(value)
+    }
+}
+
+impl From<BitcoinPreSignAck> for Payload {
+    fn from(value: BitcoinPreSignAck) -> Self {
+        Self::BitcoinPreSignAck(value)
     }
 }
 
@@ -340,6 +349,10 @@ pub struct BitcoinPreSignRequest {
     /// used this UTXO as an input.
     pub last_fees: Option<Fees>,
 }
+
+/// An acknowledgment of a [`BitcoinPreSignRequest`].
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BitcoinPreSignAck;
 
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq)]

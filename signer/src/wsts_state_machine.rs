@@ -198,7 +198,7 @@ impl CoordinatorStateMachine {
         let num_signers: u32 = signer_public_keys
             .len()
             .try_into()
-            .expect("The number of signers is greater than u32::MAX?");
+            .expect("the number of signers is greater than u32::MAX?");
         let signer_key_ids = (0..num_signers)
             .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
             .collect();

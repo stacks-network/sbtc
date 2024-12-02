@@ -124,25 +124,45 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        let signer_public_key = self.signer_public_key();
+
         let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(chain_tip));
 
         let deposit_requests = db
-            .get_pending_deposit_requests(&chain_tip, self.context_window)
+            .get_pending_deposit_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
 
         for deposit_request in deposit_requests {
-            self.handle_pending_deposit_request(deposit_request, &chain_tip)
-                .await?;
+            let outpoint = deposit_request.outpoint();
+            let _ = self
+                .handle_pending_deposit_request(deposit_request, &chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(
+                        %error,
+                        %outpoint,
+                        "error handling new deposit request"
+                    )
+                });
         }
 
         let withdraw_requests = db
-            .get_pending_withdrawal_requests(&chain_tip, self.context_window)
+            .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
 
         for withdraw_request in withdraw_requests {
-            self.handle_pending_withdrawal_request(withdraw_request, &chain_tip)
-                .await?;
+            let request_id = withdraw_request.request_id;
+            let _ = self
+                .handle_pending_withdrawal_request(withdraw_request, &chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(
+                        %error,
+                        %request_id,
+                        "error handling new withdrawal request"
+                    )
+                });
         }
 
         Ok(())
@@ -163,6 +183,7 @@ where
             Payload::StacksTransactionSignRequest(_)
             | Payload::BitcoinTransactionSignRequest(_)
             | Payload::BitcoinPreSignRequest(_)
+            | Payload::BitcoinPreSignAck(_)
             | Payload::WstsMessage(_)
             | Payload::SweepTransactionInfo(_)
             | Payload::StacksTransactionSignature(_)
@@ -239,8 +260,8 @@ where
         // TODO: Do we want to do this on the sender address or the
         // recipient address?
         let is_accepted = self
-            .can_accept(&withdrawal_request.sender_address.to_string())
-            .await;
+            .can_accept_withdrawal_request(&withdrawal_request)
+            .await?;
 
         let msg = SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
@@ -270,12 +291,22 @@ where
         Ok(())
     }
 
-    async fn can_accept(&self, address: &str) -> bool {
+    async fn can_accept_withdrawal_request(
+        &self,
+        req: &model::WithdrawalRequest,
+    ) -> Result<bool, Error> {
+        // If we have not configured a blocklist checker, then we can
+        // return early.
         let Some(client) = self.blocklist_checker.as_ref() else {
-            return true;
+            return Ok(true);
         };
 
-        client.can_accept(address).await.unwrap_or(false)
+        let result = client
+            .can_accept(&req.sender_address.to_string())
+            .await
+            .unwrap_or(false);
+
+        Ok(result)
     }
 
     async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {

@@ -57,6 +57,9 @@ cfg-if = "1.0"
 include_dir = "0.7.4"
 polynomial = "0.2.6"
 
+# Only used to setup logging for the signer's axum http server
+tower-http = { version = "0.6.2", features = ["trace", "request-id"] }
+
 # Only for testing
 mockall = { version = "0.12.1", optional = true }
 fake = { version = "2.9.2", features = ["derive", "time"], optional = true }

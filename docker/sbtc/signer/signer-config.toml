@@ -20,13 +20,13 @@
 # You may specify multiple Emily API servers if you have them. They will be
 # tried round-robin until one succeeds.
 #
-# Format: ["http(s)://<host>:<port>", ..]
+# Format: ["http(s)://[api-key@]<host>:<port>", ..]
 # Default: <none>
 # Required: true
 # Environment: SIGNER_EMILY__ENDPOINTS
-# Environment Example: '{"endpoint":"https://api.emilyexample.com","api_key":"1234567890abcdef"},..'
+# Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    { endpoint = "http://emily-server:3031" },
+    "http://emily-server:3031",
 ]
 
 # !! ==============================================================================
