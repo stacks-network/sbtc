@@ -433,7 +433,7 @@ mod tests {
         };
 
         // The upgraded signer sends messages with an additional field.
-        // Let's populate it. Note that we need to hash all of the message
+        // Let's populate it. Note that we need to hash all the message
         // bytes except for the signature field and then sign it.
         let unix_timestamp = time::OffsetDateTime::now_utc().unix_timestamp() as u64;
         let mut signed_message_v2 = SignedUpgraded {
@@ -503,7 +503,7 @@ mod tests {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum PayloadUpgraded {
         #[prost(message, tag = "3")]
-        SignerWithdrawalDecisioUpgraded(SignerWithdrawalDecisionUpgraded),
+        SignerWithdrawalDecisionUpgraded(SignerWithdrawalDecisionUpgraded),
     }
 
     #[allow(clippy::derive_partial_eq_without_eq)]
@@ -532,7 +532,7 @@ mod tests {
 
         // The upgraded signer sends messages with an additional field for
         // the SignerWithdrawalDecision and for the proto::Signed type.
-        // Let's generate it. Note that we always hash all of the message
+        // Let's generate it. Note that we always hash all the message
         // bytes except for the signature field and then sign it.
 
         // This new field is a map field. Let's populate it with some
@@ -558,7 +558,7 @@ mod tests {
             signer_public_key: Some(public_key.into()),
             signer_message: Some(SignerMessageUpgraded {
                 bitcoin_chain_tip: Some(BitcoinBlockHash::from([1; 32]).into()),
-                payload: Some(PayloadUpgraded::SignerWithdrawalDecisioUpgraded(decision)),
+                payload: Some(PayloadUpgraded::SignerWithdrawalDecisionUpgraded(decision)),
             }),
             timestamp: Some(Timestamp { unix_timestamp }),
         };
