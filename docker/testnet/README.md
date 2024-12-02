@@ -87,6 +87,7 @@ AWS_SECRET_ACCESS_KEY=<provided_secret_access_key>
 
 > **NOTE:** You will need to send a request to chainanalysis to get an API key, which
 > is as simple as providing your contact info and waiting for an email with the key.
+> The request link is right below.
 
 Add the API key obtained
 [here](https://go.chainalysis.com/crypto-sanctions-screening.html) to the `.env`
