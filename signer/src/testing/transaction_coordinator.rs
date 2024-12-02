@@ -135,10 +135,9 @@ impl<Storage>
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
 {
-    /// Tests that TxCoordinatorEventLoop::get_pending_requests ignore withdrawals
+    /// Asserts that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
     pub async fn assert_ignore_withdrawals(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
-        // let network = P2PNetwork::new(&self.context);
         let network = network::InMemoryNetwork::new();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
         let mut testing_signer_set =
@@ -149,7 +148,6 @@ where
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
         let original_test_data = test_data.clone();
-
         let tx_1 = bitcoin::Transaction {
             output: vec![bitcoin::TxOut {
                 value: bitcoin::Amount::from_sat(1_337_000_000_000),
@@ -161,7 +159,6 @@ where
             &bitcoin_chain_tip,
             vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
         );
-
         test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
         self.context
