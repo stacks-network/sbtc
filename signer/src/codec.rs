@@ -9,38 +9,52 @@
 //!    methods we intend to use throughout the signer.
 //! 2. Implementing these traits for any type implementing `ProtoSerializable` defined in here.
 //!
-//! ## Examples
-//!
-//! ### Encoding a string slice and decoding it as a string
-//!
-//! ```
-//! use signer::codec::{Encode, Decode};
-//!
-//! let message = "Encode me";
-//!
-//! // `.encode_to_vec()` provided by the `Encode` trait
-//! let encoded = message.encode_to_vec().unwrap();
-//!
-//! // `.decode()` provided by the `Decode` trait
-//! let decoded = String::decode(encoded.as_slice()).unwrap();
-//!
-//! assert_eq!(decoded, message);
-//! ```
 
 use std::io;
 
-use crate::error::Error;
 use prost::Message as _;
+use sha2::Digest as _;
 
-/// Utility trait to specify mapping between internal types and proto counterparts. The implementation of `Encode` and `Decode` for a type `T` implementing `ProtoSerializable` assume `T: Into<Message> + TryFrom<Message>`.
+use crate::error::Error;
+use crate::signature::SighashDigest;
+
+/// Utility trait to specify mapping between internal types and proto
+/// counterparts. The implementation of `Encode` and `Decode` for a type
+/// `T` implementing `ProtoSerializable` assume `T: Into<Message> +
+/// TryFrom<Message>`.
 /// ```
-/// impl ProtoSerializable for PublicKey {
-///    type Message = proto::PublicKey;
+/// use signer::codec::ProtoSerializable;
+/// use signer::proto;
+///
+/// struct MyPublicKey(signer::keys::PublicKey);
+///
+/// impl ProtoSerializable for MyPublicKey {
+///     type Message = proto::PublicKey;
+///
+///     fn type_tag(&self) -> &'static str {
+///         "MY_PUBLIC_KEY"
+///     }
 /// }
 /// ```
 pub trait ProtoSerializable {
     /// The proto message type used for conversions
     type Message: ::prost::Message + Default;
+    /// A message type tag used for hashing the message before signing.
+    fn type_tag(&self) -> &'static str;
+}
+
+impl<T> SighashDigest for T
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
+    fn digest(&self) -> [u8; 32] {
+        let mut hasher = sha2::Sha256::new_with_prefix(self.type_tag());
+        let proto_message: <Self as ProtoSerializable>::Message = self.clone().into();
+        let message = prost::Message::encode_to_vec(&proto_message);
+        hasher.update(&message);
+        hasher.finalize().into()
+    }
 }
 
 /// Provides a method for encoding an object into a writer using a canonical serialization format.
@@ -125,6 +139,10 @@ mod tests {
 
     impl ProtoSerializable for PublicKey {
         type Message = proto::PublicKey;
+
+        fn type_tag(&self) -> &'static str {
+            "SBTC_PUBLIC_KEY"
+        }
     }
 
     #[test]

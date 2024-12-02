@@ -21,12 +21,32 @@
 //! use signer::ecdsa::SignEcdsa;
 //! use signer::keys::PrivateKey;
 //!
+//! use signer::codec::ProtoSerializable;
+//!
+//! #[derive(Clone, PartialEq)]
 //! struct SignableStr(&'static str);
 //!
-//! // Implementing `wsts::net::Signable` unlocks the signing functionality in this module.
-//! impl wsts::net::Signable for SignableStr {
-//!     fn hash(&self, hasher: &mut sha2::Sha256) {
-//!         hasher.update(self.0)
+//! // Implementing `ProtoSerializable` and conversion traits unlock the signing
+//! // functionality in this module.
+//! #[allow(clippy::derive_partial_eq_without_eq)]
+//! #[derive(Clone, PartialEq, ::prost::Message)]
+//! pub struct ProtoSignableStr {
+//!     /// The string
+//!     #[prost(string, tag = "1")]
+//!     pub string: ::prost::alloc::string::String,
+//! }
+//!
+//! impl ProtoSerializable for SignableStr {
+//!     type Message = ProtoSignableStr;
+//!
+//!     fn type_tag(&self) -> &'static str {
+//!         "SBTC_SIGNABLE_STR"
+//!     }
+//! }
+//!
+//! impl From<SignableStr> for ProtoSignableStr {
+//!     fn from(value: SignableStr) -> Self {
+//!         ProtoSignableStr { string: value.0.to_string() }
 //!     }
 //! }
 //!
@@ -34,20 +54,21 @@
 //! let private_key = PrivateKey::try_from(&p256k1::scalar::Scalar::from(1337)).unwrap();
 //!
 //! // Sign the message.
-//! let signed_msg = msg
-//!     .sign_ecdsa(&private_key)
-//!     .expect("Failed to sign message");
+//! let signed_msg = msg.sign_ecdsa(&private_key);
 //!
 //! // Verify the signed message.
 //! assert!(signed_msg.verify());
 
+use secp256k1::SECP256K1;
+
+use crate::codec::ProtoSerializable;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
-use sha2::Digest as _;
+use crate::signature::SighashDigest as _;
 
 /// Wraps an inner type with a public key and a signature,
 /// allowing easy verification of the integrity of the inner data.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Signed<T> {
     /// The signed structure.
     pub inner: T,
@@ -57,21 +78,24 @@ pub struct Signed<T> {
     pub signature: Vec<u8>,
 }
 
-impl<T: wsts::net::Signable> Signed<T> {
+impl<T> Signed<T>
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
     /// Verify the signature over the inner data.
     pub fn verify(&self) -> bool {
-        self.inner
-            .verify(&self.signature, &self.signer_pub_key.into())
+        let msg = secp256k1::Message::from_digest(self.inner.digest());
+        let Ok(sig) = secp256k1::ecdsa::Signature::from_compact(&self.signature) else {
+            return false;
+        };
+
+        self.signer_pub_key.verify(SECP256K1, &msg, &sig).is_ok()
     }
 
     /// Unique identifier for the signed message
     pub fn id(&self) -> [u8; 32] {
-        let mut hasher = sha2::Sha256::new();
-
-        self.hash(&mut hasher);
-        hasher.update(&self.signature);
-
-        hasher.finalize().into()
+        self.inner.digest()
     }
 }
 
@@ -92,19 +116,23 @@ impl<T> std::ops::DerefMut for Signed<T> {
 /// Helper trait to provide the ability to construct a `Signed<T>`.
 pub trait SignEcdsa: Sized {
     /// Wrap this type into a [`Signed<Self>`]
-    fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error>;
+    fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self>;
 }
 
-impl<T: wsts::net::Signable> SignEcdsa for T {
-    /// Create a `Signed<T>` instance with a signature and public key constructed from `private_key`.
-    fn sign_ecdsa(self, private_key: &PrivateKey) -> Result<Signed<Self>, Error> {
-        let signature = self.sign(&private_key.into())?;
+impl<T> SignEcdsa for T
+where
+    T: ProtoSerializable + Clone,
+    T: Into<<T as ProtoSerializable>::Message>,
+{
+    fn sign_ecdsa(self, private_key: &PrivateKey) -> Signed<Self> {
+        let msg = secp256k1::Message::from_digest(self.digest());
+        let signature = private_key.sign_ecdsa(&msg);
 
-        Ok(Signed {
+        Signed {
             inner: self,
             signer_pub_key: PublicKey::from_private_key(private_key),
-            signature,
-        })
+            signature: signature.serialize_compact().to_vec(),
+        }
     }
 }
 
@@ -133,9 +161,7 @@ impl Signed<crate::message::SignerMessage> {
         private_key: &PrivateKey,
     ) -> Self {
         let inner = crate::message::SignerMessage::random(rng);
-        inner
-            .sign_ecdsa(private_key)
-            .expect("Failed to sign message")
+        inner.sign_ecdsa(private_key)
     }
 }
 
@@ -144,16 +170,12 @@ mod tests {
     use super::*;
     use p256k1::scalar::Scalar;
 
-    use sha2::Digest;
-
     #[test]
     fn verify_should_return_true_given_properly_signed_data() {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
-        let signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+        let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         // Bruce Wayne is Batman.
         assert!(signed_msg.verify());
@@ -164,9 +186,8 @@ mod tests {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
-        let mut signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+        let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
+        assert!(signed_msg.verify());
 
         signed_msg.inner = SignableStr("I'm Satoshi Nakamoto");
 
@@ -180,9 +201,7 @@ mod tests {
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
         let craig_wright_public_key = p256k1::ecdsa::PublicKey::new(&Scalar::from(1338)).unwrap();
 
-        let mut signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+        let mut signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         signed_msg.signer_pub_key = craig_wright_public_key.into();
 
@@ -195,18 +214,33 @@ mod tests {
         let msg = SignableStr("I'm Batman");
         let bruce_wayne_private_key = PrivateKey::try_from(&Scalar::from(1337)).unwrap();
 
-        let signed_msg = msg
-            .sign_ecdsa(&bruce_wayne_private_key)
-            .expect("Failed to sign message");
+        let signed_msg = msg.sign_ecdsa(&bruce_wayne_private_key);
 
         assert_eq!(signed_msg.len(), 10);
     }
 
+    #[derive(Clone, PartialEq)]
     struct SignableStr(&'static str);
 
-    impl wsts::net::Signable for SignableStr {
-        fn hash(&self, hasher: &mut sha2::Sha256) {
-            hasher.update(self.0)
+    #[allow(clippy::derive_partial_eq_without_eq)]
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ProtoSignableStr {
+        /// The string
+        #[prost(string, tag = "1")]
+        pub string: ::prost::alloc::string::String,
+    }
+
+    impl ProtoSerializable for SignableStr {
+        type Message = ProtoSignableStr;
+
+        fn type_tag(&self) -> &'static str {
+            "SBTC_SIGNABLE_STR"
+        }
+    }
+
+    impl From<SignableStr> for ProtoSignableStr {
+        fn from(value: SignableStr) -> Self {
+            ProtoSignableStr { string: value.0.to_string() }
         }
     }
 

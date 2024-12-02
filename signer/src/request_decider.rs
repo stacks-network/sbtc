@@ -443,7 +443,7 @@ where
         let payload: Payload = msg.into();
         let msg = payload
             .to_message(*chain_tip)
-            .sign_ecdsa(&self.signer_private_key)?;
+            .sign_ecdsa(&self.signer_private_key);
 
         self.network.broadcast(msg).await?;
 

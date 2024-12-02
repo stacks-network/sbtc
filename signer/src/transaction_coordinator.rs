@@ -40,7 +40,6 @@ use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::SweepTransactionInfo;
 use crate::network;
-use crate::signature::SighashDigest;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::GetNakamotoStartHeight;
@@ -683,7 +682,6 @@ where
             contract_tx: contract_call.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
-            digest: tx.digest(),
             txid: tx.txid(),
         };
 
@@ -769,7 +767,6 @@ where
             contract_tx: contract_call.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
-            digest: tx.digest(),
             txid: tx.txid(),
         };
 
@@ -1393,7 +1390,7 @@ where
         let msg = msg
             .into()
             .to_message(*bitcoin_chain_tip)
-            .sign_ecdsa(&self.private_key)?;
+            .sign_ecdsa(&self.private_key);
 
         self.network.broadcast(msg.clone()).await?;
         self.context
@@ -1473,7 +1470,6 @@ where
             contract_tx: contract_deploy.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
-            digest: tx.digest(),
             txid: tx.txid(),
         };
 

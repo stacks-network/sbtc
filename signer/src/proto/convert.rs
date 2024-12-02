@@ -7,7 +7,6 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::consensus::encode::serialize;
@@ -547,7 +546,6 @@ impl From<StacksTransactionSignRequest> for proto::StacksTransactionSignRequest 
             aggregate_key: Some(value.aggregate_key.into()),
             nonce: value.nonce,
             tx_fee: value.tx_fee,
-            digest: Some(value.digest.into()),
             txid: Some(StacksTxId::from(value.txid).into()),
             contract_tx: Some(contract_tx),
         }
@@ -580,7 +578,6 @@ impl TryFrom<proto::StacksTransactionSignRequest> for StacksTransactionSignReque
             aggregate_key: value.aggregate_key.required()?.try_into()?,
             nonce: value.nonce,
             tx_fee: value.tx_fee,
-            digest: value.digest.required()?.into(),
             txid: StacksTxId::try_from(value.txid.required()?)?.into(),
             contract_tx,
         })
@@ -767,13 +764,13 @@ impl TryFrom<proto::BadPrivateShares> for hashbrown::HashMap<u32, BadPrivateShar
     }
 }
 
-fn hashset_to_zst(set: hashbrown::HashSet<u32>) -> HashMap<u32, proto::SetValueZst> {
+fn hashset_to_zst(set: hashbrown::HashSet<u32>) -> BTreeMap<u32, proto::SetValueZst> {
     set.into_iter()
         .map(|v| (v, proto::SetValueZst {}))
         .collect()
 }
 
-fn zst_to_hashset(set: HashMap<u32, proto::SetValueZst>) -> hashbrown::HashSet<u32> {
+fn zst_to_hashset(set: BTreeMap<u32, proto::SetValueZst>) -> hashbrown::HashSet<u32> {
     set.into_keys().collect()
 }
 
@@ -1301,7 +1298,7 @@ impl From<TxRequestIds> for proto::TxRequestIds {
             deposits: value
                 .deposits
                 .into_iter()
-                .map(|v| OutPoint::from(v).into())
+                .map(proto::OutPoint::from)
                 .collect(),
             withdrawals: value.withdrawals.into_iter().map(|v| v.into()).collect(),
         }
@@ -1315,12 +1312,12 @@ impl TryFrom<proto::TxRequestIds> for TxRequestIds {
             deposits: value
                 .deposits
                 .into_iter()
-                .map(|v| Ok::<_, Error>(OutPoint::try_from(v)?.into()))
+                .map(OutPoint::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
             withdrawals: value
                 .withdrawals
                 .into_iter()
-                .map(|v| v.try_into())
+                .map(QualifiedRequestId::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
         })
     }
@@ -1387,7 +1384,26 @@ impl From<proto::BitcoinPreSignAck> for BitcoinPreSignAck {
 
 impl From<SignerMessage> for proto::SignerMessage {
     fn from(value: SignerMessage) -> Self {
-        let payload = match value.payload {
+        proto::SignerMessage {
+            bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
+            payload: Some(value.payload.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerMessage> for SignerMessage {
+    type Error = Error;
+    fn try_from(value: proto::SignerMessage) -> Result<Self, Self::Error> {
+        Ok(SignerMessage {
+            bitcoin_chain_tip: value.bitcoin_chain_tip.required()?.try_into()?,
+            payload: value.payload.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<Payload> for proto::Payload {
+    fn from(value: Payload) -> Self {
+        match value {
             Payload::SignerDepositDecision(inner) => {
                 proto::signer_message::Payload::SignerDepositDecision(inner.into())
             }
@@ -1418,18 +1434,14 @@ impl From<SignerMessage> for proto::SignerMessage {
             Payload::BitcoinPreSignAck(inner) => {
                 proto::signer_message::Payload::BitcoinPreSignAck(inner.into())
             }
-        };
-        proto::SignerMessage {
-            bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
-            payload: Some(payload),
         }
     }
 }
 
-impl TryFrom<proto::SignerMessage> for SignerMessage {
+impl TryFrom<proto::Payload> for Payload {
     type Error = Error;
-    fn try_from(value: proto::SignerMessage) -> Result<Self, Self::Error> {
-        let payload = match value.payload.required()? {
+    fn try_from(value: proto::Payload) -> Result<Self, Self::Error> {
+        let payload = match value {
             proto::signer_message::Payload::SignerDepositDecision(inner) => {
                 Payload::SignerDepositDecision(inner.try_into()?)
             }
@@ -1461,10 +1473,7 @@ impl TryFrom<proto::SignerMessage> for SignerMessage {
                 Payload::BitcoinPreSignAck(inner.into())
             }
         };
-        Ok(SignerMessage {
-            bitcoin_chain_tip: value.bitcoin_chain_tip.required()?.try_into()?,
-            payload,
-        })
+        Ok(payload)
     }
 }
 
@@ -1761,16 +1770,47 @@ impl TryFrom<proto::DkgPublicShares> for BTreeMap<u32, DkgPublicShares> {
     }
 }
 
+impl codec::ProtoSerializable for SignerMessage {
+    type Message = proto::SignerMessage;
+
+    fn type_tag(&self) -> &'static str {
+        match &self.payload {
+            Payload::SignerDepositDecision(_) => "SBTC_SIGNER_DEPOSIT_DECISION",
+            Payload::SignerWithdrawalDecision(_) => "SBTC_SIGNER_WITHDRAWAL_DECISION",
+            Payload::StacksTransactionSignRequest(_) => "SBTC_STACKS_TRANSACTION_SIGN_REQUEST",
+            Payload::StacksTransactionSignature(_) => "SBTC_STACKS_TRANSACTION_SIGNATURE",
+            Payload::BitcoinTransactionSignRequest(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_REQUEST",
+            Payload::BitcoinTransactionSignAck(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_ACK",
+            Payload::WstsMessage(_) => "SBTC_WSTS_MESSAGE",
+            Payload::SweepTransactionInfo(_) => "SBTC_SWEEP_TRANSACTION_INFO",
+            Payload::BitcoinPreSignRequest(_) => "SBTC_BITCOIN_PRE_SIGN_REQUEST",
+            Payload::BitcoinPreSignAck(_) => "SBTC_BITCOIN_PRE_SIGN_ACK",
+        }
+    }
+}
+
 impl codec::ProtoSerializable for Signed<SignerMessage> {
     type Message = proto::Signed;
+
+    fn type_tag(&self) -> &'static str {
+        self.inner.type_tag()
+    }
 }
 
 impl codec::ProtoSerializable for SignerState {
     type Message = proto::SignerState;
+
+    fn type_tag(&self) -> &'static str {
+        "SBTC_SIGNER_STATE"
+    }
 }
 
 impl codec::ProtoSerializable for BTreeMap<u32, DkgPublicShares> {
     type Message = proto::DkgPublicShares;
+
+    fn type_tag(&self) -> &'static str {
+        "SBTC_DKG_PUBLIC_SHARES"
+    }
 }
 
 #[cfg(test)]
@@ -2169,6 +2209,7 @@ mod tests {
     #[test_case(PhantomData::<(RejectWithdrawalV1, proto::RejectWithdrawal)>; "RejectWithdrawal")]
     #[test_case(PhantomData::<(RotateKeysV1, proto::RotateKeys)>; "RotateKeys")]
     #[test_case(PhantomData::<(SmartContract, proto::SmartContract)>; "SmartContract")]
+    #[test_case(PhantomData::<(Payload, proto::Payload)>; "Payload")]
     #[test_case(PhantomData::<(StacksTransactionSignRequest, proto::StacksTransactionSignRequest)>; "StacksTransactionSignRequest")]
     #[test_case(PhantomData::<(BitcoinTransactionSignRequest, proto::BitcoinTransactionSignRequest)>; "BitcoinTransactionSignRequest")]
     #[test_case(PhantomData::<(WstsMessage, proto::WstsMessage)>; "WstsMessage")]

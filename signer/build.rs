@@ -25,6 +25,7 @@ pub fn compile_protos() {
     tonic_build::configure()
         .build_server(true)
         .build_client(true)
+        .btree_map(["."])
         .out_dir(workingdir.join("signer/src/proto/generated/"))
         .include_file("mod.rs")
         .type_attribute("crypto.Uint256", "#[derive(Copy)]")

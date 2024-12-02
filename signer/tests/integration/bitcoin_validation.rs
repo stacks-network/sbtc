@@ -127,7 +127,7 @@ async fn one_tx_per_request_set() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -229,7 +229,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -346,7 +346,7 @@ async fn one_withdrawal_errors_validation() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: setup.withdrawal_ids(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -439,7 +439,7 @@ async fn cannot_sign_deposit_is_ok() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -573,7 +573,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -711,7 +711,7 @@ async fn outcome_is_independent_of_input_order() {
 
     let mut request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,

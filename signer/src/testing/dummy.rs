@@ -35,7 +35,6 @@ use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
-use crate::message::OutPointMessage;
 use crate::message::SignerMessage;
 use crate::message::SweepTransactionInfo;
 use crate::message::SweptDeposit;
@@ -757,19 +756,18 @@ impl fake::Dummy<fake::Faker> for QualifiedRequestId {
     }
 }
 
-impl fake::Dummy<fake::Faker> for OutPointMessage {
+impl fake::Dummy<fake::Faker> for TxRequestIds {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        OutPointMessage {
+        let take = (0..20).fake_with_rng(rng);
+        let deposits = std::iter::repeat_with(|| OutPoint {
             txid: txid(config, rng),
             vout: rng.next_u32(),
-        }
-    }
-}
+        })
+        .take(take)
+        .collect();
 
-impl fake::Dummy<fake::Faker> for TxRequestIds {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(_: &fake::Faker, _: &mut R) -> Self {
         TxRequestIds {
-            deposits: fake::vec![OutPointMessage; 0..20],
+            deposits,
             withdrawals: fake::vec![QualifiedRequestId; 0..20],
         }
     }

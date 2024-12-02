@@ -25,7 +25,6 @@ use crate::message;
 use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
-use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
@@ -464,9 +463,6 @@ where
         let multi_sig = MultisigTx::new_tx(&request.contract_tx, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
-        // TODO(517): Remove the digest field from the request object and
-        // serialize the entire message.
-        debug_assert_eq!(multi_sig.tx().digest(), request.digest);
         debug_assert_eq!(txid, request.txid);
 
         let signature = crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
@@ -791,7 +787,7 @@ where
 
         let msg = payload
             .to_message(*bitcoin_chain_tip)
-            .sign_ecdsa(&self.signer_private_key)?;
+            .sign_ecdsa(&self.signer_private_key);
 
         self.network.broadcast(msg.clone()).await?;
         self.context

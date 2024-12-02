@@ -663,13 +663,6 @@ impl TestSweepSetup2 {
             .collect()
     }
 
-    pub fn deposit_outpoint_messages(&self) -> Vec<message::OutPointMessage> {
-        self.deposits
-            .iter()
-            .map(|(info, _, _)| info.outpoint.into())
-            .collect()
-    }
-
     pub fn withdrawal_ids(&self) -> Vec<QualifiedRequestId> {
         vec![QualifiedRequestId {
             request_id: self.withdrawal_request.request_id,
