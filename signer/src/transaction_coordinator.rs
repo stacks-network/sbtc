@@ -1250,7 +1250,7 @@ where
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip_all)]
-    async fn get_pending_requests(
+    pub async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
@@ -1266,12 +1266,6 @@ where
             .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let pending_withdraw_requests = self
-            .context
-            .get_storage()
-            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
-            .await?;
-
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
@@ -1285,18 +1279,7 @@ where
             deposits.push(deposit);
         }
 
-        let mut withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
-
-        for req in pending_withdraw_requests {
-            let votes = self
-                .context
-                .get_storage()
-                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
-                .await?;
-
-            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
-            withdrawals.push(withdrawal);
-        }
+        let withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
 
         let num_signers = signer_public_keys
             .len()
@@ -1770,5 +1753,10 @@ mod tests {
     #[tokio::test]
     async fn should_get_signer_utxo_donations() {
         test_environment().assert_get_signer_utxo_donations().await;
+    }
+
+    #[tokio::test]
+    async fn should_ignore_withdrawals() {
+        test_environment().assert_ignore_withdrawals().await;
     }
 }

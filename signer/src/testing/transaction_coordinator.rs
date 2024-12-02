@@ -17,6 +17,7 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey;
 use crate::network;
+use crate::network::in_memory2::SignerNetwork;
 use crate::stacks::api::AccountInfo;
 use crate::stacks::api::MockStacksInteract;
 use crate::stacks::api::SubmitTxResponse;
@@ -28,6 +29,7 @@ use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
+use crate::transaction_coordinator::TxCoordinatorEventLoop;
 
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use fake::Fake as _;
@@ -133,6 +135,91 @@ impl<Storage>
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
 {
+    /// Asserts that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
+    pub async fn assert_ignore_withdrawals(mut self) {
+        // Setup network and signer info
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let network = network::InMemoryNetwork::new();
+        let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
+        let mut testing_signer_set =
+            testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
+                network.connect()
+            });
+        let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
+            .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
+            .await;
+
+        // Add signer utxo to storage
+        let tx_1 = bitcoin::Transaction {
+            output: vec![bitcoin::TxOut {
+                value: bitcoin::Amount::from_sat(1_337_000_000_000),
+                script_pubkey: aggregate_key.signers_script_pubkey(),
+            }],
+            ..EMPTY_BITCOIN_TX
+        };
+        test_data.push_bitcoin_txs(
+            &bitcoin_chain_tip,
+            vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
+        );
+        self.write_test_data(&test_data).await;
+
+        // Add estimate_fee_rate
+        self.context
+            .with_bitcoin_client(|client| {
+                client
+                    .expect_estimate_fee_rate()
+                    .times(1)
+                    .returning(|| Box::pin(async { Ok(1.3) }));
+            })
+            .await;
+
+        // Create the coordinator
+        let signer_network = SignerNetwork::single(&self.context);
+        let mut coordinator = TxCoordinatorEventLoop {
+            context: self.context,
+            network: signer_network.spawn(),
+            private_key: Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info),
+            threshold: self.signing_threshold,
+            context_window: self.context_window,
+            signing_round_max_duration: Duration::from_millis(500),
+            bitcoin_presign_request_max_duration: Duration::from_millis(500),
+            dkg_max_duration: Duration::from_millis(500),
+            sbtc_contracts_deployed: true,
+            is_epoch3: true,
+        };
+
+        // Get pending withdrawals from coordinator
+        let pending_requests = coordinator
+            .get_pending_requests(
+                &bitcoin_chain_tip.block_hash,
+                &aggregate_key,
+                &signer_info
+                    .last()
+                    .expect("Empty signer set!")
+                    .signer_public_keys,
+            )
+            .await
+            .expect("Error getting pending requests")
+            .expect("Empty pending requests");
+        let withdrawals = pending_requests.withdrawals;
+
+        // Get pending withdrawals from storage
+        let withdrawals_in_storage = coordinator
+            .context
+            .get_storage()
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_chain_tip.block_hash,
+                self.context_window,
+                self.signing_threshold,
+            )
+            .await
+            .expect("Error extracting withdrawals from db");
+
+        // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
+        assert!(withdrawals.is_empty());
+        assert!(!withdrawals_in_storage.is_empty());
+    }
+
     /// Assert that a coordinator should be able to coordiante a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(
         mut self,
