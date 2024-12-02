@@ -369,49 +369,49 @@ type StacksBlockHash = [u8; 32];
 
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
+
     use super::*;
     use crate::codec::{Decode, Encode};
     use crate::ecdsa::{SignEcdsa, Signed};
     use crate::keys::PrivateKey;
 
     use rand::SeedableRng;
+    use test_case::test_case;
 
-    #[test]
-    fn signer_messages_should_be_signable() {
-        assert_signer_messages_should_be_signable_with_type::<SignerDepositDecision>();
-        assert_signer_messages_should_be_signable_with_type::<SignerWithdrawalDecision>();
-        assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignRequest>();
-        assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignAck>();
-        assert_signer_messages_should_be_signable_with_type::<StacksTransactionSignRequest>();
-        assert_signer_messages_should_be_signable_with_type::<StacksTransactionSignature>();
-        assert_signer_messages_should_be_signable_with_type::<WstsMessage>();
-    }
-
-    #[test]
-    fn signer_messages_should_be_encodable() {
-        assert_signer_messages_should_be_encodable_with_type::<SignerDepositDecision>();
-        assert_signer_messages_should_be_encodable_with_type::<SignerWithdrawalDecision>();
-        assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignRequest>();
-        assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignAck>();
-        assert_signer_messages_should_be_encodable_with_type::<StacksTransactionSignRequest>();
-        assert_signer_messages_should_be_encodable_with_type::<StacksTransactionSignature>();
-        assert_signer_messages_should_be_encodable_with_type::<WstsMessage>();
-    }
-
-    fn assert_signer_messages_should_be_signable_with_type<P>()
+    #[test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    fn signer_messages_should_be_signable_with_type<P>(_: PhantomData<P>)
     where
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(1337);
         let private_key = PrivateKey::new(rng);
+        let public_key = PublicKey::from_private_key(&private_key);
 
         let signed_message =
             SignerMessage::random_with_payload_type::<P, _>(rng).sign_ecdsa(&private_key);
 
-        assert!(signed_message.verify());
+        assert!(signed_message.verify(public_key));
     }
 
-    fn assert_signer_messages_should_be_encodable_with_type<P>()
+    #[test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    fn signer_messages_should_be_encodable_with_type<P>(_: PhantomData<P>)
     where
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {

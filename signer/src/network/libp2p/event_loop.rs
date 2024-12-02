@@ -7,8 +7,9 @@ use libp2p::swarm::SwarmEvent;
 use libp2p::{gossipsub, identify, kad, mdns, Multiaddr, Swarm};
 use tokio::sync::Mutex;
 
-use crate::codec::{Decode, Encode};
+use crate::codec::Encode;
 use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
+use crate::error::Error;
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
@@ -362,8 +363,8 @@ fn handle_gossipsub_event(
                 return;
             }
 
-            Msg::decode(message.data.as_slice())
-                .map(|msg| {
+            Msg::decode_with_digest(&message.data)
+                .and_then(|(msg, digest)| {
                     tracing::trace!(
                         local_peer_id = %swarm.local_peer_id(),
                         %peer_id,
@@ -372,14 +373,26 @@ fn handle_gossipsub_event(
                         "received message",
                     );
 
+                    if origin_peer_id != msg.signer_public_key.into() {
+                        tracing::error!(%origin_peer_id, "connected peer sent an invalid message");
+                        return Err(Error::InvalidSignature)
+                    }
+
+                    if let Err(error) = msg.verify_digest(digest) {
+                        tracing::error!(%origin_peer_id, "connected peer sent an invalid signature");
+                        return Err(error)
+                    }
+
                     let _ = ctx.get_signal_sender()
                         .send(P2PEvent::MessageReceived(msg).into())
-                        .map_err(|error| {
-                            tracing::debug!(%error, "failed to send message to application; we are likely shutting down.");
+                        .inspect_err(|error| {
+                            tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
                         });
+
+                    Ok(())
                 })
                 .unwrap_or_else(|error| {
-                    tracing::warn!(?peer_id, %error, "failed to decode message");
+                    tracing::warn!(%peer_id, %error, "Failed to decode message");
                 });
         }
         Event::Subscribed { peer_id, topic } => {

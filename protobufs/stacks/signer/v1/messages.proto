@@ -122,14 +122,12 @@ message WstsMessage {
 // Wraps an inner type with a public key and a signature,
 // allowing easy verification of the integrity of the inner data.
 message Signed {
-  // The public key of the signer.
-  crypto.PublicKey signer_pub_key = 1;
   // A signature over the hash of the inner structure.
-  bytes signature = 2;
+  crypto.EcdsaSignature signature = 1;
+  // The public key of the signer that generated the signature.
+  crypto.PublicKey signer_public_key = 2;
   // The signed structure.
-  oneof inner {
-    SignerMessage signer_message = 3;
-  }
+  SignerMessage signer_message = 3;
 }
 
 // Information about a new Bitcoin block sign request

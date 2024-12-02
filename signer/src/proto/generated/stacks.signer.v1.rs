@@ -463,25 +463,17 @@ pub mod wsts_message {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Signed {
-    /// The public key of the signer.
-    #[prost(message, optional, tag = "1")]
-    pub signer_pub_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
     /// A signature over the hash of the inner structure.
-    #[prost(bytes = "vec", tag = "2")]
-    pub signature: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "1")]
+    pub signature: ::core::option::Option<super::super::super::crypto::EcdsaSignature>,
+    /// The public key of the signer that generated the signature.
+    #[prost(message, optional, tag = "2")]
+    pub signer_public_key: ::core::option::Option<
+        super::super::super::crypto::PublicKey,
+    >,
     /// The signed structure.
-    #[prost(oneof = "signed::Inner", tags = "3")]
-    pub inner: ::core::option::Option<signed::Inner>,
-}
-/// Nested message and enum types in `Signed`.
-pub mod signed {
-    /// The signed structure.
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Inner {
-        #[prost(message, tag = "3")]
-        SignerMessage(super::SignerMessage),
-    }
+    #[prost(message, optional, tag = "3")]
+    pub signer_message: ::core::option::Option<SignerMessage>,
 }
 /// Information about a new Bitcoin block sign request
 #[allow(clippy::derive_partial_eq_without_eq)]

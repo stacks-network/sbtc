@@ -115,7 +115,10 @@ impl super::MessageTransfer for MpmcBroadcaster {
 
 #[cfg(test)]
 mod tests {
+    use rand::rngs::OsRng;
+
     use super::*;
+    use crate::keys::PrivateKey;
     use crate::testing;
 
     #[tokio::test]
@@ -125,6 +128,8 @@ mod tests {
         let client_1 = network.connect();
         let client_2 = network.connect();
 
-        testing::network::assert_clients_can_exchange_messages(client_1, client_2).await;
+        let pk = PrivateKey::new(&mut OsRng);
+
+        testing::network::assert_clients_can_exchange_messages(client_1, client_2, pk, pk).await;
     }
 }

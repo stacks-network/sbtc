@@ -450,14 +450,14 @@ where
                                     payload: Payload::BitcoinPreSignAck(_),
                                     ..
                                 },
-                            signer_pub_key,
+                            signer_public_key,
                             ..
                         }) => {
                             if bitcoin_chain_tip == target_tip {
-                                acknowledged_signers.insert(signer_pub_key);
+                                acknowledged_signers.insert(signer_public_key);
                             } else {
                                 tracing::warn!(
-                                    signer = %signer_pub_key,
+                                    signer = %signer_public_key,
                                     received_chain_tip = %bitcoin_chain_tip,
                                     "bitcoin presign ack observed for a different chain tip"
                                 );
@@ -808,12 +808,10 @@ where
                     self.context.get_termination_handle().signal_shutdown();
                     return Err(Error::SignerShutdown);
                 };
-                // TODO: We need to verify these messages, but it is best
-                // to do that at the source when we receive the message.
 
                 if &msg.bitcoin_chain_tip != chain_tip {
                     tracing::warn!(
-                        sender = %msg.signer_pub_key,
+                        sender = %msg.signer_public_key,
                         "concurrent signing round message observed"
                     );
                     continue;
@@ -828,7 +826,7 @@ where
                     tracing::warn!(
                         %txid,
                         %error,
-                        offending_public_key = %msg.signer_pub_key,
+                        offending_public_key = %msg.signer_public_key,
                         "got an invalid signature"
                     );
                 }
@@ -1079,12 +1077,7 @@ where
         // all bad, so we trigger a shutdown.
         while let Some(msg) = signal_stream.next().await {
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(sender = %msg.signer_pub_key, "concurrent WSTS activity observed");
-                continue;
-            }
-
-            if !msg.verify() {
-                tracing::warn!(?msg, "invalid signature");
+                tracing::warn!(sender = %msg.signer_public_key, "concurrent WSTS activity observed");
                 continue;
             }
 
@@ -1097,7 +1090,7 @@ where
                 sig: Vec::new(),
             };
 
-            let msg_public_key = msg.signer_pub_key;
+            let msg_public_key = msg.signer_public_key;
 
             let sender_is_coordinator =
                 given_key_is_coordinator(msg_public_key, bitcoin_chain_tip, &signer_set);

@@ -193,7 +193,7 @@ mod tests {
         // Run the test with a 30-second timeout for the swarms to exchange messages.
         if let Err(_) = tokio::time::timeout(
             tokio::time::Duration::from_secs(30),
-            testing::network::assert_clients_can_exchange_messages(network1, network2),
+            testing::network::assert_clients_can_exchange_messages(network1, network2, key1, key2),
         )
         .await
         {

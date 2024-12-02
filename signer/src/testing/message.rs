@@ -49,9 +49,14 @@ impl fake::Dummy<fake::Faker> for message::Payload {
         let variants = [
             dummy_payload::<message::SignerDepositDecision, _>,
             dummy_payload::<message::SignerWithdrawalDecision, _>,
+            dummy_payload::<message::StacksTransactionSignRequest, _>,
+            dummy_payload::<message::StacksTransactionSignature, _>,
+            dummy_payload::<message::BitcoinTransactionSignRequest, _>,
+            dummy_payload::<message::BitcoinTransactionSignAck, _>,
             dummy_payload::<message::WstsMessage, _>,
+            dummy_payload::<message::SweepTransactionInfo, _>,
+            dummy_payload::<message::BitcoinPreSignRequest, _>,
         ];
-
         variants.choose(rng).unwrap()(config, rng)
     }
 }

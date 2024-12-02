@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::codec;
-use crate::ecdsa;
 use crate::emily_client::EmilyClientError;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
@@ -14,6 +13,10 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Indicates an error when decoding a protobuf
+    #[error("could not decode protobuf {0}")]
+    DecodeProtobuf(#[source] prost::DecodeError),
+
     /// Attempted division by zero
     #[error("attempted division by zero")]
     DivideByZero,
@@ -244,6 +247,10 @@ pub enum Error {
     #[error("invalid private key length={0}, expected 32.")]
     InvalidPrivateKeyLength(usize),
 
+    /// The given signature was invalid
+    #[error("could not convert the given compact bytes into an ECDSA signature: {0}")]
+    InvalidEcdsaSignatureBytes(#[source] secp256k1::Error),
+
     /// This happens when we attempt to convert a `[u8; 65]` into a
     /// recoverable EDCSA signature.
     #[error("could not recover the public key from the signature: {0}")]
@@ -408,9 +415,9 @@ pub enum Error {
     #[error("invalid signature")]
     InvalidSignature,
 
-    /// ECDSA error
-    #[error("ECDSA error: {0}")]
-    Ecdsa(#[from] ecdsa::Error),
+    /// Invalid ECDSA signature
+    #[error("invalid ECDSA signature")]
+    InvalidEcdsaSignature(#[source] secp256k1::Error),
 
     /// Codec error
     #[error("codec error: {0}")]

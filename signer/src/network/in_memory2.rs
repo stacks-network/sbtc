@@ -179,6 +179,7 @@ mod tests {
     use futures::future::join_all;
     use rand::rngs::OsRng;
 
+    use crate::keys::PrivateKey;
     use crate::testing::context::TestContext;
 
     use super::*;
@@ -320,6 +321,11 @@ mod tests {
         let instance_1 = client_1.spawn();
         let instance_2 = client_2.spawn();
 
-        crate::testing::network::assert_clients_can_exchange_messages(instance_1, instance_2).await;
+        let pk = PrivateKey::new(&mut OsRng);
+
+        crate::testing::network::assert_clients_can_exchange_messages(
+            instance_1, instance_2, pk, pk,
+        )
+        .await;
     }
 }
