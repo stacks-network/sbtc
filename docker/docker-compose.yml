@@ -81,7 +81,6 @@ x-stacks-signer: &stacks-signer
 # Services.
 # ------------------------------------------------------------------------------
 services:
-
   # Emily API.
   # ----------
   # DynamoDB Tables for the Emily API.
@@ -505,10 +504,10 @@ services:
   # Mempool.
   # --------
   electrs:
-    image: electrs:latest
+    image: blockstream/esplora:latest
     container_name: electrs
     stop_grace_period: 5s
-    build: electrs
+    # build: electrs
     ports:
       - 60401:60401
       - 3002:3002
@@ -516,9 +515,30 @@ services:
       - bitcoin
       - bitcoin-miner
     environment:
-      RUST_BACKTRACE: 1
-      BITCOIN_RPC_HOST: "bitcoin"
-      BITCOIN_RPC_PORT: "18443"
+      NO_REGTEST_MINING: 1
+      ENABLE_LIGHTMODE: 1
+      NO_PRECACHE: 1
+      # BITCOIN_RPC_HOST: "bitcoin"
+      # BITCOIN_RPC_PORT: "18443"
+    command:
+      - electrs_bitcoin/bin/electrs
+      - --electrum-rpc-addr
+      - "0.0.0.0:60401"
+      - --http-addr
+      - "0.0.0.0:3002"
+      - --daemon-rpc-addr
+      - "bitcoin:18443"
+      - --network
+      - regtest
+      - --cookie
+      - "devnet:devnet"
+      - "-vvv"
+      - "--timestamp"
+      - --utxos-limit
+      - "50000"
+      - --electrum-txs-limit
+      - "50000"
+      - --jsonrpc-import
     profiles:
       - bitcoin-mempool
 
@@ -567,12 +587,10 @@ services:
     ports:
       - 8999:8999
     environment:
-      # Connect to electrs host
-      MEMPOOL_BACKEND: "electrum"
-      ELECTRUM_HOST: "electrs"
+      MEMPOOL_BACKEND: "electrs" # alternative: MEMPOOL_BACKEND: "esplora"
+      ELECTRUM_HOST: "electrs" # alternative: ESPLORA_REST_API_URL: "http://electrs:3002"
       ELECTRUM_PORT: "60401"
       ELECTRUM_TLS_ENABLED: "false"
-      # Connect to bitcoin rpc
       CORE_RPC_HOST: "bitcoin"
       CORE_RPC_PORT: "18443"
       CORE_RPC_USERNAME: "devnet"
