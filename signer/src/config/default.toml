@@ -143,7 +143,32 @@ bootstrap_signatures_required = 2
 # Seconds to wait before processing a new Bitcoin block.
 # Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
 # TODO(715): Add default delay (15 seconds? see #701)
-bitcoin_processing_delay = 0
+bitcoin_processing_delay = 15
+
+# How many bitcoin blocks back from the chain tip the signer will
+# look for requests.
+# Optional.
+# Warning: this parameter may significantly affect how well the sBTC signer protocol operates
+# change it carefully
+context_window = 500
+# The maximum duration of a signing round before the coordinator will
+# time out and return an error.
+# Optional.
+# Warning: this parameter may significantly affect how well the sBTC signer protocol operates
+# change it carefully
+signer_round_max_duration = 30
+# The maximum duration of a pre-sign request before the coordinator will
+# time out and start sending the requests to the signers.
+# Optional.
+# Warning: this parameter may significantly affect how well the sBTC signer protocol operates
+# change it carefully
+bitcoin_presign_request_max_duration = 30
+# The maximum duration of distributed key generation before the
+# coordinator will time out and return an error.
+# Optional.
+# Warning: this parameter may significantly affect how well the sBTC signer protocol operates
+# change it carefully
+dkg_max_duration = 120
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration

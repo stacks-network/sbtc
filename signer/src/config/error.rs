@@ -59,4 +59,7 @@ pub enum SignerConfigError {
 
     #[error("The provided Bitcoin processing delay must be small than {0}s, got {1}s")]
     InvalidBitcoinProcessingDelay(u64, u64),
+
+    #[error("Duration for field {0} must be non zero")]
+    ZeroDurationForbidden(String),
 }

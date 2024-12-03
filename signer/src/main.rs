@@ -335,12 +335,12 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
     let coord = transaction_coordinator::TxCoordinatorEventLoop {
         network,
         context: ctx,
-        context_window: 10000,
+        context_window: config.signer.context_window,
         private_key,
-        signing_round_max_duration: Duration::from_secs(30),
-        bitcoin_presign_request_max_duration: Duration::from_secs(30),
+        signing_round_max_duration: config.signer.signer_round_max_duration,
+        bitcoin_presign_request_max_duration: config.signer.bitcoin_presign_request_max_duration,
         threshold: config.signer.bootstrap_signatures_required,
-        dkg_max_duration: Duration::from_secs(120),
+        dkg_max_duration: config.signer.dkg_max_duration,
         sbtc_contracts_deployed: false,
         is_epoch3: false,
     };
