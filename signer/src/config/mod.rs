@@ -724,9 +724,8 @@ mod tests {
         fn test_one(field: &str) {
             clear_env();
             std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
-            let _ = Settings::new_from_default_config().expect_err(&format!(
-                "Duration for {field} must be non zero"
-            ));
+            let _ = Settings::new_from_default_config()
+                .expect_err(&format!("Duration for {field} must be non zero"));
         }
         test_one("dkg_max_duration");
         test_one("bitcoin_presign_request_max_duration");
