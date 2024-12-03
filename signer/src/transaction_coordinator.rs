@@ -324,12 +324,16 @@ where
         self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip, &aggregate_key)
             .await?;
 
-        self.construct_and_sign_bitcoin_sbtc_transactions(
-            &bitcoin_chain_tip,
-            &aggregate_key,
-            &signer_public_keys,
-        )
-        .await?;
+        if let Err(error) = self
+            .construct_and_sign_bitcoin_sbtc_transactions(
+                &bitcoin_chain_tip,
+                &aggregate_key,
+                &signer_public_keys,
+            )
+            .await
+        {
+            tracing::error!(%error, "Failed to construct and sign bitcoin transactions");
+        }
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
             &bitcoin_chain_tip,
