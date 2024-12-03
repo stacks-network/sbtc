@@ -517,6 +517,29 @@ mod tests {
     }
 
     #[test]
+    fn default_config_toml_loads_with_signer_environment() {
+        clear_env();
+
+        std::env::set_var(
+            "SIGNER_SIGNER__CONTEXT_WINDOW",
+            "600",
+        );
+        std::env::set_var("SIGNER_SIGNER__BITCOIN_PRESIGN_REQUEST_MAX_DURATION", "60");
+        std::env::set_var("SIGNER_SIGNER__SIGNER_ROUND_MAX_DURATION", "70");
+        std::env::set_var("SIGNER_SIGNER__DKG_MAX_DURATION", "80");
+
+        let settings = Settings::new_from_default_config().unwrap();
+
+        assert_eq!(settings.signer.context_window, 600);
+        assert_eq!(settings.signer.bitcoin_presign_request_max_duration, Duration::from_secs(60));
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(70)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(80));
+    }
+
+    #[test]
     fn default_config_toml_loads_signer_p2p_config_with_environment() {
         clear_env();
 
