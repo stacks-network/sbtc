@@ -85,13 +85,6 @@
 ;; stored to avoid replay
 (define-map aggregate-pubkeys (buff 33) bool)
 
-;; Data structure to store the active protocol contracts
-(define-map protocol-contracts principal bool)
-(map-set protocol-contracts .sbtc-bootstrap-signers true)
-(map-set protocol-contracts .sbtc-deposit true)
-(map-set protocol-contracts .sbtc-withdrawal true)
-(if (not is-in-mainnet) (map-set protocol-contracts tx-sender true) true)
-
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
 ;; This function returns the fields of the withdrawal

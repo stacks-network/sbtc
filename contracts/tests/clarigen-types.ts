@@ -1414,11 +1414,6 @@ export const contracts = {
         },
         boolean
       >,
-      protocolContracts: {
-        name: "protocol-contracts",
-        key: "principal",
-        value: "bool",
-      } as TypedAbiMap<string, boolean>,
       withdrawalRequests: {
         name: "withdrawal-requests",
         key: "uint128",
