@@ -294,13 +294,6 @@ impl Validatable for SignerConfig {
                     .to_string(),
             ));
         }
-        if cfg.signer.bitcoin_processing_delay == zero {
-            return Err(ConfigError::Message(
-                SignerConfigError::ZeroDurationForbidden("bitcoin_processing_delay".to_string())
-                    .to_string(),
-            ));
-        }
-
         // db_endpoint note: we don't validate the host because we will never
         // get here; the URL deserializer will fail if the host is empty.
         Ok(())
@@ -724,6 +717,18 @@ mod tests {
             Duration::from_secs(30)
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn zero_durations_fails_in_signer_config() {
+        fn test_one(field: &str) {
+            clear_env();
+            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+            let _ = Settings::new_from_default_config().expect_err(&format!("Duration for {field} dkg_max_duration must be non zero"));
+        }
+        test_one("dkg_max_duration");
+        test_one("bitcoin_presign_request_max_duration");
+        test_one("signer_round_max_duration");
     }
 
     #[test]

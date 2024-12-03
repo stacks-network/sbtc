@@ -143,7 +143,7 @@ bootstrap_signatures_required = 2
 # Seconds to wait before processing a new Bitcoin block.
 # Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
 # TODO(715): Add default delay (15 seconds? see #701)
-bitcoin_processing_delay = 15
+bitcoin_processing_delay = 0
 
 # How many bitcoin blocks back from the chain tip the signer will
 # look for requests.
