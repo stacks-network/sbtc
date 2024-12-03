@@ -231,8 +231,8 @@ impl Signed<SignerMessage> {
     }
 
     /// Verify the signature over the inner data.
-    pub fn verify(&self, public_key: PublicKey) -> bool {
-        let digest = self.inner.to_digest(public_key);
+    pub fn verify(&self) -> bool {
+        let digest = self.inner.to_digest(self.signer_public_key);
         self.verify_digest(digest).is_ok()
     }
 }
