@@ -7,6 +7,7 @@ always_use_affirmation_maps = true
 require_affirmed_anchor_blocks = true
 pox_sync_sample_secs = 30
 prometheus_bind = "0.0.0.0:9153"
+# If you have an existing node with this value set to true, keep it as true.
 stacker = false
 
 [burnchain]
@@ -20,8 +21,13 @@ pox_reward_length = 900
 auth_token = "XXX"
 private_neighbors = false
 
-# Add sbtc-signer as an event observers
-# NOTE: See the readme for how to set this value correctly.
+# Add sbtc-signer as an event observer.
+# NOTE: See the readme for how to set this value correctly, your endpoint
+# may not be named `sbtc-signer:8801`.
+#
+# It's perfectly fine to have multiple event observers, just add this
+# section below your existing one, it'll adds the event observer to the
+# events_observers list.
 [[events_observer]]
 endpoint = "sbtc-signer:8801"
 events_keys = [
@@ -76,6 +82,8 @@ start_height = 5
 epoch_name = "2.5"
 start_height = 6
 
+# Use the value here for the configuration, replace whatever was in your
+# file before if it is different.
 [[burnchain.epochs]]
 epoch_name = "3.0"
 start_height = 56_457

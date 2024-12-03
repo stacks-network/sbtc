@@ -13,8 +13,10 @@ distributed key generation (DKG).
 
 ## Requirements
 
-> **NOTE:** You will *need* to run a regtest node in order to run an sBTC signer.
-> This differs from what the stacks testnet signer needs.
+> **NOTE:** You will **need** to run a regtest node in order to run an sBTC signer.
+> This differs from what the stacks testnet signer needs because there's a port
+> that the regtest node needs to expose to the sbtc signer that isn't exposed on
+> the public Bitcoin regtest node hosted by Hiro, and isn't required by the stacks signer.
 
 sBTC signers require both a Bitcoin node and a Stacks node. You can find example configs at
 the links in the table below, but **you will need to customize the configurations based on your specific deployment.**
@@ -23,6 +25,8 @@ the links in the table below, but **you will need to customize the configuration
 |-|-|-|
 |Bitcoin regtest|[archive](https://drive.google.com/drive/u/3/folders/1KvpmIxvX8Rh7H8Th91qbc_HsbhQLi13V)|[example config](./bitcoin/bitcoin.conf)|
 |Stacks testnet|[archive](https://docs.stacks.co/guides-tutorials/running-a-signer#start-with-an-archive)|[example config](./stacks/Config.toml)|
+
+### Notes around the
 
 ## Configuration
 
@@ -44,8 +48,18 @@ Clone this repository and `cd` to this directory.
 
 ### Configure the Postgresql database
 
-Extract the provided `postgres.tar.gz` archive into the `./postgres` directory.
-You should now have `postgres/data`.
+We will provide a postgres file for you to download that needs to be extracted
+into the `./postgres/data` directory. To do this with a single command you
+can run the following in the directory that you'll run the docker compose
+from.
+
+```bash
+mkdir -p ./postgres/data \
+  && tar -xvf <your-postgres-file> \
+  -C ./postgres/data
+```
+
+You should now have `./postgres/data` populated with the data we provided.
 
 ### Add an event-listener to your Stacks node
 
@@ -63,6 +77,35 @@ events_keys = [
 Note that the Stacks address above MUST be the one specified in the `deployer`
 key config of the Signer configuration.
 
+If you have an existing event observer, you can add this directly below that
+configuration, like so:
+
+```toml
+[[events_observer]]
+endpoint = "<some-other-host>:1234"
+events_keys = [
+    "some-other-event-key",
+]
+
+[[events_observer]]
+endpoint = "<your_signer_hostname>:8801"
+events_keys = [
+    "SNGWPN3XDAQE673MXYXF81016M50NHF5X5PWWM70.sbtc-registry::print",
+]
+```
+
+## Configuration
+
+We will provide you with a starter `.env` file that has the following fields:
+
+```
+STREAM_NAME=<provided_stream_name>
+SIGNER_SIGNER__PRIVATE_KEY=<provided_private_key>
+EMILY_API_KEY=<provided_emily_api_key>
+AWS_ACCESS_KEY_ID=<provided_access_key_id>
+AWS_SECRET_ACCESS_KEY=<provided_secret_access_key>
+```
+
 ### Configure ZMQ endpoints for your Bitcoin node
 
 If you have used the [configuration](./bitcoin/bitcoin.conf) from this
@@ -73,16 +116,6 @@ zmqpubhashblock=tcp://*:28332
 zmqpubrawblock=tcp://*:28332
 ```
 
-### Configure logging
-
-Add the following to the `.env` file in this directory:
-
-```bash
-STREAM_NAME=<provided_stream_name>
-AWS_ACCESS_KEY_ID=<provided_access_key_id>
-AWS_SECRET_ACCESS_KEY=<provided_secret_access_key>
-```
-
 ### Configure the blocklist client
 
 > **NOTE:** You will need to send a request to chainanalysis to get an API key, which
@@ -90,8 +123,8 @@ AWS_SECRET_ACCESS_KEY=<provided_secret_access_key>
 > The request link is right below.
 
 Add the API key obtained
-[here](https://go.chainalysis.com/crypto-sanctions-screening.html) to the `.env`
-file in this directory:
+[here](https://go.chainalysis.com/crypto-sanctions-screening.html) to the following to the
+`.env` file we provided.
 
 ```bash
 BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY=<API_KEY>
