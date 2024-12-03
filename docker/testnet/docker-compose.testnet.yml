@@ -23,6 +23,7 @@ services:
       - ./logs:/logs
     ports:
       - "4122:4122"
+      - "8801:8801"
 
   blocklist-client:
     image: blockstack/sbtc:blocklist-client-0.0.1-dev-11
