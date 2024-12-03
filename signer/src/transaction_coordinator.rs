@@ -332,7 +332,7 @@ where
             )
             .await
         {
-            tracing::error!(%error, "Failed to construct and sign bitcoin transactions");
+            tracing::error!(%error, "failed to construct and sign bitcoin transactions");
         }
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
