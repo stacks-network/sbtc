@@ -687,6 +687,10 @@ mod tests {
 
     #[test]
     fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
+        // In case there are some envs which provide values for this optional parameters,
+        // this test will actually test nothing, so we need to reset them.
+        clear_env();
+
         let config_file = format!("{}.toml", crate::testing::DEFAULT_CONFIG_PATH.unwrap());
         let config_str = std::fs::read_to_string(config_file).unwrap();
         let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
