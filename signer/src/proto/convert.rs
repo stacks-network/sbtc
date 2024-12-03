@@ -665,20 +665,21 @@ impl From<DkgPrivateBegin> for proto::DkgPrivateBegin {
     }
 }
 
-impl From<proto::DkgPrivateBegin> for DkgPrivateBegin {
-    fn from(value: proto::DkgPrivateBegin) -> Self {
+impl TryFrom<proto::DkgPrivateBegin> for DkgPrivateBegin {
+    type Error = Error;
+    fn try_from(value: proto::DkgPrivateBegin) -> Result<Self, Self::Error> {
         let mut dkg_public_shares = HashMap::new();
         if let Some(shares) = value.dkg_public_shares {
             for (id, share) in shares.shares {
-                dkg_public_shares.insert(id, DkgPublicShares::try_from(share).unwrap());
+                dkg_public_shares.insert(id, DkgPublicShares::try_from(share)?);
             }
         }
-        DkgPrivateBegin {
+        Ok(DkgPrivateBegin {
             dkg_id: value.dkg_id,
             signer_ids: value.signer_ids,
             key_ids: value.key_ids,
             dkg_public_shares,
-        }
+        })
     }
 }
 
@@ -744,18 +745,19 @@ impl From<DkgEndBegin> for proto::DkgEndBegin {
     }
 }
 
-impl From<proto::DkgEndBegin> for DkgEndBegin {
-    fn from(value: proto::DkgEndBegin) -> Self {
-        DkgEndBegin {
+impl TryFrom<proto::DkgEndBegin> for DkgEndBegin {
+    type Error = Error;
+    fn try_from(value: proto::DkgEndBegin) -> Result<Self, Self::Error> {
+        let mut dkg_private_shares = HashMap::new();
+        for (id, shares) in value.dkg_private_shares {
+            dkg_private_shares.insert(id, DkgPrivateShares::try_from(shares.clone())?);
+        }
+        Ok(DkgEndBegin {
             dkg_id: value.dkg_id,
             signer_ids: value.signer_ids,
             key_ids: value.key_ids,
-            dkg_private_shares: value
-                .dkg_private_shares
-                .iter()
-                .map(|(id, shares)| (*id, DkgPrivateShares::try_from(shares.clone()).unwrap()))
-                .collect(),
-        }
+            dkg_private_shares,
+        })
     }
 }
 
@@ -1156,13 +1158,13 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                 wsts::net::Message::DkgPublicShares(inner.try_into()?)
             }
             proto::wsts_message::Inner::DkgPrivateBegin(inner) => {
-                wsts::net::Message::DkgPrivateBegin(inner.into())
+                wsts::net::Message::DkgPrivateBegin(inner.try_into()?)
             }
             proto::wsts_message::Inner::DkgPrivateShares(inner) => {
                 wsts::net::Message::DkgPrivateShares(inner.try_into()?)
             }
             proto::wsts_message::Inner::DkgEndBegin(inner) => {
-                wsts::net::Message::DkgEndBegin(inner.into())
+                wsts::net::Message::DkgEndBegin(inner.try_into()?)
             }
             proto::wsts_message::Inner::DkgEnd(inner) => {
                 wsts::net::Message::DkgEnd(inner.try_into()?)

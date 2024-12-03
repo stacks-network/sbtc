@@ -320,7 +320,7 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
-        dkg_begin_pause: None,//Some(Duration::from_secs(10)),
+        dkg_begin_pause: None, //Some(Duration::from_secs(10)),
     };
 
     signer.run().await
