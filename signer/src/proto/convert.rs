@@ -1958,11 +1958,12 @@ mod tests {
         }
     }
     impl Dummy<Unit> for DkgPrivateBegin {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
             DkgPrivateBegin {
                 dkg_id: Faker.fake_with_rng(rng),
                 signer_ids: Faker.fake_with_rng(rng),
                 key_ids: Faker.fake_with_rng(rng),
+                dkg_public_shares: config.fake_with_rng(rng),
             }
         }
     }
@@ -1987,11 +1988,12 @@ mod tests {
     }
 
     impl Dummy<Unit> for DkgEndBegin {
-        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
             DkgEndBegin {
                 dkg_id: Faker.fake_with_rng(rng),
                 signer_ids: Faker.fake_with_rng(rng),
                 key_ids: Faker.fake_with_rng(rng),
+                dkg_private_shares: config.fake_with_rng(rng),
             }
         }
     }
@@ -2234,6 +2236,24 @@ mod tests {
     }
 
     impl Dummy<Unit> for BTreeMap<u32, DkgPublicShares> {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| (Faker.fake_with_rng(rng), config.fake_with_rng(rng)))
+                .collect()
+        }
+    }
+
+    impl Dummy<Unit> for hashbrown::HashMap<u32, DkgPublicShares> {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+            fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| (Faker.fake_with_rng(rng), config.fake_with_rng(rng)))
+                .collect()
+        }
+    }
+
+    impl Dummy<Unit> for hashbrown::HashMap<u32, DkgPrivateShares> {
         fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
             fake::vec![(); 0..20]
                 .into_iter()
