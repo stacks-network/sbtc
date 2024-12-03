@@ -10,7 +10,7 @@ endpoints = [
 [bitcoin]
 # TODO: Change this to local bitcoin container
 rpc_endpoints = [
-    "http://TODO:18443",
+    "http://USER:PASS@TODO:18443",
 ]
 
 # TODO: Change this to local bitcoin container
