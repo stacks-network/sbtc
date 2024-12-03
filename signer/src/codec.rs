@@ -1,13 +1,27 @@
 //! # Canonical encoding and decoding for the sBTC signer
 //!
-//! The purpose of this module is to define how to encode and decode
-//! signer messages as byte sequences.
+//! The purpose of this module is to define how to encode and decode signer
+//! messages as byte sequences.
+//!
+//! ## Codec specification
+//! 
+//! The signers communicate with each other by sending protobuf messages
+//! serialized in a canonical way. Specifically, signer message
+//! serialization must adhere to the following constraints:
+//! 1. Each field must be serialized in order of their tag number. So if
+//!    `field_a` has a lower tag than `field_b`, then `field_a` will be
+//!    serialized before `field_b`.
+//! 2. Map protobuf fields can only be used if the key type implements `Ord`.
+//! 3. Map elements must be serialized in order of their keys.
+//! 4. The specific encoding and decoding of a field or message must follow
+//!    the protobuf spec. In particular, missing fields are not serialized.
 //!
 //! This is achieved by
 //!
-//! 1. Providing the `Encode` and `Decode` traits, defining the encode and decode
-//!    methods we intend to use throughout the signer.
-//! 2. Implementing these traits for any type implementing `ProtoSerializable` defined in here.
+//! 1. Providing the `Encode` and `Decode` traits, defining the encode and
+//!    decode methods we intend to use throughout the signer.
+//! 2. Implementing these traits for any type implementing
+//!    `ProtoSerializable` defined in here.
 //!
 
 use std::io;
