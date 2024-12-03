@@ -57,7 +57,7 @@ from.
 ```bash
 mkdir -p ./postgres/data \
   && tar -xvf <your-postgres-file> \
-  -C ./postgres/data
+  -C ./postgres
 ```
 
 You should now have `./postgres/data` populated with the data we provided.
