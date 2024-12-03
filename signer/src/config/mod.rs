@@ -442,6 +442,9 @@ mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
 
+    use toml_edit::DocumentMut;
+    use tempfile;
+
     use crate::config::serialization::try_parse_p2p_multiaddr;
 
     use crate::error::Error;
@@ -688,6 +691,39 @@ mod tests {
             settings.signer.bitcoin_processing_delay,
             std::time::Duration::from_secs(delay),
         );
+    }
+
+
+    #[test]
+    fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
+        let config_file = format!("{}.toml", crate::testing::DEFAULT_CONFIG_PATH.unwrap());
+        let config_str = std::fs::read_to_string(config_file).unwrap();
+        let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
+
+        let mut remove_parameter = |parameter: &str| {
+            config_toml.get_mut("signer").unwrap().as_table_mut().unwrap().remove(parameter);
+        };
+        remove_parameter("context_window");
+        remove_parameter("signer_round_max_duration");
+        remove_parameter("bitcoin_presign_request_max_duration");
+        remove_parameter("dkg_max_duration");
+
+        let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
+
+        std::fs::write(&new_config.path(), config_toml.to_string()).unwrap();
+
+        let settings = Settings::new(Some(&new_config.path())).unwrap();
+
+        assert_eq!(settings.signer.context_window, 500);
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
     }
 
     #[test]
