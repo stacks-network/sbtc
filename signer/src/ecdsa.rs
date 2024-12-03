@@ -90,6 +90,13 @@ impl Signed<SignerMessage> {
 
     /// Verify that the signature was created over the given digest with
     /// the public key in this struct.
+    /// 
+    /// # Notes
+    /// 
+    /// Since the sending signer might have a different protobuf schema
+    /// than us, we cannot always recreate the signature digest from the
+    /// decoded bytes. Instead we must look at the pre-decoded bytes and
+    /// construct the digest using those bytes and pass the results here.
     pub fn verify_digest(&self, digest: [u8; 32]) -> Result<(), Error> {
         let msg = secp256k1::Message::from_digest(digest);
 
