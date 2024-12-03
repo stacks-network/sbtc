@@ -373,18 +373,10 @@ impl Settings {
 
         let mut cfg_builder = Config::builder();
 
-        cfg_builder = cfg_builder
-            .set_default("signer.dkg_max_duration", 120)
-            .unwrap();
-        cfg_builder = cfg_builder
-            .set_default("signer.bitcoin_presign_request_max_duration", 30)
-            .unwrap();
-        cfg_builder = cfg_builder
-            .set_default("signer.signer_round_max_duration", 30)
-            .unwrap();
-        cfg_builder = cfg_builder
-            .set_default("signer.context_window", 500)
-            .unwrap();
+        cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
+        cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
+        cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
+        cfg_builder = cfg_builder.set_default("signer.context_window", 500)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -442,8 +434,8 @@ mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
 
-    use toml_edit::DocumentMut;
     use tempfile;
+    use toml_edit::DocumentMut;
 
     use crate::config::serialization::try_parse_p2p_multiaddr;
 
@@ -523,10 +515,7 @@ mod tests {
     fn default_config_toml_loads_with_signer_environment() {
         clear_env();
 
-        std::env::set_var(
-            "SIGNER_SIGNER__CONTEXT_WINDOW",
-            "600",
-        );
+        std::env::set_var("SIGNER_SIGNER__CONTEXT_WINDOW", "600");
         std::env::set_var("SIGNER_SIGNER__BITCOIN_PRESIGN_REQUEST_MAX_DURATION", "60");
         std::env::set_var("SIGNER_SIGNER__SIGNER_ROUND_MAX_DURATION", "70");
         std::env::set_var("SIGNER_SIGNER__DKG_MAX_DURATION", "80");
@@ -534,7 +523,10 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
 
         assert_eq!(settings.signer.context_window, 600);
-        assert_eq!(settings.signer.bitcoin_presign_request_max_duration, Duration::from_secs(60));
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(60)
+        );
         assert_eq!(
             settings.signer.signer_round_max_duration,
             Duration::from_secs(70)
@@ -693,7 +685,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
         let config_file = format!("{}.toml", crate::testing::DEFAULT_CONFIG_PATH.unwrap());
@@ -701,7 +692,12 @@ mod tests {
         let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
 
         let mut remove_parameter = |parameter: &str| {
-            config_toml.get_mut("signer").unwrap().as_table_mut().unwrap().remove(parameter);
+            config_toml
+                .get_mut("signer")
+                .unwrap()
+                .as_table_mut()
+                .unwrap()
+                .remove(parameter);
         };
         remove_parameter("context_window");
         remove_parameter("signer_round_max_duration");
