@@ -725,7 +725,7 @@ mod tests {
             clear_env();
             std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
             let _ = Settings::new_from_default_config().expect_err(&format!(
-                "Duration for {field} dkg_max_duration must be non zero"
+                "Duration for {field} must be non zero"
             ));
         }
         test_one("dkg_max_duration");
