@@ -276,22 +276,18 @@ impl Validatable for SignerConfig {
         let zero = std::time::Duration::ZERO;
         if cfg.signer.dkg_max_duration == zero {
             return Err(ConfigError::Message(
-                SignerConfigError::ZeroDurationForbidden("dkg_max_duration".to_string())
-                    .to_string(),
+                SignerConfigError::ZeroDurationForbidden("dkg_max_duration").to_string(),
             ));
         }
         if cfg.signer.bitcoin_presign_request_max_duration == zero {
             return Err(ConfigError::Message(
-                SignerConfigError::ZeroDurationForbidden(
-                    "bitcoin_presign_request_max_duration".to_string(),
-                )
-                .to_string(),
+                SignerConfigError::ZeroDurationForbidden("bitcoin_presign_request_max_duration")
+                    .to_string(),
             ));
         }
         if cfg.signer.signer_round_max_duration == zero {
             return Err(ConfigError::Message(
-                SignerConfigError::ZeroDurationForbidden("signer_round_max_duration".to_string())
-                    .to_string(),
+                SignerConfigError::ZeroDurationForbidden("signer_round_max_duration").to_string(),
             ));
         }
         // db_endpoint note: we don't validate the host because we will never
