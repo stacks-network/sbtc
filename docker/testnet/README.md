@@ -27,7 +27,7 @@ to tweak the config file a little.
 | Network | Archive | Example Config |
 |-|-|-|
 |Bitcoin regtest|[archive](https://drive.google.com/drive/u/3/folders/1KvpmIxvX8Rh7H8Th91qbc_HsbhQLi13V)|[example config](./bitcoin/bitcoin.conf)|
-|Stacks testnet|[archive](https://docs.stacks.co/guides-tutorials/running-a-signer#start-with-an-archive)|[example config](./stacks/Config.toml)|
+|Stacks testnet|[archive](https://archive.hiro.so/testnet/stacks-blockchain/testnet-stacks-blockchain-latest.tar.gz)|[example config](./stacks/Config.toml)|
 
 ## Configuration
 
