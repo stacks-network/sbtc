@@ -150,7 +150,7 @@ bitcoin_block_horizon = 1500
 #
 # Required: false
 # Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
-# dkg_begin_pause = 10
+dkg_begin_pause = 2
 
 # The address that deployed the sbtc smart contracts.
 #
