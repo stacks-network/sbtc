@@ -301,7 +301,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     let block_observer = block_observer::BlockObserver {
         context: ctx,
         bitcoin_blocks: stream.to_block_hash_stream(),
-        horizon: 20,
+        horizon: config.signer.bitcoin_block_horizon,
     };
 
     block_observer.run().await
@@ -320,7 +320,7 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
-        dkg_begin_pause: Some(Duration::from_secs(10)),
+        dkg_begin_pause: config.signer.dkg_begin_pause.map(Duration::from_secs),
     };
 
     signer.run().await

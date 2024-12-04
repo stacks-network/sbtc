@@ -108,6 +108,12 @@ network = "regtest"
 # TODO(715): Add default delay (15 seconds? see #701)
 bitcoin_processing_delay = 3
 
+# The number of blocks back the block observer should look for unprocessed
+# blocks before proceeding.
+# Required: true
+# Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
+bitcoin_block_horizon = 1500
+
 # How many bitcoin blocks back from the chain tip the signer will look for
 # requests. Must be strictly positive.
 #
@@ -138,6 +144,13 @@ bitcoin_processing_delay = 3
 # Required: false
 # Environment: SIGNER_SIGNER__DKG_MAX_DURATION
 # dkg_max_duration = 120
+
+# The amount of time, in seconds, the signer should pause for after
+# receiving a DKG begin message before relaying to give the other signers.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
+dkg_begin_pause = 2
 
 # The address that deployed the sbtc smart contracts.
 #

@@ -243,6 +243,12 @@ impl<C: Context, B> BlockObserver<C, B> {
                 .await?
                 .ok_or(Error::MissingBitcoinBlock(block_hash.into()))?;
 
+            // TODO(685): Remove this and replace with a better limiting
+            // condition.
+            if block.bip34_block_height().unwrap_or(0) == 0 {
+                break;
+            }
+
             block_hash = block.header.prev_blockhash;
             blocks.push(block);
         }

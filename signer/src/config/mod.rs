@@ -235,6 +235,13 @@ pub struct SignerConfig {
     /// coordinator will time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub dkg_max_duration: std::time::Duration,
+    /// The number of blocks back the block observer should look for
+    /// unprocessed blocks before proceeding.
+    pub bitcoin_block_horizon: u32,
+    /// The amount of time, in seconds, the signer should pause for after
+    /// receiving a DKG begin message before relaying to give the other
+    /// signers time to catch up.
+    pub dkg_begin_pause: Option<u64>,
 }
 
 impl Validatable for SignerConfig {
@@ -490,7 +497,9 @@ mod tests {
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
+        assert!(settings.signer.dkg_begin_pause.is_none());
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
+        assert_eq!(settings.signer.bitcoin_block_horizon, 1500);
         assert_eq!(settings.signer.context_window, 10000);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
@@ -815,6 +824,24 @@ mod tests {
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
         ));
+    }
+
+    #[test]
+    fn horizon_parameter_works() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON", "1234");
+        let config = Settings::new_from_default_config().unwrap();
+        assert_eq!(config.signer.bitcoin_block_horizon, 1234);
+    }
+
+    #[test]
+    fn dkg_pause_env_variables_work() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__DKG_BEGIN_PAUSE", "1234");
+        let config = Settings::new_from_default_config().unwrap();
+        assert_eq!(config.signer.dkg_begin_pause, Some(1234));
     }
 
     #[test]
