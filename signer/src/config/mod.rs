@@ -362,10 +362,13 @@ impl Settings {
 
         let mut cfg_builder = Config::builder();
 
+        // TODO: We can reduce this to a more reasonable number, like 500,
+        // after https://github.com/stacks-network/sbtc/issues/1004 gets
+        // done.
+        cfg_builder = cfg_builder.set_default("signer.context_window", 10000)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
-        cfg_builder = cfg_builder.set_default("signer.context_window", 500)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
