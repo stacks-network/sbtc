@@ -282,25 +282,6 @@ export class EmilyStack extends cdk.Stack {
             removalPolicy: removalPolicy,
         });
 
-        /// Create an index for the active signers.
-        const indexName: string = "ActiveSigners";
-        table.addGlobalSecondaryIndex({
-            indexName: indexName,
-            // Note that the `IsActive` attribute is a number, but it's used as a boolean.
-            // where if the `IsActive` field is defined then the signer is active, otherwise
-            // it is inactive. The IsActive field, when defined, is always 1.
-            partitionKey: {
-                name: 'IsActive',
-                type:  dynamodb.AttributeType.NUMBER
-            },
-            sortKey: {
-                name: 'PublicKey',
-                type:  dynamodb.AttributeType.STRING
-            },
-            projectionType: dynamodb.ProjectionType.INCLUDE,
-            nonKeyAttributes: []
-        });
-
         return table;
     }
 

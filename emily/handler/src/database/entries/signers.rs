@@ -17,9 +17,8 @@ use super::SecondaryIndexTrait;
 use crate::api::models::signer::Signer;
 use crate::api::models::signer::SignerHealth;
 use crate::api::models::signer::SignerInfo;
-use crate::api::models::{self};
 
-// Limit entry ---------------------------------------------------------------
+// Signer entry ---------------------------------------------------------------
 
 /// Signer health entry.
 #[derive(
@@ -44,7 +43,7 @@ pub enum SignerHeatlhEntry {
 )]
 #[serde(rename_all = "PascalCase")]
 pub struct SignerEntryKey {
-    /// The account for the limit.
+    /// Hash of the signer api key.
     pub api_key_hash: String,
     /// The timestamp of the given update.
     pub timestamp: u64,
@@ -75,7 +74,7 @@ impl SignerEntryKey {
 )]
 #[serde(rename_all = "PascalCase")]
 pub struct SignerEntry {
-    /// Limit entry key.
+    /// Signer entry key.
     #[serde(flatten)]
     pub key: SignerEntryKey,
     /// The name of the signer.
