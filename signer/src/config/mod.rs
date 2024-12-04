@@ -235,6 +235,9 @@ pub struct SignerConfig {
     /// coordinator will time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub dkg_max_duration: std::time::Duration,
+    /// The number of blocks back the block observer should look for
+    /// unprocessed blocks before proceeding.
+    pub bitcoin_block_horizon: u32,
 }
 
 impl Validatable for SignerConfig {

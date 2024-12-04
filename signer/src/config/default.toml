@@ -145,6 +145,12 @@ bootstrap_signatures_required = 2
 # TODO(715): Add default delay (15 seconds? see #701)
 bitcoin_processing_delay = 0
 
+# The number of blocks back the block observer should look for unprocessed
+# blocks before proceeding.
+# Required: true
+# Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
+bitcoin_block_horizon = 1000
+
 # How many bitcoin blocks back from the chain tip the signer will look for
 # requests. Must be strictly positive.
 #
