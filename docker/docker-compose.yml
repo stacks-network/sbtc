@@ -103,6 +103,8 @@ services:
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+    profiles:
+      - default
 
   # Runs the Emily server.
   emily-server:
@@ -124,6 +126,8 @@ services:
       - DEFAULT_PER_WITHDRAWAL_CAP=100000000
     ports:
       - "3031:3031"
+    profiles:
+      - default
 
   # sBTC Signers.
   # ------------------
