@@ -93,7 +93,6 @@ export class EmilyStack extends cdk.Stack {
 
             const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(
                 alias,
-                persistentResourceRemovalPolicy,
                 props,
             );
         }
