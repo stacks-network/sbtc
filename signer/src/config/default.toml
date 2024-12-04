@@ -145,6 +145,37 @@ bootstrap_signatures_required = 2
 # TODO(715): Add default delay (15 seconds? see #701)
 bitcoin_processing_delay = 0
 
+# How many bitcoin blocks back from the chain tip the signer will look for
+# requests. Must be strictly positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__CONTEXT_WINDOW
+context_window = 10000
+
+# The maximum amount of time, in seconds, a signing round will take before
+# the coordinator will time out and return an error. This value must be
+# strictly positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__SIGNER_ROUND_MAX_DURATION
+signer_round_max_duration = 30
+
+# The maximum amount of time, in seconds, a coordinator will wait for
+# pre-sign ACKs before timing out. Must be strictly
+# positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__BITCOIN_PRESIGN_REQUEST_MAX_DURATION
+bitcoin_presign_request_max_duration = 30
+
+# The maximum amount of time, in seconds, for a distributed key generation
+# round before the coordinator will time out and return an error. Must be
+# strictly positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_MAX_DURATION
+dkg_max_duration = 120
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

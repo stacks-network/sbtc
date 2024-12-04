@@ -220,6 +220,21 @@ pub struct SignerConfig {
     /// (allowing it to propagate to the others signers)
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub bitcoin_processing_delay: std::time::Duration,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for requests.
+    pub context_window: u16,
+    /// The maximum duration of a signing round before the coordinator will
+    /// time out and return an error.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub signer_round_max_duration: std::time::Duration,
+    /// The maximum duration of a pre-sign request before the coordinator will
+    /// time out and start sending the requests to the signers.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub bitcoin_presign_request_max_duration: std::time::Duration,
+    /// The maximum duration of distributed key generation before the
+    /// coordinator will time out and return an error.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub dkg_max_duration: std::time::Duration,
 }
 
 impl Validatable for SignerConfig {
@@ -257,6 +272,24 @@ impl Validatable for SignerConfig {
             ));
         }
 
+        // All durations should be non-zero
+        let zero = std::time::Duration::ZERO;
+        if cfg.signer.dkg_max_duration == zero {
+            return Err(ConfigError::Message(
+                SignerConfigError::ZeroDurationForbidden("dkg_max_duration").to_string(),
+            ));
+        }
+        if cfg.signer.bitcoin_presign_request_max_duration == zero {
+            return Err(ConfigError::Message(
+                SignerConfigError::ZeroDurationForbidden("bitcoin_presign_request_max_duration")
+                    .to_string(),
+            ));
+        }
+        if cfg.signer.signer_round_max_duration == zero {
+            return Err(ConfigError::Message(
+                SignerConfigError::ZeroDurationForbidden("signer_round_max_duration").to_string(),
+            ));
+        }
         // db_endpoint note: we don't validate the host because we will never
         // get here; the URL deserializer will fail if the host is empty.
         Ok(())
@@ -328,6 +361,15 @@ impl Settings {
             .prefix_separator("_");
 
         let mut cfg_builder = Config::builder();
+
+        // TODO: We can reduce this to a more reasonable number, like 500,
+        // after https://github.com/stacks-network/sbtc/issues/1004 gets
+        // done.
+        cfg_builder = cfg_builder.set_default("signer.context_window", 10000)?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
+        cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
+        cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
+
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
         }
@@ -384,10 +426,15 @@ mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
 
+    use tempfile;
+    use toml_edit::DocumentMut;
+
     use crate::config::serialization::try_parse_p2p_multiaddr;
 
     use crate::error::Error;
     use crate::testing::clear_env;
+
+    use std::time::Duration;
 
     use super::*;
 
@@ -410,7 +457,8 @@ mod tests {
     fn default_config_toml_loads() {
         clear_env();
 
-        let settings = Settings::new_from_default_config().unwrap();
+        let settings = Settings::new_from_default_config()
+            .expect("Failed create settings from default config");
         assert!(settings.blocklist_client.is_none());
 
         assert_eq!(
@@ -443,6 +491,39 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
+        assert_eq!(settings.signer.context_window, 10000);
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn default_config_toml_loads_with_signer_environment() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__CONTEXT_WINDOW", "600");
+        std::env::set_var("SIGNER_SIGNER__BITCOIN_PRESIGN_REQUEST_MAX_DURATION", "60");
+        std::env::set_var("SIGNER_SIGNER__SIGNER_ROUND_MAX_DURATION", "70");
+        std::env::set_var("SIGNER_SIGNER__DKG_MAX_DURATION", "80");
+
+        let settings = Settings::new_from_default_config().unwrap();
+
+        assert_eq!(settings.signer.context_window, 600);
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(70)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(80));
     }
 
     #[test]
@@ -594,6 +675,60 @@ mod tests {
             settings.signer.bitcoin_processing_delay,
             std::time::Duration::from_secs(delay),
         );
+    }
+
+    #[test]
+    fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
+        // In case there are some envs which provide values for this optional parameters,
+        // this test will actually test nothing, so we need to reset them.
+        clear_env();
+
+        let config_file = format!("{}.toml", crate::testing::DEFAULT_CONFIG_PATH.unwrap());
+        let config_str = std::fs::read_to_string(config_file).unwrap();
+        let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
+
+        let mut remove_parameter = |parameter: &str| {
+            config_toml
+                .get_mut("signer")
+                .unwrap()
+                .as_table_mut()
+                .unwrap()
+                .remove(parameter);
+        };
+        remove_parameter("context_window");
+        remove_parameter("signer_round_max_duration");
+        remove_parameter("bitcoin_presign_request_max_duration");
+        remove_parameter("dkg_max_duration");
+
+        let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
+
+        std::fs::write(&new_config.path(), config_toml.to_string()).unwrap();
+
+        let settings = Settings::new(Some(&new_config.path())).unwrap();
+
+        assert_eq!(settings.signer.context_window, 10000);
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn zero_durations_fails_in_signer_config() {
+        fn test_one(field: &str) {
+            clear_env();
+            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+            let _ = Settings::new_from_default_config()
+                .expect_err(&format!("Duration for {field} must be non zero"));
+        }
+        test_one("dkg_max_duration");
+        test_one("bitcoin_presign_request_max_duration");
+        test_one("signer_round_max_duration");
     }
 
     #[test]
