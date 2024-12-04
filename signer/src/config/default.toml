@@ -182,6 +182,13 @@ bitcoin_presign_request_max_duration = 30
 # Environment: SIGNER_SIGNER__DKG_MAX_DURATION
 dkg_max_duration = 120
 
+# The amount of time, in seconds, the signer should pause for after
+# receiving a DKG begin message before relaying to give the other signers.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
+# dkg_begin_pause = 10
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
