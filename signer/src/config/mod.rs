@@ -494,6 +494,7 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
+        assert_eq!(settings.signer.bitcoin_block_horizon, 2000);
         assert_eq!(settings.signer.context_window, 10000);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
@@ -818,6 +819,15 @@ mod tests {
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
         ));
+    }
+
+    #[test]
+    fn horizon_parameter_works() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON", "1234");
+        let config = Settings::new_from_default_config().unwrap();
+        assert_eq!(config.signer.bitcoin_block_horizon, 1234);
     }
 
     #[test]
