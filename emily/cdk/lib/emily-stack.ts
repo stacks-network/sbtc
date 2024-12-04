@@ -123,6 +123,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.NUMBER,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
 
         const indexName: string = "DepositStatus";
@@ -177,6 +178,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.STRING,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
 
         const indexName: string = "WithdrawalStatus";
@@ -229,6 +231,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.STRING,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
     }
 
@@ -256,6 +259,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.NUMBER,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
     }
 
@@ -320,7 +324,6 @@ export class EmilyStack extends cdk.Stack {
      */
     createOrUpdateApi(
         operationLambda: lambda.Alias,
-        logRemovalPolicy: cdk.RemovalPolicy,
         props: EmilyStackProps
     ): apig.SpecRestApi {
 
