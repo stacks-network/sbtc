@@ -662,6 +662,46 @@ pub async fn set_limit_for_account(
     put_entry::<LimitTablePrimaryIndex>(context, limit).await
 }
 
+// Signers ---------------------------------------------------------------------
+
+/// Set a signer entry.
+pub async fn set_signer_entry(
+    context: &EmilyContext, signer_entry: &SignerEntry,
+) -> Result<(), Error> {
+    put_entry::<SignerTablePrimaryIndex>(context, signer_entry).await
+}
+
+/// Set a signer entry.
+pub async fn get_signer_entry_from_api_key(
+    context: &EmilyContext, api_key: String,
+) -> Result<SignerEntry, Error> {
+    let mut hasher = DefaultHasher::new();
+    api_key.hash(&mut hasher);
+    let api_key_hash = hasher.finish().to_string();
+    // Make the query.
+    let (mut entries, _) = query_with_partition_key::<SignerTablePrimaryIndex>(
+        context,
+        &api_key_hash,
+        None,
+        // Only get the most recent entry. The internals of this query uses
+        // scan_index_forward = false.
+        Some(1),
+    )
+    .await?;
+    // The limit is set to 1 so there should always only be one entry returned,
+    // but for the sake of redundancy also get the most recent entry.
+    entries.sort_by_key(|entry| entry.key.timestamp);
+    entries.pop().ok_or(Error::NotFound)
+}
+
+/// Set a signer entry.
+pub async fn get_signer_entry_from_public_key(
+    context: &EmilyContext, public_key: String,
+) -> Result<SignerInfoEntry, Error> {
+    let key = SignerInfoEntryKey::new(public_key);
+    get_entry::<SignerTableSecondaryIndex>(context, &key).await
+}
+
 // Testing ---------------------------------------------------------------------
 
 /// Wipes all the tables.

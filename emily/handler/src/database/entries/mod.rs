@@ -1,7 +1,7 @@
-//! This module defines the structures, traits, and implementations necessary for managing
-//! entries within a DynamoDB database. It provides generic abstractions for handling different
-//! types of database entries, including their indexing, retrieval, insertion, and deletion
-//! operations.
+//! This module defines the structures, traits, and implementations necessary
+//! for managing entries within a DynamoDB database. It provides generic
+//! abstractions for handling different types of database entries, including
+//! their indexing, retrieval, insertion, and deletion operations.
 //!
 //! ## Module Overview
 //!
@@ -17,20 +17,25 @@
 //!   - `SecondaryIndex<T>`: Wrapper for secondary index structures.
 //!
 //! - **Traits**:
-//!   - `EntryTrait`: A trait common to all database entries, defining how entries are keyed.
-//!   - `KeyTrait`: Defines the structure of a table key, including partition and sort keys.
-//!   - `PrimaryIndexTrait`: Used for defining a primary index and its associated table operations.
-//!   - `SecondaryIndexTrait`: Extends the `PrimaryIndexTrait` to support secondary indexes.
-//!   - `TableIndexTrait`: A base trait that defines common table operations across indexes.
+//!   - `EntryTrait`: A trait common to all database entries, defining how
+//!     entries are keyed.
+//!   - `KeyTrait`: Defines the structure of a table key, including partition
+//!     and sort keys.
+//!   - `PrimaryIndexTrait`: Used for defining a primary index and its
+//!     associated table operations.
+//!   - `SecondaryIndexTrait`: Extends the `PrimaryIndexTrait` to support
+//!     secondary indexes.
+//!   - `TableIndexTrait`: A base trait that defines common table operations
+//!     across indexes.
 //!
 //! - **Implementations**:
-//!   - Generic implementations for handling database operations such as get, query, put, and delete
-//!     across different types of indexes.
+//!   - Generic implementations for handling database operations such as get,
+//!     query, put, and delete across different types of indexes.
 //!
 //! ## Database Operations
 //!
-//! This module abstracts the complexity of interacting with DynamoDB by providing easy-to-use
-//! methods for common operations such as:
+//! This module abstracts the complexity of interacting with DynamoDB by
+//! providing easy-to-use methods for common operations such as:
 //!
 //! - **Retrieval**: Fetch entries by key or query based on a partition key.
 //! - **Insertion**: Add new entries to the database.
@@ -40,24 +45,28 @@
 //!
 //! ## Usage
 //!
-//! This module is intended for internal use within the application and is designed to be flexible
-//! enough to support various data models while maintaining strong type safety and clear separation
-//! of concerns.
+//! This module is intended for internal use within the application and is
+//! designed to be flexible enough to support various data models while
+//! maintaining strong type safety and clear separation of concerns.
 
-use std::{collections::HashMap, fmt::Debug};
+use std::collections::HashMap;
+use std::fmt::Debug;
 
 use aws_sdk_dynamodb::types::AttributeValue;
 #[cfg(feature = "testing")]
-use aws_sdk_dynamodb::types::{DeleteRequest, WriteRequest};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use serde::{Deserialize, Serialize};
+use aws_sdk_dynamodb::types::DeleteRequest;
+#[cfg(feature = "testing")]
+use aws_sdk_dynamodb::types::WriteRequest;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_dynamo::Item;
 
-use crate::{
-    api::models::common::{Fulfillment, Status},
-    common::error::Error,
-    context::Settings,
-};
+use crate::api::models::common::Fulfillment;
+use crate::api::models::common::Status;
+use crate::common::error::Error;
+use crate::context::Settings;
 
 /// Chainstate table entries.
 pub mod chainstate;
@@ -65,6 +74,8 @@ pub mod chainstate;
 pub mod deposit;
 /// Limits table entries.
 pub mod limits;
+/// Signer table entries.
+pub mod signers;
 /// Withdrawal table entries.
 pub mod withdrawal;
 
@@ -72,7 +83,18 @@ pub mod withdrawal;
 // -----------------------------------------------------------------------------
 
 /// Status entry.
-#[derive(Clone, Default, Debug, Eq, PartialEq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Hash,
+)]
 #[serde(rename_all = "PascalCase")]
 pub enum StatusEntry {
     /// Transaction hasn't yet been addressed by the sBTC Signers.
@@ -89,12 +111,14 @@ pub enum StatusEntry {
     /// For example, a deposit or withdrawal that has specified too low of a
     /// BTC fee may fail after being accepted.
     Accepted,
-    /// The articacts that fulill the operation have been observed in a valid fork of
-    /// both the Stacks blockchain and the Bitcoin blockchain by at least one signer.
+    /// The articacts that fulill the operation have been observed in a valid
+    /// fork of both the Stacks blockchain and the Bitcoin blockchain by at
+    /// least one signer.
     ///
-    /// Note that if the signers detect a conflicting chainstate in which the operation
-    /// is not confirmed this status will be reverted to either ACCEPTED or REEVALUATING
-    /// depending on whether the conflicting chainstate calls the acceptance into question.
+    /// Note that if the signers detect a conflicting chainstate in which the
+    /// operation is not confirmed this status will be reverted to either
+    /// ACCEPTED or REEVALUATING depending on whether the conflicting
+    /// chainstate calls the acceptance into question.
     Confirmed(Fulfillment),
     /// The operation was not fulfilled.
     Failed,
@@ -125,7 +149,9 @@ pub struct SecondaryIndex<T>(pub T);
 // -----------------------------------------------------------------------------
 
 /// Trait common to entries.
-pub trait EntryTrait: serde::Serialize + for<'de> serde::Deserialize<'de> + Debug {
+pub trait EntryTrait:
+    serde::Serialize + for<'de> serde::Deserialize<'de> + Debug
+{
     /// Key type for the entry.
     type Key: KeyTrait;
     /// Retrieves the entry key.
@@ -133,7 +159,9 @@ pub trait EntryTrait: serde::Serialize + for<'de> serde::Deserialize<'de> + Debu
 }
 
 /// Table key.
-pub trait KeyTrait: serde::Serialize + for<'de> serde::Deserialize<'de> {
+pub trait KeyTrait:
+    serde::Serialize + for<'de> serde::Deserialize<'de>
+{
     /// Partition key type.
     type PartitionKey: serde::Serialize + for<'de> serde::Deserialize<'de>;
     /// Sort key type.
@@ -190,7 +218,8 @@ where
         <<<T as SecondaryIndexTrait>::PrimaryIndex as TableIndexTrait>::Entry as EntryTrait>::Key,
         <<T as SecondaryIndexTrait>::Entry as EntryTrait>::Key,
     >;
-    const INDEX_NAME_IF_GSI: Option<&'static str> = Some(<T as SecondaryIndexTrait>::INDEX_NAME);
+    const INDEX_NAME_IF_GSI: Option<&'static str> =
+        Some(<T as SecondaryIndexTrait>::INDEX_NAME);
     fn table_name(settings: &Settings) -> &str {
         <<T as SecondaryIndexTrait>::PrimaryIndex as TableIndexTrait>::table_name(settings)
     }
@@ -214,8 +243,7 @@ pub(crate) trait TableIndexTrait {
 
     /// Generic table get.
     async fn get_entry(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
         key: &<Self::Entry as EntryTrait>::Key,
     ) -> Result<Self::Entry, Error> {
         // Convert key into the type needed for querying.
@@ -237,15 +265,14 @@ pub(crate) trait TableIndexTrait {
 
     /// Generic table query for all attributes with a given primary key.
     async fn query_with_partition_key(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
         partition_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
-        maybe_next_token: Option<String>,
-        maybe_page_size: Option<i32>,
+        maybe_next_token: Option<String>, maybe_page_size: Option<i32>,
     ) -> Result<(Vec<Self::Entry>, Option<String>), Error> {
         // Convert inputs into the types needed for querying.
-        let exclusive_start_key =
-            maybe_exclusive_start_key_from_next_token::<Self::SearchToken>(maybe_next_token)?;
+        let exclusive_start_key = maybe_exclusive_start_key_from_next_token::<
+            Self::SearchToken,
+        >(maybe_next_token)?;
         // Query the database.
         let query_output = dynamodb_client
             .query()
@@ -265,26 +292,25 @@ pub(crate) trait TableIndexTrait {
         // Convert data into output format.
         let entries: Vec<Self::Entry> =
             serde_dynamo::from_items(query_output.items.unwrap_or_default())?;
-        let next_token = maybe_next_token_from_last_evaluated_key::<Self::SearchToken>(
-            query_output.last_evaluated_key,
-        )?;
+        let next_token = maybe_next_token_from_last_evaluated_key::<
+            Self::SearchToken,
+        >(query_output.last_evaluated_key)?;
         // Return.
         Ok((entries, next_token))
     }
 
     /// Generic table query for all attributes with a given primary key.
     async fn query_with_partition_and_sort_key(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
         partition_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
         sort_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
-        sort_key_operator: &str,
-        maybe_next_token: Option<String>,
+        sort_key_operator: &str, maybe_next_token: Option<String>,
         maybe_page_size: Option<i32>,
     ) -> Result<(Vec<Self::Entry>, Option<String>), Error> {
         // Convert inputs into the types needed for querying.
-        let exclusive_start_key =
-            maybe_exclusive_start_key_from_next_token::<Self::SearchToken>(maybe_next_token)?;
+        let exclusive_start_key = maybe_exclusive_start_key_from_next_token::<
+            Self::SearchToken,
+        >(maybe_next_token)?;
 
         // Query the database.
         let query_output = dynamodb_client
@@ -310,17 +336,16 @@ pub(crate) trait TableIndexTrait {
         // Convert data into output format.
         let entries: Vec<Self::Entry> =
             serde_dynamo::from_items(query_output.items.unwrap_or_default())?;
-        let next_token = maybe_next_token_from_last_evaluated_key::<Self::SearchToken>(
-            query_output.last_evaluated_key,
-        )?;
+        let next_token = maybe_next_token_from_last_evaluated_key::<
+            Self::SearchToken,
+        >(query_output.last_evaluated_key)?;
         // Return.
         Ok((entries, next_token))
     }
 
     /// Generic put table entry.
     async fn put_entry(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
         entry: &Self::Entry,
     ) -> Result<(), Error> {
         // Get table name.
@@ -341,15 +366,15 @@ pub(crate) trait TableIndexTrait {
     /// Get all entries from a dynamodb table.
     #[cfg(feature = "testing")]
     async fn get_all_entries(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
     ) -> Result<Vec<Self::Entry>, Error> {
         // Get table name.
         let table_name = Self::table_name(settings);
         // Create vector to aggregate items in.
         let mut all_entries: Vec<Self::Entry> = Vec::new();
         // Scan the table for as many entries as possible.
-        let mut scan_output = dynamodb_client.scan().table_name(table_name).send().await?;
+        let mut scan_output =
+            dynamodb_client.scan().table_name(table_name).send().await?;
         // Put items into aggregate list.
         all_entries.extend(serde_dynamo::from_items(
             scan_output.items.unwrap_or_default(),
@@ -373,8 +398,7 @@ pub(crate) trait TableIndexTrait {
     /// Generic delete table entry.
     #[cfg(feature = "testing")]
     async fn delete_entry(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
         key: &<Self::Entry as EntryTrait>::Key,
     ) -> Result<(), Error> {
         // Get table name.
@@ -395,8 +419,7 @@ pub(crate) trait TableIndexTrait {
     /// Deletes every entry in a table with the specified keys.
     #[cfg(feature = "testing")]
     async fn delete_entries(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
         keys_to_delete: Vec<<Self::Entry as EntryTrait>::Key>,
     ) -> Result<(), Error> {
         // Get table name.
@@ -404,11 +427,15 @@ pub(crate) trait TableIndexTrait {
         // Make delete request aggregator.
         let mut write_delete_requests: Vec<WriteRequest> = Vec::new();
         for key in keys_to_delete {
-            let key_item = serde_dynamo::to_item::<<Self::Entry as EntryTrait>::Key, Item>(key)?;
+            let key_item = serde_dynamo::to_item::<
+                <Self::Entry as EntryTrait>::Key,
+                Item,
+            >(key)?;
             let req = DeleteRequest::builder()
                 .set_key(Some(key_item.into()))
                 .build()?;
-            let write_request = WriteRequest::builder().delete_request(req).build();
+            let write_request =
+                WriteRequest::builder().delete_request(req).build();
             write_delete_requests.push(write_request);
         }
         // Execute the deletes in chunks.
@@ -426,8 +453,7 @@ pub(crate) trait TableIndexTrait {
     /// Wipes the table.
     #[cfg(feature = "testing")]
     async fn wipe(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
     ) -> Result<(), Error> {
         // Get table name.
         match Self::INDEX_NAME_IF_GSI {
@@ -448,7 +474,7 @@ pub(crate) trait TableIndexTrait {
                     keys_to_delete,
                 )
                 .await
-            }
+            },
             // Otherwise this is a primary index so wipe the table.
             None => {
                 Self::delete_entries(
@@ -461,7 +487,7 @@ pub(crate) trait TableIndexTrait {
                         .collect(),
                 )
                 .await
-            }
+            },
         }
     }
 }
@@ -483,8 +509,7 @@ where
 {
     /// Put generic table entry but add a version check.
     async fn put_entry_with_version(
-        dynamodb_client: &aws_sdk_dynamodb::Client,
-        settings: &Settings,
+        dynamodb_client: &aws_sdk_dynamodb::Client, settings: &Settings,
         entry: &mut Self::Entry,
     ) -> Result<(), Error> {
         // Get table name.
@@ -500,7 +525,9 @@ where
             .put_item()
             .table_name(table_name)
             .set_item(Some(entry_item.into()))
-            .condition_expression("attribute_exists(#version) AND #version = :expected_version")
+            .condition_expression(
+                "attribute_exists(#version) AND #version = :expected_version",
+            )
             .expression_attribute_names(
                 "#version",
                 <Self::Entry as VersionedEntryTrait>::VERSION_FIELD,
@@ -516,8 +543,8 @@ where
     }
 }
 
-// Implement VersionedTableIndexTrait for all structs that implement TableIndexTrait
-// and where the associated Entry type implements VersionedEntry
+// Implement VersionedTableIndexTrait for all structs that implement
+// TableIndexTrait and where the associated Entry type implements VersionedEntry
 impl<T> VersionedTableIndexTrait for T
 where
     T: TableIndexTrait,
@@ -526,7 +553,9 @@ where
 }
 
 /// Secondary index search token definition.
-#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize,
+)]
 pub struct SecondaryIndexSearchToken<P, S> {
     /// Primary index.
     #[serde(flatten)]
@@ -538,9 +567,10 @@ pub struct SecondaryIndexSearchToken<P, S> {
 
 // Private Helpers -------------------------------------------------------------
 
-/// Converts an optional `HashMap<String, AttributeValue>` representing the last evaluated key
-/// into an optional token string. If the `Option` contains a value, it is deserialized into a type `T`
-/// and then serialized into a token string.
+/// Converts an optional `HashMap<String, AttributeValue>` representing the last
+/// evaluated key into an optional token string. If the `Option` contains a
+/// value, it is deserialized into a type `T` and then serialized into a token
+/// string.
 fn maybe_next_token_from_last_evaluated_key<T>(
     maybe_last_evaluated_key: Option<HashMap<String, AttributeValue>>,
 ) -> Result<Option<String>, Error>
@@ -565,9 +595,10 @@ where
     Ok(encoded)
 }
 
-/// Converts an optional token string into an optional `HashMap<String, AttributeValue>` representing
-/// the exclusive start key. If the `Option` contains a value, it is deserialized into a type `T`
-/// and then serialized into a `HashMap<String, AttributeValue>`.
+/// Converts an optional token string into an optional `HashMap<String,
+/// AttributeValue>` representing the exclusive start key. If the `Option`
+/// contains a value, it is deserialized into a type `T` and then serialized
+/// into a `HashMap<String, AttributeValue>`.
 fn maybe_exclusive_start_key_from_next_token<T>(
     maybe_next_token: Option<String>,
 ) -> Result<Option<HashMap<String, AttributeValue>>, Error>

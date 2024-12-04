@@ -10,5 +10,7 @@ pub mod deposit;
 pub mod health;
 /// Api structures for limits.
 pub mod limits;
+/// Api structures for signers.
+pub mod signer;
 /// Api structures for withdrawals.
 pub mod withdrawal;

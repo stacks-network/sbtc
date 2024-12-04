@@ -29,6 +29,8 @@ pub struct Settings {
     pub chainstate_table_name: String,
     /// Limit table name.
     pub limit_table_name: String,
+    /// Signer table name.
+    pub signer_table_name: String,
     /// The default global limits for the system.
     pub default_limits: AccountLimits,
 }
@@ -67,6 +69,7 @@ impl Settings {
             withdrawal_table_name: env::var("WITHDRAWAL_TABLE_NAME")?,
             chainstate_table_name: env::var("CHAINSTATE_TABLE_NAME")?,
             limit_table_name: env::var("LIMIT_TABLE_NAME")?,
+            signer_table_name: env::var("SIGNER_TABLE_NAME")?,
             default_limits: AccountLimits {
                 peg_cap: env::var("DEFAULT_PEG_CAP")
                     .ok()
@@ -136,7 +139,8 @@ impl EmilyContext {
         // Attempt to get all the tables by searching the output of the
         // list tables operation.
         let mut table_name_map: HashMap<&str, String> = HashMap::new();
-        let tables_to_find: Vec<&str> = vec!["Deposit", "Chainstate", "Withdrawal", "Limit"];
+        let tables_to_find: Vec<&str> =
+            vec!["Deposit", "Chainstate", "Withdrawal", "Limit", "Signer"];
         for name in table_names {
             for table_to_find in &tables_to_find {
                 if name.contains(table_to_find) {
@@ -164,6 +168,10 @@ impl EmilyContext {
                 limit_table_name: table_name_map
                     .get("Limit")
                     .expect("Couldn't find valid limit table table in existing table list.")
+                    .to_string(),
+                signer_table_name: table_name_map
+                    .get("Signer")
+                    .expect("Couldn't find valid signer table table in existing table list.")
                     .to_string(),
                 default_limits: AccountLimits::default(),
             },
