@@ -152,6 +152,12 @@ bootstrap_signatures_required = 15
 # TODO(715): Expect this to change after testing.
 bitcoin_processing_delay = 0
 
+# The number of blocks back the block observer should look for unprocessed
+# blocks before proceeding.
+# Required: true
+# Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
+bitcoin_block_horizon = 1500
+
 # How many bitcoin blocks back from the chain tip the signer will look for
 # requests. Must be strictly positive.
 #

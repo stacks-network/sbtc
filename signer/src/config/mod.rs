@@ -494,7 +494,7 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
-        assert_eq!(settings.signer.bitcoin_block_horizon, 2000);
+        assert_eq!(settings.signer.bitcoin_block_horizon, 1500);
         assert_eq!(settings.signer.context_window, 10000);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
