@@ -1647,13 +1647,16 @@ pub fn coordinator_public_key(
     let u32_bytes = digest[..4]
         .try_into()
         .expect("BUG: failed to take first 4 bytes of digest");
-    
+
     // Convert the first 4 bytes of the digest to a u32 index.
     let index = u32::from_be_bytes(u32_bytes);
 
     let num_signers = signer_public_keys.len();
 
-    signer_public_keys.iter().nth((index as usize) % num_signers).copied()
+    signer_public_keys
+        .iter()
+        .nth((index as usize) % num_signers)
+        .copied()
 }
 
 #[cfg(test)]
