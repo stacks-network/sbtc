@@ -150,7 +150,7 @@ bitcoin_processing_delay = 0
 #
 # Required: false
 # Environment: SIGNER_SIGNER__CONTEXT_WINDOW
-context_window = 500
+context_window = 10000
 
 # The maximum amount of time, in seconds, a signing round will take before
 # the coordinator will time out and return an error. This value must be
