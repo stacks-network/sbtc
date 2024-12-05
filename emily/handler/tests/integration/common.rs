@@ -1,7 +1,10 @@
 //! Common module for useful test functions.
 
 use emily_client::{
-    apis::{self, configuration::{ApiKey, Configuration}},
+    apis::{
+        self,
+        configuration::{ApiKey, Configuration},
+    },
     models::ErrorResponse,
 };
 use serde::{Deserialize, Serialize};
