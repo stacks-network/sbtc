@@ -169,7 +169,7 @@ impl EmilyContext {
                     .expect("Couldn't find valid limit table table in existing table list.")
                     .to_string(),
                 default_limits: AccountLimits::default(),
-                trusted_reorg_api_key: "test".to_string(),
+                trusted_reorg_api_key: "testApiKey".to_string(),
             },
             dynamodb_client,
         })
