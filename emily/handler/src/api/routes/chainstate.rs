@@ -46,6 +46,7 @@ fn set_chainstate(
         .map(move || context.clone())
         .and(warp::path!("chainstate"))
         .and(warp::post())
+        .and(warp::header::<String>("x-api-key"))
         .and(warp::body::json())
         .then(handlers::chainstate::set_chainstate)
 }
@@ -58,6 +59,7 @@ fn update_chainstate(
         .map(move || context.clone())
         .and(warp::path!("chainstate"))
         .and(warp::put())
+        .and(warp::header::<String>("x-api-key"))
         .and(warp::body::json())
         .then(handlers::chainstate::update_chainstate)
 }

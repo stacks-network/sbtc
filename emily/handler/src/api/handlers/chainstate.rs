@@ -101,21 +101,27 @@ pub async fn get_chainstate_at_height(
     security(("ApiGatewayKey" = []))
 )]
 #[instrument(skip(context))]
-pub async fn set_chainstate(context: EmilyContext, body: Chainstate) -> impl warp::reply::Reply {
+pub async fn set_chainstate(
+    context: EmilyContext,
+    api_key: String,
+    body: Chainstate,
+) -> impl warp::reply::Reply {
     debug!("Attempting to set chainstate: {body:?}");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
+        api_key: String,
         body: Chainstate,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
-        add_chainstate_entry_or_reorg(&context, &chainstate).await?;
+        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
+        add_chainstate_entry_or_reorg(&context, can_reorg, &chainstate).await?;
         // Respond.
         Ok(with_status(json(&chainstate), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, body)
+    handler(context, api_key, body)
         .await
         .map_err(|error| {
             warn!("Failed to set chainstate with error: {}", error);
@@ -144,22 +150,25 @@ pub async fn set_chainstate(context: EmilyContext, body: Chainstate) -> impl war
 #[instrument(skip(context))]
 pub async fn update_chainstate(
     context: EmilyContext,
+    api_key: String,
     request: Chainstate,
 ) -> impl warp::reply::Reply {
     debug!("Attempting to update chainstate: {request:?}");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
+        api_key: String,
         body: Chainstate,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
-        add_chainstate_entry_or_reorg(&context, &chainstate).await?;
+        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
+        add_chainstate_entry_or_reorg(&context, can_reorg, &chainstate).await?;
         // Respond.
         Ok(with_status(json(&chainstate), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, request)
+    handler(context, api_key, request)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
@@ -171,6 +180,7 @@ pub async fn update_chainstate(
 /// TODO(TBD): Consider moving this logic into database accessor structures.
 pub async fn add_chainstate_entry_or_reorg(
     context: &EmilyContext,
+    can_reorg: bool,
     chainstate: &Chainstate,
 ) -> Result<(), Error> {
     // Get chainstate as entry.
@@ -178,15 +188,20 @@ pub async fn add_chainstate_entry_or_reorg(
     debug!("Attempting to add chainstate: {entry:?}");
     match accessors::add_chainstate_entry_with_retry(context, &entry, 15).await {
         Err(Error::InconsistentState(Inconsistency::Chainstates(conflicting_chainstates))) => {
-            info!("Inconsistent chainstate found; attempting reorg for {entry:?}");
-            let execute_reorg_request = ExecuteReorgRequest {
-                canonical_tip: chainstate.clone(),
-                conflicting_chainstates,
-            };
-            // Execute the reorg.
-            execute_reorg_handler(context, execute_reorg_request)
-                .await
-                .inspect_err(|e| warn!("Failed executing reorg with error {}", e))?;
+            if can_reorg {
+                info!("Inconsistent chainstate found; attempting reorg for {entry:?}");
+                let execute_reorg_request = ExecuteReorgRequest {
+                    canonical_tip: chainstate.clone(),
+                    conflicting_chainstates,
+                };
+                // Execute the reorg.
+                execute_reorg_handler(context, execute_reorg_request)
+                    .await
+                    .inspect_err(|e| warn!("Failed executing reorg with error {}", e))?;
+            // Log error.
+            } else {
+                debug!("Inconsistent chainstate found for {entry:?} but we pretend it's okay.");
+            }
         }
         e @ Err(_) => return e,
         _ => {}

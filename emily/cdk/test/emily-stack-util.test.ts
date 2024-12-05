@@ -16,6 +16,7 @@ describe('EmilyStackUtils Test', () => {
                 account: "testAwsAccount",
                 region: "testAwsRegion",
             },
+            trustedReorgApiKey: "testApiKey",
         }
         const resourceName: string = EmilyStackUtils
             .getResourceName("ResourceId", testEmilyStackProps);
@@ -27,6 +28,7 @@ describe('EmilyStackUtils Test', () => {
             AWS_STAGE: Constants.UNIT_TEST_STAGE_NAME,
             AWS_ACCOUNT: "TestAccount" ,
             AWS_REGION: "TestRegion",
+            TRUSTED_REORG_API_KEY: "TestApiKey",
         };
         const resourceName: string = EmilyStackUtils.getStackName("StackId");
         expect(resourceName).toEqual(`StackId-TestAccount-TestRegion-${Constants.UNIT_TEST_STAGE_NAME}`);

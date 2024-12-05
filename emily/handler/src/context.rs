@@ -31,6 +31,8 @@ pub struct Settings {
     pub limit_table_name: String,
     /// The default global limits for the system.
     pub default_limits: AccountLimits,
+    /// The API key for the Bitcoin Layer 2 API.
+    pub trusted_reorg_api_key: String,
 }
 
 /// Emily Context
@@ -81,6 +83,7 @@ impl Settings {
                     .map(|v| v.parse())
                     .transpose()?,
             },
+            trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?,
         })
     }
 }
@@ -166,6 +169,7 @@ impl EmilyContext {
                     .expect("Couldn't find valid limit table table in existing table list.")
                     .to_string(),
                 default_limits: AccountLimits::default(),
+                trusted_reorg_api_key: "testApiKey".to_string(),
             },
             dynamodb_client,
         })

@@ -5,13 +5,10 @@
 [![License: GPL v3][gpl-v3-badge]][gpl-v3-link]
 [![Discord][discord-badge]][discord-link]
 
-Ths repository builds off the developer experience within https://github.com/stacks-network/sbtc-developer-release.
-
 ### Links
 
 - [sBTC Landing Page](https://sbtc.tech/)
-- [sBTC Rollout Plan](https://www.bitcoinwrites.com/p/sbtc-rollout-bootstrapping-programmable-bitcoin)
-- [sBTC Developer Release](https://sbtc.tech/developer-release)
+- [sBTC Docs](https://docs.stacks.co/concepts/sbtc)
 
 ## Design Docs
 

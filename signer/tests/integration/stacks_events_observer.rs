@@ -47,7 +47,7 @@ async fn test_context() -> TestContext<
     EmilyClient,
 > {
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
 
     TestContext::builder()

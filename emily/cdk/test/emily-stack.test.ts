@@ -11,6 +11,7 @@ const TEST_STACK_PROPS: EmilyStackProps = {
         account: "account",
         region: "region",
     },
+    trustedReorgApiKey: "testApiKey",
 }
 
 describe('EmilyStack Test', () => {
@@ -61,6 +62,7 @@ describe('EmilyStack Test', () => {
                 expect(environment.WITHDRAWAL_TABLE_NAME).toMatch(`WithdrawalTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
                 expect(environment.CHAINSTATE_TABLE_NAME).toMatch(`ChainstateTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
                 expect(environment.LIMIT_TABLE_NAME).toMatch(`LimitTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+                expect(environment.TRUSTED_REORG_API_KEY).toEqual("testApiKey");
                 expect(environment.IS_LOCAL).toEqual("false");
             });
     });

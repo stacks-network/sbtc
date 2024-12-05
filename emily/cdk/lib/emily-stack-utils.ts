@@ -52,6 +52,11 @@ export class EmilyStackUtils {
     private static lambdaGitIdentifier?: string;
 
     /*
+     * The trusted reorg API key.
+     */
+    private static trustedReorgApiKey?: string;
+
+    /*
      * Returns the current stage name.
      */
     public static getStageName(): string {
@@ -123,6 +128,17 @@ export class EmilyStackUtils {
     public static getCustomRootDomainName(): string | undefined {
         this.customRootDomainName ??= process.env.CUSTOM_ROOT_DOMAIN_NAME;
         return this.customRootDomainName;
+    }
+
+    /*
+     * Returns the api key that is allowed to make chainstate reorgs.
+     */
+    public static getTrustedReorgApiKey(): string {
+        this.trustedReorgApiKey ??= process.env.TRUSTED_REORG_API_KEY;
+        if (this.trustedReorgApiKey === undefined) {
+            throw new Error('Must define a trusted reorg api key.');
+        }
+        return this.trustedReorgApiKey;
     }
 
     /*

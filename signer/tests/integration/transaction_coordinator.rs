@@ -1179,7 +1179,7 @@ async fn sign_bitcoin_transaction() {
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await
@@ -1592,7 +1592,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await

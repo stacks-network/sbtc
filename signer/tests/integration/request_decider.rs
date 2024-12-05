@@ -307,7 +307,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await

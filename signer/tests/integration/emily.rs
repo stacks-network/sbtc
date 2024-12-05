@@ -179,7 +179,7 @@ async fn deposit_flow() {
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
 
     // Wipe the Emily database to start fresh
@@ -598,7 +598,7 @@ async fn get_deposit_request_works() {
     let lock_time = 150;
 
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
 
     wipe_databases(&emily_client.config())
         .await
@@ -633,7 +633,7 @@ async fn get_deposit_request_works() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_limits_works() {
-    let url = Url::parse("http://localhost:3031").unwrap();
+    let url = Url::parse("http://testApiKey@localhost:3031").unwrap();
     let emily_client = EmilyClient::try_from(&url).unwrap();
     emily_client::apis::limits_api::set_limits(
         &emily_client.config(),

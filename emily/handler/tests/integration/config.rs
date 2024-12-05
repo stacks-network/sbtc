@@ -18,6 +18,8 @@ pub struct ServerConfig {
     pub host: String,
     /// Port.
     pub port: u16,
+    /// Api key.
+    pub api_key: String,
 }
 
 /// Statically configured settings.
@@ -41,6 +43,9 @@ impl Settings {
     fn validate(&self) -> Result<(), ConfigError> {
         if self.server.host.is_empty() {
             return Err(ConfigError::Message("Host cannot be empty".to_string()));
+        }
+        if self.server.api_key.is_empty() {
+            return Err(ConfigError::Message("Api key cannot be empty".to_string()));
         }
         if !(1..=65535).contains(&self.server.port) {
             return Err(ConfigError::Message(

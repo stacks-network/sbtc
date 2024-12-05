@@ -227,7 +227,7 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
         .map_err(Error::SignerSwarm)
 }
 
-/// Runs the the signer's API server, which includes the Stacks event observer.
+/// Runs the signer's API server, which includes the Stacks event observer.
 #[tracing::instrument(skip_all, name = "api")]
 async fn run_api(ctx: impl Context + 'static) -> Result<(), Error> {
     let socket_addr = ctx.config().signer.event_observer.bind;

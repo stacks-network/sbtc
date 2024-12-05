@@ -202,7 +202,7 @@ bind = "0.0.0.0:8801"
 # !! Signer P2P Networking Configuration
 # !! ==============================================================================
 [signer.p2p]
-# List of seed nodes to connect to to bootstrap the network.
+# List of seed nodes to connect to bootstrap the network.
 #
 # If specified, these nodes will be used to discover other nodes on the network.
 # If not specified or if none of the specified seeds could be reached, the node
