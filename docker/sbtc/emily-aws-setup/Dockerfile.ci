@@ -24,6 +24,7 @@ WORKDIR /code/sbtc/emily/cdk
 
 ARG AWS_STAGE=local
 ARG TABLES_ONLY=true
+ARG TRUSTED_REORG_API_KEY=testApiKey
 RUN pnpm install
 RUN pnpm run synth
 
