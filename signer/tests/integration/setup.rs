@@ -25,6 +25,7 @@ use signer::bitcoin::utxo::SignerUtxo;
 use signer::block_observer::BlockObserver;
 use signer::block_observer::Deposit;
 use signer::config::Settings;
+use signer::context::SbtcLimits;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 use signer::message;
@@ -149,6 +150,7 @@ impl TestSweepSetup {
             },
             accept_threshold: 4,
             num_signers: 7,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         // There should only be one transaction here since there is only
@@ -661,13 +663,6 @@ impl TestSweepSetup2 {
             .collect()
     }
 
-    pub fn deposit_outpoint_messages(&self) -> Vec<message::OutPointMessage> {
-        self.deposits
-            .iter()
-            .map(|(info, _, _)| info.outpoint.into())
-            .collect()
-    }
-
     pub fn withdrawal_ids(&self) -> Vec<QualifiedRequestId> {
         vec![QualifiedRequestId {
             request_id: self.withdrawal_request.request_id,
@@ -748,6 +743,7 @@ impl TestSweepSetup2 {
             },
             accept_threshold: 4,
             num_signers: 7,
+            sbtc_limits: SbtcLimits::default(),
         };
 
         // There should only be one transaction here since there is only

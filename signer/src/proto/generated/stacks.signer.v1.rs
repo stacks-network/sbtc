@@ -81,18 +81,13 @@ pub struct StacksTransactionSignRequest {
     /// The transaction fee in microSTX.
     #[prost(uint64, tag = "3")]
     pub tx_fee: u64,
-    /// The expected digest of the transaction than needs to be signed. It's
-    /// essentially a hash of the contract call struct, the nonce, the tx_fee
-    /// and a few other things.
-    #[prost(message, optional, tag = "4")]
-    pub digest: ::core::option::Option<super::super::super::crypto::Uint256>,
     /// The transaction ID of the associated contract call transaction.
-    #[prost(message, optional, tag = "5")]
+    #[prost(message, optional, tag = "4")]
     pub txid: ::core::option::Option<super::super::StacksTxid>,
     /// The contract transaction to sign.
     #[prost(
         oneof = "stacks_transaction_sign_request::ContractTx",
-        tags = "6, 7, 8, 9, 10"
+        tags = "5, 6, 7, 8, 9"
     )]
     pub contract_tx: ::core::option::Option<stacks_transaction_sign_request::ContractTx>,
 }
@@ -103,19 +98,19 @@ pub mod stacks_transaction_sign_request {
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum ContractTx {
         /// The `complete-deposit` contract call
-        #[prost(message, tag = "6")]
+        #[prost(message, tag = "5")]
         CompleteDeposit(super::CompleteDeposit),
         /// The `accept-withdrawal-request` contract call
-        #[prost(message, tag = "7")]
+        #[prost(message, tag = "6")]
         AcceptWithdrawal(super::AcceptWithdrawal),
         /// The `reject-withdrawal-request` contract call
-        #[prost(message, tag = "8")]
+        #[prost(message, tag = "7")]
         RejectWithdrawal(super::RejectWithdrawal),
         /// The `rotate-keys-wrapper` contract call
-        #[prost(message, tag = "9")]
+        #[prost(message, tag = "8")]
         RotateKeys(super::RotateKeys),
         /// Ssmart contract deployment
-        #[prost(enumeration = "super::SmartContract", tag = "10")]
+        #[prost(enumeration = "super::SmartContract", tag = "9")]
         SmartContract(i32),
     }
 }
@@ -286,7 +281,7 @@ pub struct SignerMessage {
         super::super::super::bitcoin::BitcoinBlockHash,
     >,
     /// The message payload
-    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 9")]
+    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
     pub payload: ::core::option::Option<signer_message::Payload>,
 }
 /// Nested message and enum types in `SignerMessage`.
@@ -319,6 +314,12 @@ pub mod signer_message {
         /// Information about a new sweep transaction
         #[prost(message, tag = "9")]
         SweepTransactionInfo(super::SweepTransactionInfo),
+        /// Information about a new sweep transaction
+        #[prost(message, tag = "10")]
+        BitcoinPreSignRequest(super::BitcoinPreSignRequest),
+        /// Represents an acknowledgment of a BitcoinPreSignRequest
+        #[prost(message, tag = "11")]
+        BitcoinPreSignAck(super::BitcoinPreSignAck),
     }
 }
 /// Represents information about a deposit request being swept-in by a sweep transaction.
@@ -462,23 +463,80 @@ pub mod wsts_message {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Signed {
-    /// The public key of the signer.
-    #[prost(message, optional, tag = "1")]
-    pub signer_pub_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
     /// A signature over the hash of the inner structure.
-    #[prost(bytes = "vec", tag = "2")]
-    pub signature: ::prost::alloc::vec::Vec<u8>,
+    #[prost(message, optional, tag = "1")]
+    pub signature: ::core::option::Option<super::super::super::crypto::EcdsaSignature>,
+    /// The public key of the signer that generated the signature.
+    #[prost(message, optional, tag = "2")]
+    pub signer_public_key: ::core::option::Option<
+        super::super::super::crypto::PublicKey,
+    >,
     /// The signed structure.
-    #[prost(oneof = "signed::Inner", tags = "3")]
-    pub inner: ::core::option::Option<signed::Inner>,
+    #[prost(message, optional, tag = "3")]
+    pub signer_message: ::core::option::Option<SignerMessage>,
 }
-/// Nested message and enum types in `Signed`.
-pub mod signed {
-    /// The signed structure.
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
-    pub enum Inner {
-        #[prost(message, tag = "3")]
-        SignerMessage(super::SignerMessage),
-    }
+/// Information about a new Bitcoin block sign request
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BitcoinPreSignRequest {
+    /// The set of sBTC request identifiers. This contains each of the
+    /// requests for the entire transaction package. Each element in the
+    /// vector corresponds to the requests that will be included in a
+    /// single bitcoin transaction.
+    #[prost(message, repeated, tag = "1")]
+    pub request_package: ::prost::alloc::vec::Vec<TxRequestIds>,
+    /// The current market fee rate in sat/vByte.
+    #[prost(double, tag = "2")]
+    pub fee_rate: f64,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    #[prost(message, optional, tag = "3")]
+    pub last_fees: ::core::option::Option<Fees>,
+}
+/// Represents an acknowledgment of a BitcoinPreSignRequest.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct BitcoinPreSignAck {}
+/// This type is a container for all deposits and withdrawals that are part
+/// of a transaction package.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct TxRequestIds {
+    /// The deposit requests associated with the inputs in the transaction.
+    #[prost(message, repeated, tag = "1")]
+    pub deposits: ::prost::alloc::vec::Vec<super::super::super::bitcoin::OutPoint>,
+    /// The withdrawal requests associated with the outputs in the current
+    /// transaction.
+    #[prost(message, repeated, tag = "2")]
+    pub withdrawals: ::prost::alloc::vec::Vec<QualifiedRequestId>,
+}
+/// An identifier for a withdrawal request, comprised of the Stacks
+/// transaction ID, the Stacks block ID that included the transaction, and
+/// the request-id generated by the clarity contract for the withdrawal
+/// request.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct QualifiedRequestId {
+    /// The ID that was generated in the clarity contract call for the
+    /// withdrawal request.
+    #[prost(uint64, tag = "1")]
+    pub request_id: u64,
+    /// The txid that generated the request.
+    #[prost(message, optional, tag = "2")]
+    pub txid: ::core::option::Option<super::super::StacksTxid>,
+    /// The Stacks block ID that includes the transaction that generated
+    /// the request.
+    #[prost(message, optional, tag = "3")]
+    pub block_hash: ::core::option::Option<super::super::StacksBlockId>,
+}
+/// Describes the fees for a transaction.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Fees {
+    /// The total fee paid in sats for the transaction.
+    #[prost(uint64, tag = "1")]
+    pub total: u64,
+    /// The fee rate paid in sats per virtual byte.
+    #[prost(double, tag = "2")]
+    pub rate: f64,
 }

@@ -8,6 +8,7 @@ use crate::storage::postgres::PgStore;
 use crate::storage::DbRead;
 
 pub mod model;
+pub mod postgres;
 
 /// The postgres connection string to the test database.
 pub const DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/signer";

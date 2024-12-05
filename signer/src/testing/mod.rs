@@ -52,7 +52,7 @@ pub fn clear_env() {
 
 /// A helper function for correctly setting witness data
 pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::Keypair) {
-    let sighash_type = TapSighashType::Default;
+    let sighash_type = TapSighashType::All;
     let sighashes = unsigned.construct_digests().unwrap();
 
     let signer_msg = secp256k1::Message::from(sighashes.signers);

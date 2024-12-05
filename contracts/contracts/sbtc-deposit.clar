@@ -63,7 +63,7 @@
         (try! (contract-call? .sbtc-token protocol-mint amount recipient))
 
         ;; Complete the deposit
-        (ok (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient burn-hash burn-height sweep-txid))
+        (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient burn-hash burn-height sweep-txid)
     )
 )
 
@@ -98,7 +98,7 @@
     (match helper-response 
         index
             (begin 
-                (try! (unwrap! (complete-deposit-wrapper (get txid deposit) (get vout-index deposit) (get amount deposit) (get recipient deposit) (get burn-hash deposit) (get burn-height deposit) (get sweep-txid deposit)) (err (+ ERR_DEPOSIT_INDEX_PREFIX (+ u10 index)))))
+                (unwrap! (complete-deposit-wrapper (get txid deposit) (get vout-index deposit) (get amount deposit) (get recipient deposit) (get burn-hash deposit) (get burn-height deposit) (get sweep-txid deposit)) (err (+ ERR_DEPOSIT_INDEX_PREFIX (+ u10 index))))
                 (ok (+ index u1))
             )
         err-response

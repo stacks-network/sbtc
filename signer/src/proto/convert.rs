@@ -7,10 +7,10 @@
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 
 use bitcoin::consensus::encode::deserialize;
 use bitcoin::consensus::encode::serialize;
+use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use clarity::codec::StacksMessageCodec as _;
 use clarity::vm::types::PrincipalData;
@@ -41,9 +41,14 @@ use wsts::net::SignatureType;
 use wsts::traits::PartyState;
 use wsts::traits::SignerState;
 
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::TxRequestIds;
+use crate::codec;
 use crate::ecdsa::Signed;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::message::BitcoinPreSignAck;
+use crate::message::BitcoinPreSignRequest;
 use crate::message::BitcoinTransactionSignAck;
 use crate::message::BitcoinTransactionSignRequest;
 use crate::message::Payload;
@@ -66,6 +71,7 @@ use crate::stacks::contracts::SmartContract;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
@@ -176,6 +182,38 @@ impl TryFrom<proto::RecoverableSignature> for RecoverableSignature {
 
         RecoverableSignature::from_compact(&data, recovery_id)
             .map_err(Error::InvalidRecoverableSignatureBytes)
+    }
+}
+
+impl From<secp256k1::ecdsa::Signature> for proto::EcdsaSignature {
+    fn from(value: secp256k1::ecdsa::Signature) -> Self {
+        let mut lower_bits = [0; 32];
+        let mut upper_bits = [0; 32];
+
+        let bytes = value.serialize_compact();
+
+        lower_bits.copy_from_slice(&bytes[..32]);
+        upper_bits.copy_from_slice(&bytes[32..]);
+
+        Self {
+            lower_bits: Some(proto::Uint256::from(lower_bits)),
+            upper_bits: Some(proto::Uint256::from(upper_bits)),
+        }
+    }
+}
+
+impl TryFrom<proto::EcdsaSignature> for secp256k1::ecdsa::Signature {
+    type Error = Error;
+    fn try_from(value: proto::EcdsaSignature) -> Result<Self, Self::Error> {
+        let mut data = [0; 64];
+
+        let lower_bits: [u8; 32] = value.lower_bits.required()?.into();
+        let upper_bits: [u8; 32] = value.upper_bits.required()?.into();
+
+        data[..32].copy_from_slice(&lower_bits);
+        data[32..].copy_from_slice(&upper_bits);
+
+        secp256k1::ecdsa::Signature::from_compact(&data).map_err(Error::InvalidEcdsaSignatureBytes)
     }
 }
 
@@ -540,7 +578,6 @@ impl From<StacksTransactionSignRequest> for proto::StacksTransactionSignRequest 
             aggregate_key: Some(value.aggregate_key.into()),
             nonce: value.nonce,
             tx_fee: value.tx_fee,
-            digest: Some(value.digest.into()),
             txid: Some(StacksTxId::from(value.txid).into()),
             contract_tx: Some(contract_tx),
         }
@@ -573,7 +610,6 @@ impl TryFrom<proto::StacksTransactionSignRequest> for StacksTransactionSignReque
             aggregate_key: value.aggregate_key.required()?.try_into()?,
             nonce: value.nonce,
             tx_fee: value.tx_fee,
-            digest: value.digest.required()?.into(),
             txid: StacksTxId::try_from(value.txid.required()?)?.into(),
             contract_tx,
         })
@@ -760,13 +796,13 @@ impl TryFrom<proto::BadPrivateShares> for hashbrown::HashMap<u32, BadPrivateShar
     }
 }
 
-fn hashset_to_zst(set: hashbrown::HashSet<u32>) -> HashMap<u32, proto::SetValueZst> {
+fn hashset_to_zst(set: hashbrown::HashSet<u32>) -> BTreeMap<u32, proto::SetValueZst> {
     set.into_iter()
         .map(|v| (v, proto::SetValueZst {}))
         .collect()
 }
 
-fn zst_to_hashset(set: HashMap<u32, proto::SetValueZst>) -> hashbrown::HashSet<u32> {
+fn zst_to_hashset(set: BTreeMap<u32, proto::SetValueZst>) -> hashbrown::HashSet<u32> {
     set.into_keys().collect()
 }
 
@@ -1267,9 +1303,139 @@ impl TryFrom<proto::SweepTransactionInfo> for SweepTransactionInfo {
     }
 }
 
+impl From<QualifiedRequestId> for proto::QualifiedRequestId {
+    fn from(value: QualifiedRequestId) -> Self {
+        proto::QualifiedRequestId {
+            request_id: value.request_id,
+            txid: Some(value.txid.into()),
+            block_hash: Some(value.block_hash.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::QualifiedRequestId> for QualifiedRequestId {
+    type Error = Error;
+    fn try_from(value: proto::QualifiedRequestId) -> Result<Self, Self::Error> {
+        Ok(QualifiedRequestId {
+            request_id: value.request_id,
+            txid: StacksTxId::try_from(value.txid.required()?)?,
+            block_hash: value.block_hash.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<TxRequestIds> for proto::TxRequestIds {
+    fn from(value: TxRequestIds) -> Self {
+        proto::TxRequestIds {
+            deposits: value
+                .deposits
+                .into_iter()
+                .map(proto::OutPoint::from)
+                .collect(),
+            withdrawals: value.withdrawals.into_iter().map(|v| v.into()).collect(),
+        }
+    }
+}
+
+impl TryFrom<proto::TxRequestIds> for TxRequestIds {
+    type Error = Error;
+    fn try_from(value: proto::TxRequestIds) -> Result<Self, Self::Error> {
+        Ok(TxRequestIds {
+            deposits: value
+                .deposits
+                .into_iter()
+                .map(OutPoint::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            withdrawals: value
+                .withdrawals
+                .into_iter()
+                .map(QualifiedRequestId::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        })
+    }
+}
+
+impl From<Fees> for proto::Fees {
+    fn from(value: Fees) -> Self {
+        proto::Fees {
+            total: value.total,
+            rate: value.rate,
+        }
+    }
+}
+
+impl From<proto::Fees> for Fees {
+    fn from(value: proto::Fees) -> Self {
+        Fees {
+            total: value.total,
+            rate: value.rate,
+        }
+    }
+}
+
+impl From<BitcoinPreSignRequest> for proto::BitcoinPreSignRequest {
+    fn from(value: BitcoinPreSignRequest) -> Self {
+        proto::BitcoinPreSignRequest {
+            request_package: value
+                .request_package
+                .into_iter()
+                .map(|v| v.into())
+                .collect(),
+            fee_rate: value.fee_rate,
+            last_fees: value.last_fees.map(|v| v.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::BitcoinPreSignRequest> for BitcoinPreSignRequest {
+    type Error = Error;
+    fn try_from(value: proto::BitcoinPreSignRequest) -> Result<Self, Self::Error> {
+        Ok(BitcoinPreSignRequest {
+            request_package: value
+                .request_package
+                .into_iter()
+                .map(|v| v.try_into())
+                .collect::<Result<Vec<_>, _>>()?,
+            fee_rate: value.fee_rate,
+            last_fees: value.last_fees.map(|v| v.into()),
+        })
+    }
+}
+
+impl From<BitcoinPreSignAck> for proto::BitcoinPreSignAck {
+    fn from(_: BitcoinPreSignAck) -> Self {
+        proto::BitcoinPreSignAck {}
+    }
+}
+
+impl From<proto::BitcoinPreSignAck> for BitcoinPreSignAck {
+    fn from(_: proto::BitcoinPreSignAck) -> Self {
+        BitcoinPreSignAck {}
+    }
+}
+
 impl From<SignerMessage> for proto::SignerMessage {
     fn from(value: SignerMessage) -> Self {
-        let payload = match value.payload {
+        proto::SignerMessage {
+            bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
+            payload: Some(value.payload.into()),
+        }
+    }
+}
+
+impl TryFrom<proto::SignerMessage> for SignerMessage {
+    type Error = Error;
+    fn try_from(value: proto::SignerMessage) -> Result<Self, Self::Error> {
+        Ok(SignerMessage {
+            bitcoin_chain_tip: value.bitcoin_chain_tip.required()?.try_into()?,
+            payload: value.payload.required()?.try_into()?,
+        })
+    }
+}
+
+impl From<Payload> for proto::Payload {
+    fn from(value: Payload) -> Self {
+        match value {
             Payload::SignerDepositDecision(inner) => {
                 proto::signer_message::Payload::SignerDepositDecision(inner.into())
             }
@@ -1294,19 +1460,20 @@ impl From<SignerMessage> for proto::SignerMessage {
             Payload::SweepTransactionInfo(inner) => {
                 proto::signer_message::Payload::SweepTransactionInfo(inner.into())
             }
-            Payload::BitcoinPreSignRequest(_) => todo!(),
-        };
-        proto::SignerMessage {
-            bitcoin_chain_tip: Some(value.bitcoin_chain_tip.into()),
-            payload: Some(payload),
+            Payload::BitcoinPreSignRequest(inner) => {
+                proto::signer_message::Payload::BitcoinPreSignRequest(inner.into())
+            }
+            Payload::BitcoinPreSignAck(inner) => {
+                proto::signer_message::Payload::BitcoinPreSignAck(inner.into())
+            }
         }
     }
 }
 
-impl TryFrom<proto::SignerMessage> for SignerMessage {
+impl TryFrom<proto::Payload> for Payload {
     type Error = Error;
-    fn try_from(value: proto::SignerMessage) -> Result<Self, Self::Error> {
-        let payload = match value.payload.required()? {
+    fn try_from(value: proto::Payload) -> Result<Self, Self::Error> {
+        let payload = match value {
             proto::signer_message::Payload::SignerDepositDecision(inner) => {
                 Payload::SignerDepositDecision(inner.try_into()?)
             }
@@ -1331,20 +1498,23 @@ impl TryFrom<proto::SignerMessage> for SignerMessage {
             proto::signer_message::Payload::SweepTransactionInfo(inner) => {
                 Payload::SweepTransactionInfo(inner.try_into()?)
             }
+            proto::signer_message::Payload::BitcoinPreSignRequest(inner) => {
+                Payload::BitcoinPreSignRequest(inner.try_into()?)
+            }
+            proto::signer_message::Payload::BitcoinPreSignAck(inner) => {
+                Payload::BitcoinPreSignAck(inner.into())
+            }
         };
-        Ok(SignerMessage {
-            bitcoin_chain_tip: value.bitcoin_chain_tip.required()?.try_into()?,
-            payload,
-        })
+        Ok(payload)
     }
 }
 
 impl From<Signed<SignerMessage>> for proto::Signed {
     fn from(value: Signed<SignerMessage>) -> Self {
         proto::Signed {
-            signer_pub_key: Some(value.signer_pub_key.into()),
-            signature: value.signature,
-            inner: Some(proto::signed::Inner::SignerMessage(value.inner.into())),
+            signature: Some(value.signature.into()),
+            signer_public_key: Some(value.signer_public_key.into()),
+            signer_message: Some(value.inner.into()),
         }
     }
 }
@@ -1352,23 +1522,21 @@ impl From<Signed<SignerMessage>> for proto::Signed {
 impl TryFrom<proto::Signed> for Signed<SignerMessage> {
     type Error = Error;
     fn try_from(value: proto::Signed) -> Result<Self, Self::Error> {
-        let inner: SignerMessage = match value.inner.required()? {
-            proto::signed::Inner::SignerMessage(inner) => inner.try_into()?,
-        };
+        let inner: SignerMessage = value.signer_message.required()?.try_into()?;
         Ok(Signed {
             inner,
-            signer_pub_key: value.signer_pub_key.required()?.try_into()?,
-            signature: value.signature,
+            signature: value.signature.required()?.try_into()?,
+            signer_public_key: value.signer_public_key.required()?.try_into()?,
         })
     }
 }
 
 impl From<Point> for proto::Point {
     fn from(value: Point) -> Self {
-        let x_coordinate = value.x().to_bytes();
+        let [parity, x_coordinate @ ..] = value.compress().data;
         proto::Point {
             x_coordinate: Some(proto::Uint256::from(x_coordinate)),
-            parity_is_odd: !value.has_even_y(),
+            parity_is_odd: parity == 3, // SECP256K1_TAG_PUBKEY_ODD
         }
     }
 }
@@ -1632,6 +1800,49 @@ impl TryFrom<proto::DkgPublicShares> for BTreeMap<u32, DkgPublicShares> {
     }
 }
 
+impl codec::ProtoSerializable for SignerMessage {
+    type Message = proto::SignerMessage;
+
+    fn type_tag(&self) -> &'static str {
+        match &self.payload {
+            Payload::SignerDepositDecision(_) => "SBTC_SIGNER_DEPOSIT_DECISION",
+            Payload::SignerWithdrawalDecision(_) => "SBTC_SIGNER_WITHDRAWAL_DECISION",
+            Payload::StacksTransactionSignRequest(_) => "SBTC_STACKS_TRANSACTION_SIGN_REQUEST",
+            Payload::StacksTransactionSignature(_) => "SBTC_STACKS_TRANSACTION_SIGNATURE",
+            Payload::BitcoinTransactionSignRequest(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_REQUEST",
+            Payload::BitcoinTransactionSignAck(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_ACK",
+            Payload::WstsMessage(_) => "SBTC_WSTS_MESSAGE",
+            Payload::SweepTransactionInfo(_) => "SBTC_SWEEP_TRANSACTION_INFO",
+            Payload::BitcoinPreSignRequest(_) => "SBTC_BITCOIN_PRE_SIGN_REQUEST",
+            Payload::BitcoinPreSignAck(_) => "SBTC_BITCOIN_PRE_SIGN_ACK",
+        }
+    }
+}
+
+impl codec::ProtoSerializable for Signed<SignerMessage> {
+    type Message = proto::Signed;
+
+    fn type_tag(&self) -> &'static str {
+        self.inner.type_tag()
+    }
+}
+
+impl codec::ProtoSerializable for SignerState {
+    type Message = proto::SignerState;
+
+    fn type_tag(&self) -> &'static str {
+        "SBTC_SIGNER_STATE"
+    }
+}
+
+impl codec::ProtoSerializable for BTreeMap<u32, DkgPublicShares> {
+    type Message = proto::DkgPublicShares;
+
+    fn type_tag(&self) -> &'static str {
+        "SBTC_DKG_PUBLIC_SHARES"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::keys::PrivateKey;
@@ -1664,6 +1875,14 @@ mod tests {
             let private_key = PrivateKey::new(rng);
             let msg = secp256k1::Message::from_digest([0; 32]);
             private_key.sign_ecdsa_recoverable(&msg)
+        }
+    }
+
+    impl Dummy<Unit> for secp256k1::ecdsa::Signature {
+        fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+            let private_key = PrivateKey::new(rng);
+            let msg = secp256k1::Message::from_digest([0; 32]);
+            private_key.sign_ecdsa(&msg)
         }
     }
 
@@ -2028,6 +2247,7 @@ mod tests {
     #[test_case(PhantomData::<(RejectWithdrawalV1, proto::RejectWithdrawal)>; "RejectWithdrawal")]
     #[test_case(PhantomData::<(RotateKeysV1, proto::RotateKeys)>; "RotateKeys")]
     #[test_case(PhantomData::<(SmartContract, proto::SmartContract)>; "SmartContract")]
+    #[test_case(PhantomData::<(Payload, proto::Payload)>; "Payload")]
     #[test_case(PhantomData::<(StacksTransactionSignRequest, proto::StacksTransactionSignRequest)>; "StacksTransactionSignRequest")]
     #[test_case(PhantomData::<(BitcoinTransactionSignRequest, proto::BitcoinTransactionSignRequest)>; "BitcoinTransactionSignRequest")]
     #[test_case(PhantomData::<(WstsMessage, proto::WstsMessage)>; "WstsMessage")]
@@ -2036,6 +2256,11 @@ mod tests {
     #[test_case(PhantomData::<(SweepTransactionInfo, proto::SweepTransactionInfo)>; "SweepTransactionInfo")]
     #[test_case(PhantomData::<(SignerMessage, proto::SignerMessage)>; "SignerMessage")]
     #[test_case(PhantomData::<(Signed<SignerMessage>, proto::Signed)>; "Signed")]
+    #[test_case(PhantomData::<(QualifiedRequestId, proto::QualifiedRequestId)>; "QualifiedRequestId")]
+    #[test_case(PhantomData::<(TxRequestIds, proto::TxRequestIds)>; "TxRequestIds")]
+    #[test_case(PhantomData::<(Fees, proto::Fees)>; "Fees")]
+    #[test_case(PhantomData::<(BitcoinPreSignRequest, proto::BitcoinPreSignRequest)>; "BitcoinPreSignRequest")]
+    #[test_case(PhantomData::<(BitcoinPreSignAck, proto::BitcoinPreSignAck)>; "BitcoinPreSignAck")]
     fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
     where
         // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
@@ -2065,6 +2290,7 @@ mod tests {
     /// except we cannot implement Dummy<Faker> on these types.
     #[test_case(PhantomData::<(bitcoin::OutPoint, proto::OutPoint)>; "OutPoint")]
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
+    #[test_case(PhantomData::<(secp256k1::ecdsa::Signature, proto::EcdsaSignature)>; "EcdsaSignature")]
     #[test_case(PhantomData::<(StacksAddress, proto::StacksAddress)>; "StacksAddress")]
     #[test_case(PhantomData::<(Point, proto::Point)>; "Point")]
     #[test_case(PhantomData::<(Scalar, proto::Scalar)>; "Scalar")]
@@ -2153,5 +2379,20 @@ mod tests {
 
         let original_from_proto = T::try_from(proto_original).unwrap();
         assert_eq!(wrapper(original), wrapper(original_from_proto));
+    }
+
+    #[test]
+    fn convert_protobuf_point() {
+        let number = [
+            143, 155, 8, 85, 229, 228, 1, 179, 39, 101, 245, 99, 113, 81, 250, 4, 15, 22, 126, 74,
+            137, 110, 198, 25, 250, 142, 202, 51, 0, 241, 238, 168,
+        ];
+        let scalar = p256k1::scalar::Scalar::from(number);
+
+        let original = Point::from(scalar);
+        let proto_original = proto::Point::from(original.clone());
+        let original_from_proto = Point::try_from(proto_original).unwrap();
+
+        assert_eq!(original, original_from_proto);
     }
 }

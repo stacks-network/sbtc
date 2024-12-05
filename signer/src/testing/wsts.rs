@@ -171,8 +171,7 @@ impl Coordinator {
 
         let msg = payload
             .to_message(bitcoin_chain_tip)
-            .sign_ecdsa(&self.private_key)
-            .expect("failed to sign message");
+            .sign_ecdsa(&self.private_key);
 
         self.network
             .broadcast(msg)
@@ -411,8 +410,7 @@ trait WstsEntity {
 
         let msg = payload
             .to_message(bitcoin_chain_tip)
-            .sign_ecdsa(self.private_key())
-            .expect("failed to sign message");
+            .sign_ecdsa(self.private_key());
 
         self.network()
             .broadcast(msg)

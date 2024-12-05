@@ -15,6 +15,7 @@ use signer::bitcoin::validation::BitcoinTxValidationData;
 use signer::bitcoin::validation::InputValidationResult;
 use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
+use signer::context::SbtcLimits;
 use signer::message::BitcoinPreSignRequest;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::DbRead as _;
@@ -126,7 +127,7 @@ async fn one_tx_per_request_set() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -228,7 +229,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -345,7 +346,7 @@ async fn one_withdrawal_errors_validation() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: setup.withdrawal_ids(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -373,6 +374,8 @@ async fn cannot_sign_deposit_is_ok() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
+    let signers = TestSignerSet::new(&mut rng);
+
     let ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
@@ -380,7 +383,6 @@ async fn cannot_sign_deposit_is_ok() {
         .with_mocked_emily_client()
         .build();
 
-    let signers = TestSignerSet::new(&mut rng);
     let amounts = [
         DepositAmounts {
             amount: 700_000,
@@ -437,7 +439,7 @@ async fn cannot_sign_deposit_is_ok() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -513,6 +515,7 @@ async fn cannot_sign_deposit_is_ok() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
+        sbtc_limits: SbtcLimits::default(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
     assert_eq!(txs.len(), 1);
@@ -570,7 +573,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
 
     let request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,
@@ -642,6 +645,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
+        sbtc_limits: SbtcLimits::default(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
     assert_eq!(txs.len(), 1);
@@ -707,7 +711,7 @@ async fn outcome_is_independent_of_input_order() {
 
     let mut request = BitcoinPreSignRequest {
         request_package: vec![TxRequestIds {
-            deposits: setup.deposit_outpoint_messages(),
+            deposits: setup.deposit_outpoints(),
             withdrawals: Vec::new(),
         }],
         fee_rate: TEST_FEE_RATE,

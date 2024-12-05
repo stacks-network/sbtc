@@ -6,6 +6,7 @@
 //! For more details, see the [`TxCoordinatorEventLoop`] documentation.
 
 use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
@@ -39,7 +40,6 @@ use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::SweepTransactionInfo;
 use crate::network;
-use crate::signature::SighashDigest;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::GetNakamotoStartHeight;
@@ -152,6 +152,9 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
     pub signing_round_max_duration: Duration,
+    /// The maximum duration of a pre-sign request before the coordinator will
+    /// time out and start sending the requests to the signers.
+    pub bitcoin_presign_request_max_duration: Duration,
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
     pub dkg_max_duration: Duration,
@@ -161,8 +164,6 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// 3. If we are not in Nakamoto 3 or later, then the coordinator does
     /// not do any work.
     pub is_epoch3: bool,
-    /// TODO: Remove this, will be fixed in #956
-    pub pre_sign_pause: Option<Duration>,
 }
 
 /// This function defines which messages this event loop is interested
@@ -240,7 +241,7 @@ where
         if self.is_epoch3 {
             return Ok(true);
         }
-        tracing::debug!("checked for whether we are in Epoch 3 or later");
+        tracing::debug!("checked for whether we are in epoch 3 or later");
         let pox_info = self.context.get_stacks_client().get_pox_info().await?;
 
         let Some(nakamoto_start_height) = pox_info.nakamoto_start_height() else {
@@ -250,7 +251,7 @@ where
         let is_epoch3 = pox_info.current_burnchain_block_height > nakamoto_start_height;
         if is_epoch3 {
             self.is_epoch3 = is_epoch3;
-            tracing::debug!("we are in Epoch 3 or later; time to do work");
+            tracing::debug!("we are in epoch 3 or later; time to do work");
         }
         Ok(is_epoch3)
     }
@@ -266,7 +267,7 @@ where
 
         let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
         if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("sleeping before processing new Bitcoin block.");
+            tracing::debug!("sleeping before processing new bitcoin block");
             tokio::time::sleep(bitcoin_processing_delay).await;
         }
 
@@ -323,12 +324,15 @@ where
         self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip, &aggregate_key)
             .await?;
 
-        self.construct_and_sign_bitcoin_sbtc_transactions(
+        let bitcoin_processing_fut = self.construct_and_sign_bitcoin_sbtc_transactions(
             &bitcoin_chain_tip,
             &aggregate_key,
             &signer_public_keys,
-        )
-        .await?;
+        );
+
+        if let Err(error) = bitcoin_processing_fut.await {
+            tracing::error!(%error, "failed to construct and sign bitcoin transactions");
+        }
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
             &bitcoin_chain_tip,
@@ -370,7 +374,7 @@ where
 
         // If the latest DKG aggregate key matches on-chain data, nothing to do here
         if Some(last_dkg.aggregate_key) == current_aggregate_key {
-            tracing::debug!("stacks-core is up to date with the current aggregate key");
+            tracing::debug!("stacks node is up to date with the current aggregate key");
             return Ok(());
         }
 
@@ -388,6 +392,95 @@ where
         )
         .await
         .map(|_| ())
+    }
+
+    /// Constructs a BitcoinPreSignRequest from the given transaction package and
+    /// sends it to the signers. Waits for acknowledgments from the signers until
+    /// the threshold is met or a timeout occurs.
+    /// If the signal stream closes unexpectedly, triggers a shutdown.
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_send_bitcoin_presign_request(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        signer_btc_state: &utxo::SignerBtcState,
+        transaction_package: &[utxo::UnsignedTransaction<'_>],
+    ) -> Result<(), Error> {
+        // Create the BitcoinPreSignRequest from the transaction package
+        let sbtc_requests = BitcoinPreSignRequest {
+            request_package: transaction_package
+                .iter()
+                .map(|tx| (&tx.requests).into())
+                .collect(),
+            fee_rate: signer_btc_state.fee_rate,
+            last_fees: signer_btc_state.last_fees.map(Into::into),
+        };
+
+        let presign_ack_filter = |event: &SignerSignal| {
+            matches!(
+                event,
+                SignerSignal::Event(SignerEvent::TxSigner(TxSignerEvent::MessageGenerated(_)))
+                    | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+                    | SignerSignal::Command(SignerCommand::Shutdown)
+            )
+        };
+
+        // Create a signal stream with the defined filter
+        let signal_stream = self.context.as_signal_stream(presign_ack_filter);
+
+        // Send the presign request message
+        self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
+
+        tokio::pin!(signal_stream);
+        let future = async {
+            let target_tip = *bitcoin_chain_tip;
+            let mut acknowledged_signers = HashSet::new();
+
+            while acknowledged_signers.len() < self.threshold as usize {
+                match signal_stream.next().await {
+                    None => {
+                        tracing::warn!("signer signal stream closed unexpectedly, shutting down");
+                        return Err(Error::SignerShutdown);
+                    }
+                    Some(SignerSignal::Command(SignerCommand::Shutdown)) => {
+                        tracing::info!("signer shutdown signal received, shutting down");
+                        return Err(Error::SignerShutdown);
+                    }
+                    Some(event) => match Self::to_signed_message(event).await {
+                        Some(Signed {
+                            inner:
+                                SignerMessage {
+                                    bitcoin_chain_tip,
+                                    payload: Payload::BitcoinPreSignAck(_),
+                                    ..
+                                },
+                            signer_public_key,
+                            ..
+                        }) => {
+                            if bitcoin_chain_tip == target_tip {
+                                acknowledged_signers.insert(signer_public_key);
+                            } else {
+                                tracing::warn!(
+                                    signer = %signer_public_key,
+                                    received_chain_tip = %bitcoin_chain_tip,
+                                    "bitcoin presign ack observed for a different chain tip"
+                                );
+                            }
+                        }
+                        // We can ignore other types of payload
+                        _ => continue,
+                    },
+                };
+            }
+
+            Ok(())
+        };
+
+        // Wait for the future to complete with a timeout
+        tokio::time::timeout(self.bitcoin_presign_request_max_duration, future)
+            .await
+            .map_err(|_| {
+                Error::CoordinatorTimeout(self.bitcoin_presign_request_max_duration.as_secs())
+            })?
     }
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
@@ -428,25 +521,13 @@ where
         );
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
-        // Get the requests from the transaction package because they have been split into
-        // multiple transactions.
-        let sbtc_requests = BitcoinPreSignRequest {
-            request_package: transaction_package
-                .iter()
-                .map(|tx| (&tx.requests).into())
-                .collect(),
-            fee_rate: pending_requests.signer_state.fee_rate,
-            last_fees: pending_requests.signer_state.last_fees.map(Into::into),
-        };
 
-        // Share the list of requests with the signers.
-        self.send_message(sbtc_requests, bitcoin_chain_tip).await?;
-
-        if let Some(pause) = self.pre_sign_pause {
-            // Wait to reduce chance that the other signers will receive the subsequent
-            // messages before the BitcoinPreSignRequest one.
-            tokio::time::sleep(pause).await;
-        }
+        self.construct_and_send_bitcoin_presign_request(
+            bitcoin_chain_tip,
+            &pending_requests.signer_state,
+            &transaction_package,
+        )
+        .await?;
 
         for mut transaction in transaction_package {
             self.sign_and_broadcast(
@@ -604,7 +685,6 @@ where
             contract_tx: contract_call.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
-            digest: tx.digest(),
             txid: tx.txid(),
         };
 
@@ -690,7 +770,6 @@ where
             contract_tx: contract_call.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
-            digest: tx.digest(),
             txid: tx.txid(),
         };
 
@@ -732,12 +811,10 @@ where
                     self.context.get_termination_handle().signal_shutdown();
                     return Err(Error::SignerShutdown);
                 };
-                // TODO: We need to verify these messages, but it is best
-                // to do that at the source when we receive the message.
 
                 if &msg.bitcoin_chain_tip != chain_tip {
                     tracing::warn!(
-                        sender = %msg.signer_pub_key,
+                        sender = %msg.signer_public_key,
                         "concurrent signing round message observed"
                     );
                     continue;
@@ -752,7 +829,7 @@ where
                     tracing::warn!(
                         %txid,
                         %error,
-                        offending_public_key = %msg.signer_pub_key,
+                        offending_public_key = %msg.signer_public_key,
                         "got an invalid signature"
                     );
                 }
@@ -1003,12 +1080,7 @@ where
         // all bad, so we trigger a shutdown.
         while let Some(msg) = signal_stream.next().await {
             if &msg.bitcoin_chain_tip != bitcoin_chain_tip {
-                tracing::warn!(sender = %msg.signer_pub_key, "concurrent WSTS activity observed");
-                continue;
-            }
-
-            if !msg.verify() {
-                tracing::warn!(?msg, "invalid signature");
+                tracing::warn!(sender = %msg.signer_public_key, "concurrent WSTS activity observed");
                 continue;
             }
 
@@ -1021,7 +1093,7 @@ where
                 sig: Vec::new(),
             };
 
-            let msg_public_key = msg.signer_pub_key;
+            let msg_public_key = msg.signer_public_key;
 
             let sender_is_coordinator =
                 given_key_is_coordinator(msg_public_key, bitcoin_chain_tip, &signer_set);
@@ -1181,13 +1253,13 @@ where
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip_all)]
-    async fn get_pending_requests(
+    pub async fn get_pending_requests(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
-        tracing::debug!("Fetching pending deposit and withdrawal requests");
+        tracing::debug!("fetching pending deposit and withdrawal requests");
         let context_window = self.context_window;
         let threshold = self.threshold;
 
@@ -1195,12 +1267,6 @@ where
             .context
             .get_storage()
             .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
-            .await?;
-
-        let pending_withdraw_requests = self
-            .context
-            .get_storage()
-            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
@@ -1216,18 +1282,7 @@ where
             deposits.push(deposit);
         }
 
-        let mut withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
-
-        for req in pending_withdraw_requests {
-            let votes = self
-                .context
-                .get_storage()
-                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
-                .await?;
-
-            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
-            withdrawals.push(withdrawal);
-        }
+        let withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
 
         let num_signers = signer_public_keys
             .len()
@@ -1237,13 +1292,13 @@ where
         if deposits.is_empty() && withdrawals.is_empty() {
             return Ok(None);
         }
-
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
             signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
             accept_threshold: threshold,
             num_signers,
+            sbtc_limits: self.context.state().get_current_limits(),
         }))
     }
 
@@ -1314,7 +1369,7 @@ where
         let msg = msg
             .into()
             .to_message(*bitcoin_chain_tip)
-            .sign_ecdsa(&self.private_key)?;
+            .sign_ecdsa(&self.private_key);
 
         self.network.broadcast(msg.clone()).await?;
         self.context
@@ -1341,7 +1396,7 @@ where
         }
 
         // The contract is not deployed yet, so we can proceed
-        tracing::info!("Contract not deployed yet, proceeding with deployment");
+        tracing::info!("contract not deployed yet, proceeding with deployment");
 
         let sign_request_fut = self.construct_deploy_contracts_stacks_sign_request(
             contract_deploy,
@@ -1394,7 +1449,6 @@ where
             contract_tx: contract_deploy.into(),
             nonce: tx.get_origin_nonce(),
             tx_fee: tx.get_tx_fee(),
-            digest: tx.digest(),
             txid: tx.txid(),
         };
 
@@ -1702,5 +1756,10 @@ mod tests {
     #[tokio::test]
     async fn should_get_signer_utxo_donations() {
         test_environment().assert_get_signer_utxo_donations().await;
+    }
+
+    #[tokio::test]
+    async fn should_ignore_withdrawals() {
+        test_environment().assert_ignore_withdrawals().await;
     }
 }

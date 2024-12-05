@@ -35,6 +35,15 @@ message RecoverableSignature {
   int32 recovery_id = 3;
 }
 
+// This is an ECDSA signature representation in compact form. It is nonstandard and
+// defined by the libsecp256k1 library.
+message EcdsaSignature {
+  // These are the first 256-bits of the 64 byte signature part, so bits 0-255.
+  Uint256 lower_bits = 1;
+  // These are the last 256-bits of the 64 byte signature part, so bits 256-511.
+  Uint256 upper_bits = 2;
+}
+
 // Scalar maps to a nonnegative number less than the order of the secp256k1
 // curve.
 message Scalar {

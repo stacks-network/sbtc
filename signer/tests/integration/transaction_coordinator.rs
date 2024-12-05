@@ -9,6 +9,7 @@ use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::AddressType;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Transaction;
 use bitcoincore_rpc::RpcApi as _;
@@ -480,6 +481,11 @@ async fn process_complete_deposit() {
                 .expect_estimate_fees()
                 .once()
                 .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
+
+            client
+                .expect_get_sbtc_total_supply()
+                .once()
+                .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
         })
         .await;
 
@@ -550,10 +556,10 @@ async fn process_complete_deposit() {
         context_window,
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
+        bitcoin_presign_request_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: true,
         is_epoch3: true,
-        pre_sign_pause: Some(Duration::from_secs(1)),
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
@@ -717,10 +723,10 @@ async fn deploy_smart_contracts_coordinator<F>(
         context_window,
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
+        bitcoin_presign_request_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: false,
         is_epoch3: true,
-        pre_sign_pause: Some(Duration::from_secs(1)),
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
@@ -812,11 +818,11 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         context_window: 10000,
         private_key: ctx.config().signer.private_key,
         signing_round_max_duration: Duration::from_secs(10),
+        bitcoin_presign_request_max_duration: Duration::from_secs(10),
         threshold: 2,
         dkg_max_duration: Duration::from_secs(10),
         sbtc_contracts_deployed: true, // Skip contract deployment
         is_epoch3: true,
-        pre_sign_pause: Some(Duration::from_secs(1)),
     };
 
     // We need stacks blocks for the rotate-keys transactions.
@@ -1024,11 +1030,11 @@ async fn run_dkg_from_scratch() {
             context_window: 10000,
             private_key: kp.secret_key().into(),
             signing_round_max_duration: Duration::from_secs(10),
+            bitcoin_presign_request_max_duration: Duration::from_secs(10),
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
             sbtc_contracts_deployed: true, // Skip contract deployment
             is_epoch3: true,
-            pre_sign_pause: Some(Duration::from_secs(1)),
         });
 
     let tx_signer_processes = signers
@@ -1313,6 +1319,11 @@ async fn sign_bitcoin_transaction() {
                     Ok(SubmitTxResponse::Acceptance(txid))
                 })
             });
+            // The coordinator will get the total supply of sBTC to
+            // determine the amount of mintable sBTC.
+            client
+                .expect_get_sbtc_total_supply()
+                .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
         })
         .await;
     }
@@ -1333,11 +1344,11 @@ async fn sign_bitcoin_transaction() {
             context_window: 10000,
             private_key: kp.secret_key().into(),
             signing_round_max_duration: Duration::from_secs(10),
+            bitcoin_presign_request_max_duration: Duration::from_secs(10),
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
             sbtc_contracts_deployed: true,
             is_epoch3: true,
-            pre_sign_pause: Some(Duration::from_secs(1)),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1732,11 +1743,11 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             context_window: 10000,
             private_key: kp.secret_key().into(),
             signing_round_max_duration: Duration::from_secs(10),
+            bitcoin_presign_request_max_duration: Duration::from_secs(10),
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
             sbtc_contracts_deployed: true,
             is_epoch3: true,
-            pre_sign_pause: Some(Duration::from_secs(1)),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1930,10 +1941,10 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
         threshold: 5,
         context_window: 5,
         signing_round_max_duration: std::time::Duration::from_secs(5),
+        bitcoin_presign_request_max_duration: Duration::from_secs(5),
         dkg_max_duration: std::time::Duration::from_secs(5),
         sbtc_contracts_deployed: false,
         is_epoch3: true,
-        pre_sign_pause: Some(Duration::from_secs(1)),
     };
 
     let aggregate_key = &PublicKey::from_private_key(&PrivateKey::new(&mut rng));
@@ -2067,10 +2078,10 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
         threshold: 5,
         context_window: 5,
         signing_round_max_duration: std::time::Duration::from_secs(5),
+        bitcoin_presign_request_max_duration: Duration::from_secs(5),
         dkg_max_duration: std::time::Duration::from_secs(5),
         sbtc_contracts_deployed: false,
         is_epoch3: true,
-        pre_sign_pause: Some(Duration::from_secs(1)),
     };
 
     let aggregate_key = &PublicKey::from_private_key(&PrivateKey::new(&mut rng));

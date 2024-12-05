@@ -241,8 +241,7 @@ where
             .broadcast(
                 transaction_sign_request_payload
                     .to_message(bitcoin_chain_tip)
-                    .sign_ecdsa(&coordinator_private_key)
-                    .expect("failed to sign"),
+                    .sign_ecdsa(&coordinator_private_key),
             )
             .await
             .expect("broadcast failed");
@@ -252,7 +251,8 @@ where
             .await
             .expect("failed to receive message");
 
-        assert!(msg.verify());
+        let coordinator_public_key = PublicKey::from_private_key(&coordinator_private_key);
+        assert!(msg.verify(coordinator_public_key));
 
         assert!(matches!(
             msg.payload,

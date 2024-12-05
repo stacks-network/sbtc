@@ -90,8 +90,8 @@ pub struct DkgBegin {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgPublicShares {
-    #[prost(map = "uint32, message", tag = "1")]
-    pub shares: ::std::collections::HashMap<u32, SignerDkgPublicShares>,
+    #[prost(btree_map = "uint32, message", tag = "1")]
+    pub shares: ::prost::alloc::collections::BTreeMap<u32, SignerDkgPublicShares>,
 }
 /// DKG public shares message from a signer to all signers and coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L137-L146>>
@@ -415,8 +415,8 @@ pub struct BadState {}
 pub struct MissingPublicShares {
     /// In WSTS this is a HashSet<u32>, so these should be unique, duplicates
     /// will be ignored at the application level.
-    #[prost(map = "uint32, message", tag = "1")]
-    pub signer_ids: ::std::collections::HashMap<u32, super::SetValueZst>,
+    #[prost(btree_map = "uint32, message", tag = "1")]
+    pub signer_ids: ::prost::alloc::collections::BTreeMap<u32, super::SetValueZst>,
 }
 /// DKG public shares were bad from these signer_ids.
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -424,8 +424,8 @@ pub struct MissingPublicShares {
 pub struct BadPublicShares {
     /// In WSTS this is a HashSet<u32>, so these should be unique, duplicates
     /// will be ignored at the application level.
-    #[prost(map = "uint32, message", tag = "1")]
-    pub signer_ids: ::std::collections::HashMap<u32, super::SetValueZst>,
+    #[prost(btree_map = "uint32, message", tag = "1")]
+    pub signer_ids: ::prost::alloc::collections::BTreeMap<u32, super::SetValueZst>,
 }
 /// DKG private shares were missing from these signer_ids.
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -433,15 +433,15 @@ pub struct BadPublicShares {
 pub struct MissingPrivateShares {
     /// In WSTS this is a HashSet<u32>, so these should be unique, duplicates
     /// will be ignored at the application level.
-    #[prost(map = "uint32, message", tag = "1")]
-    pub signer_ids: ::std::collections::HashMap<u32, super::SetValueZst>,
+    #[prost(btree_map = "uint32, message", tag = "1")]
+    pub signer_ids: ::prost::alloc::collections::BTreeMap<u32, super::SetValueZst>,
 }
 /// DKG private shares were bad from these signer_ids.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BadPrivateShares {
-    #[prost(map = "uint32, message", tag = "1")]
-    pub shares: ::std::collections::HashMap<u32, BadPrivateShare>,
+    #[prost(btree_map = "uint32, message", tag = "1")]
+    pub shares: ::prost::alloc::collections::BTreeMap<u32, BadPrivateShare>,
 }
 /// A bad private share
 #[allow(clippy::derive_partial_eq_without_eq)]

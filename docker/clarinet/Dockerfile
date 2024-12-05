@@ -1,4 +1,4 @@
-FROM rust:bookworm as build
+FROM rust:bookworm AS build
 # Taken from the clarinet repository here:
 # https://github.com/hirosystems/clarinet/blob/0cce4d8302a786114fd6efaad31aeab81e27f071/dockerfiles/components/clarinet-dev.dockerfile#L1
 

@@ -51,7 +51,7 @@ impl From<wsts::taproot::SchnorrProof> for TaprootSignature {
         // a 64 byte array.
         let signature = secp256k1::schnorr::Signature::from_slice(&sig.to_bytes())
             .expect("We know to_bytes returns 64 bytes");
-        let sighash_type = bitcoin::TapSighashType::Default;
+        let sighash_type = bitcoin::TapSighashType::All;
         Self(bitcoin::taproot::Signature { signature, sighash_type })
     }
 }

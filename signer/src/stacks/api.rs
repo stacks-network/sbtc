@@ -564,7 +564,12 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
-        tracing::debug!(%contract_principal, %contract_name, %var_name, "Fetching contract data variable");
+        tracing::debug!(
+            %contract_principal,
+            %contract_name,
+            %var_name,
+            "fetching contract data variable"
+        );
 
         let response = self
             .client
@@ -596,7 +601,7 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
-        tracing::debug!(%address, "Fetching the latest account information");
+        tracing::debug!(%address, "fetching the latest account information");
 
         let response = self
             .client
@@ -666,7 +671,7 @@ impl StacksClient {
             .join(path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
 
-        tracing::debug!(txid = %tx.txid(), "Submitting transaction to the stacks node");
+        tracing::debug!(txid = %tx.txid(), "submitting transaction to the stacks node");
         let body = tx.serialize_to_vec();
 
         let response: reqwest::Response = self
@@ -719,7 +724,7 @@ impl StacksClient {
         };
         let body = serde_json::to_string(&request_body).map_err(Error::JsonSerialize)?;
 
-        tracing::debug!("Making request to the stacks-node for a tx fee estimate");
+        tracing::debug!("making request to the stacks node for a tx fee estimate");
         let response: reqwest::Response = self
             .client
             .post(url)
@@ -756,7 +761,7 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
-        tracing::debug!("Making request to the stacks node for the raw nakamoto block");
+        tracing::debug!("making request to the stacks node for the raw nakamoto block");
 
         let response = self
             .client
@@ -788,7 +793,7 @@ impl StacksClient {
     /// block then a Result::Err is returned.
     #[tracing::instrument(skip(self))]
     async fn get_tenure(&self, block_id: StacksBlockId) -> Result<TenureBlocks, Error> {
-        tracing::debug!("Making initial request for Nakamoto blocks within the tenure");
+        tracing::debug!("making initial request for nakamoto blocks within the tenure");
         let mut tenure_blocks = self.get_tenure_raw(block_id).await?;
         let mut prev_last_block_id = block_id;
 
@@ -806,7 +811,7 @@ impl StacksClient {
             }
             prev_last_block_id = last_block_id;
 
-            tracing::debug!(%last_block_id, "Fetching more Nakamoto blocks within the tenure");
+            tracing::debug!(%last_block_id, "fetching more nakamoto blocks within the tenure");
             let blocks = self.get_tenure_raw(last_block_id).await?;
             // The first block in the GET /v3/tenures/<block-id> response
             // is always the block related to the given <block-id>. But we
@@ -848,7 +853,7 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
-        tracing::debug!("Making request to the stacks node for the raw nakamoto block");
+        tracing::debug!("making request to the stacks node for the raw nakamoto block");
 
         let response = self
             .client
@@ -894,7 +899,7 @@ impl StacksClient {
             .join(path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
 
-        tracing::debug!("Making request to the stacks node for the current tenure info");
+        tracing::debug!("making request to the stacks node for the current tenure info");
         let response = self
             .client
             .get(url.clone())
@@ -926,7 +931,7 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
-        tracing::debug!("Making request to the stacks node for sortition info");
+        tracing::debug!("making request to the stacks node for sortition info");
         let response = self
             .client
             .get(url.clone())
@@ -960,7 +965,7 @@ impl StacksClient {
             .join(path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
 
-        tracing::debug!("Making request to the stacks node for the current PoX info");
+        tracing::debug!("making request to the stacks node for the current PoX info");
         let response = self
             .client
             .get(url.clone())
@@ -986,7 +991,7 @@ impl StacksClient {
             .join(path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Borrowed(path)))?;
 
-        tracing::debug!("Making request to the stacks node for the current node info");
+        tracing::debug!("making request to the stacks node for the current node info");
         let response = self
             .client
             .get(url.clone())
@@ -1025,10 +1030,10 @@ where
         // We won't get anymore Nakamoto blocks before this point, so
         // time to stop.
         if tenure.anchor_block_height <= nakamoto_start_height {
-            tracing::info!(
+            tracing::debug!(
                 %nakamoto_start_height,
                 last_chain_length = %tenure.anchor_block_height,
-                "Stopping, since we have fetched all Nakamoto blocks"
+                "all Nakamoto blocks fetched; stopping"
             );
             break;
         }
@@ -1039,7 +1044,7 @@ where
         };
         // We've seen this parent already, so time to stop.
         if db.stacks_block_exists(block.header.parent_block_id).await? {
-            tracing::info!("Parent block known in the database");
+            tracing::debug!("parent block known in the database");
             break;
         }
         // There are more blocks to fetch, so let's get them.

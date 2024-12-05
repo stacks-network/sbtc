@@ -22,9 +22,9 @@ use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
 use crate::network;
-use crate::signature::SighashDigest as _;
 use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
@@ -195,13 +195,8 @@ where
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_signer_message(&mut self, msg: &network::Msg) -> Result<(), Error> {
-        if !msg.verify() {
-            tracing::warn!("unable to verify message");
-            return Err(Error::InvalidSignature);
-        }
-
         let chain_tip_report = self
-            .inspect_msg_chain_tip(msg.signer_pub_key, &msg.bitcoin_chain_tip)
+            .inspect_msg_chain_tip(msg.signer_public_key, &msg.bitcoin_chain_tip)
             .await?;
         let MsgChainTipReport {
             sender_is_coordinator,
@@ -214,7 +209,7 @@ where
         tracing::trace!(
             %sender_is_coordinator,
             %chain_tip_status,
-            sender = %msg.signer_pub_key,
+            sender = %msg.signer_public_key,
             payload = %msg.inner.payload,
             "handling message from signer"
         );
@@ -228,7 +223,7 @@ where
                 self.handle_stacks_transaction_sign_request(
                     request,
                     &msg.bitcoin_chain_tip,
-                    &msg.signer_pub_key,
+                    &msg.signer_public_key,
                 )
                 .await?;
             }
@@ -247,7 +242,7 @@ where
                 self.handle_wsts_message(
                     wsts_msg,
                     &msg.bitcoin_chain_tip,
-                    msg.signer_pub_key,
+                    msg.signer_public_key,
                     &chain_tip_report,
                 )
                 .await?;
@@ -383,6 +378,8 @@ where
         db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
             .await?;
 
+        self.send_message(BitcoinPreSignAck, bitcoin_chain_tip)
+            .await?;
         Ok(())
     }
 
@@ -461,9 +458,6 @@ where
         let multi_sig = MultisigTx::new_tx(&request.contract_tx, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
-        // TODO(517): Remove the digest field from the request object and
-        // serialize the entire message.
-        debug_assert_eq!(multi_sig.tx().digest(), request.digest);
         debug_assert_eq!(txid, request.txid);
 
         let signature = crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
@@ -546,7 +540,7 @@ where
                 tracing::info!("handling DkgBegin");
 
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -573,7 +567,7 @@ where
             WstsNetMessage::DkgPrivateBegin(_) => {
                 tracing::info!("handling DkgPrivateBegin");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -625,7 +619,7 @@ where
             WstsNetMessage::DkgEndBegin(_) => {
                 tracing::info!("handling DkgEndBegin");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
@@ -642,7 +636,7 @@ where
             WstsNetMessage::NonceRequest(request) => {
                 tracing::info!("handling NonceRequest");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -670,7 +664,7 @@ where
             WstsNetMessage::SignatureShareRequest(request) => {
                 tracing::info!("handling SignatureShareRequest");
                 if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("Got coordinator message from wrong signer");
+                    tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
 
@@ -788,7 +782,7 @@ where
 
         let msg = payload
             .to_message(*bitcoin_chain_tip)
-            .sign_ecdsa(&self.signer_private_key)?;
+            .sign_ecdsa(&self.signer_private_key);
 
         self.network.broadcast(msg.clone()).await?;
         self.context

@@ -1,0 +1,11 @@
+changelog:
+  categories:
+    - title: Protocol Breaking Changes 🚨
+      labels:
+        - breaking-protocol
+    - title: Local Breaking Changes ⚠️
+      labels:
+        - breaking-local
+    - title: Other Changes
+      labels:
+        - "*"

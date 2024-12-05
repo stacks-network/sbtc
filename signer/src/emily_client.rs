@@ -2,6 +2,7 @@
 
 use std::str::FromStr;
 
+use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid;
@@ -9,6 +10,7 @@ use emily_client::apis::chainstate_api;
 use emily_client::apis::configuration::ApiKey;
 use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
+use emily_client::apis::limits_api;
 use emily_client::apis::withdrawal_api;
 use emily_client::apis::Error as EmilyError;
 use emily_client::apis::ResponseContent;
@@ -28,7 +30,7 @@ use url::Url;
 use crate::bitcoin::utxo::RequestRef;
 use crate::bitcoin::utxo::UnsignedTransaction;
 use crate::config::EmilyClientConfig;
-use crate::config::EmilyEndpointConfig;
+use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksBlock;
@@ -68,6 +70,10 @@ pub enum EmilyClientError {
     /// An error occurred while adding a chainstate entry
     #[error("error adding chainstate entry: {0}")]
     AddChainstateEntry(EmilyError<chainstate_api::SetChainstateError>),
+
+    /// An error occurred while getting limits
+    #[error("error getting limits: {0}")]
+    GetLimits(EmilyError<limits_api::GetLimitsError>),
 }
 
 /// Trait describing the interactions with Emily API.
@@ -117,6 +123,9 @@ pub trait EmilyInteract: Sync + Send {
         &self,
         chainstate_entry: Chainstate,
     ) -> impl std::future::Future<Output = Result<Chainstate, Error>> + Send;
+
+    /// Gets the current sBTC-cap limits from Emily.
+    fn get_limits(&self) -> impl std::future::Future<Output = Result<SbtcLimits, Error>> + Send;
 }
 
 /// Emily API client.
@@ -138,24 +147,15 @@ impl TryFrom<&Url> for EmilyClient {
     type Error = Error;
     /// Initialize a new Emily client from just a URL for testing scenarios.
     fn try_from(url: &Url) -> Result<Self, Self::Error> {
-        let emily_endpoint_config = EmilyEndpointConfig {
-            endpoint: url.clone(),
-            api_key: None,
+        let mut url = url.clone();
+        let api_key = if url.username().is_empty() {
+            None
+        } else {
+            Some(ApiKey {
+                prefix: None,
+                key: url.username().to_string(),
+            })
         };
-        Self::try_from(&emily_endpoint_config)
-    }
-}
-
-impl TryFrom<&EmilyEndpointConfig> for EmilyClient {
-    type Error = Error;
-
-    /// Attempt to create an Emily client from a URL. Note that for the Signer,
-    /// this should already have been validated by the configuration, but we do
-    /// the checks here anyway to keep them close to the implementation.
-    fn try_from(endpoint_config: &EmilyEndpointConfig) -> Result<Self, Self::Error> {
-        // Extract the info.
-        let url = endpoint_config.endpoint.clone();
-        let maybe_api_key = endpoint_config.api_key.clone();
 
         // Must be HTTP or HTTPS
         if !["http", "https"].contains(&url.scheme()) {
@@ -167,15 +167,16 @@ impl TryFrom<&EmilyEndpointConfig> for EmilyClient {
             return Err(EmilyClientError::InvalidUrlHostRequired(url.to_string()).into());
         }
 
+        // We don't really care if this fails, the failure modes are handled by
+        // the above checks. We just don't want the base_path below to contain
+        // the api key.
+        let _ = url.set_username("");
+
         let mut config = EmilyApiConfig::new();
         // Url::parse defaults `path` to `/` even if the parsed url was without the trailing `/`
         // causing the api calls to have two leading slashes in the path (getting a 404)
         config.base_path = url.to_string().trim_end_matches("/").to_string();
-
-        // Add the API key if present.
-        if let Some(api_key) = maybe_api_key {
-            config.api_key = Some(ApiKey { prefix: None, key: api_key });
-        }
+        config.api_key = api_key;
 
         Ok(Self { config })
     }
@@ -327,6 +328,28 @@ impl EmilyInteract for EmilyClient {
             .map_err(EmilyClientError::AddChainstateEntry)
             .map_err(Error::EmilyApi)
     }
+
+    async fn get_limits(&self) -> Result<SbtcLimits, Error> {
+        let limits = limits_api::get_limits(&self.config)
+            .await
+            .map_err(EmilyClientError::GetLimits)
+            .map_err(Error::EmilyApi)?;
+
+        let total_cap = limits.peg_cap.and_then(|cap| cap.map(Amount::from_sat));
+        let per_deposit_cap = limits
+            .per_deposit_cap
+            .and_then(|cap| cap.map(Amount::from_sat));
+        let per_withdrawal_cap = limits
+            .per_withdrawal_cap
+            .and_then(|cap| cap.map(Amount::from_sat));
+
+        Ok(SbtcLimits::new(
+            total_cap,
+            per_deposit_cap,
+            per_withdrawal_cap,
+            None,
+        ))
+    }
 }
 
 impl EmilyInteract for ApiFallbackClient<EmilyClient> {
@@ -386,6 +409,10 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
         self.exec(|client, _| client.set_chainstate(chainstate.clone()))
             .await
     }
+
+    async fn get_limits(&self) -> Result<SbtcLimits, Error> {
+        self.exec(|client, _| client.get_limits()).await
+    }
 }
 
 impl TryFrom<&EmilyClientConfig> for ApiFallbackClient<EmilyClient> {
@@ -409,11 +436,9 @@ mod tests {
     #[test]
     fn try_from_url_with_key() {
         // Arrange.
-        let url = Url::parse("http://localhost:8080/").unwrap();
-        let api_key = Some("test_key".to_string());
-        let emily_endpoint_config = EmilyEndpointConfig { endpoint: url, api_key };
+        let url = Url::parse("http://test_key@localhost:8080").unwrap();
         // Act.
-        let client = EmilyClient::try_from(&emily_endpoint_config).unwrap();
+        let client = EmilyClient::try_from(&url).unwrap();
         // Assert.
         assert_eq!(client.config.base_path, "http://localhost:8080");
         assert_eq!(client.config.api_key.unwrap().key, "test_key");
@@ -423,9 +448,8 @@ mod tests {
     fn try_from_url_without_key() {
         // Arrange.
         let url = Url::parse("http://localhost:8080").unwrap();
-        let emily_endpoint_config = EmilyEndpointConfig { endpoint: url, api_key: None };
         // Act.
-        let client = EmilyClient::try_from(&emily_endpoint_config).unwrap();
+        let client = EmilyClient::try_from(&url).unwrap();
         // Assert.
         assert_eq!(client.config.base_path, "http://localhost:8080");
         assert!(client.config.api_key.is_none());

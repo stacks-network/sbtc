@@ -22,8 +22,7 @@ If not specified, the default values from `./src/config/default.toml` will be us
 
 #### Inspecting the signer database
 The signer state will be stored in a `sbtc_signer` schema in the provided database at `$DATABASE_URL`.
-Once connected to the database, the signer migrator will create a default user `sbtc_user`
-with password `sbtc_password` which the signer uses to manage the signer state.
+Ensure that the user specified in `$DATABASE_URL` can access that schema.
 
 ```bash
 SIGNER_BLOCKLIST_CLIENT__HOST=127.0.0.1 SIGNER_BLOCKLIST_CLIENT__PORT=8080  ../target/release/signer 

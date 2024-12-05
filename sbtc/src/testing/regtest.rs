@@ -394,7 +394,7 @@ pub fn p2tr_sign_transaction<U>(
 {
     let tx_outs: Vec<TxOut> = utxos.iter().map(AsUtxo::to_tx_out).collect();
     let prevouts = Prevouts::All(tx_outs.as_slice());
-    let sighash_type = TapSighashType::Default;
+    let sighash_type = TapSighashType::All;
 
     let sighash = SighashCache::new(&*tx)
         .taproot_key_spend_signature_hash(input_index, &prevouts, sighash_type)

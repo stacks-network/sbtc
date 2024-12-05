@@ -52,6 +52,9 @@ CREATE TABLE sbtc_signer.deposit_signers (
     -- this specifies whether the signer is a part of the signer set
     -- associated with the deposit_request.signers_public_key
     can_sign BOOLEAN NOT NULL,
+    -- This specifies whether the sending signer's blocklist client blocked
+    -- the deposit request. `true` here means the blocklist client did not
+    -- block the request.
     can_accept BOOLEAN NOT NULL,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
     PRIMARY KEY (txid, output_index, signer_pub_key),

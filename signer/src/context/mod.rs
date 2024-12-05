@@ -47,6 +47,7 @@ pub trait Context: Clone + Sync + Send {
     fn get_stacks_client(&self) -> impl StacksInteract + Clone + 'static;
     /// Get a handle to an Emily client.
     fn get_emily_client(&self) -> impl EmilyInteract + Clone + 'static;
+
     /// Create a new signal stream containing signer messages from:
     /// 1. The signer network, as defined by the given network object
     ///    implementing [`MessageTransfer`].

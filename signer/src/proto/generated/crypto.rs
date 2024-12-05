@@ -45,6 +45,18 @@ pub struct RecoverableSignature {
     #[prost(int32, tag = "3")]
     pub recovery_id: i32,
 }
+/// This is an ECDSA signature representation in compact form. It is nonstandard and
+/// defined by the libsecp256k1 library.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct EcdsaSignature {
+    /// These are the first 256-bits of the 64 byte signature part, so bits 0-255.
+    #[prost(message, optional, tag = "1")]
+    pub lower_bits: ::core::option::Option<Uint256>,
+    /// These are the last 256-bits of the 64 byte signature part, so bits 256-511.
+    #[prost(message, optional, tag = "2")]
+    pub upper_bits: ::core::option::Option<Uint256>,
+}
 /// Scalar maps to a nonnegative number less than the order of the secp256k1
 /// curve.
 #[allow(clippy::derive_partial_eq_without_eq)]

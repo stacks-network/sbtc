@@ -23,24 +23,20 @@ message StacksTransactionSignRequest {
   uint64 nonce = 2;
   // The transaction fee in microSTX.
   uint64 tx_fee = 3;
-  // The expected digest of the transaction than needs to be signed. It's
-  // essentially a hash of the contract call struct, the nonce, the tx_fee
-  // and a few other things.
-  crypto.Uint256 digest = 4;
   // The transaction ID of the associated contract call transaction.
-  StacksTxid txid = 5;
+  StacksTxid txid = 4;
   // The contract transaction to sign.
   oneof contract_tx {
     // The `complete-deposit` contract call
-    CompleteDeposit complete_deposit = 6;
+    CompleteDeposit complete_deposit = 5;
     // The `accept-withdrawal-request` contract call
-    AcceptWithdrawal accept_withdrawal = 7;
+    AcceptWithdrawal accept_withdrawal = 6;
     // The `reject-withdrawal-request` contract call
-    RejectWithdrawal reject_withdrawal = 8;
+    RejectWithdrawal reject_withdrawal = 7;
     // The `rotate-keys-wrapper` contract call
-    RotateKeys rotate_keys = 9;
+    RotateKeys rotate_keys = 8;
     // Ssmart contract deployment
-    SmartContract smart_contract = 10;
+    SmartContract smart_contract = 9;
   }
 }
 

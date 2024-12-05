@@ -4,7 +4,6 @@ use std::borrow::Cow;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::codec;
-use crate::ecdsa;
 use crate::emily_client::EmilyClientError;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
@@ -14,6 +13,10 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Indicates an error when decoding a protobuf
+    #[error("could not decode protobuf {0}")]
+    DecodeProtobuf(#[source] prost::DecodeError),
+
     /// Attempted division by zero
     #[error("attempted division by zero")]
     DivideByZero,
@@ -25,6 +28,10 @@ pub enum Error {
     /// Indicates that a sweep transaction with the specified txid could not be found.
     #[error("sweep transaction not found: {0}")]
     MissingSweepTransaction(bitcoin::Txid),
+
+    /// Indicates that a deposit request with the specified txid and vout could not be found.
+    #[error("deposit request not found: {0}")]
+    MissingDepositRequest(bitcoin::OutPoint),
 
     /// Received an error in response to gettxout RPC call
     #[error("bitcoin-core gettxout error for outpoint {1} (search mempool? {2}): {0}")]
@@ -240,6 +247,10 @@ pub enum Error {
     #[error("invalid private key length={0}, expected 32.")]
     InvalidPrivateKeyLength(usize),
 
+    /// The given signature was invalid
+    #[error("could not convert the given compact bytes into an ECDSA signature: {0}")]
+    InvalidEcdsaSignatureBytes(#[source] secp256k1::Error),
+
     /// This happens when we attempt to convert a `[u8; 65]` into a
     /// recoverable EDCSA signature.
     #[error("could not recover the public key from the signature: {0}")]
@@ -404,13 +415,13 @@ pub enum Error {
     #[error("invalid signature")]
     InvalidSignature,
 
-    /// ECDSA error
-    #[error("ECDSA error: {0}")]
-    Ecdsa(#[from] ecdsa::Error),
+    /// Invalid ECDSA signature
+    #[error("invalid ECDSA signature")]
+    InvalidEcdsaSignature(#[source] secp256k1::Error),
 
     /// Codec error
     #[error("codec error: {0}")]
-    Codec(#[source] codec::Error),
+    Codec(#[from] codec::CodecError),
 
     /// Type conversion error
     #[error("type conversion error")]
@@ -523,6 +534,15 @@ pub enum Error {
     /// Indicates that the request packages contain duplicate deposit or withdrawal entries.
     #[error("The request packages contain duplicate deposit or withdrawal entries.")]
     DuplicateRequests,
+
+    /// Error when deposit requests would exceed sBTC supply cap
+    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
+    ExceedsSbtcSupplyCap {
+        /// Total deposit amount in sats
+        total_amount: u64,
+        /// Maximum sBTC mintable
+        max_mintable: u64,
+    },
 }
 
 impl From<std::convert::Infallible> for Error {

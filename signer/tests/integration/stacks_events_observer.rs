@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::http::StatusCode;
 use bitcoin::ScriptBuf;
@@ -12,17 +14,22 @@ use emily_client::models::CreateDepositRequestBody;
 use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::Status;
 use emily_client::models::WithdrawalParameters;
-use rand::SeedableRng;
+use fake::Fake;
+use rand::rngs::OsRng;
+use rand::SeedableRng as _;
 use sbtc::testing::deposits::TxSetup;
 use signer::api::new_block_handler;
 use signer::api::ApiState;
 use signer::bitcoin::MockBitcoinInteract;
+use signer::context::Context;
 use signer::emily_client::EmilyClient;
 use signer::stacks::api::MockStacksInteract;
 use signer::stacks::events::RegistryEvent;
 use signer::stacks::events::TxInfo;
 use signer::stacks::webhooks::NewBlockEvent;
 use signer::storage::in_memory::Store;
+use signer::storage::model::DepositRequest;
+use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::BuildContext;
 use signer::testing::context::ConfigureBitcoinClient;
@@ -31,7 +38,6 @@ use signer::testing::context::ConfigureStacksClient;
 use signer::testing::context::ConfigureStorage;
 use signer::testing::context::TestContext;
 use signer::testing::context::WrappedMock;
-use std::sync::Arc;
 use url::Url;
 
 async fn test_context() -> TestContext<
@@ -414,6 +420,19 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
     });
 
     let bitcoin_txid = deposit_completed_event.outpoint.txid.to_string();
+
+    // Insert a dummy deposit request into the database. This will be retrieved by
+    // handle_completed_deposit to compute the fee paid.
+    let mut deposit: DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
+    deposit.amount = deposit_completed_event.amount + 100;
+    deposit.txid = deposit_completed_event.outpoint.txid.into();
+    deposit.output_index = deposit_completed_event.outpoint.vout;
+
+    context
+        .get_storage_mut()
+        .write_deposit_request(&deposit)
+        .await
+        .expect("failed to insert dummy deposit request");
 
     // Add the deposit request to Emily
     let tx_setup: TxSetup = sbtc::testing::deposits::tx_setup(15_000, 500_000, 150);

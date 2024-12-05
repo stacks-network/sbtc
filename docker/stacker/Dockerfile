@@ -1,4 +1,4 @@
-FROM node:20-bookworm as builder
+FROM node:20-bookworm AS builder
 
 RUN apt-get update && apt-get install -y curl gettext-base jq
 
