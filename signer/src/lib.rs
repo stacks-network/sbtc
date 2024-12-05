@@ -9,6 +9,7 @@
 pub mod api;
 pub mod bitcoin;
 pub mod block_observer;
+pub mod blockchain_sync;
 pub mod blocklist_client;
 pub mod codec;
 pub mod config;
