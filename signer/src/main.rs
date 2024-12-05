@@ -105,9 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // way the Stacks event observer works, i.e. the Stacks node will not
     // progress if it cannot send events to the observer and thus become out-
     // of-sync.
-    let stacks_event_observer_handle = tokio::spawn(
-        run_stacks_event_observer(context.clone())
-    );
+    let stacks_event_observer_handle = tokio::spawn(run_api(context.clone()));
 
     // Pause until the Stacks node is fully-synced, otherwise we will not be
     // able to properly back-fill blocks and the sBTC signer will generally just
@@ -118,7 +116,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Back-fill the Bitcoin and Stacks blockchains from the current Stacks tip
     // until the Nakamoto activation height.
-    tracing::info!("preparing to backfill bitcoin & stacks blockchains to the nakamoto activation height");
+    tracing::info!(
+        "preparing to backfill bitcoin & stacks blockchains to the nakamoto activation height"
+    );
     sync_blockchains(&context).await?;
 
     // Run the application components concurrently. We're `join!`ing them here

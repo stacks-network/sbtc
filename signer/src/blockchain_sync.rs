@@ -4,7 +4,14 @@ use std::time::Duration;
 
 use clarity::types::chainstate::StacksBlockId;
 
-use crate::{bitcoin::BitcoinInteract, block_observer, context::Context, error::Error, stacks::api::{GetNakamotoStartHeight as _, StacksInteract as _}, storage::{model, DbRead, DbWrite}};
+use crate::{
+    bitcoin::BitcoinInteract,
+    block_observer,
+    context::Context,
+    error::Error,
+    stacks::api::{GetNakamotoStartHeight as _, StacksInteract as _},
+    storage::{model, DbRead, DbWrite},
+};
 
 /// Back-fills Bitcoin and Stacks blockchains' blocks from the current Stacks
 /// tip back to the Nakamoto activation height (in Bitcoin block height).
@@ -46,7 +53,7 @@ pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
         if let Ok(node_info) = stacks_client.get_node_info().await {
             if node_info.burn_block_height > nakamoto_activation_height {
                 tracing::info!(
-                    current_height = %node_info.burn_block_height, 
+                    current_height = %node_info.burn_block_height,
                     "stacks node has reached the nakamoto activation height"
                 );
 
@@ -54,8 +61,8 @@ pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
             }
 
             tracing::info!(
-                current = %node_info.burn_block_height, 
-                target = %nakamoto_activation_height, 
+                current = %node_info.burn_block_height,
+                target = %nakamoto_activation_height,
                 "waiting for stacks node to reach nakamoto activation height"
             );
         }
@@ -71,7 +78,7 @@ pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
     let current_tenure = stacks_client.get_tenure_info().await?;
 
     tracing::debug!(
-        tenure_tip = %current_tenure.tip_block_id, 
+        tenure_tip = %current_tenure.tip_block_id,
         "retrieving tenure tip based on reported stacks tenure tip"
     );
 
@@ -87,7 +94,7 @@ pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
             _ = interval.tick() => {},
         }
     };
-    
+
     // Back-fill the Bitcoin blockchain first.
     tracing::info!(
         anchor_block_hash = %tenure.anchor_block_hash,

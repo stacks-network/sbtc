@@ -482,7 +482,7 @@ impl StacksClient {
             .timeout(REQUEST_TIMEOUT)
             .build()?;
 
-            Ok(Self { endpoint: url, client })
+        Ok(Self { endpoint: url, client })
     }
 
     /// Calls a read-only public function on a given smart contract.

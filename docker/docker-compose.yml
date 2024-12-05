@@ -349,7 +349,7 @@ services:
     profiles:
       - default
     extra_hosts:
-      - "host.docker.internal:10.0.2.2"
+      - "host.docker.internal:host-gateway"
 
   stacker:
     build: stacker
