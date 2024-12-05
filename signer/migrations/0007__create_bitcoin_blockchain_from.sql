@@ -3,7 +3,7 @@
 --
 -- - chain_tip: The block hash to start the blockchain from ("chain tip").
 -- - min_block_height: The minimum height of all blocks that are returned.
-CREATE FUNCTION sbtc_signer.bitcoin_blockchain_from (
+CREATE FUNCTION sbtc_signer.bitcoin_blockchain_until (
     chain_tip BYTEA,
     min_block_height BIGINT
 )

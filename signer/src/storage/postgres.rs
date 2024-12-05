@@ -381,7 +381,7 @@ impl PgStore {
             r#"
             WITH bitcoin_blockchain AS (
                 SELECT block_hash
-                FROM bitcoin_blockchain_from($1, $2)
+                FROM bitcoin_blockchain_until($1, $2)
             ),
             confirmed_sweeps AS (
                 SELECT
@@ -569,7 +569,7 @@ impl PgStore {
             FROM sbtc_signer.swept_deposits AS sd
             JOIN sbtc_signer.bitcoin_transactions AS bt
               ON bt.txid = sd.sweep_transaction_txid
-            JOIN sbtc_signer.bitcoin_blockchain_from($1, $2) USING (block_hash)
+            JOIN sbtc_signer.bitcoin_blockchain_until($1, $2) USING (block_hash)
             WHERE sd.deposit_request_txid = $3
               AND sd.deposit_request_output_index = $4
             LIMIT 1
@@ -626,7 +626,7 @@ impl PgStore {
               , bc.block_hash
             FROM sbtc_signer.deposit_requests AS dr
             JOIN sbtc_signer.bitcoin_transactions USING (txid)
-            LEFT JOIN sbtc_signer.bitcoin_blockchain_from($1, $2) AS bc USING (block_hash)
+            LEFT JOIN sbtc_signer.bitcoin_blockchain_until($1, $2) AS bc USING (block_hash)
             LEFT JOIN sbtc_signer.deposit_signers AS ds
               ON dr.txid = ds.txid
              AND dr.output_index = ds.output_index
