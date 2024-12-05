@@ -5,7 +5,7 @@
 -- - min_block_height: The minimum height of all blocks that are returned.
 CREATE FUNCTION sbtc_signer.bitcoin_blockchain_from (
     chain_tip BYTEA,
-    min_block_height INT
+    min_block_height BIGINT
 )
 RETURNS TABLE (
     block_hash BYTEA,

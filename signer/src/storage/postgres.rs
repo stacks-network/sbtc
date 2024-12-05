@@ -49,6 +49,10 @@ const CONTRACT_NAMES: [&str; 4] = [
     "sbtc-withdrawal",
 ];
 
+/// The maximum number of blocks that can be affected by a reorg on the
+/// bitcoin blockchain. This is typically 6, but let's go with 10. Why not?
+const MAX_REORG_BLOCK_COUNT: i64 = 10;
+
 #[rustfmt::skip]
 const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 5] = [
     ("initiate-withdrawal-request", TransactionType::WithdrawRequest),
@@ -366,13 +370,18 @@ impl PgStore {
     async fn get_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        txo_type: model::TxOutputType,
+        output_type: model::TxOutputType,
     ) -> Result<Option<SignerUtxo>, Error> {
+        let Some(min_block_height) = self.minimum_utxo_height(output_type).await? else {
+            tracing::debug!(%output_type, "could not find UTXO candidate");
+            return Ok(None);
+        };
+
         let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
             WITH bitcoin_blockchain AS (
                 SELECT block_hash
-                FROM bitcoin_blockchain_of($1, $2)
+                FROM bitcoin_blockchain_from($1, $2)
             ),
             confirmed_sweeps AS (
                 SELECT
@@ -402,13 +411,107 @@ impl PgStore {
             "#,
         )
         .bind(chain_tip)
-        .bind(context_window as i32)
-        .bind(txo_type)
+        .bind(min_block_height)
+        .bind(output_type)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
         Ok(pg_utxo.map(SignerUtxo::from))
+    }
+
+    /// Return a block height that is less than or equal to the block that
+    /// confirms the signers' UTXO.
+    ///
+    /// The signers outstanding UTXO is a UTXO that is confirmed on the
+    /// canonical bitcoin blockchain. But regardless of which blockchain
+    /// that is, we know that it is very unlikely to have been affected by
+    /// a reorg of more than 10 blocks deep. That means that if we look back
+    /// at least 10 blocks before the best candidate for the signers' UTXO,
+    /// we are very likely to find a transaction output that is on the best
+    /// bitcoin blockchain.
+    async fn minimum_utxo_height(
+        &self,
+        output_type: model::TxOutputType,
+    ) -> Result<Option<i64>, Error> {
+        // Get the block height of the unspent transaction that was most
+        // recently confirmed. Note that we are not filtering by the
+        // blockchain identified by a chain tip, we just want the UTXO with
+        // maximum height, event if it has been reorged.
+        let confirmed_height_candidate = sqlx::query_scalar::<_, i64>(
+            r#"
+            WITH confirmed_sweeps AS (
+                SELECT
+                    prevout_txid
+                  , prevout_output_index
+                FROM sbtc_signer.bitcoin_tx_inputs
+                JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+                WHERE prevout_type = 'signers_input'
+            )
+            SELECT bb.block_height
+            FROM sbtc_signer.bitcoin_tx_outputs AS bo
+            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+            JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
+            LEFT JOIN confirmed_sweeps AS cs
+              ON cs.prevout_txid = bo.txid
+              AND cs.prevout_output_index = bo.output_index
+            WHERE cs.prevout_txid IS NULL
+              AND bo.output_type = $1
+            ORDER BY bb.block_height DESC
+            LIMIT 1;
+            "#,
+        )
+        .bind(output_type)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // If such a height doesn't exist then we know that there is no
+        // UTXO at all of the given transaction output type.
+        let Some(confirmed_height_candidate) = confirmed_height_candidate else {
+            return Ok(None);
+        };
+
+        // Find the block height of the sweep transaction that occured
+        // before our "best candidate". It might not exist, since the above
+        // height may be for our first sweep transaction.
+        //
+        // We do this because the block that confirmed the UTXO with max
+        // height need not be the signers' UTXO; it does not need to be on
+        // the best blockchain. So we look at the height of the block that
+        // confirmed our previous sweep transaction. This might be more
+        // than MAX_REORG_BLOCK_COUNT blocks ago, and if so, we need to get
+        // it's height. If our second-best candidate is more than
+        // MAX_REORG_BLOCK_COUNT blocks before our "best candidate", then
+        // this height is the true minimum UTXO height.
+        let prev_confirmed_height_candidate = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT bb.block_height
+            FROM sbtc_signer.bitcoin_tx_inputs
+            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+            JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
+            WHERE prevout_type = 'signers_input'
+              AND bb.block_height < $1
+            ORDER BY bb.block_height DESC
+            LIMIT 1;
+            "#,
+        )
+        .bind(confirmed_height_candidate)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // We need to go back at least MAX_REORG_BLOCK_COUNT blocks before
+        // the confirmation height of our best candidate height. If there
+        // we're no sweeps within those blocks, then the height of our
+        // previous sweep trasnaction is assumed to be unaffected by a
+        // reorg, so let's use that.
+        let min_block_height = confirmed_height_candidate.saturating_sub(MAX_REORG_BLOCK_COUNT);
+        let min_block_height = prev_confirmed_height_candidate
+            .unwrap_or(min_block_height)
+            .min(min_block_height);
+
+        Ok(Some(min_block_height))
     }
 
     /// Return the least height for which the deposit request was confirmed
