@@ -1,12 +1,18 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 use std::time::Duration;
 
+use axum::http::Request;
+use axum::http::Response;
 use axum::routing::get;
 use axum::routing::post;
 use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
+use clap::ValueEnum;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
@@ -29,6 +35,15 @@ use signer::transaction_coordinator;
 use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
 use tokio::signal;
+use tower_http::trace::TraceLayer;
+use tracing::Instrument;
+use tracing::Span;
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum LogOutputFormat {
+    Json,
+    Pretty,
+}
 
 /// Command line arguments for the signer.
 #[derive(Debug, Parser)]
@@ -43,21 +58,20 @@ struct SignerArgs {
     /// pending migrations to the database on startup.
     #[clap(long)]
     migrate_db: bool,
+
+    #[clap(short = 'o', long = "output-format", default_value = "pretty")]
+    output_format: Option<LogOutputFormat>,
 }
 
 #[tokio::main]
 #[tracing::instrument(name = "signer")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Initialize logging
-    // TODO(497): The whole logging thing should be revisited. We should support
-    //   enabling different layers, i.e. for pretty console, for opentelem, etc.
-    //sbtc::logging::setup_logging("info,signer=debug", false);
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .try_init();
-
     // Parse the command line arguments.
     let args = SignerArgs::parse();
+
+    // Configure the binary's stdout/err output based on the provided output format.
+    let pretty = matches!(args.output_format, Some(LogOutputFormat::Pretty));
+    signer::logging::setup_logging("", pretty);
 
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
@@ -215,41 +229,67 @@ async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
 }
 
 /// Runs the libp2p swarm.
-#[tracing::instrument(skip(ctx))]
+#[tracing::instrument(skip_all, name = "p2p")]
 async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     tracing::info!("initializing the p2p network");
 
     // Build the swarm.
     tracing::debug!("building the libp2p swarm");
-    let mut swarm = SignerSwarmBuilder::new(&ctx.config().signer.private_key)
-        .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
-        .add_seed_addrs(&ctx.config().signer.p2p.seeds)
-        .build()?;
+    let config = ctx.config();
+    let mut swarm =
+        SignerSwarmBuilder::new(&config.signer.private_key, config.signer.p2p.enable_mdns)
+            .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
+            .add_seed_addrs(&ctx.config().signer.p2p.seeds)
+            .add_external_addresses(&ctx.config().signer.p2p.public_endpoints)
+            .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
     // received, or an unrecoverable error has occurred.
     tracing::info!("starting the libp2p swarm");
-    swarm.start(&ctx).await.map_err(Error::SignerSwarm)
+    swarm
+        .start(&ctx)
+        .in_current_span()
+        .await
+        .map_err(Error::SignerSwarm)
 }
 
-/// Runs the Stacks event observer server.
-#[tracing::instrument(skip_all, name = "stacks-event-observer")]
-async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Error> {
+/// Runs the the signer's API server, which includes the Stacks event observer.
+#[tracing::instrument(skip_all, name = "api")]
+async fn run_api(ctx: impl Context + 'static) -> Result<(), Error> {
     let socket_addr = ctx.config().signer.event_observer.bind;
-    tracing::info!(%socket_addr, "initializing the Stacks event observer server");
+    tracing::info!(%socket_addr, "initializing the signer API server");
 
     let state = ApiState { ctx: ctx.clone() };
+
+    let request_id = Arc::new(AtomicU64::new(0));
 
     // Build the signer API application
     let app = Router::new()
         .route("/", get(api::status_handler))
         .route("/new_block", post(api::new_block_handler))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &Request<_>| {
+                    tracing::info_span!("api-request",
+                        uri = %request.uri(),
+                        method = %request.method(),
+                        id = tracing::field::Empty,
+                    )
+                })
+                .on_request(move |_: &Request<_>, span: &Span| {
+                    span.record("id", request_id.fetch_add(1, Ordering::SeqCst));
+                    tracing::trace!("processing request");
+                })
+                .on_response(|_: &Response<_>, duration: Duration, _: &Span| {
+                    tracing::trace!(duration_ms = duration.as_millis(), "request completed");
+                }),
+        )
         .with_state(state);
 
     // Bind to the configured address and port
     let listener = tokio::net::TcpListener::bind(socket_addr)
         .await
-        .expect("failed to retrieve event observer bind address from config");
+        .expect("failed to bind the signer API to configured address");
 
     // Get the termination signal handle.
     let mut term = ctx.get_termination_handle();
@@ -260,11 +300,11 @@ async fn run_stacks_event_observer(ctx: impl Context + 'static) -> Result<(), Er
             // Listen for an application shutdown signal. We need to loop here
             // because we may receive other signals (which we will ignore here).
             term.wait_for_shutdown().await;
-            tracing::info!("stopping the Stacks event observer server");
+            tracing::info!("stopping the signer API server");
         })
         .await
         .map_err(|error| {
-            tracing::error!(%error, "error running Stacks event observer server");
+            tracing::error!(%error, "error running the signer API server");
             ctx.get_termination_handle().signal_shutdown();
             error.into()
         })
@@ -287,7 +327,7 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     let block_observer = block_observer::BlockObserver {
         context: ctx,
         bitcoin_blocks: stream.to_block_hash_stream(),
-        horizon: 20,
+        horizon: config.signer.bitcoin_block_horizon,
     };
 
     block_observer.run().await
@@ -302,10 +342,11 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         network,
         context: ctx.clone(),
         context_window: 10000,
-        threshold: 2,
+        threshold: config.signer.bootstrap_signatures_required.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
+        dkg_begin_pause: config.signer.dkg_begin_pause.map(Duration::from_secs),
     };
 
     signer.run().await
@@ -313,17 +354,19 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
 
 /// Run the transaction coordinator event-loop.
 async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
-    let private_key = ctx.config().signer.private_key;
+    let config = ctx.config().clone();
+    let private_key = config.signer.private_key;
     let network = P2PNetwork::new(&ctx);
 
     let coord = transaction_coordinator::TxCoordinatorEventLoop {
         network,
         context: ctx,
-        context_window: 10000,
+        context_window: config.signer.context_window,
         private_key,
-        signing_round_max_duration: Duration::from_secs(10),
-        threshold: 2,
-        dkg_max_duration: Duration::from_secs(10),
+        signing_round_max_duration: config.signer.signer_round_max_duration,
+        bitcoin_presign_request_max_duration: config.signer.bitcoin_presign_request_max_duration,
+        threshold: config.signer.bootstrap_signatures_required,
+        dkg_max_duration: config.signer.dkg_max_duration,
         sbtc_contracts_deployed: false,
         is_epoch3: false,
     };

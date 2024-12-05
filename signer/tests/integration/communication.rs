@@ -94,16 +94,16 @@ async fn swarm_rejects_connections_from_unknown_peers() {
         .add_signer(PublicKey::from_private_key(&key2));
 
     // Create the two trusted swarms.
-    let mut swarm1 = SignerSwarmBuilder::new(&key1)
+    let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
         .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .build()
         .expect("Failed to build swarm 1");
-    let mut swarm2 = SignerSwarmBuilder::new(&key2)
+    let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
         .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .build()
         .expect("Failed to build swarm 2");
     // Create the adversarial swarm.
-    let mut swarm3 = SignerSwarmBuilder::new(&key3)
+    let mut swarm3 = SignerSwarmBuilder::new(&key3, true)
         .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
         .build()
         .expect("Failed to build swarm 3");
@@ -137,7 +137,7 @@ async fn swarm_rejects_connections_from_unknown_peers() {
         trusted1.receive().await.unwrap();
     });
     trusted2
-        .broadcast(Msg::random(&mut rand::thread_rng()))
+        .broadcast(Msg::random_with_private_key(&mut rand::thread_rng(), &key2))
         .await
         .unwrap();
     trusted_msg_from_2_to_1
@@ -149,7 +149,7 @@ async fn swarm_rejects_connections_from_unknown_peers() {
         trusted2.receive().await.unwrap();
     });
     trusted1
-        .broadcast(Msg::random(&mut rand::thread_rng()))
+        .broadcast(Msg::random_with_private_key(&mut rand::thread_rng(), &key1))
         .await
         .unwrap();
     trusted_msg_from_1_to_2

@@ -23,13 +23,13 @@
 # You may specify multiple Emily API servers if you have them. They will be
 # tried round-robin until one succeeds.
 #
-# Format: [ { endpoint = "http(s)://<host>:<port>", api_key = "1234567890abcdef" }, ..]
+# Format: ["http(s)://[api-key@]<host>:<port>", ..]
 # Default: <none>
 # Required: true
 # Environment: SIGNER_EMILY__ENDPOINTS
-# Environment Example: '{"endpoint":"https://api.emilyexample.com","api_key":"1234567890abcdef"},..'
+# Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    { endpoint = "http://localhost:3031" },
+    "http://localhost:3031",
 ]
 
 # !! ==============================================================================
@@ -64,23 +64,6 @@ rpc_endpoints = [
 block_hash_stream_endpoints = [
     "tcp://localhost:28332"
 ]
-
-# !! ==============================================================================
-# !! Block Notifier Configuration
-# !! ==============================================================================
-# Electrum server connection confirmation.
-[block_notifier]
-# The URI of the Electrum server to connect to.
-#
-# Format: "<protocol>://<host>:<port>"
-# Default: <none>
-# Required: true
-# Environment: SIGNER_BLOCK_NOTIFIER__SERVER
-server = "tcp://localhost:60401"
-retry_interval = 10
-max_retry_attempts = 5
-ping_interval = 60
-subscribe_interval = 10
 
 # !! ==============================================================================
 # !! Stacks Node Configuration
@@ -166,6 +149,50 @@ bootstrap_signatures_required = 2
 # Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
 # TODO(715): Add default delay (15 seconds? see #701)
 bitcoin_processing_delay = 0
+
+# The number of blocks back the block observer should look for unprocessed
+# blocks before proceeding.
+# Required: true
+# Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
+bitcoin_block_horizon = 1500
+
+# How many bitcoin blocks back from the chain tip the signer will look for
+# requests. Must be strictly positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__CONTEXT_WINDOW
+context_window = 10000
+
+# The maximum amount of time, in seconds, a signing round will take before
+# the coordinator will time out and return an error. This value must be
+# strictly positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__SIGNER_ROUND_MAX_DURATION
+signer_round_max_duration = 30
+
+# The maximum amount of time, in seconds, a coordinator will wait for
+# pre-sign ACKs before timing out. Must be strictly
+# positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__BITCOIN_PRESIGN_REQUEST_MAX_DURATION
+bitcoin_presign_request_max_duration = 30
+
+# The maximum amount of time, in seconds, for a distributed key generation
+# round before the coordinator will time out and return an error. Must be
+# strictly positive.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_MAX_DURATION
+dkg_max_duration = 120
+
+# The amount of time, in seconds, the signer should pause for after
+# receiving a DKG begin message before relaying to give the other signers.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
+# dkg_begin_pause = 10
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration

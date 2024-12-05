@@ -326,9 +326,13 @@ impl RawTupleData {
         let amount = self.remove_u128("amount")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let sweep_block_hash = self.remove_buff("burn-hash")?;
+        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
+
+        // The `sweep_block_hash` we receive is reversed, so we reverse it here
+        // so that we store it in an ordering consistent with the rest of our db.
+        sweep_block_hash.reverse();
 
         Ok(RegistryEvent::CompletedDeposit(CompletedDepositEvent {
             txid: self.tx_info.txid,
@@ -575,9 +579,13 @@ impl RawTupleData {
         let fee = self.remove_u128("fee")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let sweep_block_hash = self.remove_buff("burn-hash")?;
+        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
+
+        // The `sweep_block_hash` we receive is reversed, so we reverse it here
+        // so that we store it in an ordering consistent with the rest of our db.
+        sweep_block_hash.reverse();
 
         Ok(RegistryEvent::WithdrawalAccept(WithdrawalAcceptEvent {
             txid: self.tx_info.txid,

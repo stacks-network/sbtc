@@ -50,6 +50,17 @@ pub struct RequestDeciderEventLoop<C, N, B> {
     pub context_window: u16,
 }
 
+/// This function defines which messages this event loop is interested
+/// in.
+fn run_loop_message_filter(signal: &SignerSignal) -> bool {
+    matches!(
+        signal,
+        SignerSignal::Command(SignerCommand::Shutdown)
+            | SignerSignal::Event(SignerEvent::P2P(P2PEvent::MessageReceived(_)))
+            | SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
+    )
+}
+
 impl<C, N, B> RequestDeciderEventLoop<C, N, B>
 where
     C: Context,
@@ -69,13 +80,13 @@ where
             return Err(error);
         };
 
-        let mut signal_stream = self.context.as_signal_stream(&self.network);
+        let mut signal_stream = self.context.as_signal_stream(run_loop_message_filter);
 
         while let Some(message) = signal_stream.next().await {
             match message {
-                Ok(SignerSignal::Command(SignerCommand::Shutdown)) => break,
-                Ok(SignerSignal::Command(SignerCommand::P2PPublish(_))) => {}
-                Ok(SignerSignal::Event(event)) => match event {
+                SignerSignal::Command(SignerCommand::Shutdown) => break,
+                SignerSignal::Command(SignerCommand::P2PPublish(_)) => {}
+                SignerSignal::Event(event) => match event {
                     SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
                             tracing::error!(%error, "error handling signer message");
@@ -98,11 +109,6 @@ where
                     }
                     _ => {}
                 },
-                // This means one of the broadcast streams is lagging. We
-                // will just continue and hope for the best next time.
-                Err(error) => {
-                    tracing::error!(%error, "received an error over one of the broadcast streams");
-                }
             }
         }
 
@@ -118,25 +124,45 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        let signer_public_key = self.signer_public_key();
+
         let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(chain_tip));
 
         let deposit_requests = db
-            .get_pending_deposit_requests(&chain_tip, self.context_window)
+            .get_pending_deposit_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
 
         for deposit_request in deposit_requests {
-            self.handle_pending_deposit_request(deposit_request, &chain_tip)
-                .await?;
+            let outpoint = deposit_request.outpoint();
+            let _ = self
+                .handle_pending_deposit_request(deposit_request, &chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(
+                        %error,
+                        %outpoint,
+                        "error handling new deposit request"
+                    )
+                });
         }
 
         let withdraw_requests = db
-            .get_pending_withdrawal_requests(&chain_tip, self.context_window)
+            .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
 
         for withdraw_request in withdraw_requests {
-            self.handle_pending_withdrawal_request(withdraw_request, &chain_tip)
-                .await?;
+            let request_id = withdraw_request.request_id;
+            let _ = self
+                .handle_pending_withdrawal_request(withdraw_request, &chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(
+                        %error,
+                        %request_id,
+                        "error handling new withdrawal request"
+                    )
+                });
         }
 
         Ok(())
@@ -144,22 +170,20 @@ where
 
     #[tracing::instrument(skip_all)]
     async fn handle_signer_message(&mut self, msg: &Signed<SignerMessage>) -> Result<(), Error> {
-        if !msg.verify() {
-            return Err(Error::InvalidSignature);
-        }
-
         tracing::trace!(payload = %msg.inner.payload, "handling message");
         match &msg.inner.payload {
             Payload::SignerDepositDecision(decision) => {
-                self.persist_received_deposit_decision(decision, msg.signer_pub_key)
+                self.persist_received_deposit_decision(decision, msg.signer_public_key)
                     .await?;
             }
             Payload::SignerWithdrawalDecision(decision) => {
-                self.persist_received_withdraw_decision(decision, msg.signer_pub_key)
+                self.persist_received_withdraw_decision(decision, msg.signer_public_key)
                     .await?;
             }
             Payload::StacksTransactionSignRequest(_)
             | Payload::BitcoinTransactionSignRequest(_)
+            | Payload::BitcoinPreSignRequest(_)
+            | Payload::BitcoinPreSignAck(_)
             | Payload::WstsMessage(_)
             | Payload::SweepTransactionInfo(_)
             | Payload::StacksTransactionSignature(_)
@@ -236,8 +260,8 @@ where
         // TODO: Do we want to do this on the sender address or the
         // recipient address?
         let is_accepted = self
-            .can_accept(&withdrawal_request.sender_address.to_string())
-            .await;
+            .can_accept_withdrawal_request(&withdrawal_request)
+            .await?;
 
         let msg = SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
@@ -267,12 +291,22 @@ where
         Ok(())
     }
 
-    async fn can_accept(&self, address: &str) -> bool {
+    async fn can_accept_withdrawal_request(
+        &self,
+        req: &model::WithdrawalRequest,
+    ) -> Result<bool, Error> {
+        // If we have not configured a blocklist checker, then we can
+        // return early.
         let Some(client) = self.blocklist_checker.as_ref() else {
-            return true;
+            return Ok(true);
         };
 
-        client.can_accept(address).await.unwrap_or(false)
+        let result = client
+            .can_accept(&req.sender_address.to_string())
+            .await
+            .unwrap_or(false);
+
+        Ok(result)
     }
 
     async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
@@ -405,7 +439,7 @@ where
         let payload: Payload = msg.into();
         let msg = payload
             .to_message(*chain_tip)
-            .sign_ecdsa(&self.signer_private_key)?;
+            .sign_ecdsa(&self.signer_private_key);
 
         self.network.broadcast(msg).await?;
 

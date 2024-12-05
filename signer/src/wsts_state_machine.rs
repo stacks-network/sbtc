@@ -86,7 +86,7 @@ impl SignerStateMachine {
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
     where
-        S: storage::DbRead + storage::DbWrite,
+        S: storage::DbRead,
     {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(&aggregate_key)
@@ -99,8 +99,7 @@ impl SignerStateMachine {
         )
         .map_err(|_| error::Error::Encryption)?;
 
-        let saved_state =
-            wsts::traits::SignerState::decode(decrypted.as_slice()).map_err(error::Error::Codec)?;
+        let saved_state = wsts::traits::SignerState::decode(decrypted.as_slice())?;
 
         // This may panic if the saved state doesn't contain exactly one party,
         // however, that should never be the case since wsts maintains this invariant
@@ -137,11 +136,8 @@ impl SignerStateMachine {
         // We require the public keys to be stored sorted in db
         signer_set_public_keys.sort();
 
-        let encoded = saved_state.encode_to_vec().map_err(error::Error::Codec)?;
-        let public_shares = self
-            .dkg_public_shares
-            .encode_to_vec()
-            .map_err(error::Error::Codec)?;
+        let encoded = saved_state.encode_to_vec();
+        let public_shares = self.dkg_public_shares.clone().encode_to_vec();
 
         // After DKG, each of the signers will have "new public keys".
         let encrypted_private_shares =
@@ -202,7 +198,7 @@ impl CoordinatorStateMachine {
         let num_signers: u32 = signer_public_keys
             .len()
             .try_into()
-            .expect("The number of signers is greater than u32::MAX?");
+            .expect("the number of signers is greater than u32::MAX?");
         let signer_key_ids = (0..num_signers)
             .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
             .collect();
@@ -253,7 +249,7 @@ impl CoordinatorStateMachine {
             .ok_or(Error::MissingDkgShares(aggregate_key))?;
 
         let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
-            BTreeMap::decode(encrypted_shares.public_shares.as_slice()).map_err(Error::Codec)?;
+            BTreeMap::decode(encrypted_shares.public_shares.as_slice())?;
         let party_polynomials = public_dkg_shares
             .iter()
             .flat_map(|(_, share)| share.comms.clone())

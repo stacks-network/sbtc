@@ -139,10 +139,16 @@ where
     pub async fn assert_should_store_decisions_for_pending_deposit_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let wan_network = WanNetwork::default();
-        let signer_network = wan_network.connect();
+
+        let ctx1 = TestContext::default_mocked();
+        let signer_network = wan_network.connect(&ctx1);
+
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
-        let other_signer = wan_network.connect();
+
+        let ctx2 = TestContext::default_mocked();
+        let other_signer = wan_network.connect(&ctx2);
+
         let mut network_rx = other_signer.spawn();
         let mut signal_rx = self.context.get_signal_receiver();
 
@@ -215,10 +221,16 @@ where
     pub async fn assert_should_store_decisions_for_pending_withdrawal_requests(self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let wan_network = WanNetwork::default();
-        let signer_network = wan_network.connect();
+
+        let ctx1 = TestContext::default_mocked();
+        let signer_network = wan_network.connect(&ctx1);
+
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = &signer_info.first().cloned().unwrap();
-        let other_signer = wan_network.connect();
+
+        let ctx2 = TestContext::default_mocked();
+        let other_signer = wan_network.connect(&ctx2);
+
         let mut network_rx = other_signer.spawn();
         let mut signal_rx = self.context.get_signal_receiver();
 
@@ -288,14 +300,6 @@ where
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
 
-        // A closure to build a new context for each signer
-        let build_context = || {
-            TestContext::builder()
-                .with_in_memory_storage()
-                .with_mocked_clients()
-                .build()
-        };
-
         // Create a new event-loop for each signer, based on the number of signers
         // defined in `self.num_signers`. Note that it is important that each
         // signer has its own context (and thus storage and signalling channel).
@@ -305,9 +309,11 @@ where
         let mut event_loop_handles: Vec<_> = signer_info
             .into_iter()
             .map(|signer_info| {
+                let ctx = TestContext::default_mocked();
+                let net = network.connect(&ctx);
                 let event_loop_harness = RequestDeciderEventLoopHarness::create(
-                    build_context(),
-                    network.connect(),
+                    ctx,
+                    net,
                     self.context_window,
                     signer_info.signer_private_key,
                 );

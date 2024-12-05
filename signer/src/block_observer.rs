@@ -24,6 +24,7 @@ use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::TxDeconstructor as _;
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
+use crate::context::SbtcLimits;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
@@ -35,6 +36,7 @@ use crate::storage::model;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
+use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
@@ -152,6 +154,11 @@ where
                         }
                     }
 
+                    if let Err(error) = self.update_sbtc_limits().await {
+                        tracing::warn!(%error, "could not update sBTC limits");
+                        continue;
+                    }
+
                     tracing::info!("loading latest deposit requests from Emily");
                     if let Err(error) = self.load_latest_deposit_requests().await {
                         tracing::warn!(%error, "could not load latest deposit requests from Emily");
@@ -237,6 +244,12 @@ impl<C: Context, B> BlockObserver<C, B> {
                 .get_block(&block_hash)
                 .await?
                 .ok_or(Error::MissingBitcoinBlock(block_hash.into()))?;
+
+            // TODO(685): Remove this and replace with a better limiting
+            // condition.
+            if block.bip34_block_height().unwrap_or(0) == 0 {
+                break;
+            }
 
             block_hash = block.header.prev_blockhash;
             blocks.push(block);
@@ -434,28 +447,28 @@ async fn write_bitcoin_block(
     Ok(())
 }
 
-/// Extract all BTC transactions from the block where one of the UTXOs
-/// can be spent by the signers.
-///
-/// # Note
-///
-/// When using the postgres storage, we need to make sure that this
-/// function is called after the `Self::write_bitcoin_block` function
-/// because of the foreign key constraints.
-async fn extract_sbtc_transactions(
-    storage: &(impl DbRead + DbWrite),
-    bitcoin_client: &impl BitcoinInteract,
-    block_hash: BlockHash,
-    txs: &[Transaction],
-) -> Result<(), Error> {
-    // We store all the scriptPubKeys associated with the signers'
-    // aggregate public key. Let's get the last years worth of them.
-    let signer_script_pubkeys: HashSet<ScriptBuf> = storage
-        .get_signers_script_pubkeys()
-        .await?
-        .into_iter()
-        .map(ScriptBuf::from_bytes)
-        .collect();
+    /// Extract all BTC transactions from the block where one of the UTXOs
+    /// can be spent by the signers.
+    ///
+    /// # Note
+    ///
+    /// When using the postgres storage, we need to make sure that this
+    /// function is called after the `Self::write_bitcoin_block` function
+    /// because of the foreign key constraints.
+    pub async fn extract_sbtc_transactions(
+        &self,
+        block_hash: BlockHash,
+        txs: &[Transaction],
+    ) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
+        // We store all the scriptPubKeys associated with the signers'
+        // aggregate public key. Let's get the last years worth of them.
+        let signer_script_pubkeys: HashSet<ScriptBuf> = db
+            .get_signers_script_pubkeys()
+            .await?
+            .into_iter()
+            .map(ScriptBuf::from_bytes)
+            .collect();
 
     // Look through all the UTXOs in the given transaction slice and
     // keep the transactions where a UTXO is locked with a
@@ -508,10 +521,83 @@ async fn extract_sbtc_transactions(
         }
     }
 
-    // Write these transactions into storage.
-    storage.write_bitcoin_transactions(sbtc_txs).await?;
+        // Write these transactions into storage.
+        db.write_bitcoin_transactions(sbtc_txs).await?;
+        Ok(())
+    }
 
-    Ok(())
+    /// Write the given stacks blocks to the database.
+    ///
+    /// This function also extracts sBTC Stacks transactions from the given
+    /// blocks and stores them into the database.
+    async fn write_stacks_blocks(&self, tenures: &[TenureBlocks]) -> Result<(), Error> {
+        let deployer = &self.context.config().signer.deployer;
+        let txs = tenures
+            .iter()
+            .flat_map(|tenure| {
+                storage::postgres::extract_relevant_transactions(tenure.blocks(), deployer)
+            })
+            .collect::<Vec<_>>();
+
+        let headers = tenures
+            .iter()
+            .flat_map(TenureBlocks::as_stacks_blocks)
+            .collect::<Vec<_>>();
+
+        let storage = self.context.get_storage_mut();
+        storage.write_stacks_block_headers(headers).await?;
+        storage.write_stacks_transactions(txs).await?;
+        Ok(())
+    }
+
+    /// Write the bitcoin block to the database. We also write any
+    /// transactions that are spend to any of the signers `scriptPubKey`s
+    async fn write_bitcoin_block(&self, block: &bitcoin::Block) -> Result<(), Error> {
+        let db_block = model::BitcoinBlock::from(block);
+
+        self.context
+            .get_storage_mut()
+            .write_bitcoin_block(&db_block)
+            .await?;
+        self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Update the sBTC peg limits from Emily
+    async fn update_sbtc_limits(&self) -> Result<(), Error> {
+        let limits = self.context.get_emily_client().get_limits().await?;
+        let max_mintable = match limits.total_cap() {
+            Amount::MAX_MONEY => Amount::MAX_MONEY,
+            total_cap => {
+                let sbtc_supply = self
+                    .context
+                    .get_stacks_client()
+                    .get_sbtc_total_supply(&self.context.config().signer.deployer)
+                    .await?;
+                // The maximum amount of sBTC that can be minted is the total cap
+                // minus the current supply.
+                total_cap.checked_sub(sbtc_supply).unwrap_or(Amount::ZERO)
+            }
+        };
+
+        let limits = SbtcLimits::new(
+            Some(limits.total_cap()),
+            Some(limits.per_deposit_cap()),
+            Some(limits.per_withdrawal_cap()),
+            Some(max_mintable),
+        );
+
+        let signer_state = self.context.state();
+        if limits == signer_state.get_current_limits() {
+            tracing::trace!(%limits, "sBTC limits have not changed");
+        } else {
+            tracing::debug!(%limits, "updated sBTC limits from Emily");
+            signer_state.update_current_limits(limits);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

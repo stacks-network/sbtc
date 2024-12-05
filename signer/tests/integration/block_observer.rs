@@ -25,6 +25,7 @@ use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
+use signer::context::SbtcLimits;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::keys::SignerScriptPubKey as _;
@@ -102,6 +103,11 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
             .expect_get_deposits()
             .times(1..)
             .returning(move || Box::pin(std::future::ready(Ok(emily_client_response.clone()))));
+
+        client
+            .expect_get_limits()
+            .times(1..)
+            .returning(|| Box::pin(async { Ok(SbtcLimits::default()) }));
     })
     .await;
 
@@ -211,7 +217,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
     let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip_info.hash.into(), 100)
+        .get_deposit_requests(&chain_tip_info.hash.into(), 100)
         .await
         .unwrap();
 
@@ -246,10 +252,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         .await
         .unwrap()
         .is_some());
-    let deposit_requests = db
-        .get_pending_deposit_requests(&chain_tip, 100)
-        .await
-        .unwrap();
+    let deposit_requests = db.get_deposit_requests(&chain_tip, 100).await.unwrap();
 
     assert_eq!(deposit_requests.len(), 2);
     let req_outpoints: HashSet<OutPoint> =
@@ -350,7 +353,7 @@ async fn link_blocks() {
 async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Vec<TxOutput> {
     sqlx::query_as::<_, TxOutput>(
         r#"
-        SELECT 
+        SELECT
             txid
           , output_index
           , amount
@@ -369,7 +372,7 @@ async fn fetch_output(db: &PgStore, output_type: TxOutputType) -> Vec<TxOutput> 
 async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout> {
     sqlx::query_as::<_, TxPrevout>(
         r#"
-        SELECT 
+        SELECT
             txid
           , prevout_txid
           , prevout_output_index
@@ -612,6 +615,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         },
         accept_threshold: 4,
         num_signers: 7,
+        sbtc_limits: SbtcLimits::default(),
     };
 
     let mut transactions = requests.construct_transactions().unwrap();

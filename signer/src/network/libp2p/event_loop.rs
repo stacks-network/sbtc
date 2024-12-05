@@ -2,18 +2,20 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
+use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{autonat, gossipsub, identify, mdns, Swarm};
+use libp2p::{gossipsub, identify, kad, mdns, Multiaddr, Swarm};
 use tokio::sync::Mutex;
 
-use crate::codec::{Decode, Encode};
+use crate::codec::Encode;
 use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
+use crate::error::Error;
 use crate::network::Msg;
 
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
-#[tracing::instrument(skip_all, name = "p2p")]
+#[tracing::instrument(skip_all, name = "swarm")]
 pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // Subscribe to the gossipsub topic.
     let topic = TOPIC.clone();
@@ -23,6 +25,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
         .behaviour_mut()
         .gossipsub
         .subscribe(&TOPIC)
+        // If this doesn't succeed then nothing will work. It should never fail.
         .expect("failed to subscribe to topic");
 
     let mut term = ctx.get_termination_handle();
@@ -35,7 +38,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // messages to the network.
     let outbox = Mutex::new(Vec::<Msg>::new());
     let poll_outbound = async {
-        tracing::debug!("P2P outbound message polling started");
+        tracing::debug!("p2p outbound message polling started");
         loop {
             let Ok(SignerSignal::Command(SignerCommand::P2PPublish(payload))) =
                 signal_rx.recv().await
@@ -50,7 +53,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
     // Here we create a future that polls the libp2p swarm for events and also
     // publishes messages from the outbox to the network.
     let poll_swarm = async {
-        tracing::debug!("P2P network polling started");
+        tracing::debug!("p2p network polling started");
 
         loop {
             // Poll the libp2p swarm for events, waiting for a maximum of 5ms
@@ -82,48 +85,40 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Gossipsub(event)) => {
                         handle_gossipsub_event(&mut swarm, ctx, event)
                     }
-                    // AutoNAT client protocol events.
-                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatClient(event)) => {
-                        handle_autonat_client_event(&mut swarm, ctx, event)
-                    }
-                    // AutoNAT server protocol events.
-                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatServer(event)) => {
-                        handle_autonat_server_event(&mut swarm, event)
-                    }
                     SwarmEvent::NewListenAddr { address, .. } => {
-                        tracing::info!(%address, "Listener started");
+                        tracing::info!(%address, "listener started");
                     }
                     SwarmEvent::ExpiredListenAddr { address, .. } => {
-                        tracing::debug!(%address, "Listener expired");
+                        tracing::debug!(%address, "listener expired");
                     }
                     SwarmEvent::ListenerClosed { addresses, reason, .. } => {
-                        tracing::info!(?addresses, ?reason, "Listener closed");
+                        tracing::debug!(?addresses, ?reason, "listener closed");
                     }
                     SwarmEvent::ListenerError { listener_id, error } => {
-                        tracing::warn!(%listener_id, %error, "Listener error");
+                        tracing::warn!(%listener_id, %error, "listener error");
                     }
                     SwarmEvent::Dialing { peer_id, connection_id } => {
-                        tracing::info!(peer_id = ?peer_id, %connection_id, "Dialing peer");
+                        tracing::trace!(?peer_id, %connection_id, "dialing peer");
                     }
                     SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
                         if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                            tracing::warn!(%peer_id, ?endpoint, "Connected to peer, however it is not a known signer; disconnecting");
+                            tracing::warn!(%peer_id, ?endpoint, "connected to peer, however it is not a known signer; disconnecting");
                             let _ = swarm.disconnect_peer_id(peer_id);
                             continue;
                         }
-                        tracing::info!(%peer_id, ?endpoint, "Connected to peer");
+                        tracing::debug!(%peer_id, ?endpoint, "connected to peer");
                     }
-                    SwarmEvent::ConnectionClosed { peer_id, cause, .. } => {
-                        tracing::info!(%peer_id, ?cause, "Connection closed");
+                    SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
+                        tracing::trace!(%peer_id, ?cause, ?endpoint, "connection closed");
                     }
                     SwarmEvent::IncomingConnection { local_addr, send_back_addr, .. } => {
-                        tracing::debug!(%local_addr, %send_back_addr, "Incoming connection");
+                        tracing::trace!(%local_addr, %send_back_addr, "incoming connection");
                     }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Ping(ping)) => {
                         tracing::trace!("ping received: {:?}", ping);
                     }
-                    SwarmEvent::OutgoingConnectionError { connection_id, error, .. } => {
-                        tracing::warn!(%connection_id, %error, "outgoing connection error");
+                    SwarmEvent::OutgoingConnectionError { connection_id, error, peer_id } => {
+                        tracing::trace!(%connection_id, %error, ?peer_id, "outgoing connection error");
                     }
                     SwarmEvent::IncomingConnectionError {
                         local_addr,
@@ -131,45 +126,68 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         error,
                         ..
                     } => {
-                        tracing::warn!(%local_addr, %send_back_addr, %error, "incoming connection error");
+                        tracing::trace!(%local_addr, %send_back_addr, %error, "incoming connection error");
                     }
                     SwarmEvent::NewExternalAddrCandidate { address } => {
-                        tracing::debug!(%address, "New external address candidate");
+                        tracing::debug!(%address, "new external address candidate");
                     }
                     SwarmEvent::ExternalAddrConfirmed { address } => {
-                        tracing::debug!(%address, "External address confirmed");
+                        tracing::debug!(%address, "external address confirmed (ours)");
                     }
                     SwarmEvent::ExternalAddrExpired { address } => {
-                        tracing::debug!(%address, "External address expired");
+                        tracing::debug!(%address, "external address expired (ours)");
                     }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-                        tracing::debug!(%peer_id, %address, "New external address of peer");
+                        if swarm.listeners().any(|addr| addr == &address) {
+                            tracing::debug!(%peer_id, %address, "ignoring our own external address");
+                        } else {
+                            tracing::debug!(%peer_id, %address, "new external address of peer");
+                            let kad_addr = strip_peer_id(&address);
+                            tracing::debug!(%peer_id, %kad_addr, "adding address to kademlia");
+                            swarm
+                                .behaviour_mut()
+                                .kademlia
+                                .add_address(&peer_id, kad_addr);
+                        }
+                    }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::Kademlia(event)) => {
+                        handle_kademlia_event(event);
+                    }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatClient(event)) => {
+                        tracing::debug!(
+                            tested_addr = ?event.tested_addr,
+                            server = ?event.server,
+                            result = ?event.result,
+                            "autonat client event"
+                        );
+                    }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::AutonatServer(event)) => {
+                        tracing::debug!(
+                            all_addrs = ?event.all_addrs,
+                            tested_addr = ?event.tested_addr,
+                            client = ?event.client,
+                            result = ?event.result,
+                            "autonat server event"
+                        );
                     }
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
-                    _ => tracing::trace!("unhandled swarm event"),
+                    event => tracing::trace!(?event, "unhandled swarm event"),
                 }
             }
 
             // Drain the outbox and publish the messages to the network.
             let outbox = outbox.lock().await.drain(..).collect::<Vec<_>>();
             for payload in outbox {
-                tracing::info!("publishing message");
                 let msg_id = payload.id();
+                tracing::trace!(
+                    message_id = hex::encode(msg_id),
+                    msg = %payload,
+                    "publishing message"
+                );
 
-                // Attempt to encode the message payload into bytes
-                // using the signer codec.
-                let encoded_msg = match payload.encode_to_vec() {
-                    Ok(msg) => msg,
-                    Err(error) => {
-                        // An error occurred while encoding the message.
-                        // Log the error and send a failure signal to the application
-                        // so that it can handle the failure as needed.
-                        tracing::warn!(%error, "Failed to encode message");
-                        let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
-                        continue;
-                    }
-                };
+                // Encode the message payload into bytes using the signer codec.
+                let encoded_msg = payload.encode_to_vec();
 
                 let _ = swarm
                     .lock()
@@ -181,17 +199,26 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         // An error occurred while attempting to publish.
                         // Log the error and send a failure signal to the application
                         // so that it can handle the failure as needed.
-                        tracing::warn!(%error, ?msg_id, "Failed to publish message");
+                        tracing::warn!(%error, ?msg_id, "failed to publish message");
                         let _ = signal_tx.send(P2PEvent::PublishFailure(msg_id).into());
                     })
                     .inspect(|_| {
                         // The message was published successfully. Log the success
                         // and send a success signal to the application so that it can
                         // handle the success as needed.
-                        tracing::trace!(?msg_id, "Message published successfully");
+                        tracing::trace!(?msg_id, "message published successfully");
                         let _ = signal_tx.send(P2PEvent::PublishSuccess(msg_id).into());
                     });
             }
+        }
+    };
+
+    let log = async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            let swarm = swarm.lock().await;
+            let peers = swarm.connected_peers().collect::<Vec<_>>();
+            tracing::debug!(?peers, "connected peers");
         }
     };
 
@@ -201,100 +228,36 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
         },
         _ = poll_outbound => {},
         _ = poll_swarm => {},
+        _ = log => {},
     }
 
     tracing::info!("libp2p event loop terminated");
 }
 
-fn handle_autonat_client_event(
-    _: &mut Swarm<SignerBehavior>,
-    ctx: &impl Context,
-    event: autonat::v2::client::Event,
-) {
-    use autonat::v2::client::Event;
-
+#[tracing::instrument(skip_all, name = "kademlia")]
+fn handle_kademlia_event(event: kad::Event) {
     match event {
-        //  Match on successful AutoNAT test event
-        Event {
-            server,
-            tested_addr,
-            bytes_sent,
-            result: Ok(()),
+        kad::Event::RoutingUpdated {
+            peer,
+            is_new_peer,
+            addresses,
+            bucket_range,
+            old_peer,
         } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&server) {
-                tracing::debug!(
-                    peer_id = %server,
-                    %tested_addr,
-                    %bytes_sent,
-                    "AutoNAT (client) test successful, however the server is not a known signer; ignoring"
-                );
-                return;
-            }
-
-            tracing::trace!(peer_id = %server, %tested_addr, %bytes_sent, "AutoNAT (client) test successful");
-        }
-        // Match on failed AutoNAT test event
-        Event {
-            server,
-            tested_addr,
-            bytes_sent,
-            result: Err(error),
-        } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&server) {
-                tracing::debug!(
-                    peer_id = %server,
-                    %tested_addr,
-                    %bytes_sent,
-                    "AutoNAT (client) test failed, however the server is not a known signer; ignoring"
-                );
-                return;
-            }
-
-            tracing::trace!(
-                peer_id = %server, %tested_addr, %bytes_sent, %error, "AutoNAT (client) test failed"
+            tracing::debug!(
+                %peer,
+                is_new_peer,
+                ?addresses,
+                ?bucket_range,
+                ?old_peer,
+                "kademlia routing table updated"
             );
         }
+        _ => tracing::trace!(?event, "kademlia event"),
     }
 }
 
-fn handle_autonat_server_event(_: &mut Swarm<SignerBehavior>, event: autonat::v2::server::Event) {
-    use autonat::v2::server::Event;
-
-    match event {
-        Event {
-            all_addrs,
-            client,
-            tested_addr,
-            data_amount,
-            result: Ok(()),
-        } => {
-            tracing::trace!(
-                ?all_addrs,
-                %client,
-                %tested_addr,
-                %data_amount,
-                "AutoNAT (server) test successful"
-            );
-        }
-        Event {
-            all_addrs,
-            client,
-            tested_addr,
-            data_amount,
-            result: Err(error),
-        } => {
-            tracing::warn!(
-                ?all_addrs,
-                %client,
-                %tested_addr,
-                %data_amount,
-                %error,
-                "AutoNAT (server) test failed"
-            );
-        }
-    }
-}
-
+#[tracing::instrument(skip_all, name = "mdns")]
 fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, event: mdns::Event) {
     use mdns::Event;
 
@@ -311,11 +274,11 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
 
             for (peer_id, addr) in peers {
                 if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                    tracing::warn!(%peer_id, %addr, "Discovered peer via mDNS, however it is not a known signer; ignoring");
+                    tracing::debug!(%peer_id, %addr, "discovered peer via mDNS, however it is not a known signer; ignoring");
                     continue;
                 }
 
-                tracing::info!(%peer_id, %addr, "Discovered peer via mDNS");
+                tracing::debug!(%peer_id, %addr, "discovered peer via mDNS");
                 swarm.behaviour_mut().gossipsub.add_explicit_peer(&peer_id);
             }
         }
@@ -324,7 +287,7 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
         // expired and the peer's address has not been updated.
         Event::Expired(peers) => {
             for (peer_id, addr) in peers {
-                tracing::info!(%peer_id, %addr, "Expired peer via mDNS");
+                tracing::debug!(%peer_id, %addr, "expired peer via mDNS");
                 swarm
                     .behaviour_mut()
                     .gossipsub
@@ -334,34 +297,35 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
     }
 }
 
+#[tracing::instrument(skip_all, name = "identify")]
 fn handle_identify_event(
     swarm: &mut Swarm<SignerBehavior>,
-    ctx: &impl Context,
+    _: &impl Context,
     event: identify::Event,
 ) {
     use identify::Event;
 
     match event {
         Event::Received { peer_id, info, .. } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                tracing::debug!(%peer_id, "ignoring identify message from unknown peer");
-                return;
-            }
-            tracing::debug!(%peer_id, "Received identify message from peer; adding to confirmed external addresses");
-            swarm.add_external_address(info.observed_addr.clone());
+            tracing::debug!(%peer_id, ?info, "received identify message from peer");
+            swarm
+                .behaviour_mut()
+                .kademlia
+                .add_address(&peer_id, strip_peer_id(&info.observed_addr));
         }
         Event::Pushed { connection_id, peer_id, info } => {
-            tracing::trace!(%connection_id, %peer_id, ?info, "Pushed identify message to peer");
+            tracing::debug!(%connection_id, %peer_id, ?info, "pushed identify message to peer");
         }
         Event::Error { connection_id, peer_id, error } => {
-            tracing::warn!(%connection_id, %peer_id, %error, "Error handling identify message");
+            tracing::warn!(%connection_id, %peer_id, %error, "error handling identify message");
         }
         Event::Sent { connection_id, peer_id } => {
-            tracing::trace!(%connection_id, %peer_id, "Sent identify message to peer");
+            tracing::debug!(%connection_id, %peer_id, "sent identify message to peer");
         }
     }
 }
 
+#[tracing::instrument(skip_all, name = "gossipsub")]
 fn handle_gossipsub_event(
     swarm: &mut Swarm<SignerBehavior>,
     ctx: &impl Context,
@@ -372,39 +336,102 @@ fn handle_gossipsub_event(
     match event {
         Event::Message {
             propagation_source: peer_id,
-            message_id: id,
             message,
+            ..
         } => {
-            if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
+            let current_signer_set = ctx.state().current_signer_set();
+            // The following check should be unnecessary. In order to
+            // receive a message the peer needs to establish a connection,
+            // and in order to do that the peer needs to be in the current
+            // signer set. When we implement the signing set changing code,
+            // we should re-evaluate whether we should remove this check.
+            if !current_signer_set.is_allowed_peer(&peer_id) {
                 tracing::warn!(%peer_id, "ignoring message from unknown peer");
                 return;
             }
 
-            tracing::trace!(local_peer_id = %swarm.local_peer_id(), %peer_id,
-                "Got message: '{}' with id: {id} from peer: {peer_id}",
-                String::from_utf8_lossy(&message.data),
-            );
+            // The message may have originated from someone else, let's
+            // check that peer ID too. If we haven't been told the source
+            // then we distrust the message and ignore it.
+            let Some(origin_peer_id) = message.source else {
+                tracing::warn!(%peer_id, "origin peer id unknown, ignoring message");
+                return;
+            };
 
-            Msg::decode(message.data.as_slice())
-                .map(|msg| {
+            if !current_signer_set.is_allowed_peer(&origin_peer_id) {
+                tracing::warn!(%origin_peer_id, "ignoring message from unknown origin peer");
+                return;
+            }
+
+            Msg::decode_with_digest(&message.data)
+                .and_then(|(msg, digest)| {
+                    tracing::trace!(
+                        local_peer_id = %swarm.local_peer_id(),
+                        %peer_id,
+                        message_id = hex::encode(msg.id()),
+                        %msg,
+                        "received message",
+                    );
+
+                    if origin_peer_id != msg.signer_public_key.into() {
+                        tracing::error!(%origin_peer_id, "connected peer sent an invalid message");
+                        return Err(Error::InvalidSignature)
+                    }
+
+                    if let Err(error) = msg.verify_digest(digest) {
+                        tracing::error!(%origin_peer_id, "connected peer sent an invalid signature");
+                        return Err(error)
+                    }
+
                     let _ = ctx.get_signal_sender()
                         .send(P2PEvent::MessageReceived(msg).into())
-                        .map_err(|error| {
+                        .inspect_err(|error| {
                             tracing::debug!(%error, "Failed to send message to application; we are likely shutting down.");
                         });
+
+                    Ok(())
                 })
                 .unwrap_or_else(|error| {
-                    tracing::warn!(?peer_id, %error, "Failed to decode message");
+                    tracing::warn!(%peer_id, %error, "Failed to decode message");
                 });
         }
         Event::Subscribed { peer_id, topic } => {
-            tracing::info!(%peer_id, %topic, "Subscribed to topic");
+            tracing::debug!(%peer_id, %topic, "subscribed to topic");
         }
         Event::Unsubscribed { peer_id, topic } => {
-            tracing::info!(%peer_id, %topic, "Unsubscribed from topic");
+            tracing::debug!(%peer_id, %topic, "unsubscribed from topic");
         }
         Event::GossipsubNotSupported { peer_id } => {
-            tracing::warn!(%peer_id, "Peer does not support gossipsub");
+            tracing::warn!(%peer_id, "peer does not support gossipsub");
         }
+    }
+}
+
+/// For a multiaddr that ends with a peer id, this strips this suffix. Rust-libp2p
+/// only supports dialing to an address without providing the peer id.
+fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
+    let mut new_addr = Multiaddr::empty();
+    for protocol in addr.iter().take_while(|p| !matches!(p, Protocol::P2p(_))) {
+        new_addr.push(protocol);
+    }
+    new_addr
+}
+
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[test]
+    fn test_strip_peer_id() {
+        let endpoint =
+            "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N";
+        let addr = Multiaddr::from_str(endpoint).unwrap();
+
+        let stripped = strip_peer_id(&addr);
+
+        let stripped_str = "/ip4/198.51.100.0/tcp/4242";
+        assert_eq!(stripped.to_string(), stripped_str);
     }
 }

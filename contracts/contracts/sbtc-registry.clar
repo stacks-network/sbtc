@@ -40,25 +40,38 @@
 ;; Data structure to map request-id to status
 ;; If status is `none`, the request is pending.
 ;; Otherwise, the boolean value indicates whether
-;; the deposit was accepted.
+;; the withdrawal was accepted.
 (define-map withdrawal-status uint bool)
+
+;; Data structure to map successful withdrawal requests
+;; to their respective sweep transaction. Stores the 
+;; txid, burn hash, and burn height.
+(define-map completed-withdrawal-sweep uint {
+  sweep-txid: (buff 32),
+  sweep-burn-hash: (buff 32),
+  sweep-burn-height: uint,
+})
 
 ;; Internal data structure to store completed
 ;; deposit requests & avoid replay attacks.
+(define-map deposit-status {txid: (buff 32), vout-index: uint} bool)
+
+;; Data structure to map successful deposit requests
+;; to their respective sweep transaction. Stores the
+;; txid, burn hash, and burn height.
 (define-map completed-deposits {txid: (buff 32), vout-index: uint}
   {
     amount: uint,
-    recipient: principal
+    recipient: principal,
+    sweep-txid: (buff 32),
+    sweep-burn-hash: (buff 32),
+    sweep-burn-height: uint,
   }
 )
 
 ;; Data structure to store aggregate pubkey,
 ;; stored to avoid replay
 (define-map aggregate-pubkeys (buff 33) bool)
-
-;; Data structure to store the current signer set,
-;; stored to avoid replay
-(define-map multi-sig-address principal bool)
 
 ;; Data structure to store the active protocol contracts
 (define-map protocol-contracts principal bool)
@@ -69,7 +82,7 @@
 
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
-;; This function returns the fields of the withrawal
+;; This function returns the fields of the withdrawal
 ;; request, along with its status.
 (define-read-only (get-withdrawal-request (id uint))
   (match (map-get? withdrawal-requests id)
@@ -80,10 +93,22 @@
   )
 )
 
+;; Get a completed withdrawal sweep data by its request ID.
+;; This function returns the fields of the withdrawal-sweeps map.
+(define-read-only (get-completed-withdrawal-sweep-data (id uint))
+  (map-get? completed-withdrawal-sweep id)
+)
+
 ;; Get a completed deposit by its transaction ID & vout index.
 ;; This function returns the fields of the completed-deposits map.
 (define-read-only (get-completed-deposit (txid (buff 32)) (vout-index uint))
   (map-get? completed-deposits {txid: txid, vout-index: vout-index})
+)
+
+;; Get a completed deposit sweep data by its transaction ID & vout index.
+;; This function returns the fields of the completed-deposits map.
+(define-read-only (get-deposit-status (txid (buff 32)) (vout-index uint))
+  (map-get? deposit-status {txid: txid, vout-index: vout-index})
 )
 
 ;; Get the current signer set.
@@ -178,6 +203,11 @@
     (try! (is-protocol-caller))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id true)
+    (map-insert completed-withdrawal-sweep request-id {
+      sweep-txid: sweep-txid,
+      sweep-burn-hash: burn-hash,
+      sweep-burn-height: burn-height,
+    })
     (print {
       topic: "withdrawal-accept",
       request-id: request-id,
@@ -235,9 +265,13 @@
   )
   (begin
     (try! (is-protocol-caller))
+    (map-insert deposit-status {txid: txid, vout-index: vout-index} true)
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
-      recipient: recipient
+      recipient: recipient,
+      sweep-txid: sweep-txid,
+      sweep-burn-hash: burn-hash,
+      sweep-burn-height: burn-height,
     })
     (print {
       topic: "completed-deposit",
@@ -266,8 +300,6 @@
     (try! (is-protocol-caller))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
-    ;; Check that the new address (multi-sig) is not already in the map
-    (asserts! (map-insert multi-sig-address new-address true) ERR_MULTI_SIG_REPLAY)
     ;; Update the current signer set
     (var-set current-signer-set new-keys)
     ;; Update the current multi-sig address

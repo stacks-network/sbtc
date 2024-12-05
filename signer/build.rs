@@ -15,6 +15,7 @@ pub fn compile_protos() {
         "protobufs/stacks/common.proto",
         "protobufs/stacks/signer/v1/decisions.proto",
         "protobufs/stacks/signer/v1/requests.proto",
+        "protobufs/stacks/signer/v1/messages.proto",
     ]
     .map(|path| workingdir.join(path));
 
@@ -24,6 +25,7 @@ pub fn compile_protos() {
     tonic_build::configure()
         .build_server(true)
         .build_client(true)
+        .btree_map(["."])
         .out_dir(workingdir.join("signer/src/proto/generated/"))
         .include_file("mod.rs")
         .type_attribute("crypto.Uint256", "#[derive(Copy)]")

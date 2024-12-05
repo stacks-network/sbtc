@@ -54,10 +54,15 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Option<model::StacksBlock>, Error>> + Send;
 
     /// Get pending deposit requests
+    ///
+    /// These are deposit requests that have been added to our database but
+    /// where the current signer has not made a decision on whether they
+    /// will sign for the deposit and sweep in the funds.
     fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
     /// Get pending deposit requests that have been accepted by at least
@@ -142,10 +147,15 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<Vec<model::WithdrawalSigner>, Error>> + Send;
 
     /// Get pending withdrawal requests
+    ///
+    /// These are withdrawal requests that have been added to our database
+    /// but where the current signer has not made a decision on whether
+    /// they will sweep out the withdrawal funds and sweep transaction.
     fn get_pending_withdrawal_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
     /// Get pending withdrawal requests that have been accepted by at least
@@ -337,6 +347,19 @@ pub trait DbRead {
         context_window: u16,
         prevout_txid: &model::BitcoinTxId,
     ) -> impl Future<Output = Result<Vec<model::SweepTransaction>, Error>> + Send;
+
+    /// Get the deposit request given the transaction id and output index.
+    fn get_deposit_request(
+        &self,
+        txid: &model::BitcoinTxId,
+        output_index: u32,
+    ) -> impl Future<Output = Result<Option<model::DepositRequest>, Error>> + Send;
+
+    /// Get the bitcoin sighash output.
+    fn will_sign_bitcoin_tx_sighash(
+        &self,
+        sighash: &model::SigHash,
+    ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
@@ -471,5 +494,17 @@ pub trait DbWrite {
     fn write_tx_prevout(
         &self,
         prevout: &model::TxPrevout,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin transactions sighaes to the database.
+    fn write_bitcoin_txs_sighashes(
+        &self,
+        sighashes: &[model::BitcoinTxSigHash],
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the bitcoin withdrawals outputs to the database.
+    fn write_bitcoin_withdrawals_outputs(
+        &self,
+        withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
 }

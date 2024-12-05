@@ -8,6 +8,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
+use bitcoin::TapSighash;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitvec::array::BitArray;
@@ -25,10 +26,23 @@ use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
 
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::TxRequestIds;
+use crate::ecdsa::Signed;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
+use crate::message::BitcoinPreSignAck;
+use crate::message::BitcoinPreSignRequest;
+use crate::message::SignerMessage;
+use crate::message::SweepTransactionInfo;
+use crate::message::SweptDeposit;
+use crate::message::SweptWithdrawal;
+use crate::stacks::contracts::AcceptWithdrawalV1;
+use crate::stacks::contracts::CompleteDepositV1;
+use crate::stacks::contracts::RejectWithdrawalV1;
+use crate::stacks::contracts::RotateKeysV1;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -40,8 +54,10 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::EncryptedDkgShares;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::ScriptPubKey;
+use crate::storage::model::SigHash;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
@@ -216,16 +232,12 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         parties: vec![(0, party_state)],
     };
 
-    let encoded = signer_state
-        .encode_to_vec()
-        .expect("encoding to vec failed");
+    let encoded = signer_state.encode_to_vec();
 
     let encrypted_private_shares =
         wsts::util::encrypt(signer_private_key, &encoded, rng).expect("failed to encrypt");
     let public_shares: BTreeMap<u32, wsts::net::DkgPublicShares> = BTreeMap::new();
-    let public_shares = public_shares
-        .encode_to_vec()
-        .expect("encoding to vec failed");
+    let public_shares = public_shares.encode_to_vec();
 
     model::EncryptedDkgShares {
         aggregate_key: group_key,
@@ -450,6 +462,12 @@ impl fake::Dummy<fake::Faker> for ScriptPubKey {
     }
 }
 
+impl fake::Dummy<fake::Faker> for SigHash {
+    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        TapSighash::from_byte_array(config.fake_with_rng(rng)).into()
+    }
+}
+
 /// A struct to aid in the generation of bitcoin deposit transactions.
 ///
 /// BitcoinTx is created with this config, then it will have a UTXO that is
@@ -605,5 +623,179 @@ impl fake::Dummy<SweepTxConfig> for model::Transaction {
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: fake::Faker.fake_with_rng(rng),
         }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for Signed<SignerMessage> {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let pk: PrivateKey = PrivateKey::new(rng);
+        let digest: [u8; 32] = config.fake_with_rng(rng);
+        Signed {
+            inner: config.fake_with_rng(rng),
+            signature: pk.sign_ecdsa(&secp256k1::Message::from_digest(digest)),
+            signer_public_key: PublicKey::from_private_key(&pk),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for CompleteDepositV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        CompleteDepositV1 {
+            outpoint: OutPoint {
+                txid: txid(config, rng),
+                vout: rng.next_u32(),
+            },
+            amount: config.fake_with_rng(rng),
+            recipient: config.fake_with_rng::<StacksPrincipal, R>(rng).into(),
+            deployer: address,
+            sweep_txid: config.fake_with_rng(rng),
+            sweep_block_hash: config.fake_with_rng(rng),
+            sweep_block_height: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for AcceptWithdrawalV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        AcceptWithdrawalV1 {
+            request_id: config.fake_with_rng(rng),
+            outpoint: OutPoint {
+                txid: txid(config, rng),
+                vout: rng.next_u32(),
+            },
+            tx_fee: config.fake_with_rng(rng),
+            signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
+            deployer: address,
+            sweep_block_hash: config.fake_with_rng(rng),
+            sweep_block_height: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for RejectWithdrawalV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        RejectWithdrawalV1 {
+            request_id: config.fake_with_rng(rng),
+            signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
+            deployer: address,
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for RotateKeysV1 {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let public_key: PublicKey = config.fake_with_rng(rng);
+        let pubkey = stacks_common::util::secp256k1::Secp256k1PublicKey::from(&public_key);
+        let address = StacksAddress::p2pkh(false, &pubkey);
+
+        RotateKeysV1 {
+            new_keys: config.fake_with_rng(rng),
+            aggregate_key: config.fake_with_rng(rng),
+            deployer: address,
+            signatures_required: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for SweptDeposit {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        SweptDeposit {
+            input_index: config.fake_with_rng(rng),
+            deposit_request_txid: txid(config, rng),
+            deposit_request_output_index: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for SweptWithdrawal {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        SweptWithdrawal {
+            output_index: config.fake_with_rng(rng),
+            withdrawal_request_id: config.fake_with_rng(rng),
+            withdrawal_request_block_hash: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for SweepTransactionInfo {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        SweepTransactionInfo {
+            txid: txid(config, rng),
+            signer_prevout_txid: txid(config, rng),
+            signer_prevout_output_index: config.fake_with_rng(rng),
+            signer_prevout_amount: config.fake_with_rng(rng),
+            signer_prevout_script_pubkey: config.fake_with_rng::<ScriptPubKey, R>(rng).into(),
+            amount: config.fake_with_rng(rng),
+            fee: config.fake_with_rng(rng),
+            vsize: config.fake_with_rng(rng),
+            created_at_block_hash: block_hash(config, rng),
+            market_fee_rate: config.fake_with_rng(rng),
+            swept_deposits: config.fake_with_rng(rng),
+            swept_withdrawals: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for QualifiedRequestId {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        QualifiedRequestId {
+            request_id: config.fake_with_rng(rng),
+            txid: config.fake_with_rng(rng),
+            block_hash: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for TxRequestIds {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        let take = (0..20).fake_with_rng(rng);
+        let deposits = std::iter::repeat_with(|| OutPoint {
+            txid: txid(config, rng),
+            vout: rng.next_u32(),
+        })
+        .take(take)
+        .collect();
+
+        TxRequestIds {
+            deposits,
+            withdrawals: fake::vec![QualifiedRequestId; 0..20],
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for Fees {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        Fees {
+            total: config.fake_with_rng(rng),
+            rate: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinPreSignRequest {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        BitcoinPreSignRequest {
+            request_package: fake::vec![TxRequestIds; 0..20],
+            fee_rate: config.fake_with_rng(rng),
+            last_fees: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinPreSignAck {
+    fn dummy_with_rng<R: rand::RngCore + ?Sized>(_config: &fake::Faker, _rng: &mut R) -> Self {
+        BitcoinPreSignAck {}
     }
 }
