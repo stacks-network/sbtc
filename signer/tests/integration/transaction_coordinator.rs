@@ -36,7 +36,6 @@ use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use sbtc::testing::regtest::AsUtxo as _;
 use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
-use sha2::Digest as _;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::BitcoinInteract as _;
@@ -54,6 +53,7 @@ use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
 use signer::storage::postgres::PgStore;
+use signer::testing::transaction_coordinator::select_coordinator;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
@@ -150,20 +150,6 @@ where
         .expect("failed to write encrypted shares");
 
     (aggregate_key, bitcoin_chain_tip_ref)
-}
-
-fn select_coordinator(
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
-    signer_info: &[testing::wsts::SignerInfo],
-) -> keys::PrivateKey {
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(bitcoin_chain_tip.into_bytes());
-    let digest = hasher.finalize();
-    let index = usize::from_be_bytes(*digest.first_chunk().expect("unexpected digest size"));
-    signer_info
-        .get(index % signer_info.len())
-        .expect("missing signer info")
-        .signer_private_key
 }
 
 async fn push_utxo_donation<C>(ctx: &C, aggregate_key: &PublicKey, block_hash: &bitcoin::BlockHash)
@@ -423,7 +409,7 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
+#[test(tokio::test)]
 async fn process_complete_deposit() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
