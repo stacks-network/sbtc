@@ -463,30 +463,11 @@ impl PgStore {
     ) -> Result<Option<model::BitcoinTxId>, Error> {
         sqlx::query_scalar::<_, model::BitcoinTxId>(
             r#"
-            WITH RECURSIVE block_chain AS (
-                SELECT
-                    block_hash
-                  , block_height
-                  , parent_hash
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                SELECT
-                    child.block_hash
-                  , child.block_height
-                  , child.parent_hash
-                FROM sbtc_signer.bitcoin_blocks AS child
-                JOIN block_chain AS parent
-                  ON child.block_hash = parent.parent_hash
-                WHERE child.block_height >= $2
-            )
             SELECT sd.sweep_transaction_txid
             FROM sbtc_signer.swept_deposits AS sd
             JOIN sbtc_signer.bitcoin_transactions AS bt
               ON bt.txid = sd.sweep_transaction_txid
-            JOIN block_chain USING (block_hash)
+            JOIN sbtc_signer.bitcoin_blockchain_from($1, $2) USING (block_hash)
             WHERE sd.deposit_request_txid = $3
               AND sd.deposit_request_output_index = $4
             LIMIT 1
@@ -530,25 +511,6 @@ impl PgStore {
         };
         sqlx::query_as::<_, DepositStatusSummary>(
             r#"
-            WITH RECURSIVE block_chain AS (
-                SELECT
-                    block_hash
-                  , block_height
-                  , parent_hash
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                SELECT
-                    child.block_hash
-                  , child.block_height
-                  , child.parent_hash
-                FROM sbtc_signer.bitcoin_blocks AS child
-                JOIN block_chain AS parent
-                  ON child.block_hash = parent.parent_hash
-                WHERE child.block_height >= $2
-            )
             SELECT
                 ds.can_accept
               , ds.can_sign
@@ -562,7 +524,7 @@ impl PgStore {
               , bc.block_hash
             FROM sbtc_signer.deposit_requests AS dr
             JOIN sbtc_signer.bitcoin_transactions USING (txid)
-            LEFT JOIN block_chain AS bc USING (block_hash)
+            LEFT JOIN sbtc_signer.bitcoin_blockchain_from($1, $2) AS bc USING (block_hash)
             LEFT JOIN sbtc_signer.deposit_signers AS ds
               ON dr.txid = ds.txid
              AND dr.output_index = ds.output_index
