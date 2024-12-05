@@ -627,7 +627,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, self.context_window)
+            .get_signer_utxo(&chain_tip)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -726,7 +726,7 @@ where
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
             let signer_utxo = storage
-                .get_signer_utxo(&chain_tip.block_hash, self.context_window)
+                .get_signer_utxo(&chain_tip.block_hash)
                 .await
                 .unwrap()
                 .expect("no signer utxo");
@@ -735,12 +735,7 @@ where
 
         // Check context window
         assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, 1)
-            .await
-            .unwrap()
-            .is_none());
-        assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, 2)
+            .get_signer_utxo(&block_c2.block_hash)
             .await
             .unwrap()
             .is_some());
@@ -835,7 +830,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, self.context_window)
+            .get_signer_utxo(&chain_tip)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -928,7 +923,7 @@ where
 
         // Check with chain tip A1
         let signer_utxo = storage
-            .get_signer_utxo(&block_a1.block_hash, self.context_window)
+            .get_signer_utxo(&block_a1.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -943,7 +938,7 @@ where
 
         // Check with chain tip A2
         let signer_utxo = storage
-            .get_signer_utxo(&block_a2.block_hash, self.context_window)
+            .get_signer_utxo(&block_a2.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -958,7 +953,7 @@ where
 
         // Check with chain tip B1
         let signer_utxo = storage
-            .get_signer_utxo(&block_b1.block_hash, self.context_window)
+            .get_signer_utxo(&block_b1.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");

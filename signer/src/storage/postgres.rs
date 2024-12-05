@@ -366,7 +366,6 @@ impl PgStore {
     async fn get_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
         txo_type: model::TxOutputType,
     ) -> Result<Option<SignerUtxo>, Error> {
         let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
@@ -1528,14 +1527,13 @@ impl super::DbRead for PgStore {
     async fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
         let txo_type = model::TxOutputType::SignersOutput;
-        if let Some(pg_utxo) = self.get_utxo(chain_tip, context_window, txo_type).await? {
+        if let Some(pg_utxo) = self.get_utxo(chain_tip, txo_type).await? {
             return Ok(Some(pg_utxo));
         }
         let txo_type = model::TxOutputType::Donation;
-        self.get_utxo(chain_tip, context_window, txo_type).await
+        self.get_utxo(chain_tip, txo_type).await
     }
 
     async fn in_canonical_bitcoin_blockchain(
