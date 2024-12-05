@@ -200,7 +200,7 @@ pub async fn add_chainstate_entry_or_reorg(
                     .inspect_err(|e| warn!("Failed executing reorg with error {}", e))?;
             // Log error.
             } else {
-                info!("Inconsistent chainstate found for {entry:?} but we pretend it's okay.");
+                debug!("Inconsistent chainstate found for {entry:?} but we pretend it's okay.");
             }
         }
         e @ Err(_) => return e,
