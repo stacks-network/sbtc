@@ -35,9 +35,9 @@ BEGIN
         WHERE last.block_height >= min_block_height
     )
     SELECT
-        block_hash
-      , parent_hash
-      , block_height
-    FROM blockchain;
+        blocks.block_hash
+      , blocks.parent_hash
+      , blocks.block_height
+    FROM blockchain as blocks;
 END;
 $$ LANGUAGE plpgsql;
