@@ -163,11 +163,7 @@ pub async fn update_chainstate(
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
         let can_reorg = context.settings.trusted_reorg_api_key == api_key;
-        add_chainstate_entry_or_reorg(
-            &context,
-            can_reorg,
-            &chainstate,
-        ).await?;
+        add_chainstate_entry_or_reorg(&context, can_reorg, &chainstate).await?;
         // Respond.
         Ok(with_status(json(&chainstate), StatusCode::CREATED))
     }
@@ -201,7 +197,8 @@ pub async fn add_chainstate_entry_or_reorg(
                 // Execute the reorg.
                 execute_reorg_handler(context, execute_reorg_request)
                     .await
-                    .inspect_err(|e| warn!("Failed executing reorg with error {}", e))?; // Log error.
+                    .inspect_err(|e| warn!("Failed executing reorg with error {}", e))?;
+            // Log error.
             } else {
                 info!("Inconsistent chainstate found for {entry:?} but we pretend it's okay.");
             }

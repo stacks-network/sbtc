@@ -83,7 +83,7 @@ impl Settings {
                     .map(|v| v.parse())
                     .transpose()?,
             },
-            trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?
+            trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?,
         })
     }
 }

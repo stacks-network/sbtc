@@ -345,8 +345,12 @@ pub async fn update_deposits(
         for chainstate in inferred_chainstates {
             // TODO(TBD): Determine what happens if this occurs in multiple lambda
             // instances at once.
-            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(&context, can_reorg, &chainstate)
-                .await?;
+            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(
+                &context,
+                can_reorg,
+                &chainstate,
+            )
+            .await?;
         }
 
         // Create aggregator.
