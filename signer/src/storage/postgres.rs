@@ -482,13 +482,12 @@ impl PgStore {
                   ON child.block_hash = parent.parent_hash
                 WHERE child.block_height >= $2
             )
-            SELECT sd.sweep_transaction_txid
-            FROM sbtc_signer.swept_deposits AS sd
-            JOIN sbtc_signer.bitcoin_transactions AS bt
-              ON bt.txid = sd.sweep_transaction_txid
+            SELECT bti.txid
+            FROM sbtc_signer.bitcoin_tx_inputs AS bti
+            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
             JOIN block_chain USING (block_hash)
-            WHERE sd.deposit_request_txid = $3
-              AND sd.deposit_request_output_index = $4
+            WHERE bti.prevout_txid = $3
+              AND bti.prevout_output_index = $4
             LIMIT 1
             "#,
         )
@@ -1593,7 +1592,9 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
             WITH RECURSIVE bitcoin_blockchain AS (
-                SELECT block_hash
+                SELECT 
+                    block_hash
+                  , block_height
                 FROM bitcoin_blockchain_of($1, $2)
             ),
             stacks_blockchain AS (
@@ -1629,14 +1630,15 @@ impl super::DbRead for PgStore {
               , deposit_req.max_fee
             FROM bitcoin_blockchain AS bc_blocks
             INNER JOIN bitcoin_transactions AS bc_trx USING (block_hash)
-            INNER JOIN sbtc_signer.bitcoin_tx_inputs AS bti USING (txid)
+            INNER JOIN bitcoin_tx_inputs AS bti USING (txid)
             INNER JOIN deposit_requests AS deposit_req
               ON deposit_req.txid = bti.prevout_txid
              AND deposit_req.output_index = bti.prevout_output_index
             LEFT JOIN completed_deposit_events AS cde
               ON cde.bitcoin_txid = deposit_req.txid
              AND cde.output_index = deposit_req.output_index
-            LEFT JOIN stacks_blockchain AS sb USING (block_hash)
+            LEFT JOIN stacks_blockchain AS sb 
+              ON sb.block_hash = cde.block_hash
             GROUP BY
                 bc_trx.txid
               , bc_trx.block_hash
