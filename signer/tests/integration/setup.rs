@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
@@ -22,13 +24,13 @@ use signer::bitcoin::utxo;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
+use signer::bitcoin::utxo::TxDeconstructor as _;
 use signer::block_observer::BlockObserver;
 use signer::block_observer::Deposit;
 use signer::config::Settings;
 use signer::context::SbtcLimits;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
-use signer::message;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxRef;
@@ -82,8 +84,6 @@ pub struct TestSweepSetup {
     /// threshold is the bitcoin signature threshold, which for v1 matches
     /// the signatures required on stacks.
     pub signatures_required: u16,
-    /// Sweep transactions that have been broadcast but not yet stored.
-    pub sweep_transactions: Vec<model::SweepTransaction>,
 }
 
 impl TestSweepSetup {
@@ -155,25 +155,17 @@ impl TestSweepSetup {
 
         // There should only be one transaction here since there is only
         // one deposit request and no withdrawal requests.
-        let (txid, sweep_transaction) = {
+        let txid = {
             let mut transactions = requests.construct_transactions().unwrap();
             assert_eq!(transactions.len(), 1);
             let mut unsigned = transactions.pop().unwrap();
-            // Create the transaction package that we will store.
-            let sweep_tx = message::SweepTransactionInfo::from_unsigned_at_block(
-                // We expect the `sweep_block_hash` to be the block where the
-                // sweep transaction was mined, so we use the deposit block hash
-                // which is a previous block for the sweep broadcast.
-                &deposit_block_hash,
-                &unsigned,
-            );
 
             // Add the signature and/or other required information to the
             // witness data.
             signer::testing::set_witness_data(&mut unsigned, signer.keypair);
             rpc.send_raw_transaction(&unsigned.tx).unwrap();
             // Return the txid and the sweep transaction.
-            (unsigned.tx.compute_txid(), sweep_tx)
+            unsigned.tx.compute_txid()
         };
 
         // Let's sweep in the transaction
@@ -207,7 +199,6 @@ impl TestSweepSetup {
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
-            sweep_transactions: vec![(&sweep_transaction).into()],
         }
     }
 
@@ -226,13 +217,22 @@ impl TestSweepSetup {
     /// represents the transaction package which was broadcast to the mempool
     /// (but not necessarily confirmed), while [`Self::store_sweep_tx`]
     /// represents the sweep transaction which has been observed on-chain.
-    pub async fn store_sweep_transactions(&mut self, db: &PgStore) -> Vec<model::SweepTransaction> {
-        let mut ret = vec![];
-        for tx in self.sweep_transactions.drain(..) {
-            db.write_sweep_transaction(&tx).await.unwrap();
-            ret.push(tx.clone());
+    pub async fn store_sweep_transactions(&mut self, db: &PgStore) {
+        let mut signer_script_pubkeys = HashSet::new();
+        let signers_public_key = self
+            .aggregated_signer
+            .keypair
+            .x_only_public_key()
+            .0
+            .signers_script_pubkey();
+        signer_script_pubkeys.insert(signers_public_key);
+        for prevout in self.sweep_tx_info.to_inputs(&signer_script_pubkeys) {
+            db.write_tx_prevout(&prevout).await.unwrap();
         }
-        ret
+
+        for output in self.sweep_tx_info.to_outputs(&signer_script_pubkeys) {
+            db.write_tx_output(&output).await.unwrap();
+        }
     }
 
     /// Store the deposit transaction into the database

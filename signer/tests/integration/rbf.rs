@@ -13,7 +13,6 @@ use rand::distributions::Uniform;
 use rand::Rng;
 use signer::bitcoin::utxo::DepositRequest;
 use signer::bitcoin::utxo::Fees;
-use signer::bitcoin::utxo::GetFees as _;
 use signer::bitcoin::utxo::RequestRef;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
@@ -21,8 +20,6 @@ use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::utxo::WithdrawalRequest;
 use signer::context::SbtcLimits;
-use signer::message::SweepTransactionInfo;
-use signer::storage::model;
 use signer::storage::model::ScriptPubKey;
 
 use crate::utxo_construction::generate_withdrawal;
@@ -194,7 +191,7 @@ pub fn transaction_with_rbf(
         })
         .collect();
 
-    let block_hash = faucet.generate_blocks(1).pop().unwrap();
+    faucet.generate_blocks(1);
     // We deposited the transaction to the signer, but it's not clear to the
     // wallet tracking the signer's address that the deposit is associated
     // with the signer since it's hidden within the merkle tree.
@@ -255,14 +252,6 @@ pub fn transaction_with_rbf(
             last_size += unsigned.tx.vsize();
         });
 
-        // Simulate that we've retrieved the sweep transaction package from the db.
-        // We want to do this before step #2 so we can use the fees paid in the
-        // last successful transaction package when we return them further down.
-        let sweeps: Vec<model::SweepTransaction> = transactions
-            .iter()
-            .map(|tx| (&SweepTransactionInfo::from_unsigned_at_block(&block_hash, &tx)).into())
-            .collect();
-
         // ** Step 2 **
         // Ccreate an RBF transaction that will fail.
         //
@@ -286,18 +275,10 @@ pub fn transaction_with_rbf(
             _ => panic!("Unexpected response when sending bad replacement transaction"),
         }
 
-        // Calculate the fees based on the last sweep transaction package.
-        let fees = sweeps
-            .get_fees()
-            .expect("failed to calculate fees from sweep transaction package")
-            .expect("could not calculate fees");
-
-        // Just double-check that the fees are what we expect.
-        assert_eq!(fees.total, last_fee);
-        assert_eq!(fees.rate, last_fee as f64 / last_size as f64);
-
-        // Return the fees so we can use them in the next step.
-        fees
+        Fees {
+            total: last_fee,
+            rate: last_fee as f64 / last_size as f64,
+        }
     };
 
     // Step 3. Construct an RBF transaction
