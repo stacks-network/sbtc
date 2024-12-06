@@ -71,7 +71,6 @@ fn update_deposits(
         .map(move || context.clone())
         .and(warp::path!("deposit"))
         .and(warp::put())
-        .and(warp::header::<String>("x-api-key"))
         .and(warp::body::json())
         .then(handlers::deposit::update_deposits)
 }

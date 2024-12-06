@@ -1,7 +1,5 @@
 //! Entries into the withdrawal table.
 
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -426,32 +424,6 @@ impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest 
         withdrawals.sort_by_key(|(_, update)| update.event.stacks_block_height);
 
         Ok(ValidatedUpdateWithdrawalRequest { withdrawals })
-    }
-}
-
-impl ValidatedUpdateWithdrawalRequest {
-    /// Infers all chainstates that need to be present in the API for the
-    /// withdrawal updates to be valid.
-    pub fn inferred_chainstates(&self) -> Result<Vec<Chainstate>, Error> {
-        // TODO(TBD): Error if the inferred chainstates have conflicting block hashes
-        // for a the same block height.
-        let mut inferred_chainstates = self
-            .withdrawals
-            .clone()
-            .into_iter()
-            .map(|(_, update)| Chainstate {
-                stacks_block_hash: update.event.stacks_block_hash,
-                stacks_block_height: update.event.stacks_block_height,
-            })
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-
-        // Sort the chainsates in the order that they should come in.
-        inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
-
-        // Return.
-        Ok(inferred_chainstates)
     }
 }
 
