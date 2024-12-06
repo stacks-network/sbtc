@@ -28,7 +28,9 @@ use crate::stacks::events::WithdrawalCreateEvent;
 use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
+
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+use crate::MAX_REORG_BLOCK_COUNT;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -48,10 +50,6 @@ const CONTRACT_NAMES: [&str; 4] = [
     // BTC on chain.
     "sbtc-withdrawal",
 ];
-
-/// The maximum number of blocks that can be affected by a reorg on the
-/// bitcoin blockchain. This is typically 6, but let's go with 10. Why not?
-const MAX_REORG_BLOCK_COUNT: i64 = 10;
 
 #[rustfmt::skip]
 const CONTRACT_FUNCTION_NAMES: [(&str, TransactionType); 5] = [
@@ -430,7 +428,7 @@ impl PgStore {
     /// at least 10 blocks before the best candidate for the signers' UTXO,
     /// we are very likely to find a transaction output that is on the best
     /// bitcoin blockchain.
-    async fn minimum_utxo_height(
+    pub async fn minimum_utxo_height(
         &self,
         output_type: model::TxOutputType,
     ) -> Result<Option<i64>, Error> {

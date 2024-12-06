@@ -63,6 +63,7 @@ use fake::Fake;
 use rand::SeedableRng;
 use signer::testing::context::*;
 use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+use signer::MAX_REORG_BLOCK_COUNT;
 use test_case::test_case;
 use test_log::test;
 
@@ -3325,6 +3326,171 @@ async fn get_deposit_request_returns_returns_inserted_deposit_request() {
     // Assert that the fetched fees match the inserted fees
     assert_eq!(fetched_deposit1, Some(deposit_request1));
     assert_eq!(fetched_deposit2, Some(deposit_request2));
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// In this test we check that minimum_utxo_height returns an answer that
+/// is [`MAX_REORG_BLOCK_COUNT`] less than the actual block height of the UTXO.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn minimum_utxo_height_handles_straightforward_case() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+
+    test_data.write_to(&db).await;
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let chain_tip_block_height = db
+        .get_bitcoin_block(&chain_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .block_height;
+
+    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout.prevout_output_index = 0;
+    swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
+
+    let output_type = model::TxOutputType::SignersOutput;
+    let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
+    swept_output.txid = swept_prevout.txid;
+    swept_output.output_type = output_type;
+    swept_output.output_index = 0;
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: swept_prevout.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: chain_tip.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: swept_prevout.txid,
+        block_hash: chain_tip,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_tx_prevout(&swept_prevout).await.unwrap();
+    db.write_tx_output(&swept_output).await.unwrap();
+
+    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
+    assert_eq!(
+        min_height,
+        chain_tip_block_height as i64 - MAX_REORG_BLOCK_COUNT
+    );
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// In this test we check that minimum_utxo_height returns an answer that
+/// is equal to the height of the block that confirmed the transaction
+/// containing the second-best candidate for the signers' UTXO if there is
+/// a large gap between best and second-best candidates is greater than
+/// [`MAX_REORG_BLOCK_COUNT`] blocks.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn minimum_utxo_height_large_sweep_gap() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+
+    test_data.write_to(&db).await;
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let original_chain_tip_ref: model::BitcoinBlockRef = db
+        .get_bitcoin_block(&chain_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .into();
+
+    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout.prevout_output_index = 0;
+    swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
+
+    let output_type = model::TxOutputType::SignersOutput;
+    let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
+    swept_output.txid = swept_prevout.txid;
+    swept_output.output_type = output_type;
+    swept_output.output_index = 0;
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: swept_prevout.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: chain_tip.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: swept_prevout.txid,
+        block_hash: chain_tip,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_tx_prevout(&swept_prevout).await.unwrap();
+    db.write_tx_output(&swept_output).await.unwrap();
+
+    let mut chain_tip_ref = original_chain_tip_ref;
+    for _ in 0..12 {
+        let (new_data, new_chain_tip_ref) =
+            test_data.new_block(&mut rng, &signer_set, &test_params, Some(&chain_tip_ref));
+        chain_tip_ref = new_chain_tip_ref;
+        new_data.write_to(&db).await;
+    }
+
+    //
+    let mut swept_prevout2: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout2.prevout_output_index = 0;
+    swept_prevout2.prevout_type = model::TxPrevoutType::SignersInput;
+    swept_prevout2.prevout_txid = swept_prevout.txid;
+
+    let output_type = model::TxOutputType::SignersOutput;
+    let mut swept_output2: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
+    swept_output2.txid = swept_prevout2.txid;
+    swept_output2.output_type = output_type;
+    swept_output2.output_index = 0;
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: swept_prevout2.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: chain_tip_ref.block_hash.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: swept_prevout2.txid,
+        block_hash: chain_tip_ref.block_hash,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_tx_prevout(&swept_prevout2).await.unwrap();
+    db.write_tx_output(&swept_output2).await.unwrap();
+
+    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
+    assert_eq!(min_height, original_chain_tip_ref.block_height as i64);
 
     signer::testing::storage::drop_db(db).await;
 }
