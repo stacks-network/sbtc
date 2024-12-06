@@ -93,7 +93,6 @@ export class EmilyStack extends cdk.Stack {
 
             const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(
                 alias,
-                persistentResourceRemovalPolicy,
                 props,
             );
         }
@@ -123,6 +122,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.NUMBER,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
 
         const indexName: string = "DepositStatus";
@@ -177,6 +177,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.STRING,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
 
         const indexName: string = "WithdrawalStatus";
@@ -229,6 +230,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.STRING,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
     }
 
@@ -256,6 +258,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.NUMBER,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
         });
     }
 
@@ -300,6 +303,7 @@ export class EmilyStack extends cdk.Stack {
                 // deployments the AWS stack. SAM can only set environment variables that are
                 // already expected to be present in the lambda.
                 IS_LOCAL: "false",
+                TRUSTED_REORG_API_KEY: props.trustedReorgApiKey,
             },
             description: `Emily Api Handler. ${EmilyStackUtils.getLambdaGitIdentifier()}`,
             currentVersionOptions: {
@@ -320,7 +324,6 @@ export class EmilyStack extends cdk.Stack {
      */
     createOrUpdateApi(
         operationLambda: lambda.Alias,
-        logRemovalPolicy: cdk.RemovalPolicy,
         props: EmilyStackProps
     ): apig.SpecRestApi {
 
@@ -372,7 +375,7 @@ export class EmilyStack extends cdk.Stack {
             api_keys.push(apiKey);
         }
 
-        // Give the the rest api execute ARN permission to invoke the lambda.
+        // Give the rest api execute ARN permission to invoke the lambda.
         operationLambda.addPermission("ApiInvokeLambdaPermission", {
             principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
             action: "lambda:InvokeFunction",
