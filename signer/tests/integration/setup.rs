@@ -529,6 +529,10 @@ impl TestSignerSet {
     pub fn signer_keys(&self) -> &[PublicKey] {
         &self.keys
     }
+
+    pub fn aggregate_key(&self) -> PublicKey {
+        self.signer.keypair.public_key().into()
+    }
 }
 
 /// The information about a sweep transaction that has been confirmed.
@@ -813,6 +817,18 @@ impl TestSweepSetup2 {
 
         db.write_transaction(&sweep_tx).await.unwrap();
         db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
+
+        let mut signer_script_pubkeys = HashSet::new();
+        let signers_public_key = self.signers.aggregate_key().signers_script_pubkey();
+        signer_script_pubkeys.insert(signers_public_key);
+
+        for prevout in sweep.tx_info.to_inputs(&signer_script_pubkeys) {
+            db.write_tx_prevout(&prevout).await.unwrap();
+        }
+
+        for output in sweep.tx_info.to_outputs(&signer_script_pubkeys) {
+            db.write_tx_output(&output).await.unwrap();
+        }
     }
 
     /// Store the deposit request in the database.
