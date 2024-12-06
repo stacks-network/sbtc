@@ -1,5 +1,5 @@
 -- Table-Valued Function (TVF) for fetching a Bitcoin blockchain from a given
--- block hash, only fetching blocks to a specific height.
+-- block hash, only fetching blocks down to a specific height.
 --
 -- - chain_tip: The block hash to start the blockchain from ("chain tip").
 -- - min_block_height: The minimum height of all blocks that are returned.
@@ -32,7 +32,7 @@ BEGIN
         FROM sbtc_signer.bitcoin_blocks AS parent
         JOIN blockchain AS last
           ON parent.block_hash = last.parent_hash
-        WHERE last.block_height >= min_block_height
+        WHERE last.block_height > min_block_height
     )
     SELECT
         blocks.block_hash

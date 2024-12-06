@@ -424,10 +424,11 @@ impl PgStore {
     /// The signers outstanding UTXO is a UTXO that is confirmed on the
     /// canonical bitcoin blockchain. But regardless of which blockchain
     /// that is, we know that it is very unlikely to have been affected by
-    /// a reorg of more than 10 blocks deep. That means that if we look back
-    /// at least 10 blocks before the best candidate for the signers' UTXO,
-    /// we are very likely to find a transaction output that is on the best
-    /// bitcoin blockchain.
+    /// a reorg of more than [`MAX_REORG_BLOCK_COUNT`] blocks deep. That
+    /// means that if we look back at least [`MAX_REORG_BLOCK_COUNT`]
+    /// blocks before the best candidate for the signers' UTXO, we are very
+    /// likely to find a transaction output that is on the best bitcoin
+    /// blockchain.
     pub async fn minimum_utxo_height(
         &self,
         output_type: model::TxOutputType,
@@ -435,7 +436,7 @@ impl PgStore {
         // Get the block height of the unspent transaction that was most
         // recently confirmed. Note that we are not filtering by the
         // blockchain identified by a chain tip, we just want the UTXO with
-        // maximum height, event if it has been reorged.
+        // maximum height, even if it has been reorged.
         let confirmed_height_candidate = sqlx::query_scalar::<_, i64>(
             r#"
             WITH confirmed_sweeps AS (
