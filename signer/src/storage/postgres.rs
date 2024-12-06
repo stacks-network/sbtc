@@ -1679,6 +1679,32 @@ impl super::DbRead for PgStore {
 
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
+            WITH RECURSIVE bitcoin_blockchain AS (
+                SELECT block_hash
+                FROM bitcoin_blockchain_of($1, $2)
+            ),
+            stacks_blockchain AS (
+                SELECT
+                    stacks_blocks.block_hash
+                  , stacks_blocks.block_height
+                  , stacks_blocks.parent_hash
+                FROM sbtc_signer.stacks_blocks stacks_blocks
+                JOIN bitcoin_blockchain as bb
+                    ON bb.block_hash = stacks_blocks.bitcoin_anchor
+                WHERE stacks_blocks.block_hash = $3
+        
+                UNION ALL
+        
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_blockchain last
+                  ON parent.block_hash = last.parent_hash
+                JOIN bitcoin_blockchain AS bb
+                  ON bb.block_hash = parent.bitcoin_anchor
+            )
             SELECT
                 bc_trx.txid AS sweep_txid
               , bc_trx.block_hash AS sweep_block_hash
@@ -1688,28 +1714,16 @@ impl super::DbRead for PgStore {
               , deposit_req.recipient
               , deposit_req.amount
               , deposit_req.max_fee
-            FROM
-                bitcoin_blockchain_of($1, $2) AS bc_blocks
-            INNER JOIN
-                bitcoin_transactions AS bc_trx
-                    ON bc_trx.block_hash = bc_blocks.block_hash
-            INNER JOIN
-                sweep_transactions AS sweep_tx
-                    ON bc_trx.txid = sweep_tx.txid
-            INNER JOIN
-                swept_deposits AS swept_deposit
-                    ON swept_deposit.sweep_transaction_txid = sweep_tx.txid
-            INNER JOIN
-                deposit_requests AS deposit_req
-                    ON deposit_req.txid = swept_deposit.deposit_request_txid
-                    AND deposit_req.output_index = swept_deposit.deposit_request_output_index
-            LEFT JOIN
-                completed_deposit_events AS cde
-                    ON cde.bitcoin_txid = deposit_req.txid
-                    AND cde.output_index = deposit_req.output_index
-            LEFT JOIN
-                stacks_blockchain_of($3, $1, $2) sb
-                    ON sb.block_hash = cde.block_hash
+            FROM bitcoin_blockchain AS bc_blocks
+            INNER JOIN bitcoin_transactions AS bc_trx USING (block_hash)
+            INNER JOIN sbtc_signer.bitcoin_tx_inputs AS bti USING (txid)
+            INNER JOIN deposit_requests AS deposit_req
+              ON deposit_req.txid = bti.prevout_txid
+             AND deposit_req.output_index = bti.prevout_output_index
+            LEFT JOIN completed_deposit_events AS cde
+              ON cde.bitcoin_txid = deposit_req.txid
+             AND cde.output_index = deposit_req.output_index
+            LEFT JOIN stacks_blockchain AS sb USING (block_hash)
             GROUP BY
                 bc_trx.txid
               , bc_trx.block_hash
