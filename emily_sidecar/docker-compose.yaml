@@ -1,0 +1,72 @@
+services:
+  bitcoin:
+    restart: on-failure
+    build:
+      context: ./sbtc/docker/prodlike/bitcoin/
+      dockerfile: Dockerfile.bitcoin
+    ports:
+      - "18443:18443"
+      - "18444:18444"
+      - "28332:28332"
+    volumes:
+      - ./bitcoin-regtest/bitcoin.conf:/root/.bitcoin/bitcoin.conf:ro
+      - ./bitcoin-regtest/chainstate/testnet/:/chainstate
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        bitcoind
+    environment:
+      BITCOIN_DATA: /chainstate/bitcoin
+    networks:
+      - nodes-net
+  stacks-blockchain:
+    # source: https://github.com/stacks-network/stacks-blockchain-docker/blob/66c54acef25e34cd08ccec44989d8bae5584270b/compose-files/common.yaml#L20C1-L42C8
+    image: blockstack/stacks-blockchain:3.0.0.0.2
+    restart: on-failure
+    ports:
+      - ${STACKS_CORE_RPC_PORT:-20443}:${STACKS_CORE_RPC_PORT:-20443}
+      - ${STACKS_CORE_P2P_PORT:-20444}:${STACKS_CORE_P2P_PORT:-20444}
+      - ${NODE_METRICS_PORT:-9153}:${NODE_METRICS_PORT:-9153}
+    volumes:
+      - ./stacks-testnet/Config.toml:/src/stacks-blockchain/Config.toml:ro
+      - ./stacks-testnet/chainstate/:/root/stacks-blockchain/data
+    command:
+      [
+        "/bin/stacks-node",
+        "start",
+        "--config",
+        "/src/stacks-blockchain/Config.toml",
+      ]
+    networks:
+      - nodes-net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  sidecar:
+    build:
+      context: ./emily_sidecar # Adjust this to where your Flask app's Dockerfile is located
+      dockerfile: Dockerfile.flask # Specify the Dockerfile for your Flask app (if any)
+    restart: on-failure
+    ports:
+      - "5000:5000" # Exposing Flask's default port
+    volumes:
+      - ./emily_sidecar:/app # Mount the Flask app source code (adjust if needed)
+    environment:
+      FLASK_APP: app.py # Set the main Flask application file
+      EMILY_API_KEY: XXXXXXXXXXXX
+      EMILY_CHAINSTATE_URL: http://host.docker.internal:3030/chainstate
+    command:
+      - gunicorn
+      - -c
+      - gunicorn_config.py
+      - wsgi:app
+    networks:
+      - nodes-net
+    depends_on:
+      - stacks-blockchain
+
+networks:
+  nodes-net:
+    driver: bridge
