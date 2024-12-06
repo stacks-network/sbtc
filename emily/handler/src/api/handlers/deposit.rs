@@ -318,14 +318,12 @@ fn scripts_to_resource_parameters(
 #[instrument(skip(context))]
 pub async fn update_deposits(
     context: EmilyContext,
-    api_key: String,
     body: UpdateDepositsRequestBody,
 ) -> impl warp::reply::Reply {
     debug!("In update deposits");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        api_key: String,
         body: UpdateDepositsRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Get the api state and error if the api state is claimed by a reorg.
@@ -337,21 +335,6 @@ pub async fn update_deposits(
         api_state.error_if_reorganizing()?;
         // Validate request.
         let validated_request: ValidatedUpdateDepositsRequest = body.try_into()?;
-
-        // Infer the new chainstates that would come from these deposit updates and then
-        // attempt to update the chainstates.
-        let inferred_chainstates = validated_request.inferred_chainstates()?;
-        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
-        for chainstate in inferred_chainstates {
-            // TODO(TBD): Determine what happens if this occurs in multiple lambda
-            // instances at once.
-            crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(
-                &context,
-                can_reorg,
-                &chainstate,
-            )
-            .await?;
-        }
 
         // Create aggregator.
         let mut updated_deposits: Vec<(usize, Deposit)> =
@@ -373,7 +356,7 @@ pub async fn update_deposits(
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, api_key, body)
+    handler(context, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
