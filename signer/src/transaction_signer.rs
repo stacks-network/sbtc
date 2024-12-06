@@ -145,6 +145,7 @@ fn run_loop_message_filter(signal: &SignerSignal) -> bool {
                 | message::Payload::SignerWithdrawalDecision(_)
                 | message::Payload::StacksTransactionSignature(_)
                 | message::Payload::BitcoinTransactionSignAck(_)
+                | message::Payload::BitcoinPreSignAck(_)
         ),
         SignerSignal::Command(SignerCommand::Shutdown)
         | SignerSignal::Event(SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(

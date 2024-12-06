@@ -11,4 +11,9 @@ export interface EmilyStackProps extends cdk.StackProps {
    * Env is required.
    */
   readonly env: cdk.Environment;
+
+  /**
+   * The trusted reorg API key.
+   */
+  readonly trustedReorgApiKey: string;
 }
