@@ -72,35 +72,6 @@ pub struct TxPrevout {
     pub prevout_type: TxPrevoutType,
 }
 
-/// Represents a single withdrawal which has been swept-out by a sweep
-/// transaction.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct SweptWithdrawal {
-    /// The index of the withdrawal output in the sBTC sweep transaction.
-    #[sqlx(try_from = "i32")]
-    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
-    pub output_index: u32,
-    /// The public request id of the withdrawal request serviced by this
-    /// transaction.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
-    pub withdrawal_request_id: u64,
-    /// The Stacks block hash of the Stacks block which included the withdrawal
-    /// request transaction.
-    pub withdrawal_request_block_hash: StacksBlockHash,
-}
-
-impl From<&crate::message::SweptWithdrawal> for SweptWithdrawal {
-    fn from(withdrawal: &crate::message::SweptWithdrawal) -> Self {
-        Self {
-            output_index: withdrawal.output_index,
-            withdrawal_request_id: withdrawal.withdrawal_request_id,
-            withdrawal_request_block_hash: withdrawal.withdrawal_request_block_hash.into(),
-        }
-    }
-}
-
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
