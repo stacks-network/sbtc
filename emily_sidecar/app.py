@@ -21,7 +21,8 @@ class NewBlockEventSchema(Schema):
 
 # Get the API key from environment variables
 api_key = os.getenv("EMILY_API_KEY", "default_api_key")
-url = os.getenv("EMILY_CHAINSTATE_URL",  "http://host.docker.internal:3030/chainstate")
+url = os.getenv("EMILY_CHAINSTATE_URL",  "http://host.docker.internal:3031/chainstate")
+deployer_address = os.getenv("DEPLOYER_ADDRESS", "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS")
 
 headers = {
     "Content-Type": "application/json",
@@ -56,7 +57,7 @@ def handle_new_block():
 
     chainstate = {
         "stacksBlockHeight": validated_data["block_height"],
-        "stacksBlockHash": validated_data["block_hash"],
+        "stacksBlockHash": validated_data["index_block_hash"].lstrip("0x"),
     }
 
     try:
