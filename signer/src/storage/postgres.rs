@@ -848,14 +848,11 @@ impl super::DbRead for PgStore {
 
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
-            WITH context_window AS (
-                SELECT * FROM bitcoin_blockchain_of($1, $2)
-            ),
-            transactions_in_window AS (
+            WITH transactions_in_window AS (
                 SELECT
                     transactions.txid
                   , blocks_in_window.block_height
-                FROM context_window blocks_in_window
+                FROM bitcoin_blockchain_of($1, $2) AS blocks_in_window
                 JOIN sbtc_signer.bitcoin_transactions transactions ON
                     transactions.block_hash = blocks_in_window.block_hash
             ),
@@ -885,13 +882,11 @@ impl super::DbRead for PgStore {
             -- Then we only consider the ones not swept yet (in the canonical chain)
             SELECT accepted_deposits.*
             FROM accepted_deposits
-            LEFT JOIN
-                swept_deposits AS swept_deposit
-                    ON swept_deposit.deposit_request_txid = accepted_deposits.txid
-                    AND swept_deposit.deposit_request_output_index = accepted_deposits.output_index
-            LEFT JOIN
-                transactions_in_window
-                    ON swept_deposit.sweep_transaction_txid = transactions_in_window.txid
+            LEFT JOIN sbtc_signer.bitcoin_tx_inputs AS bti
+              ON bti.prevout_txid = accepted_deposits.txid
+             AND bti.prevout_output_index = accepted_deposits.output_index
+            LEFT JOIN transactions_in_window
+              ON bti.txid = transactions_in_window.txid
             GROUP BY
                 accepted_deposits.txid
               , accepted_deposits.output_index
