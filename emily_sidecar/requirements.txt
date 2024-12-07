@@ -1,0 +1,4 @@
+flask==3.1.0
+requests==2.32.3
+marshmallow==3.23.1
+gunicorn==23.0.0
