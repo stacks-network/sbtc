@@ -695,6 +695,15 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
+      depositRole: {
+        name: "deposit-role",
+        type: {
+          buffer: {
+            length: 1,
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Uint8Array>,
       dustLimit: {
         name: "dust-limit",
         type: "uint128",
@@ -732,6 +741,7 @@ export const contracts = {
         isOk: false,
         value: 300n,
       },
+      depositRole: Uint8Array.from([1]),
       dustLimit: 546n,
       txidLength: 32n,
     },
@@ -932,6 +942,15 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
+      depositRole: {
+        name: "deposit-role",
+        type: {
+          buffer: {
+            length: 1,
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Uint8Array>,
       dustLimit: {
         name: "dust-limit",
         type: "uint128",
@@ -969,6 +988,7 @@ export const contracts = {
         isOk: false,
         value: 300n,
       },
+      depositRole: Uint8Array.from([1]),
       dustLimit: 546n,
       txidLength: 32n,
     },
@@ -1128,26 +1148,14 @@ export const contracts = {
         ],
         Response<boolean, bigint>
       >,
-      getActiveProtocolContracts: {
-        name: "get-active-protocol-contracts",
+      getActiveProtocol: {
+        name: "get-active-protocol",
         access: "read_only",
-        args: [],
-        outputs: {
-          type: {
-            tuple: [
-              { name: "deposit", type: "principal" },
-              { name: "governance", type: "principal" },
-              { name: "withdrawal", type: "principal" },
-            ],
-          },
-        },
+        args: [{ name: "contract-flag", type: { buffer: { length: 1 } } }],
+        outputs: { type: { optional: "principal" } },
       } as TypedAbiFunction<
-        [],
-        {
-          deposit: string;
-          governance: string;
-          withdrawal: string;
-        }
+        [contractFlag: TypedAbiArg<Uint8Array, "contractFlag">],
+        string | null
       >,
       getCompletedDeposit: {
         name: "get-completed-deposit",
@@ -1315,36 +1323,44 @@ export const contracts = {
         name: "is-protocol-caller",
         access: "read_only",
         args: [
-          {
-            name: "contract-flag",
-            type: { optional: { buffer: { length: 1 } } },
-          },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
+          { name: "contract", type: "principal" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
-        [contractFlag: TypedAbiArg<Uint8Array | null, "contractFlag">],
+        [
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
+          contract: TypedAbiArg<string, "contract">,
+        ],
         Response<boolean, bigint>
       >,
       validateProtocolCaller: {
         name: "validate-protocol-caller",
         access: "read_only",
         args: [
-          {
-            name: "contract-flag",
-            type: { optional: { buffer: { length: 1 } } },
-          },
-          { name: "caller", type: "principal" },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
+          { name: "contract", type: "principal" },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
-          contractFlag: TypedAbiArg<Uint8Array | null, "contractFlag">,
-          caller: TypedAbiArg<string, "caller">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
+          contract: TypedAbiArg<string, "contract">,
         ],
         Response<boolean, bigint>
       >,
     },
     maps: {
+      activeProtocolContracts: {
+        name: "active-protocol-contracts",
+        key: { buffer: { length: 1 } },
+        value: "principal",
+      } as TypedAbiMap<Uint8Array, string>,
+      activeProtocolRoles: {
+        name: "active-protocol-roles",
+        key: "principal",
+        value: { buffer: { length: 1 } },
+      } as TypedAbiMap<string, Uint8Array>,
       aggregatePubkeys: {
         name: "aggregate-pubkeys",
         key: { buffer: { length: 33 } },
@@ -1504,6 +1520,26 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_UNAUTHORIZED_ROLE: {
+        name: "ERR_UNAUTHORIZED_ROLE",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
+      ERR_UNAUTHORIZE_FLAG: {
+        name: "ERR_UNAUTHORIZE_FLAG",
+        type: {
+          response: {
+            ok: "none",
+            error: "uint128",
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Response<null, bigint>>,
       depositRole: {
         name: "deposit-role",
         type: {
@@ -1531,30 +1567,6 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Uint8Array>,
-      activeProtocolContracts: {
-        name: "active-protocol-contracts",
-        type: {
-          tuple: [
-            {
-              name: "deposit",
-              type: "principal",
-            },
-            {
-              name: "governance",
-              type: "principal",
-            },
-            {
-              name: "withdrawal",
-              type: "principal",
-            },
-          ],
-        },
-        access: "variable",
-      } as TypedAbiVariable<{
-        deposit: string;
-        governance: string;
-        withdrawal: string;
-      }>,
       currentAggregatePubkey: {
         name: "current-aggregate-pubkey",
         type: {
@@ -1615,11 +1627,13 @@ export const contracts = {
         isOk: false,
         value: 400n,
       },
-      activeProtocolContracts: {
-        deposit: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit",
-        governance:
-          "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-bootstrap-signers",
-        withdrawal: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-withdrawal",
+      ERR_UNAUTHORIZED_ROLE: {
+        isOk: false,
+        value: 406n,
+      },
+      ERR_UNAUTHORIZE_FLAG: {
+        isOk: false,
+        value: 405n,
       },
       currentAggregatePubkey: Uint8Array.from([0]),
       currentSignatureThreshold: 0n,
@@ -1713,12 +1727,14 @@ export const contracts = {
         args: [
           { name: "amount", type: "uint128" },
           { name: "owner", type: "principal" },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           amount: TypedAbiArg<number | bigint, "amount">,
           owner: TypedAbiArg<string, "owner">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
         ],
         Response<boolean, bigint>
       >,
@@ -1728,12 +1744,14 @@ export const contracts = {
         args: [
           { name: "amount", type: "uint128" },
           { name: "owner", type: "principal" },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           amount: TypedAbiArg<number | bigint, "amount">,
           owner: TypedAbiArg<string, "owner">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
         ],
         Response<boolean, bigint>
       >,
@@ -1743,12 +1761,14 @@ export const contracts = {
         args: [
           { name: "amount", type: "uint128" },
           { name: "owner", type: "principal" },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           amount: TypedAbiArg<number | bigint, "amount">,
           owner: TypedAbiArg<string, "owner">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
         ],
         Response<boolean, bigint>
       >,
@@ -1758,12 +1778,14 @@ export const contracts = {
         args: [
           { name: "amount", type: "uint128" },
           { name: "recipient", type: "principal" },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           amount: TypedAbiArg<number | bigint, "amount">,
           recipient: TypedAbiArg<string, "recipient">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
         ],
         Response<boolean, bigint>
       >,
@@ -1785,6 +1807,7 @@ export const contracts = {
               },
             },
           },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: {
           type: {
@@ -1808,16 +1831,23 @@ export const contracts = {
             }[],
             "recipients"
           >,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
         ],
         Response<Response<boolean, bigint>[], bigint>
       >,
       protocolSetName: {
         name: "protocol-set-name",
         access: "public",
-        args: [{ name: "new-name", type: { "string-ascii": { length: 32 } } }],
+        args: [
+          { name: "new-name", type: { "string-ascii": { length: 32 } } },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
+        ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
-        [newName: TypedAbiArg<string, "newName">],
+        [
+          newName: TypedAbiArg<string, "newName">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
+        ],
         Response<boolean, bigint>
       >,
       protocolSetSymbol: {
@@ -1825,10 +1855,14 @@ export const contracts = {
         access: "public",
         args: [
           { name: "new-symbol", type: { "string-ascii": { length: 10 } } },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
-        [newSymbol: TypedAbiArg<string, "newSymbol">],
+        [
+          newSymbol: TypedAbiArg<string, "newSymbol">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
+        ],
         Response<boolean, bigint>
       >,
       protocolSetTokenUri: {
@@ -1839,10 +1873,14 @@ export const contracts = {
             name: "new-uri",
             type: { optional: { "string-utf8": { length: 256 } } },
           },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
-        [newUri: TypedAbiArg<string | null, "newUri">],
+        [
+          newUri: TypedAbiArg<string | null, "newUri">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
+        ],
         Response<boolean, bigint>
       >,
       protocolTransfer: {
@@ -1852,6 +1890,7 @@ export const contracts = {
           { name: "amount", type: "uint128" },
           { name: "sender", type: "principal" },
           { name: "recipient", type: "principal" },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
@@ -1859,6 +1898,7 @@ export const contracts = {
           amount: TypedAbiArg<number | bigint, "amount">,
           sender: TypedAbiArg<string, "sender">,
           recipient: TypedAbiArg<string, "recipient">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
         ],
         Response<boolean, bigint>
       >,
@@ -1868,12 +1908,14 @@ export const contracts = {
         args: [
           { name: "amount", type: "uint128" },
           { name: "owner", type: "principal" },
+          { name: "contract-flag", type: { buffer: { length: 1 } } },
         ],
         outputs: { type: { response: { ok: "bool", error: "uint128" } } },
       } as TypedAbiFunction<
         [
           amount: TypedAbiArg<number | bigint, "amount">,
           owner: TypedAbiArg<string, "owner">,
+          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
         ],
         Response<boolean, bigint>
       >,
@@ -2439,6 +2481,15 @@ export const contracts = {
         type: "uint128",
         access: "constant",
       } as TypedAbiVariable<bigint>,
+      withdrawRole: {
+        name: "withdraw-role",
+        type: {
+          buffer: {
+            length: 1,
+          },
+        },
+        access: "constant",
+      } as TypedAbiVariable<Uint8Array>,
     },
     constants: {
       DUST_LIMIT: 546n,
@@ -2482,6 +2533,7 @@ export const contracts = {
       MAX_ADDRESS_VERSION: 6n,
       mAX_ADDRESS_VERSION_BUFF_20: 4n,
       mAX_ADDRESS_VERSION_BUFF_32: 6n,
+      withdrawRole: Uint8Array.from([2]),
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
