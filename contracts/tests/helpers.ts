@@ -27,6 +27,7 @@ export const deposit = contracts.sbtcDeposit;
 export const signers = contracts.sbtcBootstrapSigners;
 export const withdrawal = contracts.sbtcWithdrawal;
 export const token = contracts.sbtcToken;
+export const tokenTest = contracts.sbtcTokenTest;
 
 export const controllerId = `${accounts.deployer.address}.controller`;
 
