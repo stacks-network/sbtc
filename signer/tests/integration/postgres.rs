@@ -3429,24 +3429,24 @@ async fn minimum_utxo_height_large_sweep_gap() {
         .unwrap()
         .into();
 
-    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
-    swept_prevout.prevout_output_index = 0;
-    swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
-
     let output_type = model::TxOutputType::SignersOutput;
     let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
-    swept_output.txid = swept_prevout.txid;
     swept_output.output_type = output_type;
     swept_output.output_index = 0;
 
+    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout.txid = swept_output.txid;
+    swept_prevout.prevout_output_index = 0;
+    swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
+
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
-        txid: swept_prevout.txid.to_byte_array(),
+        txid: swept_output.txid.to_byte_array(),
         tx: Vec::new(),
         block_hash: chain_tip.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
-        txid: swept_prevout.txid,
+        txid: swept_output.txid,
         block_hash: chain_tip,
     };
     db.write_transaction(&sweep_tx_model).await.unwrap();
@@ -3462,17 +3462,16 @@ async fn minimum_utxo_height_large_sweep_gap() {
         new_data.write_to(&db).await;
     }
 
-    //
-    let mut swept_prevout2: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
-    swept_prevout2.prevout_output_index = 0;
-    swept_prevout2.prevout_type = model::TxPrevoutType::SignersInput;
-    swept_prevout2.prevout_txid = swept_prevout.txid;
-
-    let output_type = model::TxOutputType::SignersOutput;
     let mut swept_output2: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
-    swept_output2.txid = swept_prevout2.txid;
     swept_output2.output_type = output_type;
     swept_output2.output_index = 0;
+
+    //
+    let mut swept_prevout2: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout2.txid = swept_output2.txid;
+    swept_prevout2.prevout_output_index = 0;
+    swept_prevout2.prevout_type = model::TxPrevoutType::SignersInput;
+    swept_prevout2.prevout_txid = swept_output.txid;
 
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,

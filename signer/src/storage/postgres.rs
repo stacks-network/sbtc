@@ -31,6 +31,7 @@ use crate::storage::model::TransactionType;
 
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::MAX_REORG_BLOCK_COUNT;
+use crate::MAX_TX_PER_BITCOIN_BLOCK;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -131,7 +132,7 @@ struct DepositStatusSummary {
     signers_public_key: PublicKeyXOnly,
 }
 
-// A convenience struct for retriving the signers' UTXO
+// A convenience struct for retrieving the signers' UTXO
 #[derive(sqlx::FromRow)]
 struct PgSignerUtxo {
     txid: model::BitcoinTxId,
@@ -421,23 +422,30 @@ impl PgStore {
     /// Return a block height that is less than or equal to the block that
     /// confirms the signers' UTXO.
     ///
+    /// # Notes
+    ///
     /// The signers outstanding UTXO is a UTXO that is confirmed on the
     /// canonical bitcoin blockchain. But regardless of which blockchain
-    /// that is, we know that it is very unlikely to have been affected by
-    /// a reorg of more than [`MAX_REORG_BLOCK_COUNT`] blocks deep. That
-    /// means that if we look back at least [`MAX_REORG_BLOCK_COUNT`]
-    /// blocks before the best candidate for the signers' UTXO, we are very
-    /// likely to find a transaction output that is on the best bitcoin
-    /// blockchain.
+    /// that is, we know that bitcoin does not have reorgs more than
+    /// [`MAX_REORG_BLOCK_COUNT`] blocks deep. That means that if we look
+    /// back at least [`MAX_REORG_BLOCK_COUNT`] blocks before the best
+    /// candidate for the signers' UTXO, we are very likely to find a
+    /// transaction output that is on the best bitcoin blockchain.
     pub async fn minimum_utxo_height(
         &self,
         output_type: model::TxOutputType,
     ) -> Result<Option<i64>, Error> {
+        #[derive(sqlx::FromRow)]
+        struct PgCandidateUtxo {
+            txid: model::BitcoinTxId,
+            block_height: i64,
+        }
+
         // Get the block height of the unspent transaction that was most
         // recently confirmed. Note that we are not filtering by the
         // blockchain identified by a chain tip, we just want the UTXO with
         // maximum height, even if it has been reorged.
-        let confirmed_height_candidate = sqlx::query_scalar::<_, i64>(
+        let utxo_candidate = sqlx::query_as::<_, PgCandidateUtxo>(
             r#"
             WITH confirmed_sweeps AS (
                 SELECT
@@ -447,7 +455,9 @@ impl PgStore {
                 JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
                 WHERE prevout_type = 'signers_input'
             )
-            SELECT bb.block_height
+            SELECT 
+                bo.txid
+              , bb.block_height
             FROM sbtc_signer.bitcoin_tx_outputs AS bo
             JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
             JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
@@ -465,50 +475,101 @@ impl PgStore {
         .await
         .map_err(Error::SqlxQuery)?;
 
-        // If such a height doesn't exist then we know that there is no
-        // UTXO at all of the given transaction output type.
-        let Some(confirmed_height_candidate) = confirmed_height_candidate else {
+        // If such a UTXO candidate doesn't exist then we know that there is no
+        // UTXO at all the given transaction output type.
+        let Some(utxo_candidate) = utxo_candidate else {
             return Ok(None);
         };
 
-        // Find the block height of the sweep transaction that occured
-        // before our "best candidate". It might not exist, since the above
-        // height may be for our first sweep transaction.
+        // Now we want the max block height[1] of all sweep transactions
+        // that occurred more than MAX_REORG_BLOCK_COUNT blocks ago, because
+        // this sweep transaction is considered fully confirmed.
+        //
+        // [1]: The sweep transaction that occurred more than
+        //      MAX_REORG_BLOCK_COUNT blocks ago may have been confirmed
+        //      more than once. If this is the case, we want the min height
+        //      of all of them.
+
+        // Given the utxo candidate above, this is our best guess of the
+        // minimum UTXO height. It might be wrong, we'll find out shortly.
+        let min_block_height_candidate = utxo_candidate
+            .block_height
+            .saturating_sub(MAX_REORG_BLOCK_COUNT);
+
+        // We want to go back at least MAX_REORG_BLOCK_COUNT blocks worth
+        // of transactions. The number here is the maximum number of
+        // transactions that the signers could get confirmed in
+        // MAX_REORG_BLOCK_COUNT bitcoin blocks, plus one. We add the one
+        // because we want the transaction right after
+        // MAX_REORG_BLOCK_COUNT worth of transactions.
+        let max_transactions = MAX_TX_PER_BITCOIN_BLOCK * MAX_REORG_BLOCK_COUNT + 1;
+
+        // Find the block height of the sweep transaction that occurred at
+        // or before block "best candidate block height" minus
+        // MAX_REORG_BLOCK_COUNT.
         //
         // We do this because the block that confirmed the UTXO with max
         // height need not be the signers' UTXO; it does not need to be on
-        // the best blockchain. So we look at the height of the block that
-        // confirmed our previous sweep transaction. This might be more
-        // than MAX_REORG_BLOCK_COUNT blocks ago, and if so, we need to get
-        // it's height. If our second-best candidate is more than
-        // MAX_REORG_BLOCK_COUNT blocks before our "best candidate", then
-        // this height is the true minimum UTXO height.
+        // the best blockchain. But if we go back at least
+        // `MAX_REORG_BLOCK_COUNT` bitcoin blocks then that UTXO is assumed
+        // to still be confirmed.
         let prev_confirmed_height_candidate = sqlx::query_scalar::<_, i64>(
             r#"
-            SELECT bb.block_height
-            FROM sbtc_signer.bitcoin_tx_inputs
-            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
-            JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
-            WHERE prevout_type = 'signers_input'
-              AND bb.block_height < $1
-            ORDER BY bb.block_height DESC
+            WITH RECURSIVE signer_inputs AS (
+                SELECT
+                    bti.txid
+                  , bti.prevout_txid
+                  , MIN(bb.block_height) AS block_height
+                FROM sbtc_signer.bitcoin_tx_inputs AS bti
+                JOIN sbtc_signer.bitcoin_transactions USING (txid)
+                JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
+                WHERE bti.prevout_type = 'signers_input'
+                  AND bb.block_height <= $1
+                GROUP BY bti.txid, bti.prevout_txid
+                LIMIT $2
+            ),
+            tx_chain AS (
+                SELECT
+                    si.txid
+                  , si.prevout_txid
+                  , si.block_height
+                  , 1 AS tx_count
+                FROM signer_inputs AS si
+                WHERE si.txid = $3
+
+                UNION ALL
+
+                SELECT
+                    si.txid
+                  , si.prevout_txid
+                  , si.block_height
+                  , tc.tx_count + 1
+                FROM signer_inputs AS si
+                JOIN tx_chain AS tc
+                  ON tc.prevout_txid = si.txid
+                WHERE tc.tx_count < $2
+            )
+            SELECT block_height
+            FROM tx_chain
+            WHERE block_height <= $4
+            ORDER BY block_height DESC
             LIMIT 1;
             "#,
         )
-        .bind(confirmed_height_candidate)
+        .bind(utxo_candidate.block_height)
+        .bind(max_transactions)
+        .bind(utxo_candidate.txid)
+        .bind(min_block_height_candidate)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
         // We need to go back at least MAX_REORG_BLOCK_COUNT blocks before
         // the confirmation height of our best candidate height. If there
-        // we're no sweeps within those blocks, then the height of our
-        // previous sweep trasnaction is assumed to be unaffected by a
-        // reorg, so let's use that.
-        let min_block_height = confirmed_height_candidate.saturating_sub(MAX_REORG_BLOCK_COUNT);
-        let min_block_height = prev_confirmed_height_candidate
-            .unwrap_or(min_block_height)
-            .min(min_block_height);
+        // we're no sweeps at least MAX_REORG_BLOCK_COUNT blocks ago, then
+        // we can use min_block_height_candidate.
+        let min_block_height =
+            prev_confirmed_height_candidate.unwrap_or(min_block_height_candidate);
 
         Ok(Some(min_block_height))
     }

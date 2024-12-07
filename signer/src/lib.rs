@@ -72,3 +72,7 @@ pub const SIGNER_CHANNEL_CAPACITY: usize = 1024;
 /// bitcoin blockchain. This is used when adding a buffer when searching
 /// for the signers UTXO.
 pub const MAX_REORG_BLOCK_COUNT: i64 = 10;
+
+/// The maximum number of sweep transactions that the signers can confirm
+/// per block.
+pub const MAX_TX_PER_BITCOIN_BLOCK: i64 = 25;
