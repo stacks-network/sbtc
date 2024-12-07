@@ -7,6 +7,8 @@
 (define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
 (define-constant ERR_MULTI_SIG_REPLAY (err u403))
 (define-constant ERR_INVALID_PROTOCOL_ID (err u404))
+(define-constant ERR_UNAUTHORIZE_FLAG (err u405))
+(define-constant ERR_UNAUTHORIZED_ROLE (err u406))
 
 
 ;; protocol contract type
@@ -375,7 +377,7 @@
     ;; Check that contract-caller is an protocol contract
     (asserts! (is-eq (some contract) (map-get? active-protocol-contracts contract-flag)) ERR_UNAUTHORIZED)
     ;; Check that flag matches the contract-caller
-    (asserts! (is-eq (some contract-flag) (map-get? active-protocol-roles contract-caller)) ERR_UNAUTHORIZED)
+    (asserts! (is-eq (some contract-flag) (map-get? active-protocol-roles contract)) ERR_UNAUTHORIZED)
     (ok true)
   )
 )
