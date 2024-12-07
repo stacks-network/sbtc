@@ -39,18 +39,12 @@ use crate::error::Error;
 
 /// A struct for messages over bitcoin-core's ZeroMQ interface.
 pub struct BitcoinCoreMessageStream {
-    /// We actually want this type to be a futures::stream::Unfold<...>, or
-    /// maybe a pinned version of that, but we cannot write the type down,
-    /// so we Box it up.
+    /// The inner stream we're wrapping.
     inner_stream: MessageStream,
 }
 
 impl BitcoinCoreMessageStream {
     /// Create a new one using the endpoint(s) in the config.
-    ///
-    /// Note that setting the subscription to the empty string is
-    /// equivalent to setting the subscription to all available
-    /// subscriptions enabled on bitcoin-core.
     pub async fn new_from_endpoint<T>(endpoint: &str, _subscriptions: &[T]) -> Result<Self, Error>
     where
         T: AsRef<str>,
