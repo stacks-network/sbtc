@@ -338,8 +338,6 @@
   (begin
     ;; Check that caller is protocol contract
     (try! (is-protocol-caller governance-role contract-caller))
-    ;; Check that contract-type is valid
-    (asserts! (is-some (map-get? active-protocol-roles contract-caller)) ERR_UNAUTHORIZED)
     ;; Update the protocol contract
     (map-set active-protocol-contracts contract-type new-contract)
     ;; Update the protocol role
