@@ -35,7 +35,6 @@
   )
     (let 
         (
-            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
             (new-signer-principal (pubkeys-to-principal new-keys new-signature-threshold))
         )
         ;; Check that the signature threshold is valid
@@ -43,7 +42,7 @@
                        (<= new-signature-threshold (len new-keys))) ERR_SIGNATURE_THRESHOLD)
 
         ;; Check that the caller is the current signer principal
-        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+        (asserts! (is-eq (contract-call? .sbtc-registry get-current-signer-principal) tx-sender) ERR_INVALID_CALLER)
 
         ;; Checks that length of each key is exactly 33 bytes
         (try! (fold signer-key-length-check new-keys (ok u0)))
@@ -59,12 +58,9 @@
 ;; Update protocol contract
 ;; Used to update one of the three protocol contracts
 (define-public (update-protocol-contract-wrapper (contract-type (buff 1)) (contract-address principal))
-    (let 
-        (
-            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
-        )
+    (begin
         ;; Check that the caller is the current signer principal
-        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+        (asserts! (is-eq (contract-call? .sbtc-registry get-current-signer-principal) tx-sender) ERR_INVALID_CALLER)
         ;; Call into .sbtc-registry to update the protocol contract
         (ok (try! (contract-call? .sbtc-registry update-protocol-contract contract-type contract-address)))
     )
