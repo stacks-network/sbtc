@@ -1620,7 +1620,8 @@ where
     }
 }
 
-/// Check if the provided public key is the coordinator for the provided chain tip
+/// Check if the provided public key is the coordinator for the provided chain
+/// tip
 pub fn given_key_is_coordinator(
     pub_key: PublicKey,
     bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -1634,21 +1635,28 @@ pub fn coordinator_public_key(
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
 ) -> Option<PublicKey> {
+    // Create a hash of the bitcoin chain tip. SHA256 will always result in
+    // a 32 byte digest.
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
     let digest: [u8; 32] = hasher.finalize().into();
-    // <[u8; 32]>::first_chunk<N> will return None if the requested slice
-    // is greater than 32 bytes. Since we are converting to a `usize`, the
-    // number of bytes necessary depends on the width of pointers on the
-    // machine that compiled this binary. Since we only support systems
-    // with a target pointer width of either 4 or 8 bytes, the <[u8;
-    // 32]>::first_chunk<N> call will return Some(_) since N > 4 or 8.
-    // Also, do humans even make machines where the pointer width is
-    // greater than 32 bytes?
-    let index = usize::from_be_bytes(*digest.first_chunk()?);
+
+    // Use the first 4 bytes of the digest to create a u32 index. Since `digest`
+    // is 32 bytes and we explicitly take the first 4 bytes, this is safe.
+    #[allow(clippy::expect_used)]
+    let u32_bytes = digest[..4]
+        .try_into()
+        .expect("BUG: failed to take first 4 bytes of digest");
+
+    // Convert the first 4 bytes of the digest to a u32 index.
+    let index = u32::from_be_bytes(u32_bytes);
+
     let num_signers = signer_public_keys.len();
 
-    signer_public_keys.iter().nth(index % num_signers).copied()
+    signer_public_keys
+        .iter()
+        .nth((index as usize) % num_signers)
+        .copied()
 }
 
 #[cfg(test)]
