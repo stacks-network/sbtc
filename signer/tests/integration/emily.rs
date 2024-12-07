@@ -25,7 +25,6 @@ use emily_client::apis::testing_api::wipe_databases;
 use emily_client::models::CreateDepositRequestBody;
 use emily_client::models::Limits;
 use sbtc::testing::regtest::Recipient;
-use sha2::Digest as _;
 use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
 use signer::block_observer;
@@ -60,6 +59,7 @@ use signer::testing::storage::model::TestData;
 
 use fake::Fake as _;
 use rand::SeedableRng;
+use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
 use test_log::test;
@@ -118,20 +118,6 @@ where
         .expect("failed to write encrypted shares");
 
     (aggregate_key, bitcoin_chain_tip_ref, test_data)
-}
-
-fn select_coordinator(
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
-    signer_info: &[testing::wsts::SignerInfo],
-) -> keys::PrivateKey {
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(bitcoin_chain_tip.into_bytes());
-    let digest = hasher.finalize();
-    let index = usize::from_be_bytes(*digest.first_chunk().expect("unexpected digest size"));
-    signer_info
-        .get(index % signer_info.len())
-        .expect("missing signer info")
-        .signer_private_key
 }
 
 fn get_coinbase_tx<Rng>(block_height: i64, rng: &mut Rng) -> Transaction

@@ -333,9 +333,9 @@ where
             .collect::<Vec<_>>()
             .await;
 
-        // If any of the inputs addresses are fine then we pass the deposit
+        // If all of the inputs addresses are fine then we pass the deposit
         // request.
-        let can_accept = responses.into_iter().any(|res| res.unwrap_or(false));
+        let can_accept = responses.into_iter().all(|res| res.unwrap_or(false));
         Ok(can_accept)
     }
 
