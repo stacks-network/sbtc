@@ -7,6 +7,7 @@ use bitcoin::OutPoint;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::types::chainstate::StacksAddress;
+use clarity::types::chainstate::StacksBlockId;
 use clarity::vm::types::PrincipalData;
 
 use fake::Fake;
@@ -212,27 +213,16 @@ impl TestSweepSetup {
         }
     }
 
-    /// Store all pending transaction packages to the database. Note that this
-    /// is kept separate from [`Self::store_sweep_tx`] because this method
-    /// represents the transaction package which was broadcast to the mempool
-    /// (but not necessarily confirmed), while [`Self::store_sweep_tx`]
-    /// represents the sweep transaction which has been observed on-chain.
-    pub async fn store_sweep_transactions(&mut self, db: &PgStore) {
-        let mut signer_script_pubkeys = HashSet::new();
-        let signers_public_key = self
-            .aggregated_signer
-            .keypair
-            .x_only_public_key()
-            .0
-            .signers_script_pubkey();
-        signer_script_pubkeys.insert(signers_public_key);
-        for prevout in self.sweep_tx_info.to_inputs(&signer_script_pubkeys) {
-            db.write_tx_prevout(&prevout).await.unwrap();
-        }
-
-        for output in self.sweep_tx_info.to_outputs(&signer_script_pubkeys) {
-            db.write_tx_output(&output).await.unwrap();
-        }
+    /// Store a stacks genesis block that is on the canonical Stacks
+    /// blockchain identified by the sweep chain tip.
+    pub async fn store_stacks_genesis_block(&self, db: &PgStore) {
+        let block = model::StacksBlock {
+            block_hash: Faker.fake_with_rng(&mut OsRng),
+            block_height: 0,
+            parent_hash: StacksBlockId::first_mined().into(),
+            bitcoin_anchor: self.sweep_block_hash.into(),
+        };
+        db.write_stacks_block(&block).await.unwrap();
     }
 
     /// Store the deposit transaction into the database
@@ -269,6 +259,23 @@ impl TestSweepSetup {
 
         db.write_transaction(&sweep_tx).await.unwrap();
         db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
+
+        let mut signer_script_pubkeys = HashSet::new();
+        let signers_public_key = self
+            .aggregated_signer
+            .keypair
+            .x_only_public_key()
+            .0
+            .signers_script_pubkey();
+        signer_script_pubkeys.insert(signers_public_key);
+
+        for prevout in self.sweep_tx_info.to_inputs(&signer_script_pubkeys) {
+            db.write_tx_prevout(&prevout).await.unwrap();
+        }
+
+        for output in self.sweep_tx_info.to_outputs(&signer_script_pubkeys) {
+            db.write_tx_output(&output).await.unwrap();
+        }
     }
 
     /// Store the deposit request in the database.
@@ -381,7 +388,6 @@ impl TestSweepSetup {
         self.store_deposit_request(&db).await;
         self.store_deposit_decisions(&db).await;
         self.store_withdrawal_request(&db).await;
-        self.store_sweep_transactions(&db).await;
     }
 }
 

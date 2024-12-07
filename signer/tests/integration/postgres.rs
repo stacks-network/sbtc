@@ -713,7 +713,7 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
@@ -747,9 +747,6 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
         .unwrap();
 
     assert_eq!(requests.len(), 1);
-
-    // Store outstanding sweep transaction packages in the database.
-    setup.store_sweep_transactions(&db).await;
 
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -1852,7 +1849,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
@@ -1872,9 +1869,6 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // it's not realistic to have the withdrawal in the same sweep as the
     // deposit). Then we wouldn't have to do this.
     setup.store_withdrawal_request(&db).await;
-
-    // Store outstanding sweep transaction packages in the database.
-    setup.store_sweep_transactions(&db).await;
 
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -1922,7 +1916,7 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
@@ -1936,18 +1930,6 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
-
-    // Store outstanding sweep transaction packages in the database, which
-    // includes the above deposit request. But remember that this represents a
-    // sweep transaction that has been broadcast to the mempool, but not yet
-    // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that).
-    //
-    // Note: we need to store the withdrawal request to satisfy FK's since
-    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
-    // default, but we don't use it.
-    setup.store_withdrawal_request(&db).await;
-    setup.store_sweep_transactions(&db).await;
 
     // We are supposed to store a sweep transaction, but we haven't, so the
     // deposit request is not considered swept.
@@ -2017,9 +1999,6 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         // it's not realistic to have the withdrawal in the same sweep as the
         // deposit). Then we wouldn't have to do this.
         setup.store_withdrawal_request(&db).await;
-
-        // Store outstanding sweep transaction packages in the database.
-        setup.store_sweep_transactions(&db).await;
     }
 
     // Setup the stacks blocks
@@ -2201,7 +2180,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     let context_window = 20;
 
@@ -2230,9 +2209,6 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // it's not realistic to have the withdrawal in the same sweep as the
     // deposit). Then we wouldn't have to do this.
     setup.store_withdrawal_request(&db).await;
-
-    // Store outstanding sweep transaction packages in the database.
-    setup.store_sweep_transactions(&db).await;
 
     let stacks_tip = db
         .get_stacks_chain_tip(&chain_tip.into())
