@@ -21,15 +21,18 @@
 (define-data-var current-signer-set (list 128 (buff 33)) (list))
 (define-data-var current-aggregate-pubkey (buff 33) 0x00)
 (define-data-var current-signer-principal principal tx-sender)
-(define-data-var active-protocol-contracts {governance: principal, deposit: principal, withdrawal: principal} {
-    governance: .sbtc-bootstrap-signers,
-    deposit: .sbtc-deposit,
-    withdrawal: .sbtc-withdrawal
-})
-
 
 ;; Maps
-
+;; Active protocol contracts
+(define-map active-protocol-contracts (buff 1) principal)
+(map-set active-protocol-contracts governance-role .sbtc-bootstrap-signers)
+(map-set active-protocol-contracts deposit-role .sbtc-deposit)
+(map-set active-protocol-contracts withdrawal-role .sbtc-withdrawal)
+;; Role for active protocol contracts
+(define-map active-protocol-roles principal (buff 1))
+(map-set active-protocol-roles .sbtc-bootstrap-signers governance-role)
+(map-set active-protocol-roles .sbtc-deposit deposit-role)
+(map-set active-protocol-roles .sbtc-withdrawal withdrawal-role)
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
 ;; request ID.
@@ -143,8 +146,8 @@
   (var-get current-signer-set)
 )
 
-(define-read-only (get-active-protocol-contracts)
-  (var-get active-protocol-contracts)
+(define-read-only (get-active-protocol (contract-flag (buff 1)))
+  (map-get? active-protocol-contracts contract-flag)
 )
 
 
@@ -170,7 +173,7 @@
     (
       (id (increment-last-withdrawal-request-id))
     )
-    (try! (is-protocol-caller (some withdrawal-role)))
+    (try! (is-protocol-caller withdrawal-role contract-caller))
     ;; #[allow(unchecked_data)]
     (map-insert withdrawal-requests id {
       amount: amount,
@@ -208,7 +211,7 @@
     (sweep-txid (buff 32))
   )
   (begin 
-    (try! (is-protocol-caller (some withdrawal-role)))
+    (try! (is-protocol-caller withdrawal-role contract-caller))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id true)
     (map-insert completed-withdrawal-sweep request-id {
@@ -241,7 +244,7 @@
     (signer-bitmap uint)
   )
   (begin 
-    (try! (is-protocol-caller (some withdrawal-role)))
+    (try! (is-protocol-caller withdrawal-role contract-caller))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id false)
     (print {
@@ -270,7 +273,7 @@
     (sweep-txid (buff 32))
   )
   (begin
-    (try! (is-protocol-caller (some deposit-role)))
+    (try! (is-protocol-caller deposit-role contract-caller))
     (map-insert deposit-status {txid: txid, vout-index: vout-index} true)
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
@@ -302,7 +305,7 @@
   )
   (begin
     ;; Check that caller is protocol contract
-    (try! (is-protocol-caller (some governance-role)))
+    (try! (is-protocol-caller governance-role contract-caller))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
     ;; Update the current signer set
@@ -330,20 +333,15 @@
     (contract-type (buff 1))
     (new-contract principal)
   )
-  (let
-    (
-      (active-contracts (var-get active-protocol-contracts))
-    )
+  (begin
     ;; Check that caller is protocol contract
-    (try! (is-protocol-caller (some governance-role)))
-    (asserts! (and (>= contract-type governance-role) (<= contract-type withdrawal-role)) ERR_INVALID_PROTOCOL_ID)
-    (if (is-eq contract-type governance-role)
-      (var-set active-protocol-contracts (merge active-contracts {governance: new-contract}))
-      (if (is-eq contract-type deposit-role)
-        (var-set active-protocol-contracts (merge active-contracts {deposit: new-contract}))
-        (var-set active-protocol-contracts (merge active-contracts {withdrawal: new-contract}))
-      )
-    )
+    (try! (is-protocol-caller governance-role contract-caller))
+    ;; Check that contract-type is valid
+    (asserts! (is-some (map-get? active-protocol-roles contract-caller)) ERR_UNAUTHORIZED)
+    ;; Update the protocol contract
+    (map-set active-protocol-contracts contract-type new-contract)
+    ;; Update the protocol role
+    (map-set active-protocol-roles new-contract contract-type)
     (print {
       topic: "update-protocol-contract",
       contract-type: contract-type,
@@ -367,35 +365,17 @@
 )
 
 ;; Checks whether the contract-caller is a protocol contract
-(define-read-only (is-protocol-caller (contract-flag (optional (buff 1))))
-  (validate-protocol-caller contract-flag contract-caller)
+(define-read-only (is-protocol-caller (contract-flag (buff 1)) (contract principal))
+  (validate-protocol-caller contract-flag contract)
 )
 
 ;; Validate that a given principal is a protocol contract
-(define-read-only (validate-protocol-caller (contract-flag (optional (buff 1))) (caller principal))
-  (let 
-    (
-      (active-contracts (var-get active-protocol-contracts))
-    )
-    (match contract-flag 
-      flag
-      (ok (asserts! 
-        (if (is-eq flag governance-role)
-          (is-eq caller (get governance active-contracts))
-          (if (is-eq flag deposit-role)
-            (is-eq caller (get deposit active-contracts))
-            (if (is-eq flag withdrawal-role)
-              (is-eq caller (get withdrawal active-contracts))
-              false
-            )
-          )
-        )
-      ERR_UNAUTHORIZED))
-      (ok (asserts! (or 
-        (is-eq caller (get governance active-contracts))
-        (is-eq caller (get deposit active-contracts))
-        (is-eq caller (get withdrawal active-contracts))
-      ) ERR_UNAUTHORIZED))
-    )
+(define-read-only (validate-protocol-caller (contract-flag (buff 1)) (contract principal))
+  (begin 
+    ;; Check that contract-caller is an protocol contract
+    (asserts! (is-eq (some contract) (map-get? active-protocol-contracts contract-flag)) ERR_UNAUTHORIZED)
+    ;; Check that flag matches the contract-caller
+    (asserts! (is-eq (some contract-flag) (map-get? active-protocol-roles contract-caller)) ERR_UNAUTHORIZED)
+    (ok true)
   )
 )
