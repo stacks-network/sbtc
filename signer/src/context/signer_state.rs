@@ -87,6 +87,11 @@ impl SbtcLimits {
         self.total_cap.unwrap_or(Amount::MAX_MONEY)
     }
 
+    /// Check if total cap is set
+    pub fn total_cap_exists(&self) -> bool {
+        self.total_cap.is_some()
+    }
+
     /// Get the maximum amount of BTC allowed to be pegged-in per transaction.
     pub fn per_deposit_cap(&self) -> Amount {
         self.per_deposit_cap.unwrap_or(Amount::MAX_MONEY)

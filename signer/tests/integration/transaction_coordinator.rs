@@ -20,7 +20,6 @@ use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
-use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -53,11 +52,11 @@ use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
 use signer::storage::postgres::PgStore;
+use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::transaction_coordinator::select_coordinator;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
-use stacks_common::types::chainstate::StacksBlockId;
 use test_case::test_case;
 use test_log::test;
 use tokio_stream::wrappers::BroadcastStream;
@@ -188,7 +187,7 @@ where
         .unwrap();
 }
 
-async fn mock_reqwests_status_code_error(status_code: usize) -> reqwest::Error {
+pub async fn mock_reqwests_status_code_error(status_code: usize) -> reqwest::Error {
     let mut server: mockito::ServerGuard = mockito::Server::new_async().await;
     let _mock = server.mock("GET", "/").with_status(status_code).create();
     reqwest::get(server.url())
@@ -1216,18 +1215,9 @@ async fn sign_bitcoin_transaction() {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
 
         ctx.with_stacks_client(|client| {
-            client.expect_get_tenure_info().returning(move || {
-                let response = Ok(RPCGetTenureInfo {
-                    consensus_hash: ConsensusHash([0; 20]),
-                    tenure_start_block_id: StacksBlockId([0; 32]),
-                    parent_consensus_hash: ConsensusHash([0; 20]),
-                    parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                    tip_block_id: StacksBlockId([0; 32]),
-                    tip_height: 1,
-                    reward_cycle: 0,
-                });
-                Box::pin(std::future::ready(response))
-            });
+            client
+                .expect_get_tenure_info()
+                .returning(move || Box::pin(std::future::ready(Ok(DUMMY_TENURE_INFO.clone()))));
 
             client.expect_get_block().returning(|_| {
                 let response = Ok(NakamotoBlock {
@@ -1625,18 +1615,9 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     for (ctx, db, _, _) in signers.iter_mut() {
         let db = db.clone();
         ctx.with_stacks_client(|client| {
-            client.expect_get_tenure_info().returning(move || {
-                let response = Ok(RPCGetTenureInfo {
-                    consensus_hash: ConsensusHash([0; 20]),
-                    tenure_start_block_id: StacksBlockId([0; 32]),
-                    parent_consensus_hash: ConsensusHash([0; 20]),
-                    parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                    tip_block_id: StacksBlockId([0; 32]),
-                    tip_height: 1,
-                    reward_cycle: 0,
-                });
-                Box::pin(std::future::ready(response))
-            });
+            client
+                .expect_get_tenure_info()
+                .returning(move || Box::pin(std::future::ready(Ok(DUMMY_TENURE_INFO.clone()))));
 
             client.expect_get_block().returning(|_| {
                 let response = Ok(NakamotoBlock {

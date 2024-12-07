@@ -16,10 +16,7 @@ use bitcoincore_rpc_json::Utxo;
 
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
-use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
-use clarity::types::chainstate::ConsensusHash;
-use clarity::types::chainstate::StacksBlockId;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api::wipe_databases;
 use emily_client::models::CreateDepositRequestBody;
@@ -55,6 +52,7 @@ use signer::testing::context::WrappedMock;
 use signer::testing::dummy;
 use signer::testing::dummy::DepositTxConfig;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
+use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::model::TestData;
 
 use fake::Fake as _;
@@ -136,16 +134,6 @@ where
 
     coinbase_tx
 }
-
-const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
-    consensus_hash: ConsensusHash([0; 20]),
-    tenure_start_block_id: StacksBlockId([0; 32]),
-    parent_consensus_hash: ConsensusHash([0; 20]),
-    parent_tenure_start_block_id: StacksBlockId([0; 32]),
-    tip_block_id: StacksBlockId([0; 32]),
-    tip_height: 0,
-    reward_cycle: 0,
-};
 
 /// End to end test for deposits via Emily: a deposit request is created on Emily,
 /// then is picked up by the block observer, inserted into the storage and accepted.
