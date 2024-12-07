@@ -29,6 +29,8 @@
 (define-constant MAX_ADDRESS_VERSION_BUFF_32 u6)
 ;; The minimum amount of sBTC you can withdraw
 (define-constant DUST_LIMIT u546)
+;; protocol contract type
+(define-constant withdraw-role 0x02)
 
 ;; Initiate a new withdrawal request.
 ;;
@@ -130,7 +132,7 @@
                                             (max-fee uint)
   )
   (begin
-    (try! (contract-call? .sbtc-token protocol-lock (+ amount max-fee) tx-sender))
+    (try! (contract-call? .sbtc-token protocol-lock (+ amount max-fee) tx-sender withdraw-role))
     (asserts! (> amount DUST_LIMIT) ERR_DUST_LIMIT)
   
     ;; Validate the recipient address
@@ -171,12 +173,12 @@
       (asserts! (<= fee requested-max-fee) ERR_FEE_TOO_HIGH)
 
       ;; Burn the locked-sbtc
-      (try! (contract-call? .sbtc-token protocol-burn-locked (+ requested-amount requested-max-fee) requester))
+      (try! (contract-call? .sbtc-token protocol-burn-locked (+ requested-amount requested-max-fee) requester  withdraw-role))
 
       ;; Mint the difference b/w max-fee of the request & fee actually paid back to the user in sBTC
       (if (is-eq (- requested-max-fee fee) u0)
         true
-        (try! (contract-call? .sbtc-token protocol-mint (- requested-max-fee fee) requester))
+        (try! (contract-call? .sbtc-token protocol-mint (- requested-max-fee fee) requester  withdraw-role))
       )
 
       ;; Call into registry to confirm accepted withdrawal
@@ -204,7 +206,7 @@
     (asserts! (is-none (get status withdrawal)) ERR_ALREADY_PROCESSED)
 
     ;; Burn sbtc-locked & re-mint sbtc to original requester
-    (try! (contract-call? .sbtc-token protocol-unlock (+ requested-amount requested-max-fee) requester))
+    (try! (contract-call? .sbtc-token protocol-unlock (+ requested-amount requested-max-fee) requester  withdraw-role))
 
     ;; Call into registry to confirm accepted withdrawal
     (try! (contract-call? .sbtc-registry complete-withdrawal-reject request-id signer-bitmap))

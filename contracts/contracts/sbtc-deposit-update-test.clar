@@ -6,6 +6,9 @@
 (define-constant txid-length u32)
 (define-constant dust-limit u546)
 
+;; protocol contract type
+(define-constant deposit-role 0x01)
+
 ;; error codes
 ;; TXID used in deposit is not the correct length
 (define-constant ERR_TXID_LEN (err u300))
@@ -60,7 +63,7 @@
         (asserts! (is-eq (some burn-hash) (get-burn-header burn-height)) ERR_INVALID_BURN_HASH)
 
         ;; Mint the sBTC to the recipient
-        (try! (contract-call? .sbtc-token protocol-mint amount recipient))
+        (try! (contract-call? .sbtc-token protocol-mint amount recipient deposit-role))
 
         ;; Complete the deposit
         (contract-call? .sbtc-registry complete-deposit txid vout-index amount recipient burn-hash burn-height sweep-txid)
