@@ -123,7 +123,7 @@ export class EmilyStack extends cdk.Stack {
             },
             removalPolicy: removalPolicy,
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
-            pointInTimeRecovery: true,
+            pointInTimeRecovery: !EmilyStackUtils.isDevelopmentStack(),
         });
 
         const indexName: string = "DepositStatus";
@@ -179,7 +179,7 @@ export class EmilyStack extends cdk.Stack {
             },
             removalPolicy: removalPolicy,
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
-            pointInTimeRecovery: true,
+            pointInTimeRecovery: !EmilyStackUtils.isDevelopmentStack(),
         });
 
         const indexName: string = "WithdrawalStatus";
@@ -233,7 +233,7 @@ export class EmilyStack extends cdk.Stack {
             },
             removalPolicy: removalPolicy,
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
-            pointInTimeRecovery: true,
+            pointInTimeRecovery: !EmilyStackUtils.isDevelopmentStack(),
         });
     }
 
@@ -262,7 +262,7 @@ export class EmilyStack extends cdk.Stack {
             },
             removalPolicy: removalPolicy,
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
-            pointInTimeRecovery: true,
+            pointInTimeRecovery: !EmilyStackUtils.isDevelopmentStack(),
         });
     }
 
