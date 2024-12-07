@@ -741,7 +741,7 @@ export const contracts = {
     clarity_version: "Clarity3",
     contractName: "sbtc-deposit",
   },
-  sbtcDepositV1: {
+  sbtcDepositUpdateTest: {
     functions: {
       completeIndividualDepositsHelper: {
         name: "complete-individual-deposits-helper",
@@ -976,7 +976,7 @@ export const contracts = {
     fungible_tokens: [],
     epoch: "Epoch30",
     clarity_version: "Clarity3",
-    contractName: "sbtc-deposit-v1",
+    contractName: "sbtc-deposit-update-test",
   },
   sbtcRegistry: {
     functions: {
@@ -1504,8 +1504,8 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
-      deposit: {
-        name: "deposit",
+      depositRole: {
+        name: "deposit-role",
         type: {
           buffer: {
             length: 1,
@@ -1513,8 +1513,8 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Uint8Array>,
-      governance: {
-        name: "governance",
+      governanceRole: {
+        name: "governance-role",
         type: {
           buffer: {
             length: 1,
@@ -1522,8 +1522,8 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Uint8Array>,
-      withdrawal: {
-        name: "withdrawal",
+      withdrawalRole: {
+        name: "withdrawal-role",
         type: {
           buffer: {
             length: 1,
@@ -1625,10 +1625,10 @@ export const contracts = {
       currentSignatureThreshold: 0n,
       currentSignerPrincipal: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039",
       currentSignerSet: [],
-      deposit: Uint8Array.from([1]),
-      governance: Uint8Array.from([0]),
+      depositRole: Uint8Array.from([1]),
+      governanceRole: Uint8Array.from([0]),
       lastWithdrawalRequestId: 0n,
-      withdrawal: Uint8Array.from([2]),
+      withdrawalRole: Uint8Array.from([2]),
     },
     non_fungible_tokens: [],
     fungible_tokens: [],
@@ -2518,7 +2518,8 @@ export const identifiers = {
   sbtcBootstrapSigners:
     "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-bootstrap-signers",
   sbtcDeposit: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit",
-  sbtcDepositV1: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit-v1",
+  sbtcDepositUpdateTest:
+    "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit-update-test",
   sbtcRegistry: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-registry",
   sbtcToken: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token",
   sbtcTokenTest: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-token-test",
@@ -2544,9 +2545,11 @@ export const deployments = {
     testnet: null,
     mainnet: null,
   },
-  sbtcDepositV1: {
-    devnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit-v1",
-    simnet: "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit-v1",
+  sbtcDepositUpdateTest: {
+    devnet:
+      "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit-update-test",
+    simnet:
+      "ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039.sbtc-deposit-update-test",
     testnet: null,
     mainnet: null,
   },

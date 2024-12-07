@@ -10,9 +10,9 @@
 
 
 ;; protocol contract type
-(define-constant governance 0x00)
-(define-constant deposit 0x01)
-(define-constant withdrawal 0x02)
+(define-constant governance-role 0x00)
+(define-constant deposit-role 0x01)
+(define-constant withdrawal-role 0x02)
 
 ;; Variables
 
@@ -170,7 +170,7 @@
     (
       (id (increment-last-withdrawal-request-id))
     )
-    (try! (is-protocol-caller (some withdrawal)))
+    (try! (is-protocol-caller (some withdrawal-role)))
     ;; #[allow(unchecked_data)]
     (map-insert withdrawal-requests id {
       amount: amount,
@@ -208,7 +208,7 @@
     (sweep-txid (buff 32))
   )
   (begin 
-    (try! (is-protocol-caller (some withdrawal)))
+    (try! (is-protocol-caller (some withdrawal-role)))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id true)
     (map-insert completed-withdrawal-sweep request-id {
@@ -241,7 +241,7 @@
     (signer-bitmap uint)
   )
   (begin 
-    (try! (is-protocol-caller (some withdrawal)))
+    (try! (is-protocol-caller (some withdrawal-role)))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id false)
     (print {
@@ -270,7 +270,7 @@
     (sweep-txid (buff 32))
   )
   (begin
-    (try! (is-protocol-caller (some deposit)))
+    (try! (is-protocol-caller (some deposit-role)))
     (map-insert deposit-status {txid: txid, vout-index: vout-index} true)
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
@@ -302,7 +302,7 @@
   )
   (begin
     ;; Check that caller is protocol contract
-    (try! (is-protocol-caller (some governance)))
+    (try! (is-protocol-caller (some governance-role)))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
     ;; Update the current signer set
@@ -335,11 +335,11 @@
       (active-contracts (var-get active-protocol-contracts))
     )
     ;; Check that caller is protocol contract
-    (try! (is-protocol-caller (some governance)))
-    (asserts! (and (>= contract-type governance) (<= contract-type withdrawal)) ERR_INVALID_PROTOCOL_ID)
-    (if (is-eq contract-type governance)
+    (try! (is-protocol-caller (some governance-role)))
+    (asserts! (and (>= contract-type governance-role) (<= contract-type withdrawal-role)) ERR_INVALID_PROTOCOL_ID)
+    (if (is-eq contract-type governance-role)
       (var-set active-protocol-contracts (merge active-contracts {governance: new-contract}))
-      (if (is-eq contract-type deposit)
+      (if (is-eq contract-type deposit-role)
         (var-set active-protocol-contracts (merge active-contracts {deposit: new-contract}))
         (var-set active-protocol-contracts (merge active-contracts {withdrawal: new-contract}))
       )
@@ -380,11 +380,11 @@
     (match contract-flag 
       flag
       (ok (asserts! 
-        (if (is-eq flag governance)
+        (if (is-eq flag governance-role)
           (is-eq caller (get governance active-contracts))
-          (if (is-eq flag deposit)
+          (if (is-eq flag deposit-role)
             (is-eq caller (get deposit active-contracts))
-            (if (is-eq flag withdrawal)
+            (if (is-eq flag withdrawal-role)
               (is-eq caller (get withdrawal active-contracts))
               false
             )
