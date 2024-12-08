@@ -81,6 +81,13 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 /// transactions.
 const OP_RETURN_VERSION: u8 = 0;
 
+/// The maximum number of transactions that can be included in a single
+/// transaction package.
+const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: u32 = 25;
+
+/// The maximum virtual size of a transaction package in v-bytes.
+const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
+
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Fees {
@@ -210,6 +217,21 @@ impl SbtcRequests {
                     state.last_fees = None;
                 }
                 Some(tx)
+            })
+            // This check prevents the transaction from exceeding mempool ancestor/descendant limits
+            .scan((0, 0), |(num_txs, total_size), tx| match tx {
+                Ok(tx) => {
+                    if *num_txs < MEMPOOL_MAX_NUM_TX_PER_PACKAGE
+                        && *total_size + tx.tx_vsize <= MEMPOOL_MAX_PACKAGE_SIZE
+                    {
+                        *num_txs += 1;
+                        *total_size += tx.tx_vsize;
+                        Some(Ok(tx))
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => Some(Err(e)),
             })
             .collect()
     }
@@ -2825,5 +2847,79 @@ mod tests {
             .sum();
         assert_eq!(nr_requests, num_accepted_requests);
         assert_eq!(total_amount, accepted_amount);
+    }
+
+    #[test]
+    fn test_construct_transactions_capped_by_number() {
+        // with 30 deposits and 30 withdrawals with 4 votes against each, we should generate 60 distinct transactions
+        // but we should cap the number of transactions to 25
+        let deposits: Vec<DepositRequest> =
+            (0..30).map(|_| create_deposit(10_000, 10_000, 4)).collect();
+        let withdrawals: Vec<WithdrawalRequest> = (0..30)
+            .map(|_| create_withdrawal(10_000, 10_000, 4))
+            .collect();
+
+        let requests = SbtcRequests {
+            deposits,
+            withdrawals,
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: OutPoint::null(),
+                    amount: 1000000,
+                    public_key: generate_x_only_public_key(),
+                },
+                fee_rate: 1.0,
+                public_key: generate_x_only_public_key(),
+                last_fees: None,
+                magic_bytes: [0; 2],
+            },
+            accept_threshold: 11,
+            num_signers: 15,
+            sbtc_limits: SbtcLimits::default(),
+        };
+
+        let transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 25);
+        let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
+        assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
+    }
+
+    #[test]
+    fn test_construct_transactions_capped_by_size() {
+        // This will generate a single tx of 100922 vbytes. Almost at the limit.
+        let deposits: Vec<DepositRequest> = (0..816)
+            .map(|_| create_deposit(10_000, 10_000, 0))
+            .collect();
+        // With 4 votes against, the first withdrawal request will be included
+        // in the first transaction (+52 vbytes, totaling 100973 vbytes).
+        // The next 4 withdrawals will be included in separate transactions of
+        // 195 vbytes each, which would exceed the limit.
+        let withdrawals: Vec<WithdrawalRequest> = (0..5)
+            .map(|_| create_withdrawal(10_000, 10_000, 4))
+            .collect();
+        let requests = SbtcRequests {
+            deposits,
+            withdrawals,
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: OutPoint::null(),
+                    amount: 1000000,
+                    public_key: generate_x_only_public_key(),
+                },
+                fee_rate: 1.0,
+                public_key: generate_x_only_public_key(),
+                last_fees: None,
+                magic_bytes: [0; 2],
+            },
+            accept_threshold: 11,
+            num_signers: 15,
+            sbtc_limits: SbtcLimits::default(),
+        };
+
+        let transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), 1);
+        let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
+        assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
+        assert_eq!(transactions[0].requests.len(), 817);
     }
 }
