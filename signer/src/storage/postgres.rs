@@ -415,28 +415,21 @@ impl PgStore {
         Ok(pg_utxo.map(SignerUtxo::from))
     }
 
-    /// Return a block height of the donation UTXOs that have been
-    /// confirmed on the block of least height and remain unspent.
-    pub async fn minimum_donation_utxo_height(&self) -> Result<Option<i64>, Error> {
+    /// Return the height of the earliest block in which a donation UTXO
+    /// has been confirmed.
+    /// 
+    /// # Notes
+    ///
+    /// This function does not check whether the donation output has been
+    /// spent.
+    pub async fn minimum_donation_txo_height(&self) -> Result<Option<i64>, Error> {
         sqlx::query_scalar::<_, i64>(
             r#"
-            WITH confirmed_sweeps AS (
-                SELECT
-                    prevout_txid
-                  , prevout_output_index
-                FROM sbtc_signer.bitcoin_tx_inputs
-                JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
-                WHERE prevout_type = 'signers_input'
-            )
             SELECT bb.block_height
             FROM sbtc_signer.bitcoin_tx_outputs AS bo
             JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
             JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
-            LEFT JOIN confirmed_sweeps AS cs
-              ON cs.prevout_txid = bo.txid
-              AND cs.prevout_output_index = bo.output_index
-            WHERE cs.prevout_txid IS NULL
-              AND bo.output_type = 'donation'
+            WHERE bo.output_type = 'donation'
             ORDER BY bb.block_height ASC
             LIMIT 1;
             "#,
@@ -451,7 +444,7 @@ impl PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<SignerUtxo>, Error> {
-        let Some(min_block_height) = self.minimum_donation_utxo_height().await? else {
+        let Some(min_block_height) = self.minimum_donation_txo_height().await? else {
             return Ok(None);
         };
         let output_type = model::TxOutputType::Donation;
@@ -1742,7 +1735,7 @@ impl super::DbRead for PgStore {
         // transaction. Let's look for the UTXO in a block after our
         // min_block_height. Note that `Self::get_utxo` returns `None` only
         // when a reorg has affected all sweep transactions. If this
-        // happens we try seaching for an unspent donation.
+        // happens we try seaching for a donation.
         let output_type = model::TxOutputType::SignersOutput;
         let fut = self.get_utxo(chain_tip, output_type, min_block_height);
         match fut.await? {

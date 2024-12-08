@@ -3463,7 +3463,7 @@ async fn minimum_donation_utxo_height_returns_height_of_earliest_donation() {
     // Now that we have the signers' UTXO in the database, we can compute
     // the minimum height. Here it should just be the actual height minus
     // MAX_REORG_BLOCK_COUNT.
-    let min_height = db.minimum_donation_utxo_height().await.unwrap().unwrap() as u64;
+    let min_height = db.minimum_donation_txo_height().await.unwrap().unwrap() as u64;
     assert_eq!(min_height, original_chain_tip_ref.block_height);
 
     // In a few blocks, we use the donation in a sweep transaction, so
@@ -3495,7 +3495,7 @@ async fn minimum_donation_utxo_height_returns_height_of_earliest_donation() {
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
     db.write_tx_output(&swept_output).await.unwrap();
 
-    let min_donation_height = db.minimum_donation_utxo_height().await.unwrap().unwrap() as u64;
+    let min_donation_height = db.minimum_donation_txo_height().await.unwrap().unwrap() as u64;
     assert_eq!(min_donation_height, original_chain_tip_ref.block_height);
 
     signer::testing::storage::drop_db(db).await;
