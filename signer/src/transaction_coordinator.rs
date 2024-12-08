@@ -292,6 +292,11 @@ where
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+            // Before returning, we also check if all the smart contracts are
+            // deployed: we do this as some other coordinator could have deployed
+            // them, in which case we need to updated our state.
+            self.all_smart_contracts_deployed().await?;
+
             tracing::debug!("we are not the coordinator, so nothing to do");
             return Ok(());
         }
