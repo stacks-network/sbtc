@@ -2184,7 +2184,7 @@ version = "0.1.15"
 criteria = "safe-to-deploy"
 
 [[exemptions.stacks-common]]
-version = "0.0.1@git:b26f406fc0bfd271a5cd5b54ccb064e7d3a0650a"
+version = "0.0.1@git:49777d3fd73a6dbb610be80c376b7d9389c9871a"
 criteria = "safe-to-deploy"
 
 [[exemptions.standback]]

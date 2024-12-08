@@ -35,7 +35,7 @@ bitcoin = { version = "0.32", features = ["serde"] }
 bitcoincore-rpc = { version = "0.19" }
 bitcoincore-rpc-json = { version = "0.19" }
 bitvec = { version = "1.0", default-features = false, features = ["serde"] }
-clarity = { git = "https://github.com/stacks-network/stacks-core", rev = "b26f406fc0bfd271a5cd5b54ccb064e7d3a0650a" }
+clarity = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a" }
 clap = { version = "4.5.4", features = ["derive", "env"] }
 config = "0.11.0"
 futures = "0.3.24"
@@ -53,8 +53,8 @@ serde_dynamo = {version = "4.2", features = ["aws-sdk-dynamodb+1"] }
 serde_json = "1.0"
 sha2 = "0.10"
 sqlx = { version = "0.8.2", default-features = false, features = [ "postgres", "runtime-tokio", "tls-rustls", "derive", "macros" ] }
-stackslib = { git = "https://github.com/stacks-network/stacks-core", rev = "b26f406fc0bfd271a5cd5b54ccb064e7d3a0650a" }
-stacks-common = { git = "https://github.com/stacks-network/stacks-core", rev = "b26f406fc0bfd271a5cd5b54ccb064e7d3a0650a" }
+stackslib = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a" }
+stacks-common = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a" }
 strum = { version = "0.26", features = ["derive"] }
 thiserror = "1.0"
 time = "0.3.36"
