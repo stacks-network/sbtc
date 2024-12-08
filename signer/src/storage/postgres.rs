@@ -415,22 +415,66 @@ impl PgStore {
         Ok(pg_utxo.map(SignerUtxo::from))
     }
 
+    /// Return a block height of the donation UTXOs that have been
+    /// confirmed on the block of least height and remain unspent.
+    pub async fn minimum_donation_utxo_height(&self) -> Result<Option<i64>, Error> {
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            WITH confirmed_sweeps AS (
+                SELECT
+                    prevout_txid
+                  , prevout_output_index
+                FROM sbtc_signer.bitcoin_tx_inputs
+                JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+                WHERE prevout_type = 'signers_input'
+            )
+            SELECT bb.block_height
+            FROM sbtc_signer.bitcoin_tx_outputs AS bo
+            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
+            JOIN sbtc_signer.bitcoin_blocks AS bb USING (block_hash)
+            LEFT JOIN confirmed_sweeps AS cs
+              ON cs.prevout_txid = bo.txid
+              AND cs.prevout_output_index = bo.output_index
+            WHERE cs.prevout_txid IS NULL
+              AND bo.output_type = 'donation'
+            ORDER BY bb.block_height ASC
+            LIMIT 1;
+            "#,
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    /// Return a donation UTXO with minimum height.
+    pub async fn get_donation_utxo(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<Option<SignerUtxo>, Error> {
+        let Some(min_block_height) = self.minimum_donation_utxo_height().await? else {
+            return Ok(None);
+        };
+        let output_type = model::TxOutputType::Donation;
+        self.get_utxo(chain_tip, output_type, min_block_height)
+            .await
+    }
     /// Return a block height that is less than or equal to the block that
     /// confirms the signers' UTXO.
     ///
     /// # Notes
     ///
-    /// The signers outstanding UTXO is a UTXO that is confirmed on the
-    /// canonical bitcoin blockchain. But regardless of which blockchain
-    /// that is, we know that bitcoin does not have reorgs more than
-    /// [`MAX_REORG_BLOCK_COUNT`] blocks deep. That means that if we look
-    /// back at least [`MAX_REORG_BLOCK_COUNT`] blocks before the best
-    /// candidate for the signers' UTXO, we are very likely to find a
-    /// transaction output that is on the best bitcoin blockchain.
-    pub async fn minimum_utxo_height(
-        &self,
-        output_type: model::TxOutputType,
-    ) -> Result<Option<i64>, Error> {
+    /// * This function only returns `Ok(None)` if there have been no
+    ///   confirmed sweep transactions.
+    /// * As the signers sweep funds between BTC and sBTC, they leave a
+    ///   chain of transactions, where each transaction spends the signers'
+    ///   sole UTXO and creates a new one. This function "crawls" the chain
+    ///   of transactions, starting at the most recently confirmed one,
+    ///   until it goes back at least [`MAX_REORG_BLOCK_COUNT`] blocks
+    ///   worth of transactions. A blocks with height greater than or equal
+    ///   to the height returned here should contain the transaction with
+    ///   the signers' UTXO, and won't if there is a reorg spanning more
+    ///   than [`MAX_REORG_BLOCK_COUNT`] blocks.
+    pub async fn minimum_utxo_height(&self) -> Result<Option<i64>, Error> {
         #[derive(sqlx::FromRow)]
         struct PgCandidateUtxo {
             txid: model::BitcoinTxId,
@@ -461,12 +505,11 @@ impl PgStore {
               ON cs.prevout_txid = bo.txid
               AND cs.prevout_output_index = bo.output_index
             WHERE cs.prevout_txid IS NULL
-              AND bo.output_type = $1
+              AND bo.output_type = 'signers_output'
             ORDER BY bb.block_height DESC
             LIMIT 1;
             "#,
         )
-        .bind(output_type)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -562,7 +605,7 @@ impl PgStore {
 
         // We need to go back at least MAX_REORG_BLOCK_COUNT blocks before
         // the confirmation height of our best candidate height. If there
-        // we're no sweeps at least MAX_REORG_BLOCK_COUNT blocks ago, then
+        // were no sweeps at least MAX_REORG_BLOCK_COUNT blocks ago, then
         // we can use min_block_height_candidate.
         let min_block_height =
             prev_confirmed_height_candidate.unwrap_or(min_block_height_candidate);
@@ -1687,33 +1730,25 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<SignerUtxo>, Error> {
-        // If we've swept funds before, then will have a signer output, so
-        // let's try that first.
-        let output_type = model::TxOutputType::SignersOutput;
-        if let Some(min_block_height) = self.minimum_utxo_height(output_type).await? {
-            let utxo_fut = self.get_utxo(chain_tip, output_type, min_block_height);
-
-            match utxo_fut.await? {
-                Some(pg_utxo) => return Ok(Some(pg_utxo)),
-                // This means the signer UTXO has been reorged and the only
-                // outputs that we know about are donations.
-                None => {
-                    let output_type = model::TxOutputType::Donation;
-                    let utxo_fut = self.get_utxo(chain_tip, output_type, min_block_height);
-                    return utxo_fut.await;
-                }
-            }
-        }
-
-        // We do not have a signer output. Maybe we have a donation, so
-        // let's try that.
-        let output_type = model::TxOutputType::Donation;
-        let Some(min_block_height) = self.minimum_utxo_height(output_type).await? else {
-            return Ok(None);
+        // If we've swept funds before, then will have a signer output and
+        // a minimum UTXO height, so let's try that first. 
+        let Some(min_block_height) = self.minimum_utxo_height().await? else {
+            // If the above functon returns None then we know that there
+            // have been no confirmed sweep transactions thus far, so let's
+            // try looking for a donation UTXO.
+            return self.get_donation_utxo(chain_tip).await;
         };
-
-        self.get_utxo(chain_tip, output_type, min_block_height)
-            .await
+        // Okay, so we know that there has been at least one sweep
+        // transaction. Let's look for the UTXO in a block after our
+        // min_block_height. Note that `Self::get_utxo` returns `None` only
+        // when a reorg has affected all sweep transactions. If this
+        // happens we try seaching for an unspent donation.
+        let output_type = model::TxOutputType::SignersOutput;
+        let fut = self.get_utxo(chain_tip, output_type, min_block_height);
+        match fut.await? {
+            res @ Some(_) => Ok(res),
+            None => self.get_donation_utxo(chain_tip).await
+        }
     }
 
     async fn in_canonical_bitcoin_blockchain(
