@@ -12,7 +12,6 @@ use bitcoin::OutPoint;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
-use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
@@ -737,16 +736,9 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
             client
                 .expect_get_sbtc_total_supply()
                 .returning(|_| Box::pin(std::future::ready(Ok(Amount::from_sat(1)))));
-            client.expect_get_contract_source().returning(|_, _| {
-                let response = Ok(ContractSrcResponse {
-                    source: "".into(),
-                    publish_height: 1,
-                    marf_proof: None,
-                });
-                Box::pin(std::future::ready(response))
-            });
         })
         .await;
+        ctx.state().set_sbtc_contracts_deployed();
     } else {
         ctx.with_stacks_client(|client| {
             client.expect_get_sbtc_total_supply().returning(|_| {

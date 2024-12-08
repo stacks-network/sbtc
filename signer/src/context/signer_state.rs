@@ -1,6 +1,9 @@
 //! Module for signer state
 
-use std::sync::RwLock;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    RwLock,
+};
 
 use bitcoin::Amount;
 use hashbrown::HashSet;
@@ -15,6 +18,7 @@ use crate::keys::PublicKey;
 pub struct SignerState {
     current_signer_set: SignerSet,
     current_limits: RwLock<SbtcLimits>,
+    sbtc_contracts_deployed: AtomicBool,
 }
 
 impl SignerState {
@@ -40,6 +44,16 @@ impl SignerState {
             .write()
             .expect("BUG: Failed to acquire write lock");
         *limits = new_limits;
+    }
+
+    /// Returns true if sbtc smart contracts are deployed
+    pub fn sbtc_contracts_deployed(&self) -> bool {
+        self.sbtc_contracts_deployed.load(Ordering::SeqCst)
+    }
+
+    /// Set the sbtc smart contracts deployed flag
+    pub fn set_sbtc_contracts_deployed(&self) {
+        self.sbtc_contracts_deployed.store(true, Ordering::SeqCst);
     }
 }
 

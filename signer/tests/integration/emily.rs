@@ -409,6 +409,7 @@ async fn deposit_flow() {
     let private_key = select_coordinator(&deposit_block_hash.into(), &signer_info);
 
     // Bootstrap the tx coordinator event loop
+    context.state().set_sbtc_contracts_deployed();
     let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
         context: context.clone(),
         network: network.connect(),
@@ -418,7 +419,6 @@ async fn deposit_flow() {
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
         bitcoin_presign_request_max_duration: Duration::from_secs(10),
-        sbtc_contracts_deployed: true,
         is_epoch3: true,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });

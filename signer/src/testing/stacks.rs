@@ -33,11 +33,12 @@ pub const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
     consensus_hash: ConsensusHash([0; 20]),
     tenure_start_block_id: StacksBlockId([0; 32]),
     parent_consensus_hash: ConsensusHash([0; 20]),
+    // The following bytes are the ones returned by StacksBlockId::first_mined()
     parent_tenure_start_block_id: StacksBlockId([
         0x55, 0xc9, 0x86, 0x1b, 0xe5, 0xcf, 0xf9, 0x84, 0xa2, 0x0c, 0xe6, 0xd9, 0x9d, 0x4a, 0xa6,
         0x59, 0x41, 0x41, 0x28, 0x89, 0xbd, 0xc6, 0x65, 0x09, 0x41, 0x36, 0x42, 0x9b, 0x84, 0xf8,
         0xc2, 0xee,
-    ]), // StacksBlockId::first_mined()
+    ]),
     tip_block_id: StacksBlockId([0; 32]),
     tip_height: 0,
     reward_cycle: 0,
