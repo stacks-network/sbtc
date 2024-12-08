@@ -579,7 +579,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let sbtc_state = signer::bitcoin::utxo::SignerBtcState {
         utxo: ctx
             .get_storage()
-            .get_signer_utxo(&chain_tip, 10000)
+            .get_signer_utxo(&chain_tip)
             .await
             .unwrap()
             .unwrap(),
