@@ -249,27 +249,6 @@ where
                 .await?;
             }
 
-            (
-                message::Payload::SweepTransactionInfo(sweep_tx),
-                is_coordinator,
-                ChainTipStatus::Canonical,
-            ) => {
-                if !is_coordinator {
-                    tracing::warn!("received sweep transaction info from non-coordinator");
-                    return Ok(());
-                }
-
-                tracing::debug!(
-                    txid = %sweep_tx.txid,
-                    sweep_broadcast_at = %sweep_tx.created_at_block_hash,
-                    "received sweep transaction info; storing it"
-                );
-                self.context
-                    .get_storage_mut()
-                    .write_sweep_transaction(&sweep_tx.into())
-                    .await?;
-            }
-
             (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
                 self.handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
                     .await?;

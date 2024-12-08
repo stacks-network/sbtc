@@ -11,6 +11,7 @@ import "stacks/signer/v1/requests.proto";
 
 // Messages exchanged between signers
 message SignerMessage {
+  reserved 9;
   /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
   bitcoin.BitcoinBlockHash bitcoin_chain_tip = 1;
   // The message payload
@@ -30,64 +31,10 @@ message SignerMessage {
     // Contains all variants for DKG and WSTS signing rounds
     WstsMessage wsts_message = 8;
     // Information about a new sweep transaction
-    SweepTransactionInfo sweep_transaction_info = 9;
-    // Information about a new sweep transaction
     BitcoinPreSignRequest bitcoin_pre_sign_request = 10;
     // Represents an acknowledgment of a BitcoinPreSignRequest
     BitcoinPreSignAck bitcoin_pre_sign_ack = 11;
   }
-}
-
-// Represents information about a deposit request being swept-in by a sweep transaction.
-message SweptDeposit {
-  // The index of the deposit input in the sBTC sweep transaction.
-  uint32 input_index = 1;
-  // The Bitcoin txid of the deposit request UTXO being swept-in by this
-  // transaction.
-  bitcoin.BitcoinTxid deposit_request_txid = 2;
-  // The Bitcoin output index of the deposit request UTXO being swept-in by
-  // this transaction.
-  uint32 deposit_request_output_index = 3;
-}
-
-// Represents information about a withdrawal request being swept-out by a sweep transaction.
-message SweptWithdrawal {
-  // The index of the withdrawal output in the sBTC sweep transaction.
-  uint32 output_index = 1;
-  // The public request id of the withdrawal request serviced by this
-  // transaction.
-  uint64 withdrawal_request_id = 2;
-  // The Stacks block hash of the Stacks block which included the withdrawal
-  // request transaction.
-  stacks.StacksBlockId withdrawal_request_block_hash = 3;
-}
-
-// Represents information about a new sweep transaction.
-message SweepTransactionInfo {
-  // The Bitcoin transaction id of the sweep transaction.
-  bitcoin.BitcoinTxid txid = 1;
-  // The transaction id of the signer UTXO consumed by this transaction.
-  bitcoin.BitcoinTxid signer_prevout_txid = 2;
-  // The index of the signer UTXO consumed by this transaction.
-  uint32 signer_prevout_output_index = 3;
-  // The amount of the signer UTXO consumed by this transaction.
-  uint64 signer_prevout_amount = 4;
-  // The public key of the signer UTXO consumed by this transaction.
-  bytes signer_prevout_script_pubkey = 5;
-  // The total **output** amount of this transaction.
-  uint64 amount = 6;
-  // The fee paid for this transaction.
-  uint64 fee = 7;
-  // The virtual size of this transaction (in bytes).
-  uint32 vsize = 8;
-  // The Bitcoin block hash at which this transaction was created.
-  bitcoin.BitcoinBlockHash created_at_block_hash = 9;
-  // The market fee rate at the time of this transaction.
-  double market_fee_rate = 10;
-  // List of deposits which were swept-in by this transaction.
-  repeated SweptDeposit swept_deposits = 11;
-  // List of withdrawals which were swept-out by this transaction.
-  repeated SweptWithdrawal swept_withdrawals = 12;
 }
 
 // A wsts message.

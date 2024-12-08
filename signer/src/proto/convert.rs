@@ -57,9 +57,6 @@ use crate::message::SignerMessage;
 use crate::message::SignerWithdrawalDecision;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::StacksTransactionSignature;
-use crate::message::SweepTransactionInfo;
-use crate::message::SweptDeposit;
-use crate::message::SweptWithdrawal;
 use crate::message::WstsMessage;
 use crate::proto;
 use crate::stacks::contracts::AcceptWithdrawalV1;
@@ -1198,111 +1195,6 @@ impl TryFrom<proto::StacksTransactionSignature> for StacksTransactionSignature {
     }
 }
 
-impl From<SweptDeposit> for proto::SweptDeposit {
-    fn from(value: SweptDeposit) -> Self {
-        proto::SweptDeposit {
-            input_index: value.input_index,
-            deposit_request_txid: Some(BitcoinTxId::from(value.deposit_request_txid).into()),
-            deposit_request_output_index: value.deposit_request_output_index,
-        }
-    }
-}
-
-impl TryFrom<proto::SweptDeposit> for SweptDeposit {
-    type Error = Error;
-    fn try_from(value: proto::SweptDeposit) -> Result<Self, Self::Error> {
-        Ok(SweptDeposit {
-            input_index: value.input_index,
-            deposit_request_txid: BitcoinTxId::try_from(value.deposit_request_txid.required()?)?
-                .into(),
-            deposit_request_output_index: value.deposit_request_output_index,
-        })
-    }
-}
-
-impl From<SweptWithdrawal> for proto::SweptWithdrawal {
-    fn from(value: SweptWithdrawal) -> Self {
-        proto::SweptWithdrawal {
-            output_index: value.output_index,
-            withdrawal_request_id: value.withdrawal_request_id,
-            withdrawal_request_block_hash: Some(
-                StacksBlockHash::from(value.withdrawal_request_block_hash).into(),
-            ),
-        }
-    }
-}
-
-impl TryFrom<proto::SweptWithdrawal> for SweptWithdrawal {
-    type Error = Error;
-    fn try_from(value: proto::SweptWithdrawal) -> Result<Self, Self::Error> {
-        Ok(SweptWithdrawal {
-            output_index: value.output_index,
-            withdrawal_request_id: value.withdrawal_request_id,
-            withdrawal_request_block_hash: StacksBlockHash::try_from(
-                value.withdrawal_request_block_hash.required()?,
-            )?
-            .into_bytes(),
-        })
-    }
-}
-
-impl From<SweepTransactionInfo> for proto::SweepTransactionInfo {
-    fn from(value: SweepTransactionInfo) -> Self {
-        proto::SweepTransactionInfo {
-            txid: Some(BitcoinTxId::from(value.txid).into()),
-            signer_prevout_txid: Some(BitcoinTxId::from(value.signer_prevout_txid).into()),
-            signer_prevout_output_index: value.signer_prevout_output_index,
-            signer_prevout_amount: value.signer_prevout_amount,
-            signer_prevout_script_pubkey: value.signer_prevout_script_pubkey.into_bytes(),
-            amount: value.amount,
-            fee: value.fee,
-            vsize: value.vsize,
-            created_at_block_hash: Some(BitcoinBlockHash::from(value.created_at_block_hash).into()),
-            market_fee_rate: value.market_fee_rate,
-            swept_deposits: value.swept_deposits.into_iter().map(|v| v.into()).collect(),
-            swept_withdrawals: value
-                .swept_withdrawals
-                .into_iter()
-                .map(|v| v.into())
-                .collect(),
-        }
-    }
-}
-
-impl TryFrom<proto::SweepTransactionInfo> for SweepTransactionInfo {
-    type Error = Error;
-    fn try_from(value: proto::SweepTransactionInfo) -> Result<Self, Self::Error> {
-        Ok(SweepTransactionInfo {
-            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
-            signer_prevout_txid: BitcoinTxId::try_from(value.signer_prevout_txid.required()?)?
-                .into(),
-            signer_prevout_output_index: value.signer_prevout_output_index,
-            signer_prevout_amount: value.signer_prevout_amount,
-            signer_prevout_script_pubkey: bitcoin::ScriptBuf::from_bytes(
-                value.signer_prevout_script_pubkey,
-            ),
-            amount: value.amount,
-            fee: value.fee,
-            vsize: value.vsize,
-            created_at_block_hash: BitcoinBlockHash::try_from(
-                value.created_at_block_hash.required()?,
-            )?
-            .into(),
-            market_fee_rate: value.market_fee_rate,
-            swept_deposits: value
-                .swept_deposits
-                .into_iter()
-                .map(|v| v.try_into())
-                .collect::<Result<Vec<_>, _>>()?,
-            swept_withdrawals: value
-                .swept_withdrawals
-                .into_iter()
-                .map(|v| v.try_into())
-                .collect::<Result<Vec<_>, _>>()?,
-        })
-    }
-}
-
 impl From<QualifiedRequestId> for proto::QualifiedRequestId {
     fn from(value: QualifiedRequestId) -> Self {
         proto::QualifiedRequestId {
@@ -1457,9 +1349,6 @@ impl From<Payload> for proto::Payload {
             Payload::WstsMessage(inner) => {
                 proto::signer_message::Payload::WstsMessage(inner.into())
             }
-            Payload::SweepTransactionInfo(inner) => {
-                proto::signer_message::Payload::SweepTransactionInfo(inner.into())
-            }
             Payload::BitcoinPreSignRequest(inner) => {
                 proto::signer_message::Payload::BitcoinPreSignRequest(inner.into())
             }
@@ -1494,9 +1383,6 @@ impl TryFrom<proto::Payload> for Payload {
             }
             proto::signer_message::Payload::WstsMessage(inner) => {
                 Payload::WstsMessage(inner.try_into()?)
-            }
-            proto::signer_message::Payload::SweepTransactionInfo(inner) => {
-                Payload::SweepTransactionInfo(inner.try_into()?)
             }
             proto::signer_message::Payload::BitcoinPreSignRequest(inner) => {
                 Payload::BitcoinPreSignRequest(inner.try_into()?)
@@ -1812,7 +1698,6 @@ impl codec::ProtoSerializable for SignerMessage {
             Payload::BitcoinTransactionSignRequest(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_REQUEST",
             Payload::BitcoinTransactionSignAck(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_ACK",
             Payload::WstsMessage(_) => "SBTC_WSTS_MESSAGE",
-            Payload::SweepTransactionInfo(_) => "SBTC_SWEEP_TRANSACTION_INFO",
             Payload::BitcoinPreSignRequest(_) => "SBTC_BITCOIN_PRE_SIGN_REQUEST",
             Payload::BitcoinPreSignAck(_) => "SBTC_BITCOIN_PRE_SIGN_ACK",
         }
@@ -2251,9 +2136,6 @@ mod tests {
     #[test_case(PhantomData::<(StacksTransactionSignRequest, proto::StacksTransactionSignRequest)>; "StacksTransactionSignRequest")]
     #[test_case(PhantomData::<(BitcoinTransactionSignRequest, proto::BitcoinTransactionSignRequest)>; "BitcoinTransactionSignRequest")]
     #[test_case(PhantomData::<(WstsMessage, proto::WstsMessage)>; "WstsMessage")]
-    #[test_case(PhantomData::<(SweptDeposit, proto::SweptDeposit)>; "SweptDeposit")]
-    #[test_case(PhantomData::<(SweptWithdrawal, proto::SweptWithdrawal)>; "SweptWithdrawal")]
-    #[test_case(PhantomData::<(SweepTransactionInfo, proto::SweepTransactionInfo)>; "SweepTransactionInfo")]
     #[test_case(PhantomData::<(SignerMessage, proto::SignerMessage)>; "SignerMessage")]
     #[test_case(PhantomData::<(Signed<SignerMessage>, proto::Signed)>; "Signed")]
     #[test_case(PhantomData::<(QualifiedRequestId, proto::QualifiedRequestId)>; "QualifiedRequestId")]

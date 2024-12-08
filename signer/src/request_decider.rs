@@ -185,7 +185,6 @@ where
             | Payload::BitcoinPreSignRequest(_)
             | Payload::BitcoinPreSignAck(_)
             | Payload::WstsMessage(_)
-            | Payload::SweepTransactionInfo(_)
             | Payload::StacksTransactionSignature(_)
             | Payload::BitcoinTransactionSignAck(_) => (),
         };
