@@ -417,7 +417,7 @@ impl PgStore {
 
     /// Return the height of the earliest block in which a donation UTXO
     /// has been confirmed.
-    /// 
+    ///
     /// # Notes
     ///
     /// This function does not check whether the donation output has been
