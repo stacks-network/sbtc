@@ -370,12 +370,8 @@ impl PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
         output_type: model::TxOutputType,
+        min_block_height: i64,
     ) -> Result<Option<SignerUtxo>, Error> {
-        let Some(min_block_height) = self.minimum_utxo_height(output_type).await? else {
-            tracing::debug!(%output_type, "could not find UTXO candidate");
-            return Ok(None);
-        };
-
         let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
             WITH bitcoin_blockchain AS (
@@ -1691,12 +1687,33 @@ impl super::DbRead for PgStore {
         &self,
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<SignerUtxo>, Error> {
-        let txo_type = model::TxOutputType::SignersOutput;
-        if let Some(pg_utxo) = self.get_utxo(chain_tip, txo_type).await? {
-            return Ok(Some(pg_utxo));
+        // If we've swept funds before, then will have a signer output, so
+        // let's try that first.
+        let output_type = model::TxOutputType::SignersOutput;
+        if let Some(min_block_height) = self.minimum_utxo_height(output_type).await? {
+            let utxo_fut = self.get_utxo(chain_tip, output_type, min_block_height);
+
+            match utxo_fut.await? {
+                Some(pg_utxo) => return Ok(Some(pg_utxo)),
+                // This means the signer UTXO has been reorged and the only
+                // outputs that we know about are donations.
+                None => {
+                    let output_type = model::TxOutputType::Donation;
+                    let utxo_fut = self.get_utxo(chain_tip, output_type, min_block_height);
+                    return utxo_fut.await;
+                }
+            }
         }
-        let txo_type = model::TxOutputType::Donation;
-        self.get_utxo(chain_tip, txo_type).await
+
+        // We do not have a signer output. Maybe we have a donation, so
+        // let's try that.
+        let output_type = model::TxOutputType::Donation;
+        let Some(min_block_height) = self.minimum_utxo_height(output_type).await? else {
+            return Ok(None);
+        };
+
+        self.get_utxo(chain_tip, output_type, min_block_height)
+            .await
     }
 
     async fn in_canonical_bitcoin_blockchain(

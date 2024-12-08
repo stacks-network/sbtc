@@ -3339,9 +3339,11 @@ async fn minimum_utxo_height_handles_straightforward_case() {
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
+    // We just need some bitcoin blocks in the database, and this creates
+    // some where not all of them are on the same blockchain.
     let num_signers = 3;
     let test_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
+        num_bitcoin_blocks: 30,
         num_stacks_blocks_per_bitcoin_block: 1,
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
@@ -3361,11 +3363,16 @@ async fn minimum_utxo_height_handles_straightforward_case() {
         .unwrap()
         .block_height;
 
+    // Sanity check, the minimum height is None, since we don't have a UTXO
+    // in the database yet.
+    let output_type = model::TxOutputType::SignersOutput;
+    assert!(db.minimum_utxo_height(output_type).await.unwrap().is_none());
+
+    // Let's write the signers UTXO to the database.
     let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
     swept_prevout.prevout_output_index = 0;
     swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
 
-    let output_type = model::TxOutputType::SignersOutput;
     let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
     swept_output.txid = swept_prevout.txid;
     swept_output.output_type = output_type;
@@ -3386,11 +3393,128 @@ async fn minimum_utxo_height_handles_straightforward_case() {
     db.write_tx_prevout(&swept_prevout).await.unwrap();
     db.write_tx_output(&swept_output).await.unwrap();
 
+    // Now that we have the signers' UTXO in the database, we can compute
+    // the minimum height. Here it should just be the actual height minus
+    // MAX_REORG_BLOCK_COUNT.
+    let expected_min_height = chain_tip_block_height as i64 - MAX_REORG_BLOCK_COUNT;
     let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
-    assert_eq!(
-        min_height,
-        chain_tip_block_height as i64 - MAX_REORG_BLOCK_COUNT
-    );
+    assert_eq!(min_height, expected_min_height);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// In this test we check that minimum_utxo_height returns an answer that
+/// is [`MAX_REORG_BLOCK_COUNT`] less than the actual block height of the
+/// dontation UTXO.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn minimum_utxo_height_handles_donations() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // We just need some bitcoin blocks in the database, and this creates
+    // some where not all of them are on the same blockchain.
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 30,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+
+    test_data.write_to(&db).await;
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let original_chain_tip_ref: model::BitcoinBlockRef = db
+        .get_bitcoin_block(&chain_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .into();
+
+    // Sanity check, the minimum height is None, since we don't have a UTXO
+    // in the database yet.
+    let output_type = model::TxOutputType::Donation;
+    assert!(db.minimum_utxo_height(output_type).await.unwrap().is_none());
+
+    // Let's write the donation UTXO to the database.
+    let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
+    swept_output.output_type = output_type;
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: swept_output.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: chain_tip.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: swept_output.txid,
+        block_hash: chain_tip,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_tx_output(&swept_output).await.unwrap();
+
+    // Now that we have the signers' UTXO in the database, we can compute
+    // the minimum height. Here it should just be the actual height minus
+    // MAX_REORG_BLOCK_COUNT.
+    let expected_min_height = original_chain_tip_ref.block_height as i64 - MAX_REORG_BLOCK_COUNT;
+    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
+    assert_eq!(min_height, expected_min_height);
+
+    // In a few blocks, we use the donation in a sweep transaction, so
+    // let's add some blocks.
+    let mut chain_tip_ref = original_chain_tip_ref;
+    for _ in 0..4 {
+        let (new_data, new_chain_tip_ref) =
+            test_data.new_block(&mut rng, &signer_set, &test_params, Some(&chain_tip_ref));
+        chain_tip_ref = new_chain_tip_ref;
+        new_data.write_to(&db).await;
+    }
+
+    // Let's write the signers UTXO to the database, where we spend the
+    // donation.
+    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout.prevout_txid = swept_output.txid;
+    swept_prevout.prevout_output_index = swept_output.output_index;
+    swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
+
+    let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
+    swept_output.txid = swept_prevout.txid;
+    swept_output.output_type = model::TxOutputType::SignersOutput;
+    swept_output.output_index = 0;
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: swept_prevout.txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: chain_tip_ref.block_hash.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: swept_prevout.txid,
+        block_hash: chain_tip_ref.block_hash,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_tx_prevout(&swept_prevout).await.unwrap();
+    db.write_tx_output(&swept_output).await.unwrap();
+
+    // When a donation is spent we treat it as final, and we only consider
+    // the signers inputs after that. Since we've spent the donation it's
+    // as if it never exist.
+    let output_type = model::TxOutputType::Donation;
+    assert!(db.minimum_utxo_height(output_type).await.unwrap().is_none());
+
+    // The signer UTXO is here now.
+    let output_type = model::TxOutputType::SignersOutput;
+    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
+    let expected_min_height = chain_tip_ref.block_height as i64 - MAX_REORG_BLOCK_COUNT;
+    assert_eq!(min_height, expected_min_height);
 
     signer::testing::storage::drop_db(db).await;
 }
