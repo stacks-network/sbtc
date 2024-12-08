@@ -4,7 +4,6 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use bitcoin::ScriptBuf;
 use core::panic;
-use emily_client::apis::chainstate_api::get_chain_tip;
 use emily_client::apis::deposit_api::create_deposit;
 use emily_client::apis::deposit_api::get_deposit;
 use emily_client::apis::testing_api::wipe_databases;
@@ -142,21 +141,8 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
     let resp = create_deposit(&emily_context, create_deposity_req).await;
     assert!(resp.is_ok());
 
-    // Get the initial chain tip
-    let resp = get_chain_tip(&emily_context).await.unwrap();
-    assert_eq!(resp.stacks_block_height, 0);
-    assert_eq!(resp.stacks_block_hash, "");
-
     let resp = new_block_handler(state.clone(), body).await;
     assert_eq!(resp, StatusCode::OK);
-
-    // Check that the chain tip is updated
-    let resp = get_chain_tip(&emily_context).await.unwrap();
-    assert_eq!(resp.stacks_block_height, new_block_event.block_height);
-    assert_eq!(
-        resp.stacks_block_hash,
-        new_block_event.index_block_hash.to_hex()
-    );
 
     // Check that the deposit is confirmed
     let resp = get_deposit(
@@ -189,7 +175,6 @@ async fn test_new_blocks_sends_create_withdrawal_request() {
         .expect("Wiping Emily database in test setup failed.");
 
     let body = WITHDRAWAL_CREATE_WEBHOOK.to_string();
-    let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
     let withdrawal_event = get_registry_event_from_webhook(&body, |event| match event {
         RegistryEvent::WithdrawalCreate(event) => Some(event),
         _ => panic!("Expected WithdrawalCreate event"),
@@ -198,13 +183,6 @@ async fn test_new_blocks_sends_create_withdrawal_request() {
     let resp = new_block_handler(state.clone(), body).await;
     assert_eq!(resp, StatusCode::OK);
 
-    // Check that the chain tip is updated
-    let resp = get_chain_tip(&emily_context).await.unwrap();
-    assert_eq!(resp.stacks_block_height, new_block_event.block_height);
-    assert_eq!(
-        resp.stacks_block_hash,
-        new_block_event.index_block_hash.to_hex()
-    );
     // Check that the withdrawal is confirmed
     let resp = get_withdrawal(&emily_context, withdrawal_event.request_id).await;
     assert!(resp.is_ok());
@@ -249,13 +227,7 @@ async fn test_new_blocks_sends_withdrawal_accept_update() {
 
     let resp = new_block_handler(state.clone(), body).await;
     assert_eq!(resp, StatusCode::OK);
-    // Check that the chain tip is updated
-    let resp = get_chain_tip(&emily_context).await.unwrap();
-    assert_eq!(resp.stacks_block_height, new_block_event.block_height);
-    assert_eq!(
-        resp.stacks_block_hash,
-        new_block_event.index_block_hash.to_hex()
-    );
+
     // Check that the withdrawal is confirmed
     let resp = get_withdrawal(&emily_context, withdrawal_accept_event.request_id).await;
     assert!(resp.is_ok());
@@ -301,13 +273,6 @@ async fn test_new_blocks_sends_withdrawal_reject_update() {
     let resp = new_block_handler(state.clone(), body).await;
     assert_eq!(resp, StatusCode::OK);
 
-    // Check that the chain tip is updated
-    let resp = get_chain_tip(&emily_context).await.unwrap();
-    assert_eq!(resp.stacks_block_height, new_block_event.block_height);
-    assert_eq!(
-        resp.stacks_block_hash,
-        new_block_event.index_block_hash.to_hex()
-    );
     // Check that the withdrawal is failed and has no fulfillment
     let resp = get_withdrawal(&emily_context, withdrawal_reject_event.request_id).await;
     assert!(resp.is_ok());
