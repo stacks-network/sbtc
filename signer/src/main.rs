@@ -341,7 +341,6 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         bitcoin_presign_request_max_duration: config.signer.bitcoin_presign_request_max_duration,
         threshold: config.signer.bootstrap_signatures_required,
         dkg_max_duration: config.signer.dkg_max_duration,
-        sbtc_contracts_deployed: false,
         is_epoch3: false,
     };
 

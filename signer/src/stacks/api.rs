@@ -43,6 +43,7 @@ use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
 use super::contracts::AsTxPayload;
+use super::contracts::SmartContract;
 use super::wallet::SignerWallet;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
@@ -1281,7 +1282,7 @@ impl StacksInteract for StacksClient {
         let result = self
             .call_read(
                 deployer,
-                &ContractName::from("sbtc-token"),
+                &ContractName::from(SmartContract::SbtcToken.contract_name()),
                 &ClarityName::from("get-total-supply"),
                 deployer,
             )
