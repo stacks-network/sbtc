@@ -453,7 +453,7 @@ impl ReclaimScriptInputs {
             // invalid for OP_CHECKSEQUENCEVERIFY, but we filter them out
             // later in `ReclaimScriptInputs::try_new`.
             [n, OP_CSV, script @ ..]
-                if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..OP_PUSHNUM_16).contains(n) =>
+                if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..=OP_PUSHNUM_16).contains(n) =>
             {
                 (*n as i64 - OP_PUSHNUM_1 as i64 + 1, script)
             }
