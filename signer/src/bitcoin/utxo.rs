@@ -2890,8 +2890,10 @@ mod tests {
         let deposits: Vec<DepositRequest> = (0..816)
             .map(|_| create_deposit(10_000, 10_000, 0))
             .collect();
-        // This will generate 5 txs of 195 vbytes each that would exceed the limit.
-        // With 4 votes against, each withdrawal request will end up in a separate tx.
+        // With 4 votes against, the first withdrawal request will be included
+        // in the first transaction (+52 vbytes, totaling 100973 vbytes).
+        // The next 4 withdrawals will be included in separate transactions of
+        // 195 vbytes each, which would exceed the limit.
         let withdrawals: Vec<WithdrawalRequest> = (0..5)
             .map(|_| create_withdrawal(10_000, 10_000, 4))
             .collect();
@@ -2918,5 +2920,6 @@ mod tests {
         assert_eq!(transactions.len(), 1);
         let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
         assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
+        assert_eq!(transactions[0].requests.len(), 817);
     }
 }
