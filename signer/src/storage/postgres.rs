@@ -1731,7 +1731,7 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<SignerUtxo>, Error> {
         // If we've swept funds before, then will have a signer output and
-        // a minimum UTXO height, so let's try that first. 
+        // a minimum UTXO height, so let's try that first.
         let Some(min_block_height) = self.minimum_utxo_height().await? else {
             // If the above functon returns None then we know that there
             // have been no confirmed sweep transactions thus far, so let's
@@ -1747,7 +1747,7 @@ impl super::DbRead for PgStore {
         let fut = self.get_utxo(chain_tip, output_type, min_block_height);
         match fut.await? {
             res @ Some(_) => Ok(res),
-            None => self.get_donation_utxo(chain_tip).await
+            None => self.get_donation_utxo(chain_tip).await,
         }
     }
 

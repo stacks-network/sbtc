@@ -3366,7 +3366,7 @@ async fn minimum_utxo_height_handles_straightforward_case() {
     // Sanity check, the minimum height is None, since we don't have a UTXO
     // in the database yet.
     let output_type = model::TxOutputType::SignersOutput;
-    assert!(db.minimum_utxo_height(output_type).await.unwrap().is_none());
+    assert!(db.minimum_utxo_height().await.unwrap().is_none());
 
     // Let's write the signers UTXO to the database.
     let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
@@ -3397,7 +3397,7 @@ async fn minimum_utxo_height_handles_straightforward_case() {
     // the minimum height. Here it should just be the actual height minus
     // MAX_REORG_BLOCK_COUNT.
     let expected_min_height = chain_tip_block_height as i64 - MAX_REORG_BLOCK_COUNT;
-    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
+    let min_height = db.minimum_utxo_height().await.unwrap().unwrap();
     assert_eq!(min_height, expected_min_height);
 
     signer::testing::storage::drop_db(db).await;
@@ -3408,7 +3408,7 @@ async fn minimum_utxo_height_handles_straightforward_case() {
 /// dontation UTXO.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn minimum_utxo_height_handles_donations() {
+async fn minimum_donation_utxo_height_returns_height_of_earliest_donation() {
     let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -3440,7 +3440,7 @@ async fn minimum_utxo_height_handles_donations() {
     // Sanity check, the minimum height is None, since we don't have a UTXO
     // in the database yet.
     let output_type = model::TxOutputType::Donation;
-    assert!(db.minimum_utxo_height(output_type).await.unwrap().is_none());
+    assert!(db.minimum_utxo_height().await.unwrap().is_none());
 
     // Let's write the donation UTXO to the database.
     let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
@@ -3463,9 +3463,8 @@ async fn minimum_utxo_height_handles_donations() {
     // Now that we have the signers' UTXO in the database, we can compute
     // the minimum height. Here it should just be the actual height minus
     // MAX_REORG_BLOCK_COUNT.
-    let expected_min_height = original_chain_tip_ref.block_height as i64 - MAX_REORG_BLOCK_COUNT;
-    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
-    assert_eq!(min_height, expected_min_height);
+    let min_height = db.minimum_donation_utxo_height().await.unwrap().unwrap() as u64;
+    assert_eq!(min_height, original_chain_tip_ref.block_height);
 
     // In a few blocks, we use the donation in a sweep transaction, so
     // let's add some blocks.
@@ -3479,42 +3478,25 @@ async fn minimum_utxo_height_handles_donations() {
 
     // Let's write the signers UTXO to the database, where we spend the
     // donation.
-    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
-    swept_prevout.prevout_txid = swept_output.txid;
-    swept_prevout.prevout_output_index = swept_output.output_index;
-    swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
-
     let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
-    swept_output.txid = swept_prevout.txid;
-    swept_output.output_type = model::TxOutputType::SignersOutput;
-    swept_output.output_index = 0;
+    swept_output.output_type = model::TxOutputType::Donation;
 
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
-        txid: swept_prevout.txid.to_byte_array(),
+        txid: swept_output.txid.to_byte_array(),
         tx: Vec::new(),
         block_hash: chain_tip_ref.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
-        txid: swept_prevout.txid,
+        txid: swept_output.txid,
         block_hash: chain_tip_ref.block_hash,
     };
     db.write_transaction(&sweep_tx_model).await.unwrap();
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
-    db.write_tx_prevout(&swept_prevout).await.unwrap();
     db.write_tx_output(&swept_output).await.unwrap();
 
-    // When a donation is spent we treat it as final, and we only consider
-    // the signers inputs after that. Since we've spent the donation it's
-    // as if it never exist.
-    let output_type = model::TxOutputType::Donation;
-    assert!(db.minimum_utxo_height(output_type).await.unwrap().is_none());
-
-    // The signer UTXO is here now.
-    let output_type = model::TxOutputType::SignersOutput;
-    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
-    let expected_min_height = chain_tip_ref.block_height as i64 - MAX_REORG_BLOCK_COUNT;
-    assert_eq!(min_height, expected_min_height);
+    let min_donation_height = db.minimum_donation_utxo_height().await.unwrap().unwrap() as u64;
+    assert_eq!(min_donation_height, original_chain_tip_ref.block_height);
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -3612,7 +3594,7 @@ async fn minimum_utxo_height_large_sweep_gap() {
     db.write_tx_prevout(&swept_prevout2).await.unwrap();
     db.write_tx_output(&swept_output2).await.unwrap();
 
-    let min_height = db.minimum_utxo_height(output_type).await.unwrap().unwrap();
+    let min_height = db.minimum_utxo_height().await.unwrap().unwrap();
     assert_eq!(min_height, original_chain_tip_ref.block_height as i64);
 
     signer::testing::storage::drop_db(db).await;
