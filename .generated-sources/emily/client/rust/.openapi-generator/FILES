@@ -5,6 +5,7 @@ README.md
 docs/AccountLimits.md
 docs/Chainstate.md
 docs/ChainstateApi.md
+docs/CorsApi.md
 docs/CreateDepositRequestBody.md
 docs/CreateWithdrawalRequestBody.md
 docs/Deposit.md
@@ -35,6 +36,7 @@ docs/WithdrawalUpdate.md
 git_push.sh
 src/apis/chainstate_api.rs
 src/apis/configuration.rs
+src/apis/cors_api.rs
 src/apis/deposit_api.rs
 src/apis/health_api.rs
 src/apis/limits_api.rs

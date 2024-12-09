@@ -89,7 +89,6 @@ where
         context_window: u16,
         private_key: PrivateKey,
         threshold: u16,
-        sbtc_contracts_deployed: bool,
     ) -> Self {
         Self {
             event_loop: transaction_coordinator::TxCoordinatorEventLoop {
@@ -98,7 +97,6 @@ where
                 private_key,
                 context_window,
                 threshold,
-                sbtc_contracts_deployed,
                 signing_round_max_duration: Duration::from_secs(10),
                 bitcoin_presign_request_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
@@ -200,6 +198,7 @@ where
             .await;
 
         // Create the coordinator
+        self.context.state().set_sbtc_contracts_deployed();
         let signer_network = SignerNetwork::single(&self.context);
         let mut coordinator = TxCoordinatorEventLoop {
             context: self.context,
@@ -210,7 +209,6 @@ where
             signing_round_max_duration: Duration::from_millis(500),
             bitcoin_presign_request_max_duration: Duration::from_millis(500),
             dkg_max_duration: Duration::from_millis(500),
-            sbtc_contracts_deployed: true,
             is_epoch3: true,
         };
 
@@ -349,13 +347,13 @@ where
         let private_key = select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
 
         // Bootstrap the tx coordinator within an event loop harness.
+        self.context.state().set_sbtc_contracts_deployed();
         let event_loop_harness = TxCoordinatorEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
             private_key,
             self.signing_threshold,
-            true,
         );
 
         // Start the tx coordinator run loop.
@@ -539,13 +537,13 @@ where
         let private_key = select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
 
         // Bootstrap the tx coordinator within an event loop harness.
+        // We don't `set_sbtc_contracts_deployed` to force the coordinator to deploy the contracts
         let event_loop_harness = TxCoordinatorEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
             private_key,
             self.signing_threshold,
-            false, // Force the coordinator to deploy the contracts
         );
 
         // Start the tx coordinator run loop.
@@ -653,7 +651,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, self.context_window)
+            .get_signer_utxo(&chain_tip)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -752,7 +750,7 @@ where
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
             let signer_utxo = storage
-                .get_signer_utxo(&chain_tip.block_hash, self.context_window)
+                .get_signer_utxo(&chain_tip.block_hash)
                 .await
                 .unwrap()
                 .expect("no signer utxo");
@@ -761,12 +759,7 @@ where
 
         // Check context window
         assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, 1)
-            .await
-            .unwrap()
-            .is_none());
-        assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, 2)
+            .get_signer_utxo(&block_c2.block_hash)
             .await
             .unwrap()
             .is_some());
@@ -861,7 +854,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, self.context_window)
+            .get_signer_utxo(&chain_tip)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -954,7 +947,7 @@ where
 
         // Check with chain tip A1
         let signer_utxo = storage
-            .get_signer_utxo(&block_a1.block_hash, self.context_window)
+            .get_signer_utxo(&block_a1.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -969,7 +962,7 @@ where
 
         // Check with chain tip A2
         let signer_utxo = storage
-            .get_signer_utxo(&block_a2.block_hash, self.context_window)
+            .get_signer_utxo(&block_a2.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -984,7 +977,7 @@ where
 
         // Check with chain tip B1
         let signer_utxo = storage
-            .get_signer_utxo(&block_b1.block_hash, self.context_window)
+            .get_signer_utxo(&block_b1.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");

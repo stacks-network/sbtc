@@ -26,6 +26,17 @@ All URIs are relative to *http://localhost*
 
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
+*CorsApi* | [**chainstate_height_options**](docs/CorsApi.md#chainstate_height_options) | **OPTIONS** /chainstate/{height} | CORS support
+*CorsApi* | [**chainstate_options**](docs/CorsApi.md#chainstate_options) | **OPTIONS** /chainstate | CORS support
+*CorsApi* | [**deposit_options**](docs/CorsApi.md#deposit_options) | **OPTIONS** /deposit | CORS support
+*CorsApi* | [**deposit_txid_index_options**](docs/CorsApi.md#deposit_txid_index_options) | **OPTIONS** /deposit/{txid}/{index} | CORS support
+*CorsApi* | [**deposit_txid_options**](docs/CorsApi.md#deposit_txid_options) | **OPTIONS** /deposit/{txid} | CORS support
+*CorsApi* | [**health_options**](docs/CorsApi.md#health_options) | **OPTIONS** /health | CORS support
+*CorsApi* | [**limits_account_options**](docs/CorsApi.md#limits_account_options) | **OPTIONS** /limits/{account} | CORS support
+*CorsApi* | [**limits_options**](docs/CorsApi.md#limits_options) | **OPTIONS** /limits | CORS support
+*CorsApi* | [**testing_wipe_options**](docs/CorsApi.md#testing_wipe_options) | **OPTIONS** /testing/wipe | CORS support
+*CorsApi* | [**withdrawal_id_options**](docs/CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
+*CorsApi* | [**withdrawal_options**](docs/CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
 *ChainstateApi* | [**get_chain_tip**](docs/ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
 *ChainstateApi* | [**get_chainstate_at_height**](docs/ChainstateApi.md#get_chainstate_at_height) | **GET** /chainstate/{height} | Get chainstate handler.
 *ChainstateApi* | [**set_chainstate**](docs/ChainstateApi.md#set_chainstate) | **POST** /chainstate | Set chainstate handler.

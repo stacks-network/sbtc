@@ -41,7 +41,7 @@ where
 {
     let signer_utxo = ctx
         .get_storage()
-        .get_signer_utxo(&btc_ctx.chain_tip, btc_ctx.context_window)
+        .get_signer_utxo(&btc_ctx.chain_tip)
         .await
         .unwrap()
         .unwrap();
