@@ -51,7 +51,7 @@
         ;; Check that the caller is the current signer principal
         (asserts! (is-eq (contract-call? .sbtc-registry get-current-signer-principal) tx-sender) ERR_INVALID_CALLER)
         ;; Call into .sbtc-registry to update the protocol contract
-        (ok (try! (contract-call? .sbtc-registry update-protocol-contract contract-type contract-address)))
+        (contract-call? .sbtc-registry update-protocol-contract contract-type contract-address)
     )
 )
 
