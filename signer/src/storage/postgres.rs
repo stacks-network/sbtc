@@ -656,29 +656,10 @@ impl PgStore {
     ) -> Result<Option<model::BitcoinTxId>, Error> {
         sqlx::query_scalar::<_, model::BitcoinTxId>(
             r#"
-            WITH RECURSIVE block_chain AS (
-                SELECT
-                    block_hash
-                  , block_height
-                  , parent_hash
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                SELECT
-                    child.block_hash
-                  , child.block_height
-                  , child.parent_hash
-                FROM sbtc_signer.bitcoin_blocks AS child
-                JOIN block_chain AS parent
-                  ON child.block_hash = parent.parent_hash
-                WHERE child.block_height >= $2
-            )
             SELECT bti.txid
             FROM sbtc_signer.bitcoin_tx_inputs AS bti
             JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
-            JOIN block_chain USING (block_hash)
+            JOIN sbtc_signer.bitcoin_blockchain_until($1, $2) USING (block_hash)
             WHERE bti.prevout_txid = $3
               AND bti.prevout_output_index = $4
             LIMIT 1
