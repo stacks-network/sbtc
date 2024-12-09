@@ -129,10 +129,11 @@ impl WithdrawalEntry {
                 || ((chainstate.stacks_block_height == event.stacks_block_height)
                     && (chainstate.stacks_block_hash == event.stacks_block_hash))
         });
-        // If the history is empty add a reprocessing event.
+        // If the history is empty, just say that the withdrawal is pending again where its
+        // latest update is the point at which the reorg happened.
         if self.history.is_empty() {
             self.history = vec![WithdrawalEvent {
-                status: StatusEntry::Reprocessing,
+                status: StatusEntry::Pending,
                 message: "Reprocessing withdrawal status after reorg.".to_string(),
                 stacks_block_height: chainstate.stacks_block_height,
                 stacks_block_hash: chainstate.stacks_block_hash.clone(),
