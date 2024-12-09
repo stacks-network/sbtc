@@ -27,7 +27,7 @@ endpoints = [
 nakamoto_start_height = 56457
 
 [signer]
-# TODO: Change this to signer private key
+# NOTE: Set through Environment: SIGNER_SIGNER__PRIVATE_KEY
 private_key = "0000000000000000000000000000000000000000000000000000000000000001"
 
 # TODO: Change this to your Postgres URI
