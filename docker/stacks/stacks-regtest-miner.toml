@@ -61,6 +61,13 @@ auth_token = "12345"
 endpoint = "stacks-api:3700"
 events_keys = ["*"]
 
+# Add emily-sidecar as an event observer
+[[events_observer]]
+endpoint = "host.docker.internal:5000"
+events_keys = [
+    "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
+]
+
 # Add sbtc-signer as an event observers
 [[events_observer]]
 endpoint = "host.docker.internal:8801"

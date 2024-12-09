@@ -104,7 +104,7 @@ services:
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-      - TRUSTED_REORG_API_KEY=
+      - TRUSTED_REORG_API_KEY=testApiKey
     profiles:
       - default
 
@@ -130,6 +130,23 @@ services:
       - "3031:3031"
     profiles:
       - default
+
+  emily-sidecar:
+    build:
+      context: ../
+      dockerfile: docker/sbtc/emily-sidecar/Dockerfile
+      target: emily-sidecar
+    restart: on-failure
+    ports:
+      - "5000:5000"
+    environment:
+      EMILY_API_KEY: testApiKey
+      EMILY_CHAINSTATE_URL: http://emily-server:3031/chainstate
+      DEPLOYER_ADDRESS: SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
+    profiles:
+      - default
+    depends_on:
+      - emily-server
 
   # sBTC Signers.
   # ------------------
