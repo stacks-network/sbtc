@@ -1,6 +1,8 @@
 use emily_handler::api;
 use emily_handler::common;
 use serde_json::json;
+use utoipa::openapi::path::Parameter;
+use utoipa::openapi::path::ParameterIn;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
@@ -171,9 +173,29 @@ impl Modify for CorsSupport {
             .build();
 
         openapi.paths.paths.iter_mut().for_each(|(_, path_item)| {
+            // Get the path parameters from the first of the other operations.
+            // All operations will need to have the same path parameters.
+            let path_parameters: Option<Vec<Parameter>>  = path_item
+                .operations
+                .first_entry()
+                .map(|entry| {
+                    entry.get()
+                        .parameters
+                        .clone()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|p|
+                            p.parameter_in == ParameterIn::Path
+                        )
+                        .collect()
+                });
+            // Add the path parameters to the operation.
+            let mut cors_operation_for_path = cors_options_operation.clone();
+            cors_operation_for_path.parameters = path_parameters;
+            // Insert the CORS operation into the path.
             path_item.operations.insert(
                 utoipa::openapi::PathItemType::Options,
-                cors_options_operation.clone(),
+                cors_operation_for_path.clone(),
             );
         });
     }
