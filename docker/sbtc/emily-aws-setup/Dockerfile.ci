@@ -24,6 +24,7 @@ WORKDIR /code/sbtc/emily/cdk
 
 ARG AWS_STAGE=local
 ARG TABLES_ONLY=true
+ARG TRUSTED_REORG_API_KEY=testApiKey
 RUN pnpm install
 RUN pnpm run synth
 
@@ -38,4 +39,7 @@ ENV LOCAL_LAMBDA_PATH=/zip-is-not-present-in-this-docker-file.zip
 ENV DYNAMODB_ENDPOINT=http://dynamodb:8000
 ENV INPUT_CDK_TEMPLATE=/code/cdk.out/EmilyStack.template.json
 ENV OUTPUT_CDK_TEMPLATE=/code/cdk.out/EmilyStack.devenv.template.json
+# This value matches what's in the default local test config. Don't change this unless
+# you've changed the way Emily's local test config gets this value.
+ENV TRUSTED_REORG_API_KEY=testApiKey
 ENTRYPOINT ["python3", "/code/initialize.py"]

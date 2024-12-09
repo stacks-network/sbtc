@@ -1,7 +1,7 @@
 # Variables.
 # ------------------------------------------------------------------------------
 x-common-vars:
-  - &STACKS_BLOCKCHAIN_COMMIT b26f406fc0bfd271a5cd5b54ccb064e7d3a0650a
+  - &STACKS_BLOCKCHAIN_COMMIT 49777d3fd73a6dbb610be80c376b7d9389c9871a
   - &STACKS_API_COMMIT 46e1ae256e474eac98979d0a3df685fe3fa48d6d
   - &BTC_ADDR miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
   - &MINER_SEED 9e446f6b0c6a96cf2190e54bcd5a8569c3e386f091605499464389b8d4e0bfc201 # stx: STEW4ZNT093ZHK4NEQKX8QJGM2Y7WWJ2FQQS5C19, btc: miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT, pub_key: 035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c, wif: cStMQXkK5yTFGP3KbNXYQ3sJf2qwQiKrZwR9QJnksp32eKzef1za
@@ -23,6 +23,7 @@ x-common-vars:
   - &STACKS_24_HEIGHT ${STACKS_24_HEIGHT:-208}
   - &STACKS_25_HEIGHT ${STACKS_25_HEIGHT:-209}
   - &STACKS_30_HEIGHT ${STACKS_30_HEIGHT:-232}
+  - &STACKS_31_HEIGHT ${STACKS_31_HEIGHT:-233}
   - &STACKING_CYCLES ${STACKING_CYCLES:-1} # number of cycles to stack-stx or stack-extend for
   - &POX_PREPARE_LENGTH ${POX_PREPARE_LENGTH:-5}
   - &POX_REWARD_LENGTH ${POX_REWARD_LENGTH:-20}
@@ -43,11 +44,11 @@ x-postgres: &postgres
     - sbtc-postgres
 
 x-sbtc-signer: &sbtc-signer
-  build: sbtc/signer
+  build:
+    context: ../
+    dockerfile: docker/sbtc/Dockerfile
+    target: signer
   entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
-  depends_on: &sbtc-signer-depends_on
-    sbtc-build:
-      condition: service_completed_successfully
   environment: &sbtc-signer-environment
     RUST_LOG: info
     SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
@@ -82,24 +83,6 @@ x-stacks-signer: &stacks-signer
 # ------------------------------------------------------------------------------
 services:
 
-  # Builder for the sBTC repository.
-  sbtc-build:
-    build:
-      context: .. # Set the context to be root of the project.
-      dockerfile: docker/sbtc/Dockerfile.build
-      args:
-        # GIT_BRANCH:
-        # The branch that we use as a common root for this build. Note
-        # that this branch will be overwritten with the code within this local
-        # repository, but the sources from this branch will be pulled in, compiled,
-        # and then cached so that when the local repository is copied the build
-        # is starting from a place where the dependencies are already compiled.
-        GIT_BRANCH: main
-    image: sbtc-build:latest
-    profiles:
-      - default
-      - sbtc-signer
-
   # Emily API.
   # ----------
   # DynamoDB Tables for the Emily API.
@@ -113,27 +96,36 @@ services:
 
   # Modifies Emily's CDK template and creates DynamoDB Tables.
   emily-aws-setup:
-    build: sbtc/emily-aws-setup
+    build:
+      context: ../
+      dockerfile: docker/sbtc/Dockerfile
+      target: emily-aws-setup
     depends_on:
-      - sbtc-build
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+      - TRUSTED_REORG_API_KEY=
     profiles:
       - default
 
   # Runs the Emily server.
   emily-server:
-    build: sbtc/emily-server
+    build:
+      context: ../
+      dockerfile: docker/sbtc/Dockerfile
+      target: emily-server
     depends_on:
-      sbtc-build:
-        condition: service_completed_successfully
       emily-aws-setup:
         condition: service_completed_successfully
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-      - HOST=0.0.0.0
+      - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
+      - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
+      - AWS_REGION=us-west-2
       - PORT=3031
+      - DEFAULT_PEG_CAP=100000000000
+      - DEFAULT_PER_DEPOSIT_CAP=100000000
+      - DEFAULT_PER_WITHDRAWAL_CAP=100000000
     ports:
       - "3031:3031"
     profiles:
@@ -152,9 +144,7 @@ services:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
     container_name: sbtc-signer-1
     depends_on:
-      <<: *sbtc-signer-depends_on
-      postgres-1:
-        condition: service_started
+      - postgres-1
     environment:
       <<: *sbtc-signer-environment
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
@@ -174,9 +164,7 @@ services:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
     container_name: sbtc-signer-2
     depends_on:
-      <<: *sbtc-signer-depends_on
-      postgres-2:
-        condition: service_started
+      - postgres-2
     environment:
       <<: *sbtc-signer-environment
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
@@ -196,9 +184,7 @@ services:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
     container_name: sbtc-signer-3
     depends_on:
-      <<: *sbtc-signer-depends_on
-      postgres-3:
-        condition: service_started
+      - postgres-3
     environment:
       <<: *sbtc-signer-environment
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
@@ -207,18 +193,19 @@ services:
     ports:
       - "8803:8801"
 
-
   # Blocklist client.
   # -----------------
   blocklist-client:
-    build: sbtc/blocklist-client
-    depends_on:
-      sbtc-build:
-        condition: service_completed_successfully
-    # TODO(TBD): Add the environment variables or cli arguments that configure
-    # the blocklist client.
+    build:
+      context: ../
+      dockerfile: docker/sbtc/Dockerfile
+      target: blocklist-client
+    environment:
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL:-https://public.chainalysis.com}
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY:-}
+      BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
     ports:
-      - "3032:3032"
+      - "3030:3030"
     profiles:
       - default
 
@@ -350,6 +337,7 @@ services:
       STACKS_24_HEIGHT: *STACKS_24_HEIGHT
       STACKS_25_HEIGHT: *STACKS_25_HEIGHT
       STACKS_30_HEIGHT: *STACKS_30_HEIGHT
+      STACKS_31_HEIGHT: *STACKS_31_HEIGHT
       POX_PREPARE_LENGTH: *POX_PREPARE_LENGTH
       POX_REWARD_LENGTH: *POX_REWARD_LENGTH
       REWARD_RECIPIENT: *REWARD_RECIPIENT

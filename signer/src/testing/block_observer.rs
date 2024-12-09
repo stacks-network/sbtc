@@ -35,6 +35,7 @@ use crate::bitcoin::utxo;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::GetTransactionFeeResult;
 use crate::bitcoin::TransactionLookupHint;
+use crate::context::SbtcLimits;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::keys::PublicKey;
@@ -482,6 +483,10 @@ impl EmilyInteract for TestHarness {
 
     async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
         Ok(chainstate)
+    }
+
+    async fn get_limits(&self) -> Result<SbtcLimits, Error> {
+        Ok(SbtcLimits::default())
     }
 }
 

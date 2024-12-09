@@ -383,7 +383,7 @@ impl MultisigTx {
         use TransactionSpendingCondition::OrderIndependentMultisig;
         let cond = match &mut self.tx.auth {
             TransactionAuth::Standard(OrderIndependentMultisig(cond)) => cond,
-            _ => unreachable!("Spending condition invariant not upheld"),
+            _ => unreachable!("spending condition invariant not upheld"),
         };
         let key_encoding = TransactionPublicKeyEncoding::Compressed;
 

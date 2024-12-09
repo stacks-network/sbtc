@@ -16,24 +16,23 @@ use bitcoincore_rpc_json::Utxo;
 
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
-use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
-use clarity::types::chainstate::ConsensusHash;
-use clarity::types::chainstate::StacksBlockId;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api::wipe_databases;
 use emily_client::models::CreateDepositRequestBody;
+use emily_client::models::Limits;
 use sbtc::testing::regtest::Recipient;
-use sha2::Digest as _;
 use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
 use signer::block_observer;
 use signer::context::Context;
 use signer::context::RequestDeciderEvent;
+use signer::context::SbtcLimits;
 use signer::emily_client::EmilyClient;
 use signer::emily_client::EmilyInteract;
 use signer::error::Error;
 use signer::keys;
+use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
 use signer::network;
 use signer::stacks::api::TenureBlocks;
@@ -53,10 +52,12 @@ use signer::testing::context::WrappedMock;
 use signer::testing::dummy;
 use signer::testing::dummy::DepositTxConfig;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
+use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::model::TestData;
 
 use fake::Fake as _;
 use rand::SeedableRng;
+use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
 use test_log::test;
@@ -117,20 +118,6 @@ where
     (aggregate_key, bitcoin_chain_tip_ref, test_data)
 }
 
-fn select_coordinator(
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
-    signer_info: &[testing::wsts::SignerInfo],
-) -> keys::PrivateKey {
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(bitcoin_chain_tip.into_bytes());
-    let digest = hasher.finalize();
-    let index = usize::from_be_bytes(*digest.first_chunk().expect("unexpected digest size"));
-    signer_info
-        .get(index % signer_info.len())
-        .expect("missing signer info")
-        .signer_private_key
-}
-
 fn get_coinbase_tx<Rng>(block_height: i64, rng: &mut Rng) -> Transaction
 where
     Rng: rand::CryptoRng + rand::RngCore,
@@ -147,16 +134,6 @@ where
 
     coinbase_tx
 }
-
-const DUMMY_TENURE_INFO: RPCGetTenureInfo = RPCGetTenureInfo {
-    consensus_hash: ConsensusHash([0; 20]),
-    tenure_start_block_id: StacksBlockId([0; 32]),
-    parent_consensus_hash: ConsensusHash([0; 20]),
-    parent_tenure_start_block_id: StacksBlockId([0; 32]),
-    tip_block_id: StacksBlockId([0; 32]),
-    tip_height: 0,
-    reward_cycle: 0,
-};
 
 /// End to end test for deposits via Emily: a deposit request is created on Emily,
 /// then is picked up by the block observer, inserted into the storage and accepted.
@@ -176,7 +153,7 @@ async fn deposit_flow() {
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
 
     // Wipe the Emily database to start fresh
@@ -432,6 +409,7 @@ async fn deposit_flow() {
     let private_key = select_coordinator(&deposit_block_hash.into(), &signer_info);
 
     // Bootstrap the tx coordinator event loop
+    context.state().set_sbtc_contracts_deployed();
     let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
         context: context.clone(),
         network: network.connect(),
@@ -440,15 +418,17 @@ async fn deposit_flow() {
         threshold: signing_threshold as u16,
         signing_round_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
-        sbtc_contracts_deployed: true,
+        bitcoin_presign_request_max_duration: Duration::from_secs(10),
         is_epoch3: true,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
 
     // There shouldn't be any request yet
+    let signer_public_key = PublicKey::from_private_key(&context.config().signer.private_key);
+    let chain_tip = bitcoin_chain_tip.block_hash;
     assert!(context
         .get_storage()
-        .get_pending_deposit_requests(&bitcoin_chain_tip.block_hash, context_window as u16)
+        .get_pending_deposit_requests(&chain_tip, context_window as u16, &signer_public_key)
         .await
         .unwrap()
         .is_empty());
@@ -477,9 +457,10 @@ async fn deposit_flow() {
         deposit_block_hash.into()
     );
     // and that now we have the deposit request
+    let deposit_block = deposit_block_hash.into();
     assert!(!context
         .get_storage()
-        .get_pending_deposit_requests(&deposit_block_hash.into(), context_window as u16)
+        .get_pending_deposit_requests(&deposit_block, context_window as u16, &signer_public_key)
         .await
         .unwrap()
         .is_empty());
@@ -591,7 +572,7 @@ async fn get_deposit_request_works() {
     let lock_time = 150;
 
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
 
     wipe_databases(&emily_client.config())
         .await
@@ -621,4 +602,33 @@ async fn get_deposit_request_works() {
     // This one doesn't exist
     let request = emily_client.get_deposit(&txid, 50).await.unwrap();
     assert!(request.is_none());
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_limits_works() {
+    let url = Url::parse("http://testApiKey@localhost:3031").unwrap();
+    let emily_client = EmilyClient::try_from(&url).unwrap();
+    emily_client::apis::limits_api::set_limits(
+        &emily_client.config(),
+        Limits {
+            peg_cap: Some(Some(100)),
+            per_deposit_cap: Some(Some(90)),
+            per_withdrawal_cap: Some(Some(80)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    let limits = emily_client.get_limits().await.unwrap();
+
+    let expected = SbtcLimits::new(
+        Some(Amount::from_sat(100)),
+        Some(Amount::from_sat(90)),
+        Some(Amount::from_sat(80)),
+        None,
+    );
+
+    assert_eq!(limits, expected);
 }

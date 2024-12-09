@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::extract::State;
 use axum::http::StatusCode;
 use bitcoin::ScriptBuf;
@@ -12,17 +14,22 @@ use emily_client::models::CreateDepositRequestBody;
 use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::Status;
 use emily_client::models::WithdrawalParameters;
-use rand::SeedableRng;
+use fake::Fake;
+use rand::rngs::OsRng;
+use rand::SeedableRng as _;
 use sbtc::testing::deposits::TxSetup;
 use signer::api::new_block_handler;
 use signer::api::ApiState;
 use signer::bitcoin::MockBitcoinInteract;
+use signer::context::Context;
 use signer::emily_client::EmilyClient;
 use signer::stacks::api::MockStacksInteract;
 use signer::stacks::events::RegistryEvent;
 use signer::stacks::events::TxInfo;
 use signer::stacks::webhooks::NewBlockEvent;
 use signer::storage::in_memory::Store;
+use signer::storage::model::DepositRequest;
+use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::BuildContext;
 use signer::testing::context::ConfigureBitcoinClient;
@@ -31,7 +38,6 @@ use signer::testing::context::ConfigureStacksClient;
 use signer::testing::context::ConfigureStorage;
 use signer::testing::context::TestContext;
 use signer::testing::context::WrappedMock;
-use std::sync::Arc;
 use url::Url;
 
 async fn test_context() -> TestContext<
@@ -41,7 +47,7 @@ async fn test_context() -> TestContext<
     EmilyClient,
 > {
     let emily_client =
-        EmilyClient::try_from(&Url::parse("http://localhost:3031").unwrap()).unwrap();
+        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
     let stacks_client = WrappedMock::default();
 
     TestContext::builder()
@@ -281,16 +287,17 @@ async fn test_new_blocks_sends_set_chainstate_to_emily_skip_messages() {
     // Skip sending the 2nd event
     let skipped_event = events_iter.next().unwrap();
 
-    // Send 3th block event, should be ignored
+    // Send 3rd block event, should be included in the chain tip because emily can handle
+    // missing blocks.
     let event_3 = events_iter.next().unwrap();
     let status_code = new_block_handler(state.clone(), event_3.to_payload()).await;
     assert_eq!(status_code, StatusCode::OK);
 
     let resp = get_chain_tip(&emily_context).await.unwrap();
-    assert_eq!(resp.stacks_block_height, event_1.block_height);
-    assert_eq!(resp.stacks_block_hash, event_1.index_block_hash_hex);
+    assert_eq!(resp.stacks_block_height, event_3.block_height);
+    assert_eq!(resp.stacks_block_hash, event_3.index_block_hash_hex);
 
-    // Now send 2nd block, tip should change
+    // Now send 2nd block, tip should change because it thinks it's a reorg.
     let status_code = new_block_handler(state.clone(), skipped_event.to_payload()).await;
     assert_eq!(status_code, StatusCode::OK);
 
@@ -298,7 +305,7 @@ async fn test_new_blocks_sends_set_chainstate_to_emily_skip_messages() {
     assert_eq!(resp.stacks_block_height, skipped_event.block_height);
     assert_eq!(resp.stacks_block_hash, skipped_event.index_block_hash_hex);
 
-    // Send 3th block again, tip should change
+    // Send 3rd block again, tip should change
     let status_code = new_block_handler(state.clone(), event_3.to_payload()).await;
     assert_eq!(status_code, StatusCode::OK);
 
@@ -413,6 +420,19 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
     });
 
     let bitcoin_txid = deposit_completed_event.outpoint.txid.to_string();
+
+    // Insert a dummy deposit request into the database. This will be retrieved by
+    // handle_completed_deposit to compute the fee paid.
+    let mut deposit: DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
+    deposit.amount = deposit_completed_event.amount + 100;
+    deposit.txid = deposit_completed_event.outpoint.txid.into();
+    deposit.output_index = deposit_completed_event.outpoint.vout;
+
+    context
+        .get_storage_mut()
+        .write_deposit_request(&deposit)
+        .await
+        .expect("failed to insert dummy deposit request");
 
     // Add the deposit request to Emily
     let tx_setup: TxSetup = sbtc::testing::deposits::tx_setup(15_000, 500_000, 150);

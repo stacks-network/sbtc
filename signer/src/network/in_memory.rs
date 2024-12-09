@@ -9,12 +9,13 @@ use std::{
     sync::{atomic::AtomicU16, Arc},
 };
 
-use tokio::sync::{broadcast, Mutex};
-use tokio_stream::wrappers::BroadcastStream;
+use tokio::sync::broadcast;
+use tokio::sync::Mutex;
 
-use crate::context::P2PEvent;
-use crate::context::SignerSignal;
-use crate::error::Error;
+use crate::{
+    codec::{Decode as _, Encode as _},
+    error::Error,
+};
 
 const BROADCAST_CHANNEL_CAPACITY: usize = 10_000;
 
@@ -24,7 +25,7 @@ type MsgId = [u8; 32];
 #[derive(Debug)]
 pub struct InMemoryNetwork {
     last_id: AtomicU16,
-    sender: broadcast::Sender<super::Msg>,
+    sender: broadcast::Sender<Vec<u8>>,
 }
 
 /// A handle to the in-memory network, usable for unit tests that
@@ -32,8 +33,8 @@ pub struct InMemoryNetwork {
 #[derive(Debug)]
 pub struct MpmcBroadcaster {
     id: u16,
-    sender: broadcast::Sender<super::Msg>,
-    receiver: broadcast::Receiver<super::Msg>,
+    sender: broadcast::Sender<Vec<u8>>,
+    receiver: broadcast::Receiver<Vec<u8>>,
     recently_sent: Arc<Mutex<VecDeque<MsgId>>>,
 }
 
@@ -90,50 +91,34 @@ impl super::MessageTransfer for MpmcBroadcaster {
     async fn broadcast(&mut self, msg: super::Msg) -> Result<(), Error> {
         tracing::trace!("[network{:0>2}] broadcasting: {}", self.id, msg);
         self.recently_sent.lock().await.push_back(msg.id());
-        self.sender.send(msg).map_err(|_| Error::SendMessage)?;
+        let encoded_msg = msg.encode_to_vec();
+        self.sender
+            .send(encoded_msg)
+            .map_err(|_| Error::SendMessage)?;
         Ok(())
     }
 
     async fn receive(&mut self) -> Result<super::Msg, Error> {
-        let mut msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
-        tracing::trace!("[network{:0>2}] received: {}", self.id, msg);
+        let mut encoded_msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
+        let mut msg = super::Msg::decode(encoded_msg.as_slice())?;
 
+        tracing::trace!("[network{:0>2}] received: {}", self.id, msg);
         while Some(&msg.id()) == self.recently_sent.lock().await.front() {
             self.recently_sent.lock().await.pop_front();
-            msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
+            encoded_msg = self.receiver.recv().await.map_err(Error::ChannelReceive)?;
+            msg = super::Msg::decode(encoded_msg.as_slice())?;
         }
 
         Ok(msg)
-    }
-
-    fn receiver_stream(&self) -> BroadcastStream<SignerSignal> {
-        let (sender, receiver) = tokio::sync::broadcast::channel(1000);
-        let mut signal_rx = self.receiver.resubscribe();
-        let recently_sent = self.recently_sent.clone();
-        tokio::spawn(async move {
-            loop {
-                match signal_rx.recv().await {
-                    Ok(mut msg) => {
-                        while Some(&msg.id()) == recently_sent.lock().await.front() {
-                            recently_sent.lock().await.pop_front();
-                            msg = signal_rx.recv().await.map_err(Error::ChannelReceive)?;
-                        }
-                        let _ = sender.send(P2PEvent::MessageReceived(msg).into());
-                    }
-                    Err(error) => {
-                        tracing::error!(%error, "got a receive error");
-                        return Err::<(), _>(Error::SignerShutdown);
-                    }
-                }
-            }
-        });
-        BroadcastStream::new(receiver)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use rand::rngs::OsRng;
+
     use super::*;
+    use crate::keys::PrivateKey;
     use crate::testing;
 
     #[tokio::test]
@@ -143,6 +128,8 @@ mod tests {
         let client_1 = network.connect();
         let client_2 = network.connect();
 
-        testing::network::assert_clients_can_exchange_messages(client_1, client_2).await;
+        let pk = PrivateKey::new(&mut OsRng);
+
+        testing::network::assert_clients_can_exchange_messages(client_1, client_2, pk, pk).await;
     }
 }

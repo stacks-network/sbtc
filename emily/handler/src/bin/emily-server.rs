@@ -35,7 +35,7 @@ pub struct GeneralArgs {
     #[arg(long, default_value = "false")]
     pub pretty_logs: bool,
     /// Log directives.
-    #[arg(long, default_value = "info,emily-handler=debug")]
+    #[arg(long, default_value = "info,emily_handler=debug,api=debug")]
     pub log_directives: String,
     /// DynamoDB endpoint.
     #[arg(long, default_value = "http://localhost:8000")]
@@ -75,7 +75,7 @@ async fn main() {
     let context: EmilyContext = EmilyContext::local_instance(&dynamodb_endpoint)
         .await
         .unwrap_or_else(|e| panic!("{e}"));
-    info!("Lambda Context:\n{context:?}");
+    info!(lambdaContext = ?context);
 
     // Create CORS configuration
     let cors = warp::cors()

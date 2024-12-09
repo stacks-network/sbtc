@@ -1,17 +1,17 @@
 //! Signer message definition for network communication
 
 use secp256k1::ecdsa::RecoverableSignature;
-use sha2::Digest;
 
+use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::validation::TxRequestIds;
 use crate::keys::PublicKey;
 use crate::keys::SignerScriptPubKey as _;
-use crate::signature::RecoverableEcdsaSignature as _;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SignerMessage {
     /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
     pub bitcoin_chain_tip: BitcoinBlockHash,
@@ -20,7 +20,7 @@ pub struct SignerMessage {
 }
 
 /// The different variants of signer messages
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Payload {
     /// A decision related to signer deposit
     SignerDepositDecision(SignerDepositDecision),
@@ -38,6 +38,10 @@ pub enum Payload {
     WstsMessage(WstsMessage),
     /// Information about a new sweep transaction
     SweepTransactionInfo(SweepTransactionInfo),
+    /// Information about a new Bitcoin block sign request
+    BitcoinPreSignRequest(BitcoinPreSignRequest),
+    /// An acknowledgment of a BitconPreSignRequest
+    BitcoinPreSignAck(BitcoinPreSignAck),
 }
 
 impl std::fmt::Display for Payload {
@@ -72,6 +76,8 @@ impl std::fmt::Display for Payload {
                 write!(f, ")")
             }
             Self::SweepTransactionInfo(_) => write!(f, "SweepTransactionInfo(..)"),
+            Self::BitcoinPreSignRequest(_) => write!(f, "BitcoinPreSignRequest(..)"),
+            Self::BitcoinPreSignAck(_) => write!(f, "BitcoinPreSignAck(..)"),
         }
     }
 }
@@ -134,8 +140,20 @@ impl From<SweepTransactionInfo> for Payload {
     }
 }
 
+impl From<BitcoinPreSignRequest> for Payload {
+    fn from(value: BitcoinPreSignRequest) -> Self {
+        Self::BitcoinPreSignRequest(value)
+    }
+}
+
+impl From<BitcoinPreSignAck> for Payload {
+    fn from(value: BitcoinPreSignAck) -> Self {
+        Self::BitcoinPreSignAck(value)
+    }
+}
+
 /// Represents information about a new sweep transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SweepTransactionInfo {
     /// The Bitcoin transaction id of the sweep transaction.
     pub txid: bitcoin::Txid,
@@ -220,7 +238,7 @@ impl SweepTransactionInfo {
 }
 
 /// Represents information about a deposit request being swept-in by a sweep transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SweptDeposit {
     /// The index of the deposit input in the sBTC sweep transaction.
     pub input_index: u32,
@@ -233,7 +251,7 @@ pub struct SweptDeposit {
 }
 
 /// Represents information about a withdrawal request being swept-out by a sweep transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SweptWithdrawal {
     /// The index of the withdrawal output in the sBTC sweep transaction.
     pub output_index: u32,
@@ -246,7 +264,7 @@ pub struct SweptWithdrawal {
 }
 
 /// Represents a decision related to signer deposit
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SignerDepositDecision {
     /// ID of the transaction containing the deposit request.
     pub txid: bitcoin::Txid,
@@ -262,7 +280,7 @@ pub struct SignerDepositDecision {
 }
 
 /// Represents a decision related to signer withdrawal.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SignerWithdrawalDecision {
     /// ID of the withdrawal request.
@@ -277,7 +295,7 @@ pub struct SignerWithdrawalDecision {
 }
 
 /// Represents a request to sign a Stacks transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StacksTransactionSignRequest {
     /// This is the bitcoin aggregate key that was output from DKG. It is used
     /// to identify the signing set for the transaction.
@@ -288,26 +306,21 @@ pub struct StacksTransactionSignRequest {
     pub nonce: u64,
     /// The transaction fee in microSTX.
     pub tx_fee: u64,
-    /// The expected digest of the transaction than needs to be signed.
-    /// It's essentially a hash of the contract call struct, the nonce, the
-    /// tx_fee and a few other things.
-    pub digest: [u8; 32],
     /// The transaction ID of the associated contract call transaction.
     pub txid: blockstack_lib::burnchains::Txid,
 }
 
 /// Represents a signature of a Stacks transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StacksTransactionSignature {
     /// Id of the signed transaction.
     pub txid: blockstack_lib::burnchains::Txid,
     /// A recoverable ECDSA signature over the transaction.
-    #[serde(with = "crate::signature::serde_utils")]
     pub signature: RecoverableSignature,
 }
 
 /// Represents a request to sign a Bitcoin transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BitcoinTransactionSignRequest {
     /// The transaction.
     pub tx: bitcoin::Transaction,
@@ -316,14 +329,33 @@ pub struct BitcoinTransactionSignRequest {
 }
 
 /// Represents an acknowledgment of a signed Bitcoin transaction.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BitcoinTransactionSignAck {
     /// The ID of the acknowledged transaction.
     pub txid: bitcoin::Txid,
 }
 
-/// A wsts message.
+/// The transaction context needed by the signers to reconstruct the transaction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BitcoinPreSignRequest {
+    /// The set of sBTC request identifiers. This contains each of the
+    /// requests for the entire transaction package. Each element in the
+    /// vector corresponds to the requests that will be included in a
+    /// single bitcoin transaction.
+    pub request_package: Vec<TxRequestIds>,
+    /// The current market fee rate in sat/vByte.
+    pub fee_rate: f64,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    pub last_fees: Option<Fees>,
+}
+
+/// An acknowledgment of a [`BitcoinPreSignRequest`].
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BitcoinPreSignAck;
+
+/// A wsts message.
+#[derive(Debug, Clone, PartialEq)]
 pub struct WstsMessage {
     /// The transaction ID this message relates to,
     /// will be a dummy ID for DKG messages
@@ -332,186 +364,64 @@ pub struct WstsMessage {
     pub inner: wsts::net::Message,
 }
 
-impl wsts::net::Signable for SignerMessage {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SBTC_SIGNER_MESSAGE");
-        hasher.update(self.bitcoin_chain_tip.as_ref());
-        self.payload.hash(hasher);
-    }
-}
-
-impl wsts::net::Signable for Payload {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        match self {
-            Self::WstsMessage(msg) => msg.hash(hasher),
-            Self::SignerDepositDecision(msg) => msg.hash(hasher),
-            Self::SignerWithdrawalDecision(msg) => msg.hash(hasher),
-            Self::BitcoinTransactionSignRequest(msg) => msg.hash(hasher),
-            Self::BitcoinTransactionSignAck(msg) => msg.hash(hasher),
-            Self::StacksTransactionSignRequest(msg) => msg.hash(hasher),
-            Self::StacksTransactionSignature(msg) => msg.hash(hasher),
-            Self::SweepTransactionInfo(msg) => msg.hash(hasher),
-        }
-    }
-}
-
-impl wsts::net::Signable for SweepTransactionInfo {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SWEEP_TRANSACTION_INFO");
-        hasher.update(self.txid);
-        hasher.update(self.signer_prevout_txid);
-        hasher.update(self.signer_prevout_output_index.to_be_bytes());
-        hasher.update(self.signer_prevout_amount.to_be_bytes());
-        hasher.update(self.signer_prevout_script_pubkey.as_bytes());
-        hasher.update(self.amount.to_be_bytes());
-        hasher.update(self.fee.to_be_bytes());
-        hasher.update(self.created_at_block_hash);
-        hasher.update(self.market_fee_rate.to_be_bytes());
-        for deposit in &self.swept_deposits {
-            deposit.hash(hasher);
-        }
-        for withdrawal in &self.swept_withdrawals {
-            withdrawal.hash(hasher);
-        }
-    }
-}
-
-impl wsts::net::Signable for SweptDeposit {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update(self.input_index.to_be_bytes());
-        hasher.update(self.deposit_request_txid);
-        hasher.update(self.deposit_request_output_index.to_be_bytes());
-    }
-}
-
-impl wsts::net::Signable for SweptWithdrawal {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update(self.output_index.to_be_bytes());
-        hasher.update(self.withdrawal_request_id.to_be_bytes());
-        hasher.update(self.withdrawal_request_block_hash);
-    }
-}
-
-impl wsts::net::Signable for SignerDepositDecision {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SIGNER_DEPOSIT_DECISION");
-        hasher.update(self.txid);
-        hasher.update(self.output_index.to_be_bytes());
-        hasher.update([self.can_accept as u8]);
-    }
-}
-
-impl wsts::net::Signable for SignerWithdrawalDecision {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SIGNER_WITHDRAW_DECISION");
-        hasher.update(self.request_id.to_be_bytes());
-        hasher.update(self.block_hash);
-        hasher.update([self.accepted as u8]);
-    }
-}
-
-impl wsts::net::Signable for BitcoinTransactionSignRequest {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SIGNER_BITCOIN_TRANSACTION_SIGN_REQUEST");
-        hasher.update(bitcoin::consensus::serialize(&self.tx));
-    }
-}
-
-impl wsts::net::Signable for BitcoinTransactionSignAck {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SIGNER_BITCOIN_TRANSACTION_SIGN_ACK");
-        hasher.update(self.txid);
-    }
-}
-
-impl wsts::net::Signable for StacksTransactionSignRequest {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        // The digest is supposed to be a hash of the contract call data,
-        // the nonce, the fee and a few more things.
-        hasher.update("SIGNER_STACKS_TRANSACTION_SIGN_REQUEST");
-        hasher.update(self.digest);
-        hasher.update(self.aggregate_key.serialize());
-        hasher.update(self.nonce.to_be_bytes());
-        hasher.update(self.tx_fee.to_be_bytes());
-    }
-}
-
-impl wsts::net::Signable for StacksTransactionSignature {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SIGNER_STACKS_TRANSACTION_SIGNATURE");
-        hasher.update(self.txid);
-        hasher.update(self.signature.to_byte_array());
-    }
-}
-
-impl wsts::net::Signable for WstsMessage {
-    fn hash(&self, hasher: &mut sha2::Sha256) {
-        hasher.update("SIGNER_WSTS_MESSAGE");
-        hasher.update(self.txid);
-        self.inner.hash(hasher);
-    }
-}
-
 /// Convenient type aliases
 type StacksBlockHash = [u8; 32];
 
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
+
     use super::*;
     use crate::codec::{Decode, Encode};
     use crate::ecdsa::{SignEcdsa, Signed};
     use crate::keys::PrivateKey;
 
     use rand::SeedableRng;
+    use test_case::test_case;
 
-    #[test]
-    fn signer_messages_should_be_signable() {
-        assert_signer_messages_should_be_signable_with_type::<SignerDepositDecision>();
-        assert_signer_messages_should_be_signable_with_type::<SignerWithdrawalDecision>();
-        assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignRequest>();
-        assert_signer_messages_should_be_signable_with_type::<BitcoinTransactionSignAck>();
-        assert_signer_messages_should_be_signable_with_type::<StacksTransactionSignRequest>();
-        assert_signer_messages_should_be_signable_with_type::<StacksTransactionSignature>();
-        assert_signer_messages_should_be_signable_with_type::<WstsMessage>();
-    }
-
-    #[test]
-    fn signer_messages_should_be_encodable() {
-        assert_signer_messages_should_be_encodable_with_type::<SignerDepositDecision>();
-        assert_signer_messages_should_be_encodable_with_type::<SignerWithdrawalDecision>();
-        assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignRequest>();
-        assert_signer_messages_should_be_encodable_with_type::<BitcoinTransactionSignAck>();
-        assert_signer_messages_should_be_encodable_with_type::<StacksTransactionSignRequest>();
-        assert_signer_messages_should_be_encodable_with_type::<StacksTransactionSignature>();
-        assert_signer_messages_should_be_encodable_with_type::<WstsMessage>();
-    }
-
-    fn assert_signer_messages_should_be_signable_with_type<P>()
+    #[test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    fn signer_messages_should_be_signable_with_type<P>(_: PhantomData<P>)
     where
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(1337);
         let private_key = PrivateKey::new(rng);
+        let public_key = PublicKey::from_private_key(&private_key);
 
-        let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
-            .sign_ecdsa(&private_key)
-            .expect("Failed to sign message");
+        let signed_message =
+            SignerMessage::random_with_payload_type::<P, _>(rng).sign_ecdsa(&private_key);
 
-        assert!(signed_message.verify());
+        assert!(signed_message.verify(public_key));
     }
 
-    fn assert_signer_messages_should_be_encodable_with_type<P>()
+    #[test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
+    #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
+    #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
+    #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
+    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
+    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
+    #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
+    #[test_case(PhantomData::<SweepTransactionInfo> ; "SweepTransactionInfo")]
+    #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
+    fn signer_messages_should_be_encodable_with_type<P>(_: PhantomData<P>)
     where
         P: fake::Dummy<fake::Faker> + Into<Payload>,
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(42);
         let private_key = PrivateKey::new(rng);
 
-        let signed_message = SignerMessage::random_with_payload_type::<P, _>(rng)
-            .sign_ecdsa(&private_key)
-            .expect("Failed to sign message");
+        let signed_message =
+            SignerMessage::random_with_payload_type::<P, _>(rng).sign_ecdsa(&private_key);
 
-        let encoded = signed_message.encode_to_vec().expect("Failed to encode");
+        let encoded = signed_message.clone().encode_to_vec();
 
         let decoded =
             Signed::<SignerMessage>::decode(encoded.as_slice()).expect("Failed to decode");

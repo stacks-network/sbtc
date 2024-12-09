@@ -1,17 +1,14 @@
 # sBTC
 
-> Note: This repo is still in early development and is not ready for production use.
+> Note: This repo is in _beta_ and is not yet ready for production use.
 
 [![License: GPL v3][gpl-v3-badge]][gpl-v3-link]
 [![Discord][discord-badge]][discord-link]
 
-Ths repository builds off the developer experience within https://github.com/stacks-network/sbtc-developer-release.
-
 ### Links
 
 - [sBTC Landing Page](https://sbtc.tech/)
-- [sBTC Rollout Plan](https://www.bitcoinwrites.com/p/sbtc-rollout-bootstrapping-programmable-bitcoin)
-- [sBTC Developer Release](https://sbtc.tech/developer-release)
+- [sBTC Docs](https://docs.stacks.co/concepts/sbtc)
 
 ## Design Docs
 
@@ -158,6 +155,10 @@ dependencies.
 
 This project currently supports development on UNIX-based operating systems but
 does not support development on Windows or z/OS.
+
+## Security
+
+See [this](./SECURITY.md).
 
 [discord-badge]: https://img.shields.io/static/v1?logo=discord&label=discord&message=Join&color=blue
 [discord-link]: https://discord.gg/hHaz2gGX

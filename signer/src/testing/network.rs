@@ -1,6 +1,6 @@
 //! Test utilities for the `network` module
 
-use crate::network;
+use crate::{keys::PrivateKey, network};
 
 /// Test helper that spawns two concurrent tasks for the provided clients and have them
 /// broadcasting randomly generated messages.
@@ -11,16 +11,18 @@ use crate::network;
 pub async fn assert_clients_can_exchange_messages<C: network::MessageTransfer + Send + 'static>(
     client_1: C,
     client_2: C,
+    private_key_1: PrivateKey,
+    private_key_2: PrivateKey,
 ) {
     use rand::SeedableRng;
     let mut rng = rand::rngs::StdRng::seed_from_u64(1337);
     let number_of_messages = 32;
 
     let client_1_messages: Vec<_> = (0..number_of_messages)
-        .map(|_| network::Msg::random(&mut rng))
+        .map(|_| network::Msg::random_with_private_key(&mut rng, &private_key_1))
         .collect();
     let client_2_messages: Vec<_> = (0..number_of_messages)
-        .map(|_| network::Msg::random(&mut rng))
+        .map(|_| network::Msg::random_with_private_key(&mut rng, &private_key_2))
         .collect();
 
     let handle_1 = spawn_client_task(

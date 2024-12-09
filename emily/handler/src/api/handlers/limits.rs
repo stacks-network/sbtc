@@ -10,6 +10,7 @@ use crate::{
         entries::limits::{LimitEntry, GLOBAL_CAP_ACCOUNT},
     },
 };
+use tracing::instrument;
 use warp::http::StatusCode;
 use warp::reply::{json, with_status, Reply};
 
@@ -26,6 +27,7 @@ use warp::reply::{json, with_status, Reply};
     ),
     security(("ApiGatewayKey" = []))
 )]
+#[instrument(skip(context))]
 pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(context: EmilyContext) -> Result<impl warp::reply::Reply, Error> {
@@ -55,6 +57,7 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
     ),
     security(("ApiGatewayKey" = []))
 )]
+#[instrument(skip(context))]
 pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
@@ -117,6 +120,7 @@ pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::rep
     ),
     security(("ApiGatewayKey" = []))
 )]
+#[instrument(skip(context))]
 pub async fn get_limits_for_account(
     context: EmilyContext,
     account: String,
@@ -159,6 +163,7 @@ pub async fn get_limits_for_account(
     ),
     security(("ApiGatewayKey" = []))
 )]
+#[instrument(skip(context))]
 pub async fn set_limits_for_account(
     context: EmilyContext,
     account: String,

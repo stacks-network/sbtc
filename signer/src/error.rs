@@ -4,15 +4,27 @@ use std::borrow::Cow;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::codec;
-use crate::ecdsa;
 use crate::emily_client::EmilyClientError;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
+use crate::storage::model::SigHash;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An error occurred while attempting to connect to the Bitcoin Core ZMQ socket.
+    #[error("timed-out trying to connect to bitcoin-core ZMQ endpoint: {0}")]
+    BitcoinCoreZmqConnectTimeout(String),
+
+    /// An error was received from the Bitcoin Core ZMQ subscriber.
+    #[error("error from bitcoin-core ZMQ: {0}")]
+    BitcoinCoreZmq(#[source] bitcoincore_zmq::Error),
+
+    /// Indicates an error when decoding a protobuf
+    #[error("could not decode protobuf {0}")]
+    DecodeProtobuf(#[source] prost::DecodeError),
+
     /// Attempted division by zero
     #[error("attempted division by zero")]
     DivideByZero,
@@ -24,6 +36,10 @@ pub enum Error {
     /// Indicates that a sweep transaction with the specified txid could not be found.
     #[error("sweep transaction not found: {0}")]
     MissingSweepTransaction(bitcoin::Txid),
+
+    /// Indicates that a deposit request with the specified txid and vout could not be found.
+    #[error("deposit request not found: {0}")]
+    MissingDepositRequest(bitcoin::OutPoint),
 
     /// Received an error in response to gettxout RPC call
     #[error("bitcoin-core gettxout error for outpoint {1} (search mempool? {2}): {0}")]
@@ -69,6 +85,21 @@ pub enum Error {
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
+    /// This can only be thrown when the number of bytes for a sighash or
+    /// not exactly equal to 32. This should never occur.
+    #[error("could not convert message in nonce request to sighash {0}")]
+    SigHashConversion(#[source] bitcoin::hashes::FromSliceError),
+
+    /// This happens when the tx-signer is validating the sighash and it is
+    /// known but has failed validation.
+    #[error("the given sighash is known and failed validation: {0}")]
+    InvalidSigHash(SigHash),
+
+    /// This happens when the tx-signer is validating the sighash and it
+    /// does not have a row for it in the database.
+    #[error("the given sighash is unknown: {0}")]
+    UnknownSigHash(SigHash),
+
     /// This should never happen
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,
@@ -105,24 +136,6 @@ pub enum Error {
     /// I/O Error raised by the Tokio runtime.
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
-
-    /// Error when breaking out the ZeroMQ message into three parts.
-    #[error("bitcoin messages should have a three part layout, received {0} parts")]
-    BitcoinCoreZmqMessageLayout(usize),
-
-    /// Happens when the bitcoin block hash in the ZeroMQ message is not 32
-    /// bytes.
-    #[error("block hashes should be 32 bytes, but we received {0} bytes")]
-    BitcoinCoreZmqBlockHash(usize),
-
-    /// Happens when the ZeroMQ sequence number is not 4 bytes.
-    #[error("sequence numbers should be 4 bytes, but we received {0} bytes")]
-    BitcoinCoreZmqSequenceNumber(usize),
-
-    /// The given message type is unsupported. We attempt to parse what the
-    /// topic is but that might fail as well.
-    #[error("the message topic {0:?} is unsupported")]
-    BitcoinCoreZmqUnsupported(Result<String, std::str::Utf8Error>),
 
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
@@ -223,6 +236,10 @@ pub enum Error {
     /// and the length of the byte slice is not 32.
     #[error("invalid private key length={0}, expected 32.")]
     InvalidPrivateKeyLength(usize),
+
+    /// The given signature was invalid
+    #[error("could not convert the given compact bytes into an ECDSA signature: {0}")]
+    InvalidEcdsaSignatureBytes(#[source] secp256k1::Error),
 
     /// This happens when we attempt to convert a `[u8; 65]` into a
     /// recoverable EDCSA signature.
@@ -388,13 +405,13 @@ pub enum Error {
     #[error("invalid signature")]
     InvalidSignature,
 
-    /// ECDSA error
-    #[error("ECDSA error: {0}")]
-    Ecdsa(#[from] ecdsa::Error),
+    /// Invalid ECDSA signature
+    #[error("invalid ECDSA signature")]
+    InvalidEcdsaSignature(#[source] secp256k1::Error),
 
     /// Codec error
     #[error("codec error: {0}")]
-    Codec(#[source] codec::Error),
+    Codec(#[from] codec::CodecError),
 
     /// Type conversion error
     #[error("type conversion error")]
@@ -474,27 +491,13 @@ pub enum Error {
     #[error("current signer not part of signer set indicated by: {0}")]
     ValidationSignerSet(crate::keys::PublicKey),
 
-    /// Could not connect to bitcoin-core with a zeromq subscription
-    /// socket.
-    #[error("ZMQ connect error: {0}")]
-    ZmqConnect(#[source] zeromq::ZmqError),
-
-    /// Error when receiving a message from to bitcoin-core over zeromq.
-    #[error("ZMQ receive error: {0}")]
-    ZmqReceive(#[source] zeromq::ZmqError),
-
-    /// Could not subscribe to bitcoin-core with a zeromq subscription
-    /// socket.
-    #[error("ZMQ subscribe error: {0}")]
-    ZmqSubscribe(#[source] zeromq::ZmqError),
-
     /// Transaction coordinator timed out
     #[error("coordinator timed out after {0} seconds")]
     CoordinatorTimeout(u64),
 
     /// Wsts state machine returned unexpected operation result
-    #[error("unexpected operation result")]
-    UnexpectedOperationResult,
+    #[error("unexpected operation result: {0:?}")]
+    UnexpectedOperationResult(Box<wsts::state_machine::OperationResult>),
 
     /// The smart contract has already been deployed
     #[error("smart contract already deployed, contract name: {0}")]
@@ -503,6 +506,19 @@ pub enum Error {
     /// Received coordinator message wasn't from coordinator for this chain tip
     #[error("not chain tip coordinator")]
     NotChainTipCoordinator,
+
+    /// Indicates that the request packages contain duplicate deposit or withdrawal entries.
+    #[error("The request packages contain duplicate deposit or withdrawal entries.")]
+    DuplicateRequests,
+
+    /// Error when deposit requests would exceed sBTC supply cap
+    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
+    ExceedsSbtcSupplyCap {
+        /// Total deposit amount in sats
+        total_amount: u64,
+        /// Maximum sBTC mintable
+        max_mintable: u64,
+    },
 }
 
 impl From<std::convert::Infallible> for Error {

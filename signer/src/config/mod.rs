@@ -88,8 +88,6 @@ impl NetworkKind {
 pub struct Settings {
     /// Blocklist client specific config
     pub blocklist_client: Option<BlocklistClientConfig>,
-    /// Electrum notifier specific config
-    pub block_notifier: BlockNotifierConfig,
     /// Signer-specific configuration
     pub signer: SignerConfig,
     /// Bitcoin core configuration
@@ -161,49 +159,12 @@ pub struct BlocklistClientConfig {
 #[derive(Deserialize, Clone, Debug)]
 pub struct EmilyClientConfig {
     /// Emily API endpoints.
-    pub endpoints: Vec<EmilyEndpointConfig>,
-}
-
-/// Emily API endpoint configuration.
-#[derive(Deserialize, Clone, Debug)]
-pub struct EmilyEndpointConfig {
-    /// The emily API endpoint that the signer will use.
-    #[serde(deserialize_with = "url_deserializer_single")]
-    pub endpoint: Url,
-    /// API key for the Emily API endpoint.
-    /// If the api key is not provided we assume the API doesn't need one.
-    pub api_key: Option<String>,
-}
-
-impl Validatable for EmilyEndpointConfig {
-    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
-        // If an API key is provided it needs to be non-empty.
-        if let Some(api_key) = self.api_key.as_ref() {
-            if api_key.is_empty() {
-                return Err(ConfigError::Message(
-                    "[emily_client.endpoints] API key cannot be specified yet empty".to_string(),
-                ));
-            }
-        }
-
-        if !["http", "https"].contains(&self.endpoint.scheme()) {
-            return Err(ConfigError::Message(
-                "[emily_client.endpoints] Invalid URL scheme: must be HTTP or HTTPS".to_string(),
-            ));
-        }
-
-        if self.endpoint.host_str().is_none() {
-            return Err(ConfigError::Message(
-                "[emily_client.endpoints] Invalid URL: host is required".to_string(),
-            ));
-        }
-
-        Ok(())
-    }
+    #[serde(deserialize_with = "url_deserializer_vec")]
+    pub endpoints: Vec<Url>,
 }
 
 impl Validatable for EmilyClientConfig {
-    fn validate(&self, settings: &Settings) -> Result<(), ConfigError> {
+    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
         // At least one endpoint must be provided.
         if self.endpoints.is_empty() {
             return Err(ConfigError::Message(
@@ -212,34 +173,18 @@ impl Validatable for EmilyClientConfig {
         }
         // Validate each endpoint configuration.
         for endpoint in &self.endpoints {
-            endpoint.validate(settings)?;
-        }
+            if !["http", "https"].contains(&endpoint.scheme()) {
+                return Err(ConfigError::Message(
+                    "[emily_client.endpoints] Invalid URL scheme: must be HTTP or HTTPS"
+                        .to_string(),
+                ));
+            }
 
-        Ok(())
-    }
-}
-
-/// Electrum notifier specific config
-#[derive(Deserialize, Clone, Debug)]
-pub struct BlockNotifierConfig {
-    /// Electrum server address
-    pub server: String,
-    /// Retry interval in seconds
-    pub retry_interval: u64,
-    /// Maximum retry attempts
-    pub max_retry_attempts: u32,
-    /// Interval for pinging the server in seconds
-    pub ping_interval: u64,
-    /// Interval for subscribing to block headers in seconds
-    pub subscribe_interval: u64,
-}
-
-impl Validatable for BlockNotifierConfig {
-    fn validate(&self, _: &Settings) -> Result<(), ConfigError> {
-        if self.server.is_empty() {
-            return Err(ConfigError::Message(
-                "[block_notifier] Electrum server cannot be empty".to_string(),
-            ));
+            if endpoint.host_str().is_none() {
+                return Err(ConfigError::Message(
+                    "[emily_client.endpoints] Invalid URL: host is required".to_string(),
+                ));
+            }
         }
 
         Ok(())
@@ -275,6 +220,28 @@ pub struct SignerConfig {
     /// (allowing it to propagate to the others signers)
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub bitcoin_processing_delay: std::time::Duration,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for requests.
+    pub context_window: u16,
+    /// The maximum duration of a signing round before the coordinator will
+    /// time out and return an error.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub signer_round_max_duration: std::time::Duration,
+    /// The maximum duration of a pre-sign request before the coordinator will
+    /// time out and start sending the requests to the signers.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub bitcoin_presign_request_max_duration: std::time::Duration,
+    /// The maximum duration of distributed key generation before the
+    /// coordinator will time out and return an error.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub dkg_max_duration: std::time::Duration,
+    /// The number of blocks back the block observer should look for
+    /// unprocessed blocks before proceeding.
+    pub bitcoin_block_horizon: u32,
+    /// The amount of time, in seconds, the signer should pause for after
+    /// receiving a DKG begin message before relaying to give the other
+    /// signers time to catch up.
+    pub dkg_begin_pause: Option<u64>,
 }
 
 impl Validatable for SignerConfig {
@@ -312,6 +279,24 @@ impl Validatable for SignerConfig {
             ));
         }
 
+        // All durations should be non-zero
+        let zero = std::time::Duration::ZERO;
+        if cfg.signer.dkg_max_duration == zero {
+            return Err(ConfigError::Message(
+                SignerConfigError::ZeroDurationForbidden("dkg_max_duration").to_string(),
+            ));
+        }
+        if cfg.signer.bitcoin_presign_request_max_duration == zero {
+            return Err(ConfigError::Message(
+                SignerConfigError::ZeroDurationForbidden("bitcoin_presign_request_max_duration")
+                    .to_string(),
+            ));
+        }
+        if cfg.signer.signer_round_max_duration == zero {
+            return Err(ConfigError::Message(
+                SignerConfigError::ZeroDurationForbidden("signer_round_max_duration").to_string(),
+            ));
+        }
         // db_endpoint note: we don't validate the host because we will never
         // get here; the URL deserializer will fail if the host is empty.
         Ok(())
@@ -383,6 +368,15 @@ impl Settings {
             .prefix_separator("_");
 
         let mut cfg_builder = Config::builder();
+
+        // TODO: We can reduce this to a more reasonable number, like 500,
+        // after https://github.com/stacks-network/sbtc/issues/1004 gets
+        // done.
+        cfg_builder = cfg_builder.set_default("signer.context_window", 1000)?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
+        cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
+        cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
+
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
         }
@@ -399,7 +393,6 @@ impl Settings {
 
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
-        self.block_notifier.validate(self)?;
         self.signer.validate(self)?;
 
         Ok(())
@@ -440,10 +433,15 @@ mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
 
+    use tempfile;
+    use toml_edit::DocumentMut;
+
     use crate::config::serialization::try_parse_p2p_multiaddr;
 
     use crate::error::Error;
     use crate::testing::clear_env;
+
+    use std::time::Duration;
 
     use super::*;
 
@@ -466,14 +464,9 @@ mod tests {
     fn default_config_toml_loads() {
         clear_env();
 
-        let settings = Settings::new_from_default_config().unwrap();
+        let settings = Settings::new_from_default_config()
+            .expect("Failed create settings from default config");
         assert!(settings.blocklist_client.is_none());
-
-        assert_eq!(settings.block_notifier.server, "tcp://localhost:60401");
-        assert_eq!(settings.block_notifier.retry_interval, 10);
-        assert_eq!(settings.block_notifier.max_retry_attempts, 5);
-        assert_eq!(settings.block_notifier.ping_interval, 60);
-        assert_eq!(settings.block_notifier.subscribe_interval, 10);
 
         assert_eq!(
             settings.signer.private_key,
@@ -504,7 +497,42 @@ mod tests {
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
+        assert!(settings.signer.dkg_begin_pause.is_none());
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
+        assert_eq!(settings.signer.bitcoin_block_horizon, 1500);
+        assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn default_config_toml_loads_with_signer_environment() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__CONTEXT_WINDOW", "600");
+        std::env::set_var("SIGNER_SIGNER__BITCOIN_PRESIGN_REQUEST_MAX_DURATION", "60");
+        std::env::set_var("SIGNER_SIGNER__SIGNER_ROUND_MAX_DURATION", "70");
+        std::env::set_var("SIGNER_SIGNER__DKG_MAX_DURATION", "80");
+
+        let settings = Settings::new_from_default_config().unwrap();
+
+        assert_eq!(settings.signer.context_window, 600);
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(60)
+        );
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(70)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(80));
     }
 
     #[test]
@@ -659,6 +687,60 @@ mod tests {
     }
 
     #[test]
+    fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
+        // In case there are some envs which provide values for this optional parameters,
+        // this test will actually test nothing, so we need to reset them.
+        clear_env();
+
+        let config_file = format!("{}.toml", crate::testing::DEFAULT_CONFIG_PATH.unwrap());
+        let config_str = std::fs::read_to_string(config_file).unwrap();
+        let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
+
+        let mut remove_parameter = |parameter: &str| {
+            config_toml
+                .get_mut("signer")
+                .unwrap()
+                .as_table_mut()
+                .unwrap()
+                .remove(parameter);
+        };
+        remove_parameter("context_window");
+        remove_parameter("signer_round_max_duration");
+        remove_parameter("bitcoin_presign_request_max_duration");
+        remove_parameter("dkg_max_duration");
+
+        let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
+
+        std::fs::write(&new_config.path(), config_toml.to_string()).unwrap();
+
+        let settings = Settings::new(Some(&new_config.path())).unwrap();
+
+        assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(
+            settings.signer.bitcoin_presign_request_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            settings.signer.signer_round_max_duration,
+            Duration::from_secs(30)
+        );
+        assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn zero_durations_fails_in_signer_config() {
+        fn test_one(field: &str) {
+            clear_env();
+            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+            let _ = Settings::new_from_default_config()
+                .expect_err(&format!("Duration for {field} must be non zero"));
+        }
+        test_one("dkg_max_duration");
+        test_one("bitcoin_presign_request_max_duration");
+        test_one("signer_round_max_duration");
+    }
+
+    #[test]
     fn blocklist_client_endpoint() {
         clear_env();
 
@@ -742,6 +824,24 @@ mod tests {
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
         ));
+    }
+
+    #[test]
+    fn horizon_parameter_works() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON", "1234");
+        let config = Settings::new_from_default_config().unwrap();
+        assert_eq!(config.signer.bitcoin_block_horizon, 1234);
+    }
+
+    #[test]
+    fn dkg_pause_env_variables_work() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__DKG_BEGIN_PAUSE", "1234");
+        let config = Settings::new_from_default_config().unwrap();
+        assert_eq!(config.signer.dkg_begin_pause, Some(1234));
     }
 
     #[test]
