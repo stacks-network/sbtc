@@ -3356,7 +3356,7 @@ impl<const N: usize> ReorgDescription<N> {
 }
 
 /// In these tests we check that [`DbRead::get_signer_utxo`] returns the
-/// expected UTXO when there is a reorg. The test is setup as follows
+/// expected UTXO when there is a reorg. The test is set up as follows
 /// 1. Populate the database with some minimal bitcoin blockchain data.
 /// 2. For each block between the current block and the number-of-blocks to
 ///    generate, create a random number of transactions where we spend the
