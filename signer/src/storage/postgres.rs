@@ -463,7 +463,7 @@ impl PgStore {
     ///   sole UTXO and creates a new one. This function "crawls" the chain
     ///   of transactions, starting at the most recently confirmed one,
     ///   until it goes back at least [`MAX_REORG_BLOCK_COUNT`] blocks
-    ///   worth of transactions. A blocks with height greater than or equal
+    ///   worth of transactions. A block with height greater than or equal
     ///   to the height returned here should contain the transaction with
     ///   the signers' UTXO, and won't if there is a reorg spanning more
     ///   than [`MAX_REORG_BLOCK_COUNT`] blocks.
