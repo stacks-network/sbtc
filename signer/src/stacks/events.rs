@@ -30,7 +30,6 @@ use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
 use stacks_common::types::chainstate::StacksBlockId;
 
-
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
 pub enum EventError {
