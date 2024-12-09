@@ -47,12 +47,11 @@ The table names specify the dynamodb tables that the API uses to store data, and
 
 ## CDK
 
-The Emily Typescript CDK deploys a number of resource:
+The Emily Typescript CDK deploys a number of resources:
 
 1. Every DynamoDB table used by Emily
 2. The Emily rust lambda handler
 3. The API gateway instance that connects to the lambda and all connected API keys
-4.
 
 ### Template Configuration
 
