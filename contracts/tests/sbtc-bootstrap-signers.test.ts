@@ -283,4 +283,98 @@ describe("sBTC bootstrap signers contract", () => {
     });
   });
 
+  describe("Update deposit contract again", () => {
+    test("Can update deposit contract & call into new version", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      // Call into the new contract
+      const defaultAmount = 1000n;
+      const defaultMaxFee = 10n;
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+      const receipt2 = txOk(
+        depositUpdate.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: defaultAmount + defaultMaxFee,
+          recipient: alice,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      expect(receipt2.value).toEqual(true);
+    });
+    test("Can not call into previous deposit contract", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
+      const receipt = txErr(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+    test("Can update deposit contract a second time", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      // Call into the new contract
+      const defaultAmount = 1000n;
+      const defaultMaxFee = 10n;
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+      const receipt2 = txOk(
+        depositUpdate.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: defaultAmount + defaultMaxFee,
+          recipient: alice,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      expect(receipt2.value).toEqual(true);
+      // Switch out active deposit contract
+      const receipt3 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: deposit.identifier,
+        }),
+        deployer
+      );
+      expect(receipt3.value).toEqual(true);
+    });
+  });
+
 });

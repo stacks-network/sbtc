@@ -1,11 +1,8 @@
 ;; sBTC Bootstrap Signers contract
 
 ;; constants
-
 ;; The required length of public keys
 (define-constant key-size u33)
-
-;; errors
 
 ;; if err is u200, it's the agg key
 ;; if err is u210>, it's the key at index (err - 210)
@@ -16,14 +13,6 @@
 ;; The given signature threshold must be greater than 50% and less than or
 ;; equal to 100% of the total number of signer keys.
 (define-constant ERR_SIGNATURE_THRESHOLD (err u202))
-
-;; data vars
-;;
-
-;; data maps
-;;
-
-;; public functions
 
 ;; Rotate keys
 ;; Used to rotate the keys of the signers. This is called whenever
@@ -67,8 +56,6 @@
 )
 
 ;; read only functions
-
-;; private functions
 
 ;; Signer Key Length Check
 ;; Checks that the length of each key is exactly 33 bytes
@@ -134,8 +121,6 @@
     (unwrap-panic (as-max-len? next u4352))
   )
 )
-
-
 
 (define-read-only (bytes-len (bytes (buff 33)))
   (unwrap-panic (element-at BUFF_TO_BYTE (len bytes)))

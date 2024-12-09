@@ -61,12 +61,10 @@ describe("sBTC registry contract", () => {
         throw new Error("Request not stored");
       }
       expect(request.sender).toEqual(alice);
-      expect(request.amount).toEqual(1000n);
+      expect(request.amount).toEqual(defaultAmount);
       expect(request.maxFee).toEqual(10n);
       expect(request.recipient).toEqual(recipient);
       //expect(request.blockHeight).toEqual(BigInt(simnet.blockHeight - 1));
-
-      // ensure last-id is updated
       const lastId = getLastWithdrawalRequestId();
       expect(lastId).toEqual(1n);
     });
@@ -118,7 +116,7 @@ describe("sBTC registry contract", () => {
       expect(printData).toStrictEqual({
         sender: bob,
         recipient: recipient,
-        amount: 1000n,
+        amount: defaultAmount,
         maxFee: 10n,
         blockHeight: request.blockHeight,
         topic: "withdrawal-create",
@@ -162,7 +160,7 @@ describe("sBTC registry contract", () => {
       expect(request).toEqual({
         sender: alice,
         recipient: alicePoxAddr,
-        amount: 1000n,
+        amount: defaultAmount,
         maxFee: 10n,
         blockHeight: BigInt(2n),
         status: null,

@@ -1,7 +1,6 @@
 ;; sBTC Registry contract
 
 ;; Error codes
-
 (define-constant ERR_UNAUTHORIZED (err u400))
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
 (define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
@@ -11,13 +10,12 @@
 (define-constant ERR_UNAUTHORIZED_ROLE (err u406))
 
 
-;; protocol contract type
+;; Protocol contract type
 (define-constant governance-role 0x00)
 (define-constant deposit-role 0x01)
 (define-constant withdrawal-role 0x02)
 
 ;; Variables
-
 (define-data-var last-withdrawal-request-id uint u0)
 (define-data-var current-signature-threshold uint u0)
 (define-data-var current-signer-set (list 128 (buff 33)) (list))
