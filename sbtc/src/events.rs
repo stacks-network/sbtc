@@ -11,7 +11,6 @@
 use std::collections::BTreeMap;
 
 use bitcoin::hashes::Hash;
-use bitcoin::BlockHash as BitcoinBlockHash;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
@@ -19,8 +18,6 @@ use bitcoin::ScriptHash;
 use bitcoin::Txid as BitcoinTxid;
 use bitcoin::WitnessProgram;
 use bitcoin::WitnessVersion;
-use bitvec::array::BitArray;
-use blockstack_lib::burnchains::Txid as StacksTxid;
 use clarity::vm::types::CharType;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
@@ -28,7 +25,13 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
-use stacks_common::types::chainstate::StacksBlockId;
+use stacks_common::impl_byte_array_newtype;
+use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
+
+/// Stacks transaction identifier. Wrapper over a 32 byte array.
+#[derive(Clone, Copy, Debug)]
+pub struct StacksTxid(pub [u8; 32]);
+impl_byte_array_newtype!(StacksTxid, u8, 32);
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
@@ -145,31 +148,12 @@ pub struct CompletedDepositEvent {
     /// This is the outpoint of the original bitcoin deposit transaction.
     pub outpoint: OutPoint,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: BitcoinBlockHash,
+    pub sweep_block_hash: BurnchainHeaderHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// deposit.
     pub sweep_txid: BitcoinTxid,
-}
-
-impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
-    fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
-        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
-        reversed_raw_hash.reverse();
-        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
-        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
-        let txid = StacksTxid::from(sbtc_event.txid.0);
-        CompletedDepositEvent {
-            txid,
-            block_id: sbtc_event.block_id,
-            amount: sbtc_event.amount,
-            outpoint: sbtc_event.outpoint,
-            sweep_block_hash: sweep_hash,
-            sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: sbtc_event.sweep_txid,
-        }
-    }
 }
 
 /// This is the event that is emitted from the `create-withdrawal-request`
@@ -213,7 +197,7 @@ pub struct WithdrawalAcceptEvent {
     /// The bitmap of how the signers voted for the withdrawal request.
     /// Here, a 1 (or true) implies that the signer did *not* vote to
     /// accept the request.
-    pub signer_bitmap: BitArray<[u8; 16]>,
+    pub signer_bitmap: u128,
     /// This is the outpoint for the bitcoin transaction that serviced the
     /// request.
     pub outpoint: OutPoint,
@@ -221,33 +205,12 @@ pub struct WithdrawalAcceptEvent {
     /// withdrawal request.
     pub fee: u64,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: BitcoinBlockHash,
+    pub sweep_block_hash: BurnchainHeaderHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// withdrawal request.
     pub sweep_txid: BitcoinTxid,
-}
-
-impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
-    fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
-        reversed_raw_hash.reverse();
-        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
-        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
-        let txid = StacksTxid::from(sbtc_event.txid.0);
-        WithdrawalAcceptEvent {
-            txid,
-            block_id: sbtc_event.block_id,
-            request_id: sbtc_event.request_id,
-            signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
-            outpoint: sbtc_event.outpoint,
-            fee: sbtc_event.fee,
-            sweep_block_hash: sweep_hash,
-            sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: sbtc_event.sweep_txid,
-        }
-    }
 }
 
 /// This is the event that is emitted from the `complete-withdrawal-reject`
@@ -265,7 +228,7 @@ pub struct WithdrawalRejectEvent {
     /// The bitmap of how the signers voted for the withdrawal request.
     /// Here, a 1 (or true) implies that the signer did *not* vote to
     /// accept the request.
-    pub signer_bitmap: BitArray<[u8; 16]>,
+    pub signer_bitmap: u128,
 }
 
 /// This is the event that is emitted from the `rotate-keys`
@@ -366,13 +329,9 @@ impl RawTupleData {
         let amount = self.remove_u128("amount")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
+        let sweep_block_hash = self.remove_buff("burn-hash")?;
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
-
-        // The `sweep_block_hash` we receive is reversed, so we reverse it here
-        // so that we store it in an ordering consistent with the rest of our db.
-        sweep_block_hash.reverse();
 
         Ok(RegistryEvent::CompletedDeposit(CompletedDepositEvent {
             txid: self.tx_info.txid,
@@ -390,8 +349,9 @@ impl RawTupleData {
                 // that gets emitted here.
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
-            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
-                .map_err(EventError::ClarityHashConversion)?,
+            // TODO: I don't like this unwrap()
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
+            //.map_err(EventError::ClarityHashConversion)?,
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
@@ -619,13 +579,9 @@ impl RawTupleData {
         let fee = self.remove_u128("fee")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
+        let sweep_block_hash = self.remove_buff("burn-hash")?;
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
-
-        // The `sweep_block_hash` we receive is reversed, so we reverse it here
-        // so that we store it in an ordering consistent with the rest of our db.
-        sweep_block_hash.reverse();
 
         Ok(RegistryEvent::WithdrawalAccept(WithdrawalAcceptEvent {
             txid: self.tx_info.txid,
@@ -633,7 +589,7 @@ impl RawTupleData {
             // This shouldn't error for the reasons noted in
             // [`withdrawal_create`].
             request_id: u64::try_from(request_id).map_err(EventError::ClarityIntConversion)?,
-            signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
+            signer_bitmap: bitmap,
             outpoint: OutPoint {
                 // This shouldn't error, this is set from a proper [`Txid`] in
                 // a contract call.
@@ -648,8 +604,8 @@ impl RawTupleData {
             // amount of sats by us.
             fee: u64::try_from(fee).map_err(EventError::ClarityIntConversion)?,
 
-            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
-                .map_err(EventError::ClarityHashConversion)?,
+            // TODO: I don't like this unwrap()
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
 
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
@@ -687,7 +643,7 @@ impl RawTupleData {
             // This shouldn't error for the reasons noted in
             // [`withdrawal_create`].
             request_id: u64::try_from(request_id).map_err(EventError::ClarityIntConversion)?,
-            signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
+            signer_bitmap: bitmap,
         }))
     }
 
@@ -760,24 +716,6 @@ mod tests {
     };
 
     #[test]
-    fn signer_bitmap_conversion() {
-        // This test checks that converting from an integer to the bitmap
-        // works the way that we expect.
-        let bitmap_number: u128 = 3;
-        let bitmap: BitArray<[u8; 16]> = BitArray::new(bitmap_number.to_le_bytes());
-
-        assert_eq!(bitmap.load_le::<u128>(), bitmap_number);
-
-        // This is basically a test of the same thing as the above, except
-        // that we explicitly create the signer bitmap.
-        let mut bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-        bitmap.set(0, true);
-        bitmap.set(1, true);
-
-        assert_eq!(bitmap.load_le::<u128>(), bitmap_number);
-    }
-
-    #[test]
     fn complete_deposit_event() {
         let amount = 123654789;
         let event = [
@@ -812,7 +750,7 @@ mod tests {
                 assert_eq!(event.outpoint.vout, 3);
                 assert_eq!(
                     event.sweep_block_hash,
-                    BitcoinBlockHash::from_byte_array([2; 32])
+                    BurnchainHeaderHash::from_bytes(&[2 as u8; 32]).unwrap(),
                 );
                 assert_eq!(event.sweep_block_height, 139);
                 assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));
@@ -932,7 +870,7 @@ mod tests {
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
         match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::WithdrawalAccept(event) => {
-                let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
+                let expected_bitmap = bitmap;
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.outpoint.txid, BitcoinTxid::from_byte_array([1; 32]));
                 assert_eq!(event.outpoint.vout, vout as u32);
@@ -940,7 +878,7 @@ mod tests {
                 assert_eq!(event.signer_bitmap, expected_bitmap);
                 assert_eq!(
                     event.sweep_block_hash,
-                    BitcoinBlockHash::from_byte_array([2; 32])
+                    BurnchainHeaderHash::from_bytes(&[2 as u8; 32]).unwrap()
                 );
                 assert_eq!(event.sweep_block_height, 139);
                 assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));
@@ -974,7 +912,7 @@ mod tests {
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
         match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::WithdrawalReject(event) => {
-                let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
+                let expected_bitmap = bitmap;
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.signer_bitmap, expected_bitmap);
             }
