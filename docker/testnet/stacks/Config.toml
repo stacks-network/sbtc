@@ -82,8 +82,10 @@ start_height = 5
 epoch_name = "2.5"
 start_height = 6
 
-# Use the value here for the configuration, replace whatever was in your
-# file before if it is different.
 [[burnchain.epochs]]
 epoch_name = "3.0"
 start_height = 56_457
+
+[[burnchain.epochs]]
+epoch_name = "3.1"
+start_height = 77_770
