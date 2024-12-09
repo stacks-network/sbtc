@@ -7,13 +7,12 @@ use std::time::Duration;
 
 use bitcoin::Address;
 use bitcoin::AddressType;
+use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
-use blockstack_lib::net::api::getsortition::SortitionInfo;
-use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -39,10 +38,8 @@ use signer::storage::model::TxPrevout;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite;
-use stacks_common::types::chainstate::BurnchainHeaderHash;
-use stacks_common::types::chainstate::ConsensusHash;
-use stacks_common::types::chainstate::SortitionId;
-use stacks_common::types::chainstate::StacksBlockId;
+use signer::testing::stacks::DUMMY_SORTITION_INFO;
+use signer::testing::stacks::DUMMY_TENURE_INFO;
 
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
@@ -58,6 +55,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
 use crate::setup::TestSweepSetup;
+use crate::transaction_coordinator::mock_reqwests_status_code_error;
 use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
 use crate::DATABASE_NUM;
@@ -115,18 +113,9 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // information about the Stacks blockchain, so we need to prep it, even
     // though it isn't necessary for our test.
     ctx.with_stacks_client(|client| {
-        client.expect_get_tenure_info().returning(move || {
-            let response = Ok(RPCGetTenureInfo {
-                consensus_hash: ConsensusHash([0; 20]),
-                tenure_start_block_id: StacksBlockId([0; 32]),
-                parent_consensus_hash: ConsensusHash([0; 20]),
-                parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                tip_block_id: StacksBlockId([0; 32]),
-                tip_height: 0,
-                reward_cycle: 0,
-            });
-            Box::pin(std::future::ready(response))
-        });
+        client
+            .expect_get_tenure_info()
+            .returning(move || Box::pin(std::future::ready(Ok(DUMMY_TENURE_INFO.clone()))));
 
         client.expect_get_block().returning(|_| {
             let response = Ok(NakamotoBlock {
@@ -146,22 +135,9 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
             Box::pin(std::future::ready(response))
         });
 
-        client.expect_get_sortition_info().returning(move |_| {
-            let response = Ok(SortitionInfo {
-                burn_block_hash: BurnchainHeaderHash([0; 32]),
-                burn_block_height: 0,
-                burn_header_timestamp: 0,
-                sortition_id: SortitionId([0; 32]),
-                parent_sortition_id: SortitionId([0; 32]),
-                consensus_hash: ConsensusHash([0; 20]),
-                was_sortition: true,
-                miner_pk_hash160: None,
-                stacks_parent_ch: None,
-                last_sortition_ch: None,
-                committed_block_hash: None,
-            });
-            Box::pin(std::future::ready(response))
-        });
+        client
+            .expect_get_sortition_info()
+            .returning(move |_| Box::pin(std::future::ready(Ok(DUMMY_SORTITION_INFO.clone()))));
     })
     .await;
 
@@ -223,7 +199,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     assert!(deposit_requests.is_empty());
 
-    // Let's generate a new block and wait for out block observer to send a
+    // Let's generate a new block and wait for our block observer to send a
     // BitcoinBlockObserved signal.
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
@@ -439,18 +415,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     // up-to-date information. We don't have stacks-core running so we mock
     // these calls.
     ctx.with_stacks_client(|client| {
-        client.expect_get_tenure_info().returning(move || {
-            let response = Ok(RPCGetTenureInfo {
-                consensus_hash: ConsensusHash([0; 20]),
-                tenure_start_block_id: StacksBlockId([0; 32]),
-                parent_consensus_hash: ConsensusHash([0; 20]),
-                parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                tip_block_id: StacksBlockId([0; 32]),
-                tip_height: 0,
-                reward_cycle: 0,
-            });
-            Box::pin(std::future::ready(response))
-        });
+        client
+            .expect_get_tenure_info()
+            .returning(move || Box::pin(std::future::ready(Ok(DUMMY_TENURE_INFO.clone()))));
 
         let chain_tip = BitcoinBlockHash::from(chain_tip_info.hash);
         client.expect_get_tenure().returning(move |_| {
@@ -697,4 +664,157 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     assert_eq!(txid.deref(), &unsigned.tx.compute_txid());
 
     testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test_case::test_case(false, SbtcLimits::default(); "no contracts, default limits")]
+#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None); "no contracts, total cap limit")]
+#[test_case::test_case(true, SbtcLimits::default(); "deployed contracts, default limits")]
+#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None); "deployed contracts, total cap limit")]
+#[tokio::test]
+async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcLimits) {
+    // We start with the typical setup with a fresh database and context
+    // with a real bitcoin core client and a real connection to our
+    // database.
+    let (_, faucet) = regtest::initialize_blockchain();
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
+        .build();
+
+    // We need to set up the stacks client as well. We use it to fetch
+    // information about the Stacks blockchain, so we need to prep it, even
+    // though it isn't necessary for our test.
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_get_tenure_info()
+            .returning(move || Box::pin(std::future::ready(Ok(DUMMY_TENURE_INFO.clone()))));
+        client.expect_get_block().returning(|_| {
+            let response = Ok(NakamotoBlock {
+                header: NakamotoBlockHeader::empty(),
+                txs: Vec::new(),
+            });
+            Box::pin(std::future::ready(response))
+        });
+        client
+            .expect_get_tenure()
+            .returning(|_| Box::pin(std::future::ready(TenureBlocks::nearly_empty())));
+        client.expect_get_pox_info().returning(|| {
+            let response = serde_json::from_str::<RPCPoxInfoData>(GET_POX_INFO_JSON)
+                .map_err(Error::JsonSerialize);
+            Box::pin(std::future::ready(response))
+        });
+        client
+            .expect_get_sortition_info()
+            .returning(move |_| Box::pin(std::future::ready(Ok(DUMMY_SORTITION_INFO.clone()))));
+    })
+    .await;
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_deposits()
+            .returning(move || Box::pin(std::future::ready(Ok(vec![]))));
+    })
+    .await;
+
+    // Now we do the actual test case setup.
+
+    ctx.with_emily_client(|client| {
+        client
+            .expect_get_limits()
+            .once()
+            .returning(move || Box::pin(std::future::ready(Ok(sbtc_limits.clone()))));
+    })
+    .await;
+
+    if deployed {
+        ctx.with_stacks_client(move |client| {
+            client
+                .expect_get_sbtc_total_supply()
+                .returning(|_| Box::pin(std::future::ready(Ok(Amount::from_sat(1)))));
+        })
+        .await;
+        ctx.state().set_sbtc_contracts_deployed();
+    } else {
+        ctx.with_stacks_client(|client| {
+            client.expect_get_sbtc_total_supply().returning(|_| {
+                // The real error is `UnexpectedStacksResponse`: error decoding
+                // response body: missing field `result` at line 1 column 108
+                Box::pin(std::future::ready(Err(Error::InvalidStacksResponse(""))))
+            });
+            client.expect_get_contract_source().returning(|_, _| {
+                Box::pin(async {
+                    Err(Error::StacksNodeResponse(
+                        mock_reqwests_status_code_error(404).await,
+                    ))
+                })
+            });
+        })
+        .await;
+    }
+
+    // We only proceed with the test after the BlockObserver "process" has
+    // started, and we use this counter to notify us when that happens.
+    let start_flag = Arc::new(AtomicBool::new(false));
+    let flag = start_flag.clone();
+
+    // We jump through all of these hoops to make sure that the block
+    // stream object is Send + Sync.
+    let zmq_stream =
+        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
+            .await
+            .unwrap();
+    let (sender, receiver) = tokio::sync::mpsc::channel(100);
+
+    tokio::spawn(async move {
+        let mut stream = zmq_stream.to_block_hash_stream();
+        while let Some(block) = stream.next().await {
+            sender.send(block).await.unwrap();
+        }
+    });
+
+    let block_observer = BlockObserver {
+        context: ctx.clone(),
+        bitcoin_blocks: ReceiverStream::new(receiver),
+        horizon: 10,
+    };
+
+    let mut signal_receiver = ctx.get_signal_receiver();
+
+    tokio::spawn(async move {
+        flag.store(true, Ordering::Relaxed);
+        block_observer.run().await
+    });
+
+    // Wait for the task to start.
+    while !start_flag.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    // Let's generate a new block and wait for our block observer to send a
+    // BitcoinBlockObserved signal.
+    let expected_tip = faucet.generate_blocks(1).pop().unwrap();
+
+    let waiting_fut = async {
+        let signal = signal_receiver.recv();
+        let Ok(SignerSignal::Event(SignerEvent::BitcoinBlockObserved)) = signal.await else {
+            panic!("Not the right signal")
+        };
+    };
+
+    tokio::time::timeout(Duration::from_secs(3), waiting_fut)
+        .await
+        .unwrap();
+
+    // If we pass the above without panicking it should be fine, this is just a
+    // sanity check.
+    let db_chain_tip = db
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .expect("cannot get chain tip");
+    assert_eq!(db_chain_tip, Some(expected_tip.into()))
 }
