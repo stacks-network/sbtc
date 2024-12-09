@@ -558,7 +558,6 @@ impl PgStore {
                 WHERE bti.prevout_type = 'signers_input'
                   AND bb.block_height <= $1
                 GROUP BY bti.txid, bti.prevout_txid
-                LIMIT $2
             ),
             tx_chain AS (
                 SELECT
