@@ -133,7 +133,7 @@ services:
   emily-sidecar:
     build:
       context: ../
-      dockerfile: docker/sbtc/Dockerfile
+      dockerfile: docker/sbtc/emily-sidecar/Dockerfile
       target: emily-sidecar
     restart: on-failure
     ports:
