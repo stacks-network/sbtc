@@ -225,13 +225,13 @@ describe("sBTC bootstrap signers contract", () => {
       });
     });
   });
-  
+
   describe("Update deposit contract", () => {
     test("Can update deposit contract & call into new version", () => {
       // Switch out active deposit contract
       const receipt1 = txOk(
         signers.updateProtocolContractWrapper({
-          contractType: new Uint8Array(1).fill(1),
+          contractType: new Uint8Array([1]),
           contractAddress: depositUpdate.identifier,
         }),
         deployer
