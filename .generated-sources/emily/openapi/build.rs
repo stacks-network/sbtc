@@ -157,12 +157,8 @@ impl Modify for AwsLambdaIntegration {
     }
 }
 
-
-/// Attaches the AWS Lambda integration to the OpenAPI specification. This is necessary
-/// for the AWS CDK to attach the lambda to the API Gateway.
-///
-/// TODO(269): Change Emily API Lambda Integrations to use cdk constructs if possible
-/// instead of specification alteration.
+/// Attaches the CORS endpoints to the openapi definition. This is necessary for AWS
+/// to allows the CORS preflight requests to pass through the API Gateway.
 struct CorsSupport;
 /// Add support for CORS with OPTIONS method to all endpoints.
 impl Modify for CorsSupport {
