@@ -419,7 +419,8 @@ export class EmilyStack extends cdk.Stack {
         }
 
         // Give the rest api execute ARN permission to invoke the lambda.
-        operationLambda.addPermission("ApiInvokeLambdaPermission", {
+        const apiInvokeLambdaPermissionId: string = `ApiInvokeLambdaPermission-${apiPurposeTitleCase}`;
+        operationLambda.addPermission(apiInvokeLambdaPermissionId, {
             principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
             action: "lambda:InvokeFunction",
             sourceArn: api.arnForExecuteApi(),
