@@ -4,8 +4,6 @@ use clap::Args;
 use clap::Parser;
 use emily_handler::context::EmilyContext;
 use tracing::info;
-use utoipa::openapi::info;
-use warp::reply::Reply;
 use warp::Filter;
 
 use emily_handler::api;

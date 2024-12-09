@@ -164,22 +164,17 @@ struct CorsSupport;
 impl Modify for CorsSupport {
     /// Add CORS support to the OPTIONS method for each path in the OpenAPI specification.
     fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
-
         let cors_options_operation = utoipa::openapi::path::OperationBuilder::new()
             .summary(Some("CORS support"))
             .description(Some("Handles CORS preflight requests"))
             .tag("CORS")
             .build();
 
-        openapi
-            .paths
-            .paths
-            .iter_mut()
-            .for_each(|(_, path_item)| {
-                path_item.operations.insert(
-                    utoipa::openapi::PathItemType::Options,
-                    cors_options_operation.clone(),
-                );
-            });
+        openapi.paths.paths.iter_mut().for_each(|(_, path_item)| {
+            path_item.operations.insert(
+                utoipa::openapi::PathItemType::Options,
+                cors_options_operation.clone(),
+            );
+        });
     }
 }
