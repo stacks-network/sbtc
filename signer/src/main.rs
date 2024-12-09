@@ -315,7 +315,7 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     let signer = transaction_signer::TxSignerEventLoop {
         network,
         context: ctx.clone(),
-        context_window: 10000,
+        context_window: config.signer.context_window,
         threshold: config.signer.bootstrap_signatures_required.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
@@ -341,7 +341,6 @@ async fn run_transaction_coordinator(ctx: impl Context) -> Result<(), Error> {
         bitcoin_presign_request_max_duration: config.signer.bitcoin_presign_request_max_duration,
         threshold: config.signer.bootstrap_signatures_required,
         dkg_max_duration: config.signer.dkg_max_duration,
-        sbtc_contracts_deployed: false,
         is_epoch3: false,
     };
 
@@ -356,7 +355,7 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
     let decider = RequestDeciderEventLoop {
         network,
         context: ctx.clone(),
-        context_window: 10000,
+        context_window: config.signer.context_window,
         blocklist_checker: BlocklistClient::new(&ctx),
         signer_private_key: config.signer.private_key,
     };

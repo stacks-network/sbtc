@@ -158,8 +158,6 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
     pub dkg_max_duration: Duration,
-    /// Whether the coordinator has already deployed the contracts.
-    pub sbtc_contracts_deployed: bool,
     /// An indicator for whether the Stacks blockchain has reached Nakamoto
     /// 3. If we are not in Nakamoto 3 or later, then the coordinator does
     /// not do any work.
@@ -294,6 +292,11 @@ where
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+            // Before returning, we also check if all the smart contracts are
+            // deployed: we do this as some other coordinator could have deployed
+            // them, in which case we need to updated our state.
+            self.all_smart_contracts_deployed().await?;
+
             tracing::debug!("we are not the coordinator, so nothing to do");
             return Ok(());
         }
@@ -1477,7 +1480,7 @@ where
     }
 
     async fn all_smart_contracts_deployed(&mut self) -> Result<bool, Error> {
-        if self.sbtc_contracts_deployed {
+        if self.context.state().sbtc_contracts_deployed() {
             return Ok(true);
         }
 
@@ -1490,7 +1493,7 @@ where
             }
         }
 
-        self.sbtc_contracts_deployed = true;
+        self.context.state().set_sbtc_contracts_deployed();
         Ok(true)
     }
 
