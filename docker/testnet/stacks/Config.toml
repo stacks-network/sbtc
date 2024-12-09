@@ -22,12 +22,20 @@ auth_token = "XXX"
 private_neighbors = false
 
 # Add sbtc-signer as an event observer.
+# 
 # NOTE: See the readme for how to set this value correctly, your endpoint
 # may not be named `sbtc-signer:8801`.
 #
 # It's perfectly fine to have multiple event observers, just add this
 # section below your existing one, it'll adds the event observer to the
 # events_observers list.
+# 
+# NOTE: If one of the provided `events_observer` is down, it will stall
+# your Stacks node until it gets back-up.
+#
+# Also, if you _remove_ entries from the `events_observer` section,
+# delete the file `event_observers.sqlite` in your chainstate folder
+# to prune old events not yet delivered.
 [[events_observer]]
 endpoint = "sbtc-signer:8801"
 events_keys = [
