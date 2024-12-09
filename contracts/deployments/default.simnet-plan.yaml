@@ -33,9 +33,6 @@ genesis:
 plan:
   batches:
     - id: 0
-      transactions: []
-      epoch: "2.5"
-    - id: 1
       transactions:
         - emulated-contract-publish:
             contract-name: sbtc-registry
@@ -67,7 +64,4 @@ plan:
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-withdrawal.clar
             clarity-version: 3
-      epoch: "3.0"
-    - id: 2
-      transactions: []
       epoch: "3.0"
