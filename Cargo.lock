@@ -1908,7 +1908,6 @@ dependencies = [
  "bitcoin",
  "clap",
  "config 0.11.0",
- "emily-client",
  "fake",
  "hex",
  "mockall 0.10.2",
@@ -1922,6 +1921,7 @@ dependencies = [
  "serde_json",
  "stacks-common",
  "test-case",
+ "testing-emily-client",
  "thiserror",
  "time 0.3.36",
  "tokio",
@@ -4850,6 +4850,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "private-emily-client"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.4",
+ "serde 1.0.203",
+ "serde_json",
+ "serde_repr",
+ "serde_with",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6748,6 +6761,19 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.76",
+]
+
+[[package]]
+name = "testing-emily-client"
+version = "0.1.0"
+dependencies = [
+ "reqwest 0.12.4",
+ "serde 1.0.203",
+ "serde_json",
+ "serde_repr",
+ "serde_with",
+ "url",
+ "uuid",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 //! Common module for useful test functions.
 
-use emily_client::{
+use testing_emily_client::{
     apis::{
         self,
         configuration::{ApiKey, Configuration},

@@ -20,7 +20,7 @@ bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
 bitvec = { workspace = true, default-features = false, features = ["std"] }
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
-emily-client = { path = "../.generated-sources/emily/client/rust" }
+emily-client.workspace = true
 clap.workspace = true
 clarity.workspace = true
 config = "0.14"
@@ -77,7 +77,7 @@ sbtc = { path = "../sbtc", default-features = false, features = ["testing"] }
 test-case = "3.1"
 test-log = { version = "0.2.16", default-features = false, features = ["trace"] }
 toml_edit = "0.22.22"
-tempfile = "3.6" 
+tempfile = "3.6"
 
 [build-dependencies]
 tonic-build.workspace = true
