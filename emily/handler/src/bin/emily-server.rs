@@ -80,8 +80,8 @@ async fn main() {
     // Create CORS configuration
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_methods(vec!["GET", "POST", "OPTIONS" ])
-        .allow_headers(vec!["Content-Type", "x-api-key"])
+        .allow_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_headers(vec!["content-type", "x-api-key"])
         .build();
 
     let routes = api::routes::routes(context)
