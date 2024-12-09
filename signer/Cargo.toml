@@ -51,11 +51,11 @@ tracing-subscriber = { workspace = true }
 url.workspace = true
 # wsts.workspace = true
 wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "ebd7d7775ad5e44cdbf4f5c1fb468bdf6c467265" }
-zeromq.workspace = true
 hex.workspace = true
 cfg-if = "1.0"
 include_dir = "0.7.4"
 polynomial = "0.2.6"
+bitcoincore-zmq = { version = "1.5.2", features = ["async"] }
 
 # Only used to setup logging for the signer's axum http server
 tower-http = { version = "0.6.2", features = ["trace", "request-id"] }

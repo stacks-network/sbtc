@@ -13,6 +13,14 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An error occurred while attempting to connect to the Bitcoin Core ZMQ socket.
+    #[error("timed-out trying to connect to bitcoin-core ZMQ endpoint: {0}")]
+    BitcoinCoreZmqConnectTimeout(String),
+
+    /// An error was received from the Bitcoin Core ZMQ subscriber.
+    #[error("error from bitcoin-core ZMQ: {0}")]
+    BitcoinCoreZmq(#[source] bitcoincore_zmq::Error),
+
     /// Indicates an error when decoding a protobuf
     #[error("could not decode protobuf {0}")]
     DecodeProtobuf(#[source] prost::DecodeError),
@@ -128,24 +136,6 @@ pub enum Error {
     /// I/O Error raised by the Tokio runtime.
     #[error("tokio i/o error: {0}")]
     TokioIo(#[from] tokio::io::Error),
-
-    /// Error when breaking out the ZeroMQ message into three parts.
-    #[error("bitcoin messages should have a three part layout, received {0} parts")]
-    BitcoinCoreZmqMessageLayout(usize),
-
-    /// Happens when the bitcoin block hash in the ZeroMQ message is not 32
-    /// bytes.
-    #[error("block hashes should be 32 bytes, but we received {0} bytes")]
-    BitcoinCoreZmqBlockHash(usize),
-
-    /// Happens when the ZeroMQ sequence number is not 4 bytes.
-    #[error("sequence numbers should be 4 bytes, but we received {0} bytes")]
-    BitcoinCoreZmqSequenceNumber(usize),
-
-    /// The given message type is unsupported. We attempt to parse what the
-    /// topic is but that might fail as well.
-    #[error("the message topic {0:?} is unsupported")]
-    BitcoinCoreZmqUnsupported(Result<String, std::str::Utf8Error>),
 
     /// Invalid amount
     #[error("the change amounts for the transaction is negative: {0}")]
@@ -500,20 +490,6 @@ pub enum Error {
     /// aggregate key.
     #[error("current signer not part of signer set indicated by: {0}")]
     ValidationSignerSet(crate::keys::PublicKey),
-
-    /// Could not connect to bitcoin-core with a zeromq subscription
-    /// socket.
-    #[error("ZMQ connect error: {0}")]
-    ZmqConnect(#[source] zeromq::ZmqError),
-
-    /// Error when receiving a message from to bitcoin-core over zeromq.
-    #[error("ZMQ receive error: {0}")]
-    ZmqReceive(#[source] zeromq::ZmqError),
-
-    /// Could not subscribe to bitcoin-core with a zeromq subscription
-    /// socket.
-    #[error("ZMQ subscribe error: {0}")]
-    ZmqSubscribe(#[source] zeromq::ZmqError),
 
     /// Transaction coordinator timed out
     #[error("coordinator timed out after {0} seconds")]
