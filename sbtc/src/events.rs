@@ -11,7 +11,6 @@
 use std::collections::BTreeMap;
 
 use bitcoin::hashes::Hash;
-use bitcoin::BlockHash as BitcoinBlockHash;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
@@ -28,7 +27,8 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
-use stacks_common::types::chainstate::StacksBlockId;
+use stacks_common::types::chainstate::{StacksBlockId, BurnchainHeaderHash};
+
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
@@ -145,30 +145,12 @@ pub struct CompletedDepositEvent {
     /// This is the outpoint of the original bitcoin deposit transaction.
     pub outpoint: OutPoint,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: BitcoinBlockHash,
+    pub sweep_block_hash: BurnchainHeaderHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// deposit.
     pub sweep_txid: BitcoinTxid,
-}
-
-impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
-    fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
-        let mut reversed_raw_hash = sbtc_event.sweep_block_hash.as_bytes().clone();
-        reversed_raw_hash.reverse();
-        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
-        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
-        CompletedDepositEvent {
-            txid: sbtc_event.txid,
-            block_id: sbtc_event.block_id,
-            amount: sbtc_event.amount,
-            outpoint: sbtc_event.outpoint,
-            sweep_block_hash: sweep_hash,
-            sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: sbtc_event.sweep_txid,
-        }
-    }
 }
 
 /// This is the event that is emitted from the `create-withdrawal-request`
@@ -220,32 +202,12 @@ pub struct WithdrawalAcceptEvent {
     /// withdrawal request.
     pub fee: u64,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: BitcoinBlockHash,
+    pub sweep_block_hash: BurnchainHeaderHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// withdrawal request.
     pub sweep_txid: BitcoinTxid,
-}
-
-impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
-    fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let mut reversed_raw_hash = sbtc_event.sweep_block_hash.as_bytes().clone();
-        reversed_raw_hash.reverse();
-        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
-        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
-        WithdrawalAcceptEvent {
-            txid: sbtc_event.txid,
-            block_id: sbtc_event.block_id,
-            request_id: sbtc_event.request_id,
-            signer_bitmap: sbtc_event.signer_bitmap,
-            outpoint: sbtc_event.outpoint,
-            fee: sbtc_event.fee,
-            sweep_block_hash: sweep_hash,
-            sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: sbtc_event.sweep_txid,
-        }
-    }
 }
 
 /// This is the event that is emitted from the `complete-withdrawal-reject`
@@ -368,10 +330,6 @@ impl RawTupleData {
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
 
-        // The `sweep_block_hash` we receive is reversed, so we reverse it here
-        // so that we store it in an ordering consistent with the rest of our db.
-        sweep_block_hash.reverse();
-
         Ok(RegistryEvent::CompletedDeposit(CompletedDepositEvent {
             txid: self.tx_info.txid,
             block_id: self.tx_info.block_id,
@@ -388,8 +346,9 @@ impl RawTupleData {
                 // that gets emitted here.
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
-            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
-                .map_err(EventError::ClarityHashConversion)?,
+            // TODO: I don't like this unwrap()
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
+                //.map_err(EventError::ClarityHashConversion)?,
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
@@ -621,10 +580,6 @@ impl RawTupleData {
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
 
-        // The `sweep_block_hash` we receive is reversed, so we reverse it here
-        // so that we store it in an ordering consistent with the rest of our db.
-        sweep_block_hash.reverse();
-
         Ok(RegistryEvent::WithdrawalAccept(WithdrawalAcceptEvent {
             txid: self.tx_info.txid,
             block_id: self.tx_info.block_id,
@@ -646,8 +601,9 @@ impl RawTupleData {
             // amount of sats by us.
             fee: u64::try_from(fee).map_err(EventError::ClarityIntConversion)?,
 
-            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
-                .map_err(EventError::ClarityHashConversion)?,
+            // TODO: I don't like this unwrap()
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
+                .unwrap(),
 
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
@@ -810,7 +766,7 @@ mod tests {
                 assert_eq!(event.outpoint.vout, 3);
                 assert_eq!(
                     event.sweep_block_hash,
-                    BitcoinBlockHash::from_byte_array([2; 32])
+                    BurnchainHeaderHash::from_bytes(&[2 as u8; 32]).unwrap(),
                 );
                 assert_eq!(event.sweep_block_height, 139);
                 assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));
@@ -938,7 +894,7 @@ mod tests {
                 assert_eq!(event.signer_bitmap, expected_bitmap);
                 assert_eq!(
                     event.sweep_block_hash,
-                    BitcoinBlockHash::from_byte_array([2; 32])
+                    BurnchainHeaderHash::from_bytes(&[2 as u8; 32]).unwrap()
                 );
                 assert_eq!(event.sweep_block_height, 139);
                 assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));
