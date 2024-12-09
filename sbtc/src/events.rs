@@ -27,8 +27,7 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
-use stacks_common::types::chainstate::{StacksBlockId, BurnchainHeaderHash};
-
+use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
@@ -326,7 +325,7 @@ impl RawTupleData {
         let amount = self.remove_u128("amount")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
+        let sweep_block_hash = self.remove_buff("burn-hash")?;
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
 
@@ -348,7 +347,7 @@ impl RawTupleData {
             },
             // TODO: I don't like this unwrap()
             sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
-                //.map_err(EventError::ClarityHashConversion)?,
+            //.map_err(EventError::ClarityHashConversion)?,
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
@@ -576,7 +575,7 @@ impl RawTupleData {
         let fee = self.remove_u128("fee")?;
         let vout = self.remove_u128("output-index")?;
         let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
+        let sweep_block_hash = self.remove_buff("burn-hash")?;
         let sweep_block_height = self.remove_u128("burn-height")?;
         let sweep_txid = self.remove_buff("sweep-txid")?;
 
@@ -602,8 +601,7 @@ impl RawTupleData {
             fee: u64::try_from(fee).map_err(EventError::ClarityIntConversion)?,
 
             // TODO: I don't like this unwrap()
-            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
-                .unwrap(),
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
 
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
