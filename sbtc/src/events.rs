@@ -28,8 +28,10 @@ use secp256k1::PublicKey;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 use stacks_common::impl_byte_array_newtype;
 
+
+/// Stacks transaction identifier. Wrapper over a 32 byte array.
 #[derive(Clone, Copy, Debug)]
-struct StacksTxid([u8; 32]);
+pub struct StacksTxid(pub [u8; 32]);
 impl_byte_array_newtype!(StacksTxid, u8, 32);
 
 /// An error when trying to parse an sBTC event into a concrete type.

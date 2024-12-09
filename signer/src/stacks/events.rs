@@ -160,8 +160,9 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
         reversed_raw_hash.reverse();
         let raw_hash = Hash::from_byte_array(reversed_raw_hash);
         let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
+        let txid = StacksTxid::from(sbtc_event.txid.0);
         CompletedDepositEvent {
-            txid: sbtc_event.txid,
+            txid,
             block_id: sbtc_event.block_id,
             amount: sbtc_event.amount,
             outpoint: sbtc_event.outpoint,
@@ -235,11 +236,12 @@ impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
         reversed_raw_hash.reverse();
         let raw_hash = Hash::from_byte_array(reversed_raw_hash);
         let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
+        let txid = StacksTxid::from(sbtc_event.txid.0);
         WithdrawalAcceptEvent {
-            txid: sbtc_event.txid,
+            txid,
             block_id: sbtc_event.block_id,
             request_id: sbtc_event.request_id,
-            signer_bitmap: sbtc_event.signer_bitmap,
+            signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
             outpoint: sbtc_event.outpoint,
             fee: sbtc_event.fee,
             sweep_block_hash: sweep_hash,
