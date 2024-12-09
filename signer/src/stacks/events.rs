@@ -155,7 +155,7 @@ pub struct CompletedDepositEvent {
 
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
-        let mut reversed_raw_hash = sbtc_event.sweep_block_hash.as_bytes().clone();
+        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
         reversed_raw_hash.reverse();
         let raw_hash = Hash::from_byte_array(reversed_raw_hash);
         let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
@@ -230,7 +230,7 @@ pub struct WithdrawalAcceptEvent {
 
 impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let mut reversed_raw_hash = sbtc_event.sweep_block_hash.as_bytes().clone();
+        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
         reversed_raw_hash.reverse();
         let raw_hash = Hash::from_byte_array(reversed_raw_hash);
         let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
