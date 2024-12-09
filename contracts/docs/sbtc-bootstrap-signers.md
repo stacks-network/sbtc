@@ -7,6 +7,7 @@ sBTC Bootstrap Signers contract
 **Public functions:**
 
 - [`rotate-keys-wrapper`](#rotate-keys-wrapper)
+- [`update-protocol-contract-wrapper`](#update-protocol-contract-wrapper)
 
 **Read-only functions:**
 
@@ -39,7 +40,7 @@ sBTC Bootstrap Signers contract
 
 ### rotate-keys-wrapper
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L31)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L20)
 
 `(define-public (rotate-keys-wrapper ((new-keys (list 128 (buff 33))) (new-aggregate-pubkey (buff 33)) (new-signature-threshold uint)) (response bool uint))`
 
@@ -58,7 +59,6 @@ the signer set is updated.
   )
     (let
         (
-            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))
             (new-signer-principal (pubkeys-to-principal new-keys new-signature-threshold))
         )
         ;; Check that the signature threshold is valid
@@ -66,7 +66,7 @@ the signer set is updated.
                        (<= new-signature-threshold (len new-keys))) ERR_SIGNATURE_THRESHOLD)
 
         ;; Check that the caller is the current signer principal
-        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+        (asserts! (is-eq (contract-call? .sbtc-registry get-current-signer-principal) tx-sender) ERR_INVALID_CALLER)
 
         ;; Checks that length of each key is exactly 33 bytes
         (try! (fold signer-key-length-check new-keys (ok u0)))
@@ -75,7 +75,7 @@ the signer set is updated.
         (asserts! (is-eq (len new-aggregate-pubkey) key-size) ERR_KEY_SIZE)
 
         ;; Call into .sbtc-registry to update the keys & address
-        (ok (try! (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey new-signature-threshold)))
+        (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey new-signature-threshold)
     )
 )
 ```
@@ -90,9 +90,41 @@ the signer set is updated.
 | new-aggregate-pubkey    | (buff 33)            |
 | new-signature-threshold | uint                 |
 
+### update-protocol-contract-wrapper
+
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L49)
+
+`(define-public (update-protocol-contract-wrapper ((contract-type (buff 1)) (contract-address principal)) (response bool uint))`
+
+Update protocol contract
+Used to update one of the three protocol contracts
+
+<details>
+  <summary>Source code:</summary>
+
+```clarity
+(define-public (update-protocol-contract-wrapper (contract-type (buff 1)) (contract-address principal))
+    (begin
+        ;; Check that the caller is the current signer principal
+        (asserts! (is-eq (contract-call? .sbtc-registry get-current-signer-principal) tx-sender) ERR_INVALID_CALLER)
+        ;; Call into .sbtc-registry to update the protocol contract
+        (contract-call? .sbtc-registry update-protocol-contract contract-type contract-address)
+    )
+)
+```
+
+</details>
+
+**Parameters:**
+
+| Name             | Type      |
+| ---------------- | --------- |
+| contract-type    | (buff 1)  |
+| contract-address | principal |
+
 ### signer-key-length-check
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L65)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L63)
 
 `(define-private (signer-key-length-check ((current-key (buff 33)) (helper-response (response uint uint))) (response uint uint))`
 
@@ -127,7 +159,7 @@ Checks that the length of each key is exactly 33 bytes
 
 ### pubkeys-to-spend-script
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L80)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L78)
 
 `(define-read-only (pubkeys-to-spend-script ((pubkeys (list 128 (buff 33))) (m uint)) (buff 4355))`
 
@@ -160,7 +192,7 @@ Generate the p2sh redeem script for a multisig
 
 ### pubkeys-to-hash
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L92)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L90)
 
 `(define-read-only (pubkeys-to-hash ((pubkeys (list 128 (buff 33))) (m uint)) (buff 20))`
 
@@ -189,7 +221,7 @@ hash160 of the p2sh redeem script
 
 ### pubkeys-to-principal
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L100)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L98)
 
 `(define-read-only (pubkeys-to-principal ((pubkeys (list 128 (buff 33))) (m uint)) principal)`
 
@@ -221,7 +253,7 @@ Given a set of pubkeys and an m-of-n, generate a principal
 
 ### pubkeys-to-bytes
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L111)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L109)
 
 `(define-read-only (pubkeys-to-bytes ((pubkeys (list 128 (buff 33)))) (buff 4352))`
 
@@ -246,7 +278,7 @@ Concat a list of pubkeys into a buffer with length prefixes
 
 ### concat-pubkeys-fold
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L118)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L116)
 
 `(define-read-only (concat-pubkeys-fold ((pubkey (buff 33)) (iterator (buff 4352))) (buff 4352))`
 
@@ -280,7 +312,7 @@ for the public keys and 128 bytes for the length prefixes.
 
 ### bytes-len
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L130)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L126)
 
 `(define-read-only (bytes-len ((bytes (buff 33))) (buff 1))`
 
@@ -303,7 +335,7 @@ for the public keys and 128 bytes for the length prefixes.
 
 ### uint-to-byte
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L134)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L130)
 
 `(define-read-only (uint-to-byte ((n uint)) (buff 1))`
 
@@ -332,13 +364,14 @@ for the public keys and 128 bytes for the length prefixes.
 
 ### key-size
 
+constants
 The required length of public keys
 
 ```clarity
 (define-constant key-size u33)
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L6)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L5)
 
 ### ERR_KEY_SIZE_PREFIX
 
@@ -349,7 +382,7 @@ if err is u210>, it's the key at index (err - 210)
 (define-constant ERR_KEY_SIZE_PREFIX (unwrap-err! ERR_KEY_SIZE (err true)))
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L12)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L9)
 
 ### ERR_KEY_SIZE
 
@@ -357,7 +390,7 @@ if err is u210>, it's the key at index (err - 210)
 (define-constant ERR_KEY_SIZE (err u200))
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L13)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L10)
 
 ### ERR_INVALID_CALLER
 
@@ -367,7 +400,7 @@ The function caller is not the current signer principal
 (define-constant ERR_INVALID_CALLER (err u201))
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L15)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L12)
 
 ### ERR_SIGNATURE_THRESHOLD
 
@@ -378,7 +411,7 @@ equal to 100% of the total number of signer keys.
 (define-constant ERR_SIGNATURE_THRESHOLD (err u202))
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L18)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L15)
 
 ### BUFF_TO_BYTE
 
@@ -403,4 +436,4 @@ equal to 100% of the total number of signer keys.
 ))
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L138)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L134)
