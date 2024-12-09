@@ -91,7 +91,7 @@ export class EmilyStack extends cdk.Stack {
             chainstateTable.grantReadWriteData(operationLambda);
             limitTable.grantReadWriteData(operationLambda);
 
-            const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(
+            const emilyApis: apig.SpecRestApi[] = this.createOrUpdateApi(
                 alias,
                 props,
             );
