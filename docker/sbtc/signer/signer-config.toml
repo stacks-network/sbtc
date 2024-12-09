@@ -73,7 +73,7 @@ endpoints = ["http://stacks-node:20443"]
 
 # This is the start height of the first EPOCH 3.0 block on the stacks
 # blockchain.
-nakamoto_start_height = 30
+nakamoto_start_height = 31
 
 # !! ==============================================================================
 # !! Signer Configuration
