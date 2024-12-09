@@ -247,13 +247,10 @@ pub trait DbRead {
     /// 3. The output is unspent. It is possible for more than one
     ///    transaction within the same block to satisfy points 1-3, but if
     ///    the signers have one or more transactions within a block,
-    ///    exactly one output satisfying points 1-3 will be unspent.
-    /// 4. The block that includes the transaction that satisfies points
-    ///    1-4 has the greatest height of all such blocks.
+    ///    exactly one output satisfying points 1-2 will be unspent.
     fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
     ) -> impl Future<Output = Result<Option<SignerUtxo>, Error>> + Send;
 
     /// For the given outpoint and aggregate key, get the list all signer

@@ -14,6 +14,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use futures::future::join_all;
 use futures::StreamExt;
 use rand::rngs::StdRng;
+use rand::seq::IteratorRandom;
 use rand::seq::SliceRandom;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
@@ -3325,6 +3326,226 @@ async fn get_deposit_request_returns_returns_inserted_deposit_request() {
     // Assert that the fetched fees match the inserted fees
     assert_eq!(fetched_deposit1, Some(deposit_request1));
     assert_eq!(fetched_deposit2, Some(deposit_request2));
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// This struct is for testing different conditions when attempting to
+/// retrieve the signers' UTXO.
+struct ReorgDescription<const N: usize> {
+    /// An array that indicates the height that includes at least one sweep
+    /// transaction.
+    sweep_heights: [u64; N],
+    /// This is the height where there is a reorg.
+    reorg_height: u64,
+    /// This is the height of the donation. It must be less than or equal
+    /// to the minimum sweep height indicated by `sweep_heights`.
+    donation_height: u64,
+    /// The expected height of the UTXO returned by
+    /// [`DbRead::get_signer_utxo`].
+    utxo_height: Option<u64>,
+    /// When we create sweep package, this field controls how many
+    /// transactions are created in the package.
+    num_transactions: std::ops::Range<u8>,
+}
+
+impl<const N: usize> ReorgDescription<N> {
+    fn num_blocks(&self) -> u64 {
+        self.sweep_heights.into_iter().max().unwrap_or_default()
+    }
+}
+
+/// In these tests we check that [`DbRead::get_signer_utxo`] returns the
+/// expected UTXO when there is a reorg. The test is set up as follows
+/// 1. Populate the database with some minimal bitcoin blockchain data.
+/// 2. For each block between the current block and the number-of-blocks to
+///    generate, create a random number of transactions where we spend the
+///    last output and create a new one.
+/// 3. Note the last transaction created in each bitcoin block.
+/// 4. Create a new chain starting at the height indicated by
+///    `reorg_height`, making sure that it is longer than the current
+///    blockchain in the database, so that it is the best chain.
+/// 5. Get the signers' UTXO and check that the transaction ID matches the
+///    one expected.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test_case(ReorgDescription {
+    sweep_heights: [0, 3, 4, 5],
+    reorg_height: 4,
+    donation_height: 0,
+    utxo_height: Some(4),
+    num_transactions: std::ops::Range { start: 1, end: 2 },
+}; "vanilla reorg")]
+#[test_case(ReorgDescription {
+    sweep_heights: [0, 3, 4, 5],
+    reorg_height: 2,
+    donation_height: 0,
+    utxo_height: Some(0),
+    num_transactions: std::ops::Range { start: 1, end: 2 },
+}; "near-complete-reorg")]
+#[test_case(ReorgDescription {
+    sweep_heights: [0, 6, 10, 12],
+    reorg_height: 7,
+    donation_height: 0,
+    utxo_height: Some(6),
+    num_transactions: std::ops::Range { start: 1, end: 2 },
+}; "partial-reorg")]
+#[test_case(ReorgDescription {
+    sweep_heights: [0, 6, 20, 21],
+    reorg_height: 19,
+    donation_height: 0,
+    utxo_height: Some(6),
+    num_transactions: std::ops::Range { start: 1, end: 2 },
+}; "long-gap-reorg")]
+#[test_case(ReorgDescription {
+    sweep_heights: [3, 4, 5],
+    reorg_height: 2,
+    donation_height: 3,
+    utxo_height: None,
+    num_transactions: std::ops::Range { start: 1, end: 2 },
+}; "complete-reorg")]
+#[test_case(ReorgDescription {
+    sweep_heights: [1, 7, 17, 18, 19, 20, 21],
+    reorg_height: 16,
+    donation_height: 0,
+    utxo_height: Some(7),
+    num_transactions: std::ops::Range { start: 25, end: 26 },
+}; "busy-bridge-with-reorg")]
+#[tokio::test]
+async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // We just need some basic data in the database. The only value that
+    // matters is `num_bitcoin_blocks`, and it must be positive.
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 1,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    // Let's generate some dummy data and write it into the database.
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    // We need some DKG shares here, since we identify the signers' UTXO by
+    // the fact that the signers can sign for the UTXO.
+    let dkg_shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let original_chain_tip_ref: model::BitcoinBlockRef = db
+        .get_bitcoin_block(&chain_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .into();
+
+    // This will store the last transaction ID for all transaction packages
+    // created in a block with a sweep.
+    let mut expected_sweep_txids = BTreeMap::new();
+
+    let mut swept_output: model::TxOutput = fake::Faker.fake_with_rng(&mut rng);
+    let mut chain_tip_ref = original_chain_tip_ref;
+    let mut reorg_block_ref = chain_tip_ref;
+
+    for height in 0..=desc.num_blocks() {
+        // We need a UTXO to "bootstrap" the signers, so maybe we should
+        // create one now.
+        if height == desc.donation_height {
+            swept_output.output_type = model::TxOutputType::Donation;
+            swept_output.output_index = 0;
+            swept_output.amount = 0;
+            swept_output.script_pubkey = dkg_shares.script_pubkey.clone();
+
+            let sweep_tx_model = model::Transaction {
+                tx_type: model::TransactionType::Donation,
+                txid: swept_output.txid.to_byte_array(),
+                tx: Vec::new(),
+                block_hash: chain_tip_ref.block_hash.to_byte_array(),
+            };
+            let sweep_tx_ref = model::BitcoinTxRef {
+                txid: swept_output.txid,
+                block_hash: chain_tip_ref.block_hash,
+            };
+            db.write_transaction(&sweep_tx_model).await.unwrap();
+            db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+            db.write_tx_output(&swept_output).await.unwrap();
+        }
+
+        // Maybe there is a sweep package in this bitcoin block. If so
+        // let's generate a random number of transactions in a transaction
+        // package.
+        if desc.sweep_heights.contains(&height) {
+            let num_transactions = desc.num_transactions.clone().choose(&mut rng).unwrap();
+
+            for _ in 0..num_transactions {
+                let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+                swept_prevout.prevout_txid = swept_output.txid;
+                swept_prevout.prevout_output_index = 0;
+                swept_prevout.prevout_type = model::TxPrevoutType::SignersInput;
+
+                swept_output.txid = swept_prevout.txid;
+                swept_output.output_type = model::TxOutputType::SignersOutput;
+                swept_output.output_index = 0;
+                swept_output.script_pubkey = dkg_shares.script_pubkey.clone();
+
+                let sweep_tx_model = model::Transaction {
+                    tx_type: model::TransactionType::SbtcTransaction,
+                    txid: swept_prevout.txid.to_byte_array(),
+                    tx: Vec::new(),
+                    block_hash: chain_tip_ref.block_hash.to_byte_array(),
+                };
+                let sweep_tx_ref = model::BitcoinTxRef {
+                    txid: swept_prevout.txid,
+                    block_hash: chain_tip_ref.block_hash,
+                };
+                db.write_transaction(&sweep_tx_model).await.unwrap();
+                db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+                db.write_tx_prevout(&swept_prevout).await.unwrap();
+                db.write_tx_output(&swept_output).await.unwrap();
+
+                expected_sweep_txids.insert(height, swept_prevout.txid);
+            }
+        }
+
+        // We need to note the block that we need to branch from for our reorg.
+        if height == desc.reorg_height {
+            reorg_block_ref = chain_tip_ref;
+        }
+
+        // And now for the blockchain data.
+        let (new_data, new_chain_tip_ref) =
+            test_data.new_block(&mut rng, &signer_set, &test_params, Some(&chain_tip_ref));
+        chain_tip_ref = new_chain_tip_ref;
+        new_data.write_to(&db).await;
+    }
+
+    // And now for creating the reorg blocks.
+    for _ in 0..=(desc.num_blocks() - desc.reorg_height) + 1 {
+        let (new_data, new_chain_tip_ref) =
+            test_data.new_block(&mut rng, &signer_set, &test_params, Some(&reorg_block_ref));
+        reorg_block_ref = new_chain_tip_ref;
+        new_data.write_to(&db).await;
+    }
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+
+    // Let's make sure we get the expected signer UTXO.
+    let utxo = db.get_signer_utxo(&chain_tip).await.unwrap();
+    match desc.utxo_height {
+        Some(height) => {
+            let txid: model::BitcoinTxId = utxo.unwrap().outpoint.txid.into();
+            assert_eq!(&txid, expected_sweep_txids.get(&height).unwrap());
+        }
+        None => {
+            assert!(utxo.is_none());
+        }
+    };
 
     signer::testing::storage::drop_db(db).await;
 }

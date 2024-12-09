@@ -651,7 +651,6 @@ impl super::DbRead for SharedStore {
     async fn get_signer_utxo(
         &self,
         chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
     ) -> Result<Option<SignerUtxo>, Error> {
         let Some(dkg_shares) = self.get_latest_encrypted_dkg_shares().await? else {
             return Ok(None);
@@ -662,6 +661,7 @@ impl super::DbRead for SharedStore {
         let bitcoin_blocks = &store.bitcoin_blocks;
         let first = bitcoin_blocks.get(chain_tip);
 
+        let context_window = 1000;
         // Traverse the canonical chain backwards and find the first block containing relevant sbtc tx(s)
         let sbtc_txs = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
             .take(context_window as usize)

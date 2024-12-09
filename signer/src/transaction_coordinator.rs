@@ -1236,7 +1236,7 @@ where
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(chain_tip, self.context_window)
+            .get_signer_utxo(chain_tip)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 

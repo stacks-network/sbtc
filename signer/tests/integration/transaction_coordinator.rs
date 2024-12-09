@@ -1987,7 +1987,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
-        .get_signer_utxo(&chain_tip, 10)
+        .get_signer_utxo(&chain_tip)
         .await
         .unwrap()
         .expect("no signer utxo");
@@ -2118,7 +2118,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
-        .get_signer_utxo(&chain_tip, 10)
+        .get_signer_utxo(&chain_tip)
         .await
         .unwrap()
         .expect("no signer utxo");
