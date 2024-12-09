@@ -394,7 +394,7 @@ describe("sBTC token contract", () => {
         token.protocolMint({
           amount: 1000n,
           recipient: bob,
-          contractFlag: new Uint8Array(1).fill(0),
+          contractFlag: new Uint8Array([0])
         }),
         bob
       );
