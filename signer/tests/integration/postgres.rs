@@ -723,6 +723,7 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -732,12 +733,6 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
-
-    // TODO: Create the initial transaction sweep package without any
-    // withdrawals and have a separate method for creating that sweep (since
-    // it's not realistic to have the withdrawal in the same sweep as the
-    // deposit). Then we wouldn't have to do this.
-    setup.store_withdrawal_request(&db).await;
 
     // Store decisions to make it "accepted"
     setup.store_deposit_decisions(&db).await;
@@ -1855,6 +1850,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -1864,12 +1860,6 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
-
-    // TODO: Create the initial transaction sweep package without any
-    // withdrawals and have a separate method for creating that sweep (since
-    // it's not realistic to have the withdrawal in the same sweep as the
-    // deposit). Then we wouldn't have to do this.
-    setup.store_withdrawal_request(&db).await;
 
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -1982,6 +1972,8 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
 
     for setup in [&mut setup_fork, &mut setup_canonical] {
+        // We almost always need a stacks genesis block, so let's store it.
+        setup.store_stacks_genesis_block(&db).await;
         // This isn't technically required right now, but the deposit
         // transaction is supposed to be there, so future versions of our query
         // can rely on that fact.
@@ -1994,12 +1986,6 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         // The request needs to be added to the database. This stores
         // `setup.deposit_request` into the database.
         setup.store_deposit_request(&db).await;
-
-        // TODO: Create the initial transaction sweep package without any
-        // withdrawals and have a separate method for creating that sweep (since
-        // it's not realistic to have the withdrawal in the same sweep as the
-        // deposit). Then we wouldn't have to do this.
-        setup.store_withdrawal_request(&db).await;
     }
 
     // Setup the stacks blocks
@@ -2191,6 +2177,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -2204,12 +2191,6 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
-
-    // TODO: Create the initial transaction sweep package without any
-    // withdrawals and have a separate method for creating that sweep (since
-    // it's not realistic to have the withdrawal in the same sweep as the
-    // deposit). Then we wouldn't have to do this.
-    setup.store_withdrawal_request(&db).await;
 
     let stacks_tip = db
         .get_stacks_chain_tip(&chain_tip.into())
