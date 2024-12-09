@@ -156,7 +156,7 @@ bitcoin_block_horizon = 1500
 #
 # Required: false
 # Environment: SIGNER_SIGNER__CONTEXT_WINDOW
-context_window = 10000
+context_window = 500
 
 # The maximum amount of time, in seconds, a signing round will take before
 # the coordinator will time out and return an error. This value must be
