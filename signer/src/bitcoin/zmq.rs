@@ -1,24 +1,30 @@
 //! This module provides functionality for receiving new blocks from
 //! bitcoin-core's ZeroMQ interface[1]. From the bitcoin-core docs:
 //!
-//! > The ZeroMQ facility implements a notification interface through a set
-//! > of specific notifiers. Currently, there are notifiers that publish
-//! > blocks and transactions. This read-only facility requires only the
-//! > connection of a corresponding ZeroMQ subscriber port in receiving
-//! > software; it is not authenticated nor is there any two-way protocol
-//! > involvement. Therefore, subscribers should validate the received data
-//! > since it may be out of date, incomplete or even invalid.
+//! > The ZeroMQ facility implements a notification interface through a set of
+//! > specific notifiers. Currently, there are notifiers that publish blocks and
+//! > transactions. This read-only facility requires only the connection of a
+//! > corresponding ZeroMQ subscriber port in receiving software; it is not
+//! > authenticated nor is there any two-way protocol involvement. Therefore,
+//! > subscribers should validate the received data since it may be out of date,
+//! > incomplete or even invalid.
 //!
-//! > ZeroMQ sockets are self-connecting and self-healing; that is,
-//! > connections made between two endpoints will be automatically restored
-//! > after an outage, and either end may be freely started or stopped in
-//! > any order.
+//! > ZeroMQ sockets are self-connecting and self-healing; that is, connections
+//! > made between two endpoints will be automatically restored after an outage,
+//! > and either end may be freely started or stopped in any order.
 //!
-//! > Because ZeroMQ is message oriented, subscribers receive transactions
-//! > and blocks all-at-once and do not need to implement any sort of
-//! > buffering or reassembly.
+//! > Because ZeroMQ is message oriented, subscribers receive transactions and
+//! > blocks all-at-once and do not need to implement any sort of buffering or
+//! > reassembly.
 //!
 //! [^1]: https://github.com/bitcoin/bitcoin/blob/870447fd585e5926b4ce4e83db31c59b1be45a50/doc/zmq.md
+//!
+//! ### Testing Notes
+//!
+//! - When testing this module within the signer (i.e. in `devenv`), it is
+//!   important that bitcoind's state be preserved between stops/starts. For
+//!   docker compose, this means that you should use the `stop` command and not
+//!   the `down` command.
 
 use std::future::ready;
 use std::pin::Pin;
@@ -53,16 +59,14 @@ impl BitcoinCoreMessageStream {
             bitcoincore_zmq::subscribe_async_monitor(&[endpoint])
         })
         .await
-        .map_err(|_| Error::BitcoinCoreZmqConnectTimeout(endpoint.to_string()))??;
+        .map_err(|_| Error::BitcoinCoreZmqConnectTimeout(endpoint.to_string()))?
+        .map_err(Error::BitcoinCoreZmq)?;
 
         Ok(Self { inner_stream })
     }
 
     /// Method we use to inspect incoming messages and log things.
-    fn inspect_message<E>(msg: &Result<SocketMessage, E>)
-    where
-        E: std::fmt::Debug,
-    {
+    fn inspect_message(msg: &Result<SocketMessage, Error>) {
         match msg {
             Ok(SocketMessage::Event(event)) => match event.event {
                 SocketEvent::Connected { fd } => {
@@ -75,15 +79,15 @@ impl BitcoinCoreMessageStream {
             },
             Ok(SocketMessage::Message(msg)) => match msg {
                 Message::Block(block, height) => {
-                    tracing::trace!(?block, %height, "received block");
+                    tracing::trace!(block_hash = %block.block_hash(), block_height = %height, "received block");
                 }
                 Message::HashBlock(hash, height) => {
-                    tracing::trace!(?hash, %height, "received block hash");
+                    tracing::trace!(block_hash = %hash, block_height = %height, "received block hash");
                 }
                 _ => {}
             },
             Err(error) => {
-                tracing::error!(?error, "error receiving message from ZeroMQ");
+                tracing::error!(%error, "error receiving message from ZeroMQ");
             }
         }
     }
@@ -92,10 +96,7 @@ impl BitcoinCoreMessageStream {
     pub fn to_block_stream(self) -> impl Stream<Item = Result<Block, Error>> {
         self.inspect(Self::inspect_message)
             .filter_map(|msg| match msg {
-                Ok(SocketMessage::Message(msg)) => match msg {
-                    Message::Block(block, _) => ready(Some(Ok(block))),
-                    _ => ready(None),
-                },
+                Ok(SocketMessage::Message(Message::Block(block, _))) => ready(Some(Ok(block))),
                 Err(err) => ready(Some(Err(err))),
                 Ok(_) => ready(None),
             })
@@ -105,10 +106,7 @@ impl BitcoinCoreMessageStream {
     pub fn to_block_hash_stream(self) -> impl Stream<Item = Result<BlockHash, Error>> {
         self.inspect(Self::inspect_message)
             .filter_map(|msg| match msg {
-                Ok(SocketMessage::Message(msg)) => match msg {
-                    Message::HashBlock(hash, _) => ready(Some(Ok(hash))),
-                    _ => ready(None),
-                },
+                Ok(SocketMessage::Message(Message::HashBlock(hash, _))) => ready(Some(Ok(hash))),
                 Err(err) => ready(Some(Err(err))),
                 Ok(_) => ready(None),
             })
@@ -119,6 +117,8 @@ impl Stream for BitcoinCoreMessageStream {
     type Item = Result<SocketMessage, Error>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.inner_stream.poll_next_unpin(cx).map_err(Error::from)
+        self.inner_stream
+            .poll_next_unpin(cx)
+            .map_err(Error::BitcoinCoreZmq)
     }
 }

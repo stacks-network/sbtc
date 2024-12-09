@@ -19,7 +19,7 @@ pub enum Error {
 
     /// An error was received from the Bitcoin Core ZMQ subscriber.
     #[error("error from bitcoin-core ZMQ: {0}")]
-    BitcoinCoreZmq(#[from] bitcoincore_zmq::Error),
+    BitcoinCoreZmq(#[source] bitcoincore_zmq::Error),
 
     /// Indicates an error when decoding a protobuf
     #[error("could not decode protobuf {0}")]
