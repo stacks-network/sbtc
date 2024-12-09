@@ -18,8 +18,6 @@ use bitcoin::ScriptHash;
 use bitcoin::Txid as BitcoinTxid;
 use bitcoin::WitnessProgram;
 use bitcoin::WitnessVersion;
-use bitvec::array::BitArray;
-use blockstack_lib::burnchains::Txid as StacksTxid;
 use clarity::vm::types::CharType;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
@@ -28,6 +26,11 @@ use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
+use stacks_common::impl_byte_array_newtype;
+
+#[derive(Clone, Copy, Debug)]
+struct StacksTxid([u8; 32]);
+impl_byte_array_newtype!(StacksTxid, u8, 32);
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
@@ -193,7 +196,7 @@ pub struct WithdrawalAcceptEvent {
     /// The bitmap of how the signers voted for the withdrawal request.
     /// Here, a 1 (or true) implies that the signer did *not* vote to
     /// accept the request.
-    pub signer_bitmap: BitArray<[u8; 16]>,
+    pub signer_bitmap: u128,
     /// This is the outpoint for the bitcoin transaction that serviced the
     /// request.
     pub outpoint: OutPoint,
@@ -224,7 +227,7 @@ pub struct WithdrawalRejectEvent {
     /// The bitmap of how the signers voted for the withdrawal request.
     /// Here, a 1 (or true) implies that the signer did *not* vote to
     /// accept the request.
-    pub signer_bitmap: BitArray<[u8; 16]>,
+    pub signer_bitmap: u128,
 }
 
 /// This is the event that is emitted from the `rotate-keys`
@@ -585,7 +588,7 @@ impl RawTupleData {
             // This shouldn't error for the reasons noted in
             // [`withdrawal_create`].
             request_id: u64::try_from(request_id).map_err(EventError::ClarityIntConversion)?,
-            signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
+            signer_bitmap: bitmap,
             outpoint: OutPoint {
                 // This shouldn't error, this is set from a proper [`Txid`] in
                 // a contract call.
@@ -639,7 +642,7 @@ impl RawTupleData {
             // This shouldn't error for the reasons noted in
             // [`withdrawal_create`].
             request_id: u64::try_from(request_id).map_err(EventError::ClarityIntConversion)?,
-            signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
+            signer_bitmap: bitmap,
         }))
     }
 
@@ -710,24 +713,6 @@ mod tests {
         txid: StacksTxid([0; 32]),
         block_id: StacksBlockId([0; 32]),
     };
-
-    #[test]
-    fn signer_bitmap_conversion() {
-        // This test checks that converting from an integer to the bitmap
-        // works the way that we expect.
-        let bitmap_number: u128 = 3;
-        let bitmap: BitArray<[u8; 16]> = BitArray::new(bitmap_number.to_le_bytes());
-
-        assert_eq!(bitmap.load_le::<u128>(), bitmap_number);
-
-        // This is basically a test of the same thing as the above, except
-        // that we explicitly create the signer bitmap.
-        let mut bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-        bitmap.set(0, true);
-        bitmap.set(1, true);
-
-        assert_eq!(bitmap.load_le::<u128>(), bitmap_number);
-    }
 
     #[test]
     fn complete_deposit_event() {
@@ -884,7 +869,7 @@ mod tests {
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
         match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::WithdrawalAccept(event) => {
-                let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
+                let expected_bitmap = bitmap;
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.outpoint.txid, BitcoinTxid::from_byte_array([1; 32]));
                 assert_eq!(event.outpoint.vout, vout as u32);
@@ -926,7 +911,7 @@ mod tests {
         // let res = transform_value(value, NetworkKind::Regtest).unwrap();
         match RegistryEvent::try_new(value, TX_INFO).unwrap() {
             RegistryEvent::WithdrawalReject(event) => {
-                let expected_bitmap = BitArray::<[u8; 16]>::new(bitmap.to_le_bytes());
+                let expected_bitmap = bitmap;
                 assert_eq!(event.request_id, request_id as u64);
                 assert_eq!(event.signer_bitmap, expected_bitmap);
             }

@@ -20,8 +20,6 @@ serde.workspace = true
 serde_json.workspace = true
 stacks-common.workspace = true
 thiserror.workspace = true
-bitvec = { workspace = true, default-features = false, features = ["std"] }
-stackslib.workspace = true
 
 [dependencies.secp256k1]
 version = "0.29.0"
