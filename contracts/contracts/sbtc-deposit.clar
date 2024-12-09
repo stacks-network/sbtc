@@ -20,10 +20,6 @@
 (define-constant ERR_INVALID_CALLER (err u304))
 (define-constant ERR_INVALID_BURN_HASH (err u305))
 
-;; data vars
-
-;; data maps
-
 ;; public functions
 
 ;; Accept a new deposit request
