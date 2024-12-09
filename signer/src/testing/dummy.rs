@@ -36,9 +36,6 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
 use crate::message::SignerMessage;
-use crate::message::SweepTransactionInfo;
-use crate::message::SweptDeposit;
-use crate::message::SweptWithdrawal;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
@@ -705,45 +702,6 @@ impl fake::Dummy<fake::Faker> for RotateKeysV1 {
             aggregate_key: config.fake_with_rng(rng),
             deployer: address,
             signatures_required: config.fake_with_rng(rng),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for SweptDeposit {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        SweptDeposit {
-            input_index: config.fake_with_rng(rng),
-            deposit_request_txid: txid(config, rng),
-            deposit_request_output_index: config.fake_with_rng(rng),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for SweptWithdrawal {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        SweptWithdrawal {
-            output_index: config.fake_with_rng(rng),
-            withdrawal_request_id: config.fake_with_rng(rng),
-            withdrawal_request_block_hash: config.fake_with_rng(rng),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for SweepTransactionInfo {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        SweepTransactionInfo {
-            txid: txid(config, rng),
-            signer_prevout_txid: txid(config, rng),
-            signer_prevout_output_index: config.fake_with_rng(rng),
-            signer_prevout_amount: config.fake_with_rng(rng),
-            signer_prevout_script_pubkey: config.fake_with_rng::<ScriptPubKey, R>(rng).into(),
-            amount: config.fake_with_rng(rng),
-            fee: config.fake_with_rng(rng),
-            vsize: config.fake_with_rng(rng),
-            created_at_block_hash: block_hash(config, rng),
-            market_fee_rate: config.fake_with_rng(rng),
-            swept_deposits: config.fake_with_rng(rng),
-            swept_withdrawals: config.fake_with_rng(rng),
         }
     }
 }

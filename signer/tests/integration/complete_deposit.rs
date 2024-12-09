@@ -89,13 +89,16 @@ async fn complete_deposit_validation_happy_path() {
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -115,18 +118,6 @@ async fn complete_deposit_validation_happy_path() {
     // corresponds to how the signers voted.
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
-
-    // Store outstanding sweep transaction packages in the database, which
-    // includes the above deposit request. But remember that this represents a
-    // sweep transaction that has been broadcast to the mempool, but not yet
-    // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that).
-    //
-    // Note: we need to store the withdrawal request to satisfy FK's since
-    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
-    // default, but we don't use it.
-    setup.store_withdrawal_request(&db).await;
-    setup.store_sweep_transactions(&db).await;
 
     // Normal: create a properly formed complete-deposit transaction object
     // and the corresponding request context.
@@ -163,11 +154,14 @@ async fn complete_deposit_validation_deployer_mismatch() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -228,11 +222,14 @@ async fn complete_deposit_validation_missing_deposit_request() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -285,13 +282,16 @@ async fn complete_deposit_validation_recipient_mismatch() {
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -311,18 +311,6 @@ async fn complete_deposit_validation_recipient_mismatch() {
     // corresponds to how the signers voted.
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
-
-    // Store outstanding sweep transaction packages in the database, which
-    // includes the above deposit request. But remember that this represents a
-    // sweep transaction that has been broadcast to the mempool, but not yet
-    // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that).
-    //
-    // Note: we need to store the withdrawal request to satisfy FK's since
-    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
-    // default, but we don't use it.
-    setup.store_withdrawal_request(&db).await;
-    setup.store_sweep_transactions(&db).await;
 
     // Normal: create a properly formed complete-deposit transaction object
     // and the corresponding request context.
@@ -363,13 +351,16 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -389,18 +380,6 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     // corresponds to how the signers voted.
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
-
-    // Store outstanding sweep transaction packages in the database, which
-    // includes the above deposit request. But remember that this represents a
-    // sweep transaction that has been broadcast to the mempool, but not yet
-    // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that).
-    //
-    // Note: we need to store the withdrawal request to satisfy FK's since
-    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
-    // default, but we don't use it.
-    setup.store_withdrawal_request(&db).await;
-    setup.store_sweep_transactions(&db).await;
 
     // Normal: create a properly formed complete-deposit transaction object
     // and the corresponding request context.
@@ -442,11 +421,14 @@ async fn complete_deposit_validation_fee_too_high() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -474,18 +456,6 @@ async fn complete_deposit_validation_fee_too_high() {
     // corresponds to how the signers voted.
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
-
-    // Store outstanding sweep transaction packages in the database, which
-    // includes the above deposit request. But remember that this represents a
-    // sweep transaction that has been broadcast to the mempool, but not yet
-    // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that).
-    //
-    // Note: we need to store the withdrawal request to satisfy FK's since
-    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
-    // default, but we don't use it.
-    setup.store_withdrawal_request(&db).await;
-    setup.store_sweep_transactions(&db).await;
 
     // Normal: create a properly formed complete-deposit transaction object
     // and the corresponding request context.
@@ -524,11 +494,14 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -591,11 +564,14 @@ async fn complete_deposit_validation_sweep_reorged() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -668,11 +644,14 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -735,13 +714,16 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
@@ -761,18 +743,6 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
     // corresponds to how the signers voted.
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
-
-    // Store outstanding sweep transaction packages in the database, which
-    // includes the above deposit request. But remember that this represents a
-    // sweep transaction that has been broadcast to the mempool, but not yet
-    // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that).
-    //
-    // Note: we need to store the withdrawal request to satisfy FK's since
-    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
-    // default, but we don't use it.
-    setup.store_withdrawal_request(&db).await;
-    setup.store_sweep_transactions(&db).await;
 
     // Normal: create a properly formed complete-deposit transaction object
     // and the corresponding request context.
@@ -815,11 +785,14 @@ async fn complete_deposit_validation_deposit_invalid_sweep() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
+    // Normal: the signers' block observer should be getting new block
+    // events from bitcoin-core. We haven't hooked up our block observer,
+    // so we need to manually update the database with new bitcoin block
+    // headers and at least one stacks block.
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
 
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch

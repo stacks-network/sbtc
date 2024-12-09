@@ -13,7 +13,6 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use futures::future::join_all;
 use futures::StreamExt;
-use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::seq::SliceRandom;
 
@@ -50,7 +49,6 @@ use signer::storage::model::ScriptPubKey;
 use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
-use signer::storage::model::SweepTransaction;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
@@ -716,7 +714,7 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
@@ -725,6 +723,7 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -735,12 +734,6 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
 
-    // TODO: Create the initial transaction sweep package without any
-    // withdrawals and have a separate method for creating that sweep (since
-    // it's not realistic to have the withdrawal in the same sweep as the
-    // deposit). Then we wouldn't have to do this.
-    setup.store_withdrawal_request(&db).await;
-
     // Store decisions to make it "accepted"
     setup.store_deposit_decisions(&db).await;
 
@@ -750,9 +743,6 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
         .unwrap();
 
     assert_eq!(requests.len(), 1);
-
-    // Store outstanding sweep transaction packages in the database.
-    setup.store_sweep_transactions(&db).await;
 
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -1855,11 +1845,12 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -1869,15 +1860,6 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
-
-    // TODO: Create the initial transaction sweep package without any
-    // withdrawals and have a separate method for creating that sweep (since
-    // it's not realistic to have the withdrawal in the same sweep as the
-    // deposit). Then we wouldn't have to do this.
-    setup.store_withdrawal_request(&db).await;
-
-    // Store outstanding sweep transaction packages in the database.
-    setup.store_sweep_transactions(&db).await;
 
     // We take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -1925,7 +1907,7 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
@@ -1939,18 +1921,6 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
-
-    // Store outstanding sweep transaction packages in the database, which
-    // includes the above deposit request. But remember that this represents a
-    // sweep transaction that has been broadcast to the mempool, but not yet
-    // observed in a block (we would need to also call `.store_sweep_tx()` for
-    // that).
-    //
-    // Note: we need to store the withdrawal request to satisfy FK's since
-    // `TestSweepSetup` includes a withdrawal in the sweep transaction by
-    // default, but we don't use it.
-    setup.store_withdrawal_request(&db).await;
-    setup.store_sweep_transactions(&db).await;
 
     // We are supposed to store a sweep transaction, but we haven't, so the
     // deposit request is not considered swept.
@@ -2002,6 +1972,8 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
 
     for setup in [&mut setup_fork, &mut setup_canonical] {
+        // We almost always need a stacks genesis block, so let's store it.
+        setup.store_stacks_genesis_block(&db).await;
         // This isn't technically required right now, but the deposit
         // transaction is supposed to be there, so future versions of our query
         // can rely on that fact.
@@ -2014,15 +1986,6 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
         // The request needs to be added to the database. This stores
         // `setup.deposit_request` into the database.
         setup.store_deposit_request(&db).await;
-
-        // TODO: Create the initial transaction sweep package without any
-        // withdrawals and have a separate method for creating that sweep (since
-        // it's not realistic to have the withdrawal in the same sweep as the
-        // deposit). Then we wouldn't have to do this.
-        setup.store_withdrawal_request(&db).await;
-
-        // Store outstanding sweep transaction packages in the database.
-        setup.store_sweep_transactions(&db).await;
     }
 
     // Setup the stacks blocks
@@ -2204,7 +2167,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // sets up the database.
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     let context_window = 20;
 
@@ -2214,6 +2177,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // We need to manually update the database with new bitcoin block
     // headers.
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -2227,15 +2191,6 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // The request needs to be added to the database. This stores
     // `setup.deposit_request` into the database.
     setup.store_deposit_request(&db).await;
-
-    // TODO: Create the initial transaction sweep package without any
-    // withdrawals and have a separate method for creating that sweep (since
-    // it's not realistic to have the withdrawal in the same sweep as the
-    // deposit). Then we wouldn't have to do this.
-    setup.store_withdrawal_request(&db).await;
-
-    // Store outstanding sweep transaction packages in the database.
-    setup.store_sweep_transactions(&db).await;
 
     let stacks_tip = db
         .get_stacks_chain_tip(&chain_tip.into())
@@ -2392,344 +2347,6 @@ async fn should_get_signer_utxo_donations() {
         .await;
 
     signer::testing::storage::drop_db(store).await;
-}
-
-/// This test checks that the `get_latest_sweep_transaction_package` function
-/// returns the correct sweep transaction package for a given blockchain tip.
-///
-/// The test sets up two different sweep transactions in the database on
-/// different Bitcoin forks and then checks that the correct sweep transaction
-/// package is returned for each fork.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
-async fn can_store_and_get_latest_sweep_transaction() {
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-
-    // ** TEST SETUP 1 **
-
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
-    setup.store_deposit_tx(&db).await;
-    setup.store_deposit_request(&db).await;
-    setup.store_withdrawal_request(&db).await;
-    let first_sweep_block_hash = setup.sweep_block_hash;
-    // We'll use this to verify fork-functionality later.
-    // Store outstanding sweep transaction packages in the database and get the
-    // expected sweep package for asserts later on.
-    let expected1 = setup.store_sweep_transactions(&db).await.pop().unwrap();
-
-    // ** TEST SETUP 2 **
-
-    // Do the above all over again, but with a different sweep transaction so that
-    // we get multiple in the database.
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
-    setup.store_deposit_tx(&db).await;
-    setup.store_deposit_request(&db).await;
-    setup.store_withdrawal_request(&db).await;
-
-    // Make a bunch of noise on the chain.
-    for block in faucet.generate_blocks(10) {
-        let mut sweep = fake::Faker.fake_with_rng::<model::SweepTransaction, _>(&mut rng);
-        sweep.created_at_block_hash = block.into();
-        sweep.swept_deposits = vec![];
-        sweep.swept_withdrawals = vec![];
-        db.write_sweep_transaction(&sweep)
-            .await
-            .expect("failed to insert dummy sweep transaction");
-        crate::setup::backfill_bitcoin_blocks(&db, rpc, &block).await;
-    }
-
-    // Store outstanding sweep transactions in the database and get the
-    // expected sweep package for asserts later on.
-    let expected2 = setup.store_sweep_transactions(&db).await.pop().unwrap();
-
-    // Make a bunch more noise on the chain.
-    for block in faucet.generate_blocks(10) {
-        let mut sweep = fake::Faker.fake_with_rng::<model::SweepTransaction, _>(&mut rng);
-        sweep.created_at_block_hash = block.into();
-        sweep.swept_deposits = vec![];
-        sweep.swept_withdrawals = vec![];
-        db.write_sweep_transaction(&sweep)
-            .await
-            .expect("failed to insert dummy sweep transaction");
-        crate::setup::backfill_bitcoin_blocks(&db, rpc, &block).await;
-    }
-
-    // ** TEST 1 **
-    // Assert that if we request the latest sweep tx for the first
-    // blockchain tip, we get the first sweep tx.
-    let tx1 = db
-        .get_latest_sweep_transaction(&first_sweep_block_hash.into(), 50)
-        .await
-        .expect("failed to get latest sweep transaction package (on fork)");
-
-    let Some(tx1) = tx1 else {
-        panic!("expected to find a sweep transaction package");
-    };
-
-    assert_eq!(tx1, expected1);
-
-    // ** TEST 2 **
-    // Assert that if we request the latest sweep tx for the second
-    // blockchain tip, we get the second sweep tx.
-    //
-    // This test also verifies that the sweep tx pre-insert is identical to
-    // the sweep tx when retrieved from the database.
-    let tx2 = db
-        .get_latest_sweep_transaction(&setup.sweep_block_hash.into(), 50)
-        .await
-        .expect("failed to get latest sweep transaction package");
-
-    let Some(tx2) = tx2 else {
-        panic!("expected to find a sweep transaction package");
-    };
-
-    assert_eq!(tx2, expected2);
-
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test(tokio::test)]
-async fn can_get_latest_unconfirmed_sweep_transactions_simple() {
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
-
-    let mut sweep_transactions: Vec<SweepTransaction> = fake::Faker.fake();
-    let txids = sweep_transactions
-        .iter()
-        .map(|tx| tx.txid)
-        .collect::<Vec<_>>();
-
-    let bitcoin_block: model::BitcoinBlock = fake::Faker.fake();
-    let utxo_tx = model::Transaction {
-        block_hash: bitcoin_block.block_hash.into_bytes(),
-        ..fake::Faker.fake()
-    };
-
-    for (i, tx) in sweep_transactions.iter_mut().enumerate() {
-        if i == 0 {
-            tx.signer_prevout_txid = utxo_tx.txid.into();
-        } else {
-            tx.signer_prevout_txid = txids[i - 1];
-        }
-
-        // We clear these so we don't have to mess around with writing them and
-        // their FK's etc -- that's already tested elsewhere.
-        tx.swept_deposits.clear();
-        tx.swept_withdrawals.clear();
-    }
-
-    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
-    db.write_transaction(&utxo_tx).await.unwrap();
-    db.write_bitcoin_transaction(&model::BitcoinTxRef {
-        txid: utxo_tx.txid.into(),
-        block_hash: utxo_tx.block_hash.into(),
-    })
-    .await
-    .unwrap();
-
-    for tx in sweep_transactions.iter() {
-        db.write_sweep_transaction(tx).await.unwrap();
-    }
-
-    let sweep = db
-        .get_latest_unconfirmed_sweep_transactions(
-            &bitcoin_block.block_hash,
-            10,
-            &utxo_tx.txid.into(),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(sweep, sweep_transactions);
-
-    signer::testing::storage::drop_db(db).await;
-}
-
-/// This test checks that the
-/// [`DbRead::get_latest_unconfirmed_sweep_transactions()`] method behaves
-/// correctly in a forking scenario. The steps are outlined in in-line comments.
-/// We also run the test with multiple seeds to ensure that the behavior is
-/// consistent with different sets of random data (number of sweep transactions,
-/// etc.).
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case(31)]
-#[test_case(41)]
-#[test_case(53)]
-#[test_case(71)]
-#[tokio::test]
-async fn can_get_latest_unconfirmed_sweep_transactions_fork(seed: u64) {
-    let mut rng = StdRng::seed_from_u64(seed);
-
-    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
-
-    // =========================================================================
-    // Step 1 - create initial UTXO and sweep transactions
-    // -------------------------------------------------------------------------
-    // - We create an initial Bitcoin block and transaction which represent an
-    //   initial confirmed signer UTXO.
-    // - Then we create a series of sweep transactions (a sweep transaction
-    //   package) which are chained together by the `signer_prevout_txid` field.
-    //   The first of these transactions spends the initial confirmed signer
-    //   UTXO.
-    // =========================================================================
-    let mut sweep_transactions: Vec<SweepTransaction> = fake::Faker.fake_with_rng(&mut rng);
-    let txids = sweep_transactions
-        .iter()
-        .map(|tx| tx.txid)
-        .collect::<Vec<_>>();
-
-    let bitcoin_block_1 = model::BitcoinBlock {
-        block_height: 1,
-        ..fake::Faker.fake_with_rng(&mut rng)
-    };
-    let utxo_tx = model::Transaction {
-        block_hash: bitcoin_block_1.block_hash.into_bytes(),
-        ..fake::Faker.fake_with_rng(&mut rng)
-    };
-
-    for (i, tx) in sweep_transactions.iter_mut().enumerate() {
-        if i == 0 {
-            tx.signer_prevout_txid = utxo_tx.txid.into();
-        } else {
-            tx.signer_prevout_txid = txids[i - 1];
-        }
-
-        // We clear these so we don't have to mess around with writing them and
-        // their FK's etc -- that's already tested elsewhere.
-        tx.swept_deposits.clear();
-        tx.swept_withdrawals.clear();
-    }
-
-    db.write_bitcoin_block(&bitcoin_block_1).await.unwrap();
-    db.write_transaction(&utxo_tx).await.unwrap();
-    db.write_bitcoin_transaction(&model::BitcoinTxRef {
-        txid: utxo_tx.txid.into(),
-        block_hash: utxo_tx.block_hash.into(),
-    })
-    .await
-    .unwrap();
-
-    for tx in sweep_transactions.iter() {
-        db.write_sweep_transaction(tx).await.unwrap();
-    }
-
-    // =========================================================================
-    // Step 2 - get latest unconfirmed sweep transactions and assert
-    // -------------------------------------------------------------------------
-    // We get the current canonical chain tip (according to the db) and attempt
-    // to retrieve the latest unconfirmed sweep transactions using that tip and
-    // still the same UTXO txid. We expect to get all of the sweep transactions
-    // from the package we created.
-    // =========================================================================
-    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-    assert_eq!(chain_tip, bitcoin_block_1.block_hash.into());
-
-    let sweeps = db
-        .get_latest_unconfirmed_sweep_transactions(&chain_tip, 10, &utxo_tx.txid.into())
-        .await
-        .unwrap();
-
-    assert_eq!(sweeps, sweep_transactions);
-
-    // =========================================================================
-    // Step 3 - confirm the first sweep transaction in a new block "2a"
-    // -------------------------------------------------------------------------
-    // We create a new Bitcoin block and transaction which confirms the first
-    // sweep transaction in the package (sweep_transactions[0]).
-    // =========================================================================
-    let bitcoin_block_2a = model::BitcoinBlock {
-        parent_hash: bitcoin_block_1.block_hash,
-        block_height: 2,
-        ..fake::Faker.fake_with_rng(&mut rng)
-    };
-    let utxo_tx2 = model::Transaction {
-        block_hash: bitcoin_block_2a.block_hash.into_bytes(),
-        txid: sweep_transactions[0].txid.into_bytes(),
-        tx_type: model::TransactionType::SbtcTransaction,
-        tx: Vec::new(),
-    };
-    db.write_bitcoin_block(&bitcoin_block_2a).await.unwrap();
-    db.write_transaction(&utxo_tx2).await.unwrap();
-    db.write_bitcoin_transaction(&model::BitcoinTxRef {
-        txid: utxo_tx2.txid.into(),
-        block_hash: utxo_tx2.block_hash.into(),
-    })
-    .await
-    .unwrap();
-
-    // =========================================================================
-    // Step 4 - get latest unconfirmed sweep transactions and assert
-    // -------------------------------------------------------------------------
-    // We get the current canonical chain tip (according to the db) and attempt
-    // to retrieve the latest unconfirmed sweep transactions. We expect that
-    // step 3 has confirmed the first sweep transaction in the package, so we
-    // should get all of the sweep transactions from the package except the
-    // first one, even when asking for the original UTXO txid.
-    // =========================================================================
-    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-    assert_eq!(chain_tip, bitcoin_block_2a.block_hash.into());
-
-    let sweeps = db
-        .get_latest_unconfirmed_sweep_transactions(&chain_tip, 10, &utxo_tx.txid.into())
-        .await
-        .unwrap();
-
-    assert_eq!(sweep_transactions.len() - 1, sweeps.len());
-    assert_eq!(&sweep_transactions[1..], &sweeps[..]);
-
-    // =========================================================================
-    // Step 5 - create a fork from block 1, competing with block "2a"
-    // -------------------------------------------------------------------------
-    // We create two new Bitcoin blocks, chained off of the first Bitcoin block
-    // and thus competing with block 2a. By creating two new blocks, this chain
-    // now becomes the new canonical (longest) chain.
-    // =========================================================================
-    let bitcoin_block_2b = model::BitcoinBlock {
-        parent_hash: bitcoin_block_1.block_hash,
-        block_height: 2,
-        ..fake::Faker.fake_with_rng(&mut rng)
-    };
-    let bitcoin_block_3 = model::BitcoinBlock {
-        parent_hash: bitcoin_block_2b.block_hash,
-        block_height: 3,
-        ..fake::Faker.fake_with_rng(&mut rng)
-    };
-
-    db.write_bitcoin_block(&bitcoin_block_2b).await.unwrap();
-    db.write_bitcoin_block(&bitcoin_block_3).await.unwrap();
-
-    // =========================================================================
-    // Step 6 - get latest unconfirmed sweep transactions and assert
-    // -------------------------------------------------------------------------
-    // We get the current canonical chain tip (according to the db) and attempt
-    // to retrieve the latest unconfirmed sweep transactions. We expect that the
-    // fork created in step 5 has caused the canonical chain to change,
-    // orphaning the sweep transaction confirmation from step 3. Since that
-    // transaction is no longer considered confirmed, we should get all of the
-    // sweep transactions from the package, just like in step 2.
-    // =========================================================================
-
-    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-    assert_eq!(chain_tip, bitcoin_block_3.block_hash.into());
-
-    let sweeps = db
-        .get_latest_unconfirmed_sweep_transactions(&chain_tip, 10, &utxo_tx.txid.into())
-        .await
-        .unwrap();
-
-    assert_eq!(sweep_transactions.len(), sweeps.len());
-    assert_eq!(sweeps, sweep_transactions);
-
-    // Clean up
-    signer::testing::storage::drop_db(db).await;
 }
 
 /// The following tests check the [`DbRead::get_deposit_request_report`]
@@ -2979,30 +2596,26 @@ async fn deposit_report_with_deposit_request_spent() {
     db.write_deposit_signer_decision(&decision).await.unwrap();
 
     // Okay now let's pretend that the deposit has been swept. For that we
-    // need a row in the `sweep_*` tables, and records in the `transactions`
+    // need a row in the `bitcoin_tx_inputs` tables, and records in the `transactions`
     // and `bitcoin_transactions` tables.
-    let mut sweep_tx: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
-    sweep_tx.created_at_block_hash = chain_tip;
-    sweep_tx.swept_withdrawals = Vec::new();
-    sweep_tx.swept_deposits = vec![model::SweptDeposit {
-        input_index: 1,
-        deposit_request_output_index: deposit_request.output_index,
-        deposit_request_txid: deposit_request.txid,
-    }];
+    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout.prevout_txid = deposit_request.txid;
+    swept_prevout.prevout_output_index = deposit_request.output_index;
+    swept_prevout.amount = deposit_request.amount;
 
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
-        txid: sweep_tx.txid.to_byte_array(),
+        txid: swept_prevout.txid.to_byte_array(),
         tx: Vec::new(),
         block_hash: chain_tip.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
-        txid: sweep_tx.txid,
+        txid: swept_prevout.txid,
         block_hash: chain_tip,
     };
     db.write_transaction(&sweep_tx_model).await.unwrap();
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
-    db.write_sweep_transaction(&sweep_tx).await.unwrap();
+    db.write_tx_prevout(&swept_prevout).await.unwrap();
 
     let report = db
         .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
@@ -3019,7 +2632,7 @@ async fn deposit_report_with_deposit_request_spent() {
     assert_eq!(report.can_sign, Some(decision.can_sign));
     assert_eq!(
         report.status,
-        DepositConfirmationStatus::Spent(sweep_tx.txid)
+        DepositConfirmationStatus::Spent(swept_prevout.txid)
     );
 
     signer::testing::storage::drop_db(db).await;
@@ -3091,32 +2704,28 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     // current chain tip for what confirms the sweep transaction. This way
     // it is not on the canonical bitcoin blockchain identified by the
     // chain tip.
-    let mut sweep_tx: model::SweepTransaction = fake::Faker.fake_with_rng(&mut rng);
     let mut alt_chain_tip_block: model::BitcoinBlock = chain_tip_block.clone();
     alt_chain_tip_block.block_hash = fake::Faker.fake_with_rng(&mut rng);
 
-    sweep_tx.created_at_block_hash = chain_tip;
-    sweep_tx.swept_withdrawals = Vec::new();
-    sweep_tx.swept_deposits = vec![model::SweptDeposit {
-        input_index: 1,
-        deposit_request_output_index: deposit_request.output_index,
-        deposit_request_txid: deposit_request.txid,
-    }];
+    let mut swept_prevout: model::TxPrevout = fake::Faker.fake_with_rng(&mut rng);
+    swept_prevout.prevout_txid = deposit_request.txid;
+    swept_prevout.prevout_output_index = deposit_request.output_index;
+    swept_prevout.amount = deposit_request.amount;
 
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
-        txid: sweep_tx.txid.to_byte_array(),
+        txid: swept_prevout.txid.to_byte_array(),
         tx: Vec::new(),
         block_hash: alt_chain_tip_block.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
-        txid: sweep_tx.txid,
+        txid: swept_prevout.txid,
         block_hash: alt_chain_tip_block.block_hash,
     };
     db.write_bitcoin_block(&alt_chain_tip_block).await.unwrap();
     db.write_transaction(&sweep_tx_model).await.unwrap();
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
-    db.write_sweep_transaction(&sweep_tx).await.unwrap();
+    db.write_tx_prevout(&swept_prevout).await.unwrap();
 
     let report = db
         .get_deposit_request_report(&chain_tip, txid, output_index, signer_public_key)
@@ -3155,7 +2764,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     assert_eq!(report.can_accept, Some(decision.can_accept));
     assert_eq!(report.can_sign, Some(decision.can_sign));
 
-    let expected_status = DepositConfirmationStatus::Spent(sweep_tx.txid);
+    let expected_status = DepositConfirmationStatus::Spent(swept_prevout.txid);
     assert_eq!(report.status, expected_status);
 
     signer::testing::storage::drop_db(db).await;

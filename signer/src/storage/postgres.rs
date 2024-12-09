@@ -656,13 +656,12 @@ impl PgStore {
     ) -> Result<Option<model::BitcoinTxId>, Error> {
         sqlx::query_scalar::<_, model::BitcoinTxId>(
             r#"
-            SELECT sd.sweep_transaction_txid
-            FROM sbtc_signer.swept_deposits AS sd
-            JOIN sbtc_signer.bitcoin_transactions AS bt
-              ON bt.txid = sd.sweep_transaction_txid
+            SELECT bti.txid
+            FROM sbtc_signer.bitcoin_tx_inputs AS bti
+            JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
             JOIN sbtc_signer.bitcoin_blockchain_until($1, $2) USING (block_hash)
-            WHERE sd.deposit_request_txid = $3
-              AND sd.deposit_request_output_index = $4
+            WHERE bti.prevout_txid = $3
+              AND bti.prevout_output_index = $4
             LIMIT 1
             "#,
         )
@@ -735,88 +734,6 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
-    }
-
-    /// Attempts to retrieve an entire transaction package by id.
-    ///
-    /// TODO: This could be made more efficient and shorter by returning a table
-    /// with all the necessary information in one query, and doing a custom
-    /// `FromRow` implementation. I just didn't want to spend more time on it
-    /// now.
-    async fn get_sweep_transaction_by_txid(
-        &self,
-        sweep_txid: &model::BitcoinTxId,
-    ) -> Result<Option<model::SweepTransaction>, Error> {
-        let transaction: Option<model::SweepTransaction> = sqlx::query_as(
-            "
-            SELECT
-                txid
-              , signer_prevout_txid
-              , signer_prevout_output_index
-              , signer_prevout_amount
-              , signer_prevout_script_pubkey
-              , amount
-              , fee
-              , vsize
-              , created_at_block_hash
-              , market_fee_rate
-            FROM
-                sweep_transactions
-            WHERE
-                txid = $1;
-        ",
-        )
-        .bind(sweep_txid)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        let Some(mut transaction) = transaction else {
-            return Ok(None);
-        };
-
-        let swept_deposits = sqlx::query_as(
-            "
-            SELECT
-                input_index
-              , deposit_request_txid
-              , deposit_request_output_index
-            FROM
-                swept_deposits
-            WHERE
-                sweep_transaction_txid = $1
-            ORDER BY
-                input_index ASC;
-            ",
-        )
-        .bind(sweep_txid)
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        let swept_withdrawals = sqlx::query_as(
-            "
-            SELECT
-                output_index
-              , withdrawal_request_id
-              , withdrawal_request_block_hash
-            FROM
-                swept_withdrawals
-            WHERE
-                sweep_transaction_txid = $1
-            ORDER BY
-                output_index ASC;
-        ",
-        )
-        .bind(sweep_txid)
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        transaction.swept_deposits = swept_deposits;
-        transaction.swept_withdrawals = swept_withdrawals;
-
-        Ok(Some(transaction))
     }
 }
 
@@ -1003,14 +920,11 @@ impl super::DbRead for PgStore {
 
         sqlx::query_as::<_, model::DepositRequest>(
             r#"
-            WITH context_window AS (
-                SELECT * FROM bitcoin_blockchain_of($1, $2)
-            ),
-            transactions_in_window AS (
+            WITH transactions_in_window AS (
                 SELECT
                     transactions.txid
                   , blocks_in_window.block_height
-                FROM context_window blocks_in_window
+                FROM bitcoin_blockchain_of($1, $2) AS blocks_in_window
                 JOIN sbtc_signer.bitcoin_transactions transactions ON
                     transactions.block_hash = blocks_in_window.block_hash
             ),
@@ -1040,13 +954,11 @@ impl super::DbRead for PgStore {
             -- Then we only consider the ones not swept yet (in the canonical chain)
             SELECT accepted_deposits.*
             FROM accepted_deposits
-            LEFT JOIN
-                swept_deposits AS swept_deposit
-                    ON swept_deposit.deposit_request_txid = accepted_deposits.txid
-                    AND swept_deposit.deposit_request_output_index = accepted_deposits.output_index
-            LEFT JOIN
-                transactions_in_window
-                    ON swept_deposit.sweep_transaction_txid = transactions_in_window.txid
+            LEFT JOIN sbtc_signer.bitcoin_tx_inputs AS bti
+              ON bti.prevout_txid = accepted_deposits.txid
+             AND bti.prevout_output_index = accepted_deposits.output_index
+            LEFT JOIN transactions_in_window
+              ON bti.txid = transactions_in_window.txid
             GROUP BY
                 accepted_deposits.txid
               , accepted_deposits.output_index
@@ -1846,6 +1758,34 @@ impl super::DbRead for PgStore {
 
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
+            WITH RECURSIVE bitcoin_blockchain AS (
+                SELECT 
+                    block_hash
+                  , block_height
+                FROM bitcoin_blockchain_of($1, $2)
+            ),
+            stacks_blockchain AS (
+                SELECT
+                    stacks_blocks.block_hash
+                  , stacks_blocks.block_height
+                  , stacks_blocks.parent_hash
+                FROM sbtc_signer.stacks_blocks stacks_blocks
+                JOIN bitcoin_blockchain as bb
+                    ON bb.block_hash = stacks_blocks.bitcoin_anchor
+                WHERE stacks_blocks.block_hash = $3
+        
+                UNION ALL
+        
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_blockchain last
+                  ON parent.block_hash = last.parent_hash
+                JOIN bitcoin_blockchain AS bb
+                  ON bb.block_hash = parent.bitcoin_anchor
+            )
             SELECT
                 bc_trx.txid AS sweep_txid
               , bc_trx.block_hash AS sweep_block_hash
@@ -1855,28 +1795,17 @@ impl super::DbRead for PgStore {
               , deposit_req.recipient
               , deposit_req.amount
               , deposit_req.max_fee
-            FROM
-                bitcoin_blockchain_of($1, $2) AS bc_blocks
-            INNER JOIN
-                bitcoin_transactions AS bc_trx
-                    ON bc_trx.block_hash = bc_blocks.block_hash
-            INNER JOIN
-                sweep_transactions AS sweep_tx
-                    ON bc_trx.txid = sweep_tx.txid
-            INNER JOIN
-                swept_deposits AS swept_deposit
-                    ON swept_deposit.sweep_transaction_txid = sweep_tx.txid
-            INNER JOIN
-                deposit_requests AS deposit_req
-                    ON deposit_req.txid = swept_deposit.deposit_request_txid
-                    AND deposit_req.output_index = swept_deposit.deposit_request_output_index
-            LEFT JOIN
-                completed_deposit_events AS cde
-                    ON cde.bitcoin_txid = deposit_req.txid
-                    AND cde.output_index = deposit_req.output_index
-            LEFT JOIN
-                stacks_blockchain_of($3, $1, $2) sb
-                    ON sb.block_hash = cde.block_hash
+            FROM bitcoin_blockchain AS bc_blocks
+            INNER JOIN bitcoin_transactions AS bc_trx USING (block_hash)
+            INNER JOIN bitcoin_tx_inputs AS bti USING (txid)
+            INNER JOIN deposit_requests AS deposit_req
+              ON deposit_req.txid = bti.prevout_txid
+             AND deposit_req.output_index = bti.prevout_output_index
+            LEFT JOIN completed_deposit_events AS cde
+              ON cde.bitcoin_txid = deposit_req.txid
+             AND cde.output_index = deposit_req.output_index
+            LEFT JOIN stacks_blockchain AS sb 
+              ON sb.block_hash = cde.block_hash
             GROUP BY
                 bc_trx.txid
               , bc_trx.block_hash
@@ -1906,124 +1835,6 @@ impl super::DbRead for PgStore {
         // `get_swept_deposit_requests()`, but using withdrawal tables instead
         // of deposit.
         unimplemented!()
-    }
-
-    async fn get_latest_sweep_transaction(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-    ) -> Result<Option<model::SweepTransaction>, Error> {
-        let Some((txid,)): Option<(model::BitcoinTxId,)> = sqlx::query_as(
-            "
-            SELECT
-                tx.txid
-            FROM bitcoin_blockchain_of($1, $2) AS bitcoin
-            JOIN sweep_transactions AS tx ON bitcoin.block_hash = tx.created_at_block_hash
-            ORDER BY tx.created_at DESC",
-        )
-        .bind(chain_tip)
-        .bind(i32::from(context_window))
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?
-        else {
-            return Ok(None);
-        };
-
-        self.get_sweep_transaction_by_txid(&txid).await
-    }
-
-    async fn get_latest_unconfirmed_sweep_transactions(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        prevout_txid: &model::BitcoinTxId,
-    ) -> Result<Vec<model::SweepTransaction>, Error> {
-        // Attempt to find the first sweep transaction in the chain which has
-        // the provided `prevout_txid` as its input. Since there can be multiple
-        // sweep transactions for the same prevout (if there was an RBF), we
-        // sort these by the created_at timestamp and take the latest one.
-        let first = sqlx::query_scalar::<_, model::BitcoinTxId>(
-            "
-            SELECT txid
-            FROM sweep_transactions
-            WHERE signer_prevout_txid = $1
-            ORDER BY created_at DESC
-            LIMIT 1;
-        ",
-        )
-        .bind(prevout_txid)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        // If we didn't find any matching sweep transactions, we return an empty
-        // list.
-        let Some(first) = first else {
-            return Ok(Vec::new());
-        };
-
-        // Otherwise, we recursively find all sweep transaction ids that are
-        // chained from the first one. As a precaution, this query also filters
-        // out any sweep transactions that have already been confirmed on the
-        // Bitcoin blockchain.
-        let infos: Vec<(model::BitcoinTxId, i32)> = sqlx::query_as(
-            "
-            WITH RECURSIVE sweep_txs AS (
-                SELECT
-                    txid
-                  , signer_prevout_txid
-                  , 1 AS number
-                FROM sweep_transactions
-                WHERE
-                    txid = $1
-
-                UNION ALL
-
-                SELECT
-                    tx.txid
-                  , tx.signer_prevout_txid
-                  ,  last.number + 1
-                FROM sweep_transactions tx
-                INNER JOIN sweep_txs last
-                    ON tx.signer_prevout_txid = last.txid
-            ),
-            canonical_txs AS (
-                SELECT bt.txid
-                FROM bitcoin_blockchain_of($2, $3) bc
-                INNER JOIN bitcoin_transactions bt
-                    ON bt.block_hash = bc.block_hash
-            )
-
-            SELECT
-                sweep_txs.txid
-              , number
-            FROM sweep_txs
-            LEFT JOIN canonical_txs AS btc_tx
-                ON btc_tx.txid = sweep_txs.txid
-            WHERE btc_tx.txid IS NULL
-            ORDER BY number ASC;
-        ",
-        )
-        .bind(first)
-        .bind(chain_tip)
-        .bind(i32::from(context_window))
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        // Then we fetch the sweep transactions themselves. This implementation
-        // is optimized for simplicity and code re-use, not for performance.
-        let mut sweep_transactions = Vec::new();
-        for txid in infos {
-            let tx = self
-                .get_sweep_transaction_by_txid(&txid.0)
-                .await?
-                .ok_or(Error::MissingSweepTransaction(*txid.0))?;
-            sweep_transactions.push(tx);
-        }
-
-        Ok(sweep_transactions)
     }
 
     async fn get_deposit_request(
@@ -2764,108 +2575,6 @@ impl super::DbWrite for PgStore {
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
-
-    async fn write_sweep_transaction(
-        &self,
-        transaction: &model::SweepTransaction,
-    ) -> Result<(), Error> {
-        // We're doing multiple inserts here so we wrap them in a transaction.
-        let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
-
-        sqlx::query(
-            "
-            INSERT INTO sweep_transactions (
-                txid
-              , signer_prevout_txid
-              , signer_prevout_output_index
-              , signer_prevout_amount
-              , signer_prevout_script_pubkey
-              , amount
-              , fee
-              , vsize
-              , created_at_block_hash
-              , market_fee_rate
-            )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            ON CONFLICT DO NOTHING;
-        ",
-        )
-        .bind(transaction.txid)
-        .bind(transaction.signer_prevout_txid)
-        .bind(
-            i32::try_from(transaction.signer_prevout_output_index)
-                .map_err(Error::ConversionDatabaseInt)?,
-        )
-        .bind(
-            i64::try_from(transaction.signer_prevout_amount)
-                .map_err(Error::ConversionDatabaseInt)?,
-        )
-        .bind(transaction.signer_prevout_script_pubkey.clone())
-        .bind(i64::try_from(transaction.amount).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(transaction.fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i32::try_from(transaction.vsize).map_err(Error::ConversionDatabaseInt)?)
-        .bind(transaction.created_at_block_hash)
-        .bind(transaction.market_fee_rate)
-        .execute(&mut *tx)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        // Insert the swept deposits.
-        for deposit in transaction.swept_deposits.iter() {
-            sqlx::query(
-                "
-                INSERT INTO swept_deposits (
-                    sweep_transaction_txid
-                  , input_index
-                  , deposit_request_txid
-                  , deposit_request_output_index
-                )
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT DO NOTHING;
-            ",
-            )
-            .bind(transaction.txid)
-            .bind(i32::try_from(deposit.input_index).map_err(Error::ConversionDatabaseInt)?)
-            .bind(deposit.deposit_request_txid)
-            .bind(
-                i32::try_from(deposit.deposit_request_output_index)
-                    .map_err(Error::ConversionDatabaseInt)?,
-            )
-            .execute(&mut *tx)
-            .await
-            .map_err(Error::SqlxQuery)?;
-        }
-
-        // Insert the serviced withdrawals.
-        for withdrawal in transaction.swept_withdrawals.iter() {
-            sqlx::query(
-                "
-                INSERT INTO swept_withdrawals (
-                    sweep_transaction_txid
-                  , output_index
-                  , withdrawal_request_id
-                  , withdrawal_request_block_hash
-                )
-                VALUES ($1, $2, $3, $4)
-                ON CONFLICT DO NOTHING;
-            ",
-            )
-            .bind(transaction.txid)
-            .bind(i32::try_from(withdrawal.output_index).map_err(Error::ConversionDatabaseInt)?)
-            .bind(
-                i64::try_from(withdrawal.withdrawal_request_id)
-                    .map_err(Error::ConversionDatabaseInt)?,
-            )
-            .bind(withdrawal.withdrawal_request_block_hash)
-            .execute(&mut *tx)
-            .await
-            .map_err(Error::SqlxQuery)?;
-        }
-
-        tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
 
         Ok(())
     }

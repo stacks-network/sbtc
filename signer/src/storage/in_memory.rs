@@ -110,10 +110,6 @@ pub struct Store {
     /// more than one completed-deposit event because of reorgs.
     pub completed_deposit_events: HashMap<OutPoint, CompletedDepositEvent>,
 
-    /// sBTC Bitcoin sweep transactions which have been broadcast to the
-    /// Bitcoin network, but not necessarily confirmed.
-    pub sweep_transactions: Vec<model::SweepTransaction>,
-
     /// Bitcoin transaction outputs
     pub bitcoin_outputs: HashMap<model::BitcoinTxId, model::TxOutput>,
 
@@ -874,42 +870,6 @@ impl super::DbRead for SharedStore {
         //     .collect::<Result<Vec<_>, Error>>()
     }
 
-    async fn get_latest_sweep_transaction(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-    ) -> Result<Option<model::SweepTransaction>, Error> {
-        let store = self.lock().await;
-        let bitcoin_blocks = &store.bitcoin_blocks;
-        let sweep_txs = &store.sweep_transactions;
-        let first = bitcoin_blocks.get(chain_tip);
-
-        let package = std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
-            .take(context_window as usize)
-            .find_map(|block| {
-                sweep_txs
-                    .iter()
-                    .find(|tx| tx.created_at_block_hash == block.block_hash)
-                    .cloned()
-            });
-
-        Ok(package)
-    }
-
-    async fn get_latest_unconfirmed_sweep_transactions(
-        &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _context_window: u16,
-        _prevout_txid: &model::BitcoinTxId,
-    ) -> Result<Vec<model::SweepTransaction>, Error> {
-        // TODO: This should probably be implemented at some point. It turned
-        // rather complex to solve at the moment due to the new constraints
-        // dealing with reorgs, so I'm postponing it for now and returning an
-        // empty list. This will result in the coordinator using `None` for last
-        // fees, but this seems OK for all current tests.
-        Ok(Vec::new())
-    }
-
     async fn get_deposit_request(
         &self,
         txid: &model::BitcoinTxId,
@@ -1223,13 +1183,6 @@ impl super::DbWrite for SharedStore {
             .await
             .bitcoin_prevouts
             .insert(prevout.txid, prevout.clone());
-
-        Ok(())
-    }
-
-    async fn write_sweep_transaction(&self, tx: &model::SweepTransaction) -> Result<(), Error> {
-        let mut store = self.lock().await;
-        store.sweep_transactions.push(tx.clone());
 
         Ok(())
     }
