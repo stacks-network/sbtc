@@ -126,7 +126,7 @@
 						(get sender individual-transfer) 
 						(get to individual-transfer) 
 						(get memo individual-transfer)) 
-				(err (+ ERR_TRANSFER_INDEX_PREFIX (+ u10 index))))
+				(err (+ ERR_TRANSFER_INDEX_PREFIX index)))
                 (ok (+ index u1))
             )
         err-response

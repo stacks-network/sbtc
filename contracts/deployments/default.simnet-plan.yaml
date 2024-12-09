@@ -71,18 +71,3 @@ plan:
     - id: 2
       transactions: []
       epoch: "3.0"
-    - id: 3
-      transactions: []
-      epoch: "3.0"
-    - id: 4
-      transactions: []
-      epoch: "3.0"
-    - id: 5
-      transactions: []
-      epoch: "3.0"
-    - id: 6
-      transactions: []
-      epoch: "3.0"
-    - id: 7
-      transactions: []
-      epoch: "3.0"
