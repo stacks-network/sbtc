@@ -251,12 +251,7 @@ async fn link_blocks() {
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
 
-    let nakamoto_start_height = 30;
-    let stacks_client = StacksClient::new(
-        Url::parse("http://localhost:20443").unwrap(),
-        nakamoto_start_height,
-    )
-    .unwrap();
+    let stacks_client = StacksClient::new(Url::parse("http://localhost:20443").unwrap()).unwrap();
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
