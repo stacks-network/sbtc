@@ -1,13 +1,13 @@
 use std::cmp::Ordering;
 
+use sbtc::testing;
+use sbtc::testing::deposits::TxSetup;
+use stacks_common::codec::StacksMessageCodec as _;
 use testing_emily_client::models::{Fulfillment, Status, UpdateDepositsRequestBody};
 use testing_emily_client::{
     apis::{self, configuration::Configuration},
     models::{CreateDepositRequestBody, Deposit, DepositInfo, DepositParameters, DepositUpdate},
 };
-use sbtc::testing;
-use sbtc::testing::deposits::TxSetup;
-use stacks_common::codec::StacksMessageCodec as _;
 
 use crate::common::{clean_setup, StandardError};
 
