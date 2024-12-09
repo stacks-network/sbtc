@@ -40,7 +40,7 @@
         (asserts! (is-eq (len new-aggregate-pubkey) key-size) ERR_KEY_SIZE)
 
         ;; Call into .sbtc-registry to update the keys & address
-        (ok (try! (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey new-signature-threshold)))
+        (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey new-signature-threshold)
     )
 )
 
