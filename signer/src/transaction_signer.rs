@@ -255,12 +255,26 @@ where
                     .handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
                     .await;
 
+                let status = if pre_validation_status.is_ok() {
+                    "success"
+                } else {
+                    "failure"
+                };
                 metrics::histogram!(
-                    "validation_duration_seconds",
+                    crate::metrics::VALIDATION_DURATION_SECONDS,
                     "blockchain" => "bitcoin",
-                    "kind" => "presign",
+                    "kind" => "sweep-presign",
+                    "status" => status,
                 )
                 .record(instant.elapsed());
+
+                metrics::counter!(
+                    crate::metrics::SIGN_REQUESTS_TOTAL,
+                    "blockchain" => "bitcoin",
+                    "kind" => "sweep-presign",
+                    "status" => status,
+                )
+                .increment(1);
                 pre_validation_status?;
             }
             // Message types ignored by the transaction signer
@@ -443,13 +457,13 @@ where
             .await;
 
         metrics::histogram!(
-            "validation_duration_seconds",
+            crate::metrics::VALIDATION_DURATION_SECONDS,
             "blockchain" => "stacks",
             "kind" => request.tx_kind(),
         )
         .record(instant.elapsed());
         metrics::counter!(
-            "sign_requests_total",
+            crate::metrics::SIGN_REQUESTS_TOTAL,
             "blockchain" => "stacks",
             "kind" => request.tx_kind(),
             "status" => if validation_status.is_ok() { "success" } else { "failed" },
@@ -648,9 +662,24 @@ where
                 }
 
                 let db = self.context.get_storage();
-                metrics::counter!("sign_requests_total", "blockchain" => "bitcoin").increment(1);
+                let sig_hash = &request.message;
+                let validation_outcome = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
 
-                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+                let validation_status = match &validation_outcome {
+                    Ok(()) => "success",
+                    Err(Error::SigHashConversion(_)) => "improper-sighash",
+                    Err(Error::UnknownSigHash(_)) => "unknown-sighash",
+                    Err(Error::InvalidSigHash(_)) => "invalid-sighash",
+                    Err(_) => "unexpected-failure",
+                };
+
+                metrics::counter!(
+                    crate::metrics::SIGN_REQUESTS_TOTAL,
+                    "blockchain" => "bitcoin",
+                    "kind" => "sweep",
+                    "status" => validation_status,
+                )
+                .increment(1);
 
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
@@ -678,25 +707,7 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let sig_hash = &request.message;
-                let validation_outcome = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
-
-                let validation_status = match &validation_outcome {
-                    Ok(()) => "success",
-                    Err(Error::SigHashConversion(_)) => "improper-sighash",
-                    Err(Error::UnknownSigHash(_)) => "unknown-sighash",
-                    Err(Error::InvalidSigHash(_)) => "invalid-sighash",
-                    Err(_) => "unexpected-failure",
-                };
-
-                metrics::counter!(
-                    "transaction_validation_total",
-                    "blockchain" => "bitcoin",
-                    "status" => validation_status,
-                )
-                .increment(1);
-
-                validation_outcome?;
+                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
                 self.relay_message(msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
