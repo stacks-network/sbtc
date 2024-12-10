@@ -36,10 +36,3 @@ clarity_version = 3
 epoch = 3.0
 [repl.analysis]
 passes = []
-
-[repl.analysis.check_checker]
-strict = false
-trusted_sender = false
-allow_unchecked_data = false
-trusted_caller = true
-callee_filter = true
