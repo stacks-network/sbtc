@@ -162,7 +162,6 @@
       (id (increment-last-withdrawal-request-id))
     )
     (try! (is-protocol-caller))
-    ;; #[allow(unchecked_data)]
     (map-insert withdrawal-requests id {
       amount: amount,
       max-fee: max-fee,
@@ -188,7 +187,6 @@
 ;;
 ;; This function will emit a print event with the topic
 ;; "withdrawal-accept".
-;; #[allow(unchecked_data)]
 (define-public (complete-withdrawal-accept
     (request-id uint) 
     (bitcoin-txid (buff 32))
@@ -228,7 +226,6 @@
 ;;
 ;; This function will emit a print event with the topic
 ;; "withdrawal-reject".
-;; #[allow(unchecked_data)]
 (define-public (complete-withdrawal-reject
     (request-id uint) 
     (signer-bitmap uint)
@@ -253,7 +250,6 @@
 ;; 
 ;; This function does not handle validation or moving the funds.
 ;; Instead, it is purely for the purpose of storing the completed deposit.
-;; #[allow(unchecked_data)]
 (define-public (complete-deposit
     (txid (buff 32))
     (vout-index uint)
@@ -288,7 +284,6 @@
 
 ;; Rotate the signer set, multi-sig principal, & aggregate pubkey
 ;; This function can only be called by the bootstrap-signers contract.
-;; #[allow(unchecked_data)]
 (define-public (rotate-keys 
     (new-keys (list 128 (buff 33)))
     (new-address principal)
