@@ -301,7 +301,7 @@ where
         }
 
         tracing::debug!("we are the coordinator, we may need to coordinate DKG");
-        metrics::counter!("coordinator_tenures_total").increment(1);
+        metrics::counter!(crate::metrics::COORDINATOR_TENURES_TOTAL).increment(1);
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
         // we are the coordinator, we should coordinate DKG.
@@ -542,8 +542,8 @@ where
             .await?;
 
             metrics::counter!(
-                "transactions_submitted_total",
-                "blockchain" => "stacks",
+                crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
+                "blockchain" => "bitcoin",
                 "status" => "success",
             )
             .increment(1);
@@ -643,15 +643,10 @@ where
             let process_request_fut =
                 self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
 
-            match process_request_fut.await {
+            let status = match process_request_fut.await {
                 Ok(txid) => {
                     tracing::info!(%txid, "successfully submitted complete-deposit transaction");
-                    metrics::counter!(
-                        "transactions_submitted_total",
-                        "blockchain" => "stacks",
-                        "status" => "success",
-                    )
-                    .increment(1);
+                    "success"
                 }
                 Err(error) => {
                     tracing::warn!(
@@ -660,15 +655,17 @@ where
                         vout = %outpoint.vout,
                         "could not process the stacks sign request for a deposit"
                     );
-                    metrics::counter!(
-                        "transactions_submitted_total",
-                        "blockchain" => "stacks",
-                        "status" => "failure",
-                    )
-                    .increment(1);
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                    "failure"
                 }
-            }
+            };
+
+            metrics::counter!(
+                crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
+                "blockchain" => "stacks",
+                "status" => status,
+            )
+            .increment(1);
         }
 
         Ok(())
@@ -731,13 +728,13 @@ where
             .await?;
 
         metrics::histogram!(
-            "signing_round_duration_seconds",
+            crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
             "blockchain" => "stacks",
             "kind" => kind,
         )
         .record(instant.elapsed());
         metrics::counter!(
-            "signing_rounds_completed_total",
+            crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
             "blockchain" => "stacks",
             "kind" => kind,
         )
@@ -915,14 +912,14 @@ where
             .await?;
 
         metrics::histogram!(
-            "signing_round_duration_seconds",
+            crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
             "blockchain" => "bitcoin",
             "kind" => "sweep",
         )
         .record(instant.elapsed());
 
         metrics::counter!(
-            "signing_rounds_completed_total",
+            crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
             "blockchain" => "bitcoin",
             "kind" => "sweep",
         )
@@ -956,13 +953,13 @@ where
                 .await?;
 
             metrics::histogram!(
-                "signing_round_duration_seconds",
+                crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
                 "blockchain" => "bitcoin",
                 "kind" => "sweep",
             )
             .record(instant.elapsed());
             metrics::counter!(
-                "signing_rounds_completed_total",
+                crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
                 "blockchain" => "bitcoin",
                 "kind" => "sweep",
             )
@@ -1002,7 +999,7 @@ where
         };
 
         metrics::counter!(
-            "transactions_submitted_total",
+            crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
             "blockchain" => "bitcoin",
             "status" => status,
         )

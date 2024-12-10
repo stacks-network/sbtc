@@ -80,7 +80,7 @@ enum UpdateResult {
 pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
     tracing::debug!("received a new block event from stacks-core");
     metrics::counter!(
-        "blocks_observed_total",
+        crate::metrics::BLOCKS_OBSERVED_TOTAL,
         "blockchain" => "stacks",
     )
     .increment(1);

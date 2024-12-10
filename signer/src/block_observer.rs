@@ -138,7 +138,7 @@ where
                 Ok(Some(Ok(block_hash))) => {
                     tracing::info!("observed new bitcoin block from stream");
                     metrics::counter!(
-                        "blocks_observed_total",
+                        crate::metrics::BLOCKS_OBSERVED_TOTAL,
                         "blockchain" => "bitcoin",
                     )
                     .increment(1);
@@ -223,12 +223,12 @@ impl<C: Context, B> BlockObserver<C, B> {
                     deposit_requests.push(deposit);
                     "success"
                 }
-                Ok(None) => "deposit-unconfirmed",
-                Err(_) => "unsuccessfully-deposit-validation",
+                Ok(None) => "unconfirmed",
+                Err(_) => "failed",
             };
 
             metrics::counter!(
-                "deposit-requests-total",
+                crate::metrics::DEPOSIT_REQUESTS_TOTAL,
                 "blockchain" => "bitcoin",
                 "status" => deposit_status,
             )
