@@ -25,6 +25,10 @@ RUN cargo build --bin signer
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS signer
 COPY --from=build /code/sbtc/target/debug/signer /usr/local/bin/signer
-RUN apt-get update && apt-get install -y ca-certificates --no-install-recommends && \
+
+# ca-certificates is required to establish TLS connections.
+# gettext provides envsubst
+
+RUN apt-get update && apt-get install -y ca-certificates gettext --no-install-recommends && \
         apt-get clean && rm -rf /var/lib/apt/lists/*
 CMD ["/usr/local/bin/signer --config /signer-config.toml --migrate-db"]
