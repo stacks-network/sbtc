@@ -1,11 +1,8 @@
 ;; sBTC Bootstrap Signers contract
 
 ;; constants
-
 ;; The required length of public keys
 (define-constant key-size u33)
-
-;; errors
 
 ;; if err is u200, it's the agg key
 ;; if err is u210>, it's the key at index (err - 210)
@@ -17,14 +14,6 @@
 ;; equal to 100% of the total number of signer keys.
 (define-constant ERR_SIGNATURE_THRESHOLD (err u202))
 
-;; data vars
-;;
-
-;; data maps
-;;
-
-;; public functions
-
 ;; Rotate keys
 ;; Used to rotate the keys of the signers. This is called whenever
 ;; the signer set is updated.
@@ -35,15 +24,18 @@
   )
     (let 
         (
-            (current-signer-data (contract-call? .sbtc-registry get-current-signer-data))   
             (new-signer-principal (pubkeys-to-principal new-keys new-signature-threshold))
         )
+
+        ;; Check that more than 1 key is in the new set
+        (asserts! (> (len new-keys) u1) ERR_KEY_SIZE)
+
         ;; Check that the signature threshold is valid
         (asserts! (and (> new-signature-threshold (/ (len new-keys) u2))
                        (<= new-signature-threshold (len new-keys))) ERR_SIGNATURE_THRESHOLD)
 
-        ;; Check that the caller is the current signer principal
-        (asserts! (is-eq (get current-signer-principal current-signer-data) tx-sender) ERR_INVALID_CALLER)
+        ;; Check that the tx-sender is the current signer principal
+        (asserts! (is-eq (contract-call? .sbtc-registry get-current-signer-principal) tx-sender) ERR_INVALID_CALLER)
 
         ;; Checks that length of each key is exactly 33 bytes
         (try! (fold signer-key-length-check new-keys (ok u0)))
@@ -52,13 +44,22 @@
         (asserts! (is-eq (len new-aggregate-pubkey) key-size) ERR_KEY_SIZE)
 
         ;; Call into .sbtc-registry to update the keys & address
-        (ok (try! (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey new-signature-threshold)))
+        (contract-call? .sbtc-registry rotate-keys new-keys new-signer-principal new-aggregate-pubkey new-signature-threshold)
+    )
+)
+
+;; Update protocol contract
+;; Used to update one of the three protocol contracts
+(define-public (update-protocol-contract-wrapper (contract-type (buff 1)) (contract-address principal))
+    (begin
+        ;; Check that the tx-sender is the current signer principal
+        (asserts! (is-eq (contract-call? .sbtc-registry get-current-signer-principal) tx-sender) ERR_INVALID_CALLER)
+        ;; Call into .sbtc-registry to update the protocol contract
+        (contract-call? .sbtc-registry update-protocol-contract contract-type contract-address)
     )
 )
 
 ;; read only functions
-
-;; private functions
 
 ;; Signer Key Length Check
 ;; Checks that the length of each key is exactly 33 bytes
@@ -125,8 +126,6 @@
     (unwrap-panic (as-max-len? next u510))
   )
 )
-
-
 
 (define-read-only (bytes-len (bytes (buff 33)))
   (unwrap-panic (element-at BUFF_TO_BYTE (len bytes)))
