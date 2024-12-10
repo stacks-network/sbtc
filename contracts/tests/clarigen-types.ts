@@ -261,7 +261,7 @@ export const contracts = {
         Uint8Array.from([47]),
         Uint8Array.from([48]),
         Uint8Array.from([49]),
-        Uint8Array.from([51]),
+        Uint8Array.from([50]),
         Uint8Array.from([51]),
         Uint8Array.from([52]),
         Uint8Array.from([53]),
