@@ -464,7 +464,7 @@ pub async fn write_stacks_blocks(
 
 /// Write the bitcoin block to the database. We also write any
 /// transactions that are spend to any of the signers `scriptPubKey`s
-async fn write_bitcoin_block(
+pub async fn write_bitcoin_block(
     storage: &(impl DbRead + DbWrite),
     bitcoin_client: &impl BitcoinInteract,
     block: &bitcoin::Block,

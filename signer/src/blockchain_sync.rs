@@ -10,7 +10,7 @@ use crate::{
     context::Context,
     error::Error,
     stacks::api::{GetNakamotoStartHeight as _, StacksInteract as _},
-    storage::{model, DbRead, DbWrite},
+    storage::{model, DbRead as _},
 };
 
 /// Back-fills Bitcoin and Stacks blockchains' blocks from the current Stacks
@@ -195,17 +195,8 @@ pub async fn sync_bitcoin_blocks(
 
         // Write the block to storage. At present there are no FK's for parent
         // blocks, so it's okay that we're writing them in reverse order.
-        storage.write_bitcoin_block(&block.clone().into()).await?;
-
-        // Extract any relevant sBTC transactions from the block and write them
-        // to the database.
-        block_observer::extract_sbtc_transactions(
-            &storage,
-            &bitcoin_client,
-            block.block_hash(),
-            &block.txdata,
-        )
-        .await?;
+        // This method also extracts sBTC-related transactions.
+        block_observer::write_bitcoin_block(&storage, &bitcoin_client, &block).await?;
     }
 }
 
