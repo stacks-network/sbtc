@@ -867,11 +867,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ApiGatewayKey": []
-          }
-        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -948,6 +943,11 @@
             }
           }
         },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
