@@ -252,7 +252,7 @@ listen_on = []
 #
 # Format: ["<protocol>:<ip>:<port>", ...] (see `listen_on` for protocol options)
 # Default: <none>
-# Required: false
+# Required: true (but can be empty)
 # Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
 public_endpoints = []
 
