@@ -119,6 +119,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Determine the Nakamoto activation height.
     tracing::info!("determining the nakamoto activation height");
     let nakamoto_activation_height = determine_nakamoto_activation_height(&context).await?;
+    context
+        .state()
+        .set_nakamoto_activation_height(nakamoto_activation_height);
     tracing::info!(%nakamoto_activation_height, "nakamoto activation height determined");
 
     // Wait for the Stacks node to reach the Nakamoto activation height.

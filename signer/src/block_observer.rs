@@ -28,7 +28,6 @@ use crate::context::SbtcLimits;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
-use crate::stacks::api::GetNakamotoStartHeight as _;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
@@ -280,15 +279,10 @@ impl<C: Context, B> BlockObserver<C, B> {
     async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
         let storage = self.context.get_storage_mut();
         let bitcoin_client = self.context.get_bitcoin_client();
-        let stacks_client = self.context.get_stacks_client();
 
         tracing::info!("processing bitcoin block");
 
-        let until_bitcoin_height = stacks_client
-            .get_pox_info()
-            .await?
-            .nakamoto_start_height()
-            .ok_or(Error::MissingNakamotoStartHeight)?;
+        let until_bitcoin_height = self.context.state().nakamoto_activation_height();
 
         // Get the current tenure info (incl. tip details) from the Stacks node.
         let stacks_client = self.context.get_stacks_client();
