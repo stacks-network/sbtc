@@ -1,7 +1,25 @@
-import { alice, bob, charlie, deployer, deposit, errors, getCurrentBurnInfo, token, tokenTest } from "./helpers";
-import { test, expect, describe } from "vitest";
-import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
 import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import {
+  filterEvents,
+  FtTransferEvent,
+  rov,
+  SmartContractEvent,
+  txErr,
+  txOk,
+} from "@clarigen/test";
+import { bufferCV } from "@stacks/transactions";
+import { describe, expect, test } from "vitest";
+import {
+  alice,
+  bob,
+  charlie,
+  deployer,
+  deposit,
+  errors,
+  getCurrentBurnInfo,
+  token,
+  tokenTest,
+} from "./helpers";
 
 describe("sBTC token contract", () => {
   describe("token basics", () => {
@@ -62,6 +80,7 @@ describe("sBTC token contract", () => {
         }),
         deployer
       );
+
       const printEvents = filterEvents(
         receipt.events,
         CoreNodeEventType.ContractEvent
@@ -82,16 +101,36 @@ describe("sBTC token contract", () => {
         burnHeight: BigInt(burnHeight),
         sweepTxid: new Uint8Array(32).fill(1),
       });
+
+      // transfer
+      const memo = new Uint8Array([0]);
       const receipt1 = txOk(
         token.transfer({
           amount: 999n,
           sender: alice,
           recipient: bob,
-          memo: new Uint8Array(1).fill(0),
+          memo,
         }),
         alice
       );
       expect(receipt1.value).toEqual(true);
+
+      // verify events
+      expect((receipt1.events[0] as FtTransferEvent).data).toStrictEqual({
+        sender: alice,
+        recipient: bob,
+        asset_identifier: `${token.identifier}::${token.fungible_tokens[0].name}`,
+        amount: "999",
+      });
+
+      expect((receipt1.events[1] as SmartContractEvent).data).toStrictEqual({
+        contract_identifier: token.identifier,
+        topic: "print",
+        value: bufferCV(memo),
+        raw_value: "0x020000000100",
+      });
+
+      // verify balance
       const receipt2 = rov(
         token.getBalance({
           who: bob,
@@ -142,13 +181,13 @@ describe("sBTC token contract", () => {
               amount: 100n,
               sender: alice,
               to: bob,
-              memo: null
+              memo: null,
             },
             {
               amount: 200n,
               sender: alice,
               to: charlie,
-              memo: null
+              memo: null,
             },
           ],
         }),
@@ -212,13 +251,13 @@ describe("sBTC token contract", () => {
               amount: 100n,
               sender: alice,
               to: bob,
-              memo: null
+              memo: null,
             },
             {
               amount: 100n,
               sender: alice,
               to: charlie,
-              memo: null
+              memo: null,
             },
           ],
         }),
@@ -269,13 +308,13 @@ describe("sBTC token contract", () => {
               amount: 100n,
               sender: alice,
               to: bob,
-              memo: null
+              memo: null,
             },
             {
               amount: 100n,
               sender: bob,
               to: charlie,
-              memo: null
+              memo: null,
             },
           ],
         }),
