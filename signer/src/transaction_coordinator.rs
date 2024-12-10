@@ -566,13 +566,6 @@ where
             )
             .await?;
 
-            metrics::counter!(
-                crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
-                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
-                "status" => "success",
-            )
-            .increment(1);
-
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
             // but emily deposit still marked as pending.
@@ -752,11 +745,7 @@ where
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
             .await;
 
-        let status = if tx.is_ok() {
-            "success"
-        } else {
-            "failure"
-        };
+        let status = if tx.is_ok() { "success" } else { "failure" };
 
         metrics::histogram!(
             crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
