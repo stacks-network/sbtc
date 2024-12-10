@@ -12,7 +12,7 @@ sinks:
     inputs:
       - sbtc_signer_logs
     region: eu-west-1
-    group_name: sbtc-testnet-partner-signers
+    group_name: sbtc-mainnet-partner-signers
     stream_name: "${STREAM_NAME}"
     healthcheck: false  # We don't give the user permission to describe groups
     encoding:
