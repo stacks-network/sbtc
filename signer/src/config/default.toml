@@ -177,6 +177,15 @@ bitcoin_presign_request_max_duration = 30
 # Environment: SIGNER_SIGNER__DKG_MAX_DURATION
 dkg_max_duration = 120
 
+# The minimum bitcoin block height for which the sbtc signers will backfill
+# bitcoin blocks to. The signers may not work if operated before this
+# height. Defaults to the Nakamoto start height returned from the stacks
+# node if not present.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__SBTC_START_HEIGHT
+# sbtc_start_height = 232
+
 # The amount of time, in seconds, the signer should pause for after
 # receiving a DKG begin message before relaying to give the other signers.
 #
