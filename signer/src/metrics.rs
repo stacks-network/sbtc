@@ -32,6 +32,9 @@ pub const SIGNING_ROUNDS_COMPLETED_TOTAL: &str = "signing_rounds_completed_total
 /// The total number of tenures that this signer has served as coordinator.
 pub const COORDINATOR_TENURES_TOTAL: &str = "coordinator_tenures_total";
 
+/// The total number of sign requests received from the signer.
+pub const SIGN_REQUESTS_TOTAL: &str = "sign_requests_total";
+
 /// The amount of time it took to complete a signing round in seconds. This
 /// includes WSTS and "regular" multi-sig signing rounds on stacks. We use
 /// a label to distinguish between the two.
@@ -41,8 +44,11 @@ pub const SIGNING_ROUND_DURATION_SECONDS: &str = "signing_round_duration_seconds
 /// validation.
 pub const VALIDATION_DURATION_SECONDS: &str = "validation_duration_seconds";
 
-/// The total number of sign requests received from the signer.
-pub const SIGN_REQUESTS_TOTAL: &str = "sign_requests_total";
+/// Label for bitcoin blockchain based metrics
+pub const BITCOIN_BLOCKCHAIN: &str = "bitcoin";
+
+/// Label for stacks blockchain based metrics.
+pub const STACKS_BLOCKCHAIN: &str = "stacks";
 
 /// Set up a prometheus exporter for metrics.
 pub fn setup_metrics(prometheus_exporter_endpoint: Option<SocketAddr>) {

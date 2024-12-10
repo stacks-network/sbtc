@@ -262,7 +262,7 @@ where
                 };
                 metrics::histogram!(
                     crate::metrics::VALIDATION_DURATION_SECONDS,
-                    "blockchain" => "bitcoin",
+                    "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                     "kind" => "sweep-presign",
                     "status" => status,
                 )
@@ -270,7 +270,7 @@ where
 
                 metrics::counter!(
                     crate::metrics::SIGN_REQUESTS_TOTAL,
-                    "blockchain" => "bitcoin",
+                    "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                     "kind" => "sweep-presign",
                     "status" => status,
                 )
@@ -458,13 +458,13 @@ where
 
         metrics::histogram!(
             crate::metrics::VALIDATION_DURATION_SECONDS,
-            "blockchain" => "stacks",
+            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
             "kind" => request.tx_kind(),
         )
         .record(instant.elapsed());
         metrics::counter!(
             crate::metrics::SIGN_REQUESTS_TOTAL,
-            "blockchain" => "stacks",
+            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
             "kind" => request.tx_kind(),
             "status" => if validation_status.is_ok() { "success" } else { "failed" },
         )
@@ -675,7 +675,7 @@ where
 
                 metrics::counter!(
                     crate::metrics::SIGN_REQUESTS_TOTAL,
-                    "blockchain" => "bitcoin",
+                    "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                     "kind" => "sweep",
                     "status" => validation_status,
                 )

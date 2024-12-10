@@ -478,12 +478,37 @@ where
             Ok(())
         };
 
+        let instant = std::time::Instant::now();
+
         // Wait for the future to complete with a timeout
-        tokio::time::timeout(self.bitcoin_presign_request_max_duration, future)
+        let res = tokio::time::timeout(self.bitcoin_presign_request_max_duration, future)
             .await
             .map_err(|_| {
                 Error::CoordinatorTimeout(self.bitcoin_presign_request_max_duration.as_secs())
-            })?
+            });
+
+        let status = match &res {
+            Ok(Ok(_)) => "success",
+            Ok(Err(_)) => "failure",
+            Err(_) => "timeout",
+        };
+
+        metrics::histogram!(
+            crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
+            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+            "kind" => "sweep-presign",
+            "status" => status,
+        )
+        .record(instant.elapsed());
+        metrics::counter!(
+            crate::metrics::SIGN_REQUESTS_TOTAL,
+            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+            "kind" => "sweep-presign-broadcast",
+            "status" => status,
+        )
+        .increment(1);
+
+        res?
     }
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
@@ -543,7 +568,7 @@ where
 
             metrics::counter!(
                 crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
-                "blockchain" => "bitcoin",
+                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                 "status" => "success",
             )
             .increment(1);
@@ -662,7 +687,7 @@ where
 
             metrics::counter!(
                 crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
-                "blockchain" => "stacks",
+                "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
                 "status" => status,
             )
             .increment(1);
@@ -725,22 +750,30 @@ where
         let instant = std::time::Instant::now();
         let tx = self
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
-            .await?;
+            .await;
+
+        let status = if tx.is_ok() {
+            "success"
+        } else {
+            "failure"
+        };
 
         metrics::histogram!(
             crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
-            "blockchain" => "stacks",
+            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
             "kind" => kind,
+            "status" => status,
         )
         .record(instant.elapsed());
         metrics::counter!(
             crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
-            "blockchain" => "stacks",
+            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
             "kind" => kind,
+            "status" => status,
         )
         .increment(1);
 
-        match self.context.get_stacks_client().submit_tx(&tx).await {
+        match self.context.get_stacks_client().submit_tx(&tx?).await {
             Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
             Ok(SubmitTxResponse::Rejection(err)) => Err(err.into()),
             Err(err) => Err(err),
@@ -913,14 +946,14 @@ where
 
         metrics::histogram!(
             crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
-            "blockchain" => "bitcoin",
+            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
             "kind" => "sweep",
         )
         .record(instant.elapsed());
 
         metrics::counter!(
             crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
-            "blockchain" => "bitcoin",
+            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
             "kind" => "sweep",
         )
         .increment(1);
@@ -954,13 +987,13 @@ where
 
             metrics::histogram!(
                 crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
-                "blockchain" => "bitcoin",
+                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                 "kind" => "sweep",
             )
             .record(instant.elapsed());
             metrics::counter!(
                 crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
-                "blockchain" => "bitcoin",
+                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                 "kind" => "sweep",
             )
             .increment(1);
@@ -1000,7 +1033,7 @@ where
 
         metrics::counter!(
             crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
-            "blockchain" => "bitcoin",
+            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
             "status" => status,
         )
         .increment(1);

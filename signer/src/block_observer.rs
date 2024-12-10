@@ -139,7 +139,7 @@ where
                     tracing::info!("observed new bitcoin block from stream");
                     metrics::counter!(
                         crate::metrics::BLOCKS_OBSERVED_TOTAL,
-                        "blockchain" => "bitcoin",
+                        "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                     )
                     .increment(1);
 
@@ -229,7 +229,7 @@ impl<C: Context, B> BlockObserver<C, B> {
 
             metrics::counter!(
                 crate::metrics::DEPOSIT_REQUESTS_TOTAL,
-                "blockchain" => "bitcoin",
+                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
                 "status" => deposit_status,
             )
             .increment(1);
