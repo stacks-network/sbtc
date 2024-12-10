@@ -24,8 +24,6 @@ endpoints = [
     "http://TODO:20443",
 ]
 
-nakamoto_start_height = 56457
-
 [signer]
 # NOTE: Set through Environment: SIGNER_SIGNER__PRIVATE_KEY
 private_key = "0000000000000000000000000000000000000000000000000000000000000001"
@@ -68,4 +66,3 @@ seeds = [
     "tcp://176.34.190.109:4122" # Bitcoin L2 Labs testnet signer
 ]
 listen_on = ["tcp://0.0.0.0:4122"]
-public_endpoints = []
