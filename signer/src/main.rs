@@ -100,12 +100,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         context.state().current_signer_set().add_signer(signer);
     }
 
-    // Spawn the Stacks event observer server. This is spawned here because it
+    // Spawn the signer's API. This is spawned here because it
     // needs to be running before we start syncing the blockchains due to the
     // way the Stacks event observer works, i.e. the Stacks node will not
     // progress if it cannot send events to the observer and thus become out-
     // of-sync.
-    let stacks_event_observer_handle = tokio::spawn(run_api(context.clone()));
+    let signer_api_handle = tokio::spawn(run_api(context.clone()));
 
     // Pause until the Stacks node is fully-synced, otherwise we will not be
     // able to properly back-fill blocks and the sBTC signer will generally just
@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_shutdown_signal_watcher(context.clone()),
         // Due to the way Stacks event observers work, we needed to spawn this
         // prior to syncing the blockchains.
-        stacks_event_observer_handle,
+        signer_api_handle,
         // The rest of our services which run concurrently, and must all be
         // running for the signer to be operational.
         run_checked(run_libp2p_swarm, &context),
