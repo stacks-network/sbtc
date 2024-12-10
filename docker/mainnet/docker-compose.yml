@@ -29,6 +29,7 @@ x-common-vars:
 
 services:
   postgres:
+    container_name: postgres
     image: postgres:16.3-alpine
     stop_grace_period: 5s
     environment:
@@ -79,6 +80,7 @@ services:
       - "8801:8801" # So that Stacks event-observer can reach the sBTC signer
 
   blocklist-client:
+    container_name: blocklist-client
     image: blockstack/sbtc:blocklist-client-0.0.9-rc0
     entrypoint: "/usr/local/bin/blocklist-client"
     environment:
