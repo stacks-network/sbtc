@@ -21,6 +21,9 @@ archive first and then unzip its contents).
 | Bitcoin | [archive](https://bitcoin-chainstate-prod.s3.us-east-1.amazonaws.com/data.tar.gz)                    |
 | Stacks  | [archive](https://archive.hiro.so/mainnet/stacks-blockchain/mainnet-stacks-blockchain-latest.tar.gz) |
 
+Extract to `/mnt/bitcoin` and `/mnt/stacks` if using the provided Docker Compose
+configuration for the nodes as well.
+
 ## Configuration
 
 All configuration is handled through environmental variables, which are parsed
@@ -66,3 +69,24 @@ AWS_SECRET_ACCESS_KEY=
 Please refer to [this documentation
 page](https://github.com/stacks-network/docs/blob/feat/sbtc_signer_best_practices/guides-and-tutorials/sbtc/best_practices_for_running_an_sbtc_signer.md)
 for best practices.
+
+## Run the stack
+
+After creating the `.env` that includes the configuration, you can use the
+following to spin up the stack.
+
+```bash
+sudo docker compose --env-file .env up
+```
+
+### Run the Stacks and Bitcoin nodes too
+
+Alternatively, you can run the full stack (including Bitcoin and Stacks nodes)
+as follows:
+
+```bash
+sudo docker compose --env-file .env -f docker-compose.yml -f nodes/docker-compose.chains.yml up
+```
+
+This requires the chain-state for Bitcoin and Stacks to be present,
+respectively, at `/mnt/bitcoin` and `/mnt/stacks`.
