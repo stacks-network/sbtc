@@ -29,7 +29,7 @@
 # Environment: SIGNER_EMILY__ENDPOINTS
 # Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    "http://localhost:3031",
+    "http://testApiKey@localhost:3031",
 ]
 
 # !! ==============================================================================
