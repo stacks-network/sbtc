@@ -25,7 +25,6 @@ use warp::reply::{json, with_status, Reply};
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    security(("ApiGatewayKey" = []))
 )]
 #[instrument(skip(context))]
 pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
@@ -55,6 +54,7 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
+    security(("ApiGatewayKey" = []))
 )]
 #[instrument(skip(context))]
 pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::reply::Reply {

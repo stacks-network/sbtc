@@ -24,7 +24,7 @@ This endpoint does not need any parameter.
 
 ### Authorization
 
-[ApiGatewayKey](../README.md#ApiGatewayKey)
+No authorization required
 
 ### HTTP request headers
 
