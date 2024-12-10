@@ -55,13 +55,14 @@ plan:
             path: contracts/sbtc-deposit.clar
             clarity-version: 3
         - emulated-contract-publish:
-            contract-name: sbtc-token-test
-            emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
-            path: contracts/sbtc-token-test.clar
-        - emulated-contract-publish:
             contract-name: sbtc-deposit-update-test
             emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
             path: contracts/sbtc-deposit-update-test.clar
+            clarity-version: 3
+        - emulated-contract-publish:
+            contract-name: sbtc-token-test
+            emulated-sender: ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039
+            path: contracts/sbtc-token-test.clar
             clarity-version: 3
         - emulated-contract-publish:
             contract-name: sbtc-withdrawal
