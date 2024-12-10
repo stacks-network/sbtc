@@ -18,4 +18,8 @@ peer_port = 8333
 [connection_options]
 private_neighbors = false
 
-# TODO: Add event observer
+[[events_observer]]
+endpoint = "sbtc-signer:8801"
+events_keys = [
+    "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4.sbtc-registry::print",
+]
