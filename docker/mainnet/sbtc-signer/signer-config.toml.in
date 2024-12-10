@@ -206,3 +206,20 @@ seeds = [
 # Required: false
 # Environment: SIGNER_SIGNER__P2P__LISTEN_ON
 listen_on = ["tcp://0.0.0.0:4122"]
+
+
+# The publicly accessible network endpoint to advertise to other nodes.
+#
+# If this is not specified then the node will attempt to use other peers on the
+# network to determine its public endpoint. This is the recommended
+# configuration for most users.
+#
+# If your network uses an advanced configuration with separate inbound/outbound
+# addresses then you must specify this value with your inbound address and
+# configure port-forwarding as auto-discovery will report your outbound address.
+#
+# Format: ["<protocol>:<ip>:<port>", ...] (see `listen_on` for protocol options)
+# Default: <none>
+# Required: true (but can be empty)
+# Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
+public_endpoints = []
