@@ -168,6 +168,9 @@ pub async fn sync_bitcoin_blocks(
             return Err(Error::MissingBitcoinBlockHeight(next_bitcoin_block.into()));
         };
 
+        // TODO: I thought this would be a good check, but I ran into issues
+        // getting it to work properly so maybe my assumptions are wrong..?
+        //
         // If the block height reported by Bitcoin core doesn't match the
         // burnchain block height reported by the Stacks node, we fail the sync
         // as well as this is likely indicative that something is "off".
@@ -192,7 +195,17 @@ pub async fn sync_bitcoin_blocks(
 
         // Write the block to storage. At present there are no FK's for parent
         // blocks, so it's okay that we're writing them in reverse order.
-        storage.write_bitcoin_block(&block.into()).await?;
+        storage.write_bitcoin_block(&block.clone().into()).await?;
+
+        // Extract any relevant sBTC transactions from the block and write them
+        // to the database.
+        block_observer::extract_sbtc_transactions(
+            &storage,
+            &bitcoin_client,
+            block.block_hash(),
+            &block.txdata,
+        )
+        .await?;
     }
 }
 
