@@ -18,7 +18,9 @@ use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer;
+use signer::blockchain_sync::determine_nakamoto_activation_height;
 use signer::blockchain_sync::sync_blockchains;
+use signer::blockchain_sync::wait_for_nakamoto_activation_height;
 use signer::blockchain_sync::wait_for_stacks_node_to_report_full_sync;
 use signer::blocklist_client::BlocklistClient;
 use signer::config::Settings;
@@ -114,12 +116,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     wait_for_stacks_node_to_report_full_sync(&context).await?;
     tracing::info!("stacks node reports that is is up-to-date");
 
+    // Determine the Nakamoto activation height.
+    tracing::info!("determining the nakamoto activation height");
+    let nakamoto_activation_height = determine_nakamoto_activation_height(&context).await?;
+    tracing::info!(%nakamoto_activation_height, "nakamoto activation height determined");
+
+    // Wait for the Stacks node to reach the Nakamoto activation height.
+    wait_for_nakamoto_activation_height(&context, nakamoto_activation_height).await?;
+
     // Back-fill the Bitcoin and Stacks blockchains from the current Stacks tip
     // until the Nakamoto activation height.
     tracing::info!(
         "preparing to backfill bitcoin & stacks blockchains to the nakamoto activation height"
     );
-    sync_blockchains(&context).await?;
+    sync_blockchains(&context, nakamoto_activation_height).await?;
 
     // Run the application components concurrently. We're `join!`ing them here
     // so that every component can shut itself down gracefully when the shutdown

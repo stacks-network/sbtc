@@ -13,14 +13,10 @@ use crate::{
     storage::{model, DbRead as _},
 };
 
-/// Back-fills Bitcoin and Stacks blockchains' blocks from the current Stacks
-/// tip back to the Nakamoto activation height (in Bitcoin block height).
-///
-/// This method uses the Stacks node's RPC endpoints to retrieve the necessary
-/// information regarding the current chain tip, and proceeds to back-fill
-/// first the Bitcoin blockchain, and then the Stacks blockchain.
+/// Helper function to determine the Nakamoto activation height (in Bitcoin
+/// block height).
 #[tracing::instrument(skip_all)]
-pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
+pub async fn determine_nakamoto_activation_height(ctx: &impl Context) -> Result<u64, Error> {
     let mut term = ctx.get_termination_handle();
     let stacks_client = ctx.get_stacks_client();
 
@@ -31,44 +27,35 @@ pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
         loop {
             if let Ok(pox_info) = stacks_client.get_pox_info().await {
                 let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
-                    tracing::error!("missing nakamoto activation height, failing sync");
+                    tracing::error!("missing nakamoto activation height");
                     return Err(Error::MissingNakamotoStartHeight);
                 };
                 break nakamoto_activation_height;
             }
 
             tokio::select! {
-                _ = term.wait_for_shutdown() => return Ok(()),
+                _ = term.wait_for_shutdown() => return Err(Error::SignerShutdown),
                 _ = interval.tick() => {},
             }
         }
     };
-    tracing::debug!(%nakamoto_activation_height, "determined nakamoto activation height");
 
-    let mut interval = tokio::time::interval(Duration::from_secs(5));
-    loop {
-        if let Ok(node_info) = stacks_client.get_node_info().await {
-            if node_info.burn_block_height > nakamoto_activation_height {
-                tracing::info!(
-                    current_height = %node_info.burn_block_height,
-                    "stacks node has reached the nakamoto activation height"
-                );
+    Ok(nakamoto_activation_height)
+}
 
-                break;
-            }
-
-            tracing::info!(
-                current = %node_info.burn_block_height,
-                target = %nakamoto_activation_height,
-                "waiting for stacks node to reach nakamoto activation height"
-            );
-        }
-
-        tokio::select! {
-            _ = term.wait_for_shutdown() => return Ok(()),
-            _ = interval.tick() => {},
-        }
-    }
+/// Back-fills Bitcoin and Stacks blockchains' blocks from the current Stacks
+/// tip back to the Nakamoto activation height (in Bitcoin block height).
+///
+/// This method uses the Stacks node's RPC endpoints to retrieve the necessary
+/// information regarding the current chain tip, and proceeds to back-fill
+/// first the Bitcoin blockchain, and then the Stacks blockchain.
+#[tracing::instrument(skip_all)]
+pub async fn sync_blockchains(
+    ctx: &impl Context,
+    nakamoto_activation_height: u64,
+) -> Result<(), Error> {
+    let mut term = ctx.get_termination_handle();
+    let stacks_client = ctx.get_stacks_client();
 
     // Get the current tenure tip and anchor (Bitcoin) block information.
     tracing::debug!("fetching current tenure tip and anchor block info");
@@ -79,6 +66,7 @@ pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
         "retrieving tenure tip based on reported stacks tenure tip"
     );
 
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
     let tenure = loop {
         if let Ok(tenure) = stacks_client.get_tenure(current_tenure.tip_block_id).await {
             tracing::debug!("got tenure");
@@ -279,6 +267,44 @@ pub async fn sync_stacks_blocks(
             return Ok(());
         }
     }
+}
+
+/// Helper function to wait for the Stacks node to reach the Nakamoto activation
+/// height.
+#[tracing::instrument(skip_all, fields(%nakamoto_activation_height))]
+pub async fn wait_for_nakamoto_activation_height(
+    ctx: &impl Context,
+    nakamoto_activation_height: u64,
+) -> Result<(), Error> {
+    let mut term = ctx.get_termination_handle();
+    let stacks_client = ctx.get_stacks_client();
+
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    loop {
+        if let Ok(node_info) = stacks_client.get_node_info().await {
+            if node_info.burn_block_height > nakamoto_activation_height {
+                tracing::info!(
+                    current_height = %node_info.burn_block_height,
+                    "stacks node has reached the nakamoto activation height"
+                );
+
+                break;
+            }
+
+            tracing::info!(
+                current = %node_info.burn_block_height,
+                target = %nakamoto_activation_height,
+                "waiting for stacks node to reach nakamoto activation height"
+            );
+        }
+
+        tokio::select! {
+            _ = term.wait_for_shutdown() => return Ok(()),
+            _ = interval.tick() => {},
+        }
+    }
+
+    Ok(())
 }
 
 /// Waits for the Stacks node to report that it is fully-synced. It does this
