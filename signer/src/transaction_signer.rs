@@ -24,6 +24,9 @@ use crate::keys::PublicKey;
 use crate::message;
 use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
+use crate::metrics::Metrics;
+use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
 use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
@@ -250,8 +253,32 @@ where
             }
 
             (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
-                self.handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
-                    .await?;
+                let instant = std::time::Instant::now();
+                let pre_validation_status = self
+                    .handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
+                    .await;
+
+                let status = if pre_validation_status.is_ok() {
+                    "success"
+                } else {
+                    "failure"
+                };
+                metrics::histogram!(
+                    Metrics::ValidationDurationSeconds,
+                    "blockchain" => BITCOIN_BLOCKCHAIN,
+                    "kind" => "sweep-presign",
+                    "status" => status,
+                )
+                .record(instant.elapsed());
+
+                metrics::counter!(
+                    Metrics::SignRequestsTotal,
+                    "blockchain" => BITCOIN_BLOCKCHAIN,
+                    "kind" => "sweep-presign",
+                    "status" => status,
+                )
+                .increment(1);
+                pre_validation_status?;
             }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
@@ -427,8 +454,25 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
-        self.assert_valid_stacks_tx_sign_request(request, bitcoin_chain_tip, origin_public_key)
-            .await?;
+        let instant = std::time::Instant::now();
+        let validation_status = self
+            .assert_valid_stacks_tx_sign_request(request, bitcoin_chain_tip, origin_public_key)
+            .await;
+
+        metrics::histogram!(
+            Metrics::ValidationDurationSeconds,
+            "blockchain" => STACKS_BLOCKCHAIN,
+            "kind" => request.tx_kind(),
+        )
+        .record(instant.elapsed());
+        metrics::counter!(
+            Metrics::SignRequestsTotal,
+            "blockchain" => STACKS_BLOCKCHAIN,
+            "kind" => request.tx_kind(),
+            "status" => if validation_status.is_ok() { "success" } else { "failed" },
+        )
+        .increment(1);
+        validation_status?;
 
         // We need to set the nonce in order to get the exact transaction
         // that we need to sign.
@@ -621,7 +665,24 @@ where
                 }
 
                 let db = self.context.get_storage();
-                Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+                let sig_hash = &request.message;
+                let validation_outcome = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
+
+                let validation_status = match &validation_outcome {
+                    Ok(()) => "success",
+                    Err(Error::SigHashConversion(_)) => "improper-sighash",
+                    Err(Error::UnknownSigHash(_)) => "unknown-sighash",
+                    Err(Error::InvalidSigHash(_)) => "invalid-sighash",
+                    Err(_) => "unexpected-failure",
+                };
+
+                metrics::counter!(
+                    Metrics::SignRequestsTotal,
+                    "blockchain" => BITCOIN_BLOCKCHAIN,
+                    "kind" => "sweep",
+                    "status" => validation_status,
+                )
+                .increment(1);
 
                 if !self.wsts_state_machines.contains_key(&msg.txid) {
                     let (maybe_aggregate_key, _) = self
