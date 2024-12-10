@@ -49,6 +49,7 @@ use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RotateKeysV1;
 use crate::stacks::contracts::SmartContract;
+use crate::stacks::contracts::StacksTx;
 use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
@@ -301,6 +302,7 @@ where
         }
 
         tracing::debug!("we are the coordinator, we may need to coordinate DKG");
+        metrics::counter!("coordinator_tenures_total").increment(1);
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
         // we are the coordinator, we should coordinate DKG.
@@ -540,6 +542,13 @@ where
             )
             .await?;
 
+            metrics::counter!(
+                "transactions_submitted_total",
+                "blockchain" => "stacks",
+                "status" => "success",
+            )
+            .increment(1);
+
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
             // but emily deposit still marked as pending.
@@ -637,7 +646,13 @@ where
 
             match process_request_fut.await {
                 Ok(txid) => {
-                    tracing::info!(%txid, "successfully submitted complete-deposit transaction")
+                    tracing::info!(%txid, "successfully submitted complete-deposit transaction");
+                    metrics::counter!(
+                        "transactions_submitted_total",
+                        "blockchain" => "stacks",
+                        "status" => "success",
+                    )
+                    .increment(1);
                 }
                 Err(error) => {
                     tracing::warn!(
@@ -646,6 +661,12 @@ where
                         vout = %outpoint.vout,
                         "could not process the stacks sign request for a deposit"
                     );
+                    metrics::counter!(
+                        "transactions_submitted_total",
+                        "blockchain" => "stacks",
+                        "status" => "failure",
+                    )
+                    .increment(1);
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
                 }
             }
@@ -703,9 +724,24 @@ where
         multi_tx: MultisigTx,
         wallet: &SignerWallet,
     ) -> Result<StacksTxId, Error> {
+        let kind = match &sign_request.contract_tx {
+            StacksTx::ContractCall(ContractCall::CompleteDepositV1(_)) => "complete-deposit",
+            StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(_)) => "accept-withdrawal",
+            StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(_)) => "reject-withdrawal",
+            StacksTx::ContractCall(ContractCall::RotateKeysV1(_)) => "rotate-keys",
+            StacksTx::SmartContract(_) => "smart-contract-deployment",
+        };
+
         let tx = self
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
             .await?;
+
+        metrics::counter!(
+            "signing_rounds_completed_total",
+            "blockchain" => "stacks",
+            "kind" => kind,
+        )
+        .increment(1);
 
         match self.context.get_stacks_client().submit_tx(&tx).await {
             Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
@@ -878,6 +914,13 @@ where
             )
             .await?;
 
+        metrics::counter!(
+            "signing_rounds_completed_total",
+            "blockchain" => "bitcoin",
+            "kind" => "sweep",
+        )
+        .increment(1);
+
         let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature.into());
 
         let mut deposit_witness = Vec::new();
@@ -904,6 +947,13 @@ where
                 )
                 .await?;
 
+            metrics::counter!(
+                "signing_rounds_completed_total",
+                "blockchain" => "bitcoin",
+                "kind" => "sweep",
+            )
+            .increment(1);
+
             let witness = deposit.construct_witness_data(signature.into());
 
             deposit_witness.push(witness);
@@ -924,14 +974,27 @@ where
 
         tracing::info!("broadcasting bitcoin transaction");
         // Broadcast the transaction to the Bitcoin network.
-        self.context
+        let response = self
+            .context
             .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
-            .await?;
+            .await;
 
-        tracing::info!("bitcoin transaction accepted by bitcoin-core");
+        let status = if response.is_ok() {
+            tracing::info!("bitcoin transaction accepted by bitcoin-core");
+            "success"
+        } else {
+            "failure"
+        };
 
-        Ok(())
+        metrics::counter!(
+            "transactions_submitted_total",
+            "blockchain" => "bitcoin",
+            "status" => status,
+        )
+        .increment(1);
+
+        response
     }
 
     #[tracing::instrument(skip_all)]

@@ -79,6 +79,12 @@ enum UpdateResult {
 #[tracing::instrument(skip_all, name = "new-block")]
 pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
     tracing::debug!("received a new block event from stacks-core");
+    metrics::counter!(
+        "blocks_observed_total",
+        "blockchain" => "stacks",
+    )
+    .increment(1);
+
     let api = state.0;
 
     let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {

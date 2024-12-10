@@ -137,6 +137,11 @@ where
             match poll.await {
                 Ok(Some(Ok(block_hash))) => {
                     tracing::info!("observed new bitcoin block from stream");
+                    metrics::counter!(
+                        "blocks_observed_total",
+                        "blockchain" => "bitcoin",
+                    )
+                    .increment(1);
 
                     let next_blocks = match self.next_blocks_to_process(block_hash).await {
                         Ok(blocks) => blocks,
@@ -203,17 +208,31 @@ impl<C: Context, B> BlockObserver<C, B> {
     #[tracing::instrument(skip_all)]
     pub async fn load_requests(&self, requests: &[CreateDepositRequest]) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
+        let bitcoin_client = self.context.get_bitcoin_client();
+
         for request in requests {
             let deposit = request
-                .validate(&self.context.get_bitcoin_client())
+                .validate(&bitcoin_client)
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
             // We log the error above, so we just need to extract the
             // deposit now.
-            if let Ok(Some(deposit)) = deposit {
-                deposit_requests.push(deposit);
-            }
+            let deposit_status = match deposit {
+                Ok(Some(deposit)) => {
+                    deposit_requests.push(deposit);
+                    "success"
+                }
+                Ok(None) => "deposit-unconfirmed",
+                Err(_) => "unsuccessfully-deposit-validation",
+            };
+
+            metrics::counter!(
+                "deposit-requests-total",
+                "blockchain" => "bitcoin",
+                "status" => deposit_status,
+            )
+            .increment(1);
         }
 
         self.store_deposit_requests(deposit_requests).await?;
