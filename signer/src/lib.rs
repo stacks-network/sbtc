@@ -19,6 +19,7 @@ pub mod error;
 pub mod keys;
 pub mod logging;
 pub mod message;
+pub mod metrics;
 pub mod network;
 pub mod proto;
 pub mod request_decider;
@@ -53,7 +54,7 @@ const MAX_KEYS: u16 = 128;
 /// some "time". Right now this "time", the locktime, can only be
 /// denominated in bitcoin blocks. Once locktime number of blocks have been
 /// added to the blockchain after the deposit has been confirmed, the
-/// depositer can reclaim the deposit transaction. Signers will not attempt
+/// depositor can reclaim the deposit transaction. Signers will not attempt
 /// to sweep in the deposited funds if the number of blocks left is less
 /// than or equal to this value.
 ///
@@ -76,3 +77,16 @@ pub const MAX_REORG_BLOCK_COUNT: i64 = 10;
 /// The maximum number of sweep transactions that the signers can confirm
 /// per block.
 pub const MAX_TX_PER_BITCOIN_BLOCK: i64 = 25;
+
+/// These are all build info variables. Many of them are set in build.rs.
+
+/// The name of the binary that is being run,
+pub const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
+/// The target environment ABI of the signer binary build.
+pub const TARGET_ENV_ABI: &str = env!("CARGO_CFG_TARGET_ENV");
+/// The CPU target architecture of the signer binary build.
+pub const TARGET_ARCH: &str = env!("CARGO_CFG_TARGET_ARCH");
+/// The version of rustc used to build the signer binary.
+pub const RUSTC_VERSION: &str = env!("RUSTC_VERSION");
+/// The git sha that the binary was built from.
+pub const GIT_COMMIT: &str = env!("GIT_COMMIT");

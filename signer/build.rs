@@ -1,5 +1,31 @@
 fn main() {
+    set_up_build_info();
     // compile_protos();
+}
+
+pub fn set_up_build_info() {
+    let output = std::process::Command::new("rustc")
+        .arg("--version")
+        .output()
+        .expect("Failed to execute rustc");
+
+    let version = String::from_utf8_lossy(&output.stdout);
+
+    let git_hash = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
+        .unwrap_or_default();
+
+    let env_abi = std::env::var("CARGO_CFG_TARGET_ENV").unwrap();
+    let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+
+    // We capture these variables in our binary and use them in the
+    // build_info metric.
+    println!("cargo:rustc-env=CARGO_CFG_TARGET_ENV={}", env_abi.trim());
+    println!("cargo:rustc-env=CARGO_CFG_TARGET_ARCH={}", arch.trim());
+    println!("cargo:rustc-env=GIT_COMMIT={}", git_hash.trim());
+    println!("cargo:rustc-env=RUSTC_VERSION={}", version.trim());
 }
 
 pub fn compile_protos() {
