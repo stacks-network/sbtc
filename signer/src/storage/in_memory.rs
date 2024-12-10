@@ -773,6 +773,13 @@ impl super::DbRead for SharedStore {
         }
     }
 
+    async fn is_known_bitcoin_block_hash(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        Ok(self.lock().await.bitcoin_blocks.contains_key(block_hash))
+    }
+
     async fn in_canonical_bitcoin_blockchain(
         &self,
         chain_tip: &model::BitcoinBlockRef,

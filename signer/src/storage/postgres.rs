@@ -1655,6 +1655,25 @@ impl super::DbRead for PgStore {
         }
     }
 
+    async fn is_known_bitcoin_block_hash(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.bitcoin_blocks AS bb
+                WHERE bb.block_hash = $1
+            );
+        "#,
+        )
+        .bind(block_hash)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn in_canonical_bitcoin_blockchain(
         &self,
         chain_tip: &model::BitcoinBlockRef,
