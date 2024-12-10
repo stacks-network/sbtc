@@ -89,6 +89,7 @@ describe("initiating a withdrawal request", () => {
       }),
       deployer
     );
+    const heightAtInit = simnet.blockHeight;
     const receipt = txOk(
       withdrawal.initiateWithdrawalRequest({
         amount: defaultAmount,
@@ -111,7 +112,7 @@ describe("initiating a withdrawal request", () => {
       recipient: alicePoxAddr,
       amount: defaultAmount,
       maxFee: defaultMaxFee,
-      blockHeight: BigInt(simnet.blockHeight - 2),
+      blockHeight: BigInt(heightAtInit - 1),
       status: null,
     });
 
@@ -540,6 +541,7 @@ describe("Accepting a withdrawal request", () => {
       }),
       deployer
     );
+    const heightAtInit = simnet.blockHeight;
     txOk(
       withdrawal.initiateWithdrawalRequest({
         amount: defaultAmount,
@@ -574,7 +576,7 @@ describe("Accepting a withdrawal request", () => {
       recipient: alicePoxAddr,
       amount: defaultAmount,
       maxFee: defaultMaxFee,
-      blockHeight: BigInt(simnet.blockHeight - 3),
+      blockHeight: BigInt(heightAtInit - 1),
       status: true,
     });
   });
@@ -604,6 +606,7 @@ describe("Accepting a withdrawal request", () => {
       defaultAmount + defaultMaxFee
     );
     expect(rovOk(token.getBalanceLocked(alice))).toEqual(0n);
+    const heightAtInit = simnet.blockHeight;
     txOk(
       withdrawal.initiateWithdrawalRequest({
         amount: defaultAmount,
@@ -647,7 +650,7 @@ describe("Accepting a withdrawal request", () => {
       recipient: alicePoxAddr,
       amount: defaultAmount,
       maxFee: defaultMaxFee,
-      blockHeight: BigInt(simnet.blockHeight - 3),
+      blockHeight: BigInt(heightAtInit - 1),
       status: false,
     });
 

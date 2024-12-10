@@ -1,4 +1,4 @@
-;; sBTC Deposit contract
+;; sBTC Deposit v1 contract (updated)
 
 ;; constants
 

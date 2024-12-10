@@ -1,23 +1,38 @@
 ;; sBTC Registry contract
 
 ;; Error codes
-
 (define-constant ERR_UNAUTHORIZED (err u400))
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
 (define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
 (define-constant ERR_MULTI_SIG_REPLAY (err u403))
+(define-constant ERR_INVALID_PROTOCOL_ID (err u404))
+(define-constant ERR_UNAUTHORIZE_FLAG (err u405))
+(define-constant ERR_UNAUTHORIZED_ROLE (err u406))
+
+
+;; Protocol contract type
+(define-constant governance-role 0x00)
+(define-constant deposit-role 0x01)
+(define-constant withdrawal-role 0x02)
 
 ;; Variables
-
 (define-data-var last-withdrawal-request-id uint u0)
 (define-data-var current-signature-threshold uint u0)
 (define-data-var current-signer-set (list 128 (buff 33)) (list))
 (define-data-var current-aggregate-pubkey (buff 33) 0x00)
 (define-data-var current-signer-principal principal tx-sender)
 
-
 ;; Maps
-
+;; Active protocol contracts
+(define-map active-protocol-contracts (buff 1) principal)
+(map-set active-protocol-contracts governance-role .sbtc-bootstrap-signers)
+(map-set active-protocol-contracts deposit-role .sbtc-deposit)
+(map-set active-protocol-contracts withdrawal-role .sbtc-withdrawal)
+;; Role for active protocol contracts
+(define-map active-protocol-roles principal (buff 1))
+(map-set active-protocol-roles .sbtc-bootstrap-signers governance-role)
+(map-set active-protocol-roles .sbtc-deposit deposit-role)
+(map-set active-protocol-roles .sbtc-withdrawal withdrawal-role)
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
 ;; request ID.
@@ -72,13 +87,6 @@
 ;; Data structure to store aggregate pubkey,
 ;; stored to avoid replay
 (define-map aggregate-pubkeys (buff 33) bool)
-
-;; Data structure to store the active protocol contracts
-(define-map protocol-contracts principal bool)
-(map-set protocol-contracts .sbtc-bootstrap-signers true)
-(map-set protocol-contracts .sbtc-deposit true)
-(map-set protocol-contracts .sbtc-withdrawal true)
-(if (not is-in-mainnet) (map-set protocol-contracts tx-sender true) true)
 
 ;; Read-only functions
 ;; Get a withdrawal request by its ID.
@@ -138,6 +146,10 @@
   (var-get current-signer-set)
 )
 
+(define-read-only (get-active-protocol (contract-flag (buff 1)))
+  (map-get? active-protocol-contracts contract-flag)
+)
+
 
 ;; Public functions
 
@@ -161,7 +173,7 @@
     (
       (id (increment-last-withdrawal-request-id))
     )
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller withdrawal-role contract-caller))
     ;; #[allow(unchecked_data)]
     (map-insert withdrawal-requests id {
       amount: amount,
@@ -200,7 +212,7 @@
     (sweep-txid (buff 32))
   )
   (begin 
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller withdrawal-role contract-caller))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id true)
     (map-insert completed-withdrawal-sweep request-id {
@@ -234,7 +246,7 @@
     (signer-bitmap uint)
   )
   (begin 
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller withdrawal-role contract-caller))
     ;; Mark the withdrawal as completed
     (map-insert withdrawal-status request-id false)
     (print {
@@ -264,7 +276,7 @@
     (sweep-txid (buff 32))
   )
   (begin
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller deposit-role contract-caller))
     (map-insert deposit-status {txid: txid, vout-index: vout-index} true)
     (map-insert completed-deposits {txid: txid, vout-index: vout-index} {
       amount: amount,
@@ -297,7 +309,7 @@
   )
   (begin
     ;; Check that caller is protocol contract
-    (try! (is-protocol-caller))
+    (try! (is-protocol-caller governance-role contract-caller))
     ;; Check that the aggregate pubkey is not already in the map
     (asserts! (map-insert aggregate-pubkeys new-aggregate-pubkey true) ERR_AGG_PUBKEY_REPLAY)
     ;; Update the current signer set
@@ -319,8 +331,29 @@
   )
 )
 
-;; Private functions
+;; Update protocol contract
+;; This function can only be called by the active bootstrap-signers contract
+(define-public (update-protocol-contract
+    (contract-type (buff 1))
+    (new-contract principal)
+  )
+  (begin
+    ;; Check that caller is protocol contract
+    (try! (is-protocol-caller governance-role contract-caller))
+    ;; Update the protocol contract
+    (map-set active-protocol-contracts contract-type new-contract)
+    ;; Update the protocol role
+    (map-set active-protocol-roles new-contract contract-type)
+    (print {
+      topic: "update-protocol-contract",
+      contract-type: contract-type,
+      new-contract: new-contract,
+    })
+    (ok true)
+  )
+)
 
+;; Private functions
 ;; Increment the last withdrawal request ID and
 ;; return the new value.
 (define-private (increment-last-withdrawal-request-id)
@@ -334,11 +367,17 @@
 )
 
 ;; Checks whether the contract-caller is a protocol contract
-(define-read-only (is-protocol-caller)
-  (validate-protocol-caller contract-caller)
+(define-read-only (is-protocol-caller (contract-flag (buff 1)) (contract principal))
+  (validate-protocol-caller contract-flag contract)
 )
 
 ;; Validate that a given principal is a protocol contract
-(define-read-only (validate-protocol-caller (caller principal))
-  (ok (asserts! (is-some (map-get? protocol-contracts caller)) ERR_UNAUTHORIZED))
+(define-read-only (validate-protocol-caller (contract-flag (buff 1)) (contract principal))
+  (begin 
+    ;; Check that contract-caller is an protocol contract
+    (asserts! (is-eq (some contract) (map-get? active-protocol-contracts contract-flag)) ERR_UNAUTHORIZED)
+    ;; Check that flag matches the contract-caller
+    (asserts! (is-eq (some contract-flag) (map-get? active-protocol-roles contract)) ERR_UNAUTHORIZED)
+    (ok true)
+  )
 )
