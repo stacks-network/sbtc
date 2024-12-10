@@ -1,7 +1,17 @@
+x-common-vars:
+  # Bitcoin RPC
+  - &BITCOIN_RPC_USERNAME ${BITCOIN_RPC_USERNAME} # Required
+  - &BITCOIN_RPC_PASSWORD ${BITCOIN_RPC_PASSWORD} # Required
+  - &BITCOIN_RPC_PORT ${BITCOIN_RPC_PORT:-8332}
+  - &BITCOIN_ZMQ_PORT ${BITCOIN_ZMQ_PORT:-28332}
+  # Stacks RPC
+  - &STACKS_RPC_PORT ${STACKS_RPC_PORT:-20443}
+
 services:
   bitcoin:
     image: bitcoin/bitcoin:28.0
-    restart: on-failure
+    container_name: bitcoin
+    restart: on-failure:3
     ports:
       - "8332:8332"  # RPC
       - "8333:8333"  # I2P
@@ -13,7 +23,7 @@ services:
       BITCOIN_RPC_USERNAME: *BITCOIN_RPC_USERNAME
       BITCOIN_RPC_PASSWORD: *BITCOIN_RPC_PASSWORD
       BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
-      BITCOIN_ZMQ_PORT: *BITCOIN_ZMQ_PORT
+      BITCOIN_ZMQ_PORT:  *BITCOIN_ZMQ_PORT
       BITCOIN_DATA: /bitcoin
     entrypoint:
       - /bin/bash
@@ -22,25 +32,40 @@ services:
         set -e
         bitcoind \
           -server \
+          -datadir=$${BITCOIN_DATA} \
           -rpcbind=0.0.0.0 \
-          -rpcuser=${BITCOIN_RPC_USERNAME} \
-          -rpcpassword=${BITCOIN_RPC_PASSWORD} \
-          -rpcport=${BITCOIN_RPC_PORT} \
+          -rpcuser=$${BITCOIN_RPC_USERNAME} \
+          -rpcpassword=$${BITCOIN_RPC_PASSWORD} \
+          -rpcport=$${BITCOIN_RPC_PORT} \
           -rpcallowip=0.0.0.0/0 \
           -rpcallowip=::/0 \
           -txindex \
-          -zmqpubhashblock="tcp://*:${BITCOIN_ZMQ_PORT}" \
-          -zmqpubrawblock="tcp://*:${BITCOIN_ZMQ_PORT}" \
+          -zmqpubhashblock="tcp://*:$${BITCOIN_ZMQ_PORT}" \
+          -zmqpubrawblock="tcp://*:$${BITCOIN_ZMQ_PORT}" \
           -coinstatsindex
 
   stacks-blockchain:
     image: blockstack/stacks-blockchain:3.1.0.0.0
-    restart: on-failure
+    container_name: stacks-blockchain
+    restart: on-failure:3
     ports:
       - 20443:20443 # RPC
       - 20444:20444 # P2P
       - 9153:9153 # Metrics
     volumes:
-      - ./stacks/Config.toml:/stacks/Config.toml:ro
+      - ./nodes/stacks/Config.toml.in:/stacks/Config.toml.in:ro
       - /mnt/stacks:/stacks
-    command: ["/bin/stacks-node", "start", "--config", "/stacks/Config.toml"]
+    environment:
+      BITCOIN_RPC_USERNAME: *BITCOIN_RPC_USERNAME
+      BITCOIN_RPC_PASSWORD: *BITCOIN_RPC_PASSWORD
+      BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
+      BITCOIN_DATA: /bitcoin
+      STACKS_RPC_PORT: *STACKS_RPC_PORT
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -ex
+        apt-get update && apt-get install -y gettext --no-install-recommends
+        envsubst < /stacks/Config.toml.in > /stacks/Config.toml
+        /bin/stacks-node start --config /stacks/Config.toml
