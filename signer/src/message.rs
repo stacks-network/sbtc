@@ -5,6 +5,7 @@ use secp256k1::ecdsa::RecoverableSignature;
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::validation::TxRequestIds;
 use crate::keys::PublicKey;
+use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksTxId;
@@ -187,6 +188,20 @@ pub struct StacksTransactionSignRequest {
     pub tx_fee: u64,
     /// The transaction ID of the associated contract call transaction.
     pub txid: blockstack_lib::burnchains::Txid,
+}
+
+impl StacksTransactionSignRequest {
+    /// Return the kind of transaction that that is being asked to be
+    /// signed.
+    pub fn tx_kind(&self) -> &'static str {
+        match &self.contract_tx {
+            StacksTx::ContractCall(ContractCall::CompleteDepositV1(_)) => "complete-deposit",
+            StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(_)) => "accept-withdrawal",
+            StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(_)) => "reject-withdrawal",
+            StacksTx::ContractCall(ContractCall::RotateKeysV1(_)) => "rotate-keys",
+            StacksTx::SmartContract(_) => "smart-contract-deployment",
+        }
+    }
 }
 
 /// Represents a signature of a Stacks transaction.

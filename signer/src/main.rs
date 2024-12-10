@@ -69,10 +69,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Configure the binary's stdout/err output based on the provided output format.
     let pretty = matches!(args.output_format, Some(LogOutputFormat::Pretty));
-    signer::logging::setup_logging("", pretty);
+    signer::logging::setup_logging("info,signer=debug", pretty);
+
+    tracing::info!(
+        rust_version = signer::RUSTC_VERSION,
+        revision = signer::GIT_COMMIT,
+        arch = signer::TARGET_ARCH,
+        env_abi = signer::TARGET_ENV_ABI,
+        "starting the sBTC signer",
+    );
 
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
+    signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
     let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await?;

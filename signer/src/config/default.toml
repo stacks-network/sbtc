@@ -184,6 +184,13 @@ dkg_max_duration = 120
 # Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
 # dkg_begin_pause = 10
 
+# When defined, this field sets the scrape endpoint as an IPv4 or IPv6
+# socket address for exporting metrics for Prometheus.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
+# prometheus_exporter_endpoint = "[::]:9184"
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

@@ -28,6 +28,8 @@ use crate::context::SbtcLimits;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::metrics::Metrics;
+use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
@@ -137,6 +139,11 @@ where
             match poll.await {
                 Ok(Some(Ok(block_hash))) => {
                     tracing::info!("observed new bitcoin block from stream");
+                    metrics::counter!(
+                        Metrics::BlocksObservedTotal,
+                        "blockchain" => BITCOIN_BLOCKCHAIN,
+                    )
+                    .increment(1);
 
                     let next_blocks = match self.next_blocks_to_process(block_hash).await {
                         Ok(blocks) => blocks,
@@ -203,17 +210,31 @@ impl<C: Context, B> BlockObserver<C, B> {
     #[tracing::instrument(skip_all)]
     pub async fn load_requests(&self, requests: &[CreateDepositRequest]) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
+        let bitcoin_client = self.context.get_bitcoin_client();
+
         for request in requests {
             let deposit = request
-                .validate(&self.context.get_bitcoin_client())
+                .validate(&bitcoin_client)
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
             // We log the error above, so we just need to extract the
             // deposit now.
-            if let Ok(Some(deposit)) = deposit {
-                deposit_requests.push(deposit);
-            }
+            let deposit_status = match deposit {
+                Ok(Some(deposit)) => {
+                    deposit_requests.push(deposit);
+                    "success"
+                }
+                Ok(None) => "unconfirmed",
+                Err(_) => "failed",
+            };
+
+            metrics::counter!(
+                Metrics::DepositRequestsTotal,
+                "blockchain" => BITCOIN_BLOCKCHAIN,
+                "status" => deposit_status,
+            )
+            .increment(1);
         }
 
         self.store_deposit_requests(deposit_requests).await?;
@@ -435,6 +456,13 @@ impl<C: Context, B> BlockObserver<C, B> {
 
             for prevout in tx_info.to_inputs(&signer_script_pubkeys) {
                 db.write_tx_prevout(&prevout).await?;
+                if prevout.prevout_type == model::TxPrevoutType::Deposit {
+                    metrics::counter!(
+                        Metrics::DepositsSweptTotal,
+                        "blockchain" => BITCOIN_BLOCKCHAIN,
+                    )
+                    .increment(1);
+                }
             }
 
             for output in tx_info.to_outputs(&signer_script_pubkeys) {
