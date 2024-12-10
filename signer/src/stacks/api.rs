@@ -473,24 +473,17 @@ pub struct StacksClient {
     pub endpoint: Url,
     /// The client used to make the request.
     pub client: reqwest::Client,
-    /// The start height of the first EPOCH 3.0 block on the Stacks
-    /// blockchain.
-    pub nakamoto_start_height: u64,
 }
 
 impl StacksClient {
     /// Create a new instance of the Stacks client using the given
     /// StacksSettings.
-    pub fn new(url: Url, nakamoto_start_height: u64) -> Result<Self, Error> {
+    pub fn new(url: Url) -> Result<Self, Error> {
         let client = reqwest::Client::builder()
             .timeout(REQUEST_TIMEOUT)
             .build()?;
 
-        Ok(Self {
-            endpoint: url,
-            client,
-            nakamoto_start_height,
-        })
+        Ok(Self { endpoint: url, client })
     }
 
     /// Calls a read-only public function on a given smart contract.
@@ -1407,12 +1400,11 @@ impl TryFrom<&Settings> for ApiFallbackClient<StacksClient> {
     type Error = Error;
 
     fn try_from(settings: &Settings) -> Result<Self, Self::Error> {
-        let naka_start_height = settings.stacks.nakamoto_start_height;
         let clients = settings
             .stacks
             .endpoints
             .iter()
-            .map(|url| StacksClient::new(url.clone(), naka_start_height))
+            .map(|url| StacksClient::new(url.clone()))
             .collect::<Result<Vec<_>, _>>()?;
 
         ApiFallbackClient::new(clients).map_err(Error::FallbackClient)
@@ -1505,8 +1497,8 @@ mod tests {
     ///         -vvv
     ///     ```
     /// 4. Done
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
     async fn get_blocks_test<F, C>(client: F)
     where
@@ -1620,7 +1612,7 @@ mod tests {
             .expect(1)
             .create();
 
-        let client = StacksClient::new(stacks_node_server.url().parse().unwrap(), 20).unwrap();
+        let client = StacksClient::new(stacks_node_server.url().parse().unwrap()).unwrap();
         let result = client
             .get_sbtc_total_supply(
                 &StacksAddress::from_string("SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS").unwrap(),
@@ -1632,8 +1624,8 @@ mod tests {
         mock.assert();
     }
 
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
     async fn get_tenure_info_works<F, C>(client: F)
     where
@@ -1686,8 +1678,8 @@ mod tests {
             .collect()
     }
 
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(); "stacks-client")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client")]
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
     #[tokio::test]
     async fn get_current_signer_set_fails_when_value_not_a_sequence<F, C>(client: F)
     where
@@ -1728,10 +1720,10 @@ mod tests {
         mock.assert();
     }
 
-    #[test_case(0, |url| StacksClient::new(url, 20).unwrap(); "stacks-client-empty-list")]
-    #[test_case(128, |url| StacksClient::new(url, 20).unwrap(); "stacks-client-list-128")]
-    #[test_case(0, |url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client-empty-list")]
-    #[test_case(128, |url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(); "fallback-client-list-128")]
+    #[test_case(0, |url| StacksClient::new(url).unwrap(); "stacks-client-empty-list")]
+    #[test_case(128, |url| StacksClient::new(url).unwrap(); "stacks-client-list-128")]
+    #[test_case(0, |url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client-empty-list")]
+    #[test_case(128, |url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client-list-128")]
     #[tokio::test]
     async fn get_current_signer_set_works<F, C>(list_size: u16, client: F)
     where
@@ -1788,10 +1780,10 @@ mod tests {
         mock.assert();
     }
 
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(), false; "stacks-client-some")]
-    #[test_case(|url| StacksClient::new(url, 20).unwrap(), true; "stacks-client-none")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(), false; "fallback-client-some")]
-    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url, 20).unwrap()]).unwrap(), true; "fallback-client-none")]
+    #[test_case(|url| StacksClient::new(url).unwrap(), false; "stacks-client-some")]
+    #[test_case(|url| StacksClient::new(url).unwrap(), true; "stacks-client-none")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(), false; "fallback-client-some")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(), true; "fallback-client-none")]
     #[tokio::test]
     async fn get_current_signers_aggregate_key_works<F, C>(client: F, return_none: bool)
     where
@@ -1882,11 +1874,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_data_var` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
 
         // Make the request to the mock server
         let resp = client
@@ -1924,11 +1913,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_fee_estimate` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
 
         let expected_fee = get_full_tx_size(&DUMMY_STX_TRANSFER_PAYLOAD, &wallet).unwrap()
             * TX_FEE_TX_SIZE_MULTIPLIER;
@@ -1977,11 +1963,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_fee_estimate` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
         let resp = client
             .get_fee_estimate(&DUMMY_STX_TRANSFER_PAYLOAD, None)
             .await
@@ -2029,11 +2012,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_pox_info` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
         let resp = client.get_pox_info().await.unwrap();
         let expected: RPCPoxInfoData = serde_json::from_str(raw_json_response).unwrap();
 
@@ -2061,11 +2041,8 @@ mod tests {
 
         // Setup our Stacks client. We use a regular client here because we're
         // testing the `get_node_info` method.
-        let client = StacksClient::new(
-            url::Url::parse(stacks_node_server.url().as_str()).unwrap(),
-            20,
-        )
-        .unwrap();
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
         let resp = client.get_node_info().await.unwrap();
         let expected: RPCPeerInfoData = serde_json::from_str(raw_json_response).unwrap();
 

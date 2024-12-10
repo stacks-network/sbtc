@@ -405,9 +405,6 @@ pub struct StacksConfig {
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
-    /// This is the start height of the first EPOCH 3.0 block on the Stacks
-    /// blockchain.
-    pub nakamoto_start_height: u64,
 }
 
 impl Validatable for StacksConfig {
@@ -415,12 +412,6 @@ impl Validatable for StacksConfig {
         if self.endpoints.is_empty() {
             return Err(ConfigError::Message(
                 "[stacks] Endpoints cannot be empty".to_string(),
-            ));
-        }
-
-        if self.nakamoto_start_height == 0 {
-            return Err(ConfigError::Message(
-                "[stacks] Nakamoto start height must be greater than zero".to_string(),
             ));
         }
 

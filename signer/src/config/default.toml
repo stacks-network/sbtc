@@ -74,11 +74,6 @@ block_hash_stream_endpoints = [
 # making requests.
 endpoints = ["http://localhost:20443"]
 
-# This is the start height of the first EPOCH 3.0 block on the stacks
-# blockchain.
-# TODO(715): Update to 867867
-nakamoto_start_height = 31
-
 # !! ==============================================================================
 # !! Signer Configuration
 # !! ==============================================================================
