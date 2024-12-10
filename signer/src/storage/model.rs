@@ -1195,6 +1195,120 @@ pub struct BitcoinWithdrawalOutput {
     pub is_valid_tx: bool,
 }
 
+
+use std::collections::BTreeMap;
+
+use bitcoin::hashes::Hash;
+use bitcoin::OutPoint;
+use bitcoin::PubkeyHash;
+use bitcoin::ScriptBuf;
+use bitcoin::ScriptHash;
+use bitcoin::Txid as BitcoinTxid;
+use bitcoin::WitnessProgram;
+use bitcoin::WitnessVersion;
+
+use blockstack_lib::burnchains::Txid as StacksTxid;
+use clarity::vm::types::CharType;
+use clarity::vm::types::SequenceData;
+use clarity::vm::types::TupleData;
+use clarity::vm::ClarityName;
+use clarity::vm::Value as ClarityValue;
+
+
+
+/// This is the event that is emitted from the `complete-withdrawal-accept`
+/// public function in sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct WithdrawalAcceptEvent {
+    /// The transaction id of the stacks transaction that generated this
+    /// event.
+    pub txid: StacksTxid,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockId,
+    /// This is the unique identifier of the withdrawal request.
+    pub request_id: u64,
+    /// The bitmap of how the signers voted for the withdrawal request.
+    /// Here, a 1 (or true) implies that the signer did *not* vote to
+    /// accept the request.
+    pub signer_bitmap: BitArray<[u8; 16]>,
+    /// This is the outpoint for the bitcoin transaction that serviced the
+    /// request.
+    pub outpoint: OutPoint,
+    /// This is the fee that was spent to the bitcoin miners to confirm the
+    /// withdrawal request.
+    pub fee: u64,
+    /// The bitcoin block hash where the sweep transaction was included.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The bitcoin block height where the sweep transaction was included.
+    pub sweep_block_height: u64,
+    /// The transaction id of the bitcoin transaction that fulfilled the
+    /// withdrawal request.
+    pub sweep_txid: BitcoinTxid,
+}
+
+impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
+    fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
+        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
+        reversed_raw_hash.reverse();
+        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
+        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
+        let txid = StacksTxid::from(sbtc_event.txid.0);
+        WithdrawalAcceptEvent {
+            txid,
+            block_id: sbtc_event.block_id,
+            request_id: sbtc_event.request_id,
+            signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
+            outpoint: sbtc_event.outpoint,
+            fee: sbtc_event.fee,
+            sweep_block_hash: sweep_hash,
+            sweep_block_height: sbtc_event.sweep_block_height,
+            sweep_txid: sbtc_event.sweep_txid,
+        }
+    }
+}
+
+
+/// This is the event that is emitted from the `create-withdrawal-request`
+/// public function in sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct CompletedDepositEvent {
+    /// The transaction id of the stacks transaction that generated this
+    /// event.
+    pub txid: StacksTxid,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockId,
+    /// This is the amount of sBTC to mint to the intended recipient.
+    pub amount: u64,
+    /// This is the outpoint of the original bitcoin deposit transaction.
+    pub outpoint: OutPoint,
+    /// The bitcoin block hash where the sweep transaction was included.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The bitcoin block height where the sweep transaction was included.
+    pub sweep_block_height: u64,
+    /// The transaction id of the bitcoin transaction that fulfilled the
+    /// deposit.
+    pub sweep_txid: BitcoinTxid,
+}
+
+impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
+    fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
+        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
+        reversed_raw_hash.reverse();
+        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
+        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
+        let txid = StacksTxid::from(sbtc_event.txid.0);
+        CompletedDepositEvent {
+            txid,
+            block_id: sbtc_event.block_id,
+            amount: sbtc_event.amount,
+            outpoint: sbtc_event.outpoint,
+            sweep_block_hash: sweep_hash,
+            sweep_block_height: sbtc_event.sweep_block_height,
+            sweep_txid: sbtc_event.sweep_txid,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use fake::Fake;

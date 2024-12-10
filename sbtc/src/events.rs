@@ -25,13 +25,19 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
-use stacks_common::impl_byte_array_newtype;
+use stacks_common::*;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
 
 /// Stacks transaction identifier. Wrapper over a 32 byte array.
-#[derive(Clone, Copy, Debug)]
 pub struct StacksTxid(pub [u8; 32]);
+// impl_byte_array_newtype!(StacksTxid, u8, 32);
+
+
+impl_array_newtype!(StacksTxid, u8, 32);
+impl_array_hexstring_fmt!(StacksTxid);
 impl_byte_array_newtype!(StacksTxid, u8, 32);
+impl_byte_array_message_codec!(StacksTxid, 32);
+impl_byte_array_serde!(StacksTxid);
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
