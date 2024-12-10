@@ -1,19 +1,19 @@
 //! A module for setting up metrics in the APP
 //!
 
-use metrics_exporter_prometheus::PrometheusBuilder;
+use std::net::SocketAddr;
 
-use crate::config::Settings;
+use metrics_exporter_prometheus::PrometheusBuilder;
 
 /// The buckets used for metric histograms
 const METRIC_BUCKETS: [f64; 9] = [1e-4, 1e-3, 1e-2, 0.1, 0.5, 1.0, 5.0, 20.0, f64::INFINITY];
 
-/// The quantiles to use when rendering histograms
+/// The quantiles to use when rendering historgrams
 const METRIC_QUANTILES: [f64; 7] = [0.0, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0];
 
 /// Set up a prometheus exporter for metrics.
-pub fn setup_metrics(settings: &Settings) {
-    if let Some(addr) = settings.signer.prometheus_exporter_endpoint {
+pub fn setup_metrics(prometheus_exporter_endpoint: Option<SocketAddr>) {
+    if let Some(addr) = prometheus_exporter_endpoint {
         PrometheusBuilder::new()
             .with_http_listener(addr)
             .add_global_label("app", crate::PACKAGE_NAME)
