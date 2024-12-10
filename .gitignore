@@ -23,3 +23,8 @@ contracts/*.info
 contracts/costs-reports.json
 contracts/node_modules
 contracts/docs
+
+## Python
+__pycache__/
+*.py[cod]
+*$py.class

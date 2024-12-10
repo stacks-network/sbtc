@@ -38,7 +38,6 @@ use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
-use crate::message::SweepTransactionInfo;
 use crate::network;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
@@ -930,14 +929,6 @@ where
             .broadcast_transaction(&transaction.tx)
             .await?;
 
-        // Publish the transaction to the P2P network so that peers get advance
-        // knowledge of the sweep.
-        self.send_message(
-            SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, transaction),
-            bitcoin_chain_tip,
-        )
-        .await?;
-
         tracing::info!("bitcoin transaction accepted by bitcoin-core");
 
         Ok(())
@@ -1236,7 +1227,7 @@ where
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(chain_tip, self.context_window)
+            .get_signer_utxo(chain_tip)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
