@@ -8,6 +8,9 @@ This `README` details how to set up a sBTC signer through Docker Compose for a
 [This documentation page](https://docs.stacks.co/guides-and-tutorials/sbtc/how-to-run-sbtc-signer)
 details how to setup Bitcoin and Stacks full nodes.
 
+This folder also contains a Docker Compose override which shows how to run the
+Bitcoin and Stacks full nodes.
+
 ### Chainstate archives
 
 In case you need to quickly sync a Bitcoin or Stacks full-node, here are two
