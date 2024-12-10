@@ -1,0 +1,68 @@
+[blocklist_client]
+endpoint = "http://blocklist-client:3032"
+
+[emily]
+# TODO: Add your API key here.
+endpoints = [
+    "https://YOUR_API_KEY@beta.sbtc-emily.com"
+]
+
+[bitcoin]
+# TODO: Change this to local bitcoin container
+rpc_endpoints = [
+    "http://USER:PASS@TODO:18443",
+]
+
+# TODO: Change this to local bitcoin container
+block_hash_stream_endpoints = [
+    "tcp://TODO:28332"
+]
+
+[stacks]
+# TODO: Change this to local stacks container
+endpoints = [
+    "http://TODO:20443",
+]
+
+[signer]
+# NOTE: Set through Environment: SIGNER_SIGNER__PRIVATE_KEY
+private_key = "0000000000000000000000000000000000000000000000000000000000000001"
+
+# TODO: Change this to your Postgres URI
+db_endpoint = "postgresql://postgres:postgres@postgres:5432/signer"
+
+network = "testnet"
+
+deployer = "SNGWPN3XDAQE673MXYXF81016M50NHF5X5PWWM70"
+
+bootstrap_signing_set = [
+    "03fc6197a1396680f7acc4241ac3935ba4af560deac0224abec45c47c5e73ea638",
+    "0390d76b21867e9c5aa25a903423d3ddb0da65604f0470390ed903f2056c5adb4b",
+    "03fb16c76ae6773951b2ea957f723dc0f5f4ccd795313793308a38a37a3c4aa582",
+    "024681893c76fb2d52bdbcd6341c66f15f14698aed638d6c1a2fc9440948b5f11a",
+    "0341a8f3562d805ab240c2ce2dd220313329ef75459f115bd818b250a2ad2df6aa",
+    "02a963be44cd7efd07e59e28f02f5d2bafdf28b5b13b3b13b5c2a9e3f4c1b1e5bf",
+    "03c4382afb075bf577acbb13196e6130c386a3d8261326402f587fb7c42d0dbd5e",
+    "02c2b53974a2b1a05103a7c42a4861c859c9b999ed196c065bcec952438ae8ec9b",
+    "034646af6402dab3a265688b2ea67a7aa88d9fc6eca663385a6e92336f7f081c59",
+    "02629d043197e659ac45f0332b219760b9542d22499ff6431c113ec64d60e86628",
+    "033f3dd6b1e8e4cfff219054dce240d312b6deda10386c3a815459224a2ba0f411",
+    "031c7e1267b272d5a11257f46c61e0e5005337ebcebb6f2b71798addfd04e5a38a",
+    "02ae3a560f4f67ce8c0f4b2e46d24f51232a768cfc69cf08a02ea02426d77bd64c",
+    "026fb0b3c3ea60a3197e94f2dcd37d7f302e6d33c75351f4f5024e9c31ac327c11",
+    "0374e256948a14799c2a788960ab6657dc5d322b070abae4ce83b2a0df4df2c727",
+]
+
+bootstrap_signatures_required = 11
+
+bitcoin_processing_delay = 30
+bitcoin_block_horizon = 3000
+
+[signer.event_observer]
+bind = "0.0.0.0:8801"
+
+[signer.p2p]
+seeds = [
+    "tcp://176.34.190.109:4122" # Bitcoin L2 Labs testnet signer
+]
+listen_on = ["tcp://0.0.0.0:4122"]
