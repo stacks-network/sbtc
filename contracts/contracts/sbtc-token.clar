@@ -1,7 +1,5 @@
 (define-constant ERR_NOT_OWNER (err u4)) ;; `tx-sender` or `contract-caller` tried to move a token it does not own.
-(define-constant ERR_NOT_AUTH (err u5)) ;; `tx-sender` or `contract-caller` is not the protocol caller
-(define-constant ERR_TRANSFER_INDEX_PREFIX (unwrap-err! ERR_TRANSFER (err true)))
-(define-constant ERR_TRANSFER (err u6))
+(define-constant ERR_TRANSFER_INDEX_PREFIX u1000)
 
 (define-fungible-token sbtc-token)
 (define-fungible-token sbtc-token-locked)
@@ -13,7 +11,6 @@
 
 ;; --- Protocol functions
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-transfer (amount uint) (sender principal) (recipient principal))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -21,7 +18,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-lock (amount uint) (owner principal))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -30,7 +26,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-unlock (amount uint) (owner principal))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -39,7 +34,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-mint (amount uint) (recipient principal))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -47,7 +41,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-burn (amount uint) (owner principal))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -55,7 +48,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-burn-locked (amount uint) (owner principal))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -63,7 +55,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-set-name (new-name (string-ascii 32)))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -71,7 +62,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-set-symbol (new-symbol (string-ascii 10)))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -79,7 +69,6 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-set-token-uri (new-uri (optional (string-utf8 256))))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -87,12 +76,10 @@
 	)
 )
 
-;; #[allow(unchecked_data)]
 (define-private (protocol-mint-many-iter (item {amount: uint, recipient: principal}))
 	(ft-mint? sbtc-token (get amount item) (get recipient item))
 )
 
-;; #[allow(unchecked_data)]
 (define-public (protocol-mint-many (recipients (list 200 {amount: uint, recipient: principal})))
 	(begin
 		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-caller))
@@ -107,17 +94,17 @@
 					sender: principal, 
 					to: principal, 
 					memo: (optional (buff 34)) })))
-	(fold complete-individual-transfer recipients (ok u0))
+	(fold transfer-many-iter recipients (ok u0))
 )
 
-(define-private (complete-individual-transfer 
+(define-private (transfer-many-iter 
 					(individual-transfer { 
 						amount: uint, 
 						sender: principal, 
 						to: principal, 
 						memo: (optional (buff 34)) }) 
-					(helper-response (response uint uint)))
-    (match helper-response 
+					(result (response uint uint)))
+    (match result 
         index
             (begin 
                 (unwrap! 
@@ -129,14 +116,13 @@
 				(err (+ ERR_TRANSFER_INDEX_PREFIX index)))
                 (ok (+ index u1))
             )
-        err-response
-            (err err-response)
+        err-index
+            (err err-index)
     )
 )
 
 ;; sip-010-trait
 
-;; #[allow(unchecked_data)]
 (define-public (transfer (amount uint) (sender principal) (recipient principal) (memo (optional (buff 34))))
 	(begin
 		(asserts! (or (is-eq tx-sender sender) (is-eq contract-caller sender)) ERR_NOT_OWNER)

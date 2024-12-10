@@ -62,7 +62,6 @@
 
 ;; Signer Key Length Check
 ;; Checks that the length of each key is exactly 33 bytes
-;; #[allow(unchecked_data)]
 (define-private (signer-key-length-check (current-key (buff 33)) (helper-response (response uint uint)))
     (match helper-response
         index
