@@ -13,6 +13,9 @@ details how to setup Bitcoin and Stacks full nodes.
 In case you need to quickly sync a Bitcoin or Stacks full-node, here are two
 archives you can use.
 
+Warning: restoring from the archive will require 2x disk space (to download the
+archive first and then unzip its contents).
+
 | Network | Archive                                                                                              |
 | ------- | ---------------------------------------------------------------------------------------------------- |
 | Bitcoin | [archive](https://bitcoin-chainstate-prod.s3.us-east-1.amazonaws.com/data.tar.gz)                    |
