@@ -5,7 +5,7 @@ This `README` details how to set up a sBTC signer through Docker Compose for a
 
 ## Requirements
 
-[This documentation page](https://docs.stacks.co/guides-and-tutorials/sbtc/how-to-run-sbtc-signer) 
+[This documentation page](https://docs.stacks.co/guides-and-tutorials/sbtc/how-to-run-sbtc-signer)
 details how to setup Bitcoin and Stacks full nodes.
 
 The [`./nodes` folder](./nodes/) contains a Docker Compose override which shows
@@ -70,7 +70,7 @@ AWS_SECRET_ACCESS_KEY=
 ## Best practices
 
 Please refer to [this documentation
-page](https://github.com/stacks-network/docs/blob/feat/sbtc_signer_best_practices/guides-and-tutorials/sbtc/best_practices_for_running_an_sbtc_signer.md)
+page](https://docs.stacks.co/guides-and-tutorials/sbtc/best-practices-for-running-an-sbtc-signer)
 for best practices.
 
 ## Run the stack
