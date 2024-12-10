@@ -73,6 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
+    signer::metrics::setup_metrics(&settings);
 
     // Open a connection to the signer db.
     let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await?;
