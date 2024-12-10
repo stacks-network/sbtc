@@ -1,6 +1,6 @@
 [node]
 working_dir = "/stacks"
-rpc_bind = "0.0.0.0:20443"
+rpc_bind = "0.0.0.0:$STACKS_RPC_PORT"
 p2p_bind = "0.0.0.0:20444"
 prometheus_bind = "0.0.0.0:9153"
 
@@ -10,14 +10,12 @@ bootstrap_node = "02196f005965cebe6ddc3901b7b1cc1aa7a88f305bb8c5893456b8f9a60592
 chain = "bitcoin"
 mode = "mainnet"
 peer_host = "bitcoin"
-username = ""
-password = ""
-rpc_port = 8332
+username = "$BITCOIN_RPC_USERNAME"
+password = "$BITCOIN_RPC_PASSWORD"
+rpc_port = $BITCOIN_RPC_PORT
 peer_port = 8333
 
 [connection_options]
 private_neighbors = false
 
-[[events_observer]]
-endpoint = "127.0.0.1:30000"
-events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+# TODO: Add event observer
