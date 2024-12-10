@@ -24,6 +24,9 @@ use crate::keys::PublicKey;
 use crate::message;
 use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
+use crate::metrics::Metrics;
+use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
 use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
@@ -261,16 +264,16 @@ where
                     "failure"
                 };
                 metrics::histogram!(
-                    crate::metrics::VALIDATION_DURATION_SECONDS,
-                    "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                    Metrics::ValidationDurationSeconds,
+                    "blockchain" => BITCOIN_BLOCKCHAIN,
                     "kind" => "sweep-presign",
                     "status" => status,
                 )
                 .record(instant.elapsed());
 
                 metrics::counter!(
-                    crate::metrics::SIGN_REQUESTS_TOTAL,
-                    "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                    Metrics::SignRequestsTotal,
+                    "blockchain" => BITCOIN_BLOCKCHAIN,
                     "kind" => "sweep-presign",
                     "status" => status,
                 )
@@ -457,14 +460,14 @@ where
             .await;
 
         metrics::histogram!(
-            crate::metrics::VALIDATION_DURATION_SECONDS,
-            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
+            Metrics::ValidationDurationSeconds,
+            "blockchain" => STACKS_BLOCKCHAIN,
             "kind" => request.tx_kind(),
         )
         .record(instant.elapsed());
         metrics::counter!(
-            crate::metrics::SIGN_REQUESTS_TOTAL,
-            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
+            Metrics::SignRequestsTotal,
+            "blockchain" => STACKS_BLOCKCHAIN,
             "kind" => request.tx_kind(),
             "status" => if validation_status.is_ok() { "success" } else { "failed" },
         )
@@ -674,8 +677,8 @@ where
                 };
 
                 metrics::counter!(
-                    crate::metrics::SIGN_REQUESTS_TOTAL,
-                    "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                    Metrics::SignRequestsTotal,
+                    "blockchain" => BITCOIN_BLOCKCHAIN,
                     "kind" => "sweep",
                     "status" => validation_status,
                 )

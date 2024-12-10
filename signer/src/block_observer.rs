@@ -28,6 +28,8 @@ use crate::context::SbtcLimits;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::metrics::Metrics;
+use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
@@ -138,8 +140,8 @@ where
                 Ok(Some(Ok(block_hash))) => {
                     tracing::info!("observed new bitcoin block from stream");
                     metrics::counter!(
-                        crate::metrics::BLOCKS_OBSERVED_TOTAL,
-                        "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                        Metrics::BlocksObservedTotal,
+                        "blockchain" => BITCOIN_BLOCKCHAIN,
                     )
                     .increment(1);
 
@@ -228,8 +230,8 @@ impl<C: Context, B> BlockObserver<C, B> {
             };
 
             metrics::counter!(
-                crate::metrics::DEPOSIT_REQUESTS_TOTAL,
-                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                Metrics::DepositRequestsTotal,
+                "blockchain" => BITCOIN_BLOCKCHAIN,
                 "status" => deposit_status,
             )
             .increment(1);
@@ -456,8 +458,8 @@ impl<C: Context, B> BlockObserver<C, B> {
                 db.write_tx_prevout(&prevout).await?;
                 if prevout.prevout_type == model::TxPrevoutType::Deposit {
                     metrics::counter!(
-                        crate::metrics::DEPOSITS_SWEPT_TOTAL,
-                        "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                        Metrics::DepositsSweptTotal,
+                        "blockchain" => BITCOIN_BLOCKCHAIN,
                     )
                     .increment(1);
                 }

@@ -38,6 +38,9 @@ use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
+use crate::metrics::Metrics;
+use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
@@ -301,7 +304,7 @@ where
         }
 
         tracing::debug!("we are the coordinator, we may need to coordinate DKG");
-        metrics::counter!(crate::metrics::COORDINATOR_TENURES_TOTAL).increment(1);
+        metrics::counter!(Metrics::CoordinatorTenuresTotal).increment(1);
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
         // we are the coordinator, we should coordinate DKG.
@@ -494,15 +497,15 @@ where
         };
 
         metrics::histogram!(
-            crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
-            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+            Metrics::SigningRoundDurationSeconds,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
             "kind" => "sweep-presign",
             "status" => status,
         )
         .record(instant.elapsed());
         metrics::counter!(
-            crate::metrics::SIGN_REQUESTS_TOTAL,
-            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+            Metrics::SignRequestsTotal,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
             "kind" => "sweep-presign-broadcast",
             "status" => status,
         )
@@ -679,8 +682,8 @@ where
             };
 
             metrics::counter!(
-                crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
-                "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
+                Metrics::TransactionsSubmittedTotal,
+                "blockchain" => STACKS_BLOCKCHAIN,
                 "status" => status,
             )
             .increment(1);
@@ -748,15 +751,15 @@ where
         let status = if tx.is_ok() { "success" } else { "failure" };
 
         metrics::histogram!(
-            crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
-            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
+            Metrics::SigningRoundDurationSeconds,
+            "blockchain" => STACKS_BLOCKCHAIN,
             "kind" => kind,
             "status" => status,
         )
         .record(instant.elapsed());
         metrics::counter!(
-            crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
-            "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
+            Metrics::SigningRoundsCompletedTotal,
+            "blockchain" => STACKS_BLOCKCHAIN,
             "kind" => kind,
             "status" => status,
         )
@@ -934,15 +937,15 @@ where
             .await?;
 
         metrics::histogram!(
-            crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
-            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+            Metrics::SigningRoundDurationSeconds,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
             "kind" => "sweep",
         )
         .record(instant.elapsed());
 
         metrics::counter!(
-            crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
-            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+            Metrics::SigningRoundsCompletedTotal,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
             "kind" => "sweep",
         )
         .increment(1);
@@ -975,14 +978,14 @@ where
                 .await?;
 
             metrics::histogram!(
-                crate::metrics::SIGNING_ROUND_DURATION_SECONDS,
-                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                Metrics::SigningRoundDurationSeconds,
+                "blockchain" => BITCOIN_BLOCKCHAIN,
                 "kind" => "sweep",
             )
             .record(instant.elapsed());
             metrics::counter!(
-                crate::metrics::SIGNING_ROUNDS_COMPLETED_TOTAL,
-                "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                Metrics::SigningRoundsCompletedTotal,
+                "blockchain" => BITCOIN_BLOCKCHAIN,
                 "kind" => "sweep",
             )
             .increment(1);
@@ -1019,10 +1022,10 @@ where
         } else {
             "failure"
         };
-
+        metrics::counter!(crate::metrics::Metrics::ValidationDurationSeconds).increment(1);
         metrics::counter!(
-            crate::metrics::TRANSACTIONS_SUBMITTED_TOTAL,
-            "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+            Metrics::TransactionsSubmittedTotal,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
             "status" => status,
         )
         .increment(1);

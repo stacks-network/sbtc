@@ -22,6 +22,8 @@ use std::sync::OnceLock;
 use crate::context::Context;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::metrics::Metrics;
+use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::KeyRotationEvent;
 use crate::stacks::events::RegistryEvent;
@@ -80,8 +82,8 @@ enum UpdateResult {
 pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
     tracing::debug!("received a new block event from stacks-core");
     metrics::counter!(
-        crate::metrics::BLOCKS_OBSERVED_TOTAL,
-        "blockchain" => crate::metrics::STACKS_BLOCKCHAIN,
+        Metrics::BlocksObservedTotal,
+        "blockchain" => STACKS_BLOCKCHAIN,
     )
     .increment(1);
 
