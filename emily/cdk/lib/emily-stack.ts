@@ -37,12 +37,17 @@ export class EmilyStack extends cdk.Stack {
             ? cdk.RemovalPolicy.DESTROY
             : cdk.RemovalPolicy.RETAIN;
 
+        // we should support 'undefine' type because the PIT option is not available in local DynamoDB
+        // and will make it crash
+        const pointInTimeRecovery: undefined | boolean = EmilyStackUtils.isDevelopmentStack() ? undefined : true;
+
         const depositTableId: string = 'DepositTable';
         const depositTableName: string = EmilyStackUtils.getResourceName(depositTableId, props);
         const depositTable: dynamodb.Table = this.createOrUpdateDepositTable(
             depositTableId,
             depositTableName,
             persistentResourceRemovalPolicy,
+            pointInTimeRecovery,
         );
 
         const withdrawalTableId: string = 'WithdrawalTable';
@@ -51,6 +56,7 @@ export class EmilyStack extends cdk.Stack {
             withdrawalTableId,
             withdrawalTableName,
             persistentResourceRemovalPolicy,
+            pointInTimeRecovery,
         );
 
         const chainstateTableId: string = 'ChainstateTable';
@@ -59,6 +65,7 @@ export class EmilyStack extends cdk.Stack {
             chainstateTableId,
             chainstateTableName,
             persistentResourceRemovalPolicy,
+            pointInTimeRecovery,
         );
 
         const limitTableId: string = 'LimitTable';
@@ -67,6 +74,7 @@ export class EmilyStack extends cdk.Stack {
             limitTableId,
             limitTableName,
             persistentResourceRemovalPolicy,
+            pointInTimeRecovery,
         );
 
         if (!EmilyStackUtils.isTablesOnly()) {
@@ -93,7 +101,6 @@ export class EmilyStack extends cdk.Stack {
 
             const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(
                 alias,
-                persistentResourceRemovalPolicy,
                 props,
             );
         }
@@ -111,6 +118,7 @@ export class EmilyStack extends cdk.Stack {
         depositTableId: string,
         depositTableName: string,
         removalPolicy: cdk.RemovalPolicy,
+        pointInTimeRecovery: undefined | boolean,
     ): dynamodb.Table {
         const table: dynamodb.Table = new dynamodb.Table(this, depositTableId, {
             tableName: depositTableName,
@@ -123,6 +131,8 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.NUMBER,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
+            pointInTimeRecovery: pointInTimeRecovery,
         });
 
         const indexName: string = "DepositStatus";
@@ -164,6 +174,7 @@ export class EmilyStack extends cdk.Stack {
         tableId: string,
         tableName: string,
         removalPolicy: cdk.RemovalPolicy,
+        pointInTimeRecovery: undefined | boolean,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         const table: dynamodb.Table = new dynamodb.Table(this, tableId, {
@@ -177,6 +188,8 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.STRING,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
+            pointInTimeRecovery: pointInTimeRecovery,
         });
 
         const indexName: string = "WithdrawalStatus";
@@ -216,6 +229,7 @@ export class EmilyStack extends cdk.Stack {
         tableId: string,
         tableName: string,
         removalPolicy: cdk.RemovalPolicy,
+        pointInTimeRecovery: undefined | boolean,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         return new dynamodb.Table(this, tableId, {
@@ -229,6 +243,8 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.STRING,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
+            pointInTimeRecovery: pointInTimeRecovery,
         });
     }
 
@@ -243,6 +259,7 @@ export class EmilyStack extends cdk.Stack {
         tableId: string,
         tableName: string,
         removalPolicy: cdk.RemovalPolicy,
+        pointInTimeRecovery: undefined | boolean,
     ): dynamodb.Table {
         // Create DynamoDB table to store the messages. Encrypted by default.
         return new dynamodb.Table(this, tableId, {
@@ -256,6 +273,8 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.NUMBER,
             },
             removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
+            pointInTimeRecovery: pointInTimeRecovery,
         });
     }
 
@@ -300,6 +319,7 @@ export class EmilyStack extends cdk.Stack {
                 // deployments the AWS stack. SAM can only set environment variables that are
                 // already expected to be present in the lambda.
                 IS_LOCAL: "false",
+                TRUSTED_REORG_API_KEY: props.trustedReorgApiKey,
             },
             description: `Emily Api Handler. ${EmilyStackUtils.getLambdaGitIdentifier()}`,
             currentVersionOptions: {
@@ -320,7 +340,6 @@ export class EmilyStack extends cdk.Stack {
      */
     createOrUpdateApi(
         operationLambda: lambda.Alias,
-        logRemovalPolicy: cdk.RemovalPolicy,
         props: EmilyStackProps
     ): apig.SpecRestApi {
 
@@ -372,7 +391,7 @@ export class EmilyStack extends cdk.Stack {
             api_keys.push(apiKey);
         }
 
-        // Give the the rest api execute ARN permission to invoke the lambda.
+        // Give the rest api execute ARN permission to invoke the lambda.
         operationLambda.addPermission("ApiInvokeLambdaPermission", {
             principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
             action: "lambda:InvokeFunction",

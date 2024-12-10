@@ -74,16 +74,6 @@ block_hash_stream_endpoints = [
 # making requests.
 endpoints = ["http://localhost:20443"]
 
-# If specified, the sBTC signer will use this value as the Nakamoto start height
-# (in Bitcoin block height). Otherwise, it will use information provided by the
-# Stacks node.
-#
-# Default: <none>
-# Required: false
-# Environment: SIGNER_STACKS__NAKAMOTO_START_HEIGHT
-#
-# nakamoto_start_height = 31
-
 # !! ==============================================================================
 # !! Signer Configuration
 # !! ==============================================================================
@@ -161,7 +151,7 @@ bitcoin_block_horizon = 1500
 #
 # Required: false
 # Environment: SIGNER_SIGNER__CONTEXT_WINDOW
-context_window = 10000
+context_window = 1000
 
 # The maximum amount of time, in seconds, a signing round will take before
 # the coordinator will time out and return an error. This value must be
@@ -216,7 +206,7 @@ bind = "0.0.0.0:8801"
 # !! Signer P2P Networking Configuration
 # !! ==============================================================================
 [signer.p2p]
-# List of seed nodes to connect to to bootstrap the network.
+# List of seed nodes to connect to bootstrap the network.
 #
 # If specified, these nodes will be used to discover other nodes on the network.
 # If not specified or if none of the specified seeds could be reached, the node

@@ -26,23 +26,20 @@ pub async fn sync_blockchains(ctx: &impl Context) -> Result<(), Error> {
 
     // If the nakamoto start height is provided in the config, use that value.
     // Otherwise, get the value from the Stacks node's PoX-info endpoint.
-    let nakamoto_activation_height = match ctx.config().stacks.nakamoto_start_height {
-        Some(height) => height,
-        None => {
-            let mut interval = tokio::time::interval(Duration::from_secs(5));
-            loop {
-                if let Ok(pox_info) = stacks_client.get_pox_info().await {
-                    let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
-                        tracing::error!("missing nakamoto activation height, failing sync");
-                        return Err(Error::MissingNakamotoStartHeight);
-                    };
-                    break nakamoto_activation_height;
-                }
+    let nakamoto_activation_height = {
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        loop {
+            if let Ok(pox_info) = stacks_client.get_pox_info().await {
+                let Some(nakamoto_activation_height) = pox_info.nakamoto_start_height() else {
+                    tracing::error!("missing nakamoto activation height, failing sync");
+                    return Err(Error::MissingNakamotoStartHeight);
+                };
+                break nakamoto_activation_height;
+            }
 
-                tokio::select! {
-                    _ = term.wait_for_shutdown() => return Ok(()),
-                    _ = interval.tick() => {},
-                }
+            tokio::select! {
+                _ = term.wait_for_shutdown() => return Ok(()),
+                _ = interval.tick() => {},
             }
         }
     };

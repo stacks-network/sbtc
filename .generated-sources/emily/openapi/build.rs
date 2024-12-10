@@ -4,6 +4,8 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use utoipa::openapi::path::Parameter;
+use utoipa::openapi::path::ParameterIn;
 use utoipa::openapi::security::ApiKey;
 use utoipa::openapi::security::ApiKeyValue;
 use utoipa::openapi::security::SecurityScheme;
@@ -17,7 +19,7 @@ fn main() {
 #[derive(utoipa::OpenApi)]
 #[openapi(
     // Add API key security scheme.
-    modifiers(&AwsApiKey, &AwsLambdaIntegration),
+    modifiers(&CorsSupport, &AwsApiKey, &AwsLambdaIntegration),
     // Paths to be included in the OpenAPI specification.
     paths(
         // Health check endpoints.
@@ -154,5 +156,44 @@ impl Modify for AwsLambdaIntegration {
                     .get_or_insert(Default::default())
                     .extend(lambda_integration.clone())
             });
+    }
+}
+
+/// Attaches the CORS endpoints to the openapi definition. This is necessary for AWS
+/// to allows the CORS preflight requests to pass through the API Gateway.
+struct CorsSupport;
+/// Add support for CORS with OPTIONS method to all endpoints.
+impl Modify for CorsSupport {
+    /// Add CORS support to the OPTIONS method for each path in the OpenAPI specification.
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let cors_options_operation = utoipa::openapi::path::OperationBuilder::new()
+            .summary(Some("CORS support"))
+            .description(Some("Handles CORS preflight requests"))
+            .tag("CORS")
+            .build();
+
+        openapi.paths.paths.iter_mut().for_each(|(_, path_item)| {
+            // Get the path parameters from the first of the other operations.
+            // All operations will need to have the same path parameters.
+            let path_parameters: Option<Vec<Parameter>> =
+                path_item.operations.first_entry().map(|entry| {
+                    entry
+                        .get()
+                        .parameters
+                        .clone()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|p| p.parameter_in == ParameterIn::Path)
+                        .collect()
+                });
+            // Add the path parameters to the operation.
+            let mut cors_operation_for_path = cors_options_operation.clone();
+            cors_operation_for_path.parameters = path_parameters;
+            // Insert the CORS operation into the path.
+            path_item.operations.insert(
+                utoipa::openapi::PathItemType::Options,
+                cors_operation_for_path.clone(),
+            );
+        });
     }
 }

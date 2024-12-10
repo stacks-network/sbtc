@@ -281,7 +281,7 @@ pub struct SignerMessage {
         super::super::super::bitcoin::BitcoinBlockHash,
     >,
     /// The message payload
-    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
+    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 10, 11")]
     pub payload: ::core::option::Option<signer_message::Payload>,
 }
 /// Nested message and enum types in `SignerMessage`.
@@ -312,96 +312,12 @@ pub mod signer_message {
         #[prost(message, tag = "8")]
         WstsMessage(super::WstsMessage),
         /// Information about a new sweep transaction
-        #[prost(message, tag = "9")]
-        SweepTransactionInfo(super::SweepTransactionInfo),
-        /// Information about a new sweep transaction
         #[prost(message, tag = "10")]
         BitcoinPreSignRequest(super::BitcoinPreSignRequest),
         /// Represents an acknowledgment of a BitcoinPreSignRequest
         #[prost(message, tag = "11")]
         BitcoinPreSignAck(super::BitcoinPreSignAck),
     }
-}
-/// Represents information about a deposit request being swept-in by a sweep transaction.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SweptDeposit {
-    /// The index of the deposit input in the sBTC sweep transaction.
-    #[prost(uint32, tag = "1")]
-    pub input_index: u32,
-    /// The Bitcoin txid of the deposit request UTXO being swept-in by this
-    /// transaction.
-    #[prost(message, optional, tag = "2")]
-    pub deposit_request_txid: ::core::option::Option<
-        super::super::super::bitcoin::BitcoinTxid,
-    >,
-    /// The Bitcoin output index of the deposit request UTXO being swept-in by
-    /// this transaction.
-    #[prost(uint32, tag = "3")]
-    pub deposit_request_output_index: u32,
-}
-/// Represents information about a withdrawal request being swept-out by a sweep transaction.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SweptWithdrawal {
-    /// The index of the withdrawal output in the sBTC sweep transaction.
-    #[prost(uint32, tag = "1")]
-    pub output_index: u32,
-    /// The public request id of the withdrawal request serviced by this
-    /// transaction.
-    #[prost(uint64, tag = "2")]
-    pub withdrawal_request_id: u64,
-    /// The Stacks block hash of the Stacks block which included the withdrawal
-    /// request transaction.
-    #[prost(message, optional, tag = "3")]
-    pub withdrawal_request_block_hash: ::core::option::Option<
-        super::super::StacksBlockId,
-    >,
-}
-/// Represents information about a new sweep transaction.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct SweepTransactionInfo {
-    /// The Bitcoin transaction id of the sweep transaction.
-    #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
-    /// The transaction id of the signer UTXO consumed by this transaction.
-    #[prost(message, optional, tag = "2")]
-    pub signer_prevout_txid: ::core::option::Option<
-        super::super::super::bitcoin::BitcoinTxid,
-    >,
-    /// The index of the signer UTXO consumed by this transaction.
-    #[prost(uint32, tag = "3")]
-    pub signer_prevout_output_index: u32,
-    /// The amount of the signer UTXO consumed by this transaction.
-    #[prost(uint64, tag = "4")]
-    pub signer_prevout_amount: u64,
-    /// The public key of the signer UTXO consumed by this transaction.
-    #[prost(bytes = "vec", tag = "5")]
-    pub signer_prevout_script_pubkey: ::prost::alloc::vec::Vec<u8>,
-    /// The total **output** amount of this transaction.
-    #[prost(uint64, tag = "6")]
-    pub amount: u64,
-    /// The fee paid for this transaction.
-    #[prost(uint64, tag = "7")]
-    pub fee: u64,
-    /// The virtual size of this transaction (in bytes).
-    #[prost(uint32, tag = "8")]
-    pub vsize: u32,
-    /// The Bitcoin block hash at which this transaction was created.
-    #[prost(message, optional, tag = "9")]
-    pub created_at_block_hash: ::core::option::Option<
-        super::super::super::bitcoin::BitcoinBlockHash,
-    >,
-    /// The market fee rate at the time of this transaction.
-    #[prost(double, tag = "10")]
-    pub market_fee_rate: f64,
-    /// List of deposits which were swept-in by this transaction.
-    #[prost(message, repeated, tag = "11")]
-    pub swept_deposits: ::prost::alloc::vec::Vec<SweptDeposit>,
-    /// List of withdrawals which were swept-out by this transaction.
-    #[prost(message, repeated, tag = "12")]
-    pub swept_withdrawals: ::prost::alloc::vec::Vec<SweptWithdrawal>,
 }
 /// A wsts message.
 #[allow(clippy::derive_partial_eq_without_eq)]

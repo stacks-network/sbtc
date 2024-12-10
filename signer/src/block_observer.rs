@@ -284,18 +284,11 @@ impl<C: Context, B> BlockObserver<C, B> {
 
         tracing::info!("processing bitcoin block");
 
-        // If the Nakamoto start height is set in the configuration then we
-        // use that value, otherwise we fetch the Nakamoto start height from
-        // the Stacks node.
-        let until_bitcoin_height = match self.context.config().stacks.nakamoto_start_height {
-            Some(height) => height,
-            None => {
-                let pox_info = stacks_client.get_pox_info().await?;
-                pox_info
-                    .nakamoto_start_height()
-                    .ok_or(Error::MissingNakamotoStartHeight)?
-            }
-        };
+        let until_bitcoin_height = stacks_client
+            .get_pox_info()
+            .await?
+            .nakamoto_start_height()
+            .ok_or(Error::MissingNakamotoStartHeight)?;
 
         // Get the current tenure info (incl. tip details) from the Stacks node.
         let stacks_client = self.context.get_stacks_client();
@@ -409,18 +402,22 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// Update the sBTC peg limits from Emily
     async fn update_sbtc_limits(&self) -> Result<(), Error> {
         let limits = self.context.get_emily_client().get_limits().await?;
-        let max_mintable = match limits.total_cap() {
-            Amount::MAX_MONEY => Amount::MAX_MONEY,
-            total_cap => {
-                let sbtc_supply = self
-                    .context
-                    .get_stacks_client()
-                    .get_sbtc_total_supply(&self.context.config().signer.deployer)
-                    .await?;
-                // The maximum amount of sBTC that can be minted is the total cap
-                // minus the current supply.
-                total_cap.checked_sub(sbtc_supply).unwrap_or(Amount::ZERO)
-            }
+        let sbtc_deployed = self.context.state().sbtc_contracts_deployed();
+
+        let max_mintable = if limits.total_cap_exists() && sbtc_deployed {
+            let sbtc_supply = self
+                .context
+                .get_stacks_client()
+                .get_sbtc_total_supply(&self.context.config().signer.deployer)
+                .await?;
+            // The maximum amount of sBTC that can be minted is the total cap
+            // minus the current supply.
+            limits
+                .total_cap()
+                .checked_sub(sbtc_supply)
+                .unwrap_or(Amount::ZERO)
+        } else {
+            Amount::MAX_MONEY
         };
 
         let limits = SbtcLimits::new(

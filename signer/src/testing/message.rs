@@ -54,7 +54,6 @@ impl fake::Dummy<fake::Faker> for message::Payload {
             dummy_payload::<message::BitcoinTransactionSignRequest, _>,
             dummy_payload::<message::BitcoinTransactionSignAck, _>,
             dummy_payload::<message::WstsMessage, _>,
-            dummy_payload::<message::SweepTransactionInfo, _>,
             dummy_payload::<message::BitcoinPreSignRequest, _>,
         ];
         variants.choose(rng).unwrap()(config, rng)
