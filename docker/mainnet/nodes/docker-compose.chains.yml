@@ -1,0 +1,46 @@
+services:
+  bitcoin:
+    image: bitcoin/bitcoin:28.0
+    restart: on-failure
+    ports:
+      - "8332:8332"  # RPC
+      - "8333:8333"  # I2P
+      - "8334:8334"  # P2P
+      - "28332:28332"  # ZMQ
+    volumes:
+      - /mnt/bitcoin:/bitcoin
+    environment:
+      BITCOIN_RPC_USERNAME: *BITCOIN_RPC_USERNAME
+      BITCOIN_RPC_PASSWORD: *BITCOIN_RPC_PASSWORD
+      BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
+      BITCOIN_ZMQ_PORT: *BITCOIN_ZMQ_PORT
+      BITCOIN_DATA: /bitcoin
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        bitcoind \
+          -server \
+          -rpcbind=0.0.0.0 \
+          -rpcuser=${BITCOIN_RPC_USERNAME} \
+          -rpcpassword=${BITCOIN_RPC_PASSWORD} \
+          -rpcport=${BITCOIN_RPC_PORT} \
+          -rpcallowip=0.0.0.0/0 \
+          -rpcallowip=::/0 \
+          -txindex \
+          -zmqpubhashblock="tcp://*:${BITCOIN_ZMQ_PORT}" \
+          -zmqpubrawblock="tcp://*:${BITCOIN_ZMQ_PORT}" \
+          -coinstatsindex
+
+  stacks-blockchain:
+    image: blockstack/stacks-blockchain:3.1.0.0.0
+    restart: on-failure
+    ports:
+      - 20443:20443 # RPC
+      - 20444:20444 # P2P
+      - 9153:9153 # Metrics
+    volumes:
+      - ./stacks/Config.toml:/stacks/Config.toml:ro
+      - /mnt/stacks:/stacks
+    command: ["/bin/stacks-node", "start", "--config", "/stacks/Config.toml"]
