@@ -24,7 +24,7 @@ services:
       BITCOIN_RPC_PASSWORD: *BITCOIN_RPC_PASSWORD
       BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
       BITCOIN_ZMQ_PORT:  *BITCOIN_ZMQ_PORT
-      BITCOIN_DATA: /bitcoin
+      BITCOIN_DATA: /bitcoin/data
     entrypoint:
       - /bin/bash
       - -c
