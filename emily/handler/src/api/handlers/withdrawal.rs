@@ -209,13 +209,13 @@ pub async fn create_withdrawal(
 #[instrument(skip(context))]
 pub async fn update_withdrawals(
     context: EmilyContext,
-    api_key: String,
+    maybe_api_key: Option<String>,
     body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        api_key: String,
+        maybe_api_key: Option<String>,
         body: UpdateWithdrawalsRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Get the api state and error if the api state is claimed by a reorg.
@@ -231,7 +231,12 @@ pub async fn update_withdrawals(
         // Infer the new chainstates that would come from these deposit updates and then
         // attempt to update the chainstates.
         let inferred_chainstates = validated_request.inferred_chainstates()?;
-        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
+
+        // Get whether the API key is provided and allowed to initiate a reorg.
+        let can_reorg = maybe_api_key
+            .map(|api_key| context.settings.trusted_reorg_api_key == api_key)
+            .unwrap_or(false);
+
         for chainstate in inferred_chainstates {
             // TODO(TBD): Determine what happens if this occurs in multiple lambda
             // instances at once.
@@ -263,7 +268,7 @@ pub async fn update_withdrawals(
         Ok(with_status(json(&response), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, api_key, body)
+    handler(context, maybe_api_key, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
