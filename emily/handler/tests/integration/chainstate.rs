@@ -1,8 +1,8 @@
 use std::cmp::Ordering;
 
-use emily_client::apis;
-use emily_client::apis::configuration::Configuration;
-use emily_client::models::Chainstate;
+use testing_emily_client::apis;
+use testing_emily_client::apis::configuration::Configuration;
+use testing_emily_client::models::Chainstate;
 
 use crate::common::clean_setup;
 use test_case::test_case;

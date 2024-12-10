@@ -38,7 +38,6 @@ use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
-use crate::message::SweepTransactionInfo;
 use crate::network;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
@@ -158,8 +157,6 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
     pub dkg_max_duration: Duration,
-    /// Whether the coordinator has already deployed the contracts.
-    pub sbtc_contracts_deployed: bool,
     /// An indicator for whether the Stacks blockchain has reached Nakamoto
     /// 3. If we are not in Nakamoto 3 or later, then the coordinator does
     /// not do any work.
@@ -294,6 +291,11 @@ where
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+            // Before returning, we also check if all the smart contracts are
+            // deployed: we do this as some other coordinator could have deployed
+            // them, in which case we need to updated our state.
+            self.all_smart_contracts_deployed().await?;
+
             tracing::debug!("we are not the coordinator, so nothing to do");
             return Ok(());
         }
@@ -927,14 +929,6 @@ where
             .broadcast_transaction(&transaction.tx)
             .await?;
 
-        // Publish the transaction to the P2P network so that peers get advance
-        // knowledge of the sweep.
-        self.send_message(
-            SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, transaction),
-            bitcoin_chain_tip,
-        )
-        .await?;
-
         tracing::info!("bitcoin transaction accepted by bitcoin-core");
 
         Ok(())
@@ -1233,7 +1227,7 @@ where
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(chain_tip, self.context_window)
+            .get_signer_utxo(chain_tip)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
@@ -1477,7 +1471,7 @@ where
     }
 
     async fn all_smart_contracts_deployed(&mut self) -> Result<bool, Error> {
-        if self.sbtc_contracts_deployed {
+        if self.context.state().sbtc_contracts_deployed() {
             return Ok(true);
         }
 
@@ -1490,7 +1484,7 @@ where
             }
         }
 
-        self.sbtc_contracts_deployed = true;
+        self.context.state().set_sbtc_contracts_deployed();
         Ok(true)
     }
 
@@ -1620,7 +1614,8 @@ where
     }
 }
 
-/// Check if the provided public key is the coordinator for the provided chain tip
+/// Check if the provided public key is the coordinator for the provided chain
+/// tip
 pub fn given_key_is_coordinator(
     pub_key: PublicKey,
     bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -1634,21 +1629,28 @@ pub fn coordinator_public_key(
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
 ) -> Option<PublicKey> {
+    // Create a hash of the bitcoin chain tip. SHA256 will always result in
+    // a 32 byte digest.
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
     let digest: [u8; 32] = hasher.finalize().into();
-    // <[u8; 32]>::first_chunk<N> will return None if the requested slice
-    // is greater than 32 bytes. Since we are converting to a `usize`, the
-    // number of bytes necessary depends on the width of pointers on the
-    // machine that compiled this binary. Since we only support systems
-    // with a target pointer width of either 4 or 8 bytes, the <[u8;
-    // 32]>::first_chunk<N> call will return Some(_) since N > 4 or 8.
-    // Also, do humans even make machines where the pointer width is
-    // greater than 32 bytes?
-    let index = usize::from_be_bytes(*digest.first_chunk()?);
+
+    // Use the first 4 bytes of the digest to create a u32 index. Since `digest`
+    // is 32 bytes and we explicitly take the first 4 bytes, this is safe.
+    #[allow(clippy::expect_used)]
+    let u32_bytes = digest[..4]
+        .try_into()
+        .expect("BUG: failed to take first 4 bytes of digest");
+
+    // Convert the first 4 bytes of the digest to a u32 index.
+    let index = u32::from_be_bytes(u32_bytes);
+
     let num_signers = signer_public_keys.len();
 
-    signer_public_keys.iter().nth(index % num_signers).copied()
+    signer_public_keys
+        .iter()
+        .nth((index as usize) % num_signers)
+        .copied()
 }
 
 #[cfg(test)]

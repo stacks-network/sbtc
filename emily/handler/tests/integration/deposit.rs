@@ -1,13 +1,13 @@
 use std::cmp::Ordering;
 
-use emily_client::models::{Fulfillment, Status, UpdateDepositsRequestBody};
-use emily_client::{
-    apis::{self, configuration::Configuration},
-    models::{CreateDepositRequestBody, Deposit, DepositInfo, DepositParameters, DepositUpdate},
-};
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
 use stacks_common::codec::StacksMessageCodec as _;
+use testing_emily_client::models::{Fulfillment, Status, UpdateDepositsRequestBody};
+use testing_emily_client::{
+    apis::{self, configuration::Configuration},
+    models::{CreateDepositRequestBody, Deposit, DepositInfo, DepositParameters, DepositUpdate},
+};
 
 use crate::common::{clean_setup, StandardError};
 
@@ -119,7 +119,7 @@ async fn create_and_get_deposit_happy_path() {
             max_fee: DEPOSIT_MAX_FEE,
         }),
         recipient: expected_recipient,
-        status: emily_client::models::Status::Pending,
+        status: testing_emily_client::models::Status::Pending,
         status_message: INITIAL_DEPOSIT_STATUS_MESSAGE.into(),
     };
 
@@ -236,7 +236,7 @@ async fn get_deposits_for_transaction() {
                 max_fee: DEPOSIT_MAX_FEE,
             }),
             recipient: expected_recipient.clone(),
-            status: emily_client::models::Status::Pending,
+            status: testing_emily_client::models::Status::Pending,
             status_message: INITIAL_DEPOSIT_STATUS_MESSAGE.into(),
         };
         expected_deposits.push(expected_deposit);
@@ -302,7 +302,7 @@ async fn get_deposits() {
                 last_update_block_hash: BLOCK_HASH.into(),
                 last_update_height: BLOCK_HEIGHT,
                 recipient: expected_recipient.clone(),
-                status: emily_client::models::Status::Pending,
+                status: testing_emily_client::models::Status::Pending,
                 reclaim_script: reclaim_script.clone(),
                 deposit_script: deposit_script.clone(),
             };
@@ -320,7 +320,7 @@ async fn get_deposits() {
     // ----
     batch_create_deposits(&configuration, create_requests).await;
 
-    let status = emily_client::models::Status::Pending;
+    let status = testing_emily_client::models::Status::Pending;
     let mut next_token: Option<Option<String>> = None;
     let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
     loop {

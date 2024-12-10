@@ -1,10 +1,13 @@
 //! Common module for useful test functions.
 
-use emily_client::{
-    apis::{self, configuration::Configuration},
+use serde::{Deserialize, Serialize};
+use testing_emily_client::{
+    apis::{
+        self,
+        configuration::{ApiKey, Configuration},
+    },
     models::ErrorResponse,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::config::SETTINGS;
 
@@ -15,6 +18,10 @@ pub type StandardError = TestError<ErrorResponse>;
 pub async fn clean_setup() -> Configuration {
     let mut configuration = Configuration::default();
     configuration.base_path = format!("http://{}:{}", SETTINGS.server.host, SETTINGS.server.port);
+    configuration.api_key = Some(ApiKey {
+        prefix: None,
+        key: SETTINGS.server.api_key.clone(),
+    });
     apis::testing_api::wipe_databases(&configuration)
         .await
         .expect("Failed to wipe databases during test clean setup.");

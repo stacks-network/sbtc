@@ -1,0 +1,3 @@
+CREATE INDEX ix_bitcoin_tx_inputs_prevout_type ON sbtc_signer.bitcoin_tx_inputs(prevout_type);
+CREATE INDEX ix_bitcoin_tx_ouputs_ouput_type ON sbtc_signer.bitcoin_tx_outputs(output_type);
+CREATE INDEX ix_bitcoin_blocks_block_height ON sbtc_signer.bitcoin_blocks(block_height);

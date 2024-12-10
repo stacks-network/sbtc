@@ -29,13 +29,13 @@ use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
+use crate::transaction_coordinator::coordinator_public_key;
 use crate::transaction_coordinator::TxCoordinatorEventLoop;
 
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use fake::Fake as _;
 use fake::Faker;
 use rand::SeedableRng as _;
-use sha2::Digest as _;
 
 use super::context::TestContext;
 use super::context::WrappedMock;
@@ -46,6 +46,32 @@ const EMPTY_BITCOIN_TX: bitcoin::Transaction = bitcoin::Transaction {
     input: vec![],
     output: vec![],
 };
+
+/// Method which gets the coordinator private key based on the given list
+/// of `SignerInfo`.
+pub fn select_coordinator(
+    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    signer_info: &[testing::wsts::SignerInfo],
+) -> keys::PrivateKey {
+    // Ensure signer_info is not empty and grab the first one.
+    let first_signer_info = signer_info.first().expect("signer_info cannot be empty");
+
+    // Get the signer set public keys from the signer info. All of the provided
+    // signer info's should have the same set of public keys.
+    let signer_public_keys = &first_signer_info.signer_public_keys;
+
+    // Determine the coordinator's public key.
+    let coordinator_pub_key = coordinator_public_key(bitcoin_chain_tip, signer_public_keys)
+        .expect("couldn't determine coordinator");
+
+    // Find the coordinator's private key from the signer info based on the
+    // public key we just determined.
+    signer_info
+        .iter()
+        .find(|info| PublicKey::from_private_key(&info.signer_private_key) == coordinator_pub_key)
+        .expect("couldn't find coordinator from public key")
+        .signer_private_key
+}
 
 struct TxCoordinatorEventLoopHarness<C> {
     event_loop: EventLoop<C>,
@@ -63,7 +89,6 @@ where
         context_window: u16,
         private_key: PrivateKey,
         threshold: u16,
-        sbtc_contracts_deployed: bool,
     ) -> Self {
         Self {
             event_loop: transaction_coordinator::TxCoordinatorEventLoop {
@@ -72,7 +97,6 @@ where
                 private_key,
                 context_window,
                 threshold,
-                sbtc_contracts_deployed,
                 signing_round_max_duration: Duration::from_secs(10),
                 bitcoin_presign_request_max_duration: Duration::from_secs(10),
                 dkg_max_duration: Duration::from_secs(10),
@@ -174,17 +198,17 @@ where
             .await;
 
         // Create the coordinator
+        self.context.state().set_sbtc_contracts_deployed();
         let signer_network = SignerNetwork::single(&self.context);
         let mut coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
-            private_key: Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info),
+            private_key: select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info),
             threshold: self.signing_threshold,
             context_window: self.context_window,
             signing_round_max_duration: Duration::from_millis(500),
             bitcoin_presign_request_max_duration: Duration::from_millis(500),
             dkg_max_duration: Duration::from_millis(500),
-            sbtc_contracts_deployed: true,
             is_epoch3: true,
         };
 
@@ -320,16 +344,16 @@ where
             .await;
 
         // Get the private key of the coordinator of the signer set.
-        let private_key = Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
+        let private_key = select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
 
         // Bootstrap the tx coordinator within an event loop harness.
+        self.context.state().set_sbtc_contracts_deployed();
         let event_loop_harness = TxCoordinatorEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
             private_key,
             self.signing_threshold,
-            true,
         );
 
         // Start the tx coordinator run loop.
@@ -510,16 +534,16 @@ where
             .await;
 
         // Get the private key of the coordinator of the signer set.
-        let private_key = Self::select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
+        let private_key = select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
 
         // Bootstrap the tx coordinator within an event loop harness.
+        // We don't `set_sbtc_contracts_deployed` to force the coordinator to deploy the contracts
         let event_loop_harness = TxCoordinatorEventLoopHarness::create(
             self.context.clone(),
             network.connect(),
             self.context_window,
             private_key,
             self.signing_threshold,
-            false, // Force the coordinator to deploy the contracts
         );
 
         // Start the tx coordinator run loop.
@@ -627,7 +651,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, self.context_window)
+            .get_signer_utxo(&chain_tip)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -726,7 +750,7 @@ where
                 public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             };
             let signer_utxo = storage
-                .get_signer_utxo(&chain_tip.block_hash, self.context_window)
+                .get_signer_utxo(&chain_tip.block_hash)
                 .await
                 .unwrap()
                 .expect("no signer utxo");
@@ -735,12 +759,7 @@ where
 
         // Check context window
         assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, 1)
-            .await
-            .unwrap()
-            .is_none());
-        assert!(storage
-            .get_signer_utxo(&block_c2.block_hash, 2)
+            .get_signer_utxo(&block_c2.block_hash)
             .await
             .unwrap()
             .is_some());
@@ -835,7 +854,7 @@ where
         assert_eq!(chain_tip, block_ref.block_hash);
 
         let signer_utxo = storage
-            .get_signer_utxo(&chain_tip, self.context_window)
+            .get_signer_utxo(&chain_tip)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -928,7 +947,7 @@ where
 
         // Check with chain tip A1
         let signer_utxo = storage
-            .get_signer_utxo(&block_a1.block_hash, self.context_window)
+            .get_signer_utxo(&block_a1.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -943,7 +962,7 @@ where
 
         // Check with chain tip A2
         let signer_utxo = storage
-            .get_signer_utxo(&block_a2.block_hash, self.context_window)
+            .get_signer_utxo(&block_a2.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -958,7 +977,7 @@ where
 
         // Check with chain tip B1
         let signer_utxo = storage
-            .get_signer_utxo(&block_b1.block_hash, self.context_window)
+            .get_signer_utxo(&block_b1.block_hash)
             .await
             .unwrap()
             .expect("no signer utxo");
@@ -1031,19 +1050,5 @@ where
         R: rand::RngCore,
     {
         TestData::generate(rng, &signer_keys, &self.test_model_parameters)
-    }
-
-    fn select_coordinator(
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-        signer_info: &[testing::wsts::SignerInfo],
-    ) -> keys::PrivateKey {
-        let mut hasher = sha2::Sha256::new();
-        hasher.update(bitcoin_chain_tip.into_bytes());
-        let digest = hasher.finalize();
-        let index = usize::from_be_bytes(*digest.first_chunk().expect("unexpected digest size"));
-        signer_info
-            .get(index % signer_info.len())
-            .expect("missing signer info")
-            .signer_private_key
     }
 }
