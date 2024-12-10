@@ -99,7 +99,7 @@ export class EmilyStack extends cdk.Stack {
             chainstateTable.grantReadWriteData(operationLambda);
             limitTable.grantReadWriteData(operationLambda);
 
-            const emilyApi: apig.SpecRestApi = this.createOrUpdateApi(
+            const emilyApis: apig.SpecRestApi[] = this.createOrUpdateApi(
                 alias,
                 props,
             );
@@ -341,14 +341,57 @@ export class EmilyStack extends cdk.Stack {
     createOrUpdateApi(
         operationLambda: lambda.Alias,
         props: EmilyStackProps
-    ): apig.SpecRestApi {
+    ): apig.SpecRestApi[] {
 
-        const apiId: string  = "EmilyAPI";
+        let apisToCreate = [
+            {
+                purpose: "public",
+                numApiKeys: EmilyStackUtils.getNumSignerApiKeys(),
+            },
+            {
+                purpose: "private",
+                numApiKeys: 1,
+            },
+        ];
+        // Add testing api if it's a development stack.
+        if (EmilyStackUtils.isDevelopmentStack()) {
+            apisToCreate.push({
+                purpose: "testing",
+                numApiKeys: 3,
+            });
+        }
+        // Create all the apis.
+        return apisToCreate
+            .map((apiToCreate) => this.createOrUpdateSpecificApi(
+                operationLambda,
+                apiToCreate.numApiKeys,
+                apiToCreate.purpose as "public" | "private" | "testing",
+                props
+            ));
+    }
+
+    /**
+     * Creates or updates a specific API Gateway to connect with the Lambda function.
+     * @param {lambda.Function} operationLambda The Lambda function to connect to the API.
+     * @param {number} numApiKeys The number of API keys to create for the API.
+     * @param {string} apiPurpose The purpose of the API.
+     * @param {EmilyStackProps} props The stack properties.
+     * @returns {apig.SpecRestApi} The created or updated API Gateway.
+     * @post An API Gateway with execute permissions linked to the Lambda function is returned.
+     */
+    createOrUpdateSpecificApi(
+        operationLambda: lambda.Alias,
+        numApiKeys: number,
+        apiPurpose: "public" | "private" | "testing",
+        props: EmilyStackProps,
+    ): apig.SpecRestApi {
+        const apiPurposeTitleCase = apiPurpose.charAt(0).toUpperCase() + apiPurpose.slice(1);
+        const apiId: string = `EmilyApi-${apiPurposeTitleCase}`;
         const api: apig.SpecRestApi = new apig.SpecRestApi(this, apiId, {
             restApiName: EmilyStackUtils.getResourceName(apiId, props),
             apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
                 EmilyStackUtils.getPathFromProjectRoot(
-                    ".generated-sources/emily/openapi/emily-openapi-spec.json"
+                    `.generated-sources/emily/openapi/generated-specs/${apiPurpose}-emily-openapi-spec.json`
                 ),
                 [
                     // This must match the Lambda name from the @aws.apigateway#integration trait in the
@@ -361,9 +404,9 @@ export class EmilyStack extends cdk.Stack {
 
         // Create a usage plan that will be used by the Signers. This will allow us to throttle
         // the general API more than the signers.
-        const signerApiUsagePlanId: string = `SignerApiUsagePlan`;
-        const signerApiUsagePlan = api.addUsagePlan(signerApiUsagePlanId, {
-            name: EmilyStackUtils.getResourceName(signerApiUsagePlanId, props),
+        const apiUsagePlanId: string = `ApiUsagePlan-${apiPurposeTitleCase}`;
+        const apiUsagePlan = api.addUsagePlan(apiUsagePlanId, {
+            name: EmilyStackUtils.getResourceName(apiUsagePlanId, props),
             throttle: {
                 // These are very high limits. We can adjust them down as needed.
                 rateLimit: 100,
@@ -381,18 +424,19 @@ export class EmilyStack extends cdk.Stack {
         let api_keys = [];
         for (let i = 0; i < num_api_keys; i++) {
             // Create an API Key
-            const apiKeyId: string = `ApiKey-${i}`;
+            const apiKeyId: string = `ApiKey-${apiUsagePlan}-${i}`;
             const apiKey = api.addApiKey(apiKeyId, {
                 apiKeyName: EmilyStackUtils.getResourceName(apiKeyId, props),
             });
 
             // Associate the API Key with the Usage Plan and specify stages
-            signerApiUsagePlan.addApiKey(apiKey);
+            apiUsagePlan.addApiKey(apiKey);
             api_keys.push(apiKey);
         }
 
         // Give the rest api execute ARN permission to invoke the lambda.
-        operationLambda.addPermission("ApiInvokeLambdaPermission", {
+        const apiInvokeLambdaPermissionId: string = `ApiInvokeLambdaPermission-${apiPurposeTitleCase}`;
+        operationLambda.addPermission(apiInvokeLambdaPermissionId, {
             principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
             action: "lambda:InvokeFunction",
             sourceArn: api.arnForExecuteApi(),
@@ -407,26 +451,32 @@ export class EmilyStack extends cdk.Stack {
                 throw new Error("Custom domain name specified but hosted zone ID not provided.");
             }
 
-            // Make the custom domain name. Add the stage name extension ot the domain name
-            // if it's not what we consider the "production" stage.
-            const customDomainName = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
-                ? customRootDomainNameRoot
-                : `${EmilyStackUtils.getStageName()}.${customRootDomainNameRoot}`;
+            // Create the custom domain name of the format:
+            //   if stage != prod: [stage].[purpose].[customRootDomainNameRoot]
+            //   if stage == prod: [purpose].[customRootDomainNameRoot]
+            const stagePrefix = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
+                ? ""
+                : `${EmilyStackUtils.getStageName()}.`;
+            const purposePrefix = apiPurpose != "public" ? `${apiPurpose}.` : "";
+            const customDomainName = `${stagePrefix}${purposePrefix}${customRootDomainNameRoot}`;
 
             // Get zone.
-            const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, "HostedZone", {
+            const hostedZoneResourceId = `HostedZone-${apiPurposeTitleCase}`;
+            const hostedZone = route53.HostedZone.fromHostedZoneAttributes(this, hostedZoneResourceId, {
                 hostedZoneId: hostedZoneId,
                 zoneName: customDomainName,
             });
 
             // Get certificate.
-            const certificate = new certificatemanager.Certificate(this, "DomainCertificate", {
+            const DomainCertificateId = `DomainCertificate-${apiPurposeTitleCase}`;
+            const certificate = new certificatemanager.Certificate(this, DomainCertificateId, {
                 domainName: customDomainName,
                 validation: certificatemanager.CertificateValidation.fromDns(hostedZone),
             });
 
             // Create a custom domain.
-            const customDomain = new apig.DomainName(this, "CustomDomain", {
+            let customDomainId = `CustomDomain-${apiPurposeTitleCase}`;
+            const customDomain = new apig.DomainName(this, customDomainId, {
                 domainName: customDomainName,
                 certificate: certificate,
                 // If the endpoint is in us-east-1 then we'll use EDGE because it's a better faster
@@ -440,14 +490,16 @@ export class EmilyStack extends cdk.Stack {
             });
 
             // Map custom domain to API Gateway
-            new apig.BasePathMapping(this, "BasePathMapping", {
+            let basePathMappingId = `BasePathMapping-${apiPurposeTitleCase}`;
+            new apig.BasePathMapping(this, basePathMappingId, {
                 domainName: customDomain,
                 restApi: api,
                 stage: api.deploymentStage,
             });
 
             // Create a Route 53 alias record
-            new route53.ARecord(this, "AliasRecord", {
+            let aliasRecordId = `AliasRecord-${apiPurposeTitleCase}`;
+            new route53.ARecord(this, aliasRecordId, {
                 zone: hostedZone,
                 target: route53.RecordTarget.fromAlias(new route53Targets.ApiGatewayDomain(customDomain)),
             });

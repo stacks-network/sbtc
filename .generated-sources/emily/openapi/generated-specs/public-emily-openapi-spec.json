@@ -1,0 +1,2274 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "emily-openapi-spec",
+    "description": "",
+    "license": {
+      "name": ""
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/chainstate": {
+      "get": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Get chain tip handler.",
+        "operationId": "getChainTip",
+        "responses": {
+          "200": {
+            "description": "Chain tip retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chainstate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Set chainstate handler.",
+        "operationId": "setChainstate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Chainstate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Chainstate updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chainstate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/chainstate/{height}": {
+      "get": {
+        "tags": [
+          "chainstate"
+        ],
+        "summary": "Get chainstate handler.",
+        "operationId": "getChainstateAtHeight",
+        "parameters": [
+          {
+            "name": "height",
+            "in": "path",
+            "description": "Height of the blockchain data to receive.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chainstate retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chainstate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "height",
+            "in": "path",
+            "description": "Height of the blockchain data to receive.",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/deposit": {
+      "get": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Get deposits handler.",
+        "operationId": "getDeposits",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "the status to search by when getting all deposits.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Status"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetDepositsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Create deposit handler.",
+        "operationId": "createDeposit",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDepositRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Deposit created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deposit"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Update deposits handler.",
+        "operationId": "updateDeposits",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDepositsRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Deposits updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateDepositsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/deposit/{txid}": {
+      "get": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Get deposits for transaction handler.",
+        "operationId": "getDepositsForTransaction",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "txid associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetDepositsForTransactionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "txid associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/deposit/{txid}/{index}": {
+      "get": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Get deposit handler.",
+        "operationId": "getDeposit",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "txid associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "description": "output index associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposit retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deposit"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "txid",
+            "in": "path",
+            "description": "txid associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "index",
+            "in": "path",
+            "description": "output index associated with the Deposit.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Get health handler.",
+        "operationId": "checkHealth",
+        "responses": {
+          "200": {
+            "description": "Successfully retrieved health data.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthData"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/limits": {
+      "get": {
+        "tags": [
+          "limits"
+        ],
+        "summary": "Get the global limits.",
+        "operationId": "getLimits",
+        "responses": {
+          "200": {
+            "description": "Limits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Limits"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/limits/{account}": {
+      "get": {
+        "tags": [
+          "limits"
+        ],
+        "summary": "Get limits for account handler.",
+        "operationId": "getLimitsForAccount",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "description": "The account for which to get the limits.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Account limits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountLimits"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "account",
+            "in": "path",
+            "description": "The account for which to get the limits.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/testing/wipe": {
+      "post": {
+        "tags": [
+          "testing"
+        ],
+        "summary": "Wipe databases handler.",
+        "operationId": "wipeDatabases",
+        "responses": {
+          "204": {
+            "description": "Successfully wiped databases."
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/withdrawal": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawals handler.",
+        "operationId": "getWithdrawals",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "description": "the status to search by when getting all deposits.",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Status"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWithdrawalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Create withdrawal handler.",
+        "operationId": "createWithdrawal",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWithdrawalRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Withdrawal created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Withdrawal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Update withdrawals handler.",
+        "operationId": "updateWithdrawals",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWithdrawalsRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Withdrawals updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateWithdrawalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/withdrawal/{id}": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawal handler.",
+        "operationId": "getWithdrawal",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "id associated with the Withdrawal",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawal retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Withdrawal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "id associated with the Withdrawal",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccountLimits": {
+        "type": "object",
+        "description": "The representation of a limit for a specific account.",
+        "properties": {
+          "pegCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Represents the current sBTC limits.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perDepositCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per deposit cap. If none then the cap is the same as the global per deposit cap.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.",
+            "nullable": true,
+            "minimum": 0
+          }
+        }
+      },
+      "Chainstate": {
+        "type": "object",
+        "description": "Chainstate.",
+        "required": [
+          "stacksBlockHeight",
+          "stacksBlockHash"
+        ],
+        "properties": {
+          "stacksBlockHash": {
+            "type": "string",
+            "description": "Stacks block hash at the height."
+          },
+          "stacksBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Stacks block height.",
+            "minimum": 0
+          }
+        }
+      },
+      "CreateDepositRequestBody": {
+        "type": "object",
+        "description": "Request structure for create deposit request.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "reclaimScript",
+          "depositScript"
+        ],
+        "properties": {
+          "bitcoinTxOutputIndex": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
+          },
+          "bitcoinTxid": {
+            "type": "string",
+            "description": "Bitcoin transaction id."
+          },
+          "depositScript": {
+            "type": "string",
+            "description": "Deposit script."
+          },
+          "reclaimScript": {
+            "type": "string",
+            "description": "Reclaim script."
+          }
+        }
+      },
+      "CreateWithdrawalRequestBody": {
+        "type": "object",
+        "description": "Request structure for the create withdrawal request.",
+        "required": [
+          "requestId",
+          "stacksBlockHash",
+          "stacksBlockHeight",
+          "recipient",
+          "amount",
+          "parameters"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being withdrawn in satoshis.",
+            "minimum": 0
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/WithdrawalParameters"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "The recipient Bitcoin address."
+          },
+          "requestId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
+          },
+          "stacksBlockHash": {
+            "type": "string",
+            "description": "The stacks block hash in which this request id was initiated."
+          },
+          "stacksBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The stacks block hash in which this request id was initiated.",
+            "minimum": 0
+          }
+        }
+      },
+      "Deposit": {
+        "type": "object",
+        "description": "Deposit.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage",
+          "parameters",
+          "reclaimScript",
+          "depositScript"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being deposited in satoshis.",
+            "minimum": 0
+          },
+          "bitcoinTxOutputIndex": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
+          },
+          "bitcoinTxid": {
+            "type": "string",
+            "description": "Bitcoin transaction id."
+          },
+          "depositScript": {
+            "type": "string",
+            "description": "Raw deposit script binary in hex."
+          },
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
+          },
+          "lastUpdateHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/DepositParameters"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Stacks address to received the deposited sBTC."
+          },
+          "reclaimScript": {
+            "type": "string",
+            "description": "Raw reclaim script binary in hex."
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the deposit."
+          }
+        }
+      },
+      "DepositInfo": {
+        "type": "object",
+        "description": "Reduced version of the Deposit data.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "reclaimScript",
+          "depositScript"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being deposited in satoshis.",
+            "minimum": 0
+          },
+          "bitcoinTxOutputIndex": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
+          },
+          "bitcoinTxid": {
+            "type": "string",
+            "description": "Bitcoin transaction id."
+          },
+          "depositScript": {
+            "type": "string",
+            "description": "Raw deposit script binary in hex."
+          },
+          "lastUpdateBlockHash": {
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
+          },
+          "lastUpdateHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Stacks address to received the deposited sBTC."
+          },
+          "reclaimScript": {
+            "type": "string",
+            "description": "Raw reclaim script binary in hex."
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        }
+      },
+      "DepositParameters": {
+        "type": "object",
+        "description": "Deposit parameters.",
+        "required": [
+          "maxFee",
+          "lockTime"
+        ],
+        "properties": {
+          "lockTime": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bitcoin block height at which the reclaim script becomes executable.",
+            "minimum": 0
+          },
+          "maxFee": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum fee the signers are allowed to take from the deposit to facilitate\nthe transaction.",
+            "minimum": 0
+          }
+        }
+      },
+      "DepositUpdate": {
+        "type": "object",
+        "description": "A singlular Deposit update that contains only the fields pertinent\nto updating the status of a deposit. This includes the key related\ndata in addition to status history related data.",
+        "required": [
+          "bitcoinTxid",
+          "bitcoinTxOutputIndex",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage"
+        ],
+        "properties": {
+          "bitcoinTxOutputIndex": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Output index on the bitcoin transaction associated with this specific deposit.",
+            "minimum": 0
+          },
+          "bitcoinTxid": {
+            "type": "string",
+            "description": "Bitcoin transaction id."
+          },
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
+          },
+          "lastUpdateHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the deposit."
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "description": "Structure representing an error response\nThis is used to serialize error messages in HTTP responses",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "Fulfillment": {
+        "type": "object",
+        "description": "Data about the fulfillment of an sBTC Operation.",
+        "required": [
+          "BitcoinTxid",
+          "BitcoinTxIndex",
+          "StacksTxid",
+          "BitcoinBlockHash",
+          "BitcoinBlockHeight",
+          "BtcFee"
+        ],
+        "properties": {
+          "BitcoinBlockHash": {
+            "type": "string",
+            "description": "Bitcoin block hash of the block that contains the bitcoin transaction that fulfilled\nthis transaction."
+          },
+          "BitcoinBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitcoin block height of the block that contains the bitcoin transaction that fulfilled\nthis transaction.",
+            "minimum": 0
+          },
+          "BitcoinTxIndex": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Bitcoin transaction output index of the Bitcoin transaction that fulfilled the\noperation that corresponds to the fulfillment of this specific operation.",
+            "minimum": 0
+          },
+          "BitcoinTxid": {
+            "type": "string",
+            "description": "Bitcoin transaction id of the Bitcoin transaction that fulfilled the operation."
+          },
+          "BtcFee": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Satoshis consumed to fulfill the sBTC operation.",
+            "minimum": 0
+          },
+          "StacksTxid": {
+            "type": "string",
+            "description": "Stacks transaction Id that fulfilled this operation."
+          }
+        }
+      },
+      "GetDepositsForTransactionResponse": {
+        "type": "object",
+        "description": "Response to get deposits for transaction request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Deposit"
+            },
+            "description": "Deposits."
+          },
+          "nextToken": {
+            "type": "string",
+            "description": "Next token for the search.",
+            "nullable": true
+          }
+        }
+      },
+      "GetDepositsResponse": {
+        "type": "object",
+        "description": "Response to get deposits request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepositInfo"
+            },
+            "description": "Deposit infos: deposits with a little less data."
+          },
+          "nextToken": {
+            "type": "string",
+            "description": "Next token for the search.",
+            "nullable": true
+          }
+        }
+      },
+      "GetWithdrawalsResponse": {
+        "type": "object",
+        "description": "Response to get withdrawals request.",
+        "required": [
+          "withdrawals"
+        ],
+        "properties": {
+          "nextToken": {
+            "type": "string",
+            "description": "Next token for the search.",
+            "nullable": true
+          },
+          "withdrawals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawalInfo"
+            },
+            "description": "Withdrawal infos: withdrawals with a little less data."
+          }
+        }
+      },
+      "HealthData": {
+        "type": "object",
+        "description": "Struct that represents the current status of the API.",
+        "required": [
+          "is_okay"
+        ],
+        "properties": {
+          "is_okay": {
+            "type": "boolean",
+            "description": "Whether the API is okay."
+          }
+        }
+      },
+      "Limits": {
+        "type": "object",
+        "description": "Represents the current sBTC limits.",
+        "required": [
+          "accountCaps"
+        ],
+        "properties": {
+          "accountCaps": {
+            "type": "object",
+            "description": "Represents the individual limits for requests coming from different accounts.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AccountLimits"
+            }
+          },
+          "pegCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Represents the total cap for all pegged-in BTC/sBTC.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perDepositCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per deposit cap. If none then there is no cap.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per withdrawal cap. If none then there is no cap.",
+            "nullable": true,
+            "minimum": 0
+          }
+        }
+      },
+      "Status": {
+        "type": "string",
+        "description": "The status of the in-flight sBTC operation.",
+        "enum": [
+          "pending",
+          "reprocessing",
+          "accepted",
+          "confirmed",
+          "failed"
+        ]
+      },
+      "UpdateDepositsRequestBody": {
+        "type": "object",
+        "description": "Request structure for update deposit request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DepositUpdate"
+            },
+            "description": "Bitcoin transaction id."
+          }
+        }
+      },
+      "UpdateDepositsResponse": {
+        "type": "object",
+        "description": "Response to update deposits request.",
+        "required": [
+          "deposits"
+        ],
+        "properties": {
+          "deposits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Deposit"
+            },
+            "description": "Deposit infos: deposits with a little less data."
+          }
+        }
+      },
+      "UpdateWithdrawalsRequestBody": {
+        "type": "object",
+        "description": "Request structure for the create withdrawal request.",
+        "required": [
+          "withdrawals"
+        ],
+        "properties": {
+          "withdrawals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WithdrawalUpdate"
+            },
+            "description": "Withdrawal updates to execute."
+          }
+        }
+      },
+      "UpdateWithdrawalsResponse": {
+        "type": "object",
+        "description": "Response to update withdrawals request.",
+        "required": [
+          "withdrawals"
+        ],
+        "properties": {
+          "withdrawals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Withdrawal"
+            },
+            "description": "Updated withdrawals."
+          }
+        }
+      },
+      "Withdrawal": {
+        "type": "object",
+        "description": "Withdrawal.",
+        "required": [
+          "requestId",
+          "stacksBlockHash",
+          "stacksBlockHeight",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage",
+          "parameters"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being withdrawn in satoshis.",
+            "minimum": 0
+          },
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
+          },
+          "lastUpdateHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/WithdrawalParameters"
+          },
+          "recipient": {
+            "type": "string",
+            "description": "The recipient Bitcoin address."
+          },
+          "requestId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
+          },
+          "stacksBlockHash": {
+            "type": "string",
+            "description": "The stacks block hash in which this request id was initiated."
+          },
+          "stacksBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The height of the Stacks block in which this request id was initiated.",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the withdrawal."
+          }
+        }
+      },
+      "WithdrawalInfo": {
+        "type": "object",
+        "description": "Reduced version of the Withdrawal.",
+        "required": [
+          "requestId",
+          "stacksBlockHash",
+          "stacksBlockHeight",
+          "recipient",
+          "amount",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status"
+        ],
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Amount of BTC being withdrawn in satoshis.",
+            "minimum": 0
+          },
+          "lastUpdateBlockHash": {
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
+          },
+          "lastUpdateHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
+          },
+          "recipient": {
+            "type": "string",
+            "description": "The recipient Bitcoin address."
+          },
+          "requestId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
+          },
+          "stacksBlockHash": {
+            "type": "string",
+            "description": "The stacks block hash in which this request id was initiated."
+          },
+          "stacksBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The height of the Stacks block in which this request id was initiated.",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        }
+      },
+      "WithdrawalParameters": {
+        "type": "object",
+        "description": "Withdrawal parameters.",
+        "required": [
+          "maxFee"
+        ],
+        "properties": {
+          "maxFee": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum fee the signers are allowed to take from the withdrawal to facilitate\nthe inclusion of the transaction onto the Bitcoin blockchain.",
+            "minimum": 0
+          }
+        }
+      },
+      "WithdrawalUpdate": {
+        "type": "object",
+        "description": "A singlular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
+        "required": [
+          "requestId",
+          "lastUpdateHeight",
+          "lastUpdateBlockHash",
+          "status",
+          "statusMessage"
+        ],
+        "properties": {
+          "fulfillment": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Fulfillment"
+              }
+            ],
+            "nullable": true
+          },
+          "lastUpdateBlockHash": {
+            "type": "string",
+            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
+          },
+          "lastUpdateHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
+            "minimum": 0
+          },
+          "requestId": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
+            "minimum": 0
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "statusMessage": {
+            "type": "string",
+            "description": "The status message of the withdrawal."
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ApiGatewayKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-api-key",
+        "description": "AWS Apigateway key"
+      }
+    }
+  }
+}

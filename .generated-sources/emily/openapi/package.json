@@ -1,10 +1,11 @@
 {
   "name": "emily-api",
   "scripts": {
-    "build-rust": "openapi-generator-cli generate -i ./emily-openapi-spec.json -g rust -o ../client/rust/ --config ./config.json --additional-properties=preferUnsignedInt=true",
-    "clean-rust": "find ../client/rust ! -path '../client/rust/src/main.rs' ! -path '../client/rust/Cargo.toml' -mindepth 1 -delete",
-    "build": "pnpm build-rust",
-    "clean": "pnpm clean-rust"
+    "build-testing-api-rust": "openapi-generator-cli generate -i ./generated-specs/testing-emily-openapi-spec.json -g rust -o ../client/rust/testing/ --config ./api-config/testing.json",
+    "build-private-api-rust": "openapi-generator-cli generate -i ./generated-specs/private-emily-openapi-spec.json -g rust -o ../client/rust/private/ --config ./api-config/private.json",
+    "build-public-api-rust": "openapi-generator-cli generate -i ./generated-specs/public-emily-openapi-spec.json -g rust -o ../client/rust/public/ --config ./api-config/public.json",
+    "clean-rust": "find ../client/rust ! -path '../client/rust/*/src/main.rs' ! -path '../client/rust/*/Cargo.toml' -mindepth 1 -delete",
+    "build": "pnpm build-testing-api-rust && pnpm build-public-api-rust && pnpm build-private-api-rust"
   },
   "devDependencies": {
     "@openapitools/openapi-generator-cli": "^2.13.2"

@@ -40,7 +40,6 @@ Class | Method | HTTP request | Description
 *ChainstateApi* | [**get_chain_tip**](docs/ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
 *ChainstateApi* | [**get_chainstate_at_height**](docs/ChainstateApi.md#get_chainstate_at_height) | **GET** /chainstate/{height} | Get chainstate handler.
 *ChainstateApi* | [**set_chainstate**](docs/ChainstateApi.md#set_chainstate) | **POST** /chainstate | Set chainstate handler.
-*ChainstateApi* | [**update_chainstate**](docs/ChainstateApi.md#update_chainstate) | **PUT** /chainstate | Update chainstate handler.
 *DepositApi* | [**create_deposit**](docs/DepositApi.md#create_deposit) | **POST** /deposit | Create deposit handler.
 *DepositApi* | [**get_deposit**](docs/DepositApi.md#get_deposit) | **GET** /deposit/{txid}/{index} | Get deposit handler.
 *DepositApi* | [**get_deposits**](docs/DepositApi.md#get_deposits) | **GET** /deposit | Get deposits handler.
@@ -49,8 +48,6 @@ Class | Method | HTTP request | Description
 *HealthApi* | [**check_health**](docs/HealthApi.md#check_health) | **GET** /health | Get health handler.
 *LimitsApi* | [**get_limits**](docs/LimitsApi.md#get_limits) | **GET** /limits | Get the global limits.
 *LimitsApi* | [**get_limits_for_account**](docs/LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
-*LimitsApi* | [**set_limits**](docs/LimitsApi.md#set_limits) | **POST** /limits | Get limits handler.
-*LimitsApi* | [**set_limits_for_account**](docs/LimitsApi.md#set_limits_for_account) | **POST** /limits/{account} | Set limits for account handler.
 *TestingApi* | [**wipe_databases**](docs/TestingApi.md#wipe_databases) | **POST** /testing/wipe | Wipe databases handler.
 *WithdrawalApi* | [**create_withdrawal**](docs/WithdrawalApi.md#create_withdrawal) | **POST** /withdrawal | Create withdrawal handler.
 *WithdrawalApi* | [**get_withdrawal**](docs/WithdrawalApi.md#get_withdrawal) | **GET** /withdrawal/{id} | Get withdrawal handler.

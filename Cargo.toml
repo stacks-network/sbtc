@@ -7,7 +7,9 @@ members = [
   "blocklist-client",
   ".generated-sources/blocklist-openapi-gen",
   "sbtc",
-  ".generated-sources/emily/client/rust",
+  ".generated-sources/emily/client/rust/public",
+  ".generated-sources/emily/client/rust/private",
+  ".generated-sources/emily/client/rust/testing",
 ]
 
 [profile.dev]
@@ -22,7 +24,8 @@ codegen-units = 16
 [workspace.dependencies]
 sbtc = { path = "./sbtc", default-features = false }
 emily-handler = { version = "0.1.0", path = "./emily/handler" }
-emily-client = { version = "0.1.0", path = "./.generated-sources/emily/client/rust" }
+emily-client = { version = "0.1.0", path = "./.generated-sources/emily/client/rust/public" }
+testing-emily-client = { version = "0.1.0", path = "./.generated-sources/emily/client/rust/testing" }
 
 aquamarine = "0.5.0"
 aws-config = "1.2.0"
