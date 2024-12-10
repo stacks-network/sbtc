@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use bitcoin::block::Header;
 use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::BlockHash;
@@ -294,6 +295,25 @@ impl BitcoinCoreClient {
         }
     }
 
+    /// Fetch the header of the block identified by the given block hash.
+    pub fn get_block_header(&self, block_hash: &BlockHash) -> Result<Option<Header>, Error> {
+        let args = [
+            serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
+            serde_json::Value::Bool(false),
+        ];
+        let header_hex = match self.inner.call::<String>("getblockheader", &args) {
+            Ok(header_hex) => header_hex,
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => {
+                return Ok(None)
+            }
+            Err(err) => return Err(Error::BitcoinCoreGetBlockHeader(err, *block_hash)),
+        };
+
+        let header: Header = bitcoin::consensus::encode::deserialize_hex(&header_hex)
+            .map_err(|error| Error::BitcoinCoreDecodeHeaderHex(error, *block_hash))?;
+        Ok(Some(header))
+    }
+
     /// Fetch and decode raw transaction from bitcoin-core using the
     /// getrawtransaction RPC with a verbosity of 1. None is returned if
     /// the node cannot find the transaction in a bitcoin block or the
@@ -542,6 +562,10 @@ impl BitcoinInteract for BitcoinCoreClient {
 
     async fn get_block(&self, block_hash: &BlockHash) -> Result<Option<Block>, Error> {
         self.get_block(block_hash)
+    }
+
+    async fn get_block_header(&self, block_hash: &BlockHash) -> Result<Option<Header>, Error> {
+        self.get_block_header(block_hash)
     }
 
     async fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {

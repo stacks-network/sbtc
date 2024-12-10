@@ -2,6 +2,7 @@
 
 use std::future::Future;
 
+use bitcoin::block::Header;
 use bitcoin::BlockHash;
 use bitcoin::Txid;
 
@@ -51,6 +52,12 @@ pub trait BitcoinInteract: Sync + Send {
         &self,
         block_hash: &BlockHash,
     ) -> impl Future<Output = Result<Option<bitcoin::Block>, Error>> + Send;
+
+    /// Fer the header of the block identified by the given block hash.
+    fn get_block_header(
+        &self,
+        block_hash: &BlockHash,
+    ) -> impl Future<Output = Result<Option<Header>, Error>> + Send;
 
     /// get tx
     fn get_tx(

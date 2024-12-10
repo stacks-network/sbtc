@@ -208,6 +208,17 @@ impl BitcoinInteract for TestHarness {
         Ok(self.deposits.get(txid).cloned().map(|(resp, _)| resp))
     }
 
+    async fn get_block_header(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<bitcoin::block::Header>, Error> {
+        Ok(self
+            .bitcoin_blocks
+            .iter()
+            .find(|block| &block.block_hash() == block_hash)
+            .map(|block| block.header))
+    }
+
     async fn get_tx_info(
         &self,
         txid: &Txid,

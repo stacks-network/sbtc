@@ -50,6 +50,14 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
             .await
     }
 
+    async fn get_block_header(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<bitcoin::block::Header>, Error> {
+        self.exec(|client, _| BitcoinInteract::get_block_header(client, block_hash))
+            .await
+    }
+
     async fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         self.exec(|client, _| BitcoinInteract::get_tx(client, txid))
             .await

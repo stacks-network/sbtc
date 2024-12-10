@@ -66,6 +66,19 @@ pub enum Error {
     #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
     BitcoinCoreGetBlock(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
 
+    /// Attempt to fetch a bitcoin block header resulted in an unexpected
+    /// error. This is not triggered if the block header is missing.
+    #[error("bitcoin-core getblockheader RPC error for hash {1}: {0}")]
+    BitcoinCoreGetBlockHeader(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
+
+    /// Attempt to decode a bitcoin block header from hex resulted in an
+    /// unexpected error.
+    #[error("could not decode getblockheader response from bitcoin-core {1}: {0}")]
+    BitcoinCoreDecodeHeaderHex(
+        #[source] bitcoin::consensus::encode::FromHexError,
+        bitcoin::BlockHash,
+    ),
+
     /// Received an error in response to getrawtransaction RPC call
     #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
     BitcoinCoreGetTransaction(#[source] bitcoincore_rpc::Error, bitcoin::Txid),

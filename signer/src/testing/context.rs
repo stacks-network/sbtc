@@ -304,6 +304,13 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         self.inner.lock().await.get_block(block_hash).await
     }
 
+    async fn get_block_header(
+        &self,
+        block_hash: &bitcoin::BlockHash,
+    ) -> Result<Option<bitcoin::block::Header>, Error> {
+        self.inner.lock().await.get_block_header(block_hash).await
+    }
+
     async fn get_tx(&self, txid: &Txid) -> Result<Option<GetTxResponse>, Error> {
         self.inner.lock().await.get_tx(txid).await
     }
