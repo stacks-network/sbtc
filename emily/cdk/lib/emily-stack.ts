@@ -455,7 +455,7 @@ export class EmilyStack extends cdk.Stack {
             const stagePrefix = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
                 ? `${EmilyStackUtils.getStageName()}.`
                 : "";
-            const purposePrefix = apiPurpose != "public" ? `${apiPurposeTitleCase}.` : "";
+            const purposePrefix = apiPurpose != "public" ? `${apiPurpose}.` : "";
             const customDomainName = `${stagePrefix}${purposePrefix}${customRootDomainNameRoot}`;
 
             // Get zone.
