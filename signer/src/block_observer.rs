@@ -454,6 +454,13 @@ impl<C: Context, B> BlockObserver<C, B> {
 
             for prevout in tx_info.to_inputs(&signer_script_pubkeys) {
                 db.write_tx_prevout(&prevout).await?;
+                if prevout.prevout_type == model::TxPrevoutType::Deposit {
+                    metrics::counter!(
+                        crate::metrics::DEPOSITS_SWEPT_TOTAL,
+                        "blockchain" => crate::metrics::BITCOIN_BLOCKCHAIN,
+                    )
+                    .increment(1);
+                }
             }
 
             for output in tx_info.to_outputs(&signer_script_pubkeys) {

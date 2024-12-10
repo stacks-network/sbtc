@@ -14,6 +14,10 @@ const METRIC_QUANTILES: [f64; 8] = [0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0];
 /// The metric for the total number of submitted transactions.
 pub const TRANSACTIONS_SUBMITTED_TOTAL: &str = "transactions_submitted_total";
 
+/// The metric for the total number of deposit requests that have been
+/// swept.
+pub const DEPOSITS_SWEPT_TOTAL: &str = "deposits_swept_total";
+
 /// The metric for the total number of observed bitcoin or stacks blocks.
 /// We use a label to distinguish between the two. Note that this only
 /// includes bitcoin blocks observed over the ZeroMQ interface and stacks
