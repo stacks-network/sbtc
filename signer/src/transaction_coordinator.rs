@@ -49,7 +49,6 @@ use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RotateKeysV1;
 use crate::stacks::contracts::SmartContract;
-use crate::stacks::contracts::StacksTx;
 use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
@@ -724,13 +723,7 @@ where
         multi_tx: MultisigTx,
         wallet: &SignerWallet,
     ) -> Result<StacksTxId, Error> {
-        let kind = match &sign_request.contract_tx {
-            StacksTx::ContractCall(ContractCall::CompleteDepositV1(_)) => "complete-deposit",
-            StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(_)) => "accept-withdrawal",
-            StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(_)) => "reject-withdrawal",
-            StacksTx::ContractCall(ContractCall::RotateKeysV1(_)) => "rotate-keys",
-            StacksTx::SmartContract(_) => "smart-contract-deployment",
-        };
+        let kind = sign_request.tx_kind();
 
         let instant = std::time::Instant::now();
         let tx = self
