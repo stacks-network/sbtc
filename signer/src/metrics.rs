@@ -9,7 +9,7 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 const METRIC_BUCKETS: [f64; 9] = [1e-4, 1e-3, 1e-2, 0.1, 0.5, 1.0, 5.0, 20.0, f64::INFINITY];
 
 /// The quantiles to use when rendering historgrams
-const METRIC_QUANTILES: [f64; 7] = [0.0, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0];
+const METRIC_QUANTILES: [f64; 8] = [0.0, 0.25, 0.5, 0.75, 0.9, 0.95, 0.99, 1.0];
 
 /// Set up a prometheus exporter for metrics.
 pub fn setup_metrics(prometheus_exporter_endpoint: Option<SocketAddr>) {

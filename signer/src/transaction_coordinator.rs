@@ -732,10 +732,17 @@ where
             StacksTx::SmartContract(_) => "smart-contract-deployment",
         };
 
+        let instant = std::time::Instant::now();
         let tx = self
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
             .await?;
 
+        metrics::histogram!(
+            "signing_round_duration_seconds",
+            "blockchain" => "stacks",
+            "kind" => kind,
+        )
+        .record(instant.elapsed());
         metrics::counter!(
             "signing_rounds_completed_total",
             "blockchain" => "stacks",
@@ -903,7 +910,7 @@ where
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
         let txid = transaction.tx.compute_txid();
-
+        let instant = std::time::Instant::now();
         let signature = self
             .coordinate_signing_round(
                 bitcoin_chain_tip,
@@ -913,6 +920,13 @@ where
                 SignatureType::Taproot(None),
             )
             .await?;
+
+        metrics::histogram!(
+            "signing_round_duration_seconds",
+            "blockchain" => "bitcoin",
+            "kind" => "sweep",
+        )
+        .record(instant.elapsed());
 
         metrics::counter!(
             "signing_rounds_completed_total",
@@ -937,6 +951,7 @@ where
             )
             .await?;
 
+            let instant = std::time::Instant::now();
             let signature = self
                 .coordinate_signing_round(
                     bitcoin_chain_tip,
@@ -947,6 +962,12 @@ where
                 )
                 .await?;
 
+            metrics::histogram!(
+                "signing_round_duration_seconds",
+                "blockchain" => "bitcoin",
+                "kind" => "sweep",
+            )
+            .record(instant.elapsed());
             metrics::counter!(
                 "signing_rounds_completed_total",
                 "blockchain" => "bitcoin",
