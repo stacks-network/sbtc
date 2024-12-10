@@ -52,7 +52,7 @@ Name | Type | Description  | Required | Notes
 
 ### Authorization
 
-[ApiGatewayKey](../README.md#ApiGatewayKey)
+No authorization required
 
 ### HTTP request headers
 
