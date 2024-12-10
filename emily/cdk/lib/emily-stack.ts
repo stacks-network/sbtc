@@ -451,10 +451,12 @@ export class EmilyStack extends cdk.Stack {
                 throw new Error("Custom domain name specified but hosted zone ID not provided.");
             }
 
-            // Create the custom domain name.
+            // Create the custom domain name of the format:
+            //   if stage != prod: [stage].[purpose].[customRootDomainNameRoot]
+            //   if stage == prod: [purpose].[customRootDomainNameRoot]
             const stagePrefix = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
-                ? `${EmilyStackUtils.getStageName()}.`
-                : "";
+                ? ""
+                : `${EmilyStackUtils.getStageName()}.`;
             const purposePrefix = apiPurpose != "public" ? `${apiPurpose}.` : "";
             const customDomainName = `${stagePrefix}${purposePrefix}${customRootDomainNameRoot}`;
 

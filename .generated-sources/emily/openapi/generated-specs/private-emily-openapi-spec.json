@@ -235,7 +235,14 @@
         "summary": "CORS support",
         "description": "Handles CORS preflight requests",
         "parameters": [],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/chainstate/{height}": {
@@ -337,7 +344,14 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/deposit": {
@@ -603,7 +617,14 @@
         "summary": "CORS support",
         "description": "Handles CORS preflight requests",
         "parameters": [],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/deposit/{txid}": {
@@ -722,7 +743,14 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/deposit/{txid}/{index}": {
@@ -838,7 +866,14 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/health": {
@@ -920,7 +955,14 @@
         "summary": "CORS support",
         "description": "Handles CORS preflight requests",
         "parameters": [],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/limits": {
@@ -1063,7 +1105,14 @@
         "summary": "CORS support",
         "description": "Handles CORS preflight requests",
         "parameters": [],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/limits/{account}": {
@@ -1258,7 +1307,14 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/withdrawal": {
@@ -1529,7 +1585,14 @@
         "summary": "CORS support",
         "description": "Handles CORS preflight requests",
         "parameters": [],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     },
     "/withdrawal/{id}": {
@@ -1631,7 +1694,14 @@
             }
           }
         ],
-        "responses": {}
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
       }
     }
   },

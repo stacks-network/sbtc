@@ -8,7 +8,7 @@ use super::CorsSupport;
 #[derive(utoipa::OpenApi)]
 #[openapi(
     // Add API key security scheme.
-    modifiers(&AwsApiKey, &AwsLambdaIntegration, &CorsSupport),
+    modifiers(&CorsSupport, &AwsApiKey, &AwsLambdaIntegration),
     // Paths to be included in the OpenAPI specification.
     paths(
         // Health check endpoints.
