@@ -424,7 +424,7 @@ export class EmilyStack extends cdk.Stack {
         for (let i = 0; i < numApiKeys; i++) {
             // Create an API Key
             const apiKeyId: string = apiPurpose === "public"
-                ? `ApiKey-${apiUsagePlan}-${i}`
+                ? `ApiKey-${i}`
                 : `ApiKey-${apiPurposeTitleCase}-${i}`;
             const apiKey = api.addApiKey(apiKeyId, {
                 apiKeyName: EmilyStackUtils.getResourceName(apiKeyId, props),
