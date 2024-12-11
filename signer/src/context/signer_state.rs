@@ -65,8 +65,10 @@ impl SignerState {
 
     /// Set the sbtc start height
     pub fn set_sbtc_bitcoin_start_height(&self, height: u64) {
-        self.is_sbtc_bitcoin_start_height_set.store(true, Ordering::SeqCst);
-        self.sbtc_bitcoin_start_height.store(height, Ordering::SeqCst);
+        self.is_sbtc_bitcoin_start_height_set
+            .store(true, Ordering::SeqCst);
+        self.sbtc_bitcoin_start_height
+            .store(height, Ordering::SeqCst);
     }
 
     /// Return whether the sbtc start height has been set.
