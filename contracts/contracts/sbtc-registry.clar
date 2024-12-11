@@ -28,11 +28,13 @@
 (map-set active-protocol-contracts governance-role .sbtc-bootstrap-signers)
 (map-set active-protocol-contracts deposit-role .sbtc-deposit)
 (map-set active-protocol-contracts withdrawal-role .sbtc-withdrawal)
+(if is-in-mainnet true (map-set active-protocol-contracts 0x03 tx-sender))
 ;; Role for active protocol contracts
 (define-map active-protocol-roles principal (buff 1))
 (map-set active-protocol-roles .sbtc-bootstrap-signers governance-role)
 (map-set active-protocol-roles .sbtc-deposit deposit-role)
 (map-set active-protocol-roles .sbtc-withdrawal withdrawal-role)
+(if is-in-mainnet true (map-set active-protocol-roles tx-sender 0x03))
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
 ;; request ID.
