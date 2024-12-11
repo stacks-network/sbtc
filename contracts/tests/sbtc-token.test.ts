@@ -406,6 +406,7 @@ describe("sBTC token contract", () => {
         token.protocolLock({
           amount: 1000n,
           owner: bob,
+          contractFlag: new Uint8Array([0])
         }),
         bob
       );
@@ -417,6 +418,7 @@ describe("sBTC token contract", () => {
         token.protocolBurn({
           amount: 1000n,
           owner: bob,
+          contractFlag: new Uint8Array([0])
         }),
         bob
       );
@@ -428,6 +430,7 @@ describe("sBTC token contract", () => {
         token.protocolBurnLocked({
           amount: 1000n,
           owner: bob,
+          contractFlag: new Uint8Array([0])
         }),
         bob
       );
@@ -464,6 +467,7 @@ describe("sBTC token contract", () => {
         token.protocolMint({
           amount: 1000n,
           recipient: bob,
+          contractFlag: new Uint8Array([3])
         }),
         deployer
       );
@@ -477,6 +481,7 @@ describe("sBTC token contract", () => {
         token.protocolLock({
           amount: 222n,
           owner: bob,
+          contractFlag: new Uint8Array([3])
         }),
         deployer
       );
@@ -491,6 +496,7 @@ describe("sBTC token contract", () => {
           amount: 900n,
           sender: bob,
           recipient: charlie,
+          contractFlag: new Uint8Array([3])
         }),
         deployer
       );
@@ -502,6 +508,7 @@ describe("sBTC token contract", () => {
           amount: 500n,
           sender: bob,
           recipient: charlie,
+          contractFlag: new Uint8Array([3])
         }),
         deployer
       );
@@ -513,6 +520,7 @@ describe("sBTC token contract", () => {
         token.protocolUnlock({
           amount: 500n,
           owner: bob,
+          contractFlag: new Uint8Array([3])
         }),
         deployer
       );
@@ -523,6 +531,7 @@ describe("sBTC token contract", () => {
         token.protocolUnlock({
           amount: 222n,
           owner: bob,
+          contractFlag: new Uint8Array([3])
         }),
         deployer
       );

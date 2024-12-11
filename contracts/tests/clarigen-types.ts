@@ -2111,7 +2111,8 @@ export const contracts = {
       tokenDecimals: 8n,
       tokenName: "sBTC",
       tokenSymbol: "sBTC",
-      tokenUri: null,
+      tokenUri:
+        "https://github.com/stacks-network/sbtc/pull/1097#pullrequestreview-2496135058",
     },
     non_fungible_tokens: [],
     fungible_tokens: [{ name: "sbtc-token" }, { name: "sbtc-token-locked" }],
