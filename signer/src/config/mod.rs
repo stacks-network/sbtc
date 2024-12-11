@@ -491,7 +491,7 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
-        assert!(settings.signer.sbtc_start_height.is_none());
+        assert_eq!(settings.signer.sbtc_start_height, Some(101));
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
         assert!(settings.signer.prometheus_exporter_endpoint.is_none());
