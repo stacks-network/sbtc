@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use bitcoin::block::Header;
 use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::BlockHash;
@@ -232,6 +231,24 @@ pub struct PrevoutScriptPubKey {
     pub script: ScriptBuf,
 }
 
+/// The response for a getblockheader RPC call to bitcoin-core.
+///
+/// Some fields from the actual response have been omitted because they
+/// were unneeded at the time.
+#[derive(Clone, PartialEq, Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BitcoinBlockHeader {
+    /// The consensus hash of the block header.
+    pub hash: BlockHash,
+    /// The height of the block associated with the header.
+    pub height: u64,
+    /// The time value in the block header.
+    pub time: u64,
+    /// The block hash of this blocks parent block/
+    #[serde(rename = "previousblockhash")]
+    pub previous_block_hash: BlockHash,
+}
+
 /// A struct representing the recommended fee, in sats per vbyte, from a
 /// particular source.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -296,22 +313,21 @@ impl BitcoinCoreClient {
     }
 
     /// Fetch the header of the block identified by the given block hash.
-    pub fn get_block_header(&self, block_hash: &BlockHash) -> Result<Option<Header>, Error> {
+    ///
+    /// <https://bitcoincore.org/en/doc/25.0.0/rpc/blockchain/getblockheader/>
+    pub fn get_block_header(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinBlockHeader>, Error> {
         let args = [
             serde_json::to_value(block_hash).map_err(Error::JsonSerialize)?,
-            serde_json::Value::Bool(false),
+            serde_json::Value::Bool(true),
         ];
-        let header_hex = match self.inner.call::<String>("getblockheader", &args) {
-            Ok(header_hex) => header_hex,
-            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => {
-                return Ok(None)
-            }
-            Err(err) => return Err(Error::BitcoinCoreGetBlockHeader(err, *block_hash)),
-        };
-
-        let header: Header = bitcoin::consensus::encode::deserialize_hex(&header_hex)
-            .map_err(|error| Error::BitcoinCoreDecodeHeaderHex(error, *block_hash))?;
-        Ok(Some(header))
+        match self.inner.call("getblockheader", &args) {
+            Ok(header_hex) => Ok(Some(header_hex)),
+            Err(BtcRpcError::JsonRpc(JsonRpcError::Rpc(RpcError { code: -5, .. }))) => Ok(None),
+            Err(err) => Err(Error::BitcoinCoreGetBlockHeader(err, *block_hash)),
+        }
     }
 
     /// Fetch and decode raw transaction from bitcoin-core using the
@@ -564,7 +580,10 @@ impl BitcoinInteract for BitcoinCoreClient {
         self.get_block(block_hash)
     }
 
-    async fn get_block_header(&self, block_hash: &BlockHash) -> Result<Option<Header>, Error> {
+    async fn get_block_header(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinBlockHeader>, Error> {
         self.get_block_header(block_hash)
     }
 

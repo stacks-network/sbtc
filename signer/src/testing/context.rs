@@ -17,6 +17,7 @@ use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::GetTransactionFeeResult;
 use crate::context::SbtcLimits;
 use crate::stacks::api::TenureBlocks;
@@ -307,7 +308,7 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     async fn get_block_header(
         &self,
         block_hash: &bitcoin::BlockHash,
-    ) -> Result<Option<bitcoin::block::Header>, Error> {
+    ) -> Result<Option<BitcoinBlockHeader>, Error> {
         self.inner.lock().await.get_block_header(block_hash).await
     }
 

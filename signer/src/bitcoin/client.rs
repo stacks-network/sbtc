@@ -21,6 +21,7 @@ use url::Url;
 
 use crate::{error::Error, util::ApiFallbackClient};
 
+use super::rpc::BitcoinBlockHeader;
 use super::rpc::BitcoinCoreClient;
 use super::rpc::BitcoinTxInfo;
 use super::rpc::GetTxResponse;
@@ -53,7 +54,7 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
     async fn get_block_header(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<bitcoin::block::Header>, Error> {
+    ) -> Result<Option<BitcoinBlockHeader>, Error> {
         self.exec(|client, _| BitcoinInteract::get_block_header(client, block_hash))
             .await
     }

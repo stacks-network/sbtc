@@ -29,6 +29,7 @@ use emily_client::models::Withdrawal;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
@@ -211,12 +212,17 @@ impl BitcoinInteract for TestHarness {
     async fn get_block_header(
         &self,
         block_hash: &BlockHash,
-    ) -> Result<Option<bitcoin::block::Header>, Error> {
+    ) -> Result<Option<BitcoinBlockHeader>, Error> {
         Ok(self
             .bitcoin_blocks
             .iter()
             .find(|block| &block.block_hash() == block_hash)
-            .map(|block| block.header))
+            .map(|block| BitcoinBlockHeader {
+                hash: *block_hash,
+                height: block.bip34_block_height().unwrap(),
+                time: block.header.time as u64,
+                previous_block_hash: block.header.prev_blockhash,
+            }))
     }
 
     async fn get_tx_info(
