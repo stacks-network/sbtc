@@ -10,6 +10,7 @@
 
 use std::collections::BTreeMap;
 
+use bitcoin::hashes::FromSliceError;
 use bitcoin::hashes::Hash;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
@@ -354,9 +355,10 @@ impl RawTupleData {
                 // that gets emitted here.
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
-            // TODO: I don't like this unwrap()
-            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
-            //.map_err(EventError::ClarityHashConversion)?,
+            // BurnchainHeaderHash::from_bytes(&sweep_block_hash) returns Option, not Result, so this map_err is not so obvious
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
+                .ok_or().map_err(EventError::ClarityHashConversion)?,
+                // .unwrap_or_else(|| {EventError::ClarityHashConversion})?,
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
