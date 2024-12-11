@@ -45,8 +45,7 @@ services:
           -rpcallowip=::/0 \
           -txindex \
           -zmqpubhashblock="tcp://*:$${BITCOIN_ZMQ_PORT}" \
-          -zmqpubrawblock="tcp://*:$${BITCOIN_ZMQ_PORT}" \
-          -coinstatsindex
+          -zmqpubrawblock="tcp://*:$${BITCOIN_ZMQ_PORT}"
 
   stacks-blockchain:
     image: blockstack/stacks-blockchain:3.1.0.0.0
