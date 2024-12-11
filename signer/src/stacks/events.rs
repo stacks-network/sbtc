@@ -30,6 +30,40 @@ use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
 use stacks_common::types::chainstate::StacksBlockId;
 
+/// This trait adds a function for converting bytes from little-endian
+/// order into a type. This is because the signers convert
+/// [`bitcoin::Txid`] and [`bitcoin::BlockHash`] bytes into little-endian
+/// order before submitting the contract call.
+///
+/// Both [`bitcoin::BlockHash`] and [`bitcoin::Txid`] are hash types that
+/// expect bytes in big-endian order, because bitcoin-core transmits hashes
+/// in big endian byte order[1] through the RPC interface.
+///
+/// [^1]: See the Note in
+/// <https://github.com/bitcoin/bitcoin/blob/62bd61de110b057cbfd6e31e4d0b727d93119c72/doc/zmq.md>.
+///
+/// <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+/// <https://learnmeabitcoin.com/technical/general/byte-order/>
+/// <https://developer.bitcoin.org/reference/p2p_networking.html>
+trait FromLittleEndianOrder: Sized {
+    /// Convert bytes expressed in little-endian order to the type;
+    fn from_le_bytes(bytes: [u8; 32]) -> Self;
+}
+
+impl FromLittleEndianOrder for bitcoin::Txid {
+    fn from_le_bytes(mut bytes: [u8; 32]) -> Self {
+        bytes.reverse();
+        bitcoin::Txid::from_byte_array(bytes)
+    }
+}
+
+impl FromLittleEndianOrder for bitcoin::BlockHash {
+    fn from_le_bytes(mut bytes: [u8; 32]) -> Self {
+        bytes.reverse();
+        bitcoin::BlockHash::from_byte_array(bytes)
+    }
+}
+
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
 pub enum EventError {
@@ -48,8 +82,8 @@ pub enum EventError {
     ClarityStringConversion(#[source] std::string::FromUtf8Error),
     /// This can only be thrown when the number of bytes for a txid or
     /// block hash field is not exactly equal to 32. This should never occur.
-    #[error("Could not convert a hash in clarity event into the expected hash {0}")]
-    ClarityHashConversion(#[source] bitcoin::hashes::FromSliceError),
+    #[error("unexpected improper hash byte length, received {0} bytes")]
+    ClarityHashByteLength(usize),
     /// This error is thrown when trying to convert a public key from a
     /// Clarity buffer into a proper public key. It should never be thrown.
     #[error("Could not convert a public key in clarity event into the expected public key {0}")]
@@ -325,14 +359,13 @@ impl RawTupleData {
     fn completed_deposit(mut self) -> Result<RegistryEvent, EventError> {
         let amount = self.remove_u128("amount")?;
         let vout = self.remove_u128("output-index")?;
-        let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
+        let txid_bytes = <[u8; 32]>::try_from(self.remove_buff("bitcoin-txid")?)
+            .map_err(|bytes| EventError::ClarityHashByteLength(bytes.len()))?;
+        let sweep_txid = <[u8; 32]>::try_from(self.remove_buff("sweep-txid")?)
+            .map_err(|bytes| EventError::ClarityHashByteLength(bytes.len()))?;
+        let sweep_block_hash = <[u8; 32]>::try_from(self.remove_buff("burn-hash")?)
+            .map_err(|bytes| EventError::ClarityHashByteLength(bytes.len()))?;
         let sweep_block_height = self.remove_u128("burn-height")?;
-        let sweep_txid = self.remove_buff("sweep-txid")?;
-
-        // The `sweep_block_hash` we receive is reversed, so we reverse it here
-        // so that we store it in an ordering consistent with the rest of our db.
-        sweep_block_hash.reverse();
 
         Ok(RegistryEvent::CompletedDeposit(CompletedDepositEvent {
             txid: self.tx_info.txid,
@@ -343,19 +376,17 @@ impl RawTupleData {
             outpoint: OutPoint {
                 // This shouldn't error, this is set from a proper [`Txid`]
                 // in a contract call.
-                txid: BitcoinTxid::from_slice(&txid_bytes)
-                    .map_err(EventError::ClarityHashConversion)?,
+                txid: BitcoinTxid::from_le_bytes(txid_bytes),
+                // .map_err(EventError::ClarityHashConversion)?,
                 // This shouldn't actually error, we cast u32s to u128s
                 // before making the contract call, and that is the value
                 // that gets emitted here.
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
-            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
-                .map_err(EventError::ClarityHashConversion)?,
+            sweep_block_hash: BitcoinBlockHash::from_le_bytes(sweep_block_hash),
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
-            sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
-                .map_err(EventError::ClarityHashConversion)?,
+            sweep_txid: BitcoinTxid::from_le_bytes(sweep_txid),
         }))
     }
 
@@ -578,14 +609,13 @@ impl RawTupleData {
         let bitmap = self.remove_u128("signer-bitmap")?;
         let fee = self.remove_u128("fee")?;
         let vout = self.remove_u128("output-index")?;
-        let txid_bytes = self.remove_buff("bitcoin-txid")?;
-        let mut sweep_block_hash = self.remove_buff("burn-hash")?;
+        let txid_bytes = <[u8; 32]>::try_from(self.remove_buff("bitcoin-txid")?)
+            .map_err(|bytes| EventError::ClarityHashByteLength(bytes.len()))?;
+        let sweep_txid = <[u8; 32]>::try_from(self.remove_buff("sweep-txid")?)
+            .map_err(|bytes| EventError::ClarityHashByteLength(bytes.len()))?;
+        let sweep_block_hash = <[u8; 32]>::try_from(self.remove_buff("burn-hash")?)
+            .map_err(|bytes| EventError::ClarityHashByteLength(bytes.len()))?;
         let sweep_block_height = self.remove_u128("burn-height")?;
-        let sweep_txid = self.remove_buff("sweep-txid")?;
-
-        // The `sweep_block_hash` we receive is reversed, so we reverse it here
-        // so that we store it in an ordering consistent with the rest of our db.
-        sweep_block_hash.reverse();
 
         Ok(RegistryEvent::WithdrawalAccept(WithdrawalAcceptEvent {
             txid: self.tx_info.txid,
@@ -597,8 +627,7 @@ impl RawTupleData {
             outpoint: OutPoint {
                 // This shouldn't error, this is set from a proper [`Txid`] in
                 // a contract call.
-                txid: BitcoinTxid::from_slice(&txid_bytes)
-                    .map_err(EventError::ClarityHashConversion)?,
+                txid: BitcoinTxid::from_le_bytes(txid_bytes),
                 // This shouldn't actually error, we cast u32s to u128s before
                 // making the contract call, and that is the value that gets
                 // emitted here.
@@ -608,14 +637,12 @@ impl RawTupleData {
             // amount of sats by us.
             fee: u64::try_from(fee).map_err(EventError::ClarityIntConversion)?,
 
-            sweep_block_hash: BitcoinBlockHash::from_slice(&sweep_block_hash)
-                .map_err(EventError::ClarityHashConversion)?,
+            sweep_block_hash: BitcoinBlockHash::from_le_bytes(sweep_block_hash),
 
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
 
-            sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
-                .map_err(EventError::ClarityHashConversion)?,
+            sweep_txid: BitcoinTxid::from_le_bytes(sweep_txid),
         }))
     }
 
