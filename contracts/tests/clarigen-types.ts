@@ -2112,7 +2112,7 @@ export const contracts = {
       tokenName: "sBTC",
       tokenSymbol: "sBTC",
       tokenUri:
-        "https://github.com/stacks-network/sbtc/pull/1097#pullrequestreview-2496135058",
+        "https://ipfs.io/ipfs/bafkreibqnozdui4ntgoh3oo437lvhg7qrsccmbzhgumwwjf2smb3eegyqu",
     },
     non_fungible_tokens: [],
     fungible_tokens: [{ name: "sbtc-token" }, { name: "sbtc-token-locked" }],
