@@ -17,6 +17,7 @@ import {
   deposit,
   errors,
   getCurrentBurnInfo,
+  signers,
   token,
   tokenTest,
 } from "./helpers";
@@ -263,8 +264,8 @@ describe("sBTC token contract", () => {
         }),
         bob
       );
-      // Many-transfer errors start at 6, error happens at index 0
-      expect(receipt1.value).toEqual(errors.token.ERR_TRANSFER);
+      // Many-transfer errors start at 1000, error happens at index 0
+      expect(receipt1.value).toEqual(1000n);
     });
 
     test("Mint & transfer multiple sbtc token, fail on second", () => {
@@ -320,8 +321,8 @@ describe("sBTC token contract", () => {
         }),
         alice
       );
-      // Many-transfer errors start at 6, error happens at index 1
-      expect(receipt1.value).toEqual(7n);
+      // Many-transfer errors start at 1000, error happens at index 1
+      expect(receipt1.value).toEqual(1001n);
     });
 
     test("Mint & transfer multiple sbtc token, contract principal", () => {
@@ -399,17 +400,159 @@ describe("sBTC token contract", () => {
       expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
     });
 
+    test("Fail a non-protocol principal calling protocol-locked", () => {
+      const receipt = txErr(
+        token.protocolLock({
+          amount: 1000n,
+          owner: bob,
+        }),
+        bob
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+
+    test("Fail a non-protocol principal calling protocol-burn", () => {
+      const receipt = txErr(
+        token.protocolBurn({
+          amount: 1000n,
+          owner: bob,
+        }),
+        bob
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+
+    test("Fail a non-protocol principal calling protocol-burn-locked", () => {
+      const receipt = txErr(
+        token.protocolBurnLocked({
+          amount: 1000n,
+          owner: bob,
+        }),
+        bob
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+
     test("Fail transferring sbtc when not owner", () => {
       const receipt1 = txErr(
         token.transfer({
           amount: 999n,
           sender: alice,
           recipient: bob,
-          memo: new Uint8Array(1).fill(0),
+          memo: null,
         }),
         bob
       );
       expect(receipt1.value).toEqual(errors.token.ERR_NOT_OWNER);
     });
   });
+
+  describe("protocol actions", () => {
+    test("Mint, lock and transfer by protocol", () => {
+      const receipt0 = txOk(
+        signers.rotateKeysWrapper({
+          newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
+          newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold: 2n,
+        }),
+        deployer
+      );
+      expect(receipt0.value).toEqual(true);
+
+      const receipt1 = txOk(
+        token.protocolMint({
+          amount: 1000n,
+          recipient: bob,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+
+      const supply1 = rov(token.getTotalSupply());
+      expect(supply1.value).toEqual(1000n);
+      checkBalances(bob, [1000n, 1000n, 0n]);
+
+      const receipt2 = txOk(
+        token.protocolLock({
+          amount: 222n,
+          owner: bob,
+        }),
+        deployer
+      );
+      expect(receipt2.value).toEqual(true);
+      const supply2 = rov(token.getTotalSupply());
+      expect(supply2.value).toEqual(1000n);
+      checkBalances(bob, [1000n, 778n, 222n]);
+
+      // try to transfer more than available
+      const receipt3 = txErr(
+        token.protocolTransfer({
+          amount: 900n,
+          sender: bob,
+          recipient: charlie,
+        }),
+        deployer
+      );
+      expect(receipt3.value).toEqual(1n); // err not enough tokens
+
+      // transfer less than available
+      const receipt4 = txOk(
+        token.protocolTransfer({
+          amount: 500n,
+          sender: bob,
+          recipient: charlie,
+        }),
+        deployer
+      );
+      expect(receipt4.value).toEqual(true);
+      checkBalances(bob, [500n, 278n, 222n]);
+
+      // unlock more than locked
+      const receipt5 = txErr(
+        token.protocolUnlock({
+          amount: 500n,
+          owner: bob,
+        }),
+        deployer
+      );
+      expect(receipt5.value).toEqual(1n);
+
+      // unlock all locked tokens
+      const receipt6 = txOk(
+        token.protocolUnlock({
+          amount: 222n,
+          owner: bob,
+        }),
+        deployer
+      );
+      expect(receipt6.value).toEqual(true);
+      checkBalances(bob, [500n, 500n, 0n]);
+    });
+  });
 });
+
+function checkBalances(who: string, amounts: bigint[]) {
+  const balance = rov(
+    token.getBalance({
+      who,
+    }),
+    who
+  );
+  expect(balance.value).toEqual(amounts[0]);
+
+  const available = rov(
+    token.getBalanceAvailable({
+      who,
+    }),
+    who
+  );
+  expect(available.value).toEqual(amounts[1]);
+
+  const locked = rov(
+    token.getBalanceLocked({
+      who,
+    }),
+    who
+  );
+  expect(locked.value).toEqual(amounts[2]);
+}

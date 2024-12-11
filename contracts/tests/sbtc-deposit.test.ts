@@ -98,7 +98,7 @@ describe("sBTC deposit contract", () => {
         deployer
       );
       expect(receipt0.value).toEqual(true);
-      simnet.mineEmptyBlock()
+      simnet.mineEmptyBlock();
       const receipt1 = txErr(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(1),

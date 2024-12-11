@@ -1264,48 +1264,6 @@ export const contracts = {
   },
   sbtcToken: {
     functions: {
-      completeIndividualTransfer: {
-        name: "complete-individual-transfer",
-        access: "private",
-        args: [
-          {
-            name: "individual-transfer",
-            type: {
-              tuple: [
-                { name: "amount", type: "uint128" },
-                {
-                  name: "memo",
-                  type: { optional: { buffer: { length: 34 } } },
-                },
-                { name: "sender", type: "principal" },
-                { name: "to", type: "principal" },
-              ],
-            },
-          },
-          {
-            name: "helper-response",
-            type: { response: { ok: "uint128", error: "uint128" } },
-          },
-        ],
-        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
-      } as TypedAbiFunction<
-        [
-          individualTransfer: TypedAbiArg<
-            {
-              amount: number | bigint;
-              memo: Uint8Array | null;
-              sender: string;
-              to: string;
-            },
-            "individualTransfer"
-          >,
-          helperResponse: TypedAbiArg<
-            Response<number | bigint, number | bigint>,
-            "helperResponse"
-          >,
-        ],
-        Response<bigint, bigint>
-      >,
       protocolMintManyIter: {
         name: "protocol-mint-many-iter",
         access: "private",
@@ -1332,6 +1290,48 @@ export const contracts = {
           >,
         ],
         Response<boolean, bigint>
+      >,
+      transferManyIter: {
+        name: "transfer-many-iter",
+        access: "private",
+        args: [
+          {
+            name: "individual-transfer",
+            type: {
+              tuple: [
+                { name: "amount", type: "uint128" },
+                {
+                  name: "memo",
+                  type: { optional: { buffer: { length: 34 } } },
+                },
+                { name: "sender", type: "principal" },
+                { name: "to", type: "principal" },
+              ],
+            },
+          },
+          {
+            name: "result",
+            type: { response: { ok: "uint128", error: "uint128" } },
+          },
+        ],
+        outputs: { type: { response: { ok: "uint128", error: "uint128" } } },
+      } as TypedAbiFunction<
+        [
+          individualTransfer: TypedAbiArg<
+            {
+              amount: number | bigint;
+              memo: Uint8Array | null;
+              sender: string;
+              to: string;
+            },
+            "individualTransfer"
+          >,
+          result: TypedAbiArg<
+            Response<number | bigint, number | bigint>,
+            "result"
+          >,
+        ],
+        Response<bigint, bigint>
       >,
       protocolBurn: {
         name: "protocol-burn",
@@ -1636,28 +1636,8 @@ export const contracts = {
     },
     maps: {},
     variables: {
-      ERR_NOT_AUTH: {
-        name: "ERR_NOT_AUTH",
-        type: {
-          response: {
-            ok: "none",
-            error: "uint128",
-          },
-        },
-        access: "constant",
-      } as TypedAbiVariable<Response<null, bigint>>,
       ERR_NOT_OWNER: {
         name: "ERR_NOT_OWNER",
-        type: {
-          response: {
-            ok: "none",
-            error: "uint128",
-          },
-        },
-        access: "constant",
-      } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_TRANSFER: {
-        name: "ERR_TRANSFER",
         type: {
           response: {
             ok: "none",
@@ -1707,19 +1687,11 @@ export const contracts = {
       } as TypedAbiVariable<string | null>,
     },
     constants: {
-      ERR_NOT_AUTH: {
-        isOk: false,
-        value: 5n,
-      },
       ERR_NOT_OWNER: {
         isOk: false,
         value: 4n,
       },
-      ERR_TRANSFER: {
-        isOk: false,
-        value: 6n,
-      },
-      ERR_TRANSFER_INDEX_PREFIX: 6n,
+      ERR_TRANSFER_INDEX_PREFIX: 1_000n,
       tokenDecimals: 8n,
       tokenName: "sBTC",
       tokenSymbol: "sBTC",
