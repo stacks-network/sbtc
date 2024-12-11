@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 use std::ops::Deref;
 
-use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
@@ -1195,11 +1194,10 @@ pub struct BitcoinWithdrawalOutput {
     pub is_valid_tx: bool,
 }
 
-
 use std::collections::BTreeMap;
 
-use bitcoin::BlockHash as EventsBitcoinBlockHash;
 use bitcoin::hashes::Hash;
+use bitcoin::BlockHash as EventsBitcoinBlockHash;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
@@ -1213,6 +1211,8 @@ use clarity::vm::types::SequenceData;
 use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
+
+use secp256k1::PublicKey as EventsPublicKey;
 
 /// This is the event that is emitted from the `complete-withdrawal-accept`
 /// public function in sbtc-registry smart contract.
@@ -1246,7 +1246,9 @@ pub struct WithdrawalAcceptEvent {
 
 impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let sweep_hash = EventsBitcoinBlockHash::from(BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes()));
+        let sweep_hash = EventsBitcoinBlockHash::from(BitcoinBlockHash::from(
+            *sbtc_event.sweep_block_hash.as_bytes(),
+        ));
         let txid = StacksTxid::from(sbtc_event.txid.0);
         WithdrawalAcceptEvent {
             txid,
@@ -1261,7 +1263,6 @@ impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
         }
     }
 }
-
 
 /// This is the event that is emitted from the `create-withdrawal-request`
 /// public function in sbtc-registry smart contract.
@@ -1287,7 +1288,9 @@ pub struct CompletedDepositEvent {
 
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
-        let sweep_hash = EventsBitcoinBlockHash::from(BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes()));
+        let sweep_hash = EventsBitcoinBlockHash::from(BitcoinBlockHash::from(
+            *sbtc_event.sweep_block_hash.as_bytes(),
+        ));
         let txid = StacksTxid::from(sbtc_event.txid.0);
         CompletedDepositEvent {
             txid,
@@ -1300,7 +1303,6 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
         }
     }
 }
-
 
 /// This is the event that is emitted from the `create-withdrawal-request`
 /// public function in sbtc-registry smart contract.
@@ -1391,7 +1393,7 @@ pub enum EventError {
     UnhandledRecipient(Vec<u8>, Vec<u8>),
 }
 
- /// The print events emitted by the sbtc-registry clarity smart contract.
+/// The print events emitted by the sbtc-registry clarity smart contract.
 #[derive(Debug)]
 pub enum RegistryEvent {
     /// For the `completed-deposit` topic
@@ -1454,11 +1456,11 @@ impl std::fmt::Display for TxInfo {
 pub struct KeyRotationEvent {
     /// The new set of public keys for all known signers during this
     /// PoX cycle.
-    pub new_keys: Vec<PublicKey>,
+    pub new_keys: Vec<EventsPublicKey>,
     /// The address that deployed the contract.
     pub new_address: PrincipalData,
     /// The new aggregate key created by combining the above public keys.
-    pub new_aggregate_pubkey: PublicKey,
+    pub new_aggregate_pubkey: EventsPublicKey,
     /// The number of signatures required for the multi-sig wallet.
     pub new_signature_threshold: u16,
 }
@@ -1896,11 +1898,12 @@ impl RawTupleData {
             .into_iter()
             .map(|val| match val {
                 ClarityValue::Sequence(SequenceData::Buffer(buf)) => {
-                    PublicKey::from_slice(&buf.data).map_err(EventError::ClarityPublicKeyConversion)
+                    EventsPublicKey::from_slice(&buf.data)
+                        .map_err(EventError::ClarityPublicKeyConversion)
                 }
                 _ => Err(EventError::ClarityUnexpectedValue(val, self.tx_info)),
             })
-            .collect::<Result<Vec<PublicKey>, EventError>>()?;
+            .collect::<Result<Vec<EventsPublicKey>, EventError>>()?;
 
         let new_address = self.remove_principal("new-address")?;
         let new_aggregate_pubkey = self.remove_buff("new-aggregate-pubkey")?;
@@ -1909,15 +1912,13 @@ impl RawTupleData {
         Ok(RegistryEvent::KeyRotation(KeyRotationEvent {
             new_keys,
             new_address,
-            new_aggregate_pubkey: PublicKey::from_slice(&new_aggregate_pubkey)
+            new_aggregate_pubkey: EventsPublicKey::from_slice(&new_aggregate_pubkey)
                 .map_err(EventError::ClarityPublicKeyConversion)?,
             new_signature_threshold: u16::try_from(new_signature_threshold)
                 .map_err(EventError::ClarityIntConversion)?,
         }))
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

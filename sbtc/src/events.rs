@@ -25,13 +25,12 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
-use stacks_common::*;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
+use stacks_common::*;
 
 /// Stacks transaction identifier. Wrapper over a 32 byte array.
 pub struct StacksTxid(pub [u8; 32]);
 // impl_byte_array_newtype!(StacksTxid, u8, 32);
-
 
 impl_array_newtype!(StacksTxid, u8, 32);
 impl_array_hexstring_fmt!(StacksTxid);

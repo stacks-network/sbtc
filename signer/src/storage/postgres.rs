@@ -22,12 +22,12 @@ use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
+use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::TransactionType;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
-use crate::storage::model;
-use crate::storage::model::TransactionType;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 /// All migration scripts from the `signer/migrations` directory.
