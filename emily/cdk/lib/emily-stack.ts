@@ -420,11 +420,12 @@ export class EmilyStack extends cdk.Stack {
             ]
         });
 
-        let num_api_keys = EmilyStackUtils.getNumSignerApiKeys();
         let api_keys = [];
-        for (let i = 0; i < num_api_keys; i++) {
+        for (let i = 0; i < numApiKeys; i++) {
             // Create an API Key
-            const apiKeyId: string = `ApiKey-${apiUsagePlan}-${i}`;
+            const apiKeyId: string = apiPurpose === "public"
+                ? `ApiKey-${i}`
+                : `ApiKey-${apiPurposeTitleCase}-${i}`;
             const apiKey = api.addApiKey(apiKeyId, {
                 apiKeyName: EmilyStackUtils.getResourceName(apiKeyId, props),
             });
