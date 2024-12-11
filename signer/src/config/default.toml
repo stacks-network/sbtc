@@ -177,7 +177,7 @@ dkg_max_duration = 120
 # node if not present.
 #
 # Required: false
-# Environment: SIGNER_SIGNER__sbtc_bitcoin_start_height
+# Environment: SIGNER_SIGNER__SBTC_BITCOIN_START_HEIGHT
 sbtc_bitcoin_start_height = 101
 
 # The amount of time, in seconds, the signer should pause for after
