@@ -104,12 +104,6 @@ network = "regtest"
 # TODO(715): Add default delay (15 seconds? see #701)
 bitcoin_processing_delay = 3
 
-# The number of blocks back the block observer should look for unprocessed
-# blocks before proceeding.
-# Required: true
-# Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
-bitcoin_block_horizon = 1500
-
 # How many bitcoin blocks back from the chain tip the signer will look for
 # requests. Must be strictly positive.
 #
@@ -147,6 +141,22 @@ bitcoin_block_horizon = 1500
 # Required: false
 # Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
 dkg_begin_pause = 2
+
+# The minimum bitcoin block height for which the sbtc signers will backfill
+# bitcoin blocks to. The signers may not work if operated before this
+# height. Defaults to the Nakamoto start height returned from the stacks
+# node if not present.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__SBTC_BITCOIN_START_HEIGHT
+# sbtc_bitcoin_start_height = 231
+
+# When defined, this field sets the scrape endpoint as an IPv4 or IPv6
+# socket address for exporting metrics for Prometheus.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
+# prometheus_exporter_endpoint = "[::]:9184"
 
 # The address that deployed the sbtc smart contracts.
 #

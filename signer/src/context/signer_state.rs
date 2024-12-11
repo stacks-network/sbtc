@@ -1,7 +1,7 @@
 //! Module for signer state
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     RwLock,
 };
 
@@ -19,6 +19,8 @@ pub struct SignerState {
     current_signer_set: SignerSet,
     current_limits: RwLock<SbtcLimits>,
     sbtc_contracts_deployed: AtomicBool,
+    sbtc_bitcoin_start_height: AtomicU64,
+    is_sbtc_bitcoin_start_height_set: AtomicBool,
 }
 
 impl SignerState {
@@ -54,6 +56,24 @@ impl SignerState {
     /// Set the sbtc smart contracts deployed flag
     pub fn set_sbtc_contracts_deployed(&self) {
         self.sbtc_contracts_deployed.store(true, Ordering::SeqCst);
+    }
+
+    /// Get the sbtc start height
+    pub fn get_sbtc_bitcoin_start_height(&self) -> u64 {
+        self.sbtc_bitcoin_start_height.load(Ordering::SeqCst)
+    }
+
+    /// Set the sbtc start height
+    pub fn set_sbtc_bitcoin_start_height(&self, height: u64) {
+        self.is_sbtc_bitcoin_start_height_set
+            .store(true, Ordering::SeqCst);
+        self.sbtc_bitcoin_start_height
+            .store(height, Ordering::SeqCst);
+    }
+
+    /// Return whether the sbtc start height has been set.
+    pub fn is_sbtc_bitcoin_start_height_set(&self) -> bool {
+        self.is_sbtc_bitcoin_start_height_set.load(Ordering::SeqCst)
     }
 }
 

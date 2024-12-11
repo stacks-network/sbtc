@@ -60,7 +60,11 @@ use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 
 /// Dummy block
-pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bitcoin::Block {
+pub fn block<R: rand::RngCore + ?Sized>(
+    config: &fake::Faker,
+    rng: &mut R,
+    height: i64,
+) -> bitcoin::Block {
     let max_number_of_transactions = 20;
 
     let number_of_transactions = (rng.next_u32() % max_number_of_transactions) as usize;
@@ -69,7 +73,7 @@ pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bi
         .take(number_of_transactions)
         .collect();
 
-    txdata.insert(0, coinbase_tx(config, rng));
+    txdata.insert(0, coinbase_tx(config, rng, height));
 
     let header = bitcoin::block::Header {
         version: bitcoin::block::Version::TWO,
@@ -247,15 +251,15 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     }
 }
 
-/// Coinbase transaction with random block height
+/// Coinbase transaction with random block height.
+///
+/// Block heights below 17 are encoded differently which messes with the
+/// block height decoding
 fn coinbase_tx<R: rand::RngCore + ?Sized>(
     config: &fake::Faker,
     rng: &mut R,
+    block_height: i64,
 ) -> bitcoin::Transaction {
-    // Numbers below 17 are encoded differently which messes with the block height decoding
-    let min_block_height = 17;
-    let max_block_height = 10000;
-    let block_height = rng.gen_range(min_block_height..max_block_height);
     let coinbase_script = bitcoin::script::Builder::new()
         .push_int(block_height)
         .into_script();

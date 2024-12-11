@@ -86,10 +86,14 @@ where
         // messages into a local VecDequeue and process them in their own time.
         let (signal_tx, _) = tokio::sync::broadcast::channel(SIGNER_CHANNEL_CAPACITY);
         let (term_tx, _) = tokio::sync::watch::channel(false);
+        let state = SignerState::default();
+        if let Some(height) = config.signer.sbtc_bitcoin_start_height {
+            state.set_sbtc_bitcoin_start_height(height);
+        }
 
         Self {
             config,
-            state: Default::default(),
+            state: Arc::new(state),
             signal_tx,
             term_tx,
             storage: db,
