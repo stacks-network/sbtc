@@ -22,13 +22,14 @@ use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
+use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::WithdrawalAcceptEvent;
+use sbtc::events::WithdrawalCreateEvent;
+use sbtc::events::WithdrawalRejectEvent;
 use crate::storage::model;
 use crate::storage::model::TransactionType;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+use bitvec::array::BitArray;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -2526,6 +2527,7 @@ impl super::DbWrite for PgStore {
         &self,
         event: &WithdrawalRejectEvent,
     ) -> Result<(), Error> {
+        
         sqlx::query(
             "
         INSERT INTO sbtc_signer.withdrawal_reject_events (
@@ -2539,7 +2541,7 @@ impl super::DbWrite for PgStore {
         .bind(event.txid.0)
         .bind(event.block_id.0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(event.signer_bitmap.into_inner())
+        .bind(event.signer_bitmap.to_le_bytes())
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

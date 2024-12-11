@@ -22,13 +22,13 @@ use std::sync::OnceLock;
 use crate::context::Context;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::KeyRotationEvent;
-use crate::stacks::events::RegistryEvent;
-use crate::stacks::events::TxInfo;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
+use crate::storage::model::CompletedDepositEvent;
+use sbtc::events::KeyRotationEvent;
+use sbtc::events::RegistryEvent;
+use sbtc::events::TxInfo;
+use crate::storage::model::WithdrawalAcceptEvent;
+use sbtc::events::WithdrawalCreateEvent;
+use sbtc::events::WithdrawalRejectEvent;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::RotateKeysTransaction;
@@ -125,15 +125,15 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     let mut created_withdrawals = Vec::new();
 
     for (ev, txid) in events {
-        let tx_info = TxInfo { txid, block_id };
+        let tx_info = TxInfo { txid: txid.0.into(), block_id };
         let res = match RegistryEvent::try_new(ev.value, tx_info) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
-                handle_completed_deposit(&api.ctx, event, &stacks_chaintip)
+                handle_completed_deposit(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| completed_deposits.push(x))
             }
             Ok(RegistryEvent::WithdrawalAccept(event)) => {
-                handle_withdrawal_accept(&api.ctx, event, &stacks_chaintip)
+                handle_withdrawal_accept(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| updated_withdrawals.push(x))
             }

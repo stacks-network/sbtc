@@ -1020,6 +1020,12 @@ impl From<[u8; 32]> for StacksTxId {
     }
 }
 
+impl From<sbtc::events::StacksTxid> for StacksTxId {
+    fn from(value: sbtc::events::StacksTxid) -> Self {
+        Self(blockstack_lib::burnchains::Txid(value.0))
+    }
+}
+
 /// A stacks address. It can be either a smart contract address or a
 /// standard address.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1248,10 +1254,7 @@ pub struct WithdrawalAcceptEvent {
 
 impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
-        reversed_raw_hash.reverse();
-        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
-        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
+        let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
         let txid = StacksTxid::from(sbtc_event.txid.0);
         WithdrawalAcceptEvent {
             txid,
@@ -1292,10 +1295,7 @@ pub struct CompletedDepositEvent {
 
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
-        let mut reversed_raw_hash = *sbtc_event.sweep_block_hash.as_bytes();
-        reversed_raw_hash.reverse();
-        let raw_hash = Hash::from_byte_array(reversed_raw_hash);
-        let sweep_hash = BitcoinBlockHash::from_raw_hash(raw_hash);
+        let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
         let txid = StacksTxid::from(sbtc_event.txid.0);
         CompletedDepositEvent {
             txid,

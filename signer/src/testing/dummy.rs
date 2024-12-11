@@ -43,10 +43,10 @@ use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
+use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::WithdrawalAcceptEvent;
+use sbtc::events::WithdrawalCreateEvent;
+use sbtc::events::WithdrawalRejectEvent;
 use crate::storage::model;
 
 use crate::codec::Encode;
@@ -322,18 +322,19 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
-            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
+            txid: StacksTxid(config.fake_with_rng(rng)),
             block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
-            signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
+            signer_bitmap: bitmap,
         }
     }
 }
 
 impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
+        //let txid: StacksTxid = StacksTxid::from();
         WithdrawalCreateEvent {
-            txid: StacksTxid(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng::<[u8; 32], _>(rng).into(),
             block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
@@ -355,7 +356,7 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
-            sweep_block_hash: block_hash(config, rng),
+            sweep_block_hash: block_hash(config, rng).into(),
             sweep_block_height: rng.next_u32() as u64,
             sweep_txid: txid(config, rng),
         }
