@@ -321,7 +321,7 @@ describe("optimization tests", () => {
     const { burnHeight, burnHash } = getCurrentBurnInfo();
 
     const totalAmount = 1000000n;
-    const runs = 400;
+    const runs = 500;
     const txids = randomPublicKeys(runs).map((pk) => pk.slice(0, 32));
     txOk(
       deposit.completeDepositsWrapper({

@@ -67,9 +67,9 @@ export const contracts = {
         access: "read_only",
         args: [
           { name: "pubkey", type: { buffer: { length: 33 } } },
-          { name: "iterator", type: { buffer: { length: 510 } } },
+          { name: "iterator", type: { buffer: { length: 4352 } } },
         ],
-        outputs: { type: { buffer: { length: 510 } } },
+        outputs: { type: { buffer: { length: 4352 } } },
       } as TypedAbiFunction<
         [
           pubkey: TypedAbiArg<Uint8Array, "pubkey">,
@@ -86,7 +86,7 @@ export const contracts = {
             type: { list: { type: { buffer: { length: 33 } }, length: 128 } },
           },
         ],
-        outputs: { type: { buffer: { length: 510 } } },
+        outputs: { type: { buffer: { length: 4352 } } },
       } as TypedAbiFunction<
         [pubkeys: TypedAbiArg<Uint8Array[], "pubkeys">],
         Uint8Array
@@ -137,7 +137,7 @@ export const contracts = {
           },
           { name: "m", type: "uint128" },
         ],
-        outputs: { type: { buffer: { length: 513 } } },
+        outputs: { type: { buffer: { length: 4355 } } },
       } as TypedAbiFunction<
         [
           pubkeys: TypedAbiArg<Uint8Array[], "pubkeys">,
@@ -580,7 +580,7 @@ export const contracts = {
                     { name: "vout-index", type: "uint128" },
                   ],
                 },
-                length: 650,
+                length: 500,
               },
             },
           },

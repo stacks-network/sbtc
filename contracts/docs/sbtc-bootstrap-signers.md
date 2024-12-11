@@ -129,7 +129,7 @@ Checks that the length of each key is exactly 33 bytes
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L80)
 
-`(define-read-only (pubkeys-to-spend-script ((pubkeys (list 128 (buff 33))) (m uint)) (buff 513))`
+`(define-read-only (pubkeys-to-spend-script ((pubkeys (list 128 (buff 33))) (m uint)) (buff 4355))`
 
 Generate the p2sh redeem script for a multisig
 
@@ -223,7 +223,7 @@ Given a set of pubkeys and an m-of-n, generate a principal
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L111)
 
-`(define-read-only (pubkeys-to-bytes ((pubkeys (list 128 (buff 33)))) (buff 510))`
+`(define-read-only (pubkeys-to-bytes ((pubkeys (list 128 (buff 33)))) (buff 4352))`
 
 Concat a list of pubkeys into a buffer with length prefixes
 
@@ -248,23 +248,23 @@ Concat a list of pubkeys into a buffer with length prefixes
 
 [View in file](../contracts/sbtc-bootstrap-signers.clar#L118)
 
-`(define-read-only (concat-pubkeys-fold ((pubkey (buff 33)) (iterator (buff 510))) (buff 510))`
+`(define-read-only (concat-pubkeys-fold ((pubkey (buff 33)) (iterator (buff 4352))) (buff 4352))`
 
 Concatenate a pubkey buffer with a length prefix.
-The max size of the iterator is 4239 bytes, which is (33 \* 128) 4224 bytes
-for the public keys and 15 bytes for the length prefixes.
+The max size of the iterator is 4352 bytes, which is (33 \* 128) 4224 bytes
+for the public keys and 128 bytes for the length prefixes.
 
 <details>
   <summary>Source code:</summary>
 
 ```clarity
-(define-read-only (concat-pubkeys-fold (pubkey (buff 33)) (iterator (buff 510)))
+(define-read-only (concat-pubkeys-fold (pubkey (buff 33)) (iterator (buff 4352)))
   (let
     (
       (pubkey-with-len (concat (bytes-len pubkey) pubkey))
       (next (concat iterator pubkey-with-len))
     )
-    (unwrap-panic (as-max-len? next u510))
+    (unwrap-panic (as-max-len? next u4352))
   )
 )
 ```
@@ -273,10 +273,10 @@ for the public keys and 15 bytes for the length prefixes.
 
 **Parameters:**
 
-| Name     | Type       |
-| -------- | ---------- |
-| pubkey   | (buff 33)  |
-| iterator | (buff 510) |
+| Name     | Type        |
+| -------- | ----------- |
+| pubkey   | (buff 33)   |
+| iterator | (buff 4352) |
 
 ### bytes-len
 

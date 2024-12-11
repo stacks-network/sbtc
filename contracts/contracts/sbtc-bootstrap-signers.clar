@@ -113,15 +113,15 @@
 )
 
 ;; Concatenate a pubkey buffer with a length prefix.
-;; The max size of the iterator is 4239 bytes, which is (33 * 128) 4224 bytes
-;; for the public keys and 15 bytes for the length prefixes.
-(define-read-only (concat-pubkeys-fold (pubkey (buff 33)) (iterator (buff 510)))
+;; The max size of the iterator is 4352 bytes, which is (33 * 128) 4224 bytes
+;; for the public keys and 128 bytes for the length prefixes.
+(define-read-only (concat-pubkeys-fold (pubkey (buff 33)) (iterator (buff 4352)))
   (let
     (
       (pubkey-with-len (concat (bytes-len pubkey) pubkey))
       (next (concat iterator pubkey-with-len))
     )
-    (unwrap-panic (as-max-len? next u510))
+    (unwrap-panic (as-max-len? next u4352))
   )
 )
 
