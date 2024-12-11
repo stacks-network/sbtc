@@ -20,6 +20,7 @@ pub struct SignerState {
     current_limits: RwLock<SbtcLimits>,
     sbtc_contracts_deployed: AtomicBool,
     sbtc_start_height: AtomicU64,
+    is_sbtc_start_height_set: AtomicBool,
 }
 
 impl SignerState {
@@ -64,7 +65,13 @@ impl SignerState {
 
     /// Set the sbtc start height
     pub fn set_sbtc_start_height(&self, height: u64) {
+        self.is_sbtc_start_height_set.store(true, Ordering::SeqCst);
         self.sbtc_start_height.store(height, Ordering::SeqCst);
+    }
+
+    /// Return whether the sbtc start height has been set.
+    pub fn is_sbtc_start_height_set(&self) -> bool {
+        self.is_sbtc_start_height_set.load(Ordering::SeqCst)
     }
 }
 
