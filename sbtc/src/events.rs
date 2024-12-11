@@ -58,7 +58,7 @@ pub enum EventError {
     ClarityStringConversion(#[source] std::string::FromUtf8Error),
     /// This can only be thrown when the number of bytes for a txid or
     /// block hash field is not exactly equal to 32. This should never occur.
-    #[error("Could not convert a hash in clarity event into the expected hash {0}")]
+    #[error("Could not convert a hash in clarity event into the expected hash")]
     ClarityHashConversion(#[source] bitcoin::hashes::FromSliceError),
     /// This error is thrown when trying to convert a public key from a
     /// Clarity buffer into a proper public key. It should never be thrown.
@@ -82,6 +82,10 @@ pub enum EventError {
     /// contract.
     #[error("the given raw recipient is unexpected. version: {0:?}, hashbytes: {1:?} ")]
     UnhandledRecipient(Vec<u8>, Vec<u8>),
+    /// This should happen in similar cases when ClarityHashConversion happens, but in cases where we trying to
+    /// convert into BurnchainHeaderHash
+    #[error("Could not convert given bytes to BurnchainHeaderHash. Bytes: {0:?}")]
+    BurnchainHashConversion(Vec<u8>),
 }
 
 /// The print events emitted by the sbtc-registry clarity smart contract.
@@ -356,8 +360,8 @@ impl RawTupleData {
                 // that gets emitted here.
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
-            // BurnchainHeaderHash::from_bytes(&sweep_block_hash) returns Option, not Result, so this map_err is not so obvious
-            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
+                .ok_or_else(|| EventError::BurnchainHashConversion(sweep_block_hash))?,
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
@@ -610,8 +614,8 @@ impl RawTupleData {
             // amount of sats by us.
             fee: u64::try_from(fee).map_err(EventError::ClarityIntConversion)?,
 
-            // TODO: I don't like this unwrap()
-            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
+                .ok_or_else(|| EventError::BurnchainHashConversion(sweep_block_hash))?,
 
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
