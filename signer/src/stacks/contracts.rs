@@ -51,8 +51,8 @@ use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinBlockRef;
-use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 
 use super::api::StacksInteract;
