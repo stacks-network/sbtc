@@ -358,7 +358,6 @@ impl RawTupleData {
             },
             // BurnchainHeaderHash::from_bytes(&sweep_block_hash) returns Option, not Result, so this map_err is not so obvious
             sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
-            // .unwrap_or_else(|| {EventError::ClarityHashConversion})?,
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_slice(&sweep_txid)
