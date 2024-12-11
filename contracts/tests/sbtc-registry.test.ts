@@ -55,7 +55,6 @@ describe("sBTC registry contract", () => {
       }),
       alice
     );
-
       const request = getWithdrawalRequest(1n);
       if (!request) {
         throw new Error("Request not stored");
@@ -64,7 +63,7 @@ describe("sBTC registry contract", () => {
       expect(request.amount).toEqual(defaultAmount);
       expect(request.maxFee).toEqual(10n);
       expect(request.recipient).toEqual(recipient);
-      //expect(request.blockHeight).toEqual(BigInt(simnet.blockHeight - 1));
+      expect(request.blockHeight).toEqual(BigInt(simnet.burnBlockHeight));
       const lastId = getLastWithdrawalRequestId();
       expect(lastId).toEqual(1n);
     });

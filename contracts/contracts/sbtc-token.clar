@@ -6,7 +6,7 @@
 
 (define-data-var token-name (string-ascii 32) "sBTC")
 (define-data-var token-symbol (string-ascii 10) "sBTC")
-(define-data-var token-uri (optional (string-utf8 256)) (some u"https://github.com/stacks-network/sbtc/pull/1097#pullrequestreview-2496135058"))
+(define-data-var token-uri (optional (string-utf8 256)) (some u"https://ipfs.io/ipfs/bafkreibqnozdui4ntgoh3oo437lvhg7qrsccmbzhgumwwjf2smb3eegyqu"))
 (define-constant token-decimals u8)
 
 ;; --- Protocol functions
