@@ -623,15 +623,23 @@ pub struct QualifiedRequestId {
     pub block_hash: StacksBlockHash,
 }
 
-/// Bitcoin-core typically transmits hashes in internal bytes order[1],
-/// which I believe is little-endian byte order. However, when these bytes
-/// are displayed, they are reversed as big endian byte order. This trait
-/// adds a function for converting bytes to and from hash bytes in reverse
-/// order.
+
+/// This trait adds a function for converting bytes to little-endian order
+/// into a type. This is because the stacks core expects bitcoin block
+/// hashes to be in little-endian byte order when evaluating some clarity
+/// functions.
 ///
-/// [^1]: <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+/// Both [`bitcoin::BlockHash`] and [`bitcoin::Txid`] are hash types that
+/// store bytes internally in big-endian order, and bitcoin-core transmits
+/// hashes in big-endian byte order[1] through the RPC interface. Note that
+/// the wire and zeromq interfaces transmit things in little-endian
+/// order[2].
+///
+/// [^1]: See the Note in
+///     <https://github.com/bitcoin/bitcoin/blob/62bd61de110b057cbfd6e31e4d0b727d93119c72/doc/zmq.md>.
+/// [^2]: <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+///       <https://developer.bitcoin.org/reference/p2p_networking.html>
 /// <https://learnmeabitcoin.com/technical/general/byte-order/>
-/// <https://developer.bitcoin.org/reference/p2p_networking.html>
 pub trait ToLittleEndianOrder: Sized {
     /// Return the bytes in little-endian order.
     fn to_le_bytes(&self) -> [u8; 32];

@@ -36,15 +36,16 @@ use stacks_common::types::chainstate::StacksBlockId;
 /// order before submitting the contract call.
 ///
 /// Both [`bitcoin::BlockHash`] and [`bitcoin::Txid`] are hash types that
-/// expect bytes in big-endian order, because bitcoin-core transmits hashes
-/// in big endian byte order[1] through the RPC interface.
+/// store bytes internally in big-endian order, and bitcoin-core transmits
+/// hashes in big-endian byte order[1] through the RPC interface. Note that
+/// the wire and zeromq interfaces transmit things in little-endian
+/// order[2].
 ///
 /// [^1]: See the Note in
-/// <https://github.com/bitcoin/bitcoin/blob/62bd61de110b057cbfd6e31e4d0b727d93119c72/doc/zmq.md>.
-///
-/// <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+///     <https://github.com/bitcoin/bitcoin/blob/62bd61de110b057cbfd6e31e4d0b727d93119c72/doc/zmq.md>.
+/// [^2]: <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+///       <https://developer.bitcoin.org/reference/p2p_networking.html>
 /// <https://learnmeabitcoin.com/technical/general/byte-order/>
-/// <https://developer.bitcoin.org/reference/p2p_networking.html>
 trait FromLittleEndianOrder: Sized {
     /// Convert bytes expressed in little-endian order to the type;
     fn from_le_bytes(bytes: [u8; 32]) -> Self;
