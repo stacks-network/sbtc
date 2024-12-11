@@ -92,12 +92,12 @@ the signer set is updated.
 
 ### signer-key-length-check
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L66)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L65)
 
 `(define-private (signer-key-length-check ((current-key (buff 33)) (helper-response (response uint uint))) (response uint uint))`
 
 Signer Key Length Check
-Checks that the length of each key is exactly 33 bytes #[allow(unchecked_data)]
+Checks that the length of each key is exactly 33 bytes
 
 <details>
   <summary>Source code:</summary>
@@ -127,7 +127,7 @@ Checks that the length of each key is exactly 33 bytes #[allow(unchecked_data)]
 
 ### pubkeys-to-spend-script
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L81)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L80)
 
 `(define-read-only (pubkeys-to-spend-script ((pubkeys (list 128 (buff 33))) (m uint)) (buff 513))`
 
@@ -160,7 +160,7 @@ Generate the p2sh redeem script for a multisig
 
 ### pubkeys-to-hash
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L93)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L92)
 
 `(define-read-only (pubkeys-to-hash ((pubkeys (list 128 (buff 33))) (m uint)) (buff 20))`
 
@@ -189,7 +189,7 @@ hash160 of the p2sh redeem script
 
 ### pubkeys-to-principal
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L101)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L100)
 
 `(define-read-only (pubkeys-to-principal ((pubkeys (list 128 (buff 33))) (m uint)) principal)`
 
@@ -221,7 +221,7 @@ Given a set of pubkeys and an m-of-n, generate a principal
 
 ### pubkeys-to-bytes
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L112)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L111)
 
 `(define-read-only (pubkeys-to-bytes ((pubkeys (list 128 (buff 33)))) (buff 510))`
 
@@ -246,7 +246,7 @@ Concat a list of pubkeys into a buffer with length prefixes
 
 ### concat-pubkeys-fold
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L119)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L118)
 
 `(define-read-only (concat-pubkeys-fold ((pubkey (buff 33)) (iterator (buff 510))) (buff 510))`
 
@@ -280,7 +280,7 @@ for the public keys and 15 bytes for the length prefixes.
 
 ### bytes-len
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L131)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L130)
 
 `(define-read-only (bytes-len ((bytes (buff 33))) (buff 1))`
 
@@ -303,7 +303,7 @@ for the public keys and 15 bytes for the length prefixes.
 
 ### uint-to-byte
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L135)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L134)
 
 `(define-read-only (uint-to-byte ((n uint)) (buff 1))`
 
@@ -403,4 +403,4 @@ equal to 100% of the total number of signer keys.
 ))
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L139)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L138)
