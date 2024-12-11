@@ -612,11 +612,13 @@ mod tests {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let storage = storage::in_memory::Store::new_shared();
         let test_harness = TestHarness::generate(&mut rng, 20, 0..5);
+        let min_height = test_harness.min_block_height();
         let ctx = TestContext::builder()
             .with_storage(storage.clone())
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
+            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
             .build();
 
         // There must be at least one signal receiver alive when the block observer
@@ -745,6 +747,7 @@ mod tests {
         // Add the deposit requests to the pending deposits which
         // would be returned by Emily.
         test_harness.add_pending_deposits(&[deposit_request0, deposit_request1, deposit_request2]);
+        let min_height = test_harness.min_block_height();
 
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
@@ -753,6 +756,7 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
+            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
             .build();
 
         let block_observer = BlockObserver {
@@ -829,6 +833,7 @@ mod tests {
         // would be returned by Emily.
         test_harness.add_pending_deposit(deposit_request0);
 
+        let min_height = test_harness.min_block_height();
         // Now we finish setting up the block observer.
         let storage = storage::in_memory::Store::new_shared();
         let ctx = TestContext::builder()
@@ -836,6 +841,7 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
+            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
             .build();
 
         let block_observer = BlockObserver {

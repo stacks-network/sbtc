@@ -71,6 +71,14 @@ impl TestHarness {
         &self.bitcoin_blocks
     }
 
+    /// The minimum block height amount blocks in this blockchain
+    pub fn min_block_height(&self) -> Option<u64> {
+        self.bitcoin_blocks
+            .iter()
+            .map(|block| block.bip34_block_height().unwrap())
+            .min()
+    }
+
     /// Get the Stacks blocks in the test harness.
     pub fn stacks_blocks(&self) -> &[(StacksBlockId, NakamotoBlock, BlockHash)] {
         &self.stacks_blocks
@@ -130,7 +138,10 @@ impl TestHarness {
         num_bitcoin_blocks: usize,
         num_stacks_blocks_per_bitcoin_block: std::ops::Range<usize>,
     ) -> Self {
-        let mut bitcoin_blocks: Vec<_> = std::iter::repeat_with(|| dummy::block(&fake::Faker, rng))
+        // There is some issue with using heights less than 17, probably
+        // minimal pushes or something.
+        let mut bitcoin_blocks: Vec<_> = std::iter::successors(Some(17), |height| Some(height + 1))
+            .map(|height| dummy::block(&fake::Faker, rng, height))
             .take(num_bitcoin_blocks)
             .collect();
 
