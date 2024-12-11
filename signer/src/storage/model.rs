@@ -18,6 +18,24 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 
+use std::collections::BTreeMap;
+use bitcoin::hashes::Hash;
+use bitcoin::BlockHash as EventsBitcoinBlockHash;
+use bitcoin::OutPoint;
+use bitcoin::PubkeyHash;
+use bitcoin::ScriptBuf;
+use bitcoin::ScriptHash;
+use bitcoin::Txid as BitcoinTxid;
+use bitcoin::WitnessProgram;
+use bitcoin::WitnessVersion;
+use blockstack_lib::burnchains::Txid as StacksTxid;
+use clarity::vm::types::CharType;
+use clarity::vm::types::SequenceData;
+use clarity::vm::types::TupleData;
+use clarity::vm::ClarityName;
+use clarity::vm::Value as ClarityValue;
+use secp256k1::PublicKey as EventsPublicKey;
+
 /// Represents a single transaction which is part of a sweep transaction package
 /// which has been broadcast to the Bitcoin network.
 #[derive(Debug, Clone, PartialEq, PartialOrd, sqlx::FromRow)]
@@ -1193,26 +1211,6 @@ pub struct BitcoinWithdrawalOutput {
     /// of the inputs or outputs failed validation.
     pub is_valid_tx: bool,
 }
-
-use std::collections::BTreeMap;
-
-use bitcoin::hashes::Hash;
-use bitcoin::BlockHash as EventsBitcoinBlockHash;
-use bitcoin::OutPoint;
-use bitcoin::PubkeyHash;
-use bitcoin::ScriptBuf;
-use bitcoin::ScriptHash;
-use bitcoin::Txid as BitcoinTxid;
-use bitcoin::WitnessProgram;
-use bitcoin::WitnessVersion;
-use blockstack_lib::burnchains::Txid as StacksTxid;
-use clarity::vm::types::CharType;
-use clarity::vm::types::SequenceData;
-use clarity::vm::types::TupleData;
-use clarity::vm::ClarityName;
-use clarity::vm::Value as ClarityValue;
-
-use secp256k1::PublicKey as EventsPublicKey;
 
 /// This is the event that is emitted from the `complete-withdrawal-accept`
 /// public function in sbtc-registry smart contract.
