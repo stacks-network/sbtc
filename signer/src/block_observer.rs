@@ -264,9 +264,9 @@ impl<C: Context, B> BlockObserver<C, B> {
 
     /// Find the parent blocks from the given block that are also missing
     /// from our database.
-    /// 
+    ///
     /// # Notes
-    /// 
+    ///
     /// This function will continually fetch block headers from
     /// bitcoin-core until it encounters a known block hash or if the
     /// height of the block associated with the header is less than or
@@ -512,7 +512,7 @@ impl<C: Context, B> BlockObserver<C, B> {
             .get_bitcoin_client()
             .get_block(&block_header.hash)
             .await?
-            .ok_or(Error::BitcoinCoreMissingBlock(block_header.hash.into()))?;
+            .ok_or(Error::BitcoinCoreMissingBlock(block_header.hash))?;
         let db_block = model::BitcoinBlock::from(&block);
 
         self.context
