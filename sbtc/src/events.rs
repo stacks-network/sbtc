@@ -709,7 +709,6 @@ mod tests {
 
     use bitcoin::key::CompressedPublicKey;
     use bitcoin::key::TweakedPublicKey;
-    use bitvec::field::BitField as _;
     use clarity::vm::types::ListData;
     use clarity::vm::types::ListTypeData;
     use clarity::vm::types::BUFF_33;
