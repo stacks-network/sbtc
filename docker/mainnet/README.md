@@ -75,6 +75,17 @@ for best practices.
 
 ## Run the stack
 
+You will need a recent-enough version of Docker and Docker Compose. The
+following have been confirmed to work:
+
+```bash
+$ docker --version
+Docker version 27.4.0, build bde2b89
+
+$ docker compose version
+Docker Compose version v2.31.0
+```
+
 After creating the `.env` that includes the configuration, you can use the
 following to spin up the stack.
 
