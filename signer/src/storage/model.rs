@@ -10,6 +10,7 @@ use clarity::vm::types::PrincipalData;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::StacksBlockId;
 
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::validation::InputValidationResult;
 use crate::bitcoin::validation::WithdrawalValidationResult;
 use crate::block_observer::Deposit;
@@ -94,6 +95,16 @@ impl From<&bitcoin::Block> for BitcoinBlock {
                 .bip34_block_height()
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
+        }
+    }
+}
+
+impl From<BitcoinBlockHeader> for BitcoinBlock {
+    fn from(header: BitcoinBlockHeader) -> Self {
+        BitcoinBlock {
+            block_hash: header.hash.into(),
+            block_height: header.height,
+            parent_hash: header.previous_block_hash.into(),
         }
     }
 }

@@ -1829,6 +1829,53 @@ async fn deposit_request_exists_works() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// Check that is_known_bitcoin_block_hash correctly reports whether a
+/// given block is in the database.
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn is_known_bitcoin_block_hash_works() {
+    let db_num = testing::storage::DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(71);
+
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    // We just wrote all of this data to the database, so they are all
+    // known.
+    for block in test_data.bitcoin_blocks.iter() {
+        let block_hash = block.block_hash;
+        assert!(db.is_known_bitcoin_block_hash(&block_hash).await.unwrap());
+    }
+
+    // It's very unlikely that this random block will be known. It's also
+    // that the fixed one is known as well.
+    let random_block_hash: model::BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
+    assert!(!db
+        .is_known_bitcoin_block_hash(&random_block_hash)
+        .await
+        .unwrap());
+
+    let random_block_hash = model::BitcoinBlockHash::from([23; 32]);
+    assert!(!db
+        .is_known_bitcoin_block_hash(&random_block_hash)
+        .await
+        .unwrap());
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This tests that deposit requests where there is an associated sweep
 /// transaction will show up in the query results from
 /// [`DbRead::get_swept_deposit_requests`].

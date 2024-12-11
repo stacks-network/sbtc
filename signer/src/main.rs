@@ -310,7 +310,6 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
     let block_observer = block_observer::BlockObserver {
         context: ctx,
         bitcoin_blocks: stream.to_block_hash_stream(),
-        horizon: config.signer.bitcoin_block_horizon,
     };
 
     block_observer.run().await

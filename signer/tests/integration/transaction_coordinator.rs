@@ -1370,7 +1370,6 @@ async fn sign_bitcoin_transaction() {
         let block_observer = BlockObserver {
             context: ctx.clone(),
             bitcoin_blocks: ReceiverStream::new(receiver),
-            horizon: 10,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1760,7 +1759,6 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
         let block_observer = BlockObserver {
             context: ctx.clone(),
             bitcoin_blocks: ReceiverStream::new(receiver),
-            horizon: 10,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {

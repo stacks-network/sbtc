@@ -20,6 +20,7 @@
 use std::future::Future;
 use std::time::Duration;
 
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::TxDeconstructor as _;
 use crate::bitcoin::BitcoinInteract;
@@ -30,6 +31,7 @@ use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::stacks::api::GetNakamotoStartHeight as _;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
@@ -54,8 +56,6 @@ pub struct BlockObserver<Context, BlockHashStream> {
     pub context: Context,
     /// Stream of blocks from the block notifier
     pub bitcoin_blocks: BlockHashStream,
-    /// How far back in time the observer should look
-    pub horizon: u32,
 }
 
 /// A full "deposit", containing the bitcoin transaction and a fully
@@ -145,7 +145,7 @@ where
                     )
                     .increment(1);
 
-                    let next_blocks = match self.next_blocks_to_process(block_hash).await {
+                    let block_headers = match self.next_headers_to_process(block_hash).await {
                         Ok(blocks) => blocks,
                         Err(error) => {
                             tracing::warn!(%error, %block_hash, "could not get next blocks to process");
@@ -153,10 +153,14 @@ where
                         }
                     };
 
-                    for block in next_blocks {
-                        if let Err(error) = self.process_bitcoin_block(block).await {
+                    for block_header in block_headers {
+                        if let Err(error) = self.process_bitcoin_block(block_header).await {
                             tracing::warn!(%error, "could not process bitcoin block");
                         }
+                    }
+
+                    if let Err(error) = self.process_stacks_blocks().await {
+                        tracing::warn!(%error, "could not process bitcoin block");
                     }
 
                     if let Err(error) = self.update_sbtc_limits().await {
@@ -243,60 +247,104 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
-    /// Find the parent blocks from the given block that are also missing from our database
-    #[tracing::instrument(skip_all, fields(%block_hash))]
-    async fn next_blocks_to_process(
-        &self,
-        mut block_hash: bitcoin::BlockHash,
-    ) -> Result<Vec<bitcoin::Block>, Error> {
-        let mut blocks = Vec::new();
-
-        for _ in 0..self.horizon {
-            if self.have_already_processed_block(&block_hash).await? {
-                tracing::debug!(%block_hash, "already processed block");
-                break;
-            }
-
-            let block = self
-                .context
-                .get_bitcoin_client()
-                .get_block(&block_hash)
-                .await?
-                .ok_or(Error::MissingBitcoinBlock(block_hash.into()))?;
-
-            // TODO(685): Remove this and replace with a better limiting
-            // condition.
-            if block.bip34_block_height().unwrap_or(0) == 0 {
-                break;
-            }
-
-            block_hash = block.header.prev_blockhash;
-            blocks.push(block);
+    /// Set the sbtc start height, if it has not been set already.
+    async fn set_sbtc_start_height(&self) -> Result<(), Error> {
+        if self.context.state().is_sbtc_start_height_set() {
+            return Ok(());
         }
 
-        // Make order chronological
-        blocks.reverse();
-        Ok(blocks)
+        let pox_info = self.context.get_stacks_client().get_pox_info().await?;
+        let nakamoto_start_height = pox_info
+            .nakamoto_start_height()
+            .ok_or(Error::MissingNakamotoStartHeight)?;
+
+        self.context
+            .state()
+            .set_sbtc_start_height(nakamoto_start_height);
+
+        Ok(())
     }
 
-    /// Check whether we have already processed this block in our
-    /// database.
-    #[tracing::instrument(skip(self))]
-    async fn have_already_processed_block(
+    /// Find the parent blocks from the given block that are also missing
+    /// from our database.
+    ///
+    /// # Notes
+    ///
+    /// This function does two things:
+    /// 1. Set the `sbtc_start_height` if it has not been set already. If
+    ///    it is not set, then we fetch the stacks nakamoto start height
+    ///    from stacks-core and use that value.
+    /// 2. Continually fetches block headers from bitcoin-core until it
+    ///    encounters a known block header or if the height of the block is
+    ///    less than or equal to the `sbtc_start_height`.
+    ///
+    /// If there are many unknown blocks then this function can take some
+    /// time. Since each header is 80 bytes, we should be able to fetch
+    /// headers for the entire bitcoin blockchain (~900k blocks at the time
+    /// of writing) into memory.
+    #[tracing::instrument(skip_all, fields(%block_hash))]
+    pub async fn next_headers_to_process(
         &self,
-        block_hash: &bitcoin::BlockHash,
-    ) -> Result<bool, Error> {
-        Ok(self
-            .context
-            .get_storage()
-            .get_bitcoin_block(&block_hash.to_byte_array().into())
-            .await?
-            .is_some())
+        mut block_hash: BlockHash,
+    ) -> Result<Vec<BitcoinBlockHeader>, Error> {
+        self.set_sbtc_start_height().await?;
+
+        let start_height = self.context.state().get_sbtc_start_height();
+        let mut headers = std::collections::VecDeque::new();
+        let db = self.context.get_storage();
+        let bitcoin_client = self.context.get_bitcoin_client();
+
+        while !db.is_known_bitcoin_block_hash(&block_hash.into()).await? {
+            let Some(header) = bitcoin_client.get_block_header(&block_hash).await? else {
+                tracing::warn!(%block_hash, "bitcoin-core does not know about block header");
+                return Ok(headers.into());
+            };
+
+            // We don't even try to write blocks to the database if the
+            // height is less than the start height.
+            if header.height < start_height {
+                break;
+            }
+
+            let at_start_height = header.height == start_height;
+            block_hash = header.previous_block_hash;
+            headers.push_front(header);
+
+            // We can write the block at the start height to the database.
+            if at_start_height {
+                break;
+            }
+        }
+
+        Ok(headers.into())
     }
 
-    /// Process the bitcoin block. Also process all recent stacks blocks.
-    #[tracing::instrument(skip_all, fields(block_hash = %block.block_hash()))]
-    async fn process_bitcoin_block(&self, block: bitcoin::Block) -> Result<(), Error> {
+    /// Write the bitcoin block and any transactions that spend to any of
+    /// the signers `scriptPubKey`s to the database.
+    #[tracing::instrument(skip_all, fields(block_hash = %block_header.hash))]
+    async fn process_bitcoin_block(&self, block_header: BitcoinBlockHeader) -> Result<(), Error> {
+        let block = self
+            .context
+            .get_bitcoin_client()
+            .get_block(&block_header.hash)
+            .await?
+            .ok_or(Error::BitcoinCoreMissingBlock(block_header.hash))?;
+        let db_block = model::BitcoinBlock::from(&block);
+
+        self.context
+            .get_storage_mut()
+            .write_bitcoin_block(&db_block)
+            .await?;
+        self.extract_sbtc_transactions(block_header.hash, &block.txdata)
+            .await?;
+
+        tracing::debug!("finished processing bitcoin block");
+        Ok(())
+    }
+
+    /// Process all recent stacks blocks.
+    #[tracing::instrument(skip_all)]
+    async fn process_stacks_blocks(&self) -> Result<(), Error> {
         tracing::info!("processing bitcoin block");
         let stacks_client = self.context.get_stacks_client();
         let tenure_info = stacks_client.get_tenure_info().await?;
@@ -310,9 +358,8 @@ impl<C: Context, B> BlockObserver<C, B> {
         .await?;
 
         self.write_stacks_blocks(&stacks_blocks).await?;
-        self.write_bitcoin_block(&block).await?;
 
-        tracing::debug!("finished processing bitcoin block");
+        tracing::debug!("finished processing stacks block");
         Ok(())
     }
 
@@ -370,7 +417,7 @@ impl<C: Context, B> BlockObserver<C, B> {
         // that contains the deposit request in our database.
         for deposit in requests.iter() {
             let blocks = self
-                .next_blocks_to_process(deposit.tx_info.block_hash)
+                .next_headers_to_process(deposit.tx_info.block_hash)
                 .await?
                 .into_iter()
                 .map(model::BitcoinBlock::from);
@@ -499,21 +546,6 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
-    /// Write the bitcoin block to the database. We also write any
-    /// transactions that are spend to any of the signers `scriptPubKey`s
-    async fn write_bitcoin_block(&self, block: &bitcoin::Block) -> Result<(), Error> {
-        let db_block = model::BitcoinBlock::from(block);
-
-        self.context
-            .get_storage_mut()
-            .write_bitcoin_block(&db_block)
-            .await?;
-        self.extract_sbtc_transactions(block.block_hash(), &block.txdata)
-            .await?;
-
-        Ok(())
-    }
-
     /// Update the sBTC peg limits from Emily
     async fn update_sbtc_limits(&self) -> Result<(), Error> {
         let limits = self.context.get_emily_client().get_limits().await?;
@@ -595,7 +627,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx.clone(),
             bitcoin_blocks: block_hash_stream,
-            horizon: 1,
         };
 
         let handle = tokio::spawn(block_observer.run());
@@ -727,7 +758,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             bitcoin_blocks: (),
-            horizon: 1,
         };
 
         {
@@ -811,7 +841,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             bitcoin_blocks: (),
-            horizon: 1,
         };
 
         block_observer.load_latest_deposit_requests().await.unwrap();
@@ -913,7 +942,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             bitcoin_blocks: (),
-            horizon: 1,
         };
 
         // First we try extracting the transactions from a block that does

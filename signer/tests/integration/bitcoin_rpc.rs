@@ -10,6 +10,7 @@ use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
 use bitcoin::Txid;
 use bitcoin::Witness;
+use bitcoincore_rpc::RpcApi;
 use bitcoincore_rpc_json::Utxo;
 use fake::{Fake, Faker};
 use rand::rngs::OsRng;
@@ -64,6 +65,32 @@ fn btc_client_getstransaction() {
     assert!(response.block_hash.is_some());
     assert!(response.block_time.is_some());
     assert_eq!(response.confirmations, Some(1));
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[test]
+fn btc_client_getblockheader() {
+    let client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
+    let (rpc, _) = regtest::initialize_blockchain();
+
+    // Let's get the chain-tip
+    let block_hash = rpc.get_best_block_hash().unwrap();
+    let header = client.get_block_header(&block_hash).unwrap().unwrap();
+
+    let block = rpc.get_block(&block_hash).unwrap();
+
+    assert_eq!(header.hash, block.block_hash());
+    assert_eq!(header.previous_block_hash, block.header.prev_blockhash);
+    assert_eq!(header.height, block.bip34_block_height().unwrap());
+    assert_eq!(header.time, block.header.time as u64);
+
+    let random_hash = bitcoin::BlockHash::from_byte_array([13; 32]);
+    assert!(client.get_block_header(&random_hash).unwrap().is_none());
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]

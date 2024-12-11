@@ -712,11 +712,7 @@ impl TestSweepSetup2 {
             .get_tx(&self.donation.txid)
             .unwrap()
             .unwrap();
-        let block_observer = BlockObserver {
-            context,
-            bitcoin_blocks: (),
-            horizon: 3,
-        };
+        let block_observer = BlockObserver { context, bitcoin_blocks: () };
 
         block_observer
             .extract_sbtc_transactions(block_hash.unwrap(), &[tx])

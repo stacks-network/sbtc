@@ -273,6 +273,14 @@ pub trait DbRead {
     /// Check that the given block hash is included in the canonical
     /// bitcoin blockchain, where the canonical blockchain is identified by
     /// the given `chain_tip`.
+    fn is_known_bitcoin_block_hash(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
+    /// Check that the given block hash is included in the canonical
+    /// bitcoin blockchain, where the canonical blockchain is identified by
+    /// the given `chain_tip`.
     fn in_canonical_bitcoin_blockchain(
         &self,
         chain_tip: &model::BitcoinBlockRef,
