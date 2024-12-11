@@ -43,10 +43,10 @@ use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
+use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
+use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::model;
 
 use crate::codec::Encode;
@@ -311,7 +311,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
                 vout: rng.next_u32(),
             },
             fee: rng.next_u32() as u64,
-            sweep_block_hash: block_hash(config, rng),
+            sweep_block_hash: block_hash(config, rng).into(),
             sweep_block_height: rng.next_u32() as u64,
             sweep_txid: txid(config, rng),
         }
@@ -355,7 +355,7 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
-            sweep_block_hash: block_hash(config, rng),
+            sweep_block_hash: block_hash(config, rng).into(),
             sweep_block_height: rng.next_u32() as u64,
             sweep_txid: txid(config, rng),
         }
