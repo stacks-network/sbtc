@@ -110,6 +110,7 @@
 	(fold complete-individual-transfer recipients (ok u0))
 )
 
+;; #[allow(unchecked_data)]
 (define-private (complete-individual-transfer 
 					(individual-transfer { 
 						amount: uint, 
