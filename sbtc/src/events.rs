@@ -58,7 +58,7 @@ pub enum EventError {
     ClarityStringConversion(#[source] std::string::FromUtf8Error),
     /// This can only be thrown when the number of bytes for a txid or
     /// block hash field is not exactly equal to 32. This should never occur.
-    #[error("Could not convert a hash in clarity event into the expected hash")]
+    #[error("Could not convert a hash in clarity event into the expected hash {0}")]
     ClarityHashConversion(#[source] bitcoin::hashes::FromSliceError),
     /// This error is thrown when trying to convert a public key from a
     /// Clarity buffer into a proper public key. It should never be thrown.
