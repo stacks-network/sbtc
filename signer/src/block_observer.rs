@@ -273,7 +273,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// This function does two things:
     /// 1. Set the `sbtc_start_height` if it has not been set already. If
     ///    it is not set, then we fetch the stacks nakamoto start height
-    ///    from stacks-core and use that value. 
+    ///    from stacks-core and use that value.
     /// 2. Continually fetches block headers from bitcoin-core until it
     ///    encounters a known block header or if the height of the block is
     ///    less than or equal to the `sbtc_start_height`.

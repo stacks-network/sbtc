@@ -30,6 +30,7 @@ use signer::error::Error;
 use signer::keys::SignerScriptPubKey as _;
 use signer::logging::setup_logging;
 use signer::stacks::api::TenureBlocks;
+use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::TxOutput;
@@ -807,5 +808,95 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
         .get_bitcoin_canonical_chain_tip()
         .await
         .expect("cannot get chain tip");
-    assert_eq!(db_chain_tip, Some(expected_tip.into()))
+    assert_eq!(db_chain_tip, Some(expected_tip.into()));
+
+    testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn next_headers_to_process_gets_all_headers() {
+    // We start with the typical setup with a fresh database and context
+    // with a real bitcoin core client and a real connection to our
+    // database.
+    let (rpc, _) = regtest::initialize_blockchain();
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
+        .build();
+
+    let block_observer = BlockObserver {
+        context: ctx.clone(),
+        bitcoin_blocks: (),
+    };
+
+    let chain_tip_block_hash = rpc.get_best_block_hash().unwrap();
+    let headers = block_observer
+        .next_headers_to_process(chain_tip_block_hash)
+        .await
+        .unwrap();
+    assert!(!headers.is_empty());
+
+    // The headers should be sorted by block height ascending, let's
+    // check.
+    let mut sorted_headers = headers.clone();
+    sorted_headers.sort_by_key(|header| header.height);
+    assert_eq!(headers, sorted_headers);
+
+    let start_height = ctx.state().get_sbtc_start_height();
+    assert_eq!(start_height, headers[0].height);
+    assert_eq!(
+        headers.last().map(|header| header.hash),
+        Some(chain_tip_block_hash)
+    );
+
+    testing::storage::drop_db(db).await;
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn next_headers_to_process_ignores_known_headers() {
+    // We start with the typical setup with a fresh database and context
+    // with a real bitcoin core client and a real connection to our
+    // database.
+    let (rpc, _) = regtest::initialize_blockchain();
+    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
+    let db = testing::storage::new_test_database(db_num, true).await;
+    let context = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
+        .build();
+
+    let block_observer = BlockObserver { context, bitcoin_blocks: () };
+
+    let chain_tip_block_hash = rpc.get_best_block_hash().unwrap();
+    let headers = block_observer
+        .next_headers_to_process(chain_tip_block_hash)
+        .await
+        .unwrap();
+    let last_header = headers.last().map(|header| header.hash);
+
+    assert_eq!(last_header, Some(chain_tip_block_hash));
+
+    // Okay let's make sure that we don't get blocks that are already
+    // known.
+    let chain_tip_header = headers.last().cloned().unwrap();
+    let block = model::BitcoinBlock::from(chain_tip_header);
+    db.write_bitcoin_block(&block).await.unwrap();
+
+    // We know about the chain tip now, so we should return an empty vector
+    // of next headers to processes.
+    let headers = block_observer
+        .next_headers_to_process(chain_tip_block_hash)
+        .await
+        .unwrap();
+    assert!(headers.is_empty());
+
+    testing::storage::drop_db(db).await;
 }
