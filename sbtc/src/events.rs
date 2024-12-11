@@ -40,10 +40,6 @@ impl Display for StacksTxid {
     }
 }
 
-// impl_array_newtype!(StacksTxid, u8, 32);
-// impl_array_hexstring_fmt!(StacksTxid);
-// impl_byte_array_newtype!(StacksTxid, u8, 32);
-
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
 pub enum EventError {
