@@ -453,7 +453,7 @@ impl ReclaimScriptInputs {
             // invalid for OP_CHECKSEQUENCEVERIFY, but we filter them out
             // later in `ReclaimScriptInputs::try_new`.
             [n, OP_CSV, script @ ..]
-                if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..OP_PUSHNUM_16).contains(n) =>
+                if OP_PUSHNUM_NEG1 == *n || (OP_PUSHNUM_1..=OP_PUSHNUM_16).contains(n) =>
             {
                 (*n as i64 - OP_PUSHNUM_1 as i64 + 1, script)
             }
@@ -946,5 +946,18 @@ mod tests {
         let var1 = *crate::UNSPENDABLE_TAPROOT_KEY;
         let var2 = *crate::UNSPENDABLE_TAPROOT_KEY;
         assert_eq!(var1, var2);
+    }
+
+    #[test_case::test_matrix(1..=16)]
+    fn op_push_names_allowed(num: u8) {
+        // These need to be minimal pushes, so we need to use the
+        // OP_PUSHNUM_X representations.
+        let lock_time = num + OP_PUSHNUM_1 - 1;
+
+        let reclaim_script = ScriptBuf::from_bytes(vec![lock_time, OP_CSV]);
+        let reclaim = ReclaimScriptInputs::parse(&reclaim_script).unwrap();
+
+        assert_eq!(reclaim.lock_time(), num as u32);
+        assert_eq!(reclaim.reclaim_script(), reclaim_script);
     }
 }

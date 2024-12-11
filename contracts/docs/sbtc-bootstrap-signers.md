@@ -92,12 +92,12 @@ the signer set is updated.
 
 ### signer-key-length-check
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L66)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L65)
 
 `(define-private (signer-key-length-check ((current-key (buff 33)) (helper-response (response uint uint))) (response uint uint))`
 
 Signer Key Length Check
-Checks that the length of each key is exactly 33 bytes #[allow(unchecked_data)]
+Checks that the length of each key is exactly 33 bytes
 
 <details>
   <summary>Source code:</summary>
@@ -127,9 +127,9 @@ Checks that the length of each key is exactly 33 bytes #[allow(unchecked_data)]
 
 ### pubkeys-to-spend-script
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L81)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L80)
 
-`(define-read-only (pubkeys-to-spend-script ((pubkeys (list 128 (buff 33))) (m uint)) (buff 513))`
+`(define-read-only (pubkeys-to-spend-script ((pubkeys (list 128 (buff 33))) (m uint)) (buff 4355))`
 
 Generate the p2sh redeem script for a multisig
 
@@ -160,7 +160,7 @@ Generate the p2sh redeem script for a multisig
 
 ### pubkeys-to-hash
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L93)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L92)
 
 `(define-read-only (pubkeys-to-hash ((pubkeys (list 128 (buff 33))) (m uint)) (buff 20))`
 
@@ -189,7 +189,7 @@ hash160 of the p2sh redeem script
 
 ### pubkeys-to-principal
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L101)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L100)
 
 `(define-read-only (pubkeys-to-principal ((pubkeys (list 128 (buff 33))) (m uint)) principal)`
 
@@ -221,9 +221,9 @@ Given a set of pubkeys and an m-of-n, generate a principal
 
 ### pubkeys-to-bytes
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L112)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L111)
 
-`(define-read-only (pubkeys-to-bytes ((pubkeys (list 128 (buff 33)))) (buff 510))`
+`(define-read-only (pubkeys-to-bytes ((pubkeys (list 128 (buff 33)))) (buff 4352))`
 
 Concat a list of pubkeys into a buffer with length prefixes
 
@@ -246,25 +246,25 @@ Concat a list of pubkeys into a buffer with length prefixes
 
 ### concat-pubkeys-fold
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L119)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L118)
 
-`(define-read-only (concat-pubkeys-fold ((pubkey (buff 33)) (iterator (buff 510))) (buff 510))`
+`(define-read-only (concat-pubkeys-fold ((pubkey (buff 33)) (iterator (buff 4352))) (buff 4352))`
 
 Concatenate a pubkey buffer with a length prefix.
-The max size of the iterator is 4239 bytes, which is (33 \* 128) 4224 bytes
-for the public keys and 15 bytes for the length prefixes.
+The max size of the iterator is 4352 bytes, which is (33 \* 128) 4224 bytes
+for the public keys and 128 bytes for the length prefixes.
 
 <details>
   <summary>Source code:</summary>
 
 ```clarity
-(define-read-only (concat-pubkeys-fold (pubkey (buff 33)) (iterator (buff 510)))
+(define-read-only (concat-pubkeys-fold (pubkey (buff 33)) (iterator (buff 4352)))
   (let
     (
       (pubkey-with-len (concat (bytes-len pubkey) pubkey))
       (next (concat iterator pubkey-with-len))
     )
-    (unwrap-panic (as-max-len? next u510))
+    (unwrap-panic (as-max-len? next u4352))
   )
 )
 ```
@@ -273,14 +273,14 @@ for the public keys and 15 bytes for the length prefixes.
 
 **Parameters:**
 
-| Name     | Type       |
-| -------- | ---------- |
-| pubkey   | (buff 33)  |
-| iterator | (buff 510) |
+| Name     | Type        |
+| -------- | ----------- |
+| pubkey   | (buff 33)   |
+| iterator | (buff 4352) |
 
 ### bytes-len
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L131)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L130)
 
 `(define-read-only (bytes-len ((bytes (buff 33))) (buff 1))`
 
@@ -303,7 +303,7 @@ for the public keys and 15 bytes for the length prefixes.
 
 ### uint-to-byte
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L135)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L134)
 
 `(define-read-only (uint-to-byte ((n uint)) (buff 1))`
 
@@ -387,7 +387,7 @@ equal to 100% of the total number of signer keys.
   0x00 0x01 0x02 0x03 0x04 0x05 0x06 0x07 0x08 0x09 0x0a 0x0b 0x0c 0x0d 0x0e 0x0f
   0x10 0x11 0x12 0x13 0x14 0x15 0x16 0x17 0x18 0x19 0x1a 0x1b 0x1c 0x1d 0x1e 0x1f
   0x20 0x21 0x22 0x23 0x24 0x25 0x26 0x27 0x28 0x29 0x2a 0x2b 0x2c 0x2d 0x2e 0x2f
-  0x30 0x31 0x33 0x33 0x34 0x35 0x36 0x37 0x38 0x39 0x3a 0x3b 0x3c 0x3d 0x3e 0x3f
+  0x30 0x31 0x32 0x33 0x34 0x35 0x36 0x37 0x38 0x39 0x3a 0x3b 0x3c 0x3d 0x3e 0x3f
   0x40 0x41 0x42 0x43 0x44 0x45 0x46 0x47 0x48 0x49 0x4a 0x4b 0x4c 0x4d 0x4e 0x4f
   0x50 0x51 0x52 0x53 0x54 0x55 0x56 0x57 0x58 0x59 0x5a 0x5b 0x5c 0x5d 0x5e 0x5f
   0x60 0x61 0x62 0x63 0x64 0x65 0x66 0x67 0x68 0x69 0x6a 0x6b 0x6c 0x6d 0x6e 0x6f
@@ -403,4 +403,4 @@ equal to 100% of the total number of signer keys.
 ))
 ```
 
-[View in file](../contracts/sbtc-bootstrap-signers.clar#L139)
+[View in file](../contracts/sbtc-bootstrap-signers.clar#L138)

@@ -185,7 +185,6 @@ where
             | Payload::BitcoinPreSignRequest(_)
             | Payload::BitcoinPreSignAck(_)
             | Payload::WstsMessage(_)
-            | Payload::SweepTransactionInfo(_)
             | Payload::StacksTransactionSignature(_)
             | Payload::BitcoinTransactionSignAck(_) => (),
         };
@@ -333,9 +332,9 @@ where
             .collect::<Vec<_>>()
             .await;
 
-        // If any of the inputs addresses are fine then we pass the deposit
+        // If all of the inputs addresses are fine then we pass the deposit
         // request.
-        let can_accept = responses.into_iter().any(|res| res.unwrap_or(false));
+        let can_accept = responses.into_iter().all(|res| res.unwrap_or(false));
         Ok(can_accept)
     }
 
@@ -369,7 +368,6 @@ where
             tracing::debug!("no record of the deposit request, fetching from emily");
             let processor = BlockObserver {
                 context: self.context.clone(),
-                horizon: 20,
                 bitcoin_blocks: (),
             };
             let deposit_request = self

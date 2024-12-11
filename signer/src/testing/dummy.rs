@@ -36,9 +36,6 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
 use crate::message::SignerMessage;
-use crate::message::SweepTransactionInfo;
-use crate::message::SweptDeposit;
-use crate::message::SweptWithdrawal;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
@@ -63,7 +60,11 @@ use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 
 /// Dummy block
-pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bitcoin::Block {
+pub fn block<R: rand::RngCore + ?Sized>(
+    config: &fake::Faker,
+    rng: &mut R,
+    height: i64,
+) -> bitcoin::Block {
     let max_number_of_transactions = 20;
 
     let number_of_transactions = (rng.next_u32() % max_number_of_transactions) as usize;
@@ -72,7 +73,7 @@ pub fn block<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> bi
         .take(number_of_transactions)
         .collect();
 
-    txdata.insert(0, coinbase_tx(config, rng));
+    txdata.insert(0, coinbase_tx(config, rng, height));
 
     let header = bitcoin::block::Header {
         version: bitcoin::block::Version::TWO,
@@ -250,15 +251,15 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     }
 }
 
-/// Coinbase transaction with random block height
+/// Coinbase transaction with random block height.
+///
+/// Block heights below 17 are encoded differently which messes with the
+/// block height decoding
 fn coinbase_tx<R: rand::RngCore + ?Sized>(
     config: &fake::Faker,
     rng: &mut R,
+    block_height: i64,
 ) -> bitcoin::Transaction {
-    // Numbers below 17 are encoded differently which messes with the block height decoding
-    let min_block_height = 17;
-    let max_block_height = 10000;
-    let block_height = rng.gen_range(min_block_height..max_block_height);
     let coinbase_script = bitcoin::script::Builder::new()
         .push_int(block_height)
         .into_script();
@@ -705,45 +706,6 @@ impl fake::Dummy<fake::Faker> for RotateKeysV1 {
             aggregate_key: config.fake_with_rng(rng),
             deployer: address,
             signatures_required: config.fake_with_rng(rng),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for SweptDeposit {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        SweptDeposit {
-            input_index: config.fake_with_rng(rng),
-            deposit_request_txid: txid(config, rng),
-            deposit_request_output_index: config.fake_with_rng(rng),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for SweptWithdrawal {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        SweptWithdrawal {
-            output_index: config.fake_with_rng(rng),
-            withdrawal_request_id: config.fake_with_rng(rng),
-            withdrawal_request_block_hash: config.fake_with_rng(rng),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for SweepTransactionInfo {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        SweepTransactionInfo {
-            txid: txid(config, rng),
-            signer_prevout_txid: txid(config, rng),
-            signer_prevout_output_index: config.fake_with_rng(rng),
-            signer_prevout_amount: config.fake_with_rng(rng),
-            signer_prevout_script_pubkey: config.fake_with_rng::<ScriptPubKey, R>(rng).into(),
-            amount: config.fake_with_rng(rng),
-            fee: config.fake_with_rng(rng),
-            vsize: config.fake_with_rng(rng),
-            created_at_block_hash: block_hash(config, rng),
-            market_fee_rate: config.fake_with_rng(rng),
-            swept_deposits: config.fake_with_rng(rng),
-            swept_withdrawals: config.fake_with_rng(rng),
         }
     }
 }

@@ -22,6 +22,15 @@ use std::sync::OnceLock;
 use crate::context::Context;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::metrics::Metrics;
+use crate::metrics::STACKS_BLOCKCHAIN;
+use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::KeyRotationEvent;
+use crate::storage::models::RegistryEvent;
+use crate::storage::model::TxInfo;
+use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
+use crate::storage::model::WithdrawalRejectEvent;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::CompletedDepositEvent;
@@ -79,6 +88,12 @@ enum UpdateResult {
 #[tracing::instrument(skip_all, name = "new-block")]
 pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
     tracing::debug!("received a new block event from stacks-core");
+    metrics::counter!(
+        Metrics::BlocksObservedTotal,
+        "blockchain" => STACKS_BLOCKCHAIN,
+    )
+    .increment(1);
+
     let api = state.0;
 
     let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {

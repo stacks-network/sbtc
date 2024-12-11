@@ -86,6 +86,18 @@ describe("sBTC bootstrap signers contract", () => {
       expect(receipt.value).toEqual(true);
     });
 
+    test("Rotate keys wrapper 90-of-128", () => {
+      const receipt = txOk(
+        signers.rotateKeysWrapper({
+          newKeys: randomPublicKeys(128),
+          newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold: 90n,
+        }),
+        deployer
+      );
+      expect(receipt.value).toEqual(true);
+    });
+
     test("Rotate keys wrapper incorrect signer key size", () => {
       const newSignatureThreshold = 2n;
       const receipt = txErr(

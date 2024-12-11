@@ -29,6 +29,7 @@ use emily_client::models::Withdrawal;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::rpc::GetTxResponse;
 use crate::bitcoin::utxo;
@@ -68,6 +69,14 @@ impl TestHarness {
     /// Get the Bitcoin blocks in the test harness.
     pub fn bitcoin_blocks(&self) -> &[bitcoin::Block] {
         &self.bitcoin_blocks
+    }
+
+    /// The minimum block height amount blocks in this blockchain
+    pub fn min_block_height(&self) -> Option<u64> {
+        self.bitcoin_blocks
+            .iter()
+            .map(|block| block.bip34_block_height().unwrap())
+            .min()
     }
 
     /// Get the Stacks blocks in the test harness.
@@ -129,7 +138,10 @@ impl TestHarness {
         num_bitcoin_blocks: usize,
         num_stacks_blocks_per_bitcoin_block: std::ops::Range<usize>,
     ) -> Self {
-        let mut bitcoin_blocks: Vec<_> = std::iter::repeat_with(|| dummy::block(&fake::Faker, rng))
+        // There is some issue with using heights less than 17, probably
+        // minimal pushes or something.
+        let mut bitcoin_blocks: Vec<_> = std::iter::successors(Some(17), |height| Some(height + 1))
+            .map(|height| dummy::block(&fake::Faker, rng, height))
             .take(num_bitcoin_blocks)
             .collect();
 
@@ -206,6 +218,22 @@ impl TryFrom<TestHarness> for ApiFallbackClient<TestHarness> {
 impl BitcoinInteract for TestHarness {
     async fn get_tx(&self, txid: &bitcoin::Txid) -> Result<Option<GetTxResponse>, Error> {
         Ok(self.deposits.get(txid).cloned().map(|(resp, _)| resp))
+    }
+
+    async fn get_block_header(
+        &self,
+        block_hash: &BlockHash,
+    ) -> Result<Option<BitcoinBlockHeader>, Error> {
+        Ok(self
+            .bitcoin_blocks
+            .iter()
+            .find(|block| &block.block_hash() == block_hash)
+            .map(|block| BitcoinBlockHeader {
+                hash: *block_hash,
+                height: block.bip34_block_height().unwrap(),
+                time: block.header.time as u64,
+                previous_block_hash: block.header.prev_blockhash,
+            }))
     }
 
     async fn get_tx_info(

@@ -1,0 +1,4 @@
+CREATE INDEX ix_bitcoin_tx_inputs_prevout_outpoint ON sbtc_signer.bitcoin_tx_inputs(prevout_txid, prevout_output_index);
+CREATE INDEX ix_completed_deposit_events_outpoint ON sbtc_signer.completed_deposit_events(bitcoin_txid, output_index);
+CREATE INDEX ix_stacks_blocks_bitcoin_anchor ON sbtc_signer.stacks_blocks(bitcoin_anchor);
+CREATE INDEX ix_stacks_blocks_parent_hash ON sbtc_signer.stacks_blocks(parent_hash);

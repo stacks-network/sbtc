@@ -26,7 +26,7 @@
 # Environment: SIGNER_EMILY__ENDPOINTS
 # Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    "http://emily-server:3031",
+    "http://testApiKey@emily-server:3031",
 ]
 
 # !! ==============================================================================
@@ -71,10 +71,6 @@ block_hash_stream_endpoints = [
 # making requests.
 endpoints = ["http://stacks-node:20443"]
 
-# This is the start height of the first EPOCH 3.0 block on the stacks
-# blockchain.
-nakamoto_start_height = 30
-
 # !! ==============================================================================
 # !! Signer Configuration
 # !! ==============================================================================
@@ -107,12 +103,6 @@ network = "regtest"
 # Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
 # TODO(715): Add default delay (15 seconds? see #701)
 bitcoin_processing_delay = 3
-
-# The number of blocks back the block observer should look for unprocessed
-# blocks before proceeding.
-# Required: true
-# Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
-bitcoin_block_horizon = 1500
 
 # How many bitcoin blocks back from the chain tip the signer will look for
 # requests. Must be strictly positive.
@@ -151,6 +141,22 @@ bitcoin_block_horizon = 1500
 # Required: false
 # Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
 dkg_begin_pause = 2
+
+# The minimum bitcoin block height for which the sbtc signers will backfill
+# bitcoin blocks to. The signers may not work if operated before this
+# height. Defaults to the Nakamoto start height returned from the stacks
+# node if not present.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__SBTC_BITCOIN_START_HEIGHT
+# sbtc_bitcoin_start_height = 231
+
+# When defined, this field sets the scrape endpoint as an IPv4 or IPv6
+# socket address for exporting metrics for Prometheus.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
+# prometheus_exporter_endpoint = "[::]:9184"
 
 # The address that deployed the sbtc smart contracts.
 #
@@ -202,7 +208,7 @@ bind = "0.0.0.0:8801"
 # !! Signer P2P Networking Configuration
 # !! ==============================================================================
 [signer.p2p]
-# List of seed nodes to connect to to bootstrap the network.
+# List of seed nodes to connect to bootstrap the network.
 #
 # If specified, these nodes will be used to discover other nodes on the network.
 # If not specified or if none of the specified seeds could be reached, the node

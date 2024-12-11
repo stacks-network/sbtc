@@ -9,8 +9,7 @@ use clarity::vm::types::PrincipalData;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::StacksBlockId;
 
-use crate::bitcoin::utxo;
-use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::validation::InputValidationResult;
 use crate::bitcoin::validation::WithdrawalValidationResult;
 use crate::block_observer::Deposit;
@@ -238,35 +237,6 @@ pub struct TxPrevout {
     pub prevout_type: TxPrevoutType,
 }
 
-/// Represents a single withdrawal which has been swept-out by a sweep
-/// transaction.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
-#[cfg_attr(feature = "testing", derive(fake::Dummy))]
-pub struct SweptWithdrawal {
-    /// The index of the withdrawal output in the sBTC sweep transaction.
-    #[sqlx(try_from = "i32")]
-    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
-    pub output_index: u32,
-    /// The public request id of the withdrawal request serviced by this
-    /// transaction.
-    #[sqlx(try_from = "i64")]
-    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
-    pub withdrawal_request_id: u64,
-    /// The Stacks block hash of the Stacks block which included the withdrawal
-    /// request transaction.
-    pub withdrawal_request_block_hash: StacksBlockHash,
-}
-
-impl From<&crate::message::SweptWithdrawal> for SweptWithdrawal {
-    fn from(withdrawal: &crate::message::SweptWithdrawal) -> Self {
-        Self {
-            output_index: withdrawal.output_index,
-            withdrawal_request_id: withdrawal.withdrawal_request_id,
-            withdrawal_request_block_hash: withdrawal.withdrawal_request_block_hash.into(),
-        }
-    }
-}
-
 /// Bitcoin block.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -289,6 +259,16 @@ impl From<&bitcoin::Block> for BitcoinBlock {
                 .bip34_block_height()
                 .expect("Failed to get block height"),
             parent_hash: block.header.prev_blockhash.into(),
+        }
+    }
+}
+
+impl From<BitcoinBlockHeader> for BitcoinBlock {
+    fn from(header: BitcoinBlockHeader) -> Self {
+        BitcoinBlock {
+            block_hash: header.hash.into(),
+            block_height: header.height,
+            parent_hash: header.previous_block_hash.into(),
         }
     }
 }
@@ -1922,9 +1902,6 @@ impl RawTupleData {
 mod tests {
     use fake::Fake;
     use rand::SeedableRng;
-    use test_case::test_case;
-
-    use crate::bitcoin::utxo::GetFees;
 
     use super::*;
 
@@ -1941,65 +1918,5 @@ mod tests {
         let block_hash = BitcoinBlockHash::from(stacks_hash);
         let round_trip = BurnchainHeaderHash::from(block_hash);
         assert_eq!(stacks_hash, round_trip);
-    }
-
-    #[test_case(&[(1000, 500)], Some(Fees { total: 500, rate: 0.5 }))]
-    #[test_case(&[(1000, 500), (2000, 1000)], Some(Fees { total: 1500, rate: 0.5 }))]
-    #[test_case(&[(1000, 250), (2000, 1000)], Some(Fees { total: 1250, rate: 0.4166666666666667 }))]
-    #[test_case(&[(1000, 125), (1250, 125), (1500, 175)], Some(Fees { total: 425, rate: 0.11333333333333333 }))]
-    #[test_case(&[], None)]
-    fn get_sweep_transaction_package_fees(sweeps: &[(u32, u64)], expected: Option<Fees>) {
-        // (vsize, fee)
-        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
-
-        let mut sweep_txs = vec![];
-        for (vsize, fee) in sweeps {
-            let tx = SweepTransaction {
-                vsize: *vsize,
-                fee: *fee,
-                ..fake::Faker.fake_with_rng(&mut rng)
-            };
-            sweep_txs.push(tx);
-        }
-
-        let fees = sweep_txs.get_fees().expect("failed to calculate fees");
-
-        assert_eq!(fees, expected);
-    }
-
-    #[test]
-    fn get_sweep_transaction_package_overflows() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
-
-        let mut sweep_txs = vec![];
-        (0..3).for_each(|_| {
-            let tx = SweepTransaction {
-                fee: u64::MAX,
-                vsize: 1,
-                ..fake::Faker.fake_with_rng(&mut rng)
-            };
-            sweep_txs.push(tx);
-        });
-
-        let fees = sweep_txs.get_fees();
-        assert!(matches!(fees, Err(Error::ArithmeticOverflow)));
-    }
-
-    #[test]
-    fn get_sweep_transaction_package_divide_by_zero() {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(1);
-
-        let mut sweep_txs = vec![];
-        (0..3).for_each(|_| {
-            let tx = SweepTransaction {
-                fee: 1,
-                vsize: 0,
-                ..fake::Faker.fake_with_rng(&mut rng)
-            };
-            sweep_txs.push(tx);
-        });
-
-        let fees = sweep_txs.get_fees();
-        assert!(matches!(fees, Err(Error::DivideByZero)));
     }
 }

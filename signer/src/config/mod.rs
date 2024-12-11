@@ -209,6 +209,8 @@ pub struct SignerConfig {
     /// The postgres database endpoint
     #[serde(deserialize_with = "url_deserializer_single")]
     pub db_endpoint: Url,
+    /// The scrape endpoint for exporting metrics for Prometheus.
+    pub prometheus_exporter_endpoint: Option<std::net::SocketAddr>,
     /// The public keys of the signer sit during the bootstrapping phase of
     /// the signers.
     pub bootstrap_signing_set: Vec<PublicKey>,
@@ -235,13 +237,13 @@ pub struct SignerConfig {
     /// coordinator will time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub dkg_max_duration: std::time::Duration,
-    /// The number of blocks back the block observer should look for
-    /// unprocessed blocks before proceeding.
-    pub bitcoin_block_horizon: u32,
     /// The amount of time, in seconds, the signer should pause for after
     /// receiving a DKG begin message before relaying to give the other
     /// signers time to catch up.
     pub dkg_begin_pause: Option<u64>,
+    /// The minimum bitcoin block height for which the sbtc signers will
+    /// backfill bitcoin blocks to.
+    pub sbtc_bitcoin_start_height: Option<u64>,
 }
 
 impl Validatable for SignerConfig {
@@ -372,7 +374,7 @@ impl Settings {
         // TODO: We can reduce this to a more reasonable number, like 500,
         // after https://github.com/stacks-network/sbtc/issues/1004 gets
         // done.
-        cfg_builder = cfg_builder.set_default("signer.context_window", 10000)?;
+        cfg_builder = cfg_builder.set_default("signer.context_window", 1000)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
@@ -405,9 +407,6 @@ pub struct StacksConfig {
     /// The endpoint to use when making requests to a stacks node.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<url::Url>,
-    /// This is the start height of the first EPOCH 3.0 block on the Stacks
-    /// blockchain.
-    pub nakamoto_start_height: u64,
 }
 
 impl Validatable for StacksConfig {
@@ -415,12 +414,6 @@ impl Validatable for StacksConfig {
         if self.endpoints.is_empty() {
             return Err(ConfigError::Message(
                 "[stacks] Endpoints cannot be empty".to_string(),
-            ));
-        }
-
-        if self.nakamoto_start_height == 0 {
-            return Err(ConfigError::Message(
-                "[stacks] Nakamoto start height must be greater than zero".to_string(),
             ));
         }
 
@@ -498,9 +491,10 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
+        assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
-        assert_eq!(settings.signer.bitcoin_block_horizon, 1500);
-        assert_eq!(settings.signer.context_window, 10000);
+        assert_eq!(settings.signer.context_window, 1000);
+        assert!(settings.signer.prometheus_exporter_endpoint.is_none());
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
             Duration::from_secs(30)
@@ -633,6 +627,44 @@ mod tests {
     }
 
     #[test]
+    fn sbtc_bitcoin_start_height() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__SBTC_BITCOIN_START_HEIGHT", "12345");
+
+        let settings = Settings::new_from_default_config().unwrap();
+        let height = settings.signer.sbtc_bitcoin_start_height.unwrap();
+
+        assert_eq!(height, 12345);
+    }
+
+    #[test]
+    fn prometheus_exporter_endpoint_with_environment() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT", "[::]:9851");
+
+        let settings = Settings::new_from_default_config().unwrap();
+        let endpoint = settings.signer.prometheus_exporter_endpoint.unwrap();
+
+        assert!(endpoint.ip().is_unspecified());
+        assert!(endpoint.is_ipv6());
+        assert_eq!(endpoint.port(), 9851);
+
+        std::env::set_var(
+            "SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT",
+            "0.0.0.0:9852",
+        );
+
+        let settings = Settings::new_from_default_config().unwrap();
+        let endpoint = settings.signer.prometheus_exporter_endpoint.unwrap();
+
+        assert!(endpoint.ip().is_unspecified());
+        assert!(endpoint.is_ipv4());
+        assert_eq!(endpoint.port(), 9852);
+    }
+
+    #[test]
     fn default_config_toml_loads_with_environment() {
         clear_env();
 
@@ -715,7 +747,7 @@ mod tests {
 
         let settings = Settings::new(Some(&new_config.path())).unwrap();
 
-        assert_eq!(settings.signer.context_window, 10000);
+        assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
             Duration::from_secs(30)
@@ -824,15 +856,6 @@ mod tests {
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == Error::DecodeHexBytes(hex_err).to_string()
         ));
-    }
-
-    #[test]
-    fn horizon_parameter_works() {
-        clear_env();
-
-        std::env::set_var("SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON", "1234");
-        let config = Settings::new_from_default_config().unwrap();
-        assert_eq!(config.signer.bitcoin_block_horizon, 1234);
     }
 
     #[test]

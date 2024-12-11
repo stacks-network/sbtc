@@ -38,7 +38,9 @@ use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
-use crate::message::SweepTransactionInfo;
+use crate::metrics::Metrics;
+use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
@@ -158,8 +160,6 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     /// The maximum duration of distributed key generation before the
     /// coordinator will time out and return an error.
     pub dkg_max_duration: Duration,
-    /// Whether the coordinator has already deployed the contracts.
-    pub sbtc_contracts_deployed: bool,
     /// An indicator for whether the Stacks blockchain has reached Nakamoto
     /// 3. If we are not in Nakamoto 3 or later, then the coordinator does
     /// not do any work.
@@ -294,11 +294,17 @@ where
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
         if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+            // Before returning, we also check if all the smart contracts are
+            // deployed: we do this as some other coordinator could have deployed
+            // them, in which case we need to updated our state.
+            self.all_smart_contracts_deployed().await?;
+
             tracing::debug!("we are not the coordinator, so nothing to do");
             return Ok(());
         }
 
         tracing::debug!("we are the coordinator, we may need to coordinate DKG");
+        metrics::counter!(Metrics::CoordinatorTenuresTotal).increment(1);
         // If Self::get_signer_set_and_aggregate_key did not return an
         // aggregate key, then we know that we have not run DKG yet. Since
         // we are the coordinator, we should coordinate DKG.
@@ -475,12 +481,37 @@ where
             Ok(())
         };
 
+        let instant = std::time::Instant::now();
+
         // Wait for the future to complete with a timeout
-        tokio::time::timeout(self.bitcoin_presign_request_max_duration, future)
+        let res = tokio::time::timeout(self.bitcoin_presign_request_max_duration, future)
             .await
             .map_err(|_| {
                 Error::CoordinatorTimeout(self.bitcoin_presign_request_max_duration.as_secs())
-            })?
+            });
+
+        let status = match &res {
+            Ok(Ok(_)) => "success",
+            Ok(Err(_)) => "failure",
+            Err(_) => "timeout",
+        };
+
+        metrics::histogram!(
+            Metrics::SigningRoundDurationSeconds,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
+            "kind" => "sweep-presign",
+            "status" => status,
+        )
+        .record(instant.elapsed());
+        metrics::counter!(
+            Metrics::SignRequestsTotal,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
+            "kind" => "sweep-presign-broadcast",
+            "status" => status,
+        )
+        .increment(1);
+
+        res?
     }
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
@@ -633,9 +664,10 @@ where
             let process_request_fut =
                 self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
 
-            match process_request_fut.await {
+            let status = match process_request_fut.await {
                 Ok(txid) => {
-                    tracing::info!(%txid, "successfully submitted complete-deposit transaction")
+                    tracing::info!(%txid, "successfully submitted complete-deposit transaction");
+                    "success"
                 }
                 Err(error) => {
                     tracing::warn!(
@@ -645,8 +677,16 @@ where
                         "could not process the stacks sign request for a deposit"
                     );
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                    "failure"
                 }
-            }
+            };
+
+            metrics::counter!(
+                Metrics::TransactionsSubmittedTotal,
+                "blockchain" => STACKS_BLOCKCHAIN,
+                "status" => status,
+            )
+            .increment(1);
         }
 
         Ok(())
@@ -701,11 +741,31 @@ where
         multi_tx: MultisigTx,
         wallet: &SignerWallet,
     ) -> Result<StacksTxId, Error> {
+        let kind = sign_request.tx_kind();
+
+        let instant = std::time::Instant::now();
         let tx = self
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
-            .await?;
+            .await;
 
-        match self.context.get_stacks_client().submit_tx(&tx).await {
+        let status = if tx.is_ok() { "success" } else { "failure" };
+
+        metrics::histogram!(
+            Metrics::SigningRoundDurationSeconds,
+            "blockchain" => STACKS_BLOCKCHAIN,
+            "kind" => kind,
+            "status" => status,
+        )
+        .record(instant.elapsed());
+        metrics::counter!(
+            Metrics::SigningRoundsCompletedTotal,
+            "blockchain" => STACKS_BLOCKCHAIN,
+            "kind" => kind,
+            "status" => status,
+        )
+        .increment(1);
+
+        match self.context.get_stacks_client().submit_tx(&tx?).await {
             Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
             Ok(SubmitTxResponse::Rejection(err)) => Err(err.into()),
             Err(err) => Err(err),
@@ -865,7 +925,7 @@ where
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
         let txid = transaction.tx.compute_txid();
-
+        let instant = std::time::Instant::now();
         let signature = self
             .coordinate_signing_round(
                 bitcoin_chain_tip,
@@ -875,6 +935,20 @@ where
                 SignatureType::Taproot(None),
             )
             .await?;
+
+        metrics::histogram!(
+            Metrics::SigningRoundDurationSeconds,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
+            "kind" => "sweep",
+        )
+        .record(instant.elapsed());
+
+        metrics::counter!(
+            Metrics::SigningRoundsCompletedTotal,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
+            "kind" => "sweep",
+        )
+        .increment(1);
 
         let signer_witness = bitcoin::Witness::p2tr_key_spend(&signature.into());
 
@@ -892,6 +966,7 @@ where
             )
             .await?;
 
+            let instant = std::time::Instant::now();
             let signature = self
                 .coordinate_signing_round(
                     bitcoin_chain_tip,
@@ -901,6 +976,19 @@ where
                     SignatureType::Schnorr,
                 )
                 .await?;
+
+            metrics::histogram!(
+                Metrics::SigningRoundDurationSeconds,
+                "blockchain" => BITCOIN_BLOCKCHAIN,
+                "kind" => "sweep",
+            )
+            .record(instant.elapsed());
+            metrics::counter!(
+                Metrics::SigningRoundsCompletedTotal,
+                "blockchain" => BITCOIN_BLOCKCHAIN,
+                "kind" => "sweep",
+            )
+            .increment(1);
 
             let witness = deposit.construct_witness_data(signature.into());
 
@@ -922,22 +1010,27 @@ where
 
         tracing::info!("broadcasting bitcoin transaction");
         // Broadcast the transaction to the Bitcoin network.
-        self.context
+        let response = self
+            .context
             .get_bitcoin_client()
             .broadcast_transaction(&transaction.tx)
-            .await?;
+            .await;
 
-        // Publish the transaction to the P2P network so that peers get advance
-        // knowledge of the sweep.
-        self.send_message(
-            SweepTransactionInfo::from_unsigned_at_block(bitcoin_chain_tip, transaction),
-            bitcoin_chain_tip,
+        let status = if response.is_ok() {
+            tracing::info!("bitcoin transaction accepted by bitcoin-core");
+            "success"
+        } else {
+            "failure"
+        };
+        metrics::counter!(crate::metrics::Metrics::ValidationDurationSeconds).increment(1);
+        metrics::counter!(
+            Metrics::TransactionsSubmittedTotal,
+            "blockchain" => BITCOIN_BLOCKCHAIN,
+            "status" => status,
         )
-        .await?;
+        .increment(1);
 
-        tracing::info!("bitcoin transaction accepted by bitcoin-core");
-
-        Ok(())
+        response
     }
 
     #[tracing::instrument(skip_all)]
@@ -1233,7 +1326,7 @@ where
         let utxo = self
             .context
             .get_storage()
-            .get_signer_utxo(chain_tip, self.context_window)
+            .get_signer_utxo(chain_tip)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
@@ -1477,7 +1570,7 @@ where
     }
 
     async fn all_smart_contracts_deployed(&mut self) -> Result<bool, Error> {
-        if self.sbtc_contracts_deployed {
+        if self.context.state().sbtc_contracts_deployed() {
             return Ok(true);
         }
 
@@ -1490,7 +1583,7 @@ where
             }
         }
 
-        self.sbtc_contracts_deployed = true;
+        self.context.state().set_sbtc_contracts_deployed();
         Ok(true)
     }
 
@@ -1620,7 +1713,8 @@ where
     }
 }
 
-/// Check if the provided public key is the coordinator for the provided chain tip
+/// Check if the provided public key is the coordinator for the provided chain
+/// tip
 pub fn given_key_is_coordinator(
     pub_key: PublicKey,
     bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -1634,21 +1728,28 @@ pub fn coordinator_public_key(
     bitcoin_chain_tip: &model::BitcoinBlockHash,
     signer_public_keys: &BTreeSet<PublicKey>,
 ) -> Option<PublicKey> {
+    // Create a hash of the bitcoin chain tip. SHA256 will always result in
+    // a 32 byte digest.
     let mut hasher = sha2::Sha256::new();
     hasher.update(bitcoin_chain_tip.into_bytes());
     let digest: [u8; 32] = hasher.finalize().into();
-    // <[u8; 32]>::first_chunk<N> will return None if the requested slice
-    // is greater than 32 bytes. Since we are converting to a `usize`, the
-    // number of bytes necessary depends on the width of pointers on the
-    // machine that compiled this binary. Since we only support systems
-    // with a target pointer width of either 4 or 8 bytes, the <[u8;
-    // 32]>::first_chunk<N> call will return Some(_) since N > 4 or 8.
-    // Also, do humans even make machines where the pointer width is
-    // greater than 32 bytes?
-    let index = usize::from_be_bytes(*digest.first_chunk()?);
+
+    // Use the first 4 bytes of the digest to create a u32 index. Since `digest`
+    // is 32 bytes and we explicitly take the first 4 bytes, this is safe.
+    #[allow(clippy::expect_used)]
+    let u32_bytes = digest[..4]
+        .try_into()
+        .expect("BUG: failed to take first 4 bytes of digest");
+
+    // Convert the first 4 bytes of the digest to a u32 index.
+    let index = u32::from_be_bytes(u32_bytes);
+
     let num_signers = signer_public_keys.len();
 
-    signer_public_keys.iter().nth(index % num_signers).copied()
+    signer_public_keys
+        .iter()
+        .nth((index as usize) % num_signers)
+        .copied()
 }
 
 #[cfg(test)]
