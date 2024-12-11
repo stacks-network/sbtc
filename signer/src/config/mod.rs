@@ -243,7 +243,7 @@ pub struct SignerConfig {
     pub dkg_begin_pause: Option<u64>,
     /// The minimum bitcoin block height for which the sbtc signers will
     /// backfill bitcoin blocks to.
-    pub sbtc_start_height: Option<u64>,
+    pub sbtc_bitcoin_start_height: Option<u64>,
 }
 
 impl Validatable for SignerConfig {
@@ -491,7 +491,7 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
-        assert_eq!(settings.signer.sbtc_start_height, Some(101));
+        assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
         assert!(settings.signer.prometheus_exporter_endpoint.is_none());
@@ -627,13 +627,13 @@ mod tests {
     }
 
     #[test]
-    fn sbtc_start_height() {
+    fn sbtc_bitcoin_start_height() {
         clear_env();
 
-        std::env::set_var("SIGNER_SIGNER__SBTC_START_HEIGHT", "12345");
+        std::env::set_var("SIGNER_SIGNER__SBTC_BITCOIN_START_HEIGHT", "12345");
 
         let settings = Settings::new_from_default_config().unwrap();
-        let height = settings.signer.sbtc_start_height.unwrap();
+        let height = settings.signer.sbtc_bitcoin_start_height.unwrap();
 
         assert_eq!(height, 12345);
     }

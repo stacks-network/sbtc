@@ -148,8 +148,8 @@ dkg_begin_pause = 2
 # node if not present.
 #
 # Required: false
-# Environment: SIGNER_SIGNER__SBTC_START_HEIGHT
-# sbtc_start_height = 231
+# Environment: SIGNER_SIGNER__sbtc_bitcoin_start_height
+# sbtc_bitcoin_start_height = 231
 
 # When defined, this field sets the scrape endpoint as an IPv4 or IPv6
 # socket address for exporting metrics for Prometheus.
