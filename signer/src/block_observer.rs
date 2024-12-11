@@ -160,7 +160,7 @@ where
                     }
 
                     if let Err(error) = self.process_stacks_blocks().await {
-                        tracing::warn!(%error, "could not process bitcoin block");
+                        tracing::warn!(%error, "could not process stacks blocks");
                     }
 
                     if let Err(error) = self.update_sbtc_limits().await {
@@ -248,8 +248,8 @@ impl<C: Context, B> BlockObserver<C, B> {
     }
 
     /// Set the sbtc start height, if it has not been set already.
-    async fn set_sbtc_start_height(&self) -> Result<(), Error> {
-        if self.context.state().is_sbtc_start_height_set() {
+    async fn set_sbtc_bitcoin_start_height(&self) -> Result<(), Error> {
+        if self.context.state().is_sbtc_bitcoin_start_height_set() {
             return Ok(());
         }
 
@@ -260,7 +260,7 @@ impl<C: Context, B> BlockObserver<C, B> {
 
         self.context
             .state()
-            .set_sbtc_start_height(nakamoto_start_height);
+            .set_sbtc_bitcoin_start_height(nakamoto_start_height);
 
         Ok(())
     }
@@ -271,12 +271,12 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// # Notes
     ///
     /// This function does two things:
-    /// 1. Set the `sbtc_start_height` if it has not been set already. If
+    /// 1. Set the `sbtc_bitcoin_start_height` if it has not been set already. If
     ///    it is not set, then we fetch the stacks nakamoto start height
     ///    from stacks-core and use that value.
     /// 2. Continually fetches block headers from bitcoin-core until it
     ///    encounters a known block header or if the height of the block is
-    ///    less than or equal to the `sbtc_start_height`.
+    ///    less than or equal to the `sbtc_bitcoin_start_height`.
     ///
     /// If there are many unknown blocks then this function can take some
     /// time. Since each header is 80 bytes, we should be able to fetch
@@ -287,17 +287,17 @@ impl<C: Context, B> BlockObserver<C, B> {
         &self,
         mut block_hash: BlockHash,
     ) -> Result<Vec<BitcoinBlockHeader>, Error> {
-        self.set_sbtc_start_height().await?;
+        self.set_sbtc_bitcoin_start_height().await?;
 
-        let start_height = self.context.state().get_sbtc_start_height();
+        let start_height = self.context.state().get_sbtc_bitcoin_start_height();
         let mut headers = std::collections::VecDeque::new();
         let db = self.context.get_storage();
         let bitcoin_client = self.context.get_bitcoin_client();
 
         while !db.is_known_bitcoin_block_hash(&block_hash.into()).await? {
             let Some(header) = bitcoin_client.get_block_header(&block_hash).await? else {
-                tracing::warn!(%block_hash, "bitcoin-core does not know about block header");
-                return Ok(headers.into());
+                tracing::error!(%block_hash, "bitcoin-core does not know about block header");
+                return Err(Error::BitcoinCoreUnknownBlockHeader(block_hash));
             };
 
             // We don't even try to write blocks to the database if the

@@ -819,24 +819,31 @@ async fn next_headers_to_process_gets_all_headers() {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    let (rpc, _) = regtest::initialize_blockchain();
+    const START_HEIGHT: u64 = 103;
+
+    let (_, faucet) = regtest::initialize_blockchain();
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
+
     let ctx = TestContext::builder()
         .with_storage(db.clone())
+        .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = Some(START_HEIGHT))
         .with_first_bitcoin_core_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+
+    // We set the start height to 103 above but only starts with 101
+    // blocks, so we need to create two more blocks.
+    let chain_tip = faucet.generate_blocks(2)[1];
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
         bitcoin_blocks: (),
     };
 
-    let chain_tip_block_hash = rpc.get_best_block_hash().unwrap();
     let headers = block_observer
-        .next_headers_to_process(chain_tip_block_hash)
+        .next_headers_to_process(chain_tip)
         .await
         .unwrap();
     assert!(!headers.is_empty());
@@ -847,12 +854,23 @@ async fn next_headers_to_process_gets_all_headers() {
     sorted_headers.sort_by_key(|header| header.height);
     assert_eq!(headers, sorted_headers);
 
-    let start_height = ctx.state().get_sbtc_start_height();
-    assert_eq!(start_height, headers[0].height);
-    assert_eq!(
-        headers.last().map(|header| header.hash),
-        Some(chain_tip_block_hash)
-    );
+    let start_height = ctx.state().get_sbtc_bitcoin_start_height();
+    assert_eq!(start_height, START_HEIGHT);
+    assert_eq!(START_HEIGHT, headers[0].height);
+    assert_eq!(headers.last().map(|header| header.hash), Some(chain_tip));
+
+    // Let's make sure that if we generate a new block, that we
+    // `next_headers_to_process` picks up the new block headers all the way
+    // back to the start height.
+    let chain_tip = faucet.generate_blocks(1)[0];
+
+    let headers2 = block_observer
+        .next_headers_to_process(chain_tip)
+        .await
+        .unwrap();
+    assert_eq!(START_HEIGHT, headers[0].height);
+    assert_eq!(headers2.len(), headers.len() + 1);
+    assert_eq!(headers2.last().map(|header| header.hash), Some(chain_tip));
 
     testing::storage::drop_db(db).await;
 }

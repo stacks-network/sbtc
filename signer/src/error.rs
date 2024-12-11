@@ -71,6 +71,11 @@ pub enum Error {
     #[error("bitcoin-core getblockheader RPC error for hash {1}: {0}")]
     BitcoinCoreGetBlockHeader(#[source] bitcoincore_rpc::Error, bitcoin::BlockHash),
 
+    /// Bitcoin block header is unknown to bitcoin-core. This is only
+    /// triggered if bitcoin-core does not know about the block hash.
+    #[error("Unknown block hash response from bitcoin-core getblockheader RPC call: {0}")]
+    BitcoinCoreUnknownBlockHeader(bitcoin::BlockHash),
+
     /// Received an error in response to getrawtransaction RPC call
     #[error("failed to retrieve the raw transaction for txid {1} from bitcoin-core. {0}")]
     BitcoinCoreGetTransaction(#[source] bitcoincore_rpc::Error, bitcoin::Txid),

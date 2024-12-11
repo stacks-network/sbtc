@@ -53,7 +53,7 @@ pub trait BitcoinInteract: Sync + Send {
         block_hash: &BlockHash,
     ) -> impl Future<Output = Result<Option<bitcoin::Block>, Error>> + Send;
 
-    /// Fer the header of the block identified by the given block hash.
+    /// Get the header of the block identified by the given block hash.
     fn get_block_header(
         &self,
         block_hash: &BlockHash,
