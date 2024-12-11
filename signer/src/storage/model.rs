@@ -594,7 +594,7 @@ pub enum TxOutputType {
 #[strum(serialize_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum TxPrevoutType {
-    /// An output controled by the signers spent as an input.
+    /// An output controlled by the signers spent as an input.
     SignersInput,
     /// A deposit request TXO being spent as an input
     Deposit,
@@ -621,6 +621,20 @@ pub struct QualifiedRequestId {
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     pub block_hash: StacksBlockHash,
+}
+
+/// Bitcoin-core typically transmits hashes in internal bytes order[1],
+/// which I believe is little-endian byte order. However, when these bytes
+/// are displayed, they are reversed as big endian byte order. This trait
+/// adds a function for converting bytes to and from hash bytes in reverse
+/// order.
+///
+/// [^1]: <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+/// <https://learnmeabitcoin.com/technical/general/byte-order/>
+/// <https://developer.bitcoin.org/reference/p2p_networking.html>
+pub trait ToLittleEndianOrder: Sized {
+    /// Return the bytes in little-endian order.
+    fn to_le_bytes(&self) -> [u8; 32];
 }
 
 /// A bitcoin transaction
@@ -664,6 +678,20 @@ impl BitcoinTxId {
     }
 }
 
+impl ToLittleEndianOrder for BitcoinTxId {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        self.deref().to_le_bytes()
+    }
+}
+
+impl ToLittleEndianOrder for bitcoin::Txid {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let mut bytes = self.to_byte_array();
+        bytes.reverse();
+        bytes
+    }
+}
+
 impl From<bitcoin::Txid> for BitcoinTxId {
     fn from(value: bitcoin::Txid) -> Self {
         Self(value)
@@ -696,6 +724,20 @@ impl BitcoinBlockHash {
     /// Return the inner bytes for the block hash
     pub fn into_bytes(&self) -> [u8; 32] {
         self.0.to_byte_array()
+    }
+}
+
+impl ToLittleEndianOrder for BitcoinBlockHash {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        self.deref().to_le_bytes()
+    }
+}
+
+impl ToLittleEndianOrder for bitcoin::BlockHash {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let mut bytes = self.to_byte_array();
+        bytes.reverse();
+        bytes
     }
 }
 
@@ -746,9 +788,7 @@ impl From<BurnchainHeaderHash> for BitcoinBlockHash {
 
 impl From<BitcoinBlockHash> for BurnchainHeaderHash {
     fn from(value: BitcoinBlockHash) -> Self {
-        let mut bytes = value.to_byte_array();
-        bytes.reverse();
-        BurnchainHeaderHash(bytes)
+        BurnchainHeaderHash(value.to_le_bytes())
     }
 }
 
