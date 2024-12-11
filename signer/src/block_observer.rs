@@ -145,18 +145,8 @@ where
                     )
                     .increment(1);
 
-                    let block_headers = match self.next_headers_to_process(block_hash).await {
-                        Ok(blocks) => blocks,
-                        Err(error) => {
-                            tracing::warn!(%error, %block_hash, "could not get next blocks to process");
-                            continue;
-                        }
-                    };
-
-                    for block_header in block_headers {
-                        if let Err(error) = self.process_bitcoin_block(block_header).await {
-                            tracing::warn!(%error, "could not process bitcoin block");
-                        }
+                    if let Err(error) = self.process_bitcoin_blocks_until(block_hash).await {
+                        tracing::warn!(%error, %block_hash, "could not process bitcoin blocks");
                     }
 
                     if let Err(error) = self.process_stacks_blocks().await {
@@ -319,6 +309,32 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(headers.into())
     }
 
+    /// Process bitcoin blocks until we get caught up to the given
+    /// `block_hash`.
+    ///
+    /// This function starts at the given block hash and:
+    /// 1. Works backwards, fetching block headers until it fetches one
+    ///    that is already in the database or reaches a block that is at or
+    ///    below the `sbtc_bitcoin_start_height`.
+    /// 2. Starts from the header associated with the block with the least
+    ///    height and writes the blocks and sweep transactions into the
+    ///    database.
+    /// 3. Bails if an error is encountered when fetching block headers or
+    ///    when processing blocks.
+    ///
+    /// This means that if we stop processing blocks midway though,
+    /// subsequent calls to this function will properly pick up from where
+    /// we left off and update the database.
+    async fn process_bitcoin_blocks_until(&self, block_hash: BlockHash) -> Result<(), Error> {
+        let block_headers = self.next_headers_to_process(block_hash).await?;
+
+        for block_header in block_headers {
+            self.process_bitcoin_block(block_header).await?;
+        }
+
+        Ok(())
+    }
+
     /// Write the bitcoin block and any transactions that spend to any of
     /// the signers `scriptPubKey`s to the database.
     #[tracing::instrument(skip_all, fields(block_hash = %block_header.hash))]
@@ -377,7 +393,10 @@ impl<C: Context, B> BlockObserver<C, B> {
         // We need to check to see if we have a record of the bitcoin block
         // that contains the deposit request in our database. If we don't
         // then write them to our database.
-        self.store_deposit_request_blocks(&requests).await?;
+        for deposit in requests.iter() {
+            self.process_bitcoin_blocks_until(deposit.tx_info.block_hash)
+                .await?;
+        }
 
         // Okay now we write the deposit requests and the transactions to
         // the database.
@@ -400,37 +419,6 @@ impl<C: Context, B> BlockObserver<C, B> {
         let db = self.context.get_storage_mut();
         db.write_bitcoin_transactions(deposit_request_txs).await?;
         db.write_deposit_requests(deposit_requests).await?;
-
-        Ok(())
-    }
-
-    /// This function does two things:
-    /// 1. For all deposit requests, check to see if there are bitcoin
-    ///    blocks that we do not have in our database.
-    /// 2. If we do not have a record of the bitcoin block then write it
-    ///    to the database.
-    async fn store_deposit_request_blocks(&self, requests: &[Deposit]) -> Result<(), Error> {
-        let db = self.context.get_storage_mut();
-        let mut deposit_blocks = Vec::new();
-
-        // We need to check to see if we have a record of the bitcoin block
-        // that contains the deposit request in our database.
-        for deposit in requests.iter() {
-            let blocks = self
-                .next_headers_to_process(deposit.tx_info.block_hash)
-                .await?
-                .into_iter()
-                .map(model::BitcoinBlock::from);
-            deposit_blocks.extend(blocks);
-        }
-
-        // We now get the distinct blocks and write them to the database.
-        deposit_blocks.sort_by_key(|block| (block.block_height, block.block_hash));
-        deposit_blocks.dedup();
-
-        for block in deposit_blocks {
-            db.write_bitcoin_block(&block).await?;
-        }
 
         Ok(())
     }
@@ -464,7 +452,7 @@ impl<C: Context, B> BlockObserver<C, B> {
         // `scriptPubKey` controlled by the signers.
         let mut sbtc_txs = Vec::new();
         for tx in txs {
-            tracing::debug!(txid = %tx.compute_txid(), "attempting to extract sbtc transaction");
+            tracing::trace!(txid = %tx.compute_txid(), "attempting to extract sbtc transaction");
             // If any of the outputs are spent to one of the signers'
             // addresses, then we care about it
             let outputs_spent_to_signers = tx
