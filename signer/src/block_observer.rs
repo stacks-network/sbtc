@@ -56,8 +56,6 @@ pub struct BlockObserver<Context, BlockHashStream> {
     pub context: Context,
     /// Stream of blocks from the block notifier
     pub bitcoin_blocks: BlockHashStream,
-    /// How far back in time the observer should look
-    pub horizon: u32,
 }
 
 /// A full "deposit", containing the bitcoin transaction and a fully
@@ -606,7 +604,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx.clone(),
             bitcoin_blocks: block_hash_stream,
-            horizon: 1,
         };
 
         let handle = tokio::spawn(block_observer.run());
@@ -738,7 +735,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             bitcoin_blocks: (),
-            horizon: 1,
         };
 
         {
@@ -822,7 +818,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             bitcoin_blocks: (),
-            horizon: 1,
         };
 
         block_observer.load_latest_deposit_requests().await.unwrap();
@@ -924,7 +919,6 @@ mod tests {
         let block_observer = BlockObserver {
             context: ctx,
             bitcoin_blocks: (),
-            horizon: 1,
         };
 
         // First we try extracting the transactions from a block that does

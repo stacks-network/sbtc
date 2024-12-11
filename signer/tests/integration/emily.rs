@@ -398,7 +398,6 @@ async fn deposit_flow() {
     let block_observer = block_observer::BlockObserver {
         context: context.clone(),
         bitcoin_blocks: block_stream,
-        horizon: 1,
     };
 
     let block_observer_handle = tokio::spawn(async move { block_observer.run().await });

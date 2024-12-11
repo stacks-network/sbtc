@@ -368,7 +368,6 @@ where
             tracing::debug!("no record of the deposit request, fetching from emily");
             let processor = BlockObserver {
                 context: self.context.clone(),
-                horizon: 20,
                 bitcoin_blocks: (),
             };
             let deposit_request = self

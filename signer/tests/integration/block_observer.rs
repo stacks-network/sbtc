@@ -67,10 +67,10 @@ pub const GET_POX_INFO_JSON: &str =
 /// supposed to fetch all deposit requests from Emily and persist the ones
 /// that pass validation, regardless of when they were confirmed.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case::test_case(1, 10; "one block ago")]
-#[test_case::test_case(5, 10; "five blocks ago")]
+#[test_case::test_case(1; "one block ago")]
+#[test_case::test_case(5; "five blocks ago")]
 #[tokio::test]
-async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64, horizon: u32) {
+async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64) {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
@@ -166,7 +166,6 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     let block_observer = BlockObserver {
         context: ctx.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
-        horizon,
     };
 
     // We need at least one receiver
@@ -284,7 +283,6 @@ async fn link_blocks() {
     let block_observer = BlockObserver {
         context: ctx.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
-        horizon: 10,
     };
 
     let mut signal_rx = ctx.get_signal_receiver();
@@ -456,7 +454,6 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let block_observer = BlockObserver {
         context: ctx.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
-        horizon: 2,
     };
 
     tokio::spawn(async move {
@@ -775,7 +772,6 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
     let block_observer = BlockObserver {
         context: ctx.clone(),
         bitcoin_blocks: ReceiverStream::new(receiver),
-        horizon: 10,
     };
 
     let mut signal_receiver = ctx.get_signal_receiver();
