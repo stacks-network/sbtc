@@ -311,7 +311,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
                 vout: rng.next_u32(),
             },
             fee: rng.next_u32() as u64,
-            sweep_block_hash: block_hash(config, rng),
+            sweep_block_hash: block_hash(config, rng).into(),
             sweep_block_height: rng.next_u32() as u64,
             sweep_txid: txid(config, rng),
         }
@@ -322,7 +322,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
-            txid: StacksTxid(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng::<[u8; 32], _>(rng).into(),
             block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,
             signer_bitmap: bitmap,
