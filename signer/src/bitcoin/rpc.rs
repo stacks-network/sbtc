@@ -231,7 +231,8 @@ pub struct PrevoutScriptPubKey {
     pub script: ScriptBuf,
 }
 
-/// The response for a getblockheader RPC call to bitcoin-core.
+/// The response for a `getblockheader` RPC call to bitcoin-core with
+/// verbose set to `true`.
 ///
 /// Some fields from the actual response have been omitted because they
 /// were unneeded at the time.
@@ -244,7 +245,7 @@ pub struct BitcoinBlockHeader {
     pub height: u64,
     /// The time value in the block header.
     pub time: u64,
-    /// The block hash of this blocks parent block/
+    /// The block hash of this blocks parent block.
     #[serde(rename = "previousblockhash")]
     pub previous_block_hash: BlockHash,
 }
