@@ -10,8 +10,8 @@
 
 use std::collections::BTreeMap;
 
-use bitcoin::hashes::FromSliceError;
 use bitcoin::hashes::Hash;
+use bitcoin::hex::DisplayHex;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
@@ -27,17 +27,22 @@ use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
 use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
-use stacks_common::*;
+
+use std::fmt::Display;
 
 /// Stacks transaction identifier. Wrapper over a 32 byte array.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct StacksTxid(pub [u8; 32]);
-// impl_byte_array_newtype!(StacksTxid, u8, 32);
 
-impl_array_newtype!(StacksTxid, u8, 32);
-impl_array_hexstring_fmt!(StacksTxid);
-impl_byte_array_newtype!(StacksTxid, u8, 32);
-impl_byte_array_message_codec!(StacksTxid, 32);
-impl_byte_array_serde!(StacksTxid);
+impl Display for StacksTxid {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", &self.0.to_hex_string(bitcoin::hex::Case::Lower))
+    }
+}
+
+// impl_array_newtype!(StacksTxid, u8, 32);
+// impl_array_hexstring_fmt!(StacksTxid);
+// impl_byte_array_newtype!(StacksTxid, u8, 32);
 
 /// An error when trying to parse an sBTC event into a concrete type.
 #[derive(Debug, thiserror::Error)]
@@ -356,9 +361,8 @@ impl RawTupleData {
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
             // BurnchainHeaderHash::from_bytes(&sweep_block_hash) returns Option, not Result, so this map_err is not so obvious
-            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
-                .ok_or().map_err(EventError::ClarityHashConversion)?,
-                // .unwrap_or_else(|| {EventError::ClarityHashConversion})?,
+            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash).unwrap(),
+            // .unwrap_or_else(|| {EventError::ClarityHashConversion})?,
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_slice(&sweep_txid)

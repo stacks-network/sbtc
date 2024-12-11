@@ -18,7 +18,6 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 
-use std::collections::BTreeMap;
 use bitcoin::hashes::Hash;
 use bitcoin::BlockHash as EventsBitcoinBlockHash;
 use bitcoin::OutPoint;
@@ -35,6 +34,7 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey as EventsPublicKey;
+use std::collections::BTreeMap;
 
 /// Represents a single transaction which is part of a sweep transaction package
 /// which has been broadcast to the Bitcoin network.
