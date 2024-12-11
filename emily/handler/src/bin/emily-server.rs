@@ -75,9 +75,17 @@ async fn main() {
         .unwrap_or_else(|e| panic!("{e}"));
     info!(lambdaContext = ?context);
 
+    // Create CORS configuration
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "POST", "OPTIONS"])
+        .allow_headers(vec!["content-type", "x-api-key"])
+        .build();
+
     let routes = api::routes::routes(context)
         .recover(api::handlers::handle_rejection)
-        .with(warp::log("api"));
+        .with(warp::log("api"))
+        .with(cors);
 
     // Create address.
     let addr_str = format!("{host}:{port}");

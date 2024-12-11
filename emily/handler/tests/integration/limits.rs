@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
-use emily_client::apis;
-use emily_client::models;
-use emily_client::models::AccountLimits;
-use emily_client::models::Limits;
+use testing_emily_client::apis;
+use testing_emily_client::models;
+use testing_emily_client::models::AccountLimits;
+use testing_emily_client::models::Limits;
 
 use crate::common::clean_setup;
 

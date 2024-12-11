@@ -29,7 +29,7 @@
 # Environment: SIGNER_EMILY__ENDPOINTS
 # Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    "http://localhost:3031",
+    "http://testApiKey@localhost:3031",
 ]
 
 # !! ==============================================================================
@@ -73,11 +73,6 @@ block_hash_stream_endpoints = [
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
 endpoints = ["http://localhost:20443"]
-
-# This is the start height of the first EPOCH 3.0 block on the stacks
-# blockchain.
-# TODO(715): Update to 867867
-nakamoto_start_height = 31
 
 # !! ==============================================================================
 # !! Signer Configuration
@@ -156,7 +151,7 @@ bitcoin_block_horizon = 1500
 #
 # Required: false
 # Environment: SIGNER_SIGNER__CONTEXT_WINDOW
-context_window = 10000
+context_window = 1000
 
 # The maximum amount of time, in seconds, a signing round will take before
 # the coordinator will time out and return an error. This value must be
@@ -188,6 +183,13 @@ dkg_max_duration = 120
 # Required: false
 # Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
 # dkg_begin_pause = 10
+
+# When defined, this field sets the scrape endpoint as an IPv4 or IPv6
+# socket address for exporting metrics for Prometheus.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
+# prometheus_exporter_endpoint = "[::]:9184"
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration

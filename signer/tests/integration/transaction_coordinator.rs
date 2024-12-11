@@ -20,7 +20,6 @@ use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
-use blockstack_lib::net::api::gettenureinfo::RPCGetTenureInfo;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -53,11 +52,11 @@ use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
 use signer::storage::postgres::PgStore;
+use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::transaction_coordinator::select_coordinator;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::ConsensusHash;
 use stacks_common::types::chainstate::SortitionId;
-use stacks_common::types::chainstate::StacksBlockId;
 use test_case::test_case;
 use test_log::test;
 use tokio_stream::wrappers::BroadcastStream;
@@ -188,7 +187,7 @@ where
         .unwrap();
 }
 
-async fn mock_reqwests_status_code_error(status_code: usize) -> reqwest::Error {
+pub async fn mock_reqwests_status_code_error(status_code: usize) -> reqwest::Error {
     let mut server: mockito::ServerGuard = mockito::Server::new_async().await;
     let _mock = server.mock("GET", "/").with_status(status_code).create();
     reqwest::get(server.url())
@@ -415,7 +414,7 @@ async fn process_complete_deposit() {
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
 
     backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
     setup.store_deposit_tx(&db).await;
@@ -423,12 +422,6 @@ async fn process_complete_deposit() {
     setup.store_dkg_shares(&db).await;
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
-    // We need this to be able to store the sweep transaction, since
-    // the `TestSweepSetup` includes a withdrawal by default. It's not used here,
-    // though.
-    setup.store_withdrawal_request(&db).await;
-    // This will store the "broadcasted" sweep transactions.
-    setup.store_sweep_transactions(&db).await;
 
     // Ensure a stacks tip exists
     let stacks_block = model::StacksBlock {
@@ -535,6 +528,7 @@ async fn process_complete_deposit() {
     let private_key = select_coordinator(&setup.sweep_block_hash.into(), &signer_info);
 
     // Bootstrap the tx coordinator event loop
+    context.state().set_sbtc_contracts_deployed();
     let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
         context: context.clone(),
         network: network.connect(),
@@ -544,7 +538,6 @@ async fn process_complete_deposit() {
         signing_round_max_duration: Duration::from_secs(10),
         bitcoin_presign_request_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
-        sbtc_contracts_deployed: true,
         is_epoch3: true,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
@@ -711,7 +704,6 @@ async fn deploy_smart_contracts_coordinator<F>(
         signing_round_max_duration: Duration::from_secs(10),
         bitcoin_presign_request_max_duration: Duration::from_secs(10),
         dkg_max_duration: Duration::from_secs(10),
-        sbtc_contracts_deployed: false,
         is_epoch3: true,
     };
     let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
@@ -798,6 +790,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 
     let network = InMemoryNetwork::new();
 
+    ctx.state().set_sbtc_contracts_deployed(); // Skip contract deployment
     let coord = TxCoordinatorEventLoop {
         network: network.connect(),
         context: ctx.clone(),
@@ -807,7 +800,6 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         bitcoin_presign_request_max_duration: Duration::from_secs(10),
         threshold: 2,
         dkg_max_duration: Duration::from_secs(10),
-        sbtc_contracts_deployed: true, // Skip contract deployment
         is_epoch3: true,
     };
 
@@ -1008,9 +1000,9 @@ async fn run_dkg_from_scratch() {
 
     // 4. Start the [`TxCoordinatorEventLoop`] and [`TxSignerEventLoop`]
     //    processes for each signer.
-    let tx_coordinator_processes = signers
-        .iter()
-        .map(|(ctx, _, kp, net)| TxCoordinatorEventLoop {
+    let tx_coordinator_processes = signers.iter().map(|(ctx, _, kp, net)| {
+        ctx.state().set_sbtc_contracts_deployed(); // Skip contract deployment
+        TxCoordinatorEventLoop {
             network: net.spawn(),
             context: ctx.clone(),
             context_window: 10000,
@@ -1019,9 +1011,9 @@ async fn run_dkg_from_scratch() {
             bitcoin_presign_request_max_duration: Duration::from_secs(10),
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
-            sbtc_contracts_deployed: true, // Skip contract deployment
             is_epoch3: true,
-        });
+        }
+    });
 
     let tx_signer_processes = signers
         .iter()
@@ -1216,18 +1208,9 @@ async fn sign_bitcoin_transaction() {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
 
         ctx.with_stacks_client(|client| {
-            client.expect_get_tenure_info().returning(move || {
-                let response = Ok(RPCGetTenureInfo {
-                    consensus_hash: ConsensusHash([0; 20]),
-                    tenure_start_block_id: StacksBlockId([0; 32]),
-                    parent_consensus_hash: ConsensusHash([0; 20]),
-                    parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                    tip_block_id: StacksBlockId([0; 32]),
-                    tip_height: 1,
-                    reward_cycle: 0,
-                });
-                Box::pin(std::future::ready(response))
-            });
+            client
+                .expect_get_tenure_info()
+                .returning(move || Box::pin(std::future::ready(Ok(DUMMY_TENURE_INFO.clone()))));
 
             client.expect_get_block().returning(|_| {
                 let response = Ok(NakamotoBlock {
@@ -1324,6 +1307,7 @@ async fn sign_bitcoin_transaction() {
     let start_count = Arc::new(AtomicU8::new(0));
 
     for (ctx, _, kp, network) in signers.iter() {
+        ctx.state().set_sbtc_contracts_deployed();
         let ev = TxCoordinatorEventLoop {
             network: network.spawn(),
             context: ctx.clone(),
@@ -1333,7 +1317,6 @@ async fn sign_bitcoin_transaction() {
             bitcoin_presign_request_max_duration: Duration::from_secs(10),
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
-            sbtc_contracts_deployed: true,
             is_epoch3: true,
         };
         let counter = start_count.clone();
@@ -1625,18 +1608,9 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     for (ctx, db, _, _) in signers.iter_mut() {
         let db = db.clone();
         ctx.with_stacks_client(|client| {
-            client.expect_get_tenure_info().returning(move || {
-                let response = Ok(RPCGetTenureInfo {
-                    consensus_hash: ConsensusHash([0; 20]),
-                    tenure_start_block_id: StacksBlockId([0; 32]),
-                    parent_consensus_hash: ConsensusHash([0; 20]),
-                    parent_tenure_start_block_id: StacksBlockId::first_mined(),
-                    tip_block_id: StacksBlockId([0; 32]),
-                    tip_height: 1,
-                    reward_cycle: 0,
-                });
-                Box::pin(std::future::ready(response))
-            });
+            client
+                .expect_get_tenure_info()
+                .returning(move || Box::pin(std::future::ready(Ok(DUMMY_TENURE_INFO.clone()))));
 
             client.expect_get_block().returning(|_| {
                 let response = Ok(NakamotoBlock {
@@ -1723,6 +1697,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     let start_count = Arc::new(AtomicU8::new(0));
 
     for (ctx, _, kp, network) in signers.iter() {
+        ctx.state().set_sbtc_contracts_deployed();
         let ev = TxCoordinatorEventLoop {
             network: network.spawn(),
             context: ctx.clone(),
@@ -1732,7 +1707,6 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             bitcoin_presign_request_max_duration: Duration::from_secs(10),
             threshold: ctx.config().signer.bootstrap_signatures_required,
             dkg_max_duration: Duration::from_secs(10),
-            sbtc_contracts_deployed: true,
             is_epoch3: true,
         };
         let counter = start_count.clone();
@@ -1929,7 +1903,6 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
         signing_round_max_duration: std::time::Duration::from_secs(5),
         bitcoin_presign_request_max_duration: Duration::from_secs(5),
         dkg_max_duration: std::time::Duration::from_secs(5),
-        sbtc_contracts_deployed: false,
         is_epoch3: true,
     };
 
@@ -2008,7 +1981,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
-        .get_signer_utxo(&chain_tip, 10)
+        .get_signer_utxo(&chain_tip)
         .await
         .unwrap()
         .expect("no signer utxo");
@@ -2066,7 +2039,6 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
         signing_round_max_duration: std::time::Duration::from_secs(5),
         bitcoin_presign_request_max_duration: Duration::from_secs(5),
         dkg_max_duration: std::time::Duration::from_secs(5),
-        sbtc_contracts_deployed: false,
         is_epoch3: true,
     };
 
@@ -2140,7 +2112,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     // Get the signer UTXO and assert that it is the one we just wrote.
     let utxo = db
-        .get_signer_utxo(&chain_tip, 10)
+        .get_signer_utxo(&chain_tip)
         .await
         .unwrap()
         .expect("no signer utxo");

@@ -26,7 +26,7 @@
 # Environment: SIGNER_EMILY__ENDPOINTS
 # Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    "http://emily-server:3031",
+    "http://testApiKey@emily-server:3031",
 ]
 
 # !! ==============================================================================
@@ -70,10 +70,6 @@ block_hash_stream_endpoints = [
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
 endpoints = ["http://stacks-node:20443"]
-
-# This is the start height of the first EPOCH 3.0 block on the stacks
-# blockchain.
-nakamoto_start_height = 30
 
 # !! ==============================================================================
 # !! Signer Configuration

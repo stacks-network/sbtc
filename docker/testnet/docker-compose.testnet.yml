@@ -1,0 +1,47 @@
+services:
+  postgres:
+    image: postgres:16.3-alpine
+    stop_grace_period: 5s
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: signer
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+
+  sbtc-signer:
+    image: blockstack/sbtc:signer-0.0.9-rc0
+    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs'"
+    depends_on:
+      - postgres
+    environment:
+      RUST_LOG: info,signer=debug
+    volumes:
+      - ./config/signer-config.toml:/signer-config.toml:ro
+      - ./logs:/logs
+    ports:
+      - "4122:4122"
+      - "8801:8801"
+
+  blocklist-client:
+    image: blockstack/sbtc:blocklist-client-0.0.9-rc0
+    entrypoint: "/usr/local/bin/blocklist-client"
+    ports:
+      - "3032:3032"
+    environment:
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL: https://public.chainalysis.com
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY}
+      BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
+      BLOCKLIST_CLIENT_SERVER__PORT: "3032"
+
+  vector:
+    container_name: vector
+    image: timberio/vector:0.42.0-debian
+    volumes:
+      - ./logs:/logs
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+    environment:
+      STREAM_NAME: ${STREAM_NAME}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      VECTOR_LOG: INFO

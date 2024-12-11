@@ -1,13 +1,13 @@
 //! Common module for useful test functions.
 
-use emily_client::{
+use serde::{Deserialize, Serialize};
+use testing_emily_client::{
     apis::{
         self,
         configuration::{ApiKey, Configuration},
     },
     models::ErrorResponse,
 };
-use serde::{Deserialize, Serialize};
 
 use crate::config::SETTINGS;
 
