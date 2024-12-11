@@ -13,8 +13,12 @@ services:
     container_name: bitcoin
     restart: on-failure:3
     ports:
-      - *BITCOIN_RPC_PORT  # RPC
-      - *BITCOIN_ZMQ_PORT  # ZMQ
+      - name: bitcoin_rpc
+        target: *BITCOIN_RPC_PORT
+        published: *BITCOIN_RPC_PORT
+      - name: bitcoin_zmq
+        target: *BITCOIN_ZMQ_PORT
+        published: *BITCOIN_ZMQ_PORT
       - "8333:8333"  # I2P
       - "8334:8334"  # P2P
     volumes:
@@ -49,7 +53,9 @@ services:
     container_name: stacks-blockchain
     restart: on-failure:3
     ports:
-      - *STACKS_RPC_PORT # RPC
+      - name: stacks_rpc
+        target: *STACKS_RPC_PORT
+        published: *STACKS_RPC_PORT
       - 20444:20444 # P2P
       - 9153:9153 # Metrics
     volumes:
