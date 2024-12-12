@@ -1,3 +1,6 @@
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { filterEvents, rov, rovErr, rovOk, txErr, txOk } from "@clarigen/test";
+import { describe, expect, test } from "vitest";
 import {
   alice,
   bob,
@@ -11,9 +14,6 @@ import {
   token,
   withdrawal,
 } from "./helpers";
-import { test, expect, describe } from "vitest";
-import { txOk, filterEvents, rov, txErr, rovOk, rovErr } from "@clarigen/test";
-import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 const alicePoxAddr = stxAddressToPoxAddress(alice);
 const defaultAmount = 1000n;
@@ -896,14 +896,14 @@ describe("Reject a withdrawal request", () => {
     );
     const receipt = txErr(
       withdrawal.acceptWithdrawalRequest({
-          requestId: 1n,
-          signerBitmap: 1n,
-          bitcoinTxid: new Uint8Array(32).fill(1),
-          outputIndex: 10n,
-          fee: 10n,
-          burnHash: new Uint8Array(32).fill(2),
-          burnHeight,
-          sweepTxid: new Uint8Array(32).fill(1),
+        requestId: 1n,
+        signerBitmap: 1n,
+        bitcoinTxid: new Uint8Array(32).fill(1),
+        outputIndex: 10n,
+        fee: 10n,
+        burnHash: new Uint8Array(32).fill(2),
+        burnHeight,
+        sweepTxid: new Uint8Array(32).fill(1),
       }),
       deployer
     );

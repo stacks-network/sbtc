@@ -24,6 +24,7 @@ export const charlie = accounts.wallet_3.address;
 
 export const registry = contracts.sbtcRegistry;
 export const deposit = contracts.sbtcDeposit;
+export const deposit2 = contracts.sbtcDepositUpdateTest;
 export const signers = contracts.sbtcBootstrapSigners;
 export const withdrawal = contracts.sbtcWithdrawal;
 export const token = contracts.sbtcToken;

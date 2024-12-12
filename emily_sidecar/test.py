@@ -66,5 +66,26 @@ class NewBlockTestCase(unittest.TestCase):
         self.assertIn("Failed to send chainstate", response.get_json()["error"])
 
 
+class AttachmentsTestCase(unittest.TestCase):
+    def setUp(self):
+        self.app = app.test_client()
+        self.app.testing = True
+
+    def test_handle_attachments_with_any_json(self):
+        test_json = {"key": "value"}
+        response = self.app.post('/attachments/new', json=test_json)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({}, response.get_json())
+
+    def test_handle_attachments_with_empty_json(self):
+        response = self.app.post('/attachments/new', json={})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({}, response.get_json())
+
+    def test_handle_attachments_with_no_json(self):
+        response = self.app.post('/attachments/new')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({}, response.get_json())
+
 if __name__ == '__main__':
     unittest.main()
