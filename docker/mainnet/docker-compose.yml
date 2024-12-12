@@ -40,7 +40,8 @@ services:
       - ./postgres/data:/var/lib/postgresql/data
 
   sbtc-signer:
-    image: blockstack/sbtc:signer-0.0.9-rc0
+    container_name: sbtc-signer
+    image: blockstack/sbtc:signer-0.0.9-rc1
     entrypoint:
       - /bin/bash
       - -c
@@ -78,10 +79,11 @@ services:
     ports:
       - "4122:4122" # P2P communication between sBTC signers
       - "8801:8801" # So that Stacks event-observer can reach the sBTC signer
+      - "9184:9184" # Prometheus metrics
 
   blocklist-client:
     container_name: blocklist-client
-    image: blockstack/sbtc:blocklist-client-0.0.9-rc0
+    image: blockstack/sbtc:blocklist-client-0.0.9-rc1
     entrypoint: "/usr/local/bin/blocklist-client"
     environment:
       BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: *BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY

@@ -142,6 +142,13 @@ bitcoin_processing_delay = 30
 # Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
 bitcoin_block_horizon = 3000
 
+# When defined, this field sets the scrape endpoint as an IPv4 or IPv6
+# socket address for exporting metrics for Prometheus.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
+prometheus_exporter_endpoint = "0.0.0.0:9184"
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
