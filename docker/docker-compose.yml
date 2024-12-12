@@ -660,7 +660,7 @@ services:
       - 9598
     volumes: 
       - ./vector.toml:/etc/vector/vector.toml:ro
-    # This is needed for localhost networking on linux
+    # This is needed for localhost networking
     extra_hosts:
       - "host.docker.internal:host-gateway"
     profiles:
