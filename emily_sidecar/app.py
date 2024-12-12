@@ -72,5 +72,13 @@ def handle_new_block():
     return jsonify({}), 200
 
 
+# stacks-node will seldomly send a POST request to /attachments/new
+# if the request is not handled, the node will loop and keep retrying
+# https://github.com/stacks-network/stacks-core/issues/5558
+@app.route("/attachments/new", methods=["POST"])
+def handle_attachments():
+    return jsonify({}), 200
+
+
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=5000)
