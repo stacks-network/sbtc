@@ -1812,25 +1812,6 @@ export const contracts = {
         ],
         Response<boolean, bigint>
       >,
-      protocolTransfer: {
-        name: "protocol-transfer",
-        access: "public",
-        args: [
-          { name: "amount", type: "uint128" },
-          { name: "sender", type: "principal" },
-          { name: "recipient", type: "principal" },
-          { name: "contract-flag", type: { buffer: { length: 1 } } },
-        ],
-        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
-      } as TypedAbiFunction<
-        [
-          amount: TypedAbiArg<number | bigint, "amount">,
-          sender: TypedAbiArg<string, "sender">,
-          recipient: TypedAbiArg<string, "recipient">,
-          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
-        ],
-        Response<boolean, bigint>
-      >,
       protocolUnlock: {
         name: "protocol-unlock",
         access: "public",
