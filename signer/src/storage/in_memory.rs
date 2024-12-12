@@ -85,7 +85,7 @@ pub struct Store {
         HashMap<model::BitcoinBlockHash, Vec<model::StacksBlockHash>>,
 
     /// Encrypted DKG shares
-    pub encrypted_dkg_shares: BTreeMap<PublicKey, (OffsetDateTime, model::EncryptedDkgShares)>,
+    pub encrypted_dkg_shares: BTreeMap<PublicKeyXOnly, (OffsetDateTime, model::EncryptedDkgShares)>,
 
     /// Rotate keys transactions
     pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
@@ -574,15 +574,18 @@ impl super::DbRead for SharedStore {
             .contains_key(&block_id.into()))
     }
 
-    async fn get_encrypted_dkg_shares(
+    async fn get_encrypted_dkg_shares<X>(
         &self,
-        aggregate_key: &PublicKey,
-    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        aggregate_key: X,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
         Ok(self
             .lock()
             .await
             .encrypted_dkg_shares
-            .get(aggregate_key)
+            .get(&aggregate_key.into())
             .map(|(_, shares)| shares.clone()))
     }
 
@@ -1109,7 +1112,7 @@ impl super::DbWrite for SharedStore {
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Error> {
         self.lock().await.encrypted_dkg_shares.insert(
-            shares.aggregate_key,
+            shares.aggregate_key.into(),
             (time::OffsetDateTime::now_utc(), shares.clone()),
         );
 

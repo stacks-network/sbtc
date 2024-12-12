@@ -8,6 +8,7 @@ use crate::error;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
@@ -91,7 +92,7 @@ impl SignerStateMachine {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(&aggregate_key)
             .await?
-            .ok_or(error::Error::MissingDkgShares(aggregate_key))?;
+            .ok_or(error::Error::MissingDkgShares(aggregate_key.into()))?;
 
         let decrypted = wsts::util::decrypt(
             &signer_private_key.to_bytes(),
@@ -232,9 +233,9 @@ impl CoordinatorStateMachine {
     /// where you can either start a signing round or start DKG. This
     /// function is for loading the state with the assumption that DKG has
     /// already been successfully completed.
-    pub async fn load<I, S>(
+    pub async fn load<I, S, X>(
         storage: &mut S,
-        aggregate_key: PublicKey,
+        aggregate_key: X,
         signers: I,
         threshold: u16,
         message_private_key: PrivateKey,
@@ -242,11 +243,13 @@ impl CoordinatorStateMachine {
     where
         I: IntoIterator<Item = PublicKey>,
         S: storage::DbRead + storage::DbWrite,
+        X: Into<PublicKeyXOnly>,
     {
+        let x_only_aggregate_key: PublicKeyXOnly = aggregate_key.into();
         let encrypted_shares = storage
-            .get_encrypted_dkg_shares(&aggregate_key)
+            .get_encrypted_dkg_shares(x_only_aggregate_key)
             .await?
-            .ok_or(Error::MissingDkgShares(aggregate_key))?;
+            .ok_or(Error::MissingDkgShares(x_only_aggregate_key))?;
 
         let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
             BTreeMap::decode(encrypted_shares.public_shares.as_slice())?;
@@ -257,8 +260,9 @@ impl CoordinatorStateMachine {
 
         let mut coordinator = Self::new(signers, threshold, message_private_key);
 
+        let aggregate_key = encrypted_shares.aggregate_key.into();
         coordinator
-            .set_key_and_party_polynomials(aggregate_key.into(), party_polynomials)
+            .set_key_and_party_polynomials(aggregate_key, party_polynomials)
             .map_err(Error::wsts_coordinator)?;
         coordinator.current_dkg_id = 1;
 

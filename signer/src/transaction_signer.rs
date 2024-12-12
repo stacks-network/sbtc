@@ -440,7 +440,7 @@ where
         let public_key = self.signer_public_key();
 
         let Some(shares) = db.get_encrypted_dkg_shares(&request.aggregate_key).await? else {
-            return Err(Error::MissingDkgShares(request.aggregate_key));
+            return Err(Error::MissingDkgShares(request.aggregate_key.into()));
         };
         // There is one check that applies to all Stacks transactions, and
         // that check is that the current signer is in the signing set

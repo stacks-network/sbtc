@@ -387,7 +387,7 @@ pub enum Error {
 
     /// Missing dkg shares
     #[error("missing dkg shares for the given aggregate key: {0}")]
-    MissingDkgShares(crate::keys::PublicKey),
+    MissingDkgShares(crate::keys::PublicKeyXOnly),
 
     /// Missing public key
     #[error("missing public key")]

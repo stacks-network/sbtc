@@ -1452,10 +1452,14 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_encrypted_dkg_shares(
+    async fn get_encrypted_dkg_shares<X>(
         &self,
-        aggregate_key: &PublicKey,
-    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        aggregate_key: X,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let key: PublicKeyXOnly = aggregate_key.into();
         sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
             SELECT
@@ -1467,10 +1471,10 @@ impl super::DbRead for PgStore {
               , signer_set_public_keys
               , signature_share_threshold
             FROM sbtc_signer.dkg_shares
-            WHERE aggregate_key = $1;
+            WHERE substring(aggregate_key FROM 2) = $1;
             "#,
         )
-        .bind(aggregate_key)
+        .bind(key)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
