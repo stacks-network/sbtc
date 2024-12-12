@@ -1,21 +1,21 @@
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { filterEvents, rov, rovOk, txErr, txOk } from "@clarigen/test";
+import { describe, expect, test } from "vitest";
 import {
   alice,
   bob,
   deployer,
+  deposit,
   errors,
+  getCurrentBurnInfo,
   getLastWithdrawalRequestId,
   getWithdrawalRequest,
   registry,
   signers,
   stxAddressToPoxAddress,
-  deposit,
-  getCurrentBurnInfo,
   token,
   withdrawal,
 } from "./helpers";
-import { test, expect, describe } from "vitest";
-import { txOk, filterEvents, rov, txErr, rovOk } from "@clarigen/test";
-import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 const alicePoxAddr = stxAddressToPoxAddress(alice);
 const bobPoxAddr = stxAddressToPoxAddress(bob);
