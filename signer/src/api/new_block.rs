@@ -7,7 +7,6 @@ use axum::http::StatusCode;
 use clarity::vm::representations::ContractName;
 use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::types::StandardPrincipalData;
-use emily_client::models::Chainstate;
 use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::DepositUpdate;
 use emily_client::models::Fulfillment;
@@ -181,13 +180,6 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 
     // Send the updates to Emily.
     let emily_client = api.ctx.get_emily_client();
-    let chainstate = Chainstate::new(block_id.to_string(), new_block_event.block_height);
-
-    // Create chainstate first so that we're sure that Emily is viewing the chain state
-    // the same way.
-    if let Err(error) = emily_client.set_chainstate(chainstate).await {
-        tracing::error!(%error, "failed to set chainstate in Emily");
-    }
 
     // Create any new withdrawal instances. We do this before performing any updates
     // because a withdrawal needs to exist in the Emily API database in order for it
@@ -470,17 +462,7 @@ mod tests {
         let state = State(api);
         let body = body_str.to_string();
 
-        let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
-        // Set up the mock expectation for set_chainstate
-        let chainstate = Chainstate::new(
-            new_block_event.index_block_hash.to_string(),
-            new_block_event.block_height,
-        );
         ctx.with_emily_client(|client| {
-            client.expect_set_chainstate().times(1).returning(move |_| {
-                let chainstate = chainstate.clone();
-                Box::pin(async { Ok(chainstate) })
-            });
             client
                 .expect_update_deposits()
                 .times(1)
@@ -564,17 +546,7 @@ mod tests {
             .iter()
             .all(|x| x.contract_identifier == fishy_identifier));
 
-        // Set up the mock expectation for set_chainstate
-        let chainstate = Chainstate::new(
-            new_block_event.index_block_hash.to_string(),
-            new_block_event.block_height,
-        );
-
         ctx.with_emily_client(|client| {
-            client.expect_set_chainstate().times(1).returning(move |_| {
-                let chainstate = chainstate.clone();
-                Box::pin(async { Ok(chainstate) })
-            });
             client
                 .expect_update_deposits()
                 .times(1)
