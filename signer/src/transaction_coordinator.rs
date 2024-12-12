@@ -561,13 +561,8 @@ where
         .await?;
 
         for mut transaction in transaction_package {
-            self.sign_and_broadcast(
-                bitcoin_chain_tip,
-                aggregate_key,
-                signer_public_keys,
-                &mut transaction,
-            )
-            .await?;
+            self.sign_and_broadcast(bitcoin_chain_tip, signer_public_keys, &mut transaction)
+                .await?;
 
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
@@ -909,13 +904,12 @@ where
     async fn sign_and_broadcast(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let mut coordinator_state_machine = CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
-            *aggregate_key,
+            transaction.signer_utxo.public_key,
             signer_public_keys.clone(),
             self.threshold,
             self.private_key,
@@ -959,7 +953,7 @@ where
 
             let mut coordinator_state_machine = CoordinatorStateMachine::load(
                 &mut self.context.get_storage_mut(),
-                *aggregate_key,
+                deposit.signers_public_key,
                 signer_public_keys.clone(),
                 self.threshold,
                 self.private_key,
