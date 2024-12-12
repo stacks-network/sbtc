@@ -24,8 +24,8 @@ api_key = os.getenv("EMILY_API_KEY", "default_api_key")
 url = os.getenv("EMILY_CHAINSTATE_URL",  "http://host.docker.internal:3031/chainstate")
 deployer_address = os.getenv("DEPLOYER_ADDRESS", "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS")
 
-logger.info(f"Using chainstate URL: {url}")
-logger.info(f"Using deployer address: {deployer_address}")
+logger.info("Using chainstate URL: %s", url)
+logger.info("Using deployer address: %s", deployer_address)
 
 headers = {
     "Content-Type": "application/json",
@@ -40,7 +40,7 @@ def validate_json(schema, data):
     try:
         return schema.load(data)
     except ValidationError as err:
-        logger.warning(f"Validation error: {err.messages}")
+        logger.warning("Validation error: %s", err.messages)
         raise ValueError({"error": "Invalid data", "messages": err.messages})
 
 @app.route("/new_block", methods=["POST"])
@@ -57,7 +57,7 @@ def handle_new_block():
     try:
         validated_data = validate_json(schema, data)
     except ValueError as e:
-        logger.error(f"Failed to validate new block event: {e}")
+        logger.error("Failed to validate new block event: %s", e)
         return jsonify(str(e)), 400
 
     chainstate = {
@@ -69,11 +69,11 @@ def handle_new_block():
         resp = requests.post(url, headers=headers, json=chainstate)
         resp.raise_for_status()  # This will raise an HTTPError if the response was an error
     except requests.RequestException as e:
-        logger.error(f"Failed to send chainstate {chainstate} to {url}: {e}")
+        logger.error("Failed to send chainstate %s to %s: %s", chainstate, url, e)
         # lets return an error so that the node will retry
         return jsonify({"error": "Failed to send chainstate"}), 500
 
-    logger.info(f"Successfully processed new block for chainstate: {chainstate}")
+    logger.info("Successfully processed new block for chainstate: %s", chainstate)
     return jsonify({}), 200
 
 
