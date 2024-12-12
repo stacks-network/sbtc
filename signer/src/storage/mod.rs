@@ -270,6 +270,12 @@ pub trait DbRead {
         aggregate_key: &PublicKey,
     ) -> impl Future<Output = Result<model::SignerVotes, Error>> + Send;
 
+    /// Check for whether  the given block hash is in the database.
+    fn is_known_bitcoin_block_hash(
+        &self,
+        block_hash: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Check that the given block hash is included in the canonical
     /// bitcoin blockchain, where the canonical blockchain is identified by
     /// the given `chain_tip`.

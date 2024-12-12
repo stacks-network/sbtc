@@ -17,12 +17,18 @@ import {
   deposit,
   errors,
   getCurrentBurnInfo,
+  signers,
   token,
   tokenTest,
 } from "./helpers";
 
 describe("sBTC token contract", () => {
   describe("token basics", () => {
+    test("Get decimals returns always 8", () => {
+      const receipt = rov(token.getDecimals());
+      expect(receipt.value).toEqual(8n);
+    });
+
     test("Mint sbtc token, check Alice balance", () => {
       const { burnHeight, burnHash } = getCurrentBurnInfo();
       const receipt = txOk(
@@ -263,8 +269,8 @@ describe("sBTC token contract", () => {
         }),
         bob
       );
-      // Many-transfer errors start at 6, error happens at index 0
-      expect(receipt1.value).toEqual(errors.token.ERR_TRANSFER);
+      // Many-transfer errors start at 1000, error happens at index 0
+      expect(receipt1.value).toEqual(1000n);
     });
 
     test("Mint & transfer multiple sbtc token, fail on second", () => {
@@ -320,8 +326,8 @@ describe("sBTC token contract", () => {
         }),
         alice
       );
-      // Many-transfer errors start at 6, error happens at index 1
-      expect(receipt1.value).toEqual(7n);
+      // Many-transfer errors start at 1000, error happens at index 1
+      expect(receipt1.value).toEqual(1001n);
     });
 
     test("Mint & transfer multiple sbtc token, contract principal", () => {
@@ -365,6 +371,7 @@ describe("sBTC token contract", () => {
         deployer
       );
       expect(receipt1.value).toEqual(3n);
+
       const receipt2 = rov(
         token.getBalance({
           who: alice,
@@ -393,6 +400,43 @@ describe("sBTC token contract", () => {
         token.protocolMint({
           amount: 1000n,
           recipient: bob,
+          contractFlag: new Uint8Array([0]),
+        }),
+        bob
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+
+    test("Fail a non-protocol principal calling protocol-locked", () => {
+      const receipt = txErr(
+        token.protocolLock({
+          amount: 1000n,
+          owner: bob,
+          contractFlag: new Uint8Array([0]),
+        }),
+        bob
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+
+    test("Fail a non-protocol principal calling protocol-burn", () => {
+      const receipt = txErr(
+        token.protocolBurn({
+          amount: 1000n,
+          owner: bob,
+          contractFlag: new Uint8Array([0]),
+        }),
+        bob
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+
+    test("Fail a non-protocol principal calling protocol-burn-locked", () => {
+      const receipt = txErr(
+        token.protocolBurnLocked({
+          amount: 1000n,
+          owner: bob,
+          contractFlag: new Uint8Array([0]),
         }),
         bob
       );
@@ -405,11 +449,59 @@ describe("sBTC token contract", () => {
           amount: 999n,
           sender: alice,
           recipient: bob,
-          memo: new Uint8Array(1).fill(0),
+          memo: null,
         }),
         bob
       );
       expect(receipt1.value).toEqual(errors.token.ERR_NOT_OWNER);
     });
   });
+
+  describe("protocol actions", () => {
+    test("Mint, lock and transfer by protocol", () => {
+      txOk(
+        signers.updateProtocolContractWrapper(
+          new Uint8Array([3]),
+          tokenTest.identifier
+        ),
+        deployer
+      );
+      const receipt = txOk(tokenTest.callAllTokenProtocolFunctions(), alice);
+      expect(receipt.value).toStrictEqual([75n, 70n, 5n]);
+
+      const supply1 = rov(token.getTotalSupply());
+      expect(supply1.value).toEqual(75n);
+      checkBalances(alice, [75n, 70n, 5n]);
+
+      expect(rov(token.getName()).value).toEqual("sbtc-2");
+      expect(rov(token.getSymbol()).value).toEqual("SBTC2");
+      expect(rov(token.getTokenUri()).value).toEqual(null);
+    });
+  });
 });
+
+function checkBalances(who: string, amounts: bigint[]) {
+  const balance = rov(
+    token.getBalance({
+      who,
+    }),
+    who
+  );
+  expect(balance.value).toEqual(amounts[0]);
+
+  const available = rov(
+    token.getBalanceAvailable({
+      who,
+    }),
+    who
+  );
+  expect(available.value).toEqual(amounts[1]);
+
+  const locked = rov(
+    token.getBalanceLocked({
+      who,
+    }),
+    who
+  );
+  expect(locked.value).toEqual(amounts[2]);
+}

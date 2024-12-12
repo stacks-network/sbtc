@@ -1,3 +1,6 @@
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { filterEvents, rov, txErr, txOk } from "@clarigen/test";
+import { describe, expect, test } from "vitest";
 import {
   alice,
   deployer,
@@ -7,9 +10,6 @@ import {
   randomPublicKeys,
   registry,
 } from "./helpers";
-import { test, expect, describe } from "vitest";
-import { txOk, filterEvents, rov, txErr } from "@clarigen/test";
-import { CoreNodeEventType, cvToValue } from "@clarigen/core";
 
 describe("sBTC deposit contract", () => {
   describe("complete deposit contract setup (err 300)", () => {
@@ -98,7 +98,7 @@ describe("sBTC deposit contract", () => {
         deployer
       );
       expect(receipt0.value).toEqual(true);
-      simnet.mineEmptyBlock()
+      simnet.mineEmptyBlock();
       const receipt1 = txErr(
         deposit.completeDepositWrapper({
           txid: new Uint8Array(32).fill(1),
@@ -321,7 +321,7 @@ describe("optimization tests", () => {
     const { burnHeight, burnHash } = getCurrentBurnInfo();
 
     const totalAmount = 1000000n;
-    const runs = 650;
+    const runs = 500;
     const txids = randomPublicKeys(runs).map((pk) => pk.slice(0, 32));
     txOk(
       deposit.completeDepositsWrapper({

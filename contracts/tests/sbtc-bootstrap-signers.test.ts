@@ -1,14 +1,6 @@
-import {
-  constructMultisigAddress,
-  currentSignerAddr,
-  deployer,
-  errors,
-  randomPublicKeys,
-  registry,
-  signers,
-} from "./helpers";
-import { test, expect, describe } from "vitest";
-import { txOk, txErr, rov, filterEvents } from "@clarigen/test";
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { filterEvents, rov, txErr, txOk } from "@clarigen/test";
+import { p2ms, p2sh } from "@scure/btc-signer";
 import {
   AddressHashMode,
   AddressVersion,
@@ -17,9 +9,21 @@ import {
   pubKeyfromPrivKey,
   serializePublicKey,
 } from "@stacks/transactions";
-import { p2ms, p2sh } from "@scure/btc-signer";
 import { b58ToC32 } from "c32check";
-import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { describe, expect, test } from "vitest";
+import {
+  alice,
+  constructMultisigAddress,
+  currentSignerAddr,
+  deployer,
+  deposit,
+  depositUpdate,
+  errors,
+  getCurrentBurnInfo,
+  randomPublicKeys,
+  registry,
+  signers,
+} from "./helpers";
 
 describe("sBTC bootstrap signers contract", () => {
   describe("Rotate keys tests", () => {
@@ -38,7 +42,7 @@ describe("sBTC bootstrap signers contract", () => {
 
       const expectedPrincipal = constructMultisigAddress(
         newKeys,
-        newSignatureThreshold,
+        newSignatureThreshold
       );
 
       const prints = filterEvents(
@@ -58,7 +62,7 @@ describe("sBTC bootstrap signers contract", () => {
         newKeys: newKeys,
         newAddress: expectedPrincipal,
         newAggregatePubkey: new Uint8Array(33).fill(0),
-        newSignatureThreshold: newSignatureThreshold
+        newSignatureThreshold: newSignatureThreshold,
       });
 
       const setAggKey = rov(registry.getCurrentAggregatePubkey());
@@ -80,6 +84,18 @@ describe("sBTC bootstrap signers contract", () => {
           newKeys: randomPublicKeys(5),
           newAggregatePubkey: new Uint8Array(33).fill(0),
           newSignatureThreshold: 3n,
+        }),
+        deployer
+      );
+      expect(receipt.value).toEqual(true);
+    });
+
+    test("Rotate keys wrapper 90-of-128", () => {
+      const receipt = txOk(
+        signers.rotateKeysWrapper({
+          newKeys: randomPublicKeys(128),
+          newAggregatePubkey: new Uint8Array(33).fill(0),
+          newSignatureThreshold: 90n,
         }),
         deployer
       );
@@ -162,6 +178,16 @@ describe("sBTC bootstrap signers contract", () => {
         expect(addr).toEqual(stacksJsAddr);
       });
 
+      test("principal created from 2 zero pubKey is correct", () => {
+        const addr = rov(
+          signers.pubkeysToPrincipal(
+            [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
+            2
+          )
+        );
+        expect(addr).toEqual("SN3N8ATTRKWKK2N8TTSBNW5CRH2CSV2A0NYF7HHDF");
+      });
+
       // In this example, use yet another library to construct a p2sh ms
       // Bitcoin address, and then convert that to a c32 (stacks) address.
       test("principal is the same as a b58 bitcoin address", () => {
@@ -207,6 +233,100 @@ describe("sBTC bootstrap signers contract", () => {
           }
         }
       });
+    });
+  });
+
+  describe("Update deposit contract", () => {
+    test("Can update deposit contract & call into new version", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array([1]),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      // Call into the new contract
+      const defaultAmount = 1000n;
+      const defaultMaxFee = 10n;
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+      const receipt2 = txOk(
+        depositUpdate.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: defaultAmount + defaultMaxFee,
+          recipient: alice,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      expect(receipt2.value).toEqual(true);
+    });
+    test("Can not call into previous deposit contract", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+
+      const receipt = txErr(
+        deposit.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: 1000n,
+          recipient: deployer,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      expect(receipt.value).toEqual(errors.registry.ERR_UNAUTHORIZED);
+    });
+    test("Can update deposit contract a second time", () => {
+      // Switch out active deposit contract
+      const receipt1 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: depositUpdate.identifier,
+        }),
+        deployer
+      );
+      expect(receipt1.value).toEqual(true);
+      // Call into the new contract
+      const defaultAmount = 1000n;
+      const defaultMaxFee = 10n;
+      const { burnHeight, burnHash } = getCurrentBurnInfo();
+      const receipt2 = txOk(
+        depositUpdate.completeDepositWrapper({
+          txid: new Uint8Array(32).fill(0),
+          voutIndex: 0,
+          amount: defaultAmount + defaultMaxFee,
+          recipient: alice,
+          burnHash,
+          burnHeight,
+          sweepTxid: new Uint8Array(32).fill(1),
+        }),
+        deployer
+      );
+      expect(receipt2.value).toEqual(true);
+      // Switch out active deposit contract
+      const receipt3 = txOk(
+        signers.updateProtocolContractWrapper({
+          contractType: new Uint8Array(1).fill(1),
+          contractAddress: deposit.identifier,
+        }),
+        deployer
+      );
+      expect(receipt3.value).toEqual(true);
     });
   });
 });
