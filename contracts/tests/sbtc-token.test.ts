@@ -467,11 +467,11 @@ describe("sBTC token contract", () => {
         deployer
       );
       const receipt = txOk(tokenTest.callAllTokenProtocolFunctions(), alice);
-      expect(receipt.value).toStrictEqual([74n, 69n, 5n]);
+      expect(receipt.value).toStrictEqual([75n, 70n, 5n]);
 
       const supply1 = rov(token.getTotalSupply());
       expect(supply1.value).toEqual(75n);
-      checkBalances(alice, [74n, 69n, 5n]);
+      checkBalances(alice, [75n, 70n, 5n]);
 
       expect(rov(token.getName()).value).toEqual("sbtc-2");
       expect(rov(token.getSymbol()).value).toEqual("SBTC2");

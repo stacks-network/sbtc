@@ -11,16 +11,9 @@
 
 ;; --- Protocol functions
 
-(define-public (protocol-transfer (amount uint) (sender principal) (recipient principal) (contract-flag (buff 1)))
-	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
-		(ft-transfer? sbtc-token amount sender recipient)
-	)
-)
-
 (define-public (protocol-lock (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(try! (ft-burn? sbtc-token amount owner))
 		(ft-mint? sbtc-token-locked amount owner)
 	)
@@ -28,7 +21,7 @@
 
 (define-public (protocol-unlock (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(try! (ft-burn? sbtc-token-locked amount owner))
 		(ft-mint? sbtc-token amount owner)
 	)
@@ -36,42 +29,42 @@
 
 (define-public (protocol-mint (amount uint) (recipient principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(ft-mint? sbtc-token amount recipient)
 	)
 )
 
 (define-public (protocol-burn (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(ft-burn? sbtc-token amount owner)
 	)
 )
 
 (define-public (protocol-burn-locked (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(ft-burn? sbtc-token-locked amount owner)
 	)
 )
 
 (define-public (protocol-set-name (new-name (string-ascii 32)) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(ok (var-set token-name new-name))
 	)
 )
 
 (define-public (protocol-set-symbol (new-symbol (string-ascii 10)) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(ok (var-set token-symbol new-symbol))
 	)
 )
 
 (define-public (protocol-set-token-uri (new-uri (optional (string-utf8 256))) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(ok (var-set token-uri new-uri))
 	)
 )
@@ -88,37 +81,37 @@
 )
 
 ;; --- Public functions
-(define-public (transfer-many 
-				(recipients (list 200 { 
-					amount: uint, 
-					sender: principal, 
-					to: principal, 
+(define-public (transfer-many
+				(recipients (list 200 {
+					amount: uint,
+					sender: principal,
+					to: principal,
 					memo: (optional (buff 34)) })))
 	(fold transfer-many-iter recipients (ok u0))
 )
 
-(define-private (transfer-many-iter 
-					(individual-transfer { 
-						amount: uint, 
-						sender: principal, 
-						to: principal, 
-						memo: (optional (buff 34)) }) 
+(define-private (transfer-many-iter
+					(individual-transfer {
+						amount: uint,
+						sender: principal,
+						to: principal,
+						memo: (optional (buff 34)) })
 					(result (response uint uint)))
-    (match result 
-        index
-            (begin 
-                (unwrap! 
-					(transfer 
-						(get amount individual-transfer) 
-						(get sender individual-transfer) 
-						(get to individual-transfer) 
-						(get memo individual-transfer)) 
+	(match result
+		index
+			(begin
+				(unwrap!
+					(transfer
+						(get amount individual-transfer)
+						(get sender individual-transfer)
+						(get to individual-transfer)
+						(get memo individual-transfer))
 				(err (+ ERR_TRANSFER_INDEX_PREFIX index)))
-                (ok (+ index u1))
-            )
-        err-index
-            (err err-index)
-    )
+				(ok (+ index u1))
+			)
+		err-index
+			(err err-index)
+	)
 )
 
 ;; sip-010-trait
