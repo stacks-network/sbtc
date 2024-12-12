@@ -1,0 +1,27 @@
+## Prometheus Host metrics
+
+[sources.host_metrics]
+type = "host_metrics"
+collectors = ["cpu", "disk", "load", "filesystem", "host", "memory", "network"]
+scrape_interval_secs = 15
+
+[sources.host_metrics.filesystem.mountpoints]
+includes = ["/"]
+
+[sources.host_metrics.disk.devices]
+includes = ["/dev/root", "nvme*", "tmpfs"]
+
+[sources.app]
+type = "prometheus_scrape"
+endpoints = [
+    "http://host.docker.internal:9181",
+    "http://host.docker.internal:9182",
+    "http://host.docker.internal:9183",
+]
+
+## App Metric Sinks
+
+[sinks.host_metrics_sink]
+type = "prometheus_exporter"
+inputs = ["host_metrics", "app"]
+address = "0.0.0.0:9598"

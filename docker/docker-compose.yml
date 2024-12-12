@@ -30,6 +30,10 @@ x-common-vars:
   - &REWARD_RECIPIENT ${REWARD_RECIPIENT:-STQM73RQC4EX0A07KWG1J5ECZJYBZS4SJ4ERC6WN} # priv: 6ad9cadb42d4edbfbe0c5bfb3b8a4125ddced021c4174f829b714ccbf527f02001
   - &EXIT_FROM_MONITOR 1 # set to "1" to automatically shut down via monitor.ts
 
+volumes:
+  # prometheus-data: {}
+  grafana-data1: {}
+
 # Templates.
 # ------------------------------------------------------------------------------
 x-postgres: &postgres
@@ -610,3 +614,54 @@ services:
     command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
     profiles:
       - bitcoin-mempool
+
+  prometheus:
+    image: prom/prometheus:v2.45.2
+    restart: always
+    volumes:
+      - ./local-prometheus.yml:/etc/prometheus/prometheus.yml
+      # - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - 9090:9090
+    depends_on:
+      - vector
+    profiles:
+      - observability
+
+  grafana:
+    image: grafana/grafana:10.2.3-ubuntu
+    user: '472'
+    restart: always
+    environment:
+      GF_INSTALL_PLUGINS: 'grafana-clock-panel,grafana-simple-json-datasource'
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana-data1:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+    ports:
+      - 3030:3000
+    depends_on:
+      - prometheus
+    profiles:
+      - observability
+
+  vector:
+    image: timberio/vector:0.34.2-distroless-static
+    command: --config /etc/vector/vector.toml
+    restart: always
+    ports:
+      - 9598
+    volumes: 
+      - ./vector.toml:/etc/vector/vector.toml:ro
+    # This is needed for localhost networking on linux
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - observability

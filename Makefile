@@ -166,10 +166,10 @@ $(EMILY_OPENAPI_SPEC): $(INSTALL_TARGET) $(EMILY_HANDLER_SOURCE_FILES)
 # ----------------------------------------------------
 
 devenv-no-sbtc-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool up
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability up
 
 devenv-no-sbtc-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool down
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability down
 
 devenv-up:
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up --detach
