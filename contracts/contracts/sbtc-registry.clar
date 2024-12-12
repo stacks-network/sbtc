@@ -4,11 +4,6 @@
 (define-constant ERR_UNAUTHORIZED (err u400))
 (define-constant ERR_INVALID_REQUEST_ID (err u401))
 (define-constant ERR_AGG_PUBKEY_REPLAY (err u402))
-(define-constant ERR_MULTI_SIG_REPLAY (err u403))
-(define-constant ERR_INVALID_PROTOCOL_ID (err u404))
-(define-constant ERR_UNAUTHORIZE_FLAG (err u405))
-(define-constant ERR_UNAUTHORIZED_ROLE (err u406))
-
 
 ;; Protocol contract type
 (define-constant governance-role 0x00)
@@ -28,13 +23,11 @@
 (map-set active-protocol-contracts governance-role .sbtc-bootstrap-signers)
 (map-set active-protocol-contracts deposit-role .sbtc-deposit)
 (map-set active-protocol-contracts withdrawal-role .sbtc-withdrawal)
-(if is-in-mainnet true (map-set active-protocol-contracts 0x03 tx-sender))
 ;; Role for active protocol contracts
 (define-map active-protocol-roles principal (buff 1))
 (map-set active-protocol-roles .sbtc-bootstrap-signers governance-role)
 (map-set active-protocol-roles .sbtc-deposit deposit-role)
 (map-set active-protocol-roles .sbtc-withdrawal withdrawal-role)
-(if is-in-mainnet true (map-set active-protocol-roles tx-sender 0x03))
 ;; Internal data structure to store withdrawal
 ;; requests. Requests are associated with a unique
 ;; request ID.
@@ -366,11 +359,6 @@
 
 ;; Checks whether the contract-caller is a protocol contract
 (define-read-only (is-protocol-caller (contract-flag (buff 1)) (contract principal))
-  (validate-protocol-caller contract-flag contract)
-)
-
-;; Validate that a given principal is a protocol contract
-(define-read-only (validate-protocol-caller (contract-flag (buff 1)) (contract principal))
   (begin 
     ;; Check that contract-caller is an protocol contract
     (asserts! (is-eq (some contract) (map-get? active-protocol-contracts contract-flag)) ERR_UNAUTHORIZED)

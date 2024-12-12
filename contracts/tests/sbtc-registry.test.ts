@@ -11,7 +11,7 @@ import {
   deposit,
   getCurrentBurnInfo,
   token,
-  withdrawal
+  withdrawal,
 } from "./helpers";
 import { test, expect, describe } from "vitest";
 import { txOk, filterEvents, rov, txErr, rovOk } from "@clarigen/test";
@@ -44,17 +44,17 @@ describe("sBTC registry contract", () => {
         }),
         deployer
       );
-    expect(rovOk(token.getBalance(alice))).toEqual(
-      defaultAmount + defaultMaxFee
-    );
-    txOk(
-      withdrawal.initiateWithdrawalRequest({
-        amount: defaultAmount,
-        recipient: alicePoxAddr,
-        maxFee: defaultMaxFee,
-      }),
-      alice
-    );
+      expect(rovOk(token.getBalance(alice))).toEqual(
+        defaultAmount + defaultMaxFee
+      );
+      txOk(
+        withdrawal.initiateWithdrawalRequest({
+          amount: defaultAmount,
+          recipient: alicePoxAddr,
+          maxFee: defaultMaxFee,
+        }),
+        alice
+      );
       const request = getWithdrawalRequest(1n);
       if (!request) {
         throw new Error("Request not stored");
@@ -124,7 +124,6 @@ describe("sBTC registry contract", () => {
     });
 
     test("get-withdrawal-request includes status", () => {
-
       const defaultAmount = 1000n;
       const defaultMaxFee = 10n;
       const { burnHeight, burnHash } = getCurrentBurnInfo();
@@ -168,6 +167,7 @@ describe("sBTC registry contract", () => {
   });
   describe("sBTC bootstrap signer contract", () => {
     test("Rotate keys wrapper correctly", () => {
+      expect(rov(registry.getCurrentSignerPrincipal())).toBe(deployer);
       const receipt = txOk(
         signers.rotateKeysWrapper({
           newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
@@ -177,6 +177,9 @@ describe("sBTC registry contract", () => {
         deployer
       );
       expect(receipt.value).toEqual(true);
+      expect(rov(registry.getCurrentSignerPrincipal())).toBe(
+        "SN3N8ATTRKWKK2N8TTSBNW5CRH2CSV2A0NYF7HHDF"
+      );
     });
     test("Rotate keys wrapper incorrect signer key size", () => {
       const receipt = txErr(

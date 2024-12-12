@@ -19,6 +19,7 @@ import {
   addressFromPublicKeys,
   addressToString,
   pubKeyfromPrivKey,
+  publicKeyFromBytes,
   serializePublicKey,
 } from "@stacks/transactions";
 import { p2ms, p2sh } from "@scure/btc-signer";
@@ -42,7 +43,7 @@ describe("sBTC bootstrap signers contract", () => {
 
       const expectedPrincipal = constructMultisigAddress(
         newKeys,
-        newSignatureThreshold,
+        newSignatureThreshold
       );
 
       const prints = filterEvents(
@@ -62,7 +63,7 @@ describe("sBTC bootstrap signers contract", () => {
         newKeys: newKeys,
         newAddress: expectedPrincipal,
         newAggregatePubkey: new Uint8Array(33).fill(0),
-        newSignatureThreshold: newSignatureThreshold
+        newSignatureThreshold: newSignatureThreshold,
       });
 
       const setAggKey = rov(registry.getCurrentAggregatePubkey());
@@ -176,6 +177,16 @@ describe("sBTC bootstrap signers contract", () => {
           )
         );
         expect(addr).toEqual(stacksJsAddr);
+      });
+
+      test("principal created from 2 zero pubKey is correct", () => {
+        const addr = rov(
+          signers.pubkeysToPrincipal(
+            [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
+            2
+          )
+        );
+        expect(addr).toEqual("SN3N8ATTRKWKK2N8TTSBNW5CRH2CSV2A0NYF7HHDF");
       });
 
       // In this example, use yet another library to construct a p2sh ms
@@ -319,5 +330,4 @@ describe("sBTC bootstrap signers contract", () => {
       expect(receipt3.value).toEqual(true);
     });
   });
-
 });

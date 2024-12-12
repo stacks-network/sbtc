@@ -13,14 +13,14 @@
 
 (define-public (protocol-transfer (amount uint) (sender principal) (recipient principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(ft-transfer? sbtc-token amount sender recipient)
 	)
 )
 
 (define-public (protocol-lock (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(try! (ft-burn? sbtc-token amount owner))
 		(ft-mint? sbtc-token-locked amount owner)
 	)
@@ -28,7 +28,7 @@
 
 (define-public (protocol-unlock (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(try! (ft-burn? sbtc-token-locked amount owner))
 		(ft-mint? sbtc-token amount owner)
 	)
@@ -36,42 +36,42 @@
 
 (define-public (protocol-mint (amount uint) (recipient principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(ft-mint? sbtc-token amount recipient)
 	)
 )
 
 (define-public (protocol-burn (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(ft-burn? sbtc-token amount owner)
 	)
 )
 
 (define-public (protocol-burn-locked (amount uint) (owner principal) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(ft-burn? sbtc-token-locked amount owner)
 	)
 )
 
 (define-public (protocol-set-name (new-name (string-ascii 32)) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(ok (var-set token-name new-name))
 	)
 )
 
 (define-public (protocol-set-symbol (new-symbol (string-ascii 10)) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(ok (var-set token-symbol new-symbol))
 	)
 )
 
 (define-public (protocol-set-token-uri (new-uri (optional (string-utf8 256))) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller  contract-flag contract-caller))
 		(ok (var-set token-uri new-uri))
 	)
 )
@@ -82,7 +82,7 @@
 
 (define-public (protocol-mint-many (recipients (list 200 {amount: uint, recipient: principal})) (contract-flag (buff 1)))
 	(begin
-		(try! (contract-call? .sbtc-registry validate-protocol-caller contract-flag contract-caller))
+		(try! (contract-call? .sbtc-registry is-protocol-caller contract-flag contract-caller))
 		(ok (map protocol-mint-many-iter recipients))
 	)
 )

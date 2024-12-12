@@ -842,7 +842,7 @@ export const contracts = {
                     { name: "vout-index", type: "uint128" },
                   ],
                 },
-                length: 650,
+                length: 500,
               },
             },
           },
@@ -1334,21 +1334,6 @@ export const contracts = {
         ],
         Response<boolean, bigint>
       >,
-      validateProtocolCaller: {
-        name: "validate-protocol-caller",
-        access: "read_only",
-        args: [
-          { name: "contract-flag", type: { buffer: { length: 1 } } },
-          { name: "contract", type: "principal" },
-        ],
-        outputs: { type: { response: { ok: "bool", error: "uint128" } } },
-      } as TypedAbiFunction<
-        [
-          contractFlag: TypedAbiArg<Uint8Array, "contractFlag">,
-          contract: TypedAbiArg<string, "contract">,
-        ],
-        Response<boolean, bigint>
-      >,
     },
     maps: {
       activeProtocolContracts: {
@@ -1480,16 +1465,6 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_INVALID_PROTOCOL_ID: {
-        name: "ERR_INVALID_PROTOCOL_ID",
-        type: {
-          response: {
-            ok: "none",
-            error: "uint128",
-          },
-        },
-        access: "constant",
-      } as TypedAbiVariable<Response<null, bigint>>,
       ERR_INVALID_REQUEST_ID: {
         name: "ERR_INVALID_REQUEST_ID",
         type: {
@@ -1500,38 +1475,8 @@ export const contracts = {
         },
         access: "constant",
       } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_MULTI_SIG_REPLAY: {
-        name: "ERR_MULTI_SIG_REPLAY",
-        type: {
-          response: {
-            ok: "none",
-            error: "uint128",
-          },
-        },
-        access: "constant",
-      } as TypedAbiVariable<Response<null, bigint>>,
       ERR_UNAUTHORIZED: {
         name: "ERR_UNAUTHORIZED",
-        type: {
-          response: {
-            ok: "none",
-            error: "uint128",
-          },
-        },
-        access: "constant",
-      } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_UNAUTHORIZED_ROLE: {
-        name: "ERR_UNAUTHORIZED_ROLE",
-        type: {
-          response: {
-            ok: "none",
-            error: "uint128",
-          },
-        },
-        access: "constant",
-      } as TypedAbiVariable<Response<null, bigint>>,
-      ERR_UNAUTHORIZE_FLAG: {
-        name: "ERR_UNAUTHORIZE_FLAG",
         type: {
           response: {
             ok: "none",
@@ -1611,29 +1556,13 @@ export const contracts = {
         isOk: false,
         value: 402n,
       },
-      ERR_INVALID_PROTOCOL_ID: {
-        isOk: false,
-        value: 404n,
-      },
       ERR_INVALID_REQUEST_ID: {
         isOk: false,
         value: 401n,
       },
-      ERR_MULTI_SIG_REPLAY: {
-        isOk: false,
-        value: 403n,
-      },
       ERR_UNAUTHORIZED: {
         isOk: false,
         value: 400n,
-      },
-      ERR_UNAUTHORIZED_ROLE: {
-        isOk: false,
-        value: 406n,
-      },
-      ERR_UNAUTHORIZE_FLAG: {
-        isOk: false,
-        value: 405n,
       },
       currentAggregatePubkey: Uint8Array.from([0]),
       currentSignatureThreshold: 0n,
@@ -2122,6 +2051,24 @@ export const contracts = {
   },
   sbtcTokenTest: {
     functions: {
+      callAllTokenProtocolFunctions: {
+        name: "call-all-token-protocol-functions",
+        access: "public",
+        args: [],
+        outputs: {
+          type: {
+            response: {
+              ok: {
+                list: {
+                  type: { response: { ok: "uint128", error: "none" } },
+                  length: 3,
+                },
+              },
+              error: "uint128",
+            },
+          },
+        },
+      } as TypedAbiFunction<[], Response<Response<bigint, null>[], bigint>>,
       sendManySbtcTokens: {
         name: "send-many-sbtc-tokens",
         access: "public",
