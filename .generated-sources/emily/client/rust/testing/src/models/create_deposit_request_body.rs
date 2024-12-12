@@ -14,6 +14,9 @@ use serde::{Deserialize, Serialize};
 /// CreateDepositRequestBody : Request structure for create deposit request.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CreateDepositRequestBody {
+    /// The amount of sats in the deposit UTXO.
+    #[serde(rename = "amount")]
+    pub amount: u64,
     /// Output index on the bitcoin transaction associated with this specific deposit.
     #[serde(rename = "bitcoinTxOutputIndex")]
     pub bitcoin_tx_output_index: u32,
@@ -31,12 +34,14 @@ pub struct CreateDepositRequestBody {
 impl CreateDepositRequestBody {
     /// Request structure for create deposit request.
     pub fn new(
+        amount: u64,
         bitcoin_tx_output_index: u32,
         bitcoin_txid: String,
         deposit_script: String,
         reclaim_script: String,
     ) -> CreateDepositRequestBody {
         CreateDepositRequestBody {
+            amount,
             bitcoin_tx_output_index,
             bitcoin_txid,
             deposit_script,

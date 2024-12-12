@@ -4,6 +4,7 @@
 
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
+**amount** | **u64** | The amount of sats in the deposit UTXO. | 
 **bitcoin_tx_output_index** | **u32** | Output index on the bitcoin transaction associated with this specific deposit. | 
 **bitcoin_txid** | **String** | Bitcoin transaction id. | 
 **deposit_script** | **String** | Deposit script. | 

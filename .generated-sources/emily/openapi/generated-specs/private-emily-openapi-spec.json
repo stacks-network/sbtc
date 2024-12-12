@@ -1751,9 +1751,16 @@
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
           "reclaimScript",
-          "depositScript"
+          "depositScript",
+          "amount"
         ],
         "properties": {
+          "amount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The amount of sats in the deposit UTXO.",
+            "minimum": 0
+          },
           "bitcoinTxOutputIndex": {
             "type": "integer",
             "format": "int32",
