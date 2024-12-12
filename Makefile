@@ -172,10 +172,10 @@ devenv-no-sbtc-down:
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability down
 
 devenv-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up --detach
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer --profile observability up --detach
 
 devenv-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer --profile observability down
 
 devenv-sbtc-up:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build

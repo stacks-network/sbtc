@@ -17,6 +17,9 @@ endpoints = [
     "http://host.docker.internal:9181",
     "http://host.docker.internal:9182",
     "http://host.docker.internal:9183",
+    "http://sbtc-signer-1:9181",
+    "http://sbtc-signer-2:9182",
+    "http://sbtc-signer-3:9183",
 ]
 
 ## App Metric Sinks
