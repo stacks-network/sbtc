@@ -1459,6 +1459,9 @@ impl super::DbRead for PgStore {
     where
         X: Into<PublicKeyXOnly> + Send,
     {
+        // The first two characters are for the aggregate key column
+        // represent the parity byte. Since the input is an x-only public
+        // key, we don't have a parity byte, so we lop it off.
         let key: PublicKeyXOnly = aggregate_key.into();
         sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
