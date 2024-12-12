@@ -616,7 +616,7 @@ services:
       - bitcoin-mempool
 
   prometheus:
-    image: prom/prometheus:v2.45.2
+    image: prom/prometheus:v3.0.1
     restart: always
     volumes:
       - ./local-prometheus.yml:/etc/prometheus/prometheus.yml
@@ -634,7 +634,7 @@ services:
       - observability
 
   grafana:
-    image: grafana/grafana:10.2.3-ubuntu
+    image: grafana/grafana:11.4.0-ubuntu
     user: '472'
     restart: always
     environment:
@@ -653,7 +653,7 @@ services:
       - observability
 
   vector:
-    image: timberio/vector:0.34.2-distroless-static
+    image: timberio/vector:0.43.1-distroless-static
     command: --config /etc/vector/vector.toml
     restart: always
     ports:
