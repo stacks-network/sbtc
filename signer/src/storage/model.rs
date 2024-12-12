@@ -624,7 +624,7 @@ pub struct QualifiedRequestId {
 }
 
 /// This trait adds a function for converting a type into bytes to
-/// little-endian byyte order. This is because stacks-core expects
+/// little-endian byte order. This is because stacks-core expects
 /// bitcoin block hashes to be in little-endian byte order when evaluating
 /// some clarity functions.
 ///
