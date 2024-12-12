@@ -45,7 +45,7 @@ services:
       target: emily-sidecar
     restart: on-failure
     ports:
-      - "5000:5000"
+      - "20540:20540"
     environment:
       EMILY_API_KEY: testApiKey
       EMILY_CHAINSTATE_URL: http://emily-server:3031/chainstate
