@@ -381,7 +381,6 @@ impl RawTupleData {
                 // This shouldn't error, this is set from a proper [`Txid`]
                 // in a contract call.
                 txid: BitcoinTxid::from_le_bytes(txid_bytes),
-                // .map_err(EventError::ClarityHashConversion)?,
                 // This shouldn't actually error, we cast u32s to u128s
                 // before making the contract call, and that is the value
                 // that gets emitted here.
