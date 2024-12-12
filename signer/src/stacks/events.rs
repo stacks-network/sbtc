@@ -30,23 +30,26 @@ use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
 use stacks_common::types::chainstate::StacksBlockId;
 
-/// This trait adds a function for converting bytes from little-endian
-/// order into a type. This is because the signers convert
+/// This trait adds a function for converting bytes from little-endian byte
+/// order into a bitcoin hash types. This is because the signers convert
 /// [`bitcoin::Txid`] and [`bitcoin::BlockHash`] bytes into little-endian
-/// order before submitting the contract call.
+/// order before submitting contract calls.
 ///
 /// Both [`bitcoin::BlockHash`] and [`bitcoin::Txid`] are hash types that
-/// store bytes internally in big-endian order, and bitcoin-core transmits
-/// hashes in big-endian byte order[1] through the RPC interface. Note that
-/// the wire and zeromq interfaces transmit things in little-endian
-/// order[2].
+/// store bytes as SHA256 output, which is in big-endian order. Stacks-core
+/// stores hashes in little-endian byte order[2], implying that clarity
+/// functions, like `get-burn-block-info?`, return bitcoin block hashes in
+/// little-endian byte order. Note that Bitcoin-core transmits hashes in
+/// big-endian byte order[1] through the RPC interface, but the wire and
+/// zeromq interfaces transmit hashes in little-endian order[3].
 ///
 /// [^1]: See the Note in
 ///     <https://github.com/bitcoin/bitcoin/blob/62bd61de110b057cbfd6e31e4d0b727d93119c72/doc/zmq.md>.
-/// [^2]: <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+/// [^2]: <https://github.com/stacks-network/stacks-core/blob/70d24ea179840763c2335870d0965b31b37685d6/stacks-common/src/types/chainstate.rs#L427-L432>
+/// [^3]: <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
 ///       <https://developer.bitcoin.org/reference/p2p_networking.html>
 /// <https://learnmeabitcoin.com/technical/general/byte-order/>
-trait FromLittleEndianOrder: Sized {
+pub trait FromLittleEndianOrder: Sized {
     /// Convert bytes expressed in little-endian order to the type;
     fn from_le_bytes(bytes: [u8; 32]) -> Self;
 }
