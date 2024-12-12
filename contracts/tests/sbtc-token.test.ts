@@ -24,6 +24,11 @@ import {
 
 describe("sBTC token contract", () => {
   describe("token basics", () => {
+    test("Get decimals returns always 8", () => {
+      const receipt = rov(token.getDecimals());
+      expect(receipt.value).toEqual(8n);
+    });
+
     test("Mint sbtc token, check Alice balance", () => {
       const { burnHeight, burnHash } = getCurrentBurnInfo();
       const receipt = txOk(
@@ -366,6 +371,7 @@ describe("sBTC token contract", () => {
         deployer
       );
       expect(receipt1.value).toEqual(3n);
+
       const receipt2 = rov(
         token.getBalance({
           who: alice,
@@ -394,7 +400,7 @@ describe("sBTC token contract", () => {
         token.protocolMint({
           amount: 1000n,
           recipient: bob,
-          contractFlag: new Uint8Array([0])
+          contractFlag: new Uint8Array([0]),
         }),
         bob
       );
@@ -406,7 +412,7 @@ describe("sBTC token contract", () => {
         token.protocolLock({
           amount: 1000n,
           owner: bob,
-          contractFlag: new Uint8Array([0])
+          contractFlag: new Uint8Array([0]),
         }),
         bob
       );
@@ -418,7 +424,7 @@ describe("sBTC token contract", () => {
         token.protocolBurn({
           amount: 1000n,
           owner: bob,
-          contractFlag: new Uint8Array([0])
+          contractFlag: new Uint8Array([0]),
         }),
         bob
       );
@@ -430,7 +436,7 @@ describe("sBTC token contract", () => {
         token.protocolBurnLocked({
           amount: 1000n,
           owner: bob,
-          contractFlag: new Uint8Array([0])
+          contractFlag: new Uint8Array([0]),
         }),
         bob
       );
@@ -453,90 +459,23 @@ describe("sBTC token contract", () => {
 
   describe("protocol actions", () => {
     test("Mint, lock and transfer by protocol", () => {
-      const receipt0 = txOk(
-        signers.rotateKeysWrapper({
-          newKeys: [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
-          newAggregatePubkey: new Uint8Array(33).fill(0),
-          newSignatureThreshold: 2n,
-        }),
+      txOk(
+        signers.updateProtocolContractWrapper(
+          new Uint8Array([3]),
+          tokenTest.identifier
+        ),
         deployer
       );
-      expect(receipt0.value).toEqual(true);
-
-      const receipt1 = txOk(
-        token.protocolMint({
-          amount: 1000n,
-          recipient: bob,
-          contractFlag: new Uint8Array([3])
-        }),
-        deployer
-      );
-      expect(receipt1.value).toEqual(true);
+      const receipt = txOk(tokenTest.callAllTokenProtocolFunctions(), alice);
+      expect(receipt.value).toStrictEqual([74n, 69n, 5n]);
 
       const supply1 = rov(token.getTotalSupply());
-      expect(supply1.value).toEqual(1000n);
-      checkBalances(bob, [1000n, 1000n, 0n]);
+      expect(supply1.value).toEqual(75n);
+      checkBalances(alice, [74n, 69n, 5n]);
 
-      const receipt2 = txOk(
-        token.protocolLock({
-          amount: 222n,
-          owner: bob,
-          contractFlag: new Uint8Array([3])
-        }),
-        deployer
-      );
-      expect(receipt2.value).toEqual(true);
-      const supply2 = rov(token.getTotalSupply());
-      expect(supply2.value).toEqual(1000n);
-      checkBalances(bob, [1000n, 778n, 222n]);
-
-      // try to transfer more than available
-      const receipt3 = txErr(
-        token.protocolTransfer({
-          amount: 900n,
-          sender: bob,
-          recipient: charlie,
-          contractFlag: new Uint8Array([3])
-        }),
-        deployer
-      );
-      expect(receipt3.value).toEqual(1n); // err not enough tokens
-
-      // transfer less than available
-      const receipt4 = txOk(
-        token.protocolTransfer({
-          amount: 500n,
-          sender: bob,
-          recipient: charlie,
-          contractFlag: new Uint8Array([3])
-        }),
-        deployer
-      );
-      expect(receipt4.value).toEqual(true);
-      checkBalances(bob, [500n, 278n, 222n]);
-
-      // unlock more than locked
-      const receipt5 = txErr(
-        token.protocolUnlock({
-          amount: 500n,
-          owner: bob,
-          contractFlag: new Uint8Array([3])
-        }),
-        deployer
-      );
-      expect(receipt5.value).toEqual(1n);
-
-      // unlock all locked tokens
-      const receipt6 = txOk(
-        token.protocolUnlock({
-          amount: 222n,
-          owner: bob,
-          contractFlag: new Uint8Array([3])
-        }),
-        deployer
-      );
-      expect(receipt6.value).toEqual(true);
-      checkBalances(bob, [500n, 500n, 0n]);
+      expect(rov(token.getName()).value).toEqual("sbtc-2");
+      expect(rov(token.getSymbol()).value).toEqual("SBTC2");
+      expect(rov(token.getTokenUri()).value).toEqual(null);
     });
   });
 });

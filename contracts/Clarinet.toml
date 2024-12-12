@@ -16,7 +16,7 @@ clarity_version = 3
 epoch = 3.0
 
 [contracts.sbtc-deposit-update-test]
-path = 'contracts/sbtc-deposit-update-test.clar'
+path = 'contracts/sbtc-deposit.clar'
 clarity_version = 3
 epoch = 3.0
 
