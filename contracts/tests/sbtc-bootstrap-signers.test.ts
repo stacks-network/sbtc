@@ -1,30 +1,29 @@
-import {
-  constructMultisigAddress,
-  currentSignerAddr,
-  deployer,
-  errors,
-  randomPublicKeys,
-  registry,
-  signers,
-  depositUpdate,
-  getCurrentBurnInfo,
-  deposit,
-  alice,
-} from "./helpers";
-import { test, expect, describe } from "vitest";
-import { txOk, txErr, rov, filterEvents } from "@clarigen/test";
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { filterEvents, rov, txErr, txOk } from "@clarigen/test";
+import { p2ms, p2sh } from "@scure/btc-signer";
 import {
   AddressHashMode,
   AddressVersion,
   addressFromPublicKeys,
   addressToString,
   pubKeyfromPrivKey,
-  publicKeyFromBytes,
   serializePublicKey,
 } from "@stacks/transactions";
-import { p2ms, p2sh } from "@scure/btc-signer";
 import { b58ToC32 } from "c32check";
-import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { describe, expect, test } from "vitest";
+import {
+  alice,
+  constructMultisigAddress,
+  currentSignerAddr,
+  deployer,
+  deposit,
+  depositUpdate,
+  errors,
+  getCurrentBurnInfo,
+  randomPublicKeys,
+  registry,
+  signers,
+} from "./helpers";
 
 describe("sBTC bootstrap signers contract", () => {
   describe("Rotate keys tests", () => {
