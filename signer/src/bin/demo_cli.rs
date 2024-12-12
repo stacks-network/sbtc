@@ -185,6 +185,7 @@ async fn exec_deposit(
             bitcoin_txid: txid.to_string(),
             deposit_script: deposit_script.deposit_script().to_hex_string(),
             reclaim_script: reclaim_script.reclaim_script().to_hex_string(),
+            amount: args.amount,
         },
     )
     .await?;

@@ -223,8 +223,11 @@ pub async fn create_deposit(
         let status = Status::Pending;
 
         // Get parameters from scripts.
-        let script_parameters =
-            scripts_to_resource_parameters(&body.deposit_script, &body.reclaim_script)?;
+        let script_parameters = scripts_to_resource_parameters(
+            &body.deposit_script,
+            &body.reclaim_script,
+            body.amount,
+        )?;
 
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
@@ -280,6 +283,7 @@ struct ScriptParameters {
 fn scripts_to_resource_parameters(
     deposit_script: &str,
     reclaim_script: &str,
+    amount: u64,
 ) -> Result<ScriptParameters, Error> {
     let deposit_script_buf = ScriptBuf::from_hex(deposit_script)?;
     let deposit_script_inputs = sbtc::deposits::DepositScriptInputs::parse(&deposit_script_buf)?;
@@ -291,8 +295,7 @@ fn scripts_to_resource_parameters(
     let recipient_hex_string = hex::encode(&recipient_bytes);
 
     Ok(ScriptParameters {
-        // TODO(TBD): Get the amount from some script related data somehow.
-        amount: 0,
+        amount,
         max_fee: deposit_script_inputs.max_fee,
         recipient: recipient_hex_string,
         lock_time: reclaim_script_inputs.lock_time(),
@@ -397,7 +400,7 @@ mod tests {
         let reclaim_script = setup.reclaim.reclaim_script().to_hex_string();
 
         let script_parameters: ScriptParameters =
-            scripts_to_resource_parameters(&deposit_script, &reclaim_script).unwrap();
+            scripts_to_resource_parameters(&deposit_script, &reclaim_script, amount_sats).unwrap();
 
         assert_eq!(script_parameters.max_fee, max_fee);
         assert_eq!(script_parameters.lock_time, lock_time);

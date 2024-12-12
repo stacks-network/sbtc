@@ -43,6 +43,8 @@ pub struct CreateDepositRequestBody {
     pub reclaim_script: String,
     /// Deposit script.
     pub deposit_script: String,
+    /// The amount of sats in the deposit UTXO.
+    pub amount: u64,
 }
 
 /// A singlular Deposit update that contains only the fields pertinent
