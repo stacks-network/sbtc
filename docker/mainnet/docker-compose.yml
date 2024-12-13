@@ -41,7 +41,7 @@ services:
 
   sbtc-signer:
     container_name: sbtc-signer
-    image: blockstack/sbtc:signer-0.0.9-rc2
+    image: blockstack/sbtc:signer-0.0.9-rc3
     entrypoint:
       - /bin/bash
       - -c
@@ -83,7 +83,7 @@ services:
 
   blocklist-client:
     container_name: blocklist-client
-    image: blockstack/sbtc:blocklist-client-0.0.9-rc2
+    image: blockstack/sbtc:blocklist-client-0.0.9-rc3
     entrypoint: "/usr/local/bin/blocklist-client"
     environment:
       BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: *BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY
