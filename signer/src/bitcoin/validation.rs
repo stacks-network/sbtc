@@ -13,7 +13,6 @@ use bitcoin::XOnlyPublicKey;
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
-use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
@@ -297,6 +296,7 @@ impl BitcoinPreSignRequest {
         // their fees anymore in order for them to be accepted by the
         // network.
         signer_state.last_fees = None;
+        let sbtc_limits = ctx.state().get_current_limits();
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
@@ -306,7 +306,8 @@ impl BitcoinPreSignRequest {
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
             // If the cap is None, then we assume that it is unlimited.
-            sbtc_limits: ctx.state().get_current_limits(),
+            max_deposit_amount: sbtc_limits.per_deposit_cap(),
+            max_withdrawal_amount: sbtc_limits.per_withdrawal_cap(),
         };
 
         Ok((out, signer_state))
@@ -332,8 +333,10 @@ pub struct BitcoinTxValidationData {
     pub tx_fee: Amount,
     /// the chain tip height.
     pub chain_tip_height: u64,
-    /// The current sBTC limits.
-    pub sbtc_limits: SbtcLimits,
+    /// Maximum amount of BTC allowed to be pegged-in per transaction.
+    pub max_deposit_amount: Amount,
+    /// Maximum amount of BTC allowed to be pegged-out per transaction.
+    pub max_withdrawal_amount: Amount,
 }
 
 impl BitcoinTxValidationData {
@@ -362,7 +365,7 @@ impl BitcoinTxValidationData {
                 self.chain_tip_height,
                 &self.tx,
                 self.tx_fee,
-                &self.sbtc_limits,
+                self.max_deposit_amount,
             )
         });
 
@@ -422,7 +425,7 @@ impl BitcoinTxValidationData {
                     self.chain_tip_height,
                     &self.tx,
                     self.tx_fee,
-                    &self.sbtc_limits,
+                    self.max_withdrawal_amount,
                 ),
                 is_valid_tx,
             })
@@ -443,7 +446,7 @@ impl BitcoinTxValidationData {
                     self.chain_tip_height,
                     &self.tx,
                     self.tx_fee,
-                    &self.sbtc_limits,
+                    self.max_deposit_amount
                 ),
                 InputValidationResult::Ok | InputValidationResult::CannotSignUtxo
             )
@@ -454,12 +457,11 @@ impl BitcoinTxValidationData {
                 self.chain_tip_height,
                 &self.tx,
                 self.tx_fee,
-                &self.sbtc_limits,
+                self.max_withdrawal_amount,
             ) {
                 WithdrawalValidationResult::Unsupported
                 | WithdrawalValidationResult::Unknown
-                | WithdrawalValidationResult::AmountTooHigh
-                | WithdrawalValidationResult::AmountTooLow => false,
+                | WithdrawalValidationResult::AmountTooHigh => false,
             }
         });
 
@@ -506,8 +508,6 @@ impl SbtcReports {
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
-    /// The deposit request amount is below the allowed per-deposit minimum.
-    AmountTooLow,
     /// The deposit request amount exceeds the allowed per-deposit cap.
     AmountTooHigh,
     /// The assessed fee exceeds the max-fee in the deposit request.
@@ -558,8 +558,6 @@ impl InputValidationResult {
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
-    /// The withdrawal request amount is below the allowed per-withdrawal minimum.
-    AmountTooLow,
     /// The withdrawal request amount exceeds the allowed per-withdrawal cap
     AmountTooHigh,
     /// The signer does not have a record of the withdrawal request in
@@ -680,7 +678,7 @@ impl DepositRequestReport {
         chain_tip_height: u64,
         tx: &F,
         tx_fee: Amount,
-        sbtc_limits: &SbtcLimits,
+        max_deposit_amount: Amount,
     ) -> InputValidationResult
     where
         F: FeeAssessment,
@@ -704,11 +702,7 @@ impl DepositRequestReport {
             DepositConfirmationStatus::Confirmed(block_height, _) => block_height,
         };
 
-        if self.amount < sbtc_limits.per_deposit_minimum().to_sat() {
-            return InputValidationResult::AmountTooLow;
-        }
-
-        if self.amount > sbtc_limits.per_deposit_cap().to_sat() {
+        if self.amount > max_deposit_amount.to_sat() {
             return InputValidationResult::AmountTooHigh;
         }
 
@@ -829,7 +823,7 @@ impl WithdrawalRequestReport {
         _: u64,
         _: &F,
         _: Amount,
-        _sbtc_limits: &SbtcLimits,
+        _max_withdrawal_amount: Amount,
     ) -> WithdrawalValidationResult
     where
         F: FeeAssessment,
@@ -892,7 +886,7 @@ mod tests {
         },
         status: InputValidationResult::TxNotOnBestChain,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "deposit-reorged")]
+    } ; "deposit-reorged")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Spent(BitcoinTxId::from([1; 32])),
@@ -908,7 +902,7 @@ mod tests {
         },
         status: InputValidationResult::DepositUtxoSpent,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "deposit-spent")]
+    } ; "deposit-spent")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -924,7 +918,7 @@ mod tests {
         },
         status: InputValidationResult::NoVote,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "deposit-no-vote")]
+    } ; "deposit-no-vote")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -940,7 +934,7 @@ mod tests {
         },
         status: InputValidationResult::CannotSignUtxo,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "cannot-sign-for-deposit")]
+    } ; "cannot-sign-for-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -956,7 +950,7 @@ mod tests {
         },
         status: InputValidationResult::RejectedRequest,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "rejected-deposit")]
+    } ; "rejected-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -972,7 +966,7 @@ mod tests {
         },
         status: InputValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "lock-time-expires-soon-1")]
+    } ; "lock-time-expires-soon-1")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -988,7 +982,7 @@ mod tests {
         },
         status: InputValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "lock-time-expires-soon-2")]
+    } ; "lock-time-expires-soon-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -1004,7 +998,7 @@ mod tests {
         },
         status: InputValidationResult::UnsupportedLockTime,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "lock-time-in-time-units-2")]
+    } ; "lock-time-in-time-units-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -1020,7 +1014,7 @@ mod tests {
         },
         status: InputValidationResult::Ok,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "happy-path")]
+    } ; "happy-path")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -1036,7 +1030,7 @@ mod tests {
         },
         status: InputValidationResult::Unknown,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "unknown-prevout")]
+    } ; "unknown-prevout")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -1052,7 +1046,7 @@ mod tests {
         },
         status: InputValidationResult::Ok,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "at-the-border")]
+    } ; "at-the-border")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -1068,7 +1062,7 @@ mod tests {
         },
         status: InputValidationResult::FeeTooHigh,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "one-sat-too-high-fee-amount")]
+    } ; "one-sat-too-high-fee-amount")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -1084,44 +1078,8 @@ mod tests {
         },
         status: InputValidationResult::FeeTooHigh,
         chain_tip_height: 2,
-    }, 0, u64::MAX ; "one-sat-too-high-fee")]
-    #[test_case(DepositReportErrorMapping {
-        report: DepositRequestReport {
-            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
-            can_sign: Some(true),
-            can_accept: Some(true),
-            amount: 100_000_000,
-            max_fee: u64::MAX,
-            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
-            outpoint: OutPoint::null(),
-            deposit_script: ScriptBuf::new(),
-            reclaim_script: ScriptBuf::new(),
-            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
-        },
-        status: InputValidationResult::AmountTooHigh,
-        chain_tip_height: 2,
-    }, 0, 99_999_999 ; "amount-too-high")]
-    #[test_case(DepositReportErrorMapping {
-        report: DepositRequestReport {
-            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
-            can_sign: Some(true),
-            can_accept: Some(true),
-            amount: 99_999_999,
-            max_fee: u64::MAX,
-            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
-            outpoint: OutPoint::null(),
-            deposit_script: ScriptBuf::new(),
-            reclaim_script: ScriptBuf::new(),
-            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
-        },
-        status: InputValidationResult::AmountTooLow,
-        chain_tip_height: 2,
-    }, 100_000_000, u64::MAX ; "amount-too-low")]
-    fn deposit_report_validation(
-        mapping: DepositReportErrorMapping,
-        per_deposit_minimum: u64,
-        per_deposit_cap: u64,
-    ) {
+    } ; "one-sat-too-high-fee")]
+    fn deposit_report_validation(mapping: DepositReportErrorMapping) {
         let mut tx = crate::testing::btc::base_signer_transaction();
         tx.input.push(TxIn {
             previous_output: OutPoint::null(),
@@ -1130,19 +1088,10 @@ mod tests {
             witness: Witness::new(),
         });
 
-        let status = mapping.report.validate(
-            mapping.chain_tip_height,
-            &tx,
-            TX_FEE,
-            &SbtcLimits::new(
-                None,
-                Some(Amount::from_sat(per_deposit_minimum)),
-                Some(Amount::from_sat(per_deposit_cap)),
-                None,
-                None,
-                None,
-            ),
-        );
+        let status =
+            mapping
+                .report
+                .validate(mapping.chain_tip_height, &tx, TX_FEE, Amount::MAX_MONEY);
 
         assert_eq!(status, mapping.status);
     }
@@ -1299,8 +1248,6 @@ mod tests {
         let context = TestContext::default_mocked();
         context.state().update_current_limits(SbtcLimits::new(
             Some(total_cap),
-            None,
-            None,
             None,
             None,
             Some(total_cap - sbtc_supply),
