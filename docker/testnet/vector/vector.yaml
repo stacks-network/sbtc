@@ -4,6 +4,23 @@ sources:
     include:
       - /logs/sbtc_signer.logs
 
+  sbtc_prometheus_metrics:
+    type: prometheus_scrape
+    endpoints:
+      - http://sbtc-signer:9184
+
+transforms:
+  # This is required because Cloudwatch is picky about empty tags ("dimensions")
+  # And our `build` metric has an emtpy revision.
+  sbtc_prometheus_metrics_strip_empty_tags:
+    type: remap
+    inputs:
+      - sbtc_prometheus_metrics
+    source: |-
+      .tags = filter(object!(.tags)) -> |k, value| {
+          is_empty(string!(value)) == false
+      }
+
 sinks:
   cloudwatch_sbtc_signer_logs:
     type: aws_cloudwatch_logs
@@ -12,8 +29,16 @@ sinks:
     inputs:
       - sbtc_signer_logs
     region: eu-west-1
-    group_name: sbtc-testnet-partner-signers
+    group_name: sbtc-mainnet-partner-signers
     stream_name: "${STREAM_NAME}"
-    healthcheck: false  # We don't give the user permission to describe groups
+    healthcheck: false # We don't give the user permission to describe groups
     encoding:
       codec: json
+
+  cloudwatch_sbtc_signer_metrics:
+    type: aws_cloudwatch_metrics
+    inputs:
+      - sbtc_prometheus_metrics_strip_empty_tags
+    compression: none
+    default_namespace: ${STREAM_NAME}
+    region: eu-west-1
