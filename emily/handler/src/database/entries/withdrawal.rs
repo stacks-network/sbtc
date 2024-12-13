@@ -691,10 +691,10 @@ mod tests {
             history: vec![pending.clone(), accepted.clone(), confirmed.clone()],
         };
 
-        // Ensure the deposit is valid.
+        // Ensure the withdrawal is valid.
         assert!(
             withdrawal_entry.validate().is_ok(),
-            "Test deposit must be valid before reorg.",
+            "Test withdrawal must be valid before reorg.",
         );
 
         // Reorganize around a new chainstate.
@@ -704,10 +704,10 @@ mod tests {
         };
         withdrawal_entry.reorganize_around(&chainstate).unwrap();
 
-        // Ensure the deposit is valid.
+        // Ensure the withdrawal is valid.
         assert!(
             withdrawal_entry.validate().is_ok(),
-            "Deposit must be valid after reorg.",
+            "Withdrawal must be valid after reorg.",
         );
 
         // Check latest height.
