@@ -89,8 +89,6 @@ jobs:
       - name: Build and Push ( ${{ matrix.dist }} ${{ matrix.docker_target }} )
         id: docker_build
         uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
-        env:
-          GIT_COMMIT: ${{ github.ref_name }}
         with:
           file: ./.github/actions/dockerfiles/Dockerfile.${{ matrix.docker_target }}.${{ matrix.dist }}
           platforms: ${{ env.docker_platforms }}
@@ -98,3 +96,5 @@ jobs:
           labels: ${{ steps.docker_metadata.outputs.labels }}
           target: ${{ matrix.docker_target }}
           push: true
+          build-args: |
+            GIT_COMMIT=${{ github.ref_name }}
