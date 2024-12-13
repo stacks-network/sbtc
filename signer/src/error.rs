@@ -411,6 +411,11 @@ pub enum Error {
     #[error("DKG has not been run")]
     NoDkgShares,
 
+    /// TODO: We don't want to be able to run DKG more than once. Soon this
+    /// restriction will be lifted.
+    #[error("DKG has already been run, can only run once")]
+    DkgHasAlreadyRun,
+
     /// Too many signer utxos
     #[error("too many signer utxos")]
     TooManySignerUtxos,

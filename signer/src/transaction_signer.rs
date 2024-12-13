@@ -502,6 +502,17 @@ where
                     return Ok(());
                 }
 
+                let dkg_shares = self
+                    .context
+                    .get_storage()
+                    .get_latest_encrypted_dkg_shares()
+                    .await?;
+
+                if dkg_shares.is_some() {
+                    tracing::warn!("we do not support running DKG more than once");
+                    return Err(Error::DkgHasAlreadyRun);
+                }
+
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
                 let state_machine = SignerStateMachine::new(
