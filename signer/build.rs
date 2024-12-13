@@ -1,3 +1,5 @@
+use std::env;
+
 fn main() {
     set_up_build_info();
     // compile_protos();
@@ -15,7 +17,7 @@ pub fn set_up_build_info() {
         .args(["rev-parse", "HEAD"])
         .output()
         .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
-        .unwrap_or_default();
+        .unwrap_or(env::var("GIT_COMMIT").unwrap_or_default());
 
     let env_abi = std::env::var("CARGO_CFG_TARGET_ENV").unwrap();
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();
