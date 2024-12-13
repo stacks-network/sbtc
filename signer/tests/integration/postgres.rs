@@ -2194,6 +2194,8 @@ async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
         .await
         .unwrap();
     assert_eq!(can_sign, None);
+
+    signer::testing::storage::drop_db(db).await;
 }
 
 /// This function tests that [`DbRead::get_swept_deposit_requests`]
