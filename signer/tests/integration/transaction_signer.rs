@@ -11,7 +11,6 @@ use signer::bitcoin::utxo::Requests;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
-use signer::emily_client::MockEmilyInteract;
 use signer::error::Error;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
@@ -20,7 +19,6 @@ use signer::message::StacksTransactionSignRequest;
 use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
-use signer::stacks::api::MockStacksInteract;
 use signer::stacks::contracts::ContractCall;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
@@ -31,91 +29,12 @@ use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::testing::storage::model::TestData;
-use signer::testing::transaction_signer::TestEnvironment;
 use signer::transaction_signer::TxSignerEventLoop;
-use signer::{bitcoin::MockBitcoinInteract, storage::postgres::PgStore};
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::fill_signers_utxo;
 use crate::setup::TestSweepSetup;
 use crate::DATABASE_NUM;
-
-async fn test_environment(
-    db: PgStore,
-    signing_threshold: u32,
-    num_signers: usize,
-) -> TestEnvironment<
-    TestContext<
-        PgStore,
-        WrappedMock<MockBitcoinInteract>,
-        WrappedMock<MockStacksInteract>,
-        WrappedMock<MockEmilyInteract>,
-    >,
-> {
-    let context_window = 6;
-
-    let test_model_parameters = testing::storage::model::Params {
-        num_bitcoin_blocks: 20,
-        num_stacks_blocks_per_bitcoin_block: 3,
-        num_deposit_requests_per_block: 5,
-        num_withdraw_requests_per_block: 5,
-        num_signers_per_request: 0,
-    };
-
-    let context = TestContext::builder()
-        .with_storage(db)
-        .with_mocked_clients()
-        .build();
-
-    testing::transaction_signer::TestEnvironment {
-        context,
-        num_signers,
-        context_window,
-        signing_threshold,
-        test_model_parameters,
-    }
-}
-
-async fn create_signer_database() -> PgStore {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    signer::testing::storage::new_test_database(db_num, true).await
-}
-
-#[ignore = "we have a test for this"]
-#[tokio::test]
-async fn should_respond_to_bitcoin_transaction_sign_request() {
-    let num_signers = 3;
-    let signing_threshold = 2;
-
-    let db = create_signer_database().await;
-    // We need to clone the connection so that we can drop the associated
-    // databases later.
-    test_environment(db.clone(), signing_threshold, num_signers)
-        .await
-        .assert_should_respond_to_bitcoin_transaction_sign_requests()
-        .await;
-
-    // Now drop the database that we just created.
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[ignore = "we have a test for this"]
-#[tokio::test]
-async fn should_be_able_to_participate_in_signing_round() {
-    let num_signers = 3;
-    let signing_threshold = 2;
-
-    let db = create_signer_database().await;
-    // We need to clone the connection so that we can drop the associated
-    // databases later.
-    test_environment(db.clone(), signing_threshold, num_signers)
-        .await
-        .assert_should_be_able_to_participate_in_signing_round()
-        .await;
-
-    // Now drop the database that we just created.
-    signer::testing::storage::drop_db(db).await;
-}
 
 /// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to
 /// the bootstrap config if there is no rotate-keys transaction in the

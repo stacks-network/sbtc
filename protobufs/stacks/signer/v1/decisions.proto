@@ -33,12 +33,6 @@ message SignerWithdrawalDecision {
   bool accepted = 4;
 }
 
-// Represents an acknowledgment of a signed Bitcoin transaction.
-message BitcoinTransactionSignAck {
-  // The ID of the acknowledged transaction.
-  bitcoin.BitcoinTxid txid = 1;
-}
-
 // Represents a signature of a Stacks transaction.
 message StacksTransactionSignature {
   // Id of the signed transaction.
