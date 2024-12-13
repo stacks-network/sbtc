@@ -77,20 +77,20 @@ services:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
       - TRUSTED_REORG_API_KEY=
 
-  # Runs the Emily server.
-  emily-server:
-    build:
-      context: ../
-      dockerfile: docker/sbtc/Dockerfile
-      target: emily-server
-    depends_on:
-      emily-aws-setup:
-        condition: service_completed_successfully
-    environment:
-      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
-      - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
-      - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
-      - AWS_REGION=us-west-2
-      - PORT=3031
-    ports:
-      - "3031:3031"
+  # # Runs the Emily server.
+  # emily-server:
+  #   build:
+  #     context: ../
+  #     dockerfile: docker/sbtc/Dockerfile
+  #     target: emily-server
+  #   depends_on:
+  #     emily-aws-setup:
+  #       condition: service_completed_successfully
+  #   environment:
+  #     - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+  #     - AWS_ACCESS_KEY_ID=xxxxxxxxxxxx
+  #     - AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx
+  #     - AWS_REGION=us-west-2
+  #     - PORT=3031
+  #   ports:
+  #     - "3031:3031"
