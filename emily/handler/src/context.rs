@@ -74,7 +74,15 @@ impl Settings {
                     .ok()
                     .map(|v| v.parse())
                     .transpose()?,
+                per_deposit_minimum: env::var("DEFAULT_PER_DEPOSIT_MINIMUM")
+                    .ok()
+                    .map(|v| v.parse())
+                    .transpose()?,
                 per_deposit_cap: env::var("DEFAULT_PER_DEPOSIT_CAP")
+                    .ok()
+                    .map(|v| v.parse())
+                    .transpose()?,
+                per_withdrawal_minimum: env::var("DEFAULT_PER_WITHDRAWAL_MINIMUM")
                     .ok()
                     .map(|v| v.parse())
                     .transpose()?,

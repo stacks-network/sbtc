@@ -633,7 +633,9 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
             timestamp: 0,
         },
         peg_cap: default_global_cap.peg_cap,
+        per_deposit_minimum: default_global_cap.per_deposit_minimum,
         per_deposit_cap: default_global_cap.per_deposit_cap,
+        per_withdrawal_minimum: default_global_cap.per_withdrawal_minimum,
         per_withdrawal_cap: default_global_cap.per_withdrawal_cap,
     };
     // Aggregate all the latest entries by account.
@@ -669,7 +671,9 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
     // Get the global limit for the whole thing.
     Ok(Limits {
         peg_cap: global_cap.peg_cap,
+        per_deposit_minimum: default_global_cap.per_deposit_minimum,
         per_deposit_cap: global_cap.per_deposit_cap,
+        per_withdrawal_minimum: default_global_cap.per_withdrawal_minimum,
         per_withdrawal_cap: global_cap.per_withdrawal_cap,
         account_caps,
     })

@@ -14,7 +14,9 @@ async fn empty_default_is_as_expected() {
 
     let expected_empty_default = models::Limits {
         peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
+        per_withdrawal_minimum: Some(None),
         per_withdrawal_cap: Some(None),
         account_caps: HashMap::new(),
     };
@@ -38,7 +40,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
             "test_account",
             AccountLimits {
                 peg_cap: Some(Some(100)),
+                per_deposit_minimum: Some(Some(100)),
                 per_deposit_cap: Some(Some(100)),
+                per_withdrawal_minimum: Some(Some(100)),
                 per_withdrawal_cap: Some(Some(100)),
             },
         ),
@@ -46,7 +50,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
             "test_account_2",
             AccountLimits {
                 peg_cap: Some(Some(1200)),
+                per_deposit_minimum: Some(Some(1200)),
                 per_deposit_cap: Some(Some(1200)),
+                per_withdrawal_minimum: Some(Some(1200)),
                 per_withdrawal_cap: Some(Some(1200)),
             },
         ),
@@ -54,7 +60,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
             "test_account_2",
             AccountLimits {
                 peg_cap: Some(Some(100)),
+                per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(300)),
+                per_withdrawal_minimum: Some(Some(400)),
                 per_withdrawal_cap: Some(Some(500)),
             },
         ),
@@ -62,7 +70,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
             "test_account_2",
             AccountLimits {
                 peg_cap: Some(Some(200)),
+                per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
+                per_withdrawal_minimum: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
             },
         ),
@@ -70,7 +80,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
             "test_account",
             AccountLimits {
                 peg_cap: Some(Some(300)),
+                per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
+                per_withdrawal_minimum: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
             },
         ),
@@ -83,7 +95,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
             "test_account_2",
             AccountLimits {
                 peg_cap: Some(Some(200)),
+                per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
+                per_withdrawal_minimum: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
             },
         ),
@@ -91,7 +105,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
             "test_account",
             AccountLimits {
                 peg_cap: Some(Some(300)),
+                per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
+                per_withdrawal_minimum: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
             },
         ),
@@ -103,7 +119,9 @@ async fn adding_and_then_updating_single_accout_limit_works() {
     // The global limits should show the latest account caps.
     let expected_limits = Limits {
         peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
+        per_withdrawal_minimum: Some(None),
         per_withdrawal_cap: Some(None),
         account_caps: expected_account_caps.clone(),
     };
@@ -155,7 +173,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_1",
             AccountLimits {
                 peg_cap: Some(Some(100)),
+                per_deposit_minimum: Some(Some(100)),
                 per_deposit_cap: Some(Some(100)),
+                per_withdrawal_minimum: Some(Some(100)),
                 per_withdrawal_cap: Some(Some(100)),
             },
         ),
@@ -163,7 +183,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_2",
             AccountLimits {
                 peg_cap: Some(Some(150)),
+                per_deposit_minimum: Some(Some(150)),
                 per_deposit_cap: Some(Some(150)),
+                per_withdrawal_minimum: Some(Some(150)),
                 per_withdrawal_cap: Some(Some(150)),
             },
         ),
@@ -171,7 +193,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_4",
             AccountLimits {
                 peg_cap: Some(Some(150)),
+                per_deposit_minimum: Some(Some(150)),
                 per_deposit_cap: Some(Some(150)),
+                per_withdrawal_minimum: Some(Some(150)),
                 per_withdrawal_cap: Some(Some(150)),
             },
         ),
@@ -184,7 +208,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_2",
             AccountLimits {
                 peg_cap: Some(Some(200)),
+                per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
+                per_withdrawal_minimum: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
             },
         ),
@@ -192,7 +218,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_3",
             AccountLimits {
                 peg_cap: Some(Some(300)),
+                per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
+                per_withdrawal_minimum: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
             },
         ),
@@ -202,7 +230,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_4",
             AccountLimits {
                 peg_cap: Some(None),
+                per_deposit_minimum: Some(None),
                 per_deposit_cap: Some(None),
+                per_withdrawal_minimum: Some(None),
                 per_withdrawal_cap: Some(None),
             },
         ),
@@ -212,7 +242,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .collect();
     let global_limits_to_set = Limits {
         peg_cap: Some(Some(123)),
+        per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
+        per_withdrawal_minimum: Some(Some(987)),
         per_withdrawal_cap: Some(Some(789)),
         account_caps: account_limits_to_set_globally.clone(),
     };
@@ -224,7 +256,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_1",
             AccountLimits {
                 peg_cap: Some(Some(100)),
+                per_deposit_minimum: Some(Some(100)),
                 per_deposit_cap: Some(Some(100)),
+                per_withdrawal_minimum: Some(Some(100)),
                 per_withdrawal_cap: Some(Some(100)),
             },
         ),
@@ -232,7 +266,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_2",
             AccountLimits {
                 peg_cap: Some(Some(200)),
+                per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
+                per_withdrawal_minimum: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
             },
         ),
@@ -240,7 +276,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
             "test_account_3",
             AccountLimits {
                 peg_cap: Some(Some(300)),
+                per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
+                per_withdrawal_minimum: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
             },
         ),
@@ -250,7 +288,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .collect();
     let expected_global_limits = Limits {
         peg_cap: Some(Some(123)),
+        per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
+        per_withdrawal_minimum: Some(Some(987)),
         per_withdrawal_cap: Some(Some(789)),
         account_caps: expected_global_account_limits.clone(),
     };

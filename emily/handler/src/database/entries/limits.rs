@@ -32,8 +32,12 @@ pub struct LimitEntry {
     pub key: LimitEntryKey,
     /// Represents the current sBTC limits.
     pub peg_cap: Option<u64>,
+    /// Per deposit minimum. If none then there is no minimum.
+    pub per_deposit_minimum: Option<u64>,
     /// Per deposit cap. If none then the cap is the same as the global per deposit cap.
     pub per_deposit_cap: Option<u64>,
+    /// Per withdrawal minimum. If none then there is no minimum.
+    pub per_withdrawal_minimum: Option<u64>,
     /// Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.
     pub per_withdrawal_cap: Option<u64>,
 }
@@ -43,7 +47,9 @@ impl From<LimitEntry> for AccountLimits {
     fn from(limit_entry: LimitEntry) -> Self {
         AccountLimits {
             peg_cap: limit_entry.peg_cap,
+            per_deposit_minimum: limit_entry.per_deposit_minimum,
             per_deposit_cap: limit_entry.per_deposit_cap,
+            per_withdrawal_minimum: limit_entry.per_withdrawal_minimum,
             per_withdrawal_cap: limit_entry.per_withdrawal_cap,
         }
     }
@@ -66,7 +72,9 @@ impl LimitEntry {
                     .as_secs(),
             },
             peg_cap: account_limit.peg_cap,
+            per_deposit_minimum: account_limit.per_deposit_minimum,
             per_deposit_cap: account_limit.per_deposit_cap,
+            per_withdrawal_minimum: account_limit.per_withdrawal_minimum,
             per_withdrawal_cap: account_limit.per_withdrawal_cap,
         }
     }
