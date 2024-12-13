@@ -557,7 +557,9 @@ impl<C: Context, B> BlockObserver<C, B> {
 
         let limits = SbtcLimits::new(
             Some(limits.total_cap()),
+            Some(limits.per_deposit_minimum()),
             Some(limits.per_deposit_cap()),
+            Some(limits.per_withdrawal_minimum()),
             Some(limits.per_withdrawal_cap()),
             Some(max_mintable),
         );
