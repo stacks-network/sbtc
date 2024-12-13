@@ -22,6 +22,7 @@ use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::stacks::events::CompletedDepositEvent;
 use crate::stacks::events::WithdrawalAcceptEvent;
 use crate::stacks::events::WithdrawalCreateEvent;
@@ -204,10 +205,12 @@ pub trait DbRead {
 
     /// Return the applicable DKG shares for the
     /// given aggregate key
-    fn get_encrypted_dkg_shares(
+    fn get_encrypted_dkg_shares<X>(
         &self,
-        aggregate_key: &PublicKey,
-    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
 
     /// Return the most recent DKG shares, and return None if the table is
     /// empty.

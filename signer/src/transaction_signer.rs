@@ -232,16 +232,6 @@ where
                 .await?;
             }
 
-            (
-                message::Payload::BitcoinTransactionSignRequest(request),
-                true,
-                ChainTipStatus::Canonical,
-            ) => {
-                tracing::debug!("handling bitcoin transaction sign request");
-                self.handle_bitcoin_transaction_sign_request(request, &msg.bitcoin_chain_tip)
-                    .await?;
-            }
-
             (message::Payload::WstsMessage(wsts_msg), _, _) => {
                 self.handle_wsts_message(
                     wsts_msg,
@@ -282,6 +272,7 @@ where
             }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
+            | (message::Payload::BitcoinTransactionSignRequest(_), _, _)
             | (message::Payload::BitcoinTransactionSignAck(_), _, _)
             | (message::Payload::SignerDepositDecision(_), _, _)
             | (message::Payload::SignerWithdrawalDecision(_), _, _) => (),
@@ -391,63 +382,6 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn handle_bitcoin_transaction_sign_request(
-        &mut self,
-        request: &message::BitcoinTransactionSignRequest,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(), Error> {
-        let is_valid_sign_request = self
-            .is_valid_bitcoin_transaction_sign_request(request)
-            .await?;
-
-        if is_valid_sign_request {
-            let new_state_machine = SignerStateMachine::load(
-                &self.context.get_storage_mut(),
-                request.aggregate_key,
-                self.threshold,
-                self.signer_private_key,
-            )
-            .await?;
-
-            let txid = request.tx.compute_txid();
-
-            self.wsts_state_machines.insert(txid, new_state_machine);
-
-            let msg = message::BitcoinTransactionSignAck {
-                txid: request.tx.compute_txid(),
-            };
-
-            self.send_message(msg, bitcoin_chain_tip).await?;
-        } else {
-            tracing::warn!("received invalid sign request");
-        }
-
-        Ok(())
-    }
-
-    async fn is_valid_bitcoin_transaction_sign_request(
-        &self,
-        _request: &message::BitcoinTransactionSignRequest,
-    ) -> Result<bool, Error> {
-        let signer_pub_key = self.signer_public_key();
-        let _accepted_deposit_requests = self
-            .context
-            .get_storage()
-            .get_accepted_deposit_requests(&signer_pub_key)
-            .await?;
-
-        // TODO(286): Validate transaction
-        // - Ensure all inputs are either accepted deposit requests
-        //    or directly spendable by the signers.
-        // - Ensure all outputs are either accepted withdrawals
-        //    or pays to an approved signer set.
-        // - Ensure the transaction fee is lower than the minimum
-        //    `max_fee` of any request.
-
-        Ok(true)
-    }
-
-    #[tracing::instrument(skip_all)]
     async fn handle_stacks_transaction_sign_request(
         &mut self,
         request: &StacksTransactionSignRequest,
@@ -506,7 +440,7 @@ where
         let public_key = self.signer_public_key();
 
         let Some(shares) = db.get_encrypted_dkg_shares(&request.aggregate_key).await? else {
-            return Err(Error::MissingDkgShares(request.aggregate_key));
+            return Err(Error::MissingDkgShares(request.aggregate_key.into()));
         };
         // There is one check that applies to all Stacks transactions, and
         // that check is that the current signer is in the signing set
@@ -566,6 +500,17 @@ where
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
+                }
+
+                let dkg_shares = self
+                    .context
+                    .get_storage()
+                    .get_latest_encrypted_dkg_shares()
+                    .await?;
+
+                if dkg_shares.is_some() {
+                    tracing::warn!("we do not support running DKG more than once");
+                    return Err(Error::DkgHasAlreadyRun);
                 }
 
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;

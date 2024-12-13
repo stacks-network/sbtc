@@ -1452,10 +1452,18 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_encrypted_dkg_shares(
+    async fn get_encrypted_dkg_shares<X>(
         &self,
-        aggregate_key: &PublicKey,
-    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        aggregate_key: X,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        // The aggregate_key column stores compressed public keys, which
+        // always include a parity byte. Since the input here is an x-only
+        // public key we don't have a parity byte, so we lop it off when
+        // filtering.
+        let key: PublicKeyXOnly = aggregate_key.into();
         sqlx::query_as::<_, model::EncryptedDkgShares>(
             r#"
             SELECT
@@ -1467,10 +1475,10 @@ impl super::DbRead for PgStore {
               , signer_set_public_keys
               , signature_share_threshold
             FROM sbtc_signer.dkg_shares
-            WHERE aggregate_key = $1;
+            WHERE substring(aggregate_key FROM 2) = $1;
             "#,
         )
-        .bind(aggregate_key)
+        .bind(key)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1637,7 +1645,7 @@ impl super::DbRead for PgStore {
         // If we've swept funds before, then will have a signer output and
         // a minimum UTXO height, so let's try that first.
         let Some(min_block_height) = self.minimum_utxo_height().await? else {
-            // If the above functon returns None then we know that there
+            // If the above function returns None then we know that there
             // have been no confirmed sweep transactions thus far, so let's
             // try looking for a donation UTXO.
             return self.get_donation_utxo(chain_tip).await;
@@ -1646,7 +1654,7 @@ impl super::DbRead for PgStore {
         // transaction. Let's look for the UTXO in a block after our
         // min_block_height. Note that `Self::get_utxo` returns `None` only
         // when a reorg has affected all sweep transactions. If this
-        // happens we try seaching for a donation.
+        // happens we try searching for a donation.
         let output_type = model::TxOutputType::SignersOutput;
         let fut = self.get_utxo(chain_tip, output_type, min_block_height);
         match fut.await? {
@@ -1850,7 +1858,7 @@ impl super::DbRead for PgStore {
         _chain_tip: &model::BitcoinBlockHash,
         _context_window: u16,
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
-        // TODO: This can use a similiar query to
+        // TODO: This can use a similar query to
         // `get_swept_deposit_requests()`, but using withdrawal tables instead
         // of deposit.
         unimplemented!()
@@ -2829,9 +2837,9 @@ mod tests {
         // address in the transaction, then we will consider it a relevant
         // transaction. Now what if someone tries to pull a fast one by
         // deploying their own modified version of the sBTC smart contracts
-        // and creating contract calls against that? We'll the address of
+        // and creating contract calls against that? Well the address of
         // these contract calls won't match the ones that we are interested
-        // in and we will filter them out. We test that now,
+        // in, and we will filter them out. We test that now,
         let contract_call = TransactionContractCall {
             // This is the address of the poser that deployed their own
             // versions of the sBTC smart contracts.

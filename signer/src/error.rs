@@ -387,7 +387,7 @@ pub enum Error {
 
     /// Missing dkg shares
     #[error("missing dkg shares for the given aggregate key: {0}")]
-    MissingDkgShares(crate::keys::PublicKey),
+    MissingDkgShares(crate::keys::PublicKeyXOnly),
 
     /// Missing public key
     #[error("missing public key")]
@@ -410,6 +410,11 @@ pub enum Error {
     /// been.
     #[error("DKG has not been run")]
     NoDkgShares,
+
+    /// TODO: We don't want to be able to run DKG more than once. Soon this
+    /// restriction will be lifted.
+    #[error("DKG has already been run, can only run once")]
+    DkgHasAlreadyRun,
 
     /// Too many signer utxos
     #[error("too many signer utxos")]

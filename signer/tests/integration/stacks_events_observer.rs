@@ -109,7 +109,6 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         .expect("Wiping Emily database in test setup failed.");
 
     let body = COMPLETED_DEPOSIT_WEBHOOK.to_string();
-    let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
     let deposit_completed_event = get_registry_event_from_webhook(&body, |event| match event {
         RegistryEvent::CompletedDeposit(event) => Some(event),
         _ => panic!("Expected CompletedDeposit event"),
