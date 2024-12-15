@@ -48,7 +48,7 @@ services:
           -zmqpubrawblock="tcp://*:$${BITCOIN_ZMQ_PORT}"
 
   stacks-blockchain:
-    image: blockstack/stacks-blockchain:3.1.0.0.0
+    image: blockstack/stacks-blockchain:3.1.0.0.2
     container_name: stacks-blockchain
     restart: on-failure:3
     ports:
