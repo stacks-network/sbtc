@@ -8,8 +8,6 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
-use bitcoin::consensus::encode::deserialize;
-use bitcoin::consensus::encode::serialize;
 use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use clarity::codec::StacksMessageCodec as _;
@@ -49,8 +47,6 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
-use crate::message::BitcoinTransactionSignAck;
-use crate::message::BitcoinTransactionSignRequest;
 use crate::message::Payload;
 use crate::message::SignerDepositDecision;
 use crate::message::SignerMessage;
@@ -613,25 +609,6 @@ impl TryFrom<proto::StacksTransactionSignRequest> for StacksTransactionSignReque
     }
 }
 
-impl From<BitcoinTransactionSignRequest> for proto::BitcoinTransactionSignRequest {
-    fn from(value: BitcoinTransactionSignRequest) -> Self {
-        proto::BitcoinTransactionSignRequest {
-            tx: serialize(&value.tx),
-            aggregate_key: Some(value.aggregate_key.into()),
-        }
-    }
-}
-
-impl TryFrom<proto::BitcoinTransactionSignRequest> for BitcoinTransactionSignRequest {
-    type Error = Error;
-    fn try_from(value: proto::BitcoinTransactionSignRequest) -> Result<Self, Self::Error> {
-        Ok(BitcoinTransactionSignRequest {
-            tx: deserialize(&value.tx).map_err(Error::DecodeBitcoinTransaction)?,
-            aggregate_key: value.aggregate_key.required()?.try_into()?,
-        })
-    }
-}
-
 impl From<DkgBegin> for proto::DkgBegin {
     fn from(value: DkgBegin) -> Self {
         proto::DkgBegin { dkg_id: value.dkg_id }
@@ -1159,23 +1136,6 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
     }
 }
 
-impl From<BitcoinTransactionSignAck> for proto::BitcoinTransactionSignAck {
-    fn from(value: BitcoinTransactionSignAck) -> Self {
-        proto::BitcoinTransactionSignAck {
-            txid: Some(BitcoinTxId::from(value.txid).into()),
-        }
-    }
-}
-
-impl TryFrom<proto::BitcoinTransactionSignAck> for BitcoinTransactionSignAck {
-    type Error = Error;
-    fn try_from(value: proto::BitcoinTransactionSignAck) -> Result<Self, Self::Error> {
-        Ok(BitcoinTransactionSignAck {
-            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
-        })
-    }
-}
-
 impl From<StacksTransactionSignature> for proto::StacksTransactionSignature {
     fn from(value: StacksTransactionSignature) -> Self {
         proto::StacksTransactionSignature {
@@ -1340,12 +1300,6 @@ impl From<Payload> for proto::Payload {
             Payload::StacksTransactionSignature(inner) => {
                 proto::signer_message::Payload::StacksTransactionSignature(inner.into())
             }
-            Payload::BitcoinTransactionSignRequest(inner) => {
-                proto::signer_message::Payload::BitcoinTransactionSignRequest(inner.into())
-            }
-            Payload::BitcoinTransactionSignAck(inner) => {
-                proto::signer_message::Payload::BitcoinTransactionSignAck(inner.into())
-            }
             Payload::WstsMessage(inner) => {
                 proto::signer_message::Payload::WstsMessage(inner.into())
             }
@@ -1374,12 +1328,6 @@ impl TryFrom<proto::Payload> for Payload {
             }
             proto::signer_message::Payload::StacksTransactionSignature(inner) => {
                 Payload::StacksTransactionSignature(inner.try_into()?)
-            }
-            proto::signer_message::Payload::BitcoinTransactionSignRequest(inner) => {
-                Payload::BitcoinTransactionSignRequest(inner.try_into()?)
-            }
-            proto::signer_message::Payload::BitcoinTransactionSignAck(inner) => {
-                Payload::BitcoinTransactionSignAck(inner.try_into()?)
             }
             proto::signer_message::Payload::WstsMessage(inner) => {
                 Payload::WstsMessage(inner.try_into()?)
@@ -1695,8 +1643,6 @@ impl codec::ProtoSerializable for SignerMessage {
             Payload::SignerWithdrawalDecision(_) => "SBTC_SIGNER_WITHDRAWAL_DECISION",
             Payload::StacksTransactionSignRequest(_) => "SBTC_STACKS_TRANSACTION_SIGN_REQUEST",
             Payload::StacksTransactionSignature(_) => "SBTC_STACKS_TRANSACTION_SIGNATURE",
-            Payload::BitcoinTransactionSignRequest(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_REQUEST",
-            Payload::BitcoinTransactionSignAck(_) => "SBTC_BITCOIN_TRANSACTION_SIGN_ACK",
             Payload::WstsMessage(_) => "SBTC_WSTS_MESSAGE",
             Payload::BitcoinPreSignRequest(_) => "SBTC_BITCOIN_PRE_SIGN_REQUEST",
             Payload::BitcoinPreSignAck(_) => "SBTC_BITCOIN_PRE_SIGN_ACK",
@@ -2125,7 +2071,6 @@ mod tests {
     #[test_case(PhantomData::<(StacksPrincipal, proto::StacksPrincipal)>; "StacksPrincipal")]
     #[test_case(PhantomData::<(SignerDepositDecision, proto::SignerDepositDecision)>; "SignerDepositDecision")]
     #[test_case(PhantomData::<(SignerWithdrawalDecision, proto::SignerWithdrawalDecision)>; "SignerWithdrawalDecision")]
-    #[test_case(PhantomData::<(BitcoinTransactionSignAck, proto::BitcoinTransactionSignAck)>; "BitcoinTransactionSignAck")]
     #[test_case(PhantomData::<(StacksTransactionSignature, proto::StacksTransactionSignature)>; "StacksTransactionSignature")]
     #[test_case(PhantomData::<(CompleteDepositV1, proto::CompleteDeposit)>; "CompleteDeposit")]
     #[test_case(PhantomData::<(AcceptWithdrawalV1, proto::AcceptWithdrawal)>; "AcceptWithdrawal")]
@@ -2134,7 +2079,6 @@ mod tests {
     #[test_case(PhantomData::<(SmartContract, proto::SmartContract)>; "SmartContract")]
     #[test_case(PhantomData::<(Payload, proto::Payload)>; "Payload")]
     #[test_case(PhantomData::<(StacksTransactionSignRequest, proto::StacksTransactionSignRequest)>; "StacksTransactionSignRequest")]
-    #[test_case(PhantomData::<(BitcoinTransactionSignRequest, proto::BitcoinTransactionSignRequest)>; "BitcoinTransactionSignRequest")]
     #[test_case(PhantomData::<(WstsMessage, proto::WstsMessage)>; "WstsMessage")]
     #[test_case(PhantomData::<(SignerMessage, proto::SignerMessage)>; "SignerMessage")]
     #[test_case(PhantomData::<(Signed<SignerMessage>, proto::Signed)>; "Signed")]

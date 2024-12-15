@@ -86,7 +86,6 @@ pub struct Coordinator {
     network: network::in_memory::MpmcBroadcaster,
     wsts_coordinator: fire::Coordinator<wsts::v2::Aggregator>,
     private_key: PrivateKey,
-    num_signers: u32,
 }
 
 impl Coordinator {
@@ -130,7 +129,6 @@ impl Coordinator {
             network,
             wsts_coordinator,
             private_key: message_private_key,
-            num_signers,
         }
     }
 
@@ -157,68 +155,6 @@ impl Coordinator {
             }
             _ => panic!("unexpected operation result"),
         }
-    }
-
-    /// Request a transaction to be signed
-    pub async fn request_sign_transaction(
-        &mut self,
-        bitcoin_chain_tip: model::BitcoinBlockHash,
-        tx: bitcoin::Transaction,
-        aggregate_key: PublicKey,
-    ) {
-        let payload: message::Payload =
-            message::BitcoinTransactionSignRequest { tx, aggregate_key }.into();
-
-        let msg = payload
-            .to_message(bitcoin_chain_tip)
-            .sign_ecdsa(&self.private_key);
-
-        self.network
-            .broadcast(msg)
-            .await
-            .expect("failed to broadcast dkg begin msg");
-
-        let mut responses = 0;
-
-        let future = async move {
-            loop {
-                tracing::trace!(
-                    "[network{:0>2}] [resp. {}/{}] waiting for responses",
-                    self.network.id(),
-                    responses,
-                    self.num_signers
-                );
-                let msg = self.network.receive().await.expect("network error");
-
-                let message::Payload::BitcoinTransactionSignAck(_) = msg.inner.payload else {
-                    tracing::trace!(
-                        "[network{:0>2}] [resp. {}/{}] skipping: {}",
-                        self.network.id(),
-                        responses,
-                        self.num_signers,
-                        msg
-                    );
-                    continue;
-                };
-
-                responses += 1;
-                tracing::trace!(
-                    "[network{:0>2}] [resp. {}/{}] received message: {}",
-                    self.network.id(),
-                    responses,
-                    self.num_signers,
-                    msg
-                );
-
-                if responses >= self.num_signers {
-                    break;
-                }
-            }
-        };
-
-        tokio::time::timeout(Duration::from_secs(10), future)
-            .await
-            .unwrap()
     }
 
     /// Run a signing round

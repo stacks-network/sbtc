@@ -6,14 +6,6 @@ import "bitcoin/bitcoin.proto";
 import "crypto/common.proto";
 import "stacks/common.proto";
 
-// Represents a request to sign a Bitcoin transaction.
-message BitcoinTransactionSignRequest {
-  // The transaction.
-  bytes tx = 1;
-  // The aggregate key used to sign the transaction,
-  crypto.PublicKey aggregate_key = 2;
-}
-
 // Represents a request to sign a Stacks transaction.
 message StacksTransactionSignRequest {
   // This is the bitcoin aggregate key that was output from DKG. It is used
