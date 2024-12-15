@@ -17,7 +17,7 @@ pub fn set_up_build_info() {
         .args(["rev-parse", "HEAD"])
         .output()
     {
-        Ok(output) if output.status.success() => {
+        Ok(output) if output.status.success() && !output.stdout.is_empty() => {
             String::from_utf8_lossy(&output.stdout).to_string()
         }
         _ => std::env::var("GIT_COMMIT").unwrap_or_default(),
