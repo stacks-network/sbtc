@@ -181,12 +181,10 @@ where
                     .await?;
             }
             Payload::StacksTransactionSignRequest(_)
-            | Payload::BitcoinTransactionSignRequest(_)
             | Payload::BitcoinPreSignRequest(_)
             | Payload::BitcoinPreSignAck(_)
             | Payload::WstsMessage(_)
-            | Payload::StacksTransactionSignature(_)
-            | Payload::BitcoinTransactionSignAck(_) => (),
+            | Payload::StacksTransactionSignature(_) => (),
         };
 
         Ok(())

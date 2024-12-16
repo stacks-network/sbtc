@@ -21,7 +21,6 @@ use std::future::Future;
 use std::ops::Deref;
 use std::sync::OnceLock;
 
-use bitcoin::hashes::Hash as _;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::TxOut;
@@ -43,7 +42,6 @@ use blockstack_lib::clarity::vm::ContractName;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util_lib::strings::StacksString;
-use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::vm::ClarityVersion;
 
 use crate::bitcoin::BitcoinInteract;
@@ -54,6 +52,7 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 
 use super::api::StacksInteract;
@@ -318,15 +317,11 @@ impl AsContractCall for CompleteDepositV1 {
     /// Construct the input arguments to the complete-deposit-wrapper
     /// contract call.
     fn as_contract_args(&self) -> Vec<ClarityValue> {
-        let txid_data = self.outpoint.txid.to_byte_array().to_vec();
+        let txid_data = self.outpoint.txid.to_le_bytes().to_vec();
         let txid = BuffData { data: txid_data };
-        let sweep_txid_data = self.sweep_txid.to_byte_array().to_vec();
+        let sweep_txid_data = self.sweep_txid.to_le_bytes().to_vec();
         let sweep_txid = BuffData { data: sweep_txid_data };
-        // We first convert it into this type because the BitcoinBlockHash
-        // has the underlying bytes in that type are reversed from what the
-        // stacks-node expects.
-        let burn_hash = BurnchainHeaderHash::from(self.sweep_block_hash);
-        let burn_hash_data = burn_hash.into_bytes().to_vec();
+        let burn_hash_data = self.sweep_block_hash.to_le_bytes().to_vec();
         let burn_hash_buff = BuffData { data: burn_hash_data };
 
         vec![
@@ -651,13 +646,9 @@ impl AsContractCall for AcceptWithdrawalV1 {
         self.deployer
     }
     fn as_contract_args(&self) -> Vec<ClarityValue> {
-        let txid_data = self.outpoint.txid.to_byte_array().to_vec();
+        let txid_data = self.outpoint.txid.to_le_bytes().to_vec();
         let txid = BuffData { data: txid_data };
-        // We first convert it into this type because the BitcoinBlockHash
-        // has the underlying bytes in that type are reversed from what the
-        // stacks-node expects.
-        let burn_hash = BurnchainHeaderHash::from(self.sweep_block_hash);
-        let burn_hash_data = burn_hash.into_bytes().to_vec();
+        let burn_hash_data = self.sweep_block_hash.to_le_bytes().to_vec();
         let burn_hash_buff = BuffData { data: burn_hash_data };
 
         vec![

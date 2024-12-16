@@ -21,6 +21,11 @@ export class Constants {
     static DEV_STAGE_NAME: string = "dev";
 
     /**
+     * Stage name used for temporary stacks.
+     */
+    static TEMP_STAGE_NAME: string = "temp";
+
+    /**
      * Default stage name used when no stage name is provided.
      */
     static DEFAULT_STAGE_NAME: string = "dev";

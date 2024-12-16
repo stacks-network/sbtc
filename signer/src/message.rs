@@ -30,10 +30,6 @@ pub enum Payload {
     StacksTransactionSignRequest(StacksTransactionSignRequest),
     /// A signature of a Stacks transaction
     StacksTransactionSignature(StacksTransactionSignature),
-    /// A request to sign a Bitcoin transaction
-    BitcoinTransactionSignRequest(BitcoinTransactionSignRequest),
-    /// An acknowledgment of a signed Bitcoin transaction
-    BitcoinTransactionSignAck(BitcoinTransactionSignAck),
     /// Contains all variants for DKG and WSTS signing rounds
     WstsMessage(WstsMessage),
     /// Information about a new Bitcoin block sign request
@@ -49,10 +45,6 @@ impl std::fmt::Display for Payload {
             Self::SignerWithdrawalDecision(_) => write!(f, "SignerWithdrawDecision(..)"),
             Self::StacksTransactionSignRequest(_) => write!(f, "StacksTransactionSignRequest(..)"),
             Self::StacksTransactionSignature(_) => write!(f, "StacksTransactionSignature(..)"),
-            Self::BitcoinTransactionSignRequest(_) => {
-                write!(f, "BitcoinTransactionSignRequest(..)")
-            }
-            Self::BitcoinTransactionSignAck(_) => write!(f, "BitcoinTransactionSignAck(..)"),
             Self::WstsMessage(msg) => {
                 write!(f, "WstsMessage(")?;
                 match msg.inner {
@@ -98,18 +90,6 @@ impl From<SignerDepositDecision> for Payload {
 impl From<SignerWithdrawalDecision> for Payload {
     fn from(value: SignerWithdrawalDecision) -> Self {
         Self::SignerWithdrawalDecision(value)
-    }
-}
-
-impl From<BitcoinTransactionSignRequest> for Payload {
-    fn from(value: BitcoinTransactionSignRequest) -> Self {
-        Self::BitcoinTransactionSignRequest(value)
-    }
-}
-
-impl From<BitcoinTransactionSignAck> for Payload {
-    fn from(value: BitcoinTransactionSignAck) -> Self {
-        Self::BitcoinTransactionSignAck(value)
     }
 }
 
@@ -213,22 +193,6 @@ pub struct StacksTransactionSignature {
     pub signature: RecoverableSignature,
 }
 
-/// Represents a request to sign a Bitcoin transaction.
-#[derive(Debug, Clone, PartialEq)]
-pub struct BitcoinTransactionSignRequest {
-    /// The transaction.
-    pub tx: bitcoin::Transaction,
-    /// The aggregate key used to sign the transaction,
-    pub aggregate_key: PublicKey,
-}
-
-/// Represents an acknowledgment of a signed Bitcoin transaction.
-#[derive(Debug, Clone, PartialEq)]
-pub struct BitcoinTransactionSignAck {
-    /// The ID of the acknowledged transaction.
-    pub txid: bitcoin::Txid,
-}
-
 /// The transaction context needed by the signers to reconstruct the transaction.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BitcoinPreSignRequest {
@@ -277,8 +241,6 @@ mod tests {
     #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
     #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
     #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
-    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
-    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
     #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
     #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
     fn signer_messages_should_be_signable_with_type<P>(_: PhantomData<P>)
@@ -299,8 +261,6 @@ mod tests {
     #[test_case(PhantomData::<SignerWithdrawalDecision> ; "SignerWithdrawalDecision")]
     #[test_case(PhantomData::<StacksTransactionSignRequest> ; "StacksTransactionSignRequest")]
     #[test_case(PhantomData::<StacksTransactionSignature> ; "StacksTransactionSignature")]
-    #[test_case(PhantomData::<BitcoinTransactionSignRequest> ; "BitcoinTransactionSignRequest")]
-    #[test_case(PhantomData::<BitcoinTransactionSignAck> ; "BitcoinTransactionSignAck")]
     #[test_case(PhantomData::<WstsMessage> ; "WstsMessage")]
     #[test_case(PhantomData::<BitcoinPreSignRequest> ; "BitcoinPreSignRequest")]
     fn signer_messages_should_be_encodable_with_type<P>(_: PhantomData<P>)

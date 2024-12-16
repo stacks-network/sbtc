@@ -1,18 +1,6 @@
-import {
-  constructMultisigAddress,
-  currentSignerAddr,
-  deployer,
-  errors,
-  randomPublicKeys,
-  registry,
-  signers,
-  depositUpdate,
-  getCurrentBurnInfo,
-  deposit,
-  alice,
-} from "./helpers";
-import { test, expect, describe } from "vitest";
-import { txOk, txErr, rov, filterEvents } from "@clarigen/test";
+import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { filterEvents, rov, txErr, txOk } from "@clarigen/test";
+import { p2ms, p2sh } from "@scure/btc-signer";
 import {
   AddressHashMode,
   AddressVersion,
@@ -21,9 +9,21 @@ import {
   pubKeyfromPrivKey,
   serializePublicKey,
 } from "@stacks/transactions";
-import { p2ms, p2sh } from "@scure/btc-signer";
 import { b58ToC32 } from "c32check";
-import { CoreNodeEventType, cvToValue } from "@clarigen/core";
+import { describe, expect, test } from "vitest";
+import {
+  alice,
+  constructMultisigAddress,
+  currentSignerAddr,
+  deployer,
+  deposit,
+  depositUpdate,
+  errors,
+  getCurrentBurnInfo,
+  randomPublicKeys,
+  registry,
+  signers,
+} from "./helpers";
 
 describe("sBTC bootstrap signers contract", () => {
   describe("Rotate keys tests", () => {
@@ -42,7 +42,7 @@ describe("sBTC bootstrap signers contract", () => {
 
       const expectedPrincipal = constructMultisigAddress(
         newKeys,
-        newSignatureThreshold,
+        newSignatureThreshold
       );
 
       const prints = filterEvents(
@@ -62,7 +62,7 @@ describe("sBTC bootstrap signers contract", () => {
         newKeys: newKeys,
         newAddress: expectedPrincipal,
         newAggregatePubkey: new Uint8Array(33).fill(0),
-        newSignatureThreshold: newSignatureThreshold
+        newSignatureThreshold: newSignatureThreshold,
       });
 
       const setAggKey = rov(registry.getCurrentAggregatePubkey());
@@ -176,6 +176,16 @@ describe("sBTC bootstrap signers contract", () => {
           )
         );
         expect(addr).toEqual(stacksJsAddr);
+      });
+
+      test("principal created from 2 zero pubKey is correct", () => {
+        const addr = rov(
+          signers.pubkeysToPrincipal(
+            [new Uint8Array(33).fill(0), new Uint8Array(33).fill(0)],
+            2
+          )
+        );
+        expect(addr).toEqual("SN3N8ATTRKWKK2N8TTSBNW5CRH2CSV2A0NYF7HHDF");
       });
 
       // In this example, use yet another library to construct a p2sh ms
@@ -319,5 +329,4 @@ describe("sBTC bootstrap signers contract", () => {
       expect(receipt3.value).toEqual(true);
     });
   });
-
 });

@@ -1,5 +1,7 @@
 FROM rust:1.81.0-slim-bookworm AS build
 
+ARG CARGO_BUILD_ARGS="--release"
+
 # Install dependencies.
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends \
@@ -20,7 +22,7 @@ RUN npm install -g @openapitools/openapi-generator-cli
 WORKDIR /code/sbtc
 COPY . .
 RUN make install && make build
-RUN cargo build --bin blocklist-client
+RUN cargo build --bin blocklist-client ${CARGO_BUILD_ARGS}
 
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS blocklist-client

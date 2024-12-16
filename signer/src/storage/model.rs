@@ -594,7 +594,7 @@ pub enum TxOutputType {
 #[strum(serialize_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum TxPrevoutType {
-    /// An output controled by the signers spent as an input.
+    /// An output controlled by the signers spent as an input.
     SignersInput,
     /// A deposit request TXO being spent as an input
     Deposit,
@@ -621,6 +621,30 @@ pub struct QualifiedRequestId {
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     pub block_hash: StacksBlockHash,
+}
+
+/// This trait adds a function for converting a type into bytes to
+/// little-endian byte order. This is because stacks-core expects
+/// bitcoin block hashes to be in little-endian byte order when evaluating
+/// some clarity functions.
+///
+/// Both [`bitcoin::BlockHash`] and [`bitcoin::Txid`] are hash types that
+/// store bytes as SHA256 output, which is in big-endian order. Stacks-core
+/// stores hashes in little-endian byte order[2], implying that clarity
+/// functions, like `get-burn-block-info?`, return bitcoin block hashes in
+/// little-endian byte order. Note that Bitcoin-core transmits hashes in
+/// big-endian byte order[1] through the RPC interface, but the wire and
+/// zeromq interfaces transmit hashes in little-endian order[3].
+///
+/// [^1]: See the Note in
+///     <https://github.com/bitcoin/bitcoin/blob/62bd61de110b057cbfd6e31e4d0b727d93119c72/doc/zmq.md>.
+/// [^2]: <https://github.com/stacks-network/stacks-core/blob/70d24ea179840763c2335870d0965b31b37685d6/stacks-common/src/types/chainstate.rs#L427-L432>
+/// [^3]: <https://developer.bitcoin.org/reference/block_chain.html#block-chain>
+///       <https://developer.bitcoin.org/reference/p2p_networking.html>
+/// <https://learnmeabitcoin.com/technical/general/byte-order/>
+pub trait ToLittleEndianOrder: Sized {
+    /// Return the bytes in little-endian order.
+    fn to_le_bytes(&self) -> [u8; 32];
 }
 
 /// A bitcoin transaction
@@ -664,6 +688,20 @@ impl BitcoinTxId {
     }
 }
 
+impl ToLittleEndianOrder for BitcoinTxId {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        self.deref().to_le_bytes()
+    }
+}
+
+impl ToLittleEndianOrder for bitcoin::Txid {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let mut bytes = self.to_byte_array();
+        bytes.reverse();
+        bytes
+    }
+}
+
 impl From<bitcoin::Txid> for BitcoinTxId {
     fn from(value: bitcoin::Txid) -> Self {
         Self(value)
@@ -696,6 +734,20 @@ impl BitcoinBlockHash {
     /// Return the inner bytes for the block hash
     pub fn into_bytes(&self) -> [u8; 32] {
         self.0.to_byte_array()
+    }
+}
+
+impl ToLittleEndianOrder for BitcoinBlockHash {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        self.deref().to_le_bytes()
+    }
+}
+
+impl ToLittleEndianOrder for bitcoin::BlockHash {
+    fn to_le_bytes(&self) -> [u8; 32] {
+        let mut bytes = self.to_byte_array();
+        bytes.reverse();
+        bytes
     }
 }
 
@@ -746,9 +798,7 @@ impl From<BurnchainHeaderHash> for BitcoinBlockHash {
 
 impl From<BitcoinBlockHash> for BurnchainHeaderHash {
     fn from(value: BitcoinBlockHash) -> Self {
-        let mut bytes = value.to_byte_array();
-        bytes.reverse();
-        BurnchainHeaderHash(bytes)
+        BurnchainHeaderHash(value.to_le_bytes())
     }
 }
 
@@ -1033,6 +1083,8 @@ mod tests {
     use fake::Fake;
     use rand::SeedableRng;
 
+    use crate::stacks::events::FromLittleEndianOrder;
+
     use super::*;
 
     #[test]
@@ -1048,5 +1100,20 @@ mod tests {
         let block_hash = BitcoinBlockHash::from(stacks_hash);
         let round_trip = BurnchainHeaderHash::from(block_hash);
         assert_eq!(stacks_hash, round_trip);
+    }
+
+    #[test]
+    fn endian_conversion() {
+        let block_hash: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rand::rngs::OsRng);
+        let block_hash = bitcoin::BlockHash::from(block_hash);
+        let round_trip = bitcoin::BlockHash::from_le_bytes(block_hash.to_le_bytes());
+
+        assert_eq!(block_hash, round_trip);
+
+        let block_hash: BitcoinTxId = fake::Faker.fake_with_rng(&mut rand::rngs::OsRng);
+        let block_hash = bitcoin::Txid::from(block_hash);
+        let round_trip = bitcoin::Txid::from_le_bytes(block_hash.to_le_bytes());
+
+        assert_eq!(block_hash, round_trip);
     }
 }

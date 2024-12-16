@@ -63,7 +63,7 @@ events_keys = ["*"]
 
 # Add emily-sidecar as an event observer
 [[events_observer]]
-endpoint = "host.docker.internal:5000"
+endpoint = "host.docker.internal:20540"
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
