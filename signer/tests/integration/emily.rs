@@ -219,6 +219,7 @@ async fn deposit_flow() {
         bitcoin_txid: deposit_request.outpoint.txid.to_string(),
         deposit_script: deposit_request.deposit_script.to_hex_string(),
         reclaim_script: deposit_request.reclaim_script.to_hex_string(),
+        amount: Some(Some(deposit_request.amount)),
     };
 
     // Create a fresh block for the block observer to process
@@ -582,6 +583,7 @@ async fn get_deposit_request_works() {
         bitcoin_txid: setup.tx.compute_txid().to_string(),
         deposit_script: setup.deposit.deposit_script().to_hex_string(),
         reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+        amount: Some(Some(amount_sats)),
     };
 
     deposit_api::create_deposit(emily_client.config(), emily_request.clone())

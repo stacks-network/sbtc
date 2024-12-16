@@ -441,6 +441,7 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         bitcoin_txid: bitcoin_txid.clone(),
         deposit_script: tx_setup.deposit.deposit_script().to_hex_string(),
         reclaim_script: tx_setup.reclaim.reclaim_script().to_hex_string(),
+        amount: Some(Some(deposit_completed_event.amount)),
     };
     let resp = create_deposit(&emily_context, create_deposity_req).await;
     assert!(resp.is_ok());

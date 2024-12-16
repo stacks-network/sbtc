@@ -103,6 +103,7 @@ async fn create_and_get_deposit_happy_path() {
         bitcoin_txid: bitcoin_txid.into(),
         reclaim_script: reclaim_script.clone(),
         deposit_script: deposit_script.clone(),
+        amount: Some(Some(DEPOSIT_AMOUNT_SATS)),
     };
 
     let expected_deposit = Deposit {
@@ -166,6 +167,7 @@ async fn wipe_databases_test() {
         bitcoin_txid: bitcoin_txid.into(),
         reclaim_script: reclaim_script.clone(),
         deposit_script: deposit_script.clone(),
+        amount: Some(Some(DEPOSIT_AMOUNT_SATS)),
     };
 
     // Act.
@@ -219,6 +221,7 @@ async fn get_deposits_for_transaction() {
             bitcoin_txid: bitcoin_txid.into(),
             deposit_script: deposit_script.clone(),
             reclaim_script: reclaim_script.clone(),
+            amount: Some(Some(DEPOSIT_AMOUNT_SATS)),
         };
         create_requests.push(request);
 
@@ -292,6 +295,7 @@ async fn get_deposits() {
                 bitcoin_txid: bitcoin_txid.into(),
                 deposit_script: deposit_script.clone(),
                 reclaim_script: reclaim_script.clone(),
+                amount: Some(Some(DEPOSIT_AMOUNT_SATS)),
             };
             create_requests.push(request);
 
@@ -402,6 +406,7 @@ async fn update_deposits() {
                 bitcoin_txid: bitcoin_txid.into(),
                 deposit_script: deposit_script.clone(),
                 reclaim_script: reclaim_script.clone(),
+                amount: Some(Some(DEPOSIT_AMOUNT_SATS)),
             };
             create_requests.push(create_request);
 
@@ -478,6 +483,7 @@ async fn update_deposits_updates_chainstate() {
         bitcoin_txid: bitcoin_txid.into(),
         deposit_script: deposit_script.clone(),
         reclaim_script: reclaim_script.clone(),
+        amount: Some(Some(DEPOSIT_AMOUNT_SATS)),
     };
 
     // It's okay to say it's accepted over and over.

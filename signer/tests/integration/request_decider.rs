@@ -374,6 +374,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
         bitcoin_txid: setup.deposit_request.outpoint.txid.to_string(),
         deposit_script: setup.deposit_request.deposit_script.to_hex_string(),
         reclaim_script: setup.deposit_request.reclaim_script.to_hex_string(),
+        amount: Some(Some(setup.deposit_request.amount)),
     };
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await
