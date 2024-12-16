@@ -802,7 +802,7 @@ mod tests {
             amount: 100,
             max_fee: 1,
             recipient: ScriptBuf::default(),
-            txid: *stacks_first_tx.txid,
+            txid: sbtc::events::StacksTxid(stacks_first_tx.txid.0),
             sender: PrincipalData::Standard(StandardPrincipalData::transient()),
             block_height: test_data.bitcoin_blocks[0].block_height,
         };
