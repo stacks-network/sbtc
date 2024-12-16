@@ -103,25 +103,30 @@ pub async fn get_chainstate_at_height(
 #[instrument(skip(context))]
 pub async fn set_chainstate(
     context: EmilyContext,
-    api_key: String,
+    maybe_api_key: Option<String>,
     body: Chainstate,
 ) -> impl warp::reply::Reply {
     debug!("Attempting to set chainstate: {body:?}");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        api_key: String,
+        maybe_api_key: Option<String>,
         body: Chainstate,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
-        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
+
+        // Get whether the API key is provided and allowed to initiate a reorg.
+        let can_reorg = maybe_api_key
+            .map(|api_key| context.settings.trusted_reorg_api_key == api_key)
+            .unwrap_or(false);
+
         add_chainstate_entry_or_reorg(&context, can_reorg, &chainstate).await?;
         // Respond.
         Ok(with_status(json(&chainstate), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, api_key, body)
+    handler(context, maybe_api_key, body)
         .await
         .map_err(|error| {
             warn!("Failed to set chainstate with error: {}", error);
@@ -150,25 +155,30 @@ pub async fn set_chainstate(
 #[instrument(skip(context))]
 pub async fn update_chainstate(
     context: EmilyContext,
-    api_key: String,
+    maybe_api_key: Option<String>,
     request: Chainstate,
 ) -> impl warp::reply::Reply {
     debug!("Attempting to update chainstate: {request:?}");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        api_key: String,
+        maybe_api_key: Option<String>,
         body: Chainstate,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let chainstate: Chainstate = body;
-        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
+
+        // Get whether the API key is provided and allowed to initiate a reorg.
+        let can_reorg = maybe_api_key
+            .map(|api_key| context.settings.trusted_reorg_api_key == api_key)
+            .unwrap_or(false);
+
         add_chainstate_entry_or_reorg(&context, can_reorg, &chainstate).await?;
         // Respond.
         Ok(with_status(json(&chainstate), StatusCode::CREATED))
     }
     // Handle and respond.
-    handler(context, api_key, request)
+    handler(context, maybe_api_key, request)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
