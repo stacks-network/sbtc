@@ -172,7 +172,7 @@ impl SbtcRequests {
             })
             .map(RequestRef::Withdrawal);
 
-        // Filter deposit requests based on two constraints:
+        // Filter deposit requests based on four constraints:
         // 1. The user's max fee must be >= our minimum required fee for deposits
         //     (based on fixed deposit tx size)
         // 2. The deposit amount must be greater than or equal to the per-deposit minimum
@@ -194,11 +194,13 @@ impl SbtcRequests {
                 } else {
                     false
                 };
-            if is_fee_valid
+
+            let satisfies_limits = is_fee_valid
                 && is_above_per_deposit_minimum
                 && is_within_per_deposit_cap
-                && is_within_max_mintable_cap
-            {
+                && is_within_max_mintable_cap;
+
+            if satisfies_limits {
                 amount_to_mint += req.amount;
                 Some(RequestRef::Deposit(req))
             } else {
@@ -2850,7 +2852,6 @@ mod tests {
                 None,
                 Some(Amount::from_sat(per_deposit_minimum)),
                 Some(Amount::from_sat(per_deposit_cap)),
-                None,
                 None,
                 Some(Amount::from_sat(max_mintable)),
             ),

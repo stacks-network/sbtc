@@ -342,9 +342,6 @@ impl EmilyInteract for EmilyClient {
         let per_deposit_cap = limits
             .per_deposit_cap
             .and_then(|cap| cap.map(Amount::from_sat));
-        let per_withdrawal_minimum: Option<Amount> = limits
-            .per_withdrawal_minimum
-            .and_then(|min| min.map(Amount::from_sat));
         let per_withdrawal_cap = limits
             .per_withdrawal_cap
             .and_then(|cap| cap.map(Amount::from_sat));
@@ -353,7 +350,6 @@ impl EmilyInteract for EmilyClient {
             total_cap,
             per_deposit_minimum,
             per_deposit_cap,
-            per_withdrawal_minimum,
             per_withdrawal_cap,
             None,
         ))
