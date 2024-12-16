@@ -29,7 +29,7 @@ RUN cargo build --bin signer ${CARGO_BUILD_ARGS}
 
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS signer
-COPY --from=build /code/sbtc/target/debug/signer /usr/local/bin/signer
+COPY --from=build /code/sbtc/target/release/signer /usr/local/bin/signer
 
 # ca-certificates is required to establish TLS connections.
 # gettext provides envsubst
