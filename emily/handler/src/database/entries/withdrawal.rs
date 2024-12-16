@@ -160,13 +160,14 @@ impl WithdrawalEntry {
     /// reflect the latest data in the history vector with the latest entry in the history vector.
     pub fn synchronize_with_history(&mut self) -> Result<(), Error> {
         // Get latest event.
-        let latest_event = self.latest_event()?;
+        let latest_event = self.latest_event()?.clone();
         // Calculate the new values.
         let new_status: Status = (&latest_event.status).into();
         let new_last_update_height: u64 = latest_event.stacks_block_height;
         // Set variables.
         self.status = new_status;
         self.last_update_height = new_last_update_height;
+        self.last_update_block_hash = latest_event.stacks_block_hash.clone();
         // Return.
         Ok(())
     }
@@ -544,6 +545,8 @@ impl WithdrawalUpdatePackage {
 
 #[cfg(test)]
 mod tests {
+    use crate::api::models::chainstate::Chainstate;
+    use crate::api::models::common::Fulfillment;
     use crate::database::entries::StatusEntry;
     use crate::{
         api::models::common::Status,
@@ -552,6 +555,7 @@ mod tests {
             WithdrawalParametersEntry,
         },
     };
+    use test_case::test_case;
 
     #[test]
     fn withdrawal_update_should_be_unnecessary_when_event_is_present() {
@@ -635,5 +639,88 @@ mod tests {
 
         // Assert
         assert!(!is_unnecessary);
+    }
+
+    #[test_case(0, "hash0", 0, "hash0", StatusEntry::Pending; "reorg around genesis sets status to pending at genesis")]
+    #[test_case(5, "hash5", 4, "hash4", StatusEntry::Accepted; "reorg goes to earliest canonical event 1")]
+    #[test_case(4, "hash4", 4, "hash4", StatusEntry::Accepted; "reorg setting a height consistent with an event keeps it")]
+    #[test_case(4, "hash4-1", 2, "hash2", StatusEntry::Pending; "reorg setting a height inconsistent with an event removes it")]
+    #[test_case(3, "hash3", 2, "hash2", StatusEntry::Pending; "reorg  goes to earliest canonical event 2")]
+    fn reorganizing_around_a_new_chainstate_results_in_valid_withdrawal(
+        reorg_height: u64,
+        reorg_hash: &str,
+        expected_height: u64,
+        expected_hash: &str,
+        expected_status: StatusEntry,
+    ) {
+        let pending = WithdrawalEvent {
+            status: StatusEntry::Pending,
+            message: "initial test pending".to_string(),
+            stacks_block_height: 2,
+            stacks_block_hash: "hash2".to_string(),
+        };
+
+        let accepted = WithdrawalEvent {
+            status: StatusEntry::Accepted,
+            message: "accepted".to_string(),
+            stacks_block_height: 4,
+            stacks_block_hash: "hash4".to_string(),
+        };
+
+        let fulfillment: Fulfillment = Default::default();
+        let confirmed = WithdrawalEvent {
+            status: StatusEntry::Confirmed(fulfillment.clone()),
+            message: "confirmed".to_string(),
+            stacks_block_height: 6,
+            stacks_block_hash: "hash6".to_string(),
+        };
+
+        let mut withdrawal_entry = WithdrawalEntry {
+            key: WithdrawalEntryKey {
+                request_id: 1,
+                stacks_block_hash: "hash".to_string(),
+            },
+            stacks_block_height: 1,
+            version: 1,
+            recipient: "test-recipient".to_string(),
+            amount: 1,
+            parameters: WithdrawalParametersEntry { max_fee: 1 },
+            status: Status::Confirmed,
+            last_update_height: 6,
+            last_update_block_hash: "hash6".to_string(),
+            history: vec![pending.clone(), accepted.clone(), confirmed.clone()],
+        };
+
+        // Ensure the withdrawal is valid.
+        assert!(
+            withdrawal_entry.validate().is_ok(),
+            "Test withdrawal must be valid before reorg.",
+        );
+
+        // Reorganize around a new chainstate.
+        let chainstate = Chainstate {
+            stacks_block_height: reorg_height,
+            stacks_block_hash: reorg_hash.to_string(),
+        };
+        withdrawal_entry.reorganize_around(&chainstate).unwrap();
+
+        // Ensure the withdrawal is valid.
+        assert!(
+            withdrawal_entry.validate().is_ok(),
+            "Withdrawal must be valid after reorg.",
+        );
+
+        // Check latest height.
+        assert_eq!(withdrawal_entry.last_update_height, expected_height);
+        assert_eq!(withdrawal_entry.last_update_block_hash, expected_hash);
+        assert_eq!(withdrawal_entry.status, (&expected_status).into());
+
+        let latest_event = withdrawal_entry
+            .latest_event()
+            .expect("must have latest event")
+            .clone();
+        assert_eq!(latest_event.stacks_block_height, expected_height);
+        assert_eq!(latest_event.stacks_block_hash, expected_hash);
+        assert_eq!(latest_event.status, expected_status);
     }
 }

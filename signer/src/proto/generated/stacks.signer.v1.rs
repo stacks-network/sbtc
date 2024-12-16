@@ -35,14 +35,6 @@ pub struct SignerWithdrawalDecision {
     #[prost(bool, tag = "4")]
     pub accepted: bool,
 }
-/// Represents an acknowledgment of a signed Bitcoin transaction.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BitcoinTransactionSignAck {
-    /// The ID of the acknowledged transaction.
-    #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
-}
 /// Represents a signature of a Stacks transaction.
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -55,17 +47,6 @@ pub struct StacksTransactionSignature {
     pub signature: ::core::option::Option<
         super::super::super::crypto::RecoverableSignature,
     >,
-}
-/// Represents a request to sign a Bitcoin transaction.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
-pub struct BitcoinTransactionSignRequest {
-    /// The transaction.
-    #[prost(bytes = "vec", tag = "1")]
-    pub tx: ::prost::alloc::vec::Vec<u8>,
-    /// The aggregate key used to sign the transaction,
-    #[prost(message, optional, tag = "2")]
-    pub aggregate_key: ::core::option::Option<super::super::super::crypto::PublicKey>,
 }
 /// Represents a request to sign a Stacks transaction.
 #[allow(clippy::derive_partial_eq_without_eq)]
@@ -281,7 +262,7 @@ pub struct SignerMessage {
         super::super::super::bitcoin::BitcoinBlockHash,
     >,
     /// The message payload
-    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 6, 7, 8, 10, 11")]
+    #[prost(oneof = "signer_message::Payload", tags = "2, 3, 4, 5, 8, 10, 11")]
     pub payload: ::core::option::Option<signer_message::Payload>,
 }
 /// Nested message and enum types in `SignerMessage`.
@@ -302,12 +283,6 @@ pub mod signer_message {
         /// A signature of a Stacks transaction
         #[prost(message, tag = "5")]
         StacksTransactionSignature(super::StacksTransactionSignature),
-        /// A request to sign a Bitcoin transaction
-        #[prost(message, tag = "6")]
-        BitcoinTransactionSignRequest(super::BitcoinTransactionSignRequest),
-        /// An acknowledgment of a signed Bitcoin transaction
-        #[prost(message, tag = "7")]
-        BitcoinTransactionSignAck(super::BitcoinTransactionSignAck),
         /// Contains all variants for DKG and WSTS signing rounds
         #[prost(message, tag = "8")]
         WstsMessage(super::WstsMessage),

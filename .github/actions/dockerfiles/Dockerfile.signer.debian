@@ -3,6 +3,8 @@ FROM rust:1.81.0-slim-bookworm AS build
 ARG GIT_COMMIT
 RUN test -n "$GIT_COMMIT" || (echo "GIT_COMMIT not set" && false)
 
+ARG CARGO_BUILD_ARGS="--release"
+
 # Install dependencies.
 RUN apt-get update
 RUN apt-get install -y --no-install-recommends \
@@ -23,7 +25,7 @@ RUN npm install -g pnpm@9 && \
 WORKDIR /code/sbtc
 COPY . .
 RUN make install && make build
-RUN cargo build --bin signer
+RUN cargo build --bin signer ${CARGO_BUILD_ARGS}
 
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS signer

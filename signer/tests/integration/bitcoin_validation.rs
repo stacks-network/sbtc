@@ -176,6 +176,8 @@ async fn one_tx_per_request_set() {
     assert_eq!(deposit.prevout_output_index, deposit_outpoint.vout);
     assert!(deposit.will_sign);
     assert!(deposit.is_valid_tx);
+
+    testing::storage::drop_db(db).await;
 }
 
 /// Test that including a single invalid transaction in a set of requests
@@ -295,6 +297,8 @@ async fn one_invalid_deposit_invalidates_tx() {
     assert_eq!(deposit2.prevout_output_index, outpoint.vout);
     assert!(!deposit2.will_sign);
     assert!(!deposit2.is_valid_tx);
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -364,6 +368,8 @@ async fn one_withdrawal_errors_validation() {
     let result = request.construct_package_sighashes(&ctx, &btc_ctx).await;
 
     assert!(result.is_err());
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -527,6 +533,8 @@ async fn cannot_sign_deposit_is_ok() {
     assert_eq!(sighashes.deposits.len(), 2);
     assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
     assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -657,6 +665,8 @@ async fn sighashes_match_from_sbtc_requests_object() {
     assert_eq!(sighashes.deposits.len(), 2);
     assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
     assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -742,4 +752,6 @@ async fn outcome_is_independent_of_input_order() {
     let input_rows2 = set2.to_input_rows();
 
     assert_eq!(input_rows1, input_rows2);
+
+    testing::storage::drop_db(db).await;
 }

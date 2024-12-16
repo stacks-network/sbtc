@@ -1715,6 +1715,13 @@
             "nullable": true,
             "minimum": 0
           },
+          "perDepositMinimum": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per deposit minimum. If none then there is no minimum.",
+            "nullable": true,
+            "minimum": 0
+          },
           "perWithdrawalCap": {
             "type": "integer",
             "format": "int64",
@@ -2178,6 +2185,13 @@
             "type": "integer",
             "format": "int64",
             "description": "Per deposit cap. If none then there is no cap.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "perDepositMinimum": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Per deposit minimum. If none then there is no minimum.",
             "nullable": true,
             "minimum": 0
           },

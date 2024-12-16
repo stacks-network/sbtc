@@ -11,6 +11,8 @@ use utoipa::{ToResponse, ToSchema};
 pub struct Limits {
     /// Represents the total cap for all pegged-in BTC/sBTC.
     pub peg_cap: Option<u64>,
+    /// Per deposit minimum. If none then there is no minimum.
+    pub per_deposit_minimum: Option<u64>,
     /// Per deposit cap. If none then there is no cap.
     pub per_deposit_cap: Option<u64>,
     /// Per withdrawal cap. If none then there is no cap.
@@ -38,6 +40,8 @@ pub struct Limits {
 pub struct AccountLimits {
     /// Represents the current sBTC limits.
     pub peg_cap: Option<u64>,
+    /// Per deposit minimum. If none then there is no minimum.
+    pub per_deposit_minimum: Option<u64>,
     /// Per deposit cap. If none then the cap is the same as the global per deposit cap.
     pub per_deposit_cap: Option<u64>,
     /// Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.
