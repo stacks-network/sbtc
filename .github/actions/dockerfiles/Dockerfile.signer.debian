@@ -1,5 +1,8 @@
 FROM rust:1.81.0-slim-bookworm AS build
 
+ARG GIT_COMMIT
+RUN test -n "$GIT_COMMIT" || (echo "GIT_COMMIT not set" && false)
+
 ARG CARGO_BUILD_ARGS="--release"
 
 # Install dependencies.
@@ -14,10 +17,10 @@ RUN apt-get install -y --no-install-recommends \
     npm \
     default-jre \ 
     g++ && \
-        apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN npm install -g pnpm@9
-RUN npm install -g @openapitools/openapi-generator-cli
+RUN npm install -g pnpm@9 && \
+    npm install -g @openapitools/openapi-generator-cli
 
 WORKDIR /code/sbtc
 COPY . .
@@ -32,5 +35,5 @@ COPY --from=build /code/sbtc/target/debug/signer /usr/local/bin/signer
 # gettext provides envsubst
 
 RUN apt-get update && apt-get install -y ca-certificates gettext --no-install-recommends && \
-        apt-get clean && rm -rf /var/lib/apt/lists/*
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 CMD ["/usr/local/bin/signer --config /signer-config.toml --migrate-db"]

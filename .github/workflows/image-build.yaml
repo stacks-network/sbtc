@@ -96,3 +96,5 @@ jobs:
           labels: ${{ steps.docker_metadata.outputs.labels }}
           target: ${{ matrix.docker_target }}
           push: true
+          build-args: |
+            GIT_COMMIT=${{ github.ref_name }}
