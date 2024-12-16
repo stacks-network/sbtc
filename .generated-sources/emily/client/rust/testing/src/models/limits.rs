@@ -33,6 +33,14 @@ pub struct Limits {
         skip_serializing_if = "Option::is_none"
     )]
     pub per_deposit_cap: Option<Option<u64>>,
+    /// Per deposit minimum. If none then there is no minimum.
+    #[serde(
+        rename = "perDepositMinimum",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub per_deposit_minimum: Option<Option<u64>>,
     /// Per withdrawal cap. If none then there is no cap.
     #[serde(
         rename = "perWithdrawalCap",
@@ -50,6 +58,7 @@ impl Limits {
             account_caps,
             peg_cap: None,
             per_deposit_cap: None,
+            per_deposit_minimum: None,
             per_withdrawal_cap: None,
         }
     }

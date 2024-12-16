@@ -71,6 +71,7 @@ pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::rep
                 SystemTime::now(),
                 &AccountLimits {
                     peg_cap: limits.peg_cap,
+                    per_deposit_minimum: limits.per_deposit_minimum,
                     per_deposit_cap: limits.per_deposit_cap,
                     per_withdrawal_cap: limits.per_withdrawal_cap,
                 },
