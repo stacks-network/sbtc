@@ -15,8 +15,6 @@ pub struct Limits {
     pub per_deposit_minimum: Option<u64>,
     /// Per deposit cap. If none then there is no cap.
     pub per_deposit_cap: Option<u64>,
-    /// Per withdrawal minimum. If none then there is no minimum.
-    pub per_withdrawal_minimum: Option<u64>,
     /// Per withdrawal cap. If none then there is no cap.
     pub per_withdrawal_cap: Option<u64>,
     /// Represents the individual limits for requests coming from different accounts.
@@ -46,8 +44,6 @@ pub struct AccountLimits {
     pub per_deposit_minimum: Option<u64>,
     /// Per deposit cap. If none then the cap is the same as the global per deposit cap.
     pub per_deposit_cap: Option<u64>,
-    /// Per withdrawal minimum. If none then there is no minimum.
-    pub per_withdrawal_minimum: Option<u64>,
     /// Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.
     pub per_withdrawal_cap: Option<u64>,
 }
