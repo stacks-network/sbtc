@@ -1551,14 +1551,14 @@
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
           "reclaimScript",
-          "depositScript",
-          "amount"
+          "depositScript"
         ],
         "properties": {
           "amount": {
             "type": "integer",
             "format": "int64",
-            "description": "The amount of sats in the deposit UTXO.",
+            "description": "The amount of sats in the deposit UTXO.\nThis parameter is optional to maintain backward compatibility.\nIf not provided, the amount will be set to 0.",
+            "nullable": true,
             "minimum": 0
           },
           "bitcoinTxOutputIndex": {
