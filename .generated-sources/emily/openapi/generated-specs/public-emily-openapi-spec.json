@@ -1528,13 +1528,6 @@
             "description": "Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.",
             "nullable": true,
             "minimum": 0
-          },
-          "perWithdrawalMinimum": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Per withdrawal minimum. If none then there is no minimum.",
-            "nullable": true,
-            "minimum": 0
           }
         }
       },
@@ -2006,13 +1999,6 @@
             "type": "integer",
             "format": "int64",
             "description": "Per withdrawal cap. If none then there is no cap.",
-            "nullable": true,
-            "minimum": 0
-          },
-          "perWithdrawalMinimum": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Per withdrawal minimum. If none then there is no minimum.",
             "nullable": true,
             "minimum": 0
           }
