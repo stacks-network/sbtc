@@ -26,18 +26,18 @@ use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::CompletedDepositEvent;
-use crate::storage::model::KeyRotationEvent;
-use crate::storage::model::RegistryEvent;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
-use crate::storage::model::TxInfo;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
+use sbtc::events::KeyRotationEvent;
+use sbtc::events::RegistryEvent;
+use sbtc::events::TxInfo;
+use sbtc::events::WithdrawalCreateEvent;
 
 use super::ApiState;
 use super::SBTC_REGISTRY_CONTRACT_NAME;
@@ -132,20 +132,23 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     let mut created_withdrawals = Vec::new();
 
     for (ev, txid) in events {
-        let tx_info = TxInfo { txid, block_id };
+        let tx_info = TxInfo {
+            txid: sbtc::events::StacksTxid(txid.0),
+            block_id,
+        };
         let res = match RegistryEvent::try_new(ev.value, tx_info) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
-                handle_completed_deposit(&api.ctx, event, &stacks_chaintip)
+                handle_completed_deposit(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| completed_deposits.push(x))
             }
             Ok(RegistryEvent::WithdrawalAccept(event)) => {
-                handle_withdrawal_accept(&api.ctx, event, &stacks_chaintip)
+                handle_withdrawal_accept(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| updated_withdrawals.push(x))
             }
             Ok(RegistryEvent::WithdrawalReject(event)) => {
-                handle_withdrawal_reject(&api.ctx, event, &stacks_chaintip)
+                handle_withdrawal_reject(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| updated_withdrawals.push(x))
             }
@@ -155,7 +158,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
                     .map(|x| created_withdrawals.push(x))
             }
             Ok(RegistryEvent::KeyRotation(event)) => {
-                handle_key_rotation(&api.ctx, event, tx_info.txid.into()).await
+                handle_key_rotation(&api.ctx, event, StacksTxId::from(tx_info.txid.0)).await
             }
             Err(error) => {
                 tracing::error!(%error, "got an error when transforming the event ClarityValue");

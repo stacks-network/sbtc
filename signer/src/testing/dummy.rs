@@ -43,7 +43,6 @@ use crate::stacks::contracts::RotateKeysV1;
 use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 use crate::codec::Encode;
@@ -331,9 +330,9 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     }
 }
 
-impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
+impl fake::Dummy<fake::Faker> for crate::storage::model::WithdrawalCreateEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        WithdrawalCreateEvent {
+        crate::storage::model::WithdrawalCreateEvent {
             txid: StacksTxid(config.fake_with_rng(rng)),
             block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
             request_id: rng.next_u32() as u64,

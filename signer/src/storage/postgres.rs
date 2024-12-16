@@ -26,8 +26,8 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::TransactionType;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
+use sbtc::events::WithdrawalCreateEvent;
 
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::MAX_REORG_BLOCK_COUNT;
