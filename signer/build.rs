@@ -13,10 +13,11 @@ pub fn set_up_build_info() {
 
     let version = String::from_utf8_lossy(&output.stdout);
 
-    let git_hash = match std::process::Command::new("git")
+    let git_output = std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])
-        .output()
-    {
+        .output();
+
+    let git_hash = match git_output {
         Ok(output) if output.status.success() && !output.stdout.is_empty() => {
             String::from_utf8_lossy(&output.stdout).to_string()
         }
