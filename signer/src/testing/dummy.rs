@@ -40,11 +40,11 @@ use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
+use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
+use crate::storage::model::WithdrawalRejectEvent;
 
 use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
