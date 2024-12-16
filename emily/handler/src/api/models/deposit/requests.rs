@@ -44,7 +44,9 @@ pub struct CreateDepositRequestBody {
     /// Deposit script.
     pub deposit_script: String,
     /// The amount of sats in the deposit UTXO.
-    pub amount: u64,
+    /// This parameter is optional to maintain backward compatibility.
+    /// If not provided, the amount will be set to 0.
+    pub amount: Option<u64>,
 }
 
 /// A singlular Deposit update that contains only the fields pertinent

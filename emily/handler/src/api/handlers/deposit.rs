@@ -226,7 +226,7 @@ pub async fn create_deposit(
         let script_parameters = scripts_to_resource_parameters(
             &body.deposit_script,
             &body.reclaim_script,
-            body.amount,
+            body.amount.unwrap_or(0),
         )?;
 
         // Make table entry.
