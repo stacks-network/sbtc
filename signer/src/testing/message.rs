@@ -51,8 +51,6 @@ impl fake::Dummy<fake::Faker> for message::Payload {
             dummy_payload::<message::SignerWithdrawalDecision, _>,
             dummy_payload::<message::StacksTransactionSignRequest, _>,
             dummy_payload::<message::StacksTransactionSignature, _>,
-            dummy_payload::<message::BitcoinTransactionSignRequest, _>,
-            dummy_payload::<message::BitcoinTransactionSignAck, _>,
             dummy_payload::<message::WstsMessage, _>,
             dummy_payload::<message::BitcoinPreSignRequest, _>,
         ];
@@ -76,25 +74,6 @@ impl fake::Dummy<fake::Faker> for message::SignerDepositDecision {
             can_accept: config.fake_with_rng(rng),
             can_sign: config.fake_with_rng(rng),
         }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignRequest {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        let mut bytes: [u8; 32] = [0; 32];
-        rng.fill_bytes(&mut bytes);
-        let private_key = PrivateKey::new(rng);
-
-        Self {
-            tx: dummy::tx(config, rng),
-            aggregate_key: PublicKey::from_private_key(&private_key),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignAck {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        Self { txid: dummy::txid(config, rng) }
     }
 }
 

@@ -174,8 +174,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     // Our database shouldn't have any deposit requests. In fact, our
     // database doesn't have any blockchain data at all.
-    let db = &ctx.storage;
-    assert!(db
+    let db2 = &ctx.storage;
+    assert!(db2
         .get_bitcoin_canonical_chain_tip()
         .await
         .unwrap()
@@ -192,7 +192,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     }
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
-    let deposit_requests = db
+    let deposit_requests = db2
         .get_deposit_requests(&chain_tip_info.hash.into(), 100)
         .await
         .unwrap();
@@ -206,13 +206,13 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // We need to wait for the bitcoin-core to send us all the
     // notifications so that we are up to date with the expected chain tip.
     // For that we just wait until we know that we're up-to-date
-    let mut current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+    let mut current_chain_tip = db2.get_bitcoin_canonical_chain_tip().await.unwrap();
 
     let waiting_fut = async {
-        let db = db.clone();
+        let db2 = db2.clone();
         while current_chain_tip != Some(chain_tip) {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+            current_chain_tip = db2.get_bitcoin_canonical_chain_tip().await.unwrap();
         }
     };
 
@@ -223,12 +223,12 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // Okay now lets check if we have these deposit requests in our
     // database. It should also have bitcoin blockchain data
 
-    assert!(db
+    assert!(db2
         .get_bitcoin_canonical_chain_tip()
         .await
         .unwrap()
         .is_some());
-    let deposit_requests = db.get_deposit_requests(&chain_tip, 100).await.unwrap();
+    let deposit_requests = db2.get_deposit_requests(&chain_tip, 100).await.unwrap();
 
     assert_eq!(deposit_requests.len(), 2);
     let req_outpoints: HashSet<OutPoint> =
@@ -236,6 +236,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     assert!(req_outpoints.contains(&setup0.deposit_info.outpoint));
     assert!(req_outpoints.contains(&setup1.deposit_info.outpoint));
+
+    testing::storage::drop_db(db).await;
 }
 
 /// Integration test for bitcoin and stack blocks link.

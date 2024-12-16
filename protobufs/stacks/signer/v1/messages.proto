@@ -11,7 +11,7 @@ import "stacks/signer/v1/requests.proto";
 
 // Messages exchanged between signers
 message SignerMessage {
-  reserved 9;
+  reserved 6, 7, 9;
   /// The bitcoin chain tip defining the signers view of the blockchain at the time the message was created
   bitcoin.BitcoinBlockHash bitcoin_chain_tip = 1;
   // The message payload
@@ -24,10 +24,6 @@ message SignerMessage {
     StacksTransactionSignRequest stacks_transaction_sign_request = 4;
     // A signature of a Stacks transaction
     StacksTransactionSignature stacks_transaction_signature = 5;
-    // A request to sign a Bitcoin transaction
-    BitcoinTransactionSignRequest bitcoin_transaction_sign_request = 6;
-    // An acknowledgment of a signed Bitcoin transaction
-    BitcoinTransactionSignAck bitcoin_transaction_sign_ack = 7;
     // Contains all variants for DKG and WSTS signing rounds
     WstsMessage wsts_message = 8;
     // Information about a new sweep transaction
