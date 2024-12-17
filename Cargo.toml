@@ -48,7 +48,7 @@ metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false, features = ["http-listener"] }
 # This is necessary to compile the AWS Lambda as a lambda.
 openssl = { version = "0.10.66", features = ["vendored"] }
-p256k1 = "7.1.0"
+p256k1 = "7.2.0"
 prost = "0.12.5"
 rand = "0.8"
 reqwest = { version = "0.11", features = ["json"] }
