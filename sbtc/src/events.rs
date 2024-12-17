@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 
 use bitcoin::hashes::Hash;
 use bitcoin::hex::DisplayHex;
+use bitcoin::BlockHash as BitcoinBlockHash;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
 use bitcoin::ScriptBuf;
@@ -26,7 +27,7 @@ use clarity::vm::types::TupleData;
 use clarity::vm::ClarityName;
 use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
-use stacks_common::types::chainstate::{BurnchainHeaderHash, StacksBlockId};
+use stacks_common::types::chainstate::StacksBlockId;
 
 use std::fmt::Display;
 
@@ -120,10 +121,6 @@ pub enum EventError {
     /// contract.
     #[error("the given raw recipient is unexpected. version: {0:?}, hashbytes: {1:?} ")]
     UnhandledRecipient(Vec<u8>, Vec<u8>),
-    /// This should happen in similar cases when ClarityHashConversion happens, but in cases where we trying to
-    /// convert into BurnchainHeaderHash
-    #[error("Could not convert given bytes to BurnchainHeaderHash. Bytes: {0:?}")]
-    BurnchainHashConversion(Vec<u8>),
 }
 
 /// The print events emitted by the sbtc-registry clarity smart contract.
@@ -197,7 +194,7 @@ pub struct CompletedDepositEvent {
     /// This is the outpoint of the original bitcoin deposit transaction.
     pub outpoint: OutPoint,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: BurnchainHeaderHash,
+    pub sweep_block_hash: BitcoinBlockHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
@@ -254,7 +251,7 @@ pub struct WithdrawalAcceptEvent {
     /// withdrawal request.
     pub fee: u64,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: BurnchainHeaderHash,
+    pub sweep_block_hash: BitcoinBlockHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
@@ -400,8 +397,7 @@ impl RawTupleData {
                 // that gets emitted here.
                 vout: u32::try_from(vout).map_err(EventError::ClarityIntConversion)?,
             },
-            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
-                .ok_or_else(|| EventError::BurnchainHashConversion(sweep_block_hash.into()))?,
+            sweep_block_hash: BitcoinBlockHash::from_le_bytes(sweep_block_hash),
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
             sweep_txid: BitcoinTxid::from_le_bytes(sweep_txid),
@@ -655,8 +651,7 @@ impl RawTupleData {
             // amount of sats by us.
             fee: u64::try_from(fee).map_err(EventError::ClarityIntConversion)?,
 
-            sweep_block_hash: BurnchainHeaderHash::from_bytes(&sweep_block_hash)
-                .ok_or_else(|| EventError::BurnchainHashConversion(sweep_block_hash.into()))?,
+            sweep_block_hash: BitcoinBlockHash::from_le_bytes(sweep_block_hash),
 
             sweep_block_height: u64::try_from(sweep_block_height)
                 .map_err(EventError::ClarityIntConversion)?,
@@ -799,7 +794,7 @@ mod tests {
                 assert_eq!(event.outpoint.vout, 3);
                 assert_eq!(
                     event.sweep_block_hash,
-                    BurnchainHeaderHash::from_bytes(&[2 as u8; 32]).unwrap(),
+                    BitcoinBlockHash::from_byte_array([2; 32]),
                 );
                 assert_eq!(event.sweep_block_height, 139);
                 assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));
@@ -927,7 +922,7 @@ mod tests {
                 assert_eq!(event.signer_bitmap, expected_bitmap);
                 assert_eq!(
                     event.sweep_block_hash,
-                    BurnchainHeaderHash::from_bytes(&[2 as u8; 32]).unwrap()
+                    BitcoinBlockHash::from_byte_array([2; 32])
                 );
                 assert_eq!(event.sweep_block_height, 139);
                 assert_eq!(event.sweep_txid, BitcoinTxid::from_byte_array([3; 32]));

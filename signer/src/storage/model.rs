@@ -1082,7 +1082,7 @@ pub struct BitcoinWithdrawalOutput {
 
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
-        let sweep_hash = BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes());
+        let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
         let txid = StacksTxId::from(sbtc_event.txid.0);
         CompletedDepositEvent {
             txid,
@@ -1098,7 +1098,7 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
 
 impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let sweep_hash = BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes());
+        let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
         let txid = StacksTxId::from(sbtc_event.txid.0);
         WithdrawalAcceptEvent {
             txid,
