@@ -12,7 +12,6 @@ use bitcoin::TapSighash;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitvec::array::BitArray;
-use blockstack_lib::burnchains::Txid as StacksTxid;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use clarity::util::secp256k1::Secp256k1PublicKey;
 use fake::Fake;
@@ -302,7 +301,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalAcceptEvent {
-            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng(rng),
             block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
@@ -322,7 +321,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
-            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng(rng),
             block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
@@ -333,7 +332,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
 impl fake::Dummy<fake::Faker> for crate::storage::model::WithdrawalCreateEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         crate::storage::model::WithdrawalCreateEvent {
-            txid: StacksTxid(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng(rng),
             block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
@@ -348,7 +347,7 @@ impl fake::Dummy<fake::Faker> for crate::storage::model::WithdrawalCreateEvent {
 impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
-            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng(rng),
             block_id: config.fake_with_rng(rng),
             outpoint: OutPoint {
                 txid: txid(config, rng),

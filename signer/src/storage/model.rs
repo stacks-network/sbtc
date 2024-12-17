@@ -19,7 +19,6 @@ use crate::keys::PublicKeyXOnly;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
-use blockstack_lib::burnchains::Txid as StacksTxid;
 
 /// A bitcoin transaction output (TXO) relevant for the sBTC signers.
 ///
@@ -873,7 +872,7 @@ impl std::fmt::Display for StacksBlockHash {
 
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StacksTxId(blockstack_lib::burnchains::Txid);
+pub struct StacksTxId(pub blockstack_lib::burnchains::Txid);
 
 impl std::fmt::Display for StacksTxId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1084,7 +1083,7 @@ pub struct BitcoinWithdrawalOutput {
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
         let sweep_hash = BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes());
-        let txid = StacksTxid::from(sbtc_event.txid.0);
+        let txid = StacksTxId::from(sbtc_event.txid.0);
         CompletedDepositEvent {
             txid,
             block_id: StacksBlockHash(sbtc_event.block_id),
@@ -1100,7 +1099,7 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
 impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
         let sweep_hash = BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes());
-        let txid = StacksTxid::from(sbtc_event.txid.0);
+        let txid = StacksTxId::from(sbtc_event.txid.0);
         WithdrawalAcceptEvent {
             txid,
             block_id: StacksBlockHash(sbtc_event.block_id),
@@ -1118,7 +1117,7 @@ impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
 impl From<sbtc::events::WithdrawalRejectEvent> for WithdrawalRejectEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalRejectEvent) -> WithdrawalRejectEvent {
         WithdrawalRejectEvent {
-            txid: StacksTxid::from(sbtc_event.txid.0),
+            txid: StacksTxId::from(sbtc_event.txid.0),
             block_id: StacksBlockHash(sbtc_event.block_id),
             request_id: sbtc_event.request_id,
             signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
@@ -1129,7 +1128,7 @@ impl From<sbtc::events::WithdrawalRejectEvent> for WithdrawalRejectEvent {
 impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalCreateEvent) -> WithdrawalCreateEvent {
         WithdrawalCreateEvent {
-            txid: StacksTxid::from(sbtc_event.txid.0),
+            txid: StacksTxId::from(sbtc_event.txid.0),
             block_id: StacksBlockHash(sbtc_event.block_id),
             request_id: sbtc_event.request_id,
             amount: sbtc_event.amount,
@@ -1144,7 +1143,7 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
 impl From<WithdrawalCreateEvent> for sbtc::events::WithdrawalCreateEvent {
     fn from(event: WithdrawalCreateEvent) -> sbtc::events::WithdrawalCreateEvent {
         sbtc::events::WithdrawalCreateEvent {
-            txid: sbtc::events::StacksTxid(event.txid.0),
+            txid: sbtc::events::StacksTxid(event.txid.0 .0),
             block_id: *event.block_id,
             request_id: event.request_id,
             amount: event.amount,
@@ -1162,7 +1161,7 @@ impl From<WithdrawalCreateEvent> for sbtc::events::WithdrawalCreateEvent {
 pub struct CompletedDepositEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
-    pub txid: StacksTxid,
+    pub txid: StacksTxId,
     /// The block ID of the block for this event.
     pub block_id: StacksBlockHash,
     /// This is the amount of sBTC to mint to the intended recipient.
@@ -1184,7 +1183,7 @@ pub struct CompletedDepositEvent {
 pub struct WithdrawalCreateEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
-    pub txid: StacksTxid,
+    pub txid: StacksTxId,
     /// The block ID of the block for this event.
     pub block_id: StacksBlockHash,
     /// This is the unique identifier of the withdrawal request.
@@ -1210,7 +1209,7 @@ pub struct WithdrawalCreateEvent {
 pub struct WithdrawalAcceptEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
-    pub txid: StacksTxid,
+    pub txid: StacksTxId,
     /// The block ID of the block for this event.
     pub block_id: StacksBlockHash,
     /// This is the unique identifier of the withdrawal request.
@@ -1240,7 +1239,7 @@ pub struct WithdrawalAcceptEvent {
 pub struct WithdrawalRejectEvent {
     /// The transaction id of the stacks transaction that generated this
     /// event.
-    pub txid: StacksTxid,
+    pub txid: StacksTxId,
     /// The block ID of the block for this event.
     pub block_id: StacksBlockHash,
     /// This is the unique identifier of user created the withdrawal
