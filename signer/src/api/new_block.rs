@@ -31,13 +31,13 @@ use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use sbtc::events::KeyRotationEvent;
 use sbtc::events::RegistryEvent;
 use sbtc::events::TxInfo;
-use sbtc::events::WithdrawalCreateEvent;
 
 use super::ApiState;
 use super::SBTC_REGISTRY_CONTRACT_NAME;
@@ -153,7 +153,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
                     .map(|x| updated_withdrawals.push(x))
             }
             Ok(RegistryEvent::WithdrawalCreate(event)) => {
-                handle_withdrawal_create(&api.ctx, event, stacks_chaintip.block_height)
+                handle_withdrawal_create(&api.ctx, event.into(), stacks_chaintip.block_height)
                     .await
                     .map(|x| created_withdrawals.push(x))
             }

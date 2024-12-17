@@ -26,8 +26,8 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::TransactionType;
 use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
-use sbtc::events::WithdrawalCreateEvent;
 
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::MAX_REORG_BLOCK_COUNT;
@@ -2475,8 +2475,8 @@ impl super::DbWrite for PgStore {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
-        .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.txid.0 .0)
+        .bind(event.block_id.0 .0)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sender.to_string())

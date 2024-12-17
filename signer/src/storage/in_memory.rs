@@ -21,9 +21,9 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
-use sbtc::events::WithdrawalCreateEvent;
 
 use super::util::get_utxo;
 

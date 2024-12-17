@@ -25,8 +25,8 @@ use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
-use sbtc::events::WithdrawalCreateEvent;
 
 /// Represents the ability to read data from the signer storage.
 pub trait DbRead {
