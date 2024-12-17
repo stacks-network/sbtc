@@ -158,7 +158,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
                     .map(|x| created_withdrawals.push(x))
             }
             Ok(RegistryEvent::KeyRotation(event)) => {
-                handle_key_rotation(&api.ctx, event, StacksTxId::from(tx_info.txid.0)).await
+                handle_key_rotation(&api.ctx, event, tx_info.txid.into()).await
             }
             Err(error) => {
                 tracing::error!(%error, "got an error when transforming the event ClarityValue");

@@ -1080,6 +1080,18 @@ pub struct BitcoinWithdrawalOutput {
     pub is_valid_tx: bool,
 }
 
+impl From<sbtc::events::StacksTxid> for StacksTxId {
+    fn from(value: sbtc::events::StacksTxid) -> Self {
+        Self(blockstack_lib::burnchains::Txid(value.0))
+    }
+}
+
+impl From<StacksTxId> for sbtc::events::StacksTxid {
+    fn from(value: StacksTxId) -> Self {
+        Self(value.0.0)
+    }
+}
+
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
         let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
