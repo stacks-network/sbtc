@@ -313,7 +313,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
             fee: rng.next_u32() as u64,
             sweep_block_hash: crate::storage::model::BitcoinBlockHash(block_hash(config, rng)),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: txid(config, rng),
+            sweep_txid: crate::storage::model::BitcoinTxId(txid(config, rng)),
         }
     }
 }
@@ -357,7 +357,7 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
             amount: rng.next_u32() as u64,
             sweep_block_hash: crate::storage::model::BitcoinBlockHash(block_hash(config, rng)),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: txid(config, rng),
+            sweep_txid: crate::storage::model::BitcoinTxId(txid(config, rng)),
         }
     }
 }

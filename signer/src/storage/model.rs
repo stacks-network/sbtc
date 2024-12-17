@@ -20,7 +20,6 @@ use crate::keys::PublicKeyXOnly;
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
-use bitcoin::Txid as BitcoinTxid;
 use blockstack_lib::burnchains::Txid as StacksTxid;
 
 /// A bitcoin transaction output (TXO) relevant for the sBTC signers.
@@ -677,7 +676,7 @@ impl From<BitcoinTx> for bitcoin::Transaction {
 
 /// The bitcoin transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinTxId(bitcoin::Txid);
+pub struct BitcoinTxId(pub bitcoin::Txid);
 
 impl Deref for BitcoinTxId {
     type Target = bitcoin::Txid;
@@ -1094,7 +1093,7 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
             outpoint: sbtc_event.outpoint,
             sweep_block_hash: sweep_hash,
             sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: sbtc_event.sweep_txid,
+            sweep_txid: BitcoinTxId(sbtc_event.sweep_txid),
         }
     }
 }
@@ -1112,7 +1111,7 @@ impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
             fee: sbtc_event.fee,
             sweep_block_hash: sweep_hash,
             sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: sbtc_event.sweep_txid,
+            sweep_txid: BitcoinTxId(sbtc_event.sweep_txid),
         }
     }
 }
@@ -1177,7 +1176,7 @@ pub struct CompletedDepositEvent {
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// deposit.
-    pub sweep_txid: BitcoinTxid,
+    pub sweep_txid: BitcoinTxId,
 }
 
 /// This is the event that is emitted from the `create-withdrawal-request`
@@ -1233,7 +1232,7 @@ pub struct WithdrawalAcceptEvent {
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// withdrawal request.
-    pub sweep_txid: BitcoinTxid,
+    pub sweep_txid: BitcoinTxId,
 }
 
 /// This is the event that is emitted from the `complete-withdrawal-reject`
