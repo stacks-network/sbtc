@@ -78,6 +78,11 @@ pub const MAX_REORG_BLOCK_COUNT: i64 = 10;
 /// per block.
 pub const MAX_TX_PER_BITCOIN_BLOCK: i64 = 25;
 
+/// This is the dust limit for deposits in the sBTC smart contracts. A
+/// deposit amount that is less than this amount will be rejected by the
+/// smart contract, so let's not try.
+pub const DEPOSIT_DUST_LIMIT: u64 = 546;
+
 /// These are all build info variables. Many of them are set in build.rs.
 
 /// The name of the binary that is being run,

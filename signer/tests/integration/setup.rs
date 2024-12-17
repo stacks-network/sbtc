@@ -542,7 +542,7 @@ impl TestSignerSet {
 }
 
 /// The information about a sweep transaction that has been confirmed.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SweepTxInfo {
     /// The block hash of the bitcoin block that confirmed the sweep
     /// transaction.
@@ -681,14 +681,20 @@ impl TestSweepSetup2 {
         }]
     }
 
-    pub fn sweep_tx_info(&self) -> Option<&BitcoinTxInfo> {
-        Some(&self.sweep_tx_info.as_ref()?.tx_info)
-    }
-    pub fn sweep_block_height(&self) -> Option<u64> {
-        Some(self.sweep_tx_info.as_ref()?.block_height)
-    }
     pub fn sweep_block_hash(&self) -> Option<BitcoinBlockHash> {
         Some(self.sweep_tx_info.as_ref()?.block_hash)
+    }
+
+    /// Store a stacks genesis block that is on the canonical Stacks
+    /// blockchain identified by the sweep chain tip.
+    pub async fn store_stacks_genesis_block(&self, db: &PgStore) {
+        let block = model::StacksBlock {
+            block_hash: Faker.fake_with_rng(&mut OsRng),
+            block_height: 0,
+            parent_hash: StacksBlockId::first_mined().into(),
+            bitcoin_anchor: self.deposit_block_hash.into(),
+        };
+        db.write_stacks_block(&block).await.unwrap();
     }
 
     /// During [`Self::new_setup`] we submitted a donation transaction that
@@ -723,11 +729,17 @@ impl TestSweepSetup2 {
     /// This function generates a sweep transaction that sweeps in the
     /// deposited funds and sweeps out the withdrawal funds in a proper
     /// sweep transaction, that is also confirmed on bitcoin.
-    pub fn submit_sweep_tx(&mut self, rpc: &Client, faucet: &Faucet) {
+    pub fn submit_sweep_tx(&mut self, rpc: &Client, faucet: &Faucet, with_withdrawals: bool) {
         // Okay now we try to peg-in the deposit by making a transaction.
         // Let's start by getting the signer's sole UTXO.
         let aggregated_signer = &self.signers.signer;
         let signer_utxo = aggregated_signer.get_utxos(rpc, None).pop().unwrap();
+
+        let withdrawals = if with_withdrawals {
+            vec![self.withdrawal_request.clone()]
+        } else {
+            Vec::new()
+        };
 
         let requests = SbtcRequests {
             deposits: self
@@ -735,7 +747,7 @@ impl TestSweepSetup2 {
                 .iter()
                 .map(|(_, req, _)| req.clone())
                 .collect(),
-            withdrawals: vec![self.withdrawal_request.clone()],
+            withdrawals,
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::new(signer_utxo.txid, signer_utxo.vout),
@@ -938,16 +950,5 @@ impl TestSweepSetup2 {
             signature_share_threshold: self.signatures_required,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
-    }
-
-    // This is all normal happy path things that need to happen in order to
-    // pass validation of a stacks transaction.
-    pub async fn store_happy_path_data(&mut self, db: &PgStore) {
-        self.store_deposit_txs(&db).await;
-        self.store_sweep_tx(&db).await;
-        self.store_dkg_shares(&db).await;
-        self.store_deposit_request(&db).await;
-        self.store_deposit_decisions(&db).await;
-        self.store_withdrawal_request(&db).await;
     }
 }
