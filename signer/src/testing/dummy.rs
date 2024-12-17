@@ -303,7 +303,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
         let bitmap = rng.next_u64() as u128;
         WithdrawalAcceptEvent {
             txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
+            block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
             outpoint: OutPoint {
@@ -311,9 +311,9 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
                 vout: rng.next_u32(),
             },
             fee: rng.next_u32() as u64,
-            sweep_block_hash: crate::storage::model::BitcoinBlockHash(block_hash(config, rng)),
+            sweep_block_hash: BitcoinBlockHash(block_hash(config, rng)),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: crate::storage::model::BitcoinTxId(txid(config, rng)),
+            sweep_txid: BitcoinTxId(txid(config, rng)),
         }
     }
 }
@@ -323,7 +323,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
             txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
+            block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
         }
@@ -334,7 +334,7 @@ impl fake::Dummy<fake::Faker> for crate::storage::model::WithdrawalCreateEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         crate::storage::model::WithdrawalCreateEvent {
             txid: StacksTxid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
+            block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
             sender: config.fake_with_rng::<StacksPrincipal, _>(rng).into(),
@@ -349,15 +349,15 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
             txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
+            block_id: config.fake_with_rng(rng),
             outpoint: OutPoint {
                 txid: txid(config, rng),
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
-            sweep_block_hash: crate::storage::model::BitcoinBlockHash(block_hash(config, rng)),
+            sweep_block_hash: BitcoinBlockHash(block_hash(config, rng)),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: crate::storage::model::BitcoinTxId(txid(config, rng)),
+            sweep_txid: BitcoinTxId(txid(config, rng)),
         }
     }
 }

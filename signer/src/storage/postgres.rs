@@ -2443,7 +2443,7 @@ impl super::DbWrite for PgStore {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
         .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.block_id)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
         .bind(i64::from(event.outpoint.vout))
@@ -2511,7 +2511,7 @@ impl super::DbWrite for PgStore {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
         )
         .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.block_id)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .bind(event.outpoint.txid.to_byte_array())
@@ -2542,7 +2542,7 @@ impl super::DbWrite for PgStore {
         VALUES ($1, $2, $3, $4)",
         )
         .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.block_id)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .execute(&self.0)
