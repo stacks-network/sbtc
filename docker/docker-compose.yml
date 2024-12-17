@@ -645,6 +645,9 @@ services:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_FEATURE_TOGGLES_ENABLE: alertingSimplifiedRouting,alertingQueryAndExpressionsStepMode
     volumes:
       - grafana-data1:/var/lib/grafana
       - ./grafana/provisioning/:/etc/grafana/provisioning/
@@ -652,6 +655,14 @@ services:
       - 3030:3000
     depends_on:
       - prometheus
+    profiles:
+      - observability
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
     profiles:
       - observability
 

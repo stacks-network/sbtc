@@ -1,3 +1,8 @@
+## Log sources
+
+# [sources.devenv_logs]
+# type = "docker_logs"
+
 ## Prometheus Host metrics
 
 [sources.host_metrics]
@@ -28,3 +33,16 @@ endpoints = [
 type = "prometheus_exporter"
 inputs = ["host_metrics", "app"]
 address = "0.0.0.0:9598"
+
+## Log Sinks
+
+# [sinks.loki_logs]
+# type = "loki"
+# inputs = ["devenv_logs"]
+# endpoint = "http://loki:3100"
+
+# [sinks.loki_logs.encoding]
+# codec = "json"
+
+# [sinks.loki_logs.labels]
+# source = "vector"
