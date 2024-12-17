@@ -17,8 +17,7 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 
-use bitcoin::hashes::Hash;
-use bitcoin::BlockHash as EventsBitcoinBlockHash;
+use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid as BitcoinTxid;
@@ -734,7 +733,7 @@ impl std::fmt::Display for BitcoinTxId {
 
 /// Bitcoin block hash
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinBlockHash(bitcoin::BlockHash);
+pub struct BitcoinBlockHash(pub bitcoin::BlockHash);
 
 impl BitcoinBlockHash {
     /// Return the inner bytes for the block hash
@@ -1086,9 +1085,7 @@ pub struct BitcoinWithdrawalOutput {
 
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
-        let sweep_hash = EventsBitcoinBlockHash::from(BitcoinBlockHash::from(
-            *sbtc_event.sweep_block_hash.as_bytes(),
-        ));
+        let sweep_hash = BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes());
         let txid = StacksTxid::from(sbtc_event.txid.0);
         CompletedDepositEvent {
             txid,
@@ -1104,9 +1101,7 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
 
 impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let sweep_hash = EventsBitcoinBlockHash::from(BitcoinBlockHash::from(
-            *sbtc_event.sweep_block_hash.as_bytes(),
-        ));
+        let sweep_hash = BitcoinBlockHash::from(*sbtc_event.sweep_block_hash.as_bytes());
         let txid = StacksTxid::from(sbtc_event.txid.0);
         WithdrawalAcceptEvent {
             txid,
@@ -1177,7 +1172,7 @@ pub struct CompletedDepositEvent {
     /// This is the outpoint of the original bitcoin deposit transaction.
     pub outpoint: OutPoint,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: EventsBitcoinBlockHash,
+    pub sweep_block_hash: BitcoinBlockHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
@@ -1233,7 +1228,7 @@ pub struct WithdrawalAcceptEvent {
     /// withdrawal request.
     pub fee: u64,
     /// The bitcoin block hash where the sweep transaction was included.
-    pub sweep_block_hash: EventsBitcoinBlockHash,
+    pub sweep_block_hash: BitcoinBlockHash,
     /// The bitcoin block height where the sweep transaction was included.
     pub sweep_block_height: u64,
     /// The transaction id of the bitcoin transaction that fulfilled the
