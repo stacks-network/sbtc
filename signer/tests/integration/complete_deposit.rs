@@ -18,7 +18,10 @@ use signer::testing::context::*;
 use fake::Fake;
 
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::DepositAmounts;
+use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
+use crate::setup::TestSweepSetup2;
 use crate::DATABASE_NUM;
 
 /// Create a "proper" [`CompleteDepositV1`] object and context with the
@@ -71,6 +74,66 @@ pub fn make_complete_deposit(data: &TestSweepSetup) -> (CompleteDepositV1, ReqCo
         // accepted. During validation, a signer won't sign a transaction
         // if it is not considered accepted but the collection of signers.
         signatures_required: 2,
+        // This is who the current signer thinks deployed the sBTC
+        // contracts.
+        deployer: StacksAddress::burn_address(false),
+    };
+
+    (complete_deposit_tx, req_ctx)
+}
+
+/// Create a "proper" [`CompleteDepositV1`] object and context with the
+/// given information. If the information here is correct then the returned
+/// [`CompleteDepositV1`] object will pass validation with the given
+/// context.
+pub fn make_complete_deposit2(data: &TestSweepSetup2) -> (CompleteDepositV1, ReqContext) {
+    let deposit = &data.deposits[0];
+    let sweep_tx_info = data.sweep_tx_info.clone().unwrap();
+    // The fee assessed for a deposit is subtracted from the minted amount.
+    let fee = sweep_tx_info
+        .tx_info
+        .assess_input_fee(&deposit.1.outpoint)
+        .unwrap()
+        .to_sat();
+    let complete_deposit_tx = CompleteDepositV1 {
+        // This OutPoint points to the deposit UTXO.
+        outpoint: deposit.1.outpoint,
+        // This amount must not exceed the amount in the deposit request.
+        amount: deposit.1.amount - fee,
+        // The recipient must match what was indicated in the deposit
+        // request.
+        recipient: deposit.0.recipient.clone(),
+        // The deployer must match what is in the signers' context.
+        deployer: StacksAddress::burn_address(false),
+        // The sweep transaction ID must point to a transaction on
+        // the canonical bitcoin blockchain.
+        sweep_txid: sweep_tx_info.tx_info.txid.into(),
+        // The block hash of the block that includes the above sweep
+        // transaction. It must be on the canonical bitcoin blockchain.
+        sweep_block_hash: sweep_tx_info.block_hash,
+        // This must be the height of the above block.
+        sweep_block_height: sweep_tx_info.block_height,
+    };
+
+    // This is what the current signer thinks is the state of things.
+    let req_ctx = ReqContext {
+        chain_tip: BitcoinBlockRef {
+            block_hash: sweep_tx_info.block_hash,
+            block_height: sweep_tx_info.block_height,
+        },
+        // This value means that the signer will go back 10 blocks when
+        // looking for pending and accepted deposit requests.
+        context_window: 10,
+        // The value here doesn't matter.
+        origin: fake::Faker.fake_with_rng(&mut OsRng),
+        // When checking whether the transaction is from the signer, we
+        // check that the first "prevout" has a `scriptPubKey` that the
+        // signers control.
+        aggregate_key: data.signers.aggregate_key(),
+        // This value affects how many deposit transactions are consider
+        // accepted. During validation, a signer won't sign a transaction
+        // if it is not considered accepted but the collection of signers.
+        signatures_required: data.signatures_required,
         // This is who the current signer thinks deployed the sBTC
         // contracts.
         deployer: StacksAddress::burn_address(false),
@@ -339,25 +402,42 @@ async fn complete_deposit_validation_recipient_mismatch() {
 }
 
 /// For this test we check that the `CompleteDepositV1::validate` function
-/// returns a deposit validation error with a InvalidMintAmount message
-/// when the amount of sBTC to mint exceeds the amount in the signer's
-/// deposit request record.
+/// returns a deposit validation error with a AmountBelowDustLimit message
+/// when the sweep transaction does not have a prevout with a scriptPubKey
+/// that the signers control.
+///
+/// Unfortunately, this test is a bit opaque and complex. We try to set
+/// things so that the mint amount is less than the dust amount, but for
+/// that we need to take into consideration fees. The fee rate for these
+/// tests are 10 sats per vbyte, and this test constructs a sweep
+/// transaction that is 235 bytes. Adding more deposits, including
+/// withdrawals outputs, and changing the fee rate would change the
+/// calulation specified in this test, so that's why we use the magic
+/// deposit amount here.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-async fn complete_deposit_validation_invalid_mint_amount() {
+async fn complete_deposit_validation_fee_too_low() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
     let db = testing::storage::new_test_database(db_num, true).await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    // We are trying to trigger the fee too low mint amount. Specifically,
+    // we want to choose a deposit amount that is still positive after fees
+    // but below the dust limit. The fee rate in this test is fixed at 10.0
+    // sats per vbyte and the tx size is 235 bytes so we lose 2350 sats to
+    // fees.
+    let amounts = DepositAmounts { amount: 2850, max_fee: 80_000 };
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
     // Normal: the signers' block observer should be getting new block
     // events from bitcoin-core. We haven't hooked up our block observer,
     // so we need to manually update the database with new bitcoin block
     // headers and at least one stacks block.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
     // Normal: This stores a genesis stacks block anchored to the bitcoin
     // blockchain identified by setup.sweep_block_hash.
     setup.store_stacks_genesis_block(&db).await;
@@ -365,8 +445,15 @@ async fn complete_deposit_validation_invalid_mint_amount() {
     // Normal: we take the deposit transaction as is from the test setup
     // and store it in the database. This is necessary for when we fetch
     // outstanding unfulfilled deposit requests.
-    setup.store_deposit_tx(&db).await;
+    setup.store_deposit_txs(&db).await;
 
+    // Normal: we submit the transaction sweeping the funds. It gets
+    // confirmed; this generates a new bitcoin block behind the scene.
+    setup.submit_sweep_tx(rpc, faucet, false);
+
+    // Normal: When a new bitcoin block is generated, we need to update the
+    // signer's database with blockchain data.
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
@@ -383,10 +470,7 @@ async fn complete_deposit_validation_invalid_mint_amount() {
 
     // Normal: create a properly formed complete-deposit transaction object
     // and the corresponding request context.
-    let (mut complete_deposit_tx, req_ctx) = make_complete_deposit(&setup);
-    // Different: The amount cannot exceed the amount in the deposit
-    // request.
-    complete_deposit_tx.amount = setup.deposit_request.amount + 1;
+    let (complete_deposit_tx, req_ctx) = make_complete_deposit2(&setup);
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -395,10 +479,10 @@ async fn complete_deposit_validation_invalid_mint_amount() {
         .with_mocked_emily_client()
         .build();
 
-    let validate_future = complete_deposit_tx.validate(&ctx, &req_ctx);
-    match validate_future.await.unwrap_err() {
+    let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
+    match validation_result.unwrap_err() {
         Error::DepositValidation(ref err) => {
-            assert_eq!(err.error, DepositErrorMsg::InvalidMintAmount)
+            assert_eq!(err.error, DepositErrorMsg::AmountBelowDustLimit)
         }
         err => panic!("unexpected error during validation {err}"),
     }
