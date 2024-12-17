@@ -404,7 +404,6 @@ mod tests {
     use super::*;
 
     use bitcoin::OutPoint;
-    use bitcoin::ScriptBuf;
     use bitvec::array::BitArray;
     use clarity::vm::types::PrincipalData;
     use emily_client::models::UpdateDepositsResponse;
@@ -416,7 +415,9 @@ mod tests {
     use test_case::test_case;
 
     use crate::storage::in_memory::Store;
+    use crate::storage::model::BitcoinTxId;
     use crate::storage::model::DepositRequest;
+    use crate::storage::model::ScriptPubKey;
     use crate::storage::model::StacksPrincipal;
     use crate::testing::context::*;
     use crate::testing::storage::model::TestData;
@@ -616,12 +617,12 @@ mod tests {
 
         let event = CompletedDepositEvent {
             outpoint: deposit_request.outpoint(),
-            txid: *stacks_txid,
-            block_id: *stacks_chaintip.block_hash,
+            txid: StacksTxId(*stacks_txid),
+            block_id: StacksBlockHash(*stacks_chaintip.block_hash),
             amount: deposit_request.amount - btc_fee,
-            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_hash: BitcoinBlockHash(*bitcoin_block.block_hash),
             sweep_block_height: bitcoin_block.block_height,
-            sweep_txid: *txid,
+            sweep_txid: BitcoinTxId(*txid),
         };
         let expectation = DepositUpdate {
             bitcoin_tx_output_index: event.outpoint.vout,
@@ -680,12 +681,12 @@ mod tests {
         let outpoint = OutPoint { txid: *txid, vout: 0 };
         let event = CompletedDepositEvent {
             outpoint: outpoint.clone(),
-            txid: *stacks_txid,
-            block_id: *stacks_chaintip.block_hash,
+            txid: StacksTxId(*stacks_txid),
+            block_id: StacksBlockHash(*stacks_chaintip.block_hash),
             amount: 100,
-            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_hash: BitcoinBlockHash(*bitcoin_block.block_hash),
             sweep_block_height: bitcoin_block.block_height,
-            sweep_txid: *txid,
+            sweep_txid: BitcoinTxId(*txid),
         };
         let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
         assert!(res.is_err());
@@ -733,13 +734,13 @@ mod tests {
         let event = WithdrawalAcceptEvent {
             request_id: 1,
             outpoint: OutPoint { txid: *txid, vout: 0 },
-            txid: *stacks_tx.txid,
-            block_id: *stacks_tx.block_hash,
+            txid: StacksTxId(*stacks_tx.txid),
+            block_id: StacksBlockHash(*stacks_tx.block_hash),
             fee: 1,
             signer_bitmap: BitArray::<_>::ZERO,
-            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_hash: BitcoinBlockHash(*bitcoin_block.block_hash),
             sweep_block_height: bitcoin_block.block_height,
-            sweep_txid: *txid,
+            sweep_txid: BitcoinTxId(*txid),
         };
 
         // Expected struct to be added to the accepted_withdrawals vector
@@ -798,11 +799,11 @@ mod tests {
 
         let event = WithdrawalCreateEvent {
             request_id: 1,
-            block_id: *stacks_first_tx.block_hash,
+            block_id: StacksBlockHash(*stacks_first_tx.block_hash),
             amount: 100,
             max_fee: 1,
-            recipient: ScriptBuf::default(),
-            txid: sbtc::events::StacksTxid(stacks_first_tx.txid.0),
+            recipient: ScriptPubKey::from_bytes(vec![]),
+            txid: StacksTxId::from(stacks_first_tx.txid.0),
             sender: PrincipalData::Standard(StandardPrincipalData::transient()),
             block_height: test_data.bitcoin_blocks[0].block_height,
         };
@@ -860,8 +861,8 @@ mod tests {
 
         let event = WithdrawalRejectEvent {
             request_id: 1,
-            block_id: *stacks_chaintip.block_hash,
-            txid: *test_data.stacks_transactions[0].txid,
+            block_id: StacksBlockHash(*stacks_chaintip.block_hash),
+            txid: StacksTxId::from(*test_data.stacks_transactions[0].txid),
             signer_bitmap: BitArray::<_>::ZERO,
         };
 
