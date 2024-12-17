@@ -1088,7 +1088,7 @@ impl From<sbtc::events::StacksTxid> for StacksTxId {
 
 impl From<StacksTxId> for sbtc::events::StacksTxid {
     fn from(value: StacksTxId) -> Self {
-        Self(value.0.0)
+        Self(value.0 .0)
     }
 }
 
