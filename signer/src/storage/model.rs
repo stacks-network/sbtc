@@ -19,7 +19,6 @@ use crate::keys::PublicKeyXOnly;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
-use bitcoin::ScriptBuf;
 use blockstack_lib::burnchains::Txid as StacksTxid;
 
 /// A bitcoin transaction output (TXO) relevant for the sBTC signers.
@@ -1135,7 +1134,7 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
             request_id: sbtc_event.request_id,
             amount: sbtc_event.amount,
             sender: sbtc_event.sender,
-            recipient: sbtc_event.recipient,
+            recipient: ScriptPubKey(sbtc_event.recipient),
             max_fee: sbtc_event.max_fee,
             block_height: sbtc_event.block_height,
         }
@@ -1150,7 +1149,7 @@ impl From<WithdrawalCreateEvent> for sbtc::events::WithdrawalCreateEvent {
             request_id: event.request_id,
             amount: event.amount,
             sender: event.sender,
-            recipient: event.recipient,
+            recipient: event.recipient.into(),
             max_fee: event.max_fee,
             block_height: event.block_height,
         }
@@ -1197,7 +1196,7 @@ pub struct WithdrawalCreateEvent {
     pub sender: PrincipalData,
     /// This is the address to send the BTC to when fulfilling the
     /// withdrawal request.
-    pub recipient: ScriptBuf,
+    pub recipient: ScriptPubKey,
     /// This is the maximum amount of BTC "spent" to the miners for the
     /// transaction fee.
     pub max_fee: u64,

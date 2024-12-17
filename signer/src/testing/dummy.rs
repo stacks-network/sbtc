@@ -338,7 +338,7 @@ impl fake::Dummy<fake::Faker> for crate::storage::model::WithdrawalCreateEvent {
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
             sender: config.fake_with_rng::<StacksPrincipal, _>(rng).into(),
-            recipient: config.fake_with_rng::<ScriptPubKey, _>(rng).into(),
+            recipient: config.fake_with_rng::<ScriptPubKey, _>(rng),
             max_fee: rng.next_u32() as u64,
             block_height: rng.next_u32() as u64,
         }
