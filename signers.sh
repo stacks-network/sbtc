@@ -67,7 +67,7 @@ exec_run() {
       . "$ENV_PATH/signer-$i.env" \
       && export RUST_LOG="$LOG_SETTINGS" \
       && export SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET="$BOOTSTRAP_SIGNER_SET" \
-      && cargo run --bin signer -- --config "$SIGNER_CONFIG" --migrate-db > "$PWD/target/signer-$i.log" 2>&1 \
+      && cargo run --bin signer -- --config "$SIGNER_CONFIG" --migrate-db -o json > "$PWD/target/signer-$i.log" 2>&1 \
       &
     )
     i=$((i + 1))
