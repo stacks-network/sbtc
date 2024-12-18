@@ -3,6 +3,8 @@
 use std::collections::BTreeSet;
 use std::ops::Deref;
 
+use bitcoin::hashes::Hash as _;
+use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
@@ -16,9 +18,6 @@ use crate::block_observer::Deposit;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
-
-use bitcoin::hashes::Hash as _;
-use bitcoin::OutPoint;
 
 /// A bitcoin transaction output (TXO) relevant for the sBTC signers.
 ///
