@@ -1086,12 +1086,6 @@ impl From<sbtc::events::StacksTxid> for StacksTxId {
     }
 }
 
-impl From<StacksTxId> for sbtc::events::StacksTxid {
-    fn from(value: StacksTxId) -> Self {
-        Self(value.0 .0)
-    }
-}
-
 impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
     fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
         let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
@@ -1148,21 +1142,6 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
             recipient: ScriptPubKey(sbtc_event.recipient),
             max_fee: sbtc_event.max_fee,
             block_height: sbtc_event.block_height,
-        }
-    }
-}
-
-impl From<WithdrawalCreateEvent> for sbtc::events::WithdrawalCreateEvent {
-    fn from(event: WithdrawalCreateEvent) -> sbtc::events::WithdrawalCreateEvent {
-        sbtc::events::WithdrawalCreateEvent {
-            txid: sbtc::events::StacksTxid(event.txid.0 .0),
-            block_id: *event.block_id,
-            request_id: event.request_id,
-            amount: event.amount,
-            sender: event.sender,
-            recipient: event.recipient.into(),
-            max_fee: event.max_fee,
-            block_height: event.block_height,
         }
     }
 }
