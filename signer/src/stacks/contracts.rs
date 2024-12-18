@@ -482,7 +482,7 @@ impl CompleteDepositV1 {
         if !result.is_empty() {
             cache_guard.put(*chain_tip, result.clone());
         }
-        
+
         Ok(result)
     }
 
