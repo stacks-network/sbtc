@@ -408,9 +408,6 @@ impl CompleteDepositV1 {
         }
         // 2. Check that the signer has a record of the deposit request
         //    from our list of swept deposit requests.
-        // let deposit_requests = db
-        //     .get_swept_deposit_requests(&req_ctx.chain_tip.block_hash, req_ctx.context_window)
-        //     .await?;
         let deposit_requests = Self::get_swept_deposit_requests(
             db,
             &req_ctx.chain_tip.block_hash,
