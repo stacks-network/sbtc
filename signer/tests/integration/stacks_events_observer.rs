@@ -15,6 +15,8 @@ use emily_client::models::Status;
 use emily_client::models::WithdrawalParameters;
 use fake::Fake;
 use rand::rngs::OsRng;
+use sbtc::events::RegistryEvent;
+use sbtc::events::TxInfo;
 use sbtc::testing::deposits::TxSetup;
 use signer::api::new_block_handler;
 use signer::api::ApiState;
@@ -22,8 +24,6 @@ use signer::bitcoin::MockBitcoinInteract;
 use signer::context::Context;
 use signer::emily_client::EmilyClient;
 use signer::stacks::api::MockStacksInteract;
-use signer::stacks::events::RegistryEvent;
-use signer::stacks::events::TxInfo;
 use signer::stacks::webhooks::NewBlockEvent;
 use signer::storage::in_memory::Store;
 use signer::storage::model::DepositRequest;
@@ -80,7 +80,7 @@ where
     let new_block_event = serde_json::from_str::<NewBlockEvent>(body).unwrap();
     let deposit_event = new_block_event.events.first().unwrap();
     let tx_info = TxInfo {
-        txid: deposit_event.txid.clone(),
+        txid: sbtc::events::StacksTxid(deposit_event.txid.0.clone()),
         block_id: new_block_event.index_block_hash,
     };
     let deposit_event = deposit_event.contract_event.as_ref().unwrap();

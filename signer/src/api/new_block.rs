@@ -16,6 +16,8 @@ use emily_client::models::UpdateWithdrawalsResponse;
 use emily_client::models::WithdrawalParameters;
 use emily_client::models::WithdrawalUpdate;
 use futures::FutureExt;
+use sbtc::events::RegistryEvent;
+use sbtc::events::TxInfo;
 use std::sync::OnceLock;
 
 use crate::context::Context;
@@ -23,19 +25,15 @@ use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::metrics::Metrics;
 use crate::metrics::STACKS_BLOCKCHAIN;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::KeyRotationEvent;
-use crate::stacks::events::RegistryEvent;
-use crate::stacks::events::TxInfo;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
 use crate::stacks::webhooks::NewBlockEvent;
-use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::KeyRotationEvent;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
-use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
+use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 
@@ -119,10 +117,10 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
 
     let stacks_chaintip = StacksBlock {
-        block_hash: StacksBlockHash::from(new_block_event.index_block_hash),
+        block_hash: new_block_event.index_block_hash.into(),
         block_height: new_block_event.block_height,
-        parent_hash: StacksBlockHash::from(new_block_event.parent_index_block_hash),
-        bitcoin_anchor: BitcoinBlockHash::from(new_block_event.burn_block_hash),
+        parent_hash: new_block_event.parent_index_block_hash.into(),
+        bitcoin_anchor: new_block_event.burn_block_hash.into(),
     };
     let block_id = new_block_event.index_block_hash;
 
@@ -132,30 +130,33 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     let mut created_withdrawals = Vec::new();
 
     for (ev, txid) in events {
-        let tx_info = TxInfo { txid, block_id };
+        let tx_info = TxInfo {
+            txid: sbtc::events::StacksTxid(txid.0),
+            block_id,
+        };
         let res = match RegistryEvent::try_new(ev.value, tx_info) {
             Ok(RegistryEvent::CompletedDeposit(event)) => {
-                handle_completed_deposit(&api.ctx, event, &stacks_chaintip)
+                handle_completed_deposit(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| completed_deposits.push(x))
             }
             Ok(RegistryEvent::WithdrawalAccept(event)) => {
-                handle_withdrawal_accept(&api.ctx, event, &stacks_chaintip)
+                handle_withdrawal_accept(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| updated_withdrawals.push(x))
             }
             Ok(RegistryEvent::WithdrawalReject(event)) => {
-                handle_withdrawal_reject(&api.ctx, event, &stacks_chaintip)
+                handle_withdrawal_reject(&api.ctx, event.into(), &stacks_chaintip)
                     .await
                     .map(|x| updated_withdrawals.push(x))
             }
             Ok(RegistryEvent::WithdrawalCreate(event)) => {
-                handle_withdrawal_create(&api.ctx, event, stacks_chaintip.block_height)
+                handle_withdrawal_create(&api.ctx, event.into(), stacks_chaintip.block_height)
                     .await
                     .map(|x| created_withdrawals.push(x))
             }
             Ok(RegistryEvent::KeyRotation(event)) => {
-                handle_key_rotation(&api.ctx, event, tx_info.txid.into()).await
+                handle_key_rotation(&api.ctx, event.into(), tx_info.txid.into()).await
             }
             Err(error) => {
                 tracing::error!(%error, "got an error when transforming the event ClarityValue");
@@ -385,8 +386,8 @@ async fn handle_key_rotation(
 ) -> Result<(), Error> {
     let key_rotation_tx = RotateKeysTransaction {
         txid: stacks_txid,
-        address: event.new_address.into(),
-        aggregate_key: event.new_aggregate_pubkey.into(),
+        address: event.new_address,
+        aggregate_key: event.new_aggregate_pubkey,
         signer_set: event.new_keys.into_iter().map(Into::into).collect(),
         signatures_required: event.new_signature_threshold,
     };
@@ -401,7 +402,6 @@ mod tests {
     use super::*;
 
     use bitcoin::OutPoint;
-    use bitcoin::ScriptBuf;
     use bitvec::array::BitArray;
     use clarity::vm::types::PrincipalData;
     use emily_client::models::UpdateDepositsResponse;
@@ -414,6 +414,7 @@ mod tests {
 
     use crate::storage::in_memory::Store;
     use crate::storage::model::DepositRequest;
+    use crate::storage::model::ScriptPubKey;
     use crate::storage::model::StacksPrincipal;
     use crate::testing::context::*;
     use crate::testing::storage::model::TestData;
@@ -613,12 +614,12 @@ mod tests {
 
         let event = CompletedDepositEvent {
             outpoint: deposit_request.outpoint(),
-            txid: *stacks_txid,
-            block_id: *stacks_chaintip.block_hash,
+            txid: stacks_txid.into(),
+            block_id: stacks_chaintip.block_hash.into(),
             amount: deposit_request.amount - btc_fee,
-            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_hash: bitcoin_block.block_hash.into(),
             sweep_block_height: bitcoin_block.block_height,
-            sweep_txid: *txid,
+            sweep_txid: txid.into(),
         };
         let expectation = DepositUpdate {
             bitcoin_tx_output_index: event.outpoint.vout,
@@ -677,12 +678,12 @@ mod tests {
         let outpoint = OutPoint { txid: *txid, vout: 0 };
         let event = CompletedDepositEvent {
             outpoint: outpoint.clone(),
-            txid: *stacks_txid,
-            block_id: *stacks_chaintip.block_hash,
+            txid: stacks_txid.into(),
+            block_id: stacks_chaintip.block_hash.into(),
             amount: 100,
-            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_hash: bitcoin_block.block_hash.into(),
             sweep_block_height: bitcoin_block.block_height,
-            sweep_txid: *txid,
+            sweep_txid: txid.into(),
         };
         let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
         assert!(res.is_err());
@@ -730,13 +731,13 @@ mod tests {
         let event = WithdrawalAcceptEvent {
             request_id: 1,
             outpoint: OutPoint { txid: *txid, vout: 0 },
-            txid: *stacks_tx.txid,
-            block_id: *stacks_tx.block_hash,
+            txid: stacks_tx.txid.into(),
+            block_id: stacks_tx.block_hash.into(),
             fee: 1,
             signer_bitmap: BitArray::<_>::ZERO,
-            sweep_block_hash: *bitcoin_block.block_hash,
+            sweep_block_hash: bitcoin_block.block_hash.into(),
             sweep_block_height: bitcoin_block.block_height,
-            sweep_txid: *txid,
+            sweep_txid: txid.into(),
         };
 
         // Expected struct to be added to the accepted_withdrawals vector
@@ -795,12 +796,12 @@ mod tests {
 
         let event = WithdrawalCreateEvent {
             request_id: 1,
-            block_id: *stacks_first_tx.block_hash,
+            block_id: stacks_first_tx.block_hash.into(),
             amount: 100,
             max_fee: 1,
-            recipient: ScriptBuf::default(),
-            txid: *stacks_first_tx.txid,
-            sender: PrincipalData::Standard(StandardPrincipalData::transient()),
+            recipient: ScriptPubKey::from_bytes(vec![]),
+            txid: stacks_first_tx.txid,
+            sender: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
             block_height: test_data.bitcoin_blocks[0].block_height,
         };
 
@@ -857,8 +858,8 @@ mod tests {
 
         let event = WithdrawalRejectEvent {
             request_id: 1,
-            block_id: *stacks_chaintip.block_hash,
-            txid: *test_data.stacks_transactions[0].txid,
+            block_id: stacks_chaintip.block_hash.into(),
+            txid: test_data.stacks_transactions[0].txid,
             signer_bitmap: BitArray::<_>::ZERO,
         };
 
@@ -898,11 +899,11 @@ mod tests {
 
         let txid: StacksTxId = fake::Faker.fake_with_rng(&mut OsRng);
         let event = KeyRotationEvent {
-            new_aggregate_pubkey: SECP256K1.generate_keypair(&mut OsRng).1,
+            new_aggregate_pubkey: SECP256K1.generate_keypair(&mut OsRng).1.into(),
             new_keys: (0..3)
-                .map(|_| SECP256K1.generate_keypair(&mut OsRng).1)
+                .map(|_| SECP256K1.generate_keypair(&mut OsRng).1.into())
                 .collect(),
-            new_address: PrincipalData::Standard(StandardPrincipalData::transient()),
+            new_address: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
             new_signature_threshold: 3,
         };
 

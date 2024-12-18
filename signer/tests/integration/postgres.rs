@@ -33,22 +33,22 @@ use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::RotateKeysV1;
-use signer::stacks::events::CompletedDepositEvent;
-use signer::stacks::events::WithdrawalAcceptEvent;
-use signer::stacks::events::WithdrawalCreateEvent;
-use signer::stacks::events::WithdrawalRejectEvent;
 use signer::storage;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::model::BitcoinWithdrawalOutput;
+use signer::storage::model::CompletedDepositEvent;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::model::ScriptPubKey;
 use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
+use signer::storage::model::WithdrawalAcceptEvent;
+use signer::storage::model::WithdrawalCreateEvent;
+use signer::storage::model::WithdrawalRejectEvent;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
 use signer::storage::DbRead;
@@ -1183,8 +1183,8 @@ async fn writing_completed_deposit_requests_postgres() {
 
     let (txid, block_id, amount, bitcoin_txid, vout) = db_event.pop().unwrap();
 
-    assert_eq!(txid, event.txid.0);
-    assert_eq!(block_id, event.block_id.0);
+    assert_eq!(txid, event.txid.into_bytes());
+    assert_eq!(block_id, event.block_id.into_bytes());
     assert_eq!(amount as u64, event.amount);
     assert_eq!(bitcoin_txid, event.outpoint.txid.to_byte_array());
     assert_eq!(vout as u32, event.outpoint.vout);
@@ -1203,7 +1203,10 @@ async fn writing_withdrawal_create_requests_postgres() {
     let event: WithdrawalCreateEvent = fake::Faker.fake_with_rng(&mut rng);
 
     // Let's see if we can write these rows to the database.
-    store.write_withdrawal_create_event(&event).await.unwrap();
+    store
+        .write_withdrawal_create_event(&event.clone().into())
+        .await
+        .unwrap();
     let mut db_event =
         sqlx::query_as::<_, ([u8; 32], [u8; 32], i64, i64, String, Vec<u8>, i64, i64)>(
             r#"
@@ -1226,8 +1229,8 @@ async fn writing_withdrawal_create_requests_postgres() {
     let (txid, block_id, request_id, amount, sender, recipient, max_fee, block_height) =
         db_event.pop().unwrap();
 
-    assert_eq!(txid, event.txid.0);
-    assert_eq!(block_id, event.block_id.0);
+    assert_eq!(txid, event.txid.into_bytes());
+    assert_eq!(block_id, event.block_id.into_bytes());
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(amount as u64, event.amount);
     assert_eq!(sender, event.sender.to_string());
@@ -1270,8 +1273,8 @@ async fn writing_withdrawal_accept_requests_postgres() {
 
     let (txid, block_id, request_id, bitmap, bitcoin_txid, vout, fee) = db_event.pop().unwrap();
 
-    assert_eq!(txid, event.txid.0);
-    assert_eq!(block_id, event.block_id.0);
+    assert_eq!(txid, event.txid.into_bytes());
+    assert_eq!(block_id, event.block_id.into_bytes());
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(bitmap, event.signer_bitmap.into_inner());
     assert_eq!(bitcoin_txid, event.outpoint.txid.to_byte_array());
@@ -1309,8 +1312,8 @@ async fn writing_withdrawal_reject_requests_postgres() {
 
     let (txid, block_id, request_id, bitmap) = db_event.pop().unwrap();
 
-    assert_eq!(txid, event.txid.0);
-    assert_eq!(block_id, event.block_id.0);
+    assert_eq!(txid, event.txid.into_bytes());
+    assert_eq!(block_id, event.block_id.into_bytes());
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(bitmap, event.signer_bitmap.into_inner());
 
@@ -2071,24 +2074,24 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     // For `setup_canonical`, the event block is on the canonical chain
     let event = CompletedDepositEvent {
         txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
-        block_id: *setup_canonical_event_block.block_hash,
+        block_id: setup_canonical_event_block.block_hash.into(),
         amount: setup_canonical.deposit_request.amount,
         outpoint: setup_canonical.deposit_request.outpoint,
-        sweep_block_hash: setup_canonical.deposit_block_hash,
+        sweep_block_hash: setup_canonical.deposit_block_hash.into(),
         sweep_block_height: 42,
-        sweep_txid: setup_canonical.deposit_request.outpoint.txid,
+        sweep_txid: setup_canonical.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
     // For `setup_fork`, the event block is not on the canonical chain
     let event = CompletedDepositEvent {
         txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
-        block_id: *setup_fork_event_block.block_hash,
+        block_id: setup_fork_event_block.block_hash.into(),
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
-        sweep_block_hash: setup_fork.deposit_block_hash,
+        sweep_block_hash: setup_fork.deposit_block_hash.into(),
         sweep_block_height: 42,
-        sweep_txid: setup_fork.deposit_request.outpoint.txid,
+        sweep_txid: setup_fork.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -2115,12 +2118,12 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
 
     let event = CompletedDepositEvent {
         txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
-        block_id: *setup_fork_event_block.block_hash,
+        block_id: setup_fork_event_block.block_hash.into(),
         amount: setup_fork.deposit_request.amount,
         outpoint: setup_fork.deposit_request.outpoint,
-        sweep_block_hash: setup_fork.deposit_block_hash,
+        sweep_block_hash: setup_fork.deposit_block_hash.into(),
         sweep_block_height: 42,
-        sweep_txid: setup_fork.deposit_request.outpoint.txid,
+        sweep_txid: setup_fork.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
@@ -2265,12 +2268,12 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
 
     let event = CompletedDepositEvent {
         txid: fake::Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
-        block_id: *original_event_block.block_hash,
+        block_id: original_event_block.block_hash.into(),
         amount: setup.deposit_request.amount,
         outpoint: setup.deposit_request.outpoint,
-        sweep_block_hash: setup.deposit_block_hash,
+        sweep_block_hash: setup.deposit_block_hash.into(),
         sweep_block_height: 42,
-        sweep_txid: setup.deposit_request.outpoint.txid,
+        sweep_txid: setup.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
 
