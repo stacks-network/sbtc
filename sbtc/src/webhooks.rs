@@ -39,7 +39,7 @@ pub enum Error {
     DecodeHexBytes(#[source] hex::FromHexError),
     /// An error when attempting to generically decode bytes using the
     /// trait implementation.
-    #[error("got an error wen attempting to call StacksMessageCodec::consensus_deserialize {0}")]
+    #[error("got an error when attempting to call StacksMessageCodec::consensus_deserialize {0}")]
     StacksCodec(#[source] blockstack_lib::codec::Error),
 }
 
