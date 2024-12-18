@@ -24,11 +24,9 @@ use crate::error::Error;
 use crate::metrics::Metrics;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::stacks::webhooks::NewBlockEvent;
-use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
-use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalCreateEvent;
@@ -119,10 +117,10 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
 
     let stacks_chaintip = StacksBlock {
-        block_hash: StacksBlockHash::from(new_block_event.index_block_hash),
+        block_hash: new_block_event.index_block_hash.into(),
         block_height: new_block_event.block_height,
-        parent_hash: StacksBlockHash::from(new_block_event.parent_index_block_hash),
-        bitcoin_anchor: BitcoinBlockHash::from(new_block_event.burn_block_hash),
+        parent_hash: new_block_event.parent_index_block_hash.into(),
+        bitcoin_anchor: new_block_event.burn_block_hash.into(),
     };
     let block_id = new_block_event.index_block_hash;
 
