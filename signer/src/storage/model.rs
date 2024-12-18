@@ -1138,7 +1138,7 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
             block_id: StacksBlockHash(sbtc_event.block_id),
             request_id: sbtc_event.request_id,
             amount: sbtc_event.amount,
-            sender: sbtc_event.sender,
+            sender: sbtc_event.sender.into(),
             recipient: ScriptPubKey(sbtc_event.recipient),
             max_fee: sbtc_event.max_fee,
             block_height: sbtc_event.block_height,
@@ -1183,7 +1183,7 @@ pub struct WithdrawalCreateEvent {
     /// withdrawal as sBTC.
     pub amount: u64,
     /// This is the principal who has their sBTC locked up.
-    pub sender: PrincipalData,
+    pub sender: StacksPrincipal,
     /// This is the address to send the BTC to when fulfilling the
     /// withdrawal request.
     pub recipient: ScriptPubKey,

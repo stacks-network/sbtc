@@ -43,6 +43,7 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
+use crate::storage::model::WithdrawalCreateEvent;
 
 use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
@@ -329,14 +330,14 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     }
 }
 
-impl fake::Dummy<fake::Faker> for crate::storage::model::WithdrawalCreateEvent {
+impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        crate::storage::model::WithdrawalCreateEvent {
+        WithdrawalCreateEvent {
             txid: config.fake_with_rng(rng),
             block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             amount: rng.next_u32() as u64,
-            sender: config.fake_with_rng::<StacksPrincipal, _>(rng).into(),
+            sender: config.fake_with_rng(rng),
             recipient: config.fake_with_rng::<ScriptPubKey, _>(rng),
             max_fee: rng.next_u32() as u64,
             block_height: rng.next_u32() as u64,

@@ -803,7 +803,7 @@ mod tests {
             max_fee: 1,
             recipient: ScriptPubKey::from_bytes(vec![]),
             txid: StacksTxId::from(stacks_first_tx.txid.0),
-            sender: PrincipalData::Standard(StandardPrincipalData::transient()),
+            sender: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
             block_height: test_data.bitcoin_blocks[0].block_height,
         };
 
