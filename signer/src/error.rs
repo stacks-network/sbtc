@@ -446,8 +446,13 @@ pub enum Error {
 
     /// We throw this error when MultisigTx was created incorrectly:
     /// Txid of created MultisigTx is not equal to txid we expect
-    #[error("MultisigTx creation error: MultisigTx was created with txid {0}, but expected txid {1}")]
-    MultisigTxCreationError(blockstack_lib::burnchains::Txid, blockstack_lib::burnchains::Txid),
+    #[error(
+        "MultisigTx creation error: MultisigTx was created with txid {0}, but expected txid {1}"
+    )]
+    MultisigTxCreationError(
+        blockstack_lib::burnchains::Txid,
+        blockstack_lib::burnchains::Txid,
+    ),
 
     /// Observer dropped
     #[error("observer dropped")]
