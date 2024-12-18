@@ -478,9 +478,11 @@ impl CompleteDepositV1 {
             .get_swept_deposit_requests(chain_tip, context_window)
             .await?;
 
-        // Insert the result into the cache
-        cache_guard.put(*chain_tip, result.clone());
-
+        // Insert the result into the cache (if not empty).
+        if !result.is_empty() {
+            cache_guard.put(*chain_tip, result.clone());
+        }
+        
         Ok(result)
     }
 
