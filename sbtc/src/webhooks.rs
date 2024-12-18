@@ -31,7 +31,17 @@ use stacks_common::types::chainstate::BlockHeaderHash;
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::StacksBlockId;
 
-use crate::error::Error;
+/// Webhooks error
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    /// This is thrown when failing to parse a hex string into bytes.
+    #[error("could not decode the hex string into bytes: {0}")]
+    DecodeHexBytes(#[source] hex::FromHexError),
+    /// An error when attempting to generically decode bytes using the
+    /// trait implementation.
+    #[error("got an error wen attempting to call StacksMessageCodec::consensus_deserialize {0}")]
+    StacksCodec(#[source] blockstack_lib::codec::Error),
+}
 
 /// This struct represents the body of POST /new_block events from a stacks
 /// node.
