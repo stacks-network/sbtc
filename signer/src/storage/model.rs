@@ -1091,30 +1091,28 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
         let txid = StacksTxId::from(sbtc_event.txid.0);
         CompletedDepositEvent {
             txid,
-            block_id: StacksBlockHash(sbtc_event.block_id),
+            block_id: sbtc_event.block_id.into(),
             amount: sbtc_event.amount,
             outpoint: sbtc_event.outpoint,
             sweep_block_hash: sweep_hash,
             sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: BitcoinTxId(sbtc_event.sweep_txid),
+            sweep_txid: sbtc_event.sweep_txid.into(),
         }
     }
 }
 
 impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
-        let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
-        let txid = StacksTxId::from(sbtc_event.txid.0);
         WithdrawalAcceptEvent {
-            txid,
-            block_id: StacksBlockHash(sbtc_event.block_id),
+            txid: sbtc_event.txid.into(),
+            block_id: sbtc_event.block_id.into(),
             request_id: sbtc_event.request_id,
             signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
             outpoint: sbtc_event.outpoint,
             fee: sbtc_event.fee,
-            sweep_block_hash: sweep_hash,
+            sweep_block_hash: sbtc_event.sweep_block_hash.into(),
             sweep_block_height: sbtc_event.sweep_block_height,
-            sweep_txid: BitcoinTxId(sbtc_event.sweep_txid),
+            sweep_txid: sbtc_event.sweep_txid.into(),
         }
     }
 }
@@ -1122,8 +1120,8 @@ impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
 impl From<sbtc::events::WithdrawalRejectEvent> for WithdrawalRejectEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalRejectEvent) -> WithdrawalRejectEvent {
         WithdrawalRejectEvent {
-            txid: StacksTxId::from(sbtc_event.txid.0),
-            block_id: StacksBlockHash(sbtc_event.block_id),
+            txid: sbtc_event.txid.into(),
+            block_id: sbtc_event.block_id.into(),
             request_id: sbtc_event.request_id,
             signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
         }
@@ -1133,12 +1131,12 @@ impl From<sbtc::events::WithdrawalRejectEvent> for WithdrawalRejectEvent {
 impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
     fn from(sbtc_event: sbtc::events::WithdrawalCreateEvent) -> WithdrawalCreateEvent {
         WithdrawalCreateEvent {
-            txid: StacksTxId::from(sbtc_event.txid.0),
-            block_id: StacksBlockHash(sbtc_event.block_id),
+            txid: sbtc_event.txid.into(),
+            block_id: sbtc_event.block_id.into(),
             request_id: sbtc_event.request_id,
             amount: sbtc_event.amount,
             sender: sbtc_event.sender.into(),
-            recipient: ScriptPubKey(sbtc_event.recipient),
+            recipient: sbtc_event.recipient.into(),
             max_fee: sbtc_event.max_fee,
             block_height: sbtc_event.block_height,
         }

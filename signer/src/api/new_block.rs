@@ -800,7 +800,7 @@ mod tests {
             amount: 100,
             max_fee: 1,
             recipient: ScriptPubKey::from_bytes(vec![]),
-            txid: StacksTxId::from(stacks_first_tx.txid.0),
+            txid: stacks_first_tx.txid,
             sender: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
             block_height: test_data.bitcoin_blocks[0].block_height,
         };
@@ -859,7 +859,7 @@ mod tests {
         let event = WithdrawalRejectEvent {
             request_id: 1,
             block_id: stacks_chaintip.block_hash.into(),
-            txid: StacksTxId::from(*test_data.stacks_transactions[0].txid),
+            txid: test_data.stacks_transactions[0].txid,
             signer_bitmap: BitArray::<_>::ZERO,
         };
 
