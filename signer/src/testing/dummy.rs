@@ -310,9 +310,9 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
                 vout: rng.next_u32(),
             },
             fee: rng.next_u32() as u64,
-            sweep_block_hash: BitcoinBlockHash(block_hash(config, rng)),
+            sweep_block_hash: config.fake_with_rng(rng),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: BitcoinTxId(txid(config, rng)),
+            sweep_txid: config.fake_with_rng(rng),
         }
     }
 }
@@ -354,9 +354,9 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
-            sweep_block_hash: BitcoinBlockHash(block_hash(config, rng)),
+            sweep_block_hash: config.fake_with_rng(rng),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: BitcoinTxId(txid(config, rng)),
+            sweep_txid: config.fake_with_rng(rng),
         }
     }
 }

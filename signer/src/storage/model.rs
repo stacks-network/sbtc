@@ -674,7 +674,7 @@ impl From<BitcoinTx> for bitcoin::Transaction {
 
 /// The bitcoin transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinTxId(pub bitcoin::Txid);
+pub struct BitcoinTxId(bitcoin::Txid);
 
 impl Deref for BitcoinTxId {
     type Target = bitcoin::Txid;
@@ -730,7 +730,7 @@ impl std::fmt::Display for BitcoinTxId {
 
 /// Bitcoin block hash
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinBlockHash(pub bitcoin::BlockHash);
+pub struct BitcoinBlockHash(bitcoin::BlockHash);
 
 impl BitcoinBlockHash {
     /// Return the inner bytes for the block hash
@@ -837,7 +837,7 @@ impl From<&BitcoinBlock> for BitcoinBlockRef {
 
 /// The Stacks block ID. This is different from the block header hash.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StacksBlockHash(pub StacksBlockId);
+pub struct StacksBlockHash(StacksBlockId);
 
 impl Deref for StacksBlockHash {
     type Target = StacksBlockId;
@@ -872,7 +872,7 @@ impl std::fmt::Display for StacksBlockHash {
 
 /// Stacks transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StacksTxId(pub blockstack_lib::burnchains::Txid);
+pub struct StacksTxId(blockstack_lib::burnchains::Txid);
 
 impl std::fmt::Display for StacksTxId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
