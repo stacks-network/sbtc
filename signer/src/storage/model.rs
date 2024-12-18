@@ -1143,6 +1143,36 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
     }
 }
 
+impl From<sbtc::events::KeyRotationEvent> for KeyRotationEvent {
+    fn from(sbtc_event: sbtc::events::KeyRotationEvent) -> KeyRotationEvent {
+        KeyRotationEvent {
+            new_keys: sbtc_event
+                .new_keys
+                .into_iter()
+                .map(|key| key.into())
+                .collect(),
+            new_address: sbtc_event.new_address.into(),
+            new_aggregate_pubkey: sbtc_event.new_aggregate_pubkey.into(),
+            new_signature_threshold: sbtc_event.new_signature_threshold,
+        }
+    }
+}
+
+/// This is the event that is emitted from the `rotate-keys`
+/// public function in the sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct KeyRotationEvent {
+    /// The new set of public keys for all known signers during this
+    /// PoX cycle.
+    pub new_keys: Vec<PublicKey>,
+    /// The address that deployed the contract.
+    pub new_address: StacksPrincipal,
+    /// The new aggregate key created by combining the above public keys.
+    pub new_aggregate_pubkey: PublicKey,
+    /// The number of signatures required for the multi-sig wallet.
+    pub new_signature_threshold: u16,
+}
+
 /// This is the event that is emitted from the `create-withdrawal-request`
 /// public function in sbtc-registry smart contract.
 #[derive(Debug, Clone)]

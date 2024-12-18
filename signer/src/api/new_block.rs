@@ -16,6 +16,8 @@ use emily_client::models::UpdateWithdrawalsResponse;
 use emily_client::models::WithdrawalParameters;
 use emily_client::models::WithdrawalUpdate;
 use futures::FutureExt;
+use sbtc::events::RegistryEvent;
+use sbtc::events::TxInfo;
 use std::sync::OnceLock;
 
 use crate::context::Context;
@@ -25,6 +27,7 @@ use crate::metrics::Metrics;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::KeyRotationEvent;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
@@ -33,9 +36,6 @@ use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
-use sbtc::events::KeyRotationEvent;
-use sbtc::events::RegistryEvent;
-use sbtc::events::TxInfo;
 
 use super::ApiState;
 use super::SBTC_REGISTRY_CONTRACT_NAME;
@@ -156,7 +156,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
                     .map(|x| created_withdrawals.push(x))
             }
             Ok(RegistryEvent::KeyRotation(event)) => {
-                handle_key_rotation(&api.ctx, event, tx_info.txid.into()).await
+                handle_key_rotation(&api.ctx, event.into(), tx_info.txid.into()).await
             }
             Err(error) => {
                 tracing::error!(%error, "got an error when transforming the event ClarityValue");
@@ -386,8 +386,8 @@ async fn handle_key_rotation(
 ) -> Result<(), Error> {
     let key_rotation_tx = RotateKeysTransaction {
         txid: stacks_txid,
-        address: event.new_address.into(),
-        aggregate_key: event.new_aggregate_pubkey.into(),
+        address: event.new_address,
+        aggregate_key: event.new_aggregate_pubkey,
         signer_set: event.new_keys.into_iter().map(Into::into).collect(),
         signatures_required: event.new_signature_threshold,
     };
@@ -899,11 +899,11 @@ mod tests {
 
         let txid: StacksTxId = fake::Faker.fake_with_rng(&mut OsRng);
         let event = KeyRotationEvent {
-            new_aggregate_pubkey: SECP256K1.generate_keypair(&mut OsRng).1,
+            new_aggregate_pubkey: SECP256K1.generate_keypair(&mut OsRng).1.into(),
             new_keys: (0..3)
-                .map(|_| SECP256K1.generate_keypair(&mut OsRng).1)
+                .map(|_| SECP256K1.generate_keypair(&mut OsRng).1.into())
                 .collect(),
-            new_address: PrincipalData::Standard(StandardPrincipalData::transient()),
+            new_address: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
             new_signature_threshold: 3,
         };
 
