@@ -500,8 +500,9 @@ where
         Ok(())
     }
 
+    /// Process WSTS messages
     #[tracing::instrument(skip_all, fields(txid = %msg.txid))]
-    async fn handle_wsts_message(
+    pub async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -716,10 +717,12 @@ where
     ) -> Result<(), Error> {
         let Some(state_machine) = self.wsts_state_machines.get_mut(&id) else {
             tracing::warn!("missing signing round");
-            return Ok(());
+            return Err(Error::MissingStateMachine);
         };
 
-        let outbound_messages = state_machine.process(msg, &mut OsRng).map_err(Error::Wsts)?;
+        let outbound_messages = state_machine
+            .process(msg, &mut OsRng)
+            .map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
             // The WSTS state machine assume we read our own messages
@@ -874,19 +877,19 @@ where
 /// Relevant information for validating incoming messages
 /// relating to a particular chain tip.
 #[derive(Debug, Clone, Copy)]
-struct MsgChainTipReport {
+pub struct MsgChainTipReport {
     /// Whether the sender of the incoming message is the coordinator for this chain tip.
-    sender_is_coordinator: bool,
+    pub sender_is_coordinator: bool,
     /// The status of the chain tip relative to the signers' perspective.
-    chain_tip_status: ChainTipStatus,
+    pub chain_tip_status: ChainTipStatus,
     /// The bitcoin chain tip.
-    chain_tip: model::BitcoinBlockHash,
+    pub chain_tip: model::BitcoinBlockHash,
 }
 
 /// The status of a chain tip relative to the known blocks in the signer database.
 #[derive(Debug, Clone, Copy, strum::Display)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
-enum ChainTipStatus {
+pub enum ChainTipStatus {
     /// The chain tip is the tip of the canonical fork.
     Canonical,
     /// The chain tip is for a known block, but is not the canonical chain tip.
