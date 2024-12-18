@@ -18,7 +18,9 @@
 
 use std::collections::BTreeSet;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
+use std::sync::LazyLock;
 use std::sync::OnceLock;
 
 use bitcoin::Amount;
@@ -43,6 +45,8 @@ use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::util_lib::strings::StacksString;
 use clarity::vm::ClarityVersion;
+use lru::LruCache;
+use tokio::sync::Mutex;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
@@ -404,9 +408,15 @@ impl CompleteDepositV1 {
         }
         // 2. Check that the signer has a record of the deposit request
         //    from our list of swept deposit requests.
-        let deposit_requests = db
-            .get_swept_deposit_requests(&req_ctx.chain_tip.block_hash, req_ctx.context_window)
-            .await?;
+        // let deposit_requests = db
+        //     .get_swept_deposit_requests(&req_ctx.chain_tip.block_hash, req_ctx.context_window)
+        //     .await?;
+        let deposit_requests = Self::get_swept_deposit_requests(
+            db,
+            &req_ctx.chain_tip.block_hash,
+            req_ctx.context_window,
+        )
+        .await?;
 
         let deposit_request = deposit_requests
             .into_iter()
@@ -435,6 +445,42 @@ impl CompleteDepositV1 {
         }
 
         Ok(())
+    }
+
+    /// Function which will cache recent swept deposit requests given the chain
+    /// tip.
+    ///
+    /// TODO(978): This is intended to be temporary until we have a "better"
+    /// solution in place which solves the underlying query issue. However, it's
+    /// not completely naive to use caching for frequently accessed data,
+    /// either, if the results of this query are not expected to change between
+    /// chain tips.
+    async fn get_swept_deposit_requests(
+        db: &impl DbRead,
+        chain_tip: &BitcoinBlockHash,
+        context_window: u16,
+    ) -> Result<Vec<crate::storage::model::SweptDepositRequest>, Error> {
+        static SWEPT_DEPOSIT_CACHE: LazyLock<
+            Mutex<LruCache<BitcoinBlockHash, Vec<crate::storage::model::SweptDepositRequest>>>,
+        > = LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(5).expect("5 > 0"))));
+
+        // Lock the cache mutex
+        let mut cache_guard = SWEPT_DEPOSIT_CACHE.lock().await;
+
+        // Check if the result is already in the cache, and return if so
+        if let Some(cached_result) = cache_guard.get(chain_tip) {
+            return Ok(cached_result.clone());
+        }
+
+        // Otherwise, fetch the result from the database
+        let result = db
+            .get_swept_deposit_requests(chain_tip, context_window)
+            .await?;
+
+        // Insert the result into the cache
+        cache_guard.put(*chain_tip, result.clone());
+
+        Ok(result)
     }
 
     /// This function validates the sweep transaction.
