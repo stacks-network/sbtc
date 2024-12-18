@@ -457,6 +457,10 @@ impl CompleteDepositV1 {
         chain_tip: &BitcoinBlockHash,
         context_window: u16,
     ) -> Result<Vec<crate::storage::model::SweptDepositRequest>, Error> {
+        // Create a static cache for the swept deposit requests keyed on
+        // the bitcoin chain tip. We create an LRU with a max capacity of 5
+        // to ensure that in-flight requests are still serviced, which after
+        // a few Bitcoin blocks will be evicted when their usage diminishes.
         static SWEPT_DEPOSIT_CACHE: LazyLock<
             Mutex<LruCache<BitcoinBlockHash, Vec<crate::storage::model::SweptDepositRequest>>>,
         > = LazyLock::new(|| Mutex::new(LruCache::new(NonZeroUsize::new(5).expect("5 > 0"))));
