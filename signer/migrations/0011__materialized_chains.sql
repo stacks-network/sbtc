@@ -23,6 +23,9 @@ CREATE SEQUENCE sbtc_signer.canonical_chains_run_id_seq;
 
 -- Function to materialize the canonical chains for a given bitcoin chain tip
 -- and the maximum depth of the bitcoin blockchain to consider.
+--
+-- This function returns the number of rows written to the `canonical_chains`
+-- table upon success, and `-1` if rows already exist for the given chain tip.
 CREATE OR REPLACE FUNCTION sbtc_signer.materialize_canonical_chains(chain_tip BYTEA, max_depth INT)
 RETURNS INTEGER AS $$
 DECLARE
