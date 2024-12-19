@@ -25,7 +25,6 @@ use crate::emily_client::EmilyInteract;
 use crate::error::Error;
 use crate::metrics::Metrics;
 use crate::metrics::STACKS_BLOCKCHAIN;
-use crate::stacks::webhooks::NewBlockEvent;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::KeyRotationEvent;
 use crate::storage::model::RotateKeysTransaction;
@@ -36,6 +35,7 @@ use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
+use sbtc::webhooks::NewBlockEvent;
 
 use super::ApiState;
 use super::SBTC_REGISTRY_CONTRACT_NAME;

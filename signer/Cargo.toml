@@ -33,7 +33,7 @@ p256k1.workspace = true
 prost.workspace = true
 rand.workspace = true
 reqwest.workspace = true
-sbtc = { path = "../sbtc", default-features = false }
+sbtc = { path = "../sbtc", features = ["webhooks"] }
 serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
