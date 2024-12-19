@@ -12,7 +12,9 @@ use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
-use super::entries::deposit::ValidatedDepositUpdate;
+use super::entries::deposit::{
+    DepositInfoByRecipientEntry, DepositTableByRecipientSecondaryIndex, ValidatedDepositUpdate,
+};
 use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
@@ -71,6 +73,22 @@ pub async fn get_deposit_entries(
     query_with_partition_key::<DepositTableSecondaryIndex>(
         context,
         status,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get deposit entries by recipient.
+pub async fn get_deposit_entries_by_recipient(
+    context: &EmilyContext,
+    recipient: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<i32>,
+) -> Result<(Vec<DepositInfoByRecipientEntry>, Option<String>), Error> {
+    query_with_partition_key::<DepositTableByRecipientSecondaryIndex>(
+        context,
+        recipient,
         maybe_next_token,
         maybe_page_size,
     )
