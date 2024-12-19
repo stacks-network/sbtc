@@ -58,6 +58,7 @@ cfg-if = "1.0"
 include_dir = "0.7.4"
 polynomial = "0.2.6"
 bitcoincore-zmq = { version = "1.5.2", features = ["async"] }
+lru = "0.12.5"
 
 # Only used to setup logging for the signer's axum http server
 tower-http = { version = "0.6.2", features = ["trace", "request-id"] }
