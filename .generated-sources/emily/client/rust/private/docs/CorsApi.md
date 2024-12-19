@@ -7,6 +7,7 @@ Method | HTTP request | Description
 [**chainstate_height_options**](CorsApi.md#chainstate_height_options) | **OPTIONS** /chainstate/{height} | CORS support
 [**chainstate_options**](CorsApi.md#chainstate_options) | **OPTIONS** /chainstate | CORS support
 [**deposit_options**](CorsApi.md#deposit_options) | **OPTIONS** /deposit | CORS support
+[**deposit_recipient_recipient_options**](CorsApi.md#deposit_recipient_recipient_options) | **OPTIONS** /deposit/recipient/{recipient} | CORS support
 [**deposit_txid_index_options**](CorsApi.md#deposit_txid_index_options) | **OPTIONS** /deposit/{txid}/{index} | CORS support
 [**deposit_txid_options**](CorsApi.md#deposit_txid_options) | **OPTIONS** /deposit/{txid} | CORS support
 [**health_options**](CorsApi.md#health_options) | **OPTIONS** /health | CORS support
@@ -84,6 +85,36 @@ Handles CORS preflight requests
 ### Parameters
 
 This endpoint does not need any parameter.
+
+### Return type
+
+ (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+
+## deposit_recipient_recipient_options
+
+> deposit_recipient_recipient_options(recipient)
+CORS support
+
+Handles CORS preflight requests
+
+### Parameters
+
+
+Name | Type | Description  | Required | Notes
+------------- | ------------- | ------------- | ------------- | -------------
+**recipient** | **String** | the status to search by when getting all deposits. | [required] |
 
 ### Return type
 
