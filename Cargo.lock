@@ -5791,11 +5791,13 @@ dependencies = [
  "bitcoincore-rpc",
  "bitcoincore-rpc-json",
  "clarity",
+ "hex",
  "rand 0.8.5",
  "secp256k1 0.29.0",
  "serde 1.0.203",
  "serde_json",
  "stacks-common",
+ "stackslib",
  "test-case",
  "thiserror",
 ]
