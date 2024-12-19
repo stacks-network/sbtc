@@ -1,5 +1,12 @@
 -- This table holds the canonical chain information for Bitcoin and Stacks
 -- chains keyed by the bitcoin chain tip.
+-- 
+-- This table includes one row for each Stacks block which is anchored to a
+-- Bitcoin block in the canonical chain. The `bitcoin_chain_tip` column is used
+-- to identify the specific chain tip for which the canonical chain is
+-- materialized. If no Stacks block(s) exist for a given Bitcoin block, the
+-- `stacks_block_hash` and `stacks_block_height` columns will be `NULL` for that
+-- Bitcoin block hash.
 CREATE TABLE sbtc_signer.canonical_chains (
     run_id INT,
     bitcoin_chain_tip BYTEA,
@@ -9,13 +16,39 @@ CREATE TABLE sbtc_signer.canonical_chains (
     stacks_block_height BIGINT
 );
 
+-- An intermediate view to `canonical_chains` which can be used in queries to
+-- avoid needing to change query syntax if the underlying data source changes.
+-- Note that this view will return multiple canonical chains, so you need to
+-- filter the results to the specific chain tip which you are interested in.
+CREATE VIEW sbtc_signer.canonical_chains_view AS
+SELECT
+    bitcoin_chain_tip,
+    bitcoin_block_hash,
+    bitcoin_block_height,
+    stacks_block_hash,
+    stacks_block_height
+FROM sbtc_signer.canonical_chains;
+
+-- A helper view to get only the canonical Bitcoin chain information from
+-- `canonical_chains` if you're not interested in Stacks blocks. Note that if
+-- used in queries, the `bitcoin_chain_tip` column should be used to filter the
+-- results to the specific chain tip which you are interested in. The results
+-- are not ordered by block height, so you should do that yourself if you
+-- require the results to be ordered.
+CREATE VIEW sbtc_signer.canonical_bitcoin_chain_view AS
+SELECT DISTINCT
+    bitcoin_chain_tip,
+    bitcoin_block_hash,
+    bitcoin_block_height
+FROM sbtc_signer.canonical_chains;
+
 -- Indexes to support common queries on the canonical chains table.
 CREATE INDEX ix_canonical_chains_run_id ON sbtc_signer.canonical_chains(run_id);
 CREATE INDEX ix_canonical_chains_bitcoin_chain_tip ON sbtc_signer.canonical_chains(bitcoin_chain_tip);
-CREATE INDEX ix_canonical_chains_bitcoin_block_hash ON sbtc_signer.canonical_chains(bitcoin_block_hash);
-CREATE INDEX ix_canonical_chains_bitcoin_block_height ON sbtc_signer.canonical_chains(bitcoin_block_height);
-CREATE INDEX ix_canonical_chains_stacks_block_hash ON sbtc_signer.canonical_chains(stacks_block_hash);
-CREATE INDEX ix_canonical_chains_stacks_block_height ON sbtc_signer.canonical_chains(stacks_block_height);
+CREATE INDEX ix_canonical_chains_bitcoin_block_hash ON sbtc_signer.canonical_chains(bitcoin_chain_tip, bitcoin_block_hash);
+CREATE INDEX ix_canonical_chains_bitcoin_block_height ON sbtc_signer.canonical_chains(bitcoin_chain_tip, bitcoin_block_height);
+CREATE INDEX ix_canonical_chains_stacks_block_hash ON sbtc_signer.canonical_chains(bitcoin_chain_tip, stacks_block_hash);
+CREATE INDEX ix_canonical_chains_stacks_block_height ON sbtc_signer.canonical_chains(bitcoin_chain_tip, stacks_block_height);
 
 -- New sequence which will be used to generate the run_id for each materialized
 -- view canonical chain.
