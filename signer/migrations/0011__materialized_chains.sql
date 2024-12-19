@@ -8,10 +8,10 @@
 -- `stacks_block_hash` and `stacks_block_height` columns will be `NULL` for that
 -- Bitcoin block hash.
 CREATE TABLE sbtc_signer.canonical_chains (
-    run_id INT,
-    bitcoin_chain_tip BYTEA,
-    bitcoin_block_hash BYTEA,
-    bitcoin_block_height BIGINT,
+    run_id INT NOT NULL,
+    bitcoin_chain_tip BYTEA NOT NULL,
+    bitcoin_block_hash BYTEA NOT NULL,
+    bitcoin_block_height BIGINT NOT NULL,
     stacks_block_hash BYTEA,
     stacks_block_height BIGINT
 );
