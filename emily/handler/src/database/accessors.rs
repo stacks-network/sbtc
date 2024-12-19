@@ -80,6 +80,7 @@ pub async fn get_deposit_entries(
 }
 
 /// Get deposit entries by recipient.
+#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_by_recipient(
     context: &EmilyContext,
     recipient: &String,
