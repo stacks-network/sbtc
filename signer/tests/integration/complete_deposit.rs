@@ -11,6 +11,7 @@ use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::DepositErrorMsg;
 use signer::stacks::contracts::ReqContext;
 use signer::storage::model::BitcoinBlockRef;
+use signer::storage::model::BitcoinTxId;
 use signer::storage::model::StacksPrincipal;
 use signer::testing;
 use signer::testing::context::*;
@@ -414,6 +415,10 @@ async fn complete_deposit_validation_recipient_mismatch() {
 /// withdrawals outputs, and changing the fee rate would change the
 /// calulation specified in this test, so that's why we use the magic
 /// deposit amount here.
+///
+/// Moreover, our testing apparatus goes through code that filters deposits
+/// based off of the the DUST amount so we need custom code to trigger this
+/// error.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_fee_too_low() {
@@ -427,10 +432,15 @@ async fn complete_deposit_validation_fee_too_low() {
     let signers = TestSignerSet::new(&mut rng);
     // We are trying to trigger the fee too low mint amount. Specifically,
     // we want to choose a deposit amount that is still positive after fees
-    // but below the dust limit. The fee rate in this test is fixed at 10.0
-    // sats per vbyte and the tx size is 235 bytes so we lose 2350 sats to
-    // fees.
-    let amounts = DepositAmounts { amount: 2850, max_fee: 80_000 };
+    // but below the dust limit. But our test code goes through the
+    // production code that refuses to construct transactions where we
+    // could hit the dust limit. So we construct a deposit with a certain
+    // high amount, and then modify the database to store an amount that
+    // would trigger the limit. This is tricky because we reach out to
+    // bitcoin core for something and rely on the database for others.
+    // Hopefully this test becomes an issue down the line becuase of a
+    // refactor.
+    let amounts = DepositAmounts { amount: 50000, max_fee: 80_000 };
     let mut setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
     // Normal: the signers' block observer should be getting new block
@@ -468,6 +478,29 @@ async fn complete_deposit_validation_fee_too_low() {
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
+    // Different: We need to update the amount to be something that
+    // validation would reject. To do that we update our database.
+    //
+    // The fee rate in this test is fixed at 10.0 sats per vbyte and the tx
+    // size is 235 bytes so we lose 2350 sats to fees. The amount here is
+    // chosen so that 2350 + 546 is greater than it.
+    let deposit_amount = 2895;
+    sqlx::query(
+        r#"
+        UPDATE deposit_requests AS dr
+        SET amount = $1
+        WHERE dr.txid = $2
+          AND dr.output_index = $3;
+    "#,
+    )
+    .bind(deposit_amount as i32)
+    .bind(BitcoinTxId::from(setup.deposits[0].0.outpoint.txid))
+    .bind(setup.deposits[0].0.outpoint.vout as i32)
+    .execute(db.pool())
+    .await
+    .unwrap();
+    setup.deposits[0].1.amount = deposit_amount;
+
     // Normal: create a properly formed complete-deposit transaction object
     // and the corresponding request context.
     let (complete_deposit_tx, req_ctx) = make_complete_deposit2(&setup);
@@ -486,6 +519,29 @@ async fn complete_deposit_validation_fee_too_low() {
         }
         err => panic!("unexpected error during validation {err}"),
     }
+
+    // Now a sanity check to see what happens if we are at the limit.
+    let deposit_amount = deposit_amount + 1;
+    sqlx::query(
+        r#"
+        UPDATE deposit_requests AS dr
+        SET amount = $1
+        WHERE dr.txid = $2
+          AND dr.output_index = $3;
+    "#,
+    )
+    .bind(deposit_amount as i32)
+    .bind(BitcoinTxId::from(setup.deposits[0].0.outpoint.txid))
+    .bind(setup.deposits[0].0.outpoint.vout as i32)
+    .execute(db.pool())
+    .await
+    .unwrap();
+    setup.deposits[0].1.amount = deposit_amount;
+
+    // Normal: create a properly formed complete-deposit transaction object
+    // and the corresponding request context.
+    let (complete_deposit_tx, req_ctx) = make_complete_deposit2(&setup);
+    assert!(complete_deposit_tx.validate(&ctx, &req_ctx).await.is_ok());
 
     testing::storage::drop_db(db).await;
 }
