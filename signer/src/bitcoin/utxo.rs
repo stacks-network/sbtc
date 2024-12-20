@@ -173,7 +173,7 @@ impl SbtcRequests {
             })
             .map(RequestRef::Withdrawal);
 
-        // Filter deposit requests based on two constraints:
+        // Filter deposit requests based on four constraints:
         // 1. The user's max fee must be >= our minimum required fee for
         //     deposits (based on fixed deposit tx size)
         // 2. The deposit amount must be less than the per-deposit limit
@@ -2878,7 +2878,9 @@ mod tests {
         // filtering done here uses a heuristic where we take the maximum
         // fee that the user could pay, and subtract that amount from the
         // deposit amount. The maximum fee that a user could pay is the
-        // SOLO_DEPOSIT_TX_VSIZE times the fee rate.
+        // SOLO_DEPOSIT_TX_VSIZE times the fee rate so with a fee rate of 1
+        // we should filter the request if the deposit amount is less than
+        // SOLO_DEPOSIT_TX_VSIZE + DEPOSIT_DUST_LIMIT.
         let requests = SbtcRequests {
             deposits: vec![create_deposit(2500000, 100000, 0), req],
             withdrawals: vec![],
