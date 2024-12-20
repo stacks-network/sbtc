@@ -82,6 +82,8 @@ impl SignerState {
 pub struct SbtcLimits {
     /// Represents the total cap for all pegged-in BTC/sBTC.
     total_cap: Option<Amount>,
+    /// Represents the minimum amount of BTC allowed to be pegged-in per transaction.
+    per_deposit_minimum: Option<Amount>,
     /// Represents the maximum amount of BTC allowed to be pegged-in per transaction.
     per_deposit_cap: Option<Amount>,
     /// Represents the maximum amount of sBTC allowed to be pegged-out per transaction.
@@ -94,8 +96,8 @@ impl std::fmt::Display for SbtcLimits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "[total cap: {:?}, per-deposit cap: {:?}, per-withdrawal cap: {:?}, max-mintable cap: {:?}]",
-            self.total_cap, self.per_deposit_cap, self.per_withdrawal_cap, self.max_mintable_cap
+            "[total cap: {:?}, per-deposit min: {:?}, per-deposit cap: {:?}, per-withdrawal cap: {:?}, max-mintable cap: {:?}]",
+            self.total_cap, self.per_deposit_minimum, self.per_deposit_cap, self.per_withdrawal_cap, self.max_mintable_cap
         )
     }
 }
@@ -104,12 +106,14 @@ impl SbtcLimits {
     /// Create a new `SbtcLimits` object.
     pub fn new(
         total_cap: Option<Amount>,
+        per_deposit_minimum: Option<Amount>,
         per_deposit_cap: Option<Amount>,
         per_withdrawal_cap: Option<Amount>,
         max_mintable_cap: Option<Amount>,
     ) -> Self {
         Self {
             total_cap,
+            per_deposit_minimum,
             per_deposit_cap,
             per_withdrawal_cap,
             max_mintable_cap,
@@ -126,6 +130,11 @@ impl SbtcLimits {
         self.total_cap.is_some()
     }
 
+    /// Get the minimum amount of BTC allowed to be pegged-in per transaction.
+    pub fn per_deposit_minimum(&self) -> Amount {
+        self.per_deposit_minimum.unwrap_or(Amount::ZERO)
+    }
+
     /// Get the maximum amount of BTC allowed to be pegged-in per transaction.
     pub fn per_deposit_cap(&self) -> Amount {
         self.per_deposit_cap.unwrap_or(Amount::MAX_MONEY)
@@ -139,6 +148,17 @@ impl SbtcLimits {
     /// Get the maximum amount of sBTC that can currently be minted.
     pub fn max_mintable_cap(&self) -> Amount {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
+    }
+
+    #[cfg(test)]
+    pub fn new_per_deposit(min: u64, max: u64) -> Self {
+        Self {
+            total_cap: None,
+            per_deposit_minimum: Some(Amount::from_sat(min)),
+            per_deposit_cap: Some(Amount::from_sat(max)),
+            per_withdrawal_cap: None,
+            max_mintable_cap: None,
+        }
     }
 }
 
