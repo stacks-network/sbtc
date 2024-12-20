@@ -329,6 +329,8 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         signer_private_key: config.signer.private_key,
         wsts_state_machines: HashMap::new(),
         dkg_begin_pause: config.signer.dkg_begin_pause.map(Duration::from_secs),
+        dkg_end_begin: None,
+        dkg_public_shares: Default::default(),
     };
 
     signer.run().await

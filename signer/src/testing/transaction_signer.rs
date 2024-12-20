@@ -58,6 +58,8 @@ where
                 threshold,
                 rng,
                 dkg_begin_pause: None,
+                dkg_public_shares: Default::default(),
+                dkg_end_begin: None,
             },
             context,
         }
