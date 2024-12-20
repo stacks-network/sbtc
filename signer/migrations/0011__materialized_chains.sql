@@ -30,12 +30,15 @@ CREATE TABLE sbtc_signer.canonical_chain_data (
     stacks_block_height BIGINT,
 
     FOREIGN KEY (canonical_chain_id) REFERENCES sbtc_signer.canonical_chain(id),
+    -- Let's ensure that bitcoin/stacks blocks can't be deleted if they are
+    -- part of a canonical chain (if/when we implement pruning).
     FOREIGN KEY (bitcoin_block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash),
     FOREIGN KEY (stacks_block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash)
 );
 
--- Indexes to support common queries on the canonical chains data table.
+-- This index acts as our pseudo-PK for the table.
 CREATE UNIQUE INDEX uk_canonical_chain_data ON sbtc_signer.canonical_chain_data(canonical_chain_id, bitcoin_block_hash, stacks_block_hash);
+-- Indexes to support common queries on the canonical chains data table.
 CREATE INDEX ix_canonical_chain_data_bitcoin_block_hash ON sbtc_signer.canonical_chain_data(bitcoin_block_hash);
 CREATE INDEX ix_canonical_chain_data_bitcoin_block_height ON sbtc_signer.canonical_chain_data(bitcoin_block_height DESC);
 CREATE INDEX ix_canonical_chain_data_stacks_block_hash ON sbtc_signer.canonical_chain_data(stacks_block_hash);
@@ -77,6 +80,9 @@ INNER JOIN sbtc_signer.canonical_chain_data dat
 -- the results to the specific chain tip which you are interested in. The
 -- results are not ordered by block height, so you should do that yourself if
 -- you require the results to be ordered.
+-- This view will also only return rows where the `stacks_block_hash` is not
+-- `NULL`, since not all Bitcoin blocks necessarily have Stacks blocks anchored
+-- to them (i.e. during chain stalls).
 CREATE VIEW sbtc_signer.canonical_stacks_chain AS
 SELECT DISTINCT
     idx.bitcoin_chain_tip,
@@ -111,7 +117,8 @@ BEGIN
         RETURN -1; -- Error code indicating rows already exist
     END IF;
 
-    -- Insert 
+    -- Insert the canonical chain row for the given chain tip, returning 
+    -- the ID of the new row.
     INSERT INTO sbtc_signer.canonical_chain (bitcoin_chain_tip)
     VALUES (chain_tip)
     RETURNING id INTO canonical_chain_id;
