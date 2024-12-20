@@ -63,6 +63,8 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
+        dkg_end_begin: None,
+        dkg_public_shares: Default::default(),
     };
 
     // We need stacks blocks for the rotate-keys transactions.
@@ -174,6 +176,8 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
+        dkg_end_begin: None,
+        dkg_public_shares: Default::default(),
     };
 
     // Let's create a proper sign request.
@@ -261,6 +265,8 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
+        dkg_end_begin: None,
+        dkg_public_shares: Default::default(),
     };
 
     let sbtc_requests: TxRequestIds = TxRequestIds {
