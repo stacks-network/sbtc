@@ -265,7 +265,7 @@ impl BitcoinPreSignRequest {
                 .deposit_reports
                 .get(&key)
                 // This should never happen because we have already validated that we have all the reports.
-                .ok_or(InputValidationResult::Unknown.into_error(btc_ctx))?;
+                .ok_or_else(|| InputValidationResult::Unknown.into_error(btc_ctx))?;
             deposits.push((report.to_deposit_request(votes), report.clone()));
         }
 
@@ -274,7 +274,7 @@ impl BitcoinPreSignRequest {
                 .withdrawal_reports
                 .get(id)
                 // This should never happen because we have already validated that we have all the reports.
-                .ok_or(WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
+                .ok_or_else(|| WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
             withdrawals.push((report.to_withdrawal_request(votes), report.clone()));
         }
 
