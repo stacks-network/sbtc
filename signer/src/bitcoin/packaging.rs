@@ -71,13 +71,10 @@ impl<T: Voted> OptimalPackager<T> {
     /// and return the key for that bag. None is returned if no bag can
     /// accommodate an item with the given weight.
     fn find_best_key(&mut self, item: &T) -> Option<&mut (u128, u32, Vec<T>)> {
-        self.bags
-            .iter_mut()
-            .filter(|(aggregate_votes, weight, _)| {
-                (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
-                    && weight.saturating_add(T::WEIGHT) < self.max_weight
-            })
-            .next()
+        self.bags.iter_mut().find(|(aggregate_votes, weight, _)| {
+            (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
+                && weight.saturating_add(T::WEIGHT) < self.max_weight
+        })
     }
 
     /// Create a new bag for the given item.
