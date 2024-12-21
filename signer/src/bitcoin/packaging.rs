@@ -2,6 +2,111 @@
 
 use std::collections::BTreeMap;
 
+/// Package a list of items into bags.
+///
+/// The items are assumed to be "voted on" and each bag cannot have items
+/// where the total number of distinct votes against is less than or equal
+/// to the `max_votes_against`. Moreover, each item has a weight, and the
+/// total weight of each bag must be less than or equal to the max_weight.
+pub fn compute_optimal_packages2<I, T>(
+    items: I,
+    max_votes_against: u32,
+    max_weight: u32,
+) -> impl Iterator<Item = Vec<T>>
+where
+    I: IntoIterator<Item = T>,
+    T: Voted,
+{
+    // This is an implementation of the Best-Fit-Decreasing algorithm, so
+    // we need to sort by weight decreasing.
+    let mut item_vec: Vec<(u32, T)> = items
+        .into_iter()
+        .map(|item| (item.votes().count_ones(), item))
+        .collect();
+
+    item_vec.sort_by_key(|(vote_count, _)| std::cmp::Reverse(*vote_count));
+
+    // Now we just add each item into a bag, and return the
+    // collection of bags afterward.
+    let mut packager = OptimalPackager::new(max_votes_against, max_weight);
+    for (_, item) in item_vec {
+        packager.insert_item(item);
+    }
+    packager.bags.into_iter().map(|(_, _, items)| items)
+}
+
+#[derive(Debug)]
+struct OptimalPackager<T> {
+    /// Contains all the bags and their items. The first element of the
+    /// key tuple is how much capacity is left in the associated bag,
+    /// while the second element is the ID of the bag itself. The values
+    /// in this tree are the items themselves.
+    bags: Vec<(u128, u32, Vec<T>)>,
+    /// Each bag has a fixed capacity threshold, this is that value.
+    max_votes_against: u32,
+    /// The maximum number of items that can fit in a bag, regardless of
+    /// their weight.
+    max_weight: u32,
+}
+
+/// A weighted item that can be packaged using [`compute_optimal_packages`].
+pub trait Voted {
+    /// The weight of the item in the context of packaging.
+    const WEIGHT: u32;
+    /// A bitmap of how the signers voted. Here, we assume that a 1 (or
+    /// true) implies that the signer voted *against* the transaction.
+    fn votes(&self) -> u128;
+}
+
+impl<T: Voted> OptimalPackager<T> {
+    const fn new(max_votes_against: u32, max_weight: u32) -> Self {
+        Self {
+            bags: Vec::new(),
+            max_votes_against,
+            max_weight,
+        }
+    }
+
+    /// Find the best bag to insert a new item given the item's weight
+    /// and return the key for that bag. None is returned if no bag can
+    /// accommodate an item with the given weight.
+    fn find_best_key(&mut self, item: &T) -> Option<&mut (u128, u32, Vec<T>)> {
+        self.bags
+            .iter_mut()
+            .filter(|(aggregate_votes, weight, _)| {
+                (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
+                    && weight.saturating_add(T::WEIGHT) < self.max_weight
+            })
+            .next()
+    }
+
+    /// Create a new bag for the given item.
+    ///
+    /// Note that this function creates a new bag even if the item can
+    /// fit into some other bag with enough capacity
+    fn create_new_bag(&mut self, item: T) {
+        self.bags.push((item.votes(), T::WEIGHT, vec![item]));
+    }
+
+    /// Insert an item into the best fit bag. Creates a new one if no
+    /// bag exists that can fit the item.
+    fn insert_item(&mut self, item: T) {
+        let item_votes = item.votes();
+        if item_votes.count_ones() > self.max_votes_against || T::WEIGHT > self.max_weight {
+            return;
+        }
+
+        match self.find_best_key(&item) {
+            Some((votes, weight, items)) => {
+                *votes |= item_votes;
+                *weight += T::WEIGHT;
+                items.push(item);
+            }
+            None => self.create_new_bag(item),
+        };
+    }
+}
+
 /// Package a list of items into bags where the total capacity of each bag
 /// is less than the given capacity.
 ///
@@ -123,6 +228,8 @@ impl<T> BestFitPackager<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitvec::array::BitArray;
+    use bitvec::field::BitField;
     use test_case::test_case;
 
     #[derive(Debug)]
@@ -167,5 +274,42 @@ mod tests {
         let bags: Vec<Vec<Item>> = compute_optimal_packages(items, capacity).collect();
 
         assert_eq!(bags.len(), expected);
+    }
+
+    struct VotesTestCase {
+        votes: Vec<[bool; 5]>,
+        max_items: u32,
+        max_votes_against: u32,
+        expected_packages: usize,
+    }
+
+    impl Voted for [bool; 5] {
+        const WEIGHT: u32 = 1;
+        fn votes(&self) -> u128 {
+            let mut votes = BitArray::<[u8; 16]>::ZERO;
+            for (index, value) in self.iter().copied().enumerate() {
+                votes.set(index, value);
+            }
+            votes.load()
+        }
+    }
+
+    #[test_case(VotesTestCase {
+        votes: vec![
+            [false; 5],
+            [false; 5],
+            [false; 5],
+            [false; 5],
+            [false; 5],
+            [false; 5],
+        ],
+        max_items: 100,
+        max_votes_against: 1,
+        expected_packages: 1,
+    } ; "no-votes-against-one-package")]
+    fn returns_optimal_placements(case: VotesTestCase) {
+        let ans = compute_optimal_packages2(case.votes, case.max_votes_against, case.max_items);
+        let collection = ans.collect::<Vec<_>>();
+        assert_eq!(collection.len(), case.expected_packages);
     }
 }
