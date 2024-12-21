@@ -133,7 +133,7 @@ pub fn make_complete_deposit2(data: &TestSweepSetup2) -> (CompleteDepositV1, Req
         aggregate_key: data.signers.aggregate_key(),
         // This value affects how many deposit transactions are consider
         // accepted. During validation, a signer won't sign a transaction
-        // if it is not considered accepted but the collection of signers.
+        // if it is not considered accepted by enough signers.
         signatures_required: data.signatures_required,
         // This is who the current signer thinks deployed the sBTC
         // contracts.
@@ -430,16 +430,16 @@ async fn complete_deposit_validation_fee_too_low() {
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    // We are trying to trigger the fee too low mint amount. Specifically,
-    // we want to choose a deposit amount that is still positive after fees
-    // but below the dust limit. But our test code goes through the
-    // production code that refuses to construct transactions where we
-    // could hit the dust limit. So we construct a deposit with a certain
-    // high amount, and then modify the database to store an amount that
-    // would trigger the limit. This is tricky because we reach out to
-    // bitcoin core for something and rely on the database for others.
-    // Hopefully this test becomes an issue down the line becuase of a
-    // refactor.
+    // We are trying to trigger the AmountBelowDustLimit error.
+    // Specifically, we want to choose a deposit amount that is still
+    // positive after fees but below the dust limit. But our test code goes
+    // through the production code that refuses to construct transactions
+    // where we could hit the dust limit. So we construct a deposit with a
+    // certain high amount, and then modify the database to store an amount
+    // that would trigger the limit. This is tricky because we reach out to
+    // bitcoin core for somethings and rely on the database for others.
+    // Hopefully this test does not becomes an issue down the line becuase
+    // of a refactor.
     let amounts = DepositAmounts { amount: 50000, max_fee: 80_000 };
     let mut setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
