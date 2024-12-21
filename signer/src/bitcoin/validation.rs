@@ -23,6 +23,7 @@ use crate::storage::model::BitcoinWithdrawalOutput;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
 use crate::storage::DbRead;
+use crate::DEPOSIT_DUST_LIMIT;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
 use super::utxo::DepositRequest;
@@ -264,7 +265,7 @@ impl BitcoinPreSignRequest {
                 .deposit_reports
                 .get(&key)
                 // This should never happen because we have already validated that we have all the reports.
-                .ok_or(InputValidationResult::Unknown.into_error(btc_ctx))?;
+                .ok_or_else(|| InputValidationResult::Unknown.into_error(btc_ctx))?;
             deposits.push((report.to_deposit_request(votes), report.clone()));
         }
 
@@ -273,7 +274,7 @@ impl BitcoinPreSignRequest {
                 .withdrawal_reports
                 .get(id)
                 // This should never happen because we have already validated that we have all the reports.
-                .ok_or(WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
+                .ok_or_else(|| WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
             withdrawals.push((report.to_withdrawal_request(votes), report.clone()));
         }
 
@@ -508,6 +509,9 @@ impl SbtcReports {
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
+    /// The deposit request amount, less the fees, would be rejected from
+    /// the smart contract during the complete-deposit contract call.
+    MintAmountBelowDustLimit,
     /// The deposit request amount exceeds the allowed per-deposit cap.
     AmountTooHigh,
     /// The assessed fee exceeds the max-fee in the deposit request.
@@ -728,6 +732,10 @@ impl DepositRequestReport {
 
         if assessed_fee.to_sat() > self.max_fee.min(self.amount) {
             return InputValidationResult::FeeTooHigh;
+        }
+
+        if self.amount.saturating_sub(assessed_fee.to_sat()) < DEPOSIT_DUST_LIMIT {
+            return InputValidationResult::MintAmountBelowDustLimit;
         }
 
         // Let's check whether we rejected this deposit.
@@ -1063,6 +1071,38 @@ mod tests {
         status: InputValidationResult::FeeTooHigh,
         chain_tip_height: 2,
     } ; "one-sat-too-high-fee-amount")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: TX_FEE.to_sat() + DEPOSIT_DUST_LIMIT - 1,
+            max_fee: TX_FEE.to_sat(),
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+        },
+        status: InputValidationResult::MintAmountBelowDustLimit,
+        chain_tip_height: 2,
+    } ; "one-sat-under-dust-amount")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: TX_FEE.to_sat() + DEPOSIT_DUST_LIMIT,
+            max_fee: TX_FEE.to_sat(),
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+        },
+        status: InputValidationResult::Ok,
+        chain_tip_height: 2,
+    } ; "at-dust-amount")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),

@@ -103,7 +103,7 @@ impl TestHarness {
             vout: Vec::new(),
             block_hash: response
                 .block_hash
-                .unwrap_or(bitcoin::BlockHash::all_zeros()),
+                .unwrap_or_else(bitcoin::BlockHash::all_zeros),
             confirmations: 0,
             block_time: 0,
         };
