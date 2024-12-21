@@ -413,11 +413,11 @@ async fn complete_deposit_validation_recipient_mismatch() {
 /// tests are 10 sats per vbyte, and this test constructs a sweep
 /// transaction that is 235 bytes. Adding more deposits, including
 /// withdrawals outputs, and changing the fee rate would change the
-/// calulation specified in this test, so that's why we use the magic
+/// calculation specified in this test, so that's why we use the magic
 /// deposit amount here.
 ///
 /// Moreover, our testing apparatus goes through code that filters deposits
-/// based off of the the DUST amount so we need custom code to trigger this
+/// based off of the DUST amount, so we need custom code to trigger this
 /// error.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
@@ -437,9 +437,9 @@ async fn complete_deposit_validation_fee_too_low() {
     // where we could hit the dust limit. So we construct a deposit with a
     // certain high amount, and then modify the database to store an amount
     // that would trigger the limit. This is tricky because we reach out to
-    // bitcoin core for somethings and rely on the database for others.
-    // Hopefully this test does not becomes an issue down the line becuase
-    // of a refactor.
+    // bitcoin core for some things and rely on the database for others.
+    // Hopefully this test does not become an issue down the line due to a
+    // refactor.
     let amounts = DepositAmounts { amount: 50000, max_fee: 80_000 };
     let mut setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
@@ -482,7 +482,7 @@ async fn complete_deposit_validation_fee_too_low() {
     // validation would reject. To do that we update our database.
     //
     // The fee rate in this test is fixed at 10.0 sats per vbyte and the tx
-    // size is 235 bytes so we lose 2350 sats to fees. The amount here is
+    // size is 235 bytes, so we lose 2350 sats to fees. The amount here is
     // chosen so that 2350 + 546 is greater than it.
     let deposit_amount = 2895;
     sqlx::query(
