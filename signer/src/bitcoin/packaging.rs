@@ -51,11 +51,11 @@ struct OptimalPackager<T> {
 
 /// A weighted item that can be packaged using [`compute_optimal_packages`].
 pub trait Voted {
-    /// The weight of the item in the context of packaging.
-    const WEIGHT: u32;
     /// A bitmap of how the signers voted. Here, we assume that a 1 (or
     /// true) implies that the signer voted *against* the transaction.
     fn votes(&self) -> u128;
+    /// The weight of the item in the context of packaging.
+    fn weight(&self) -> u32;
 }
 
 impl<T: Voted> OptimalPackager<T> {
@@ -73,7 +73,7 @@ impl<T: Voted> OptimalPackager<T> {
     fn find_best_key(&mut self, item: &T) -> Option<&mut (u128, u32, Vec<T>)> {
         self.bags.iter_mut().find(|(aggregate_votes, weight, _)| {
             (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
-                && weight.saturating_add(T::WEIGHT) < self.max_weight
+                && weight.saturating_add(item.weight()) < self.max_weight
         })
     }
 
@@ -82,21 +82,21 @@ impl<T: Voted> OptimalPackager<T> {
     /// Note that this function creates a new bag even if the item can
     /// fit into some other bag with enough capacity
     fn create_new_bag(&mut self, item: T) {
-        self.bags.push((item.votes(), T::WEIGHT, vec![item]));
+        self.bags.push((item.votes(), item.weight(), vec![item]));
     }
 
     /// Insert an item into the best fit bag. Creates a new one if no
     /// bag exists that can fit the item.
     fn insert_item(&mut self, item: T) {
         let item_votes = item.votes();
-        if item_votes.count_ones() > self.max_votes_against || T::WEIGHT > self.max_weight {
+        if item_votes.count_ones() > self.max_votes_against || item.weight() > self.max_weight {
             return;
         }
 
         match self.find_best_key(&item) {
             Some((votes, weight, items)) => {
                 *votes |= item_votes;
-                *weight += T::WEIGHT;
+                *weight += item.weight();
                 items.push(item);
             }
             None => self.create_new_bag(item),
@@ -275,19 +275,21 @@ mod tests {
 
     struct VotesTestCase {
         votes: Vec<[bool; 5]>,
-        max_items: u32,
+        max_weight: u32,
         max_votes_against: u32,
         expected_packages: usize,
     }
 
     impl Voted for [bool; 5] {
-        const WEIGHT: u32 = 1;
         fn votes(&self) -> u128 {
             let mut votes = BitArray::<[u8; 16]>::ZERO;
             for (index, value) in self.iter().copied().enumerate() {
                 votes.set(index, value);
             }
             votes.load()
+        }
+        fn weight(&self) -> u32 {
+            1
         }
     }
 
@@ -300,12 +302,12 @@ mod tests {
             [false; 5],
             [false; 5],
         ],
-        max_items: 100,
+        max_weight: 100,
         max_votes_against: 1,
         expected_packages: 1,
     } ; "no-votes-against-one-package")]
     fn returns_optimal_placements(case: VotesTestCase) {
-        let ans = compute_optimal_packages2(case.votes, case.max_votes_against, case.max_items);
+        let ans = compute_optimal_packages2(case.votes, case.max_votes_against, case.max_weight);
         let collection = ans.collect::<Vec<_>>();
         assert_eq!(collection.len(), case.expected_packages);
     }
