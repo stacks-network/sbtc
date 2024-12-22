@@ -33,7 +33,7 @@ use secp256k1::SECP256K1;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::bitcoin::packaging::compute_optimal_packages2;
+use crate::bitcoin::packaging::compute_optimal_packages;
 use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::context::SbtcLimits;
@@ -51,8 +51,6 @@ use crate::storage::model::TxOutput;
 use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
-
-use super::packaging::Weighted2;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -210,7 +208,7 @@ impl SbtcRequests {
         let items = deposits.chain(withdrawals);
 
         let max_votes_against = self.reject_capacity();
-        compute_optimal_packages2(items, max_votes_against, MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX)
+        compute_optimal_packages(items, max_votes_against, MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX)
             .scan(self.signer_state, |state, request_refs| {
                 let requests = Requests::new(request_refs);
                 let tx = UnsignedTransaction::new(requests, state);
@@ -319,11 +317,6 @@ pub struct DepositRequest {
 }
 
 impl DepositRequest {
-    /// Returns the number of signers who voted against this request.
-    fn votes_against(&self) -> u32 {
-        self.signer_bitmap.count_ones() as u32
-    }
-
     /// Create a TxIn object with witness data for the deposit script of
     /// the given request. Only a valid signature is needed to satisfy the
     /// deposit script.
@@ -416,7 +409,7 @@ impl DepositRequest {
     }
 }
 
-impl Weighted2 for DepositRequest {
+impl Weighted for DepositRequest {
     fn needs_signature(&self) -> bool {
         true
     }
@@ -455,11 +448,6 @@ pub struct WithdrawalRequest {
 }
 
 impl WithdrawalRequest {
-    /// Returns the number of signers who voted against this request.
-    fn votes_against(&self) -> u32 {
-        self.signer_bitmap.count_ones() as u32
-    }
-
     /// Withdrawal UTXOs pay to the given address
     fn as_tx_output(&self) -> TxOut {
         TxOut {
@@ -518,7 +506,7 @@ impl WithdrawalRequest {
     }
 }
 
-impl Weighted2 for WithdrawalRequest {
+impl Weighted for WithdrawalRequest {
     fn needs_signature(&self) -> bool {
         false
     }
@@ -566,15 +554,6 @@ impl<'a> RequestRef<'a> {
 }
 
 impl<'a> Weighted for RequestRef<'a> {
-    fn weight(&self) -> u32 {
-        match self {
-            Self::Deposit(req) => req.votes_against(),
-            Self::Withdrawal(req) => req.votes_against(),
-        }
-    }
-}
-
-impl<'a> Weighted2 for RequestRef<'a> {
     fn needs_signature(&self) -> bool {
         match self {
             Self::Deposit(req) => req.needs_signature(),
@@ -1669,7 +1648,7 @@ mod tests {
             signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 
-        assert_eq!(deposit.votes_against(), expected);
+        assert_eq!(deposit.votes().count_ones(), expected);
     }
 
     /// Some functions call functions that "could" panic. Check that they
@@ -2601,7 +2580,7 @@ mod tests {
         let deposit_request = DepositRequest::from_model(request, votes.clone());
 
         // One explicit vote against and one implicit vote against.
-        assert_eq!(deposit_request.votes_against(), 2);
+        assert_eq!(deposit_request.votes().count_ones(), 2);
         // An appropriately named function ...
         votes.iter().enumerate().for_each(|(index, vote)| {
             let vote_against = *deposit_request.signer_bitmap.get(index).unwrap();
@@ -2644,7 +2623,7 @@ mod tests {
         let withdrawal_request = WithdrawalRequest::from_model(request, votes.clone());
 
         // One explicit vote against and one implicit vote against.
-        assert_eq!(withdrawal_request.votes_against(), 3);
+        assert_eq!(withdrawal_request.votes().count_ones(), 3);
         // An appropriately named function ...
         votes.iter().enumerate().for_each(|(index, vote)| {
             let vote_against = *withdrawal_request.signer_bitmap.get(index).unwrap();
@@ -2920,7 +2899,7 @@ mod tests {
         let deposits: Vec<DepositRequest> =
             (0..25).map(|_| create_deposit(10_000, 10_000, 3)).collect();
         // Each withdrawal request weighs about 31 vbytes (with the first
-        // adding 51 vbytes). So, this would add about 155000 vbytes to the
+        // adding 51 vbytes). So, this would add about 124000 vbytes to the
         // transaction size, putting it over the limit. This means many of
         // these will be excluded from the transaction package, respecting
         // the bitcoin limit.
@@ -2930,7 +2909,7 @@ mod tests {
         // transaction package with 25 different transactions. So we make
         // sure that we create a package with that limit by making sure
         // there are votes against the requests.
-        let withdrawals: Vec<WithdrawalRequest> = (0..5000)
+        let withdrawals: Vec<WithdrawalRequest> = (0..4000)
             .map(|shift| create_withdrawal(1000, 10_000, 1 << (shift % 100)))
             .collect();
 
