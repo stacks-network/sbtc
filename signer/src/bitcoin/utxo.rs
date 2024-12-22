@@ -33,7 +33,7 @@ use secp256k1::SECP256K1;
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::bitcoin::packaging::compute_optimal_packages;
+use crate::bitcoin::packaging::compute_optimal_packages2;
 use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::context::SbtcLimits;
@@ -85,10 +85,10 @@ const OP_RETURN_VERSION: u8 = 0;
 
 /// The maximum number of transactions that can be included in a single
 /// transaction package.
-const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: u32 = 25;
+const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: usize = 25;
 
-/// The maximum virtual size of a transaction package in v-bytes.
-const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
+/// The maximum number of signing rounds per transaction.
+const MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX: u16 = 25;
 
 /// A dummy Schnorr signature.
 static DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
@@ -209,7 +209,8 @@ impl SbtcRequests {
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.chain(withdrawals);
 
-        compute_optimal_packages(items, self.reject_capacity())
+        let max_votes_against = self.reject_capacity();
+        compute_optimal_packages2(items, max_votes_against, MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX)
             .scan(self.signer_state, |state, request_refs| {
                 let requests = Requests::new(request_refs);
                 let tx = UnsignedTransaction::new(requests, state);
@@ -226,21 +227,7 @@ impl SbtcRequests {
                 }
                 Some(tx)
             })
-            // This check prevents the transaction from exceeding mempool ancestor/descendant limits
-            .scan((0, 0), |(num_txs, total_size), tx| match tx {
-                Ok(tx) => {
-                    if *num_txs < MEMPOOL_MAX_NUM_TX_PER_PACKAGE
-                        && *total_size + tx.tx_vsize <= MEMPOOL_MAX_PACKAGE_SIZE
-                    {
-                        *num_txs += 1;
-                        *total_size += tx.tx_vsize;
-                        Some(Ok(tx))
-                    } else {
-                        None
-                    }
-                }
-                Err(e) => Some(Err(e)),
-            })
+            .take(MEMPOOL_MAX_NUM_TX_PER_PACKAGE)
             .collect()
     }
 
@@ -1455,6 +1442,9 @@ mod tests {
 
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
+
+    /// The maximum virtual size of a transaction package in v-bytes.
+    const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
