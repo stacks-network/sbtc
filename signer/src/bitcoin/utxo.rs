@@ -431,13 +431,15 @@ impl DepositRequest {
 
 impl Weighted2 for DepositRequest {
     fn mass(&self) -> u16 {
-        1   
+        1
     }
     fn votes(&self) -> u128 {
         self.signer_bitmap.load_le()
     }
     fn vsize(&self) -> u64 {
-        self.as_tx_input(*DUMMY_SIGNATURE).segwit_weight().to_vbytes_ceil()
+        self.as_tx_input(*DUMMY_SIGNATURE)
+            .segwit_weight()
+            .to_vbytes_ceil()
     }
 }
 

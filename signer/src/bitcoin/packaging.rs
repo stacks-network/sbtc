@@ -2,6 +2,20 @@
 
 use std::collections::BTreeMap;
 
+/// The maximum size of a transaction package that can exist in the mempool
+/// at any given time in vbytes.
+///
+/// A transaction package is one or more transactions that are linked in by
+/// inputs and outputs, and in this context it refers to a group of
+/// transactions in the mempool. This value comes from the limits set in
+/// bitcoin core, less 6000 vbytes since to make it's use here much more
+/// simple.
+///
+/// The actual limit is 101,000 vbytes, see:
+/// <https://bitcoincore.reviews/21800>
+/// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L60-L61>
+const MEMPOOL_ANCESTORS_MAX_VSIZE: u64 = 95_000;
+
 /// Package a list of items into bags.
 ///
 /// The items are assumed to be "voted on" and each bag cannot have items
@@ -11,11 +25,11 @@ use std::collections::BTreeMap;
 pub fn compute_optimal_packages2<I, T>(
     items: I,
     max_votes_against: u32,
-    max_mass: u32,
+    max_mass: u16,
 ) -> impl Iterator<Item = Vec<T>>
 where
     I: IntoIterator<Item = T>,
-    T: Voted,
+    T: Weighted2,
 {
     // This is an implementation of the Best-Fit-Decreasing algorithm, so
     // we need to sort by weight decreasing.
@@ -28,52 +42,71 @@ where
 
     // Now we just add each item into a bag, and return the
     // collection of bags afterward.
-    let mut packager = OptimalPackager::new(max_votes_against, max_mass);
+    let mut packager =
+        OptimalPackager::new(max_votes_against, max_mass, MEMPOOL_ANCESTORS_MAX_VSIZE);
     for (_, item) in item_vec {
         packager.insert_item(item);
     }
     packager.bags.into_iter().map(|(_, _, items)| items)
 }
 
-#[derive(Debug)]
-struct OptimalPackager<T> {
-    /// Contains all the bags and their items. The first element of the
-    /// key tuple is how much capacity is left in the associated bag,
-    /// while the second element is the ID of the bag itself. The values
-    /// in this tree are the items themselves.
-    bags: Vec<(u128, u32, Vec<T>)>,
-    /// Each bag has a fixed capacity threshold, this is that value.
-    max_votes_against: u32,
-    /// The maximum number of items that can fit in a bag, regardless of
-    /// their votes and their vsize.
-    max_mass: u32,
-}
-
 /// A weighted item that can be packaged using [`compute_optimal_packages`].
-pub trait Voted {
+///
+/// The inclusion of a request in a bitcoin transaction depends on three
+/// factors:
+/// 1. How the signers have voted on the request,
+/// 2. Whether we are dealing with a deposit or a withdrawal request,
+/// 3. The virtual size of the request when included in a sweep
+///    transaction.
+pub trait Weighted2 {
     /// A bitmap of how the signers voted. Here, we assume that a 1 (or
     /// true) implies that the signer voted *against* the transaction.
     fn votes(&self) -> u128;
     /// The mass of the item.
-    fn mass(&self) -> u32;
+    fn mass(&self) -> u16;
+    /// The virtual size of the item in vbytes. This is supposed to be the
+    /// total weight of the requests on chain. For deposits, this is the
+    /// input UTXO including witness data, for outputs its the entire
+    /// output vsize.
+    fn vsize(&self) -> u64;
 }
 
-impl<T: Voted> OptimalPackager<T> {
-    const fn new(max_votes_against: u32, max_mass: u32) -> Self {
+#[derive(Debug)]
+struct OptimalPackager<T> {
+    /// Contains all the bags and their items. The first element of the
+    /// tuple is a bitmap for how the signers would vote for the collection
+    /// of items in the associated bag, while the second element is the
+    /// number of items with "mass" in the bag itself.
+    bags: Vec<(u128, u16, Vec<T>)>,
+    /// Each bag has a fixed capacity threshold, this is that value.
+    max_votes_against: u32,
+    /// The maximum number of items that can fit in a bag, regardless of
+    /// their votes and their vsize.
+    max_mass: u16,
+    /// The maximum virtual size of a bag.
+    max_vsize: u64,
+    /// The total vsize of all items across all bags.
+    total_vsize: u64,
+}
+
+impl<T: Weighted2> OptimalPackager<T> {
+    const fn new(max_votes_against: u32, max_mass: u16, max_vsize: u64) -> Self {
         Self {
             bags: Vec::new(),
             max_votes_against,
             max_mass,
+            max_vsize,
+            total_vsize: 0,
         }
     }
 
     /// Find the best bag to insert a new item given the item's weight
     /// and return the key for that bag. None is returned if no bag can
     /// accommodate an item with the given weight.
-    fn find_best_key(&mut self, item: &T) -> Option<&mut (u128, u32, Vec<T>)> {
+    fn find_best_key(&mut self, item: &T) -> Option<&mut (u128, u16, Vec<T>)> {
         self.bags.iter_mut().find(|(aggregate_votes, mass, _)| {
             (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
-                && mass.saturating_add(item.mass()) < self.max_mass
+                && mass.saturating_add(item.mass()) <= self.max_mass
         })
     }
 
@@ -89,10 +122,16 @@ impl<T: Voted> OptimalPackager<T> {
     /// bag exists that can fit the item.
     fn insert_item(&mut self, item: T) {
         let item_votes = item.votes();
-        if item_votes.count_ones() > self.max_votes_against || item.mass() > self.max_mass {
+        let item_vsize = item.vsize();
+        let above_limits = item_votes.count_ones() > self.max_votes_against
+            || item.mass() > self.max_mass
+            || self.total_vsize.saturating_add(item_vsize) > self.max_vsize;
+
+        if above_limits {
             return;
         }
 
+        self.total_vsize += item_vsize;
         match self.find_best_key(&item) {
             Some((votes, mass, items)) => {
                 *votes |= item_votes;
@@ -275,12 +314,12 @@ mod tests {
 
     struct VotesTestCase {
         votes: Vec<[bool; 5]>,
-        max_mass: u32,
+        max_mass: u16,
         max_votes_against: u32,
         expected_packages: usize,
     }
 
-    impl Voted for [bool; 5] {
+    impl Weighted2 for [bool; 5] {
         fn votes(&self) -> u128 {
             let mut votes = BitArray::<[u8; 16]>::ZERO;
             for (index, value) in self.iter().copied().enumerate() {
@@ -288,8 +327,11 @@ mod tests {
             }
             votes.load()
         }
-        fn mass(&self) -> u32 {
+        fn mass(&self) -> u16 {
             1
+        }
+        fn vsize(&self) -> u64 {
+            100
         }
     }
 
