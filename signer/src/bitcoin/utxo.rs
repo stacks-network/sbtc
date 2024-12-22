@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::ops::Deref as _;
+use std::sync::LazyLock;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::hashes::Hash as _;
@@ -26,8 +27,6 @@ use bitcoin::Txid;
 use bitcoin::Weight;
 use bitcoin::Witness;
 use bitvec::array::BitArray;
-use secp256k1::Keypair;
-use secp256k1::Message;
 use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
 use serde::Deserialize;
@@ -87,6 +86,12 @@ const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: u32 = 25;
 
 /// The maximum virtual size of a transaction package in v-bytes.
 const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
+
+/// A dummy Schnorr signature.
+const DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
+    signature: secp256k1::schnorr::Signature::from_slice(&[0; 64]).unwrap(),
+    sighash_type: TapSighashType::All,
+});
 
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -559,9 +564,6 @@ impl<'a> Weighted for RequestRef<'a> {
 pub struct Requests<'a> {
     /// A sorted list of requests.
     request_refs: Vec<RequestRef<'a>>,
-    /// This is a dummy signature here only to simplify the creation of
-    /// TxIns that have the correct weight with a proper signature.
-    signature: Signature,
 }
 
 impl<'a> std::ops::Deref for Requests<'a> {
@@ -578,8 +580,7 @@ impl<'a> Requests<'a> {
         // We sort them so that we are guaranteed to create the same
         // bitcoin transaction with the same input requests.
         request_refs.sort();
-        let signature = UnsignedTransaction::generate_dummy_signature();
-        Self { request_refs, signature }
+        Self { request_refs }
     }
 
     /// Return an iterator for the transaction inputs for the deposit
@@ -588,7 +589,7 @@ impl<'a> Requests<'a> {
     pub fn tx_ins(&'a self) -> impl Iterator<Item = TxIn> + 'a {
         self.request_refs
             .iter()
-            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(self.signature)))
+            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(*DUMMY_SIGNATURE)))
     }
 
     /// Return an iterator for the transaction outputs for the withdrawal
@@ -874,7 +875,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// An Err is returned if the amounts withdrawn is greater than the sum
     /// of all the input amounts.
     fn new_transaction(reqs: &Requests, state: &SignerBtcState) -> Result<Transaction, Error> {
-        let signature = Self::generate_dummy_signature();
+        let signature = *DUMMY_SIGNATURE;
 
         let signer_input = state.utxo.as_tx_input(&signature);
         let signer_output_sats = Self::compute_signer_amount(reqs, state)?;
@@ -1055,16 +1056,6 @@ impl<'a> UnsignedTransaction<'a> {
         if let Some(utxo_out) = tx.output.first_mut() {
             let signers_amount = utxo_out.value.to_sat().saturating_sub(tx_fee);
             utxo_out.value = Amount::from_sat(signers_amount);
-        }
-    }
-
-    /// Helper function for generating dummy Schnorr signatures.
-    fn generate_dummy_signature() -> Signature {
-        let key_pair = Keypair::new_global(&mut rand::rngs::OsRng);
-
-        Signature {
-            signature: key_pair.sign_schnorr(Message::from_digest([0; 32])),
-            sighash_type: TapSighashType::All,
         }
     }
 
@@ -1405,6 +1396,7 @@ mod tests {
     use rand::SeedableRng as _;
     use ripemd::Ripemd160;
     use sbtc::deposits::DepositScriptInputs;
+    use secp256k1::Keypair;
     use secp256k1::SecretKey;
     use sha2::Digest as _;
     use sha2::Sha256;
@@ -1663,7 +1655,7 @@ mod tests {
         let witness = deposit.construct_witness_data(sig);
         assert!(witness.tapscript().is_some());
 
-        let sig = UnsignedTransaction::generate_dummy_signature();
+        let sig = *DUMMY_SIGNATURE;
         let tx_in = deposit.as_tx_input(sig);
 
         // The deposits are taproot spend and do not have a script. The
