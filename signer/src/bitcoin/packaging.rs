@@ -25,7 +25,7 @@ const MEMPOOL_ANCESTORS_MAX_VSIZE: u64 = 95_000;
 pub fn compute_optimal_packages2<I, T>(
     items: I,
     max_votes_against: u32,
-    max_mass: u16,
+    max_signatures: u16,
 ) -> impl Iterator<Item = Vec<T>>
 where
     I: IntoIterator<Item = T>,
@@ -42,8 +42,11 @@ where
 
     // Now we just add each item into a bag, and return the
     // collection of bags afterward.
-    let mut packager =
-        OptimalPackager::new(max_votes_against, max_mass, MEMPOOL_ANCESTORS_MAX_VSIZE);
+    let mut packager = OptimalPackager::new(
+        max_votes_against,
+        max_signatures,
+        MEMPOOL_ANCESTORS_MAX_VSIZE,
+    );
     for (_, item) in item_vec {
         packager.insert_item(item);
     }
@@ -62,8 +65,12 @@ pub trait Weighted2 {
     /// A bitmap of how the signers voted. Here, we assume that a 1 (or
     /// true) implies that the signer voted *against* the transaction.
     fn votes(&self) -> u128;
-    /// The mass of the item.
-    fn mass(&self) -> u16;
+    /// Whether the item needs a signature or not.
+    ///
+    /// If a request needs a signature, then including it requires a
+    /// signing round and that takes time. We try to get all inputs signed
+    /// well before the arrival of the next bitcoin block.
+    fn needs_signature(&self) -> bool;
     /// The virtual size of the item in vbytes. This is supposed to be the
     /// total weight of the requests on chain. For deposits, this is the
     /// input UTXO including witness data, for outputs its the entire
@@ -82,7 +89,7 @@ struct OptimalPackager<T> {
     max_votes_against: u32,
     /// The maximum number of items that can fit in a bag, regardless of
     /// their votes and their vsize.
-    max_mass: u16,
+    max_signatures: u16,
     /// The maximum virtual size of a bag.
     max_vsize: u64,
     /// The total vsize of all items across all bags.
@@ -90,11 +97,11 @@ struct OptimalPackager<T> {
 }
 
 impl<T: Weighted2> OptimalPackager<T> {
-    const fn new(max_votes_against: u32, max_mass: u16, max_vsize: u64) -> Self {
+    const fn new(max_votes_against: u32, max_signatures: u16, max_vsize: u64) -> Self {
         Self {
             bags: Vec::new(),
             max_votes_against,
-            max_mass,
+            max_signatures,
             max_vsize,
             total_vsize: 0,
         }
@@ -104,10 +111,13 @@ impl<T: Weighted2> OptimalPackager<T> {
     /// and return the key for that bag. None is returned if no bag can
     /// accommodate an item with the given weight.
     fn find_best_key(&mut self, item: &T) -> Option<&mut (u128, u16, Vec<T>)> {
-        self.bags.iter_mut().find(|(aggregate_votes, mass, _)| {
-            (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
-                && mass.saturating_add(item.mass()) <= self.max_mass
-        })
+        self.bags
+            .iter_mut()
+            .find(|(aggregate_votes, num_signatures, _)| {
+                let sig = item.needs_signature() as u16;
+                (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
+                    && num_signatures.saturating_add(sig) <= self.max_signatures
+            })
     }
 
     /// Create a new bag for the given item.
@@ -115,7 +125,8 @@ impl<T: Weighted2> OptimalPackager<T> {
     /// Note that this function creates a new bag even if the item can
     /// fit into some other bag with enough capacity
     fn create_new_bag(&mut self, item: T) {
-        self.bags.push((item.votes(), item.mass(), vec![item]));
+        self.bags
+            .push((item.votes(), item.needs_signature() as u16, vec![item]));
     }
 
     /// Insert an item into the best fit bag. Creates a new one if no
@@ -124,7 +135,6 @@ impl<T: Weighted2> OptimalPackager<T> {
         let item_votes = item.votes();
         let item_vsize = item.vsize();
         let above_limits = item_votes.count_ones() > self.max_votes_against
-            || item.mass() > self.max_mass
             || self.total_vsize.saturating_add(item_vsize) > self.max_vsize;
 
         if above_limits {
@@ -133,9 +143,9 @@ impl<T: Weighted2> OptimalPackager<T> {
 
         self.total_vsize += item_vsize;
         match self.find_best_key(&item) {
-            Some((votes, mass, items)) => {
+            Some((votes, num_signatures, items)) => {
                 *votes |= item_votes;
-                *mass += item.mass();
+                *num_signatures += item.needs_signature() as u16;
                 items.push(item);
             }
             None => self.create_new_bag(item),
@@ -327,8 +337,8 @@ mod tests {
             }
             votes.load()
         }
-        fn mass(&self) -> u16 {
-            1
+        fn needs_signature(&self) -> bool {
+            false
         }
         fn vsize(&self) -> u64 {
             100

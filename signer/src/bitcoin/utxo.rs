@@ -91,7 +91,7 @@ const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: u32 = 25;
 const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
 
 /// A dummy Schnorr signature.
-const DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
+static DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
     signature: secp256k1::schnorr::Signature::from_slice(&[0; 64]).unwrap(),
     sighash_type: TapSighashType::All,
 });
@@ -430,8 +430,8 @@ impl DepositRequest {
 }
 
 impl Weighted2 for DepositRequest {
-    fn mass(&self) -> u16 {
-        1
+    fn needs_signature(&self) -> bool {
+        true
     }
     fn votes(&self) -> u128 {
         self.signer_bitmap.load_le()
@@ -532,8 +532,8 @@ impl WithdrawalRequest {
 }
 
 impl Weighted2 for WithdrawalRequest {
-    fn mass(&self) -> u16 {
-        0
+    fn needs_signature(&self) -> bool {
+        false
     }
     fn votes(&self) -> u128 {
         self.signer_bitmap.load_le()
@@ -588,10 +588,10 @@ impl<'a> Weighted for RequestRef<'a> {
 }
 
 impl<'a> Weighted2 for RequestRef<'a> {
-    fn mass(&self) -> u16 {
+    fn needs_signature(&self) -> bool {
         match self {
-            Self::Deposit(req) => req.mass(),
-            Self::Withdrawal(req) => req.mass(),
+            Self::Deposit(req) => req.needs_signature(),
+            Self::Withdrawal(req) => req.needs_signature(),
         }
     }
     fn votes(&self) -> u128 {
