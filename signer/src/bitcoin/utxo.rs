@@ -1484,10 +1484,8 @@ mod tests {
     }
 
     /// Create a new deposit request depositing from a random public key.
-    fn create_deposit(amount: u64, max_fee: u64, votes_against: usize) -> DepositRequest {
+    fn create_deposit(amount: u64, max_fee: u64, signer_bitmap: u128) -> DepositRequest {
         let signers_public_key = generate_x_only_public_key();
-        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-        signer_bitmap[..votes_against].fill(true);
 
         let contract_name = std::iter::repeat('a').take(128).collect::<String>();
         let principal_str = format!("{}.{contract_name}", StacksAddress::burn_address(false));
@@ -1501,7 +1499,7 @@ mod tests {
         DepositRequest {
             outpoint: generate_outpoint(amount, 1),
             max_fee,
-            signer_bitmap,
+            signer_bitmap: BitArray::new(signer_bitmap.to_le_bytes()),
             amount,
             deposit_script: deposit_inputs.deposit_script(),
             reclaim_script: ScriptBuf::new(),
@@ -1510,13 +1508,10 @@ mod tests {
     }
 
     /// Create a new withdrawal request withdrawing to a random address.
-    fn create_withdrawal(amount: u64, max_fee: u64, votes_against: usize) -> WithdrawalRequest {
-        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-        signer_bitmap[..votes_against].fill(true);
-
+    fn create_withdrawal(amount: u64, max_fee: u64, signer_bitmap: u128) -> WithdrawalRequest {
         WithdrawalRequest {
             max_fee,
-            signer_bitmap,
+            signer_bitmap: BitArray::new(signer_bitmap.to_le_bytes()),
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
@@ -2129,15 +2124,15 @@ mod tests {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
-                create_deposit(1234, 0, 1),
-                create_deposit(5678, 0, 1),
-                create_deposit(9012, 0, 2),
+                create_deposit(1234, 0, 1 << 1),
+                create_deposit(5678, 0, 1 << 2),
+                create_deposit(9012, 0, 1 << 3 | 1 << 4),
             ],
             withdrawals: vec![
-                create_withdrawal(1000, 0, 1),
-                create_withdrawal(2000, 0, 1),
-                create_withdrawal(3000, 0, 1),
-                create_withdrawal(4000, 0, 2),
+                create_withdrawal(1000, 0, 1 << 5),
+                create_withdrawal(2000, 0, 1 << 6),
+                create_withdrawal(3000, 0, 1 << 7),
+                create_withdrawal(4000, 0, 1 << 8 | 1 << 9),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2183,17 +2178,17 @@ mod tests {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
-                create_deposit(1234, 0, 1),
-                create_deposit(5678, 0, 1),
-                create_deposit(9012, 0, 2),
-                create_deposit(3456, 0, 1),
+                create_deposit(1234, 0, 1 << 1),
+                create_deposit(5678, 0, 1 << 2),
+                create_deposit(9012, 0, 1 << 3 | 1 << 4),
+                create_deposit(3456, 0, 1 << 5),
                 create_deposit(7890, 0, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(1000, 0, 1),
-                create_withdrawal(2000, 0, 1),
-                create_withdrawal(3000, 0, 1),
-                create_withdrawal(4000, 0, 2),
+                create_withdrawal(1000, 0, 1 << 6),
+                create_withdrawal(2000, 0, 1 << 7),
+                create_withdrawal(3000, 0, 1 << 8),
+                create_withdrawal(4000, 0, 1 << 9 | 1 << 10),
                 create_withdrawal(5000, 0, 0),
                 create_withdrawal(6000, 0, 0),
                 create_withdrawal(7000, 0, 0),
@@ -2282,17 +2277,17 @@ mod tests {
 
         let requests = SbtcRequests {
             deposits: vec![
-                create_deposit(12340, 100_000, 1),
-                create_deposit(56780, 100_000, 1),
-                create_deposit(90120, 100_000, 2),
-                create_deposit(34560, 100_000, 1),
+                create_deposit(12340, 100_000, 1 << 1),
+                create_deposit(56780, 100_000, 1 << 2),
+                create_deposit(90120, 100_000, 1 << 3 | 1 << 4),
+                create_deposit(34560, 100_000, 1 << 5),
                 create_deposit(78900, 100_000, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(10000, 100_000, 1),
-                create_withdrawal(20000, 100_000, 1),
-                create_withdrawal(30000, 100_000, 1),
-                create_withdrawal(40000, 100_000, 2),
+                create_withdrawal(10000, 100_000, 1 << 6),
+                create_withdrawal(20000, 100_000, 1 << 7),
+                create_withdrawal(30000, 100_000, 1 << 8),
+                create_withdrawal(40000, 100_000, 1 << 9 | 1 << 10),
                 create_withdrawal(50000, 100_000, 0),
                 create_withdrawal(60000, 100_000, 0),
                 create_withdrawal(70000, 100_000, 0),
@@ -2885,10 +2880,11 @@ mod tests {
     fn test_construct_transactions_capped_by_number() {
         // with 30 deposits and 30 withdrawals with 4 votes against each, we should generate 60 distinct transactions
         // but we should cap the number of transactions to 25
-        let deposits: Vec<DepositRequest> =
-            (0..30).map(|_| create_deposit(10_000, 10_000, 4)).collect();
+        let deposits: Vec<DepositRequest> = (0..30)
+            .map(|shift| create_deposit(10_000, 10_000, 1 << shift))
+            .collect();
         let withdrawals: Vec<WithdrawalRequest> = (0..30)
-            .map(|_| create_withdrawal(10_000, 10_000, 4))
+            .map(|shift| create_withdrawal(10_000, 10_000, 1 << shift + 30))
             .collect();
 
         let requests = SbtcRequests {
@@ -2911,31 +2907,40 @@ mod tests {
         };
 
         let transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 25);
+        assert_eq!(transactions.len(), 15);
         let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
         assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
     }
 
     #[test]
     fn test_construct_transactions_capped_by_size() {
-        // This will generate a single tx of 100922 vbytes. Almost at the limit.
-        let deposits: Vec<DepositRequest> = (0..816)
-            .map(|_| create_deposit(10_000, 10_000, 0))
+        // This is the default limit for the number of deposits in a sweep
+        // transaction. The size of the transaction with these deposit
+        // inputs is 3231 vbytes.
+        let deposits: Vec<DepositRequest> =
+            (0..25).map(|_| create_deposit(10_000, 10_000, 3)).collect();
+        // Each withdrawal request weighs about 31 vbytes (with the first
+        // adding 51 vbytes). So, this would add about 155000 vbytes to the
+        // transaction size, putting it over the limit. This means many of
+        // these will be excluded from the transaction package, respecting
+        // the bitcoin limit.
+        //
+        // Note that the packager makes sure that the transaction size is
+        // under the bitcoin limit, where it only gets close if we create a
+        // transaction package with 25 different transactions. So we make
+        // sure that we create a package with that limit by making sure
+        // there are votes against the requests.
+        let withdrawals: Vec<WithdrawalRequest> = (0..5000)
+            .map(|shift| create_withdrawal(1000, 10_000, 1 << (shift % 100)))
             .collect();
-        // With 4 votes against, the first withdrawal request will be included
-        // in the first transaction (+52 vbytes, totaling 100973 vbytes).
-        // The next 4 withdrawals will be included in separate transactions of
-        // 195 vbytes each, which would exceed the limit.
-        let withdrawals: Vec<WithdrawalRequest> = (0..5)
-            .map(|_| create_withdrawal(10_000, 10_000, 4))
-            .collect();
+
         let requests = SbtcRequests {
             deposits,
             withdrawals,
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
-                    amount: 1000000,
+                    amount: 100000000,
                     public_key: generate_x_only_public_key(),
                 },
                 fee_rate: 1.0,
@@ -2943,15 +2948,24 @@ mod tests {
                 last_fees: None,
                 magic_bytes: [0; 2],
             },
-            accept_threshold: 11,
-            num_signers: 15,
+            accept_threshold: 96,
+            num_signers: 100,
             sbtc_limits: SbtcLimits::default(),
         };
 
         let transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 1);
+        assert_eq!(transactions.len(), 25);
         let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
-        assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
-        assert_eq!(transactions[0].requests.len(), 817);
+        more_asserts::assert_le!(total_size, MEMPOOL_MAX_PACKAGE_SIZE);
+
+        let num_requests = transactions
+            .iter()
+            .map(|tx| tx.requests.len())
+            .sum::<usize>();
+        // Withdrawal outputs are the lightest so we can bound the number
+        // of requests by assumming only nothing but withdrawals get
+        // included, the maximum number of included withdrawals is bounded
+        // by 101000 / 32 = 3156.25.
+        more_asserts::assert_lt!(num_requests, 3157);
     }
 }

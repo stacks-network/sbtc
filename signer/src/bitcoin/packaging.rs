@@ -83,16 +83,16 @@ struct OptimalPackager<T> {
     /// Contains all the bags and their items. The first element of the
     /// tuple is a bitmap for how the signers would vote for the collection
     /// of items in the associated bag, while the second element is the
-    /// number of items with "mass" in the bag itself.
+    /// number of items that require signatures in the bag itself.
     bags: Vec<(u128, u16, Vec<T>)>,
     /// Each bag has a fixed capacity threshold, this is that value.
     max_votes_against: u32,
-    /// The maximum number of items that can fit in a bag, regardless of
-    /// their votes and their vsize.
+    /// The maximum number of items that can require signatures in a bag,
+    /// regardless of the aggregated votes and their vsize.
     max_signatures: u16,
-    /// The maximum virtual size of a bag.
+    /// The maximum total virtual size of all bags.
     max_vsize: u64,
-    /// The total vsize of all items across all bags.
+    /// The total virtual size of all items across all bags.
     total_vsize: u64,
 }
 
@@ -322,45 +322,101 @@ mod tests {
         assert_eq!(bags.len(), expected);
     }
 
-    struct VotesTestCase {
-        votes: Vec<[bool; 5]>,
-        max_mass: u16,
-        max_votes_against: u32,
-        expected_packages: usize,
+    #[derive(Debug, Copy, Clone)]
+    struct RequestItem {
+        votes: [bool; 5],
+        needs_signature: bool,
+        vsize: u64,
     }
 
-    impl Weighted2 for [bool; 5] {
+    impl RequestItem {
+        fn new(votes: [bool; 5], needs_signature: bool, vsize: u64) -> Self {
+            Self { votes, needs_signature, vsize }
+        }
+    }
+
+    impl Weighted2 for RequestItem {
         fn votes(&self) -> u128 {
             let mut votes = BitArray::<[u8; 16]>::ZERO;
-            for (index, value) in self.iter().copied().enumerate() {
+            for (index, value) in self.votes.iter().copied().enumerate() {
                 votes.set(index, value);
             }
             votes.load()
         }
         fn needs_signature(&self) -> bool {
-            false
+            self.needs_signature
         }
         fn vsize(&self) -> u64 {
-            100
+            self.vsize
         }
     }
 
+    struct VotesTestCase<const N: usize> {
+        items: Vec<RequestItem>,
+        max_signatures: u16,
+        max_votes_against: u32,
+        expected_package_sizes: [usize; N],
+        expected_package_vsizes: [u64; N],
+    }
+
     #[test_case(VotesTestCase {
-        votes: vec![
-            [false; 5],
-            [false; 5],
-            [false; 5],
-            [false; 5],
-            [false; 5],
-            [false; 5],
-        ],
-        max_mass: 100,
+        items: vec![RequestItem::new([false; 5], false, 0); 6],
+        max_signatures: 100,
         max_votes_against: 1,
-        expected_packages: 1,
+        expected_package_sizes: [6],
+        expected_package_vsizes: [0],
     } ; "no-votes-against-one-package")]
-    fn returns_optimal_placements(case: VotesTestCase) {
-        let ans = compute_optimal_packages2(case.votes, case.max_votes_against, case.max_mass);
+    #[test_case(VotesTestCase {
+        items: vec![RequestItem::new([false, false, false, false, true], false, 0); 6],
+        max_signatures: 100,
+        max_votes_against: 1,
+        expected_package_sizes: [6],
+        expected_package_vsizes: [0],
+    } ; "same-votes-against-one-package")]
+    #[test_case(VotesTestCase {
+        items: vec![
+            RequestItem::new([false, false, false, false, true], false, 0),
+            RequestItem::new([false, false, false, false, true], false, 0),
+            RequestItem::new([false, false, false, true, false], false, 0),
+            RequestItem::new([false, false, false, true, false], false, 0),
+            RequestItem::new([false, false, false, false, false], false, 0),
+        ],
+        max_signatures: 100,
+        max_votes_against: 1,
+        expected_package_sizes: [3, 2],
+        expected_package_vsizes: [0, 0],
+    } ; "two-different-votes-against-two-packages")]
+    #[test_case(VotesTestCase {
+        items: vec![RequestItem::new([false; 5], true, 0); 25],
+        max_signatures: 10,
+        max_votes_against: 1,
+        expected_package_sizes: [10, 10, 5],
+        expected_package_vsizes: [0, 0, 0],
+    } ; "splits-when-too-many-required-signatures")]
+    #[test_case(VotesTestCase {
+        items: vec![RequestItem::new([false; 5], false, 4000); 25],
+        max_signatures: 10,
+        max_votes_against: 1,
+        expected_package_sizes: [23],
+        expected_package_vsizes: [92000],
+    } ; "ignores-when-vsize-exceeds-max")]
+    fn returns_optimal_placements<const N: usize>(case: VotesTestCase<N>) {
+        let ans =
+            compute_optimal_packages2(case.items, case.max_votes_against, case.max_signatures);
         let collection = ans.collect::<Vec<_>>();
-        assert_eq!(collection.len(), case.expected_packages);
+        let iter = collection
+            .iter()
+            .zip(case.expected_package_sizes)
+            .zip(case.expected_package_vsizes);
+
+        assert_eq!(collection.len(), N);
+        for ((bag, expected_size), expected_vsize) in iter {
+            assert_eq!(bag.len(), expected_size);
+            let package_vsize = bag.iter().map(|item| item.vsize()).sum::<u64>();
+            assert_eq!(package_vsize, expected_vsize);
+
+            // Now for the bitcoin requirement
+            more_asserts::assert_le!(package_vsize, MEMPOOL_ANCESTORS_MAX_VSIZE);
+        }
     }
 }
