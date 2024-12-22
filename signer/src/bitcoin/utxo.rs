@@ -27,6 +27,7 @@ use bitcoin::Txid;
 use bitcoin::Weight;
 use bitcoin::Witness;
 use bitvec::array::BitArray;
+use bitvec::field::BitField;
 use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
 use serde::Deserialize;
@@ -50,6 +51,8 @@ use crate::storage::model::TxOutput;
 use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
+
+use super::packaging::Weighted2;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -426,6 +429,18 @@ impl DepositRequest {
     }
 }
 
+impl Weighted2 for DepositRequest {
+    fn mass(&self) -> u16 {
+        1   
+    }
+    fn votes(&self) -> u128 {
+        self.signer_bitmap.load_le()
+    }
+    fn vsize(&self) -> u64 {
+        self.as_tx_input(*DUMMY_SIGNATURE).segwit_weight().to_vbytes_ceil()
+    }
+}
+
 /// An accepted or pending withdraw request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WithdrawalRequest {
@@ -514,6 +529,18 @@ impl WithdrawalRequest {
     }
 }
 
+impl Weighted2 for WithdrawalRequest {
+    fn mass(&self) -> u16 {
+        0
+    }
+    fn votes(&self) -> u128 {
+        self.signer_bitmap.load_le()
+    }
+    fn vsize(&self) -> u64 {
+        self.as_tx_output().weight().to_vbytes_ceil()
+    }
+}
+
 /// A reference to either a deposit or withdraw request
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RequestRef<'a> {
@@ -554,6 +581,27 @@ impl<'a> Weighted for RequestRef<'a> {
         match self {
             Self::Deposit(req) => req.votes_against(),
             Self::Withdrawal(req) => req.votes_against(),
+        }
+    }
+}
+
+impl<'a> Weighted2 for RequestRef<'a> {
+    fn mass(&self) -> u16 {
+        match self {
+            Self::Deposit(req) => req.mass(),
+            Self::Withdrawal(req) => req.mass(),
+        }
+    }
+    fn votes(&self) -> u128 {
+        match self {
+            Self::Deposit(req) => req.votes(),
+            Self::Withdrawal(req) => req.votes(),
+        }
+    }
+    fn vsize(&self) -> u64 {
+        match self {
+            Self::Deposit(req) => req.vsize(),
+            Self::Withdrawal(req) => req.vsize(),
         }
     }
 }
