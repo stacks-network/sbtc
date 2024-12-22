@@ -67,7 +67,7 @@ const SOLO_DEPOSIT_TX_VSIZE: f64 = 267.0;
 /// This constant represents the virtual size (in vBytes) of a BTC
 /// transaction servicing only one withdrawal request, except the
 /// withdrawal output is not in the transaction. This way the sweep
-/// transaction's OP_RETURN output is the right size and we can handle the
+/// transaction's OP_RETURN output is the right size, and we can handle the
 /// variability of output sizes.
 const BASE_WITHDRAWAL_TX_VSIZE: f64 = 164.0;
 
@@ -2857,8 +2857,9 @@ mod tests {
 
     #[test]
     fn test_construct_transactions_capped_by_number() {
-        // with 30 deposits and 30 withdrawals with 4 votes against each, we should generate 60 distinct transactions
-        // but we should cap the number of transactions to 25
+        // with 30 deposits and 30 withdrawals with 4 votes against each,
+        // we should generate 60 distinct transactions, but we should cap
+        // the number of transactions to 25
         let deposits: Vec<DepositRequest> = (0..30)
             .map(|shift| create_deposit(10_000, 10_000, 1 << shift))
             .collect();
@@ -2941,10 +2942,10 @@ mod tests {
             .iter()
             .map(|tx| tx.requests.len())
             .sum::<usize>();
-        // Withdrawal outputs are the lightest so we can bound the number
-        // of requests by assumming only nothing but withdrawals get
-        // included, the maximum number of included withdrawals is bounded
-        // by 101000 / 32 = 3156.25.
+        // Withdrawal outputs are the lightest, so we can bound the number
+        // of requests by assuming nothing but withdrawals get included,
+        // the maximum number of included withdrawals is bounded by 101000
+        // / 32 = 3156.25.
         more_asserts::assert_lt!(num_requests, 3157);
     }
 }
