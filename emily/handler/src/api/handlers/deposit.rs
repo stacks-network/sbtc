@@ -222,7 +222,11 @@ pub async fn create_deposit(
                 && deposit.bitcoin_tx_output_index == body.bitcoin_tx_output_index
                 && deposit.status == Status::Accepted
             {
-                return Ok(with_status(json(&409), StatusCode::CONFLICT));
+                let responce = json(&serde_json::json!({
+                    "error": "Conflict",
+                    "message": "This deposit already exists and accepted."
+                }));
+                return Ok(with_status(responce, StatusCode::CONFLICT));
             }
         }
 
