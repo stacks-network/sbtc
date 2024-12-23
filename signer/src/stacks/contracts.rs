@@ -54,6 +54,7 @@ use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
+use crate::DEPOSIT_DUST_LIMIT;
 
 use super::api::StacksInteract;
 
@@ -347,7 +348,7 @@ impl AsContractCall for CompleteDepositV1 {
     ///    as an input.
     /// 5. That the recipients in the transaction matches that of the
     ///    deposit request.
-    /// 6. That the amount to mint does not exceed the deposit amount.
+    /// 6. That the amount to mint is above the dust amount.
     /// 7. That the fee matches the expected assessed fee for the outpoint.
     /// 8. That the fee is less than the specified max-fee.
     /// 9. That the first input into the sweep transaction is the signers'
@@ -387,7 +388,7 @@ impl CompleteDepositV1 {
     ///    of swept deposit requests.
     /// 5. That the recipients in the transaction matches that of the
     ///    deposit request.
-    /// 6. That the amount to mint does not exceed the deposit amount.
+    /// 6. That the amount to mint is above the dust amount.
     /// 7. That the fee matches the expected assessed fee for the outpoint.
     /// 8. That the fee is less than the specified max-fee.
     ///
@@ -418,10 +419,10 @@ impl CompleteDepositV1 {
         if &self.recipient != deposit_request.recipient.deref() {
             return Err(DepositErrorMsg::RecipientMismatch.into_error(req_ctx, self));
         }
-        // 6. Check that the amount to mint does not exceed the deposit
+        // 6. Check that the amount to mint is above the dust amount
         //    amount.
-        if self.amount > deposit_request.amount {
-            return Err(DepositErrorMsg::InvalidMintAmount.into_error(req_ctx, self));
+        if self.amount < DEPOSIT_DUST_LIMIT {
+            return Err(DepositErrorMsg::AmountBelowDustLimit.into_error(req_ctx, self));
         }
         // 7. That the fee matches the expected assessed fee for the outpoint.
         if fee.to_sat() + self.amount != deposit_request.amount {
@@ -547,8 +548,13 @@ impl std::error::Error for DepositValidationError {
 /// transactions.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum DepositErrorMsg {
+    /// The smart contract has a dust limit which is used to rejects
+    /// contract calls if the mint amount is below that limit. We check for
+    /// that condition here before minting.
+    #[error("the amount to mint is below the dust limit in the smart contract")]
+    AmountBelowDustLimit,
     /// The smart contract deployer is fixed, so this should always match.
-    #[error("The deployer in the transaction does not match the expected deployer")]
+    #[error("the deployer in the transaction does not match the expected deployer")]
     DeployerMismatch,
     /// The fee paid to the bitcoin miners exceeded the max fee.
     #[error("fee paid to the bitcoin miners exceeded the max fee")]
@@ -556,10 +562,6 @@ pub enum DepositErrorMsg {
     /// The supplied fee does not match what is expected.
     #[error("the supplied fee does not match what is expected")]
     IncorrectFee,
-    /// The amount to mint must not exceed the amount in the deposit
-    /// request.
-    #[error("amount to mint exceeded the amount in the deposit request")]
-    InvalidMintAmount,
     /// The deposit outpoint is missing from the indicated sweep
     /// transaction.
     #[error("deposit outpoint is missing from the indicated sweep transaction")]
