@@ -42,7 +42,10 @@ use crate::wsts_state_machine::SignerStateMachine;
 use bitcoin::hashes::Hash;
 use bitcoin::TapSighash;
 use futures::StreamExt;
+use tracing::error;
 use wsts::net::DkgEnd;
+use wsts::net::DkgEndBegin;
+use wsts::net::DkgPublicShares;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
 
@@ -136,6 +139,11 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// The time the signer should pause for after receiving a DKG begin message
     /// before relaying to give the other signers time to catch up.
     pub dkg_begin_pause: Option<Duration>,
+    /// Cache DkgPublicShares (indexed by signer_id) then harvest the party PolyCommitments
+    /// once DkgEnd is returned
+    pub dkg_public_shares: HashMap<u32, DkgPublicShares>,
+    /// Cache DkgEndBegin so we know the set of signers that gave public and private shares
+    pub dkg_end_begin: Option<DkgEndBegin>,
 }
 
 /// This function defines which messages this event loop is interested
@@ -694,6 +702,17 @@ where
             return Ok(());
         };
 
+        match msg {
+            WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
+                self.dkg_public_shares
+                    .insert(dkg_public_shares.signer_id, dkg_public_shares.clone());
+            }
+            WstsNetMessage::DkgEndBegin(dkg_end_begin) => {
+                self.dkg_end_begin = Some(dkg_end_begin.clone());
+            }
+            _ => (),
+        }
+
         let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
@@ -743,6 +762,26 @@ where
             .get(txid)
             .ok_or(Error::MissingStateMachine)?;
 
+        let mut party_polys = HashMap::new();
+        if let Some(dkg_end_begin) = &self.dkg_end_begin {
+            for signer_id in &dkg_end_begin.signer_ids {
+                if let Some(public_shares) = self.dkg_public_shares.get(&signer_id) {
+                    for (party_id, comm) in &public_shares.comms {
+                        party_polys.insert(party_id, comm.poly.clone());
+                    }
+                } else {
+                    error!(%signer_id, "DKG has ended, but we're missing DkgPublicShares");
+                }
+            }
+        } else {
+            error!("DKG has ended, but we're missing DkgEndBegin");
+        }
+
+        // no longer need them now that we have the polys
+        self.dkg_end_begin = None;
+        self.dkg_public_shares.clear();
+
+        // XXX this should change
         let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
         tracing::debug!("storing DKG shares");
