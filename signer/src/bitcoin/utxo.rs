@@ -51,6 +51,7 @@ use crate::storage::model::TxOutput;
 use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
+use crate::DEPOSIT_DUST_LIMIT;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -133,6 +134,7 @@ impl<'a> SbtcRequestsFilter<'a> {
         req: &'a DepositRequest,
     ) -> Option<RequestRef<'a>> {
         let is_fee_valid = req.max_fee.min(req.amount) >= self.minimum_fee;
+        let is_above_dust = req.amount.saturating_sub(self.minimum_fee) >= DEPOSIT_DUST_LIMIT;
         let req_amount = Amount::from_sat(req.amount);
         let is_above_per_deposit_minimum = req_amount >= self.sbtc_limits.per_deposit_minimum();
         let is_within_per_deposit_cap = req_amount <= self.sbtc_limits.per_deposit_cap();
@@ -144,6 +146,7 @@ impl<'a> SbtcRequestsFilter<'a> {
             };
 
         if is_fee_valid
+            && is_above_dust
             && is_above_per_deposit_minimum
             && is_within_per_deposit_cap
             && is_within_max_mintable_cap
@@ -2903,6 +2906,13 @@ mod tests {
     }
 
     #[test_case(
+        &vec![create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1, 10_000, 0
+        )],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        1_000,
+        0, 0; "should_reject_deposits_under_dust_limit")]
+    #[test_case(
         &vec![
             create_deposit(10_000, 1_000, 0),
             create_deposit(11_000, 100, 0),
@@ -2970,6 +2980,7 @@ mod tests {
     #[test_case(
         &vec![
             create_deposit(10_000, 10_000, 0), // accepted
+            create_deposit(DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1, 10_000, 0), // rejected (below dust limit)
             create_deposit(9_000, 10_000, 0),  // rejected (below per_deposit_minimum)
             create_deposit(21_000, 10_000, 0), // rejected (above per_deposit_cap)
             create_deposit(20_000, 10_000, 0), // accepted

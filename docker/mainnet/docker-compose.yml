@@ -1,0 +1,108 @@
+x-common-vars:
+  # Postgres
+  - &POSTGRES_PASSWORD ${POSTGRES_PASSWORD} # Required
+  - &POSTGRES_DB ${POSTGRES_DB:-signer}
+  - &POSTGRES_USER ${POSTGRES_USER:-postgres}
+  - &POSTGRES_HOST ${POSTGRES_HOST:-postgres}
+  - &POSTGRES_PORT ${POSTGRES_PORT:-5432}
+  # Bitcoin RPC
+  - &BITCOIN_RPC_USERNAME ${BITCOIN_RPC_USERNAME} # Required
+  - &BITCOIN_RPC_PASSWORD ${BITCOIN_RPC_PASSWORD} # Required
+  - &BITCOIN_RPC_HOST ${BITCOIN_RPC_HOST} # Required
+  - &BITCOIN_RPC_PORT ${BITCOIN_RPC_PORT:-8332}
+  # Bitcoin ZMQ endpoint
+  - &BITCOIN_ZMQ_HOST ${BITCOIN_ZMQ_HOST:-${BITCOIN_RPC_HOST}}
+  - &BITCOIN_ZMQ_PORT ${BITCOIN_ZMQ_PORT:-28332}
+  # Stacks RPC
+  - &STACKS_RPC_HOST ${STACKS_RPC_HOST} # Required
+  - &STACKS_RPC_PORT ${STACKS_RPC_PORT:-20443}
+  # Signer private key
+  - &SIGNER_SIGNER__PRIVATE_KEY ${SIGNER_SIGNER__PRIVATE_KEY} # Required
+  # Emily
+  - &EMILY_API_KEY ${EMILY_API_KEY} # Required
+  # Blocklist client
+  - &BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY} # Required
+  # Vector, Cloudwatch log streaming
+  - &STREAM_NAME ${STREAM_NAME} # Required
+  - &AWS_ACCESS_KEY_ID ${AWS_ACCESS_KEY_ID} # Required
+  - &AWS_SECRET_ACCESS_KEY ${AWS_SECRET_ACCESS_KEY} # Required
+
+services:
+  postgres:
+    container_name: postgres
+    restart: on-failure
+    image: postgres:16.3-alpine
+    stop_grace_period: 5s
+    environment:
+      POSTGRES_DB: *POSTGRES_DB
+      POSTGRES_USER: *POSTGRES_USER
+      POSTGRES_PASSWORD: *POSTGRES_PASSWORD
+    volumes:
+      - ./postgres/data:/var/lib/postgresql/data
+
+  sbtc-signer:
+    container_name: sbtc-signer
+    restart: on-failure
+    image: blockstack/sbtc:signer-0.0.9-rc4
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        envsubst < /signer-config.toml.in > /signer-config.toml
+        /usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs
+    depends_on:
+      - postgres
+    environment:
+      RUST_LOG: info,signer=debug
+      # Bitcoin RPC
+      BITCOIN_RPC_USERNAME: *BITCOIN_RPC_USERNAME
+      BITCOIN_RPC_PASSWORD: *BITCOIN_RPC_PASSWORD
+      BITCOIN_RPC_HOST: *BITCOIN_RPC_HOST
+      BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
+      # Bitcoin ZMQ endpoint
+      BITCOIN_ZMQ_HOST: *BITCOIN_ZMQ_HOST
+      BITCOIN_ZMQ_PORT: *BITCOIN_ZMQ_PORT
+      # Stacks RPC
+      STACKS_RPC_HOST: *STACKS_RPC_HOST
+      STACKS_RPC_PORT: *STACKS_RPC_PORT
+      # Signer private key
+      SIGNER_SIGNER__PRIVATE_KEY: *SIGNER_SIGNER__PRIVATE_KEY
+      # Emily
+      EMILY_API_KEY: *EMILY_API_KEY
+      # Postgres
+      POSTGRES_DB: *POSTGRES_DB
+      POSTGRES_USER: *POSTGRES_USER
+      POSTGRES_PASSWORD: *POSTGRES_PASSWORD
+      POSTGRES_HOST: *POSTGRES_HOST
+      POSTGRES_PORT: *POSTGRES_PORT
+    volumes:
+      - ./sbtc-signer/signer-config.toml.in:/signer-config.toml.in:ro
+      - ./logs:/logs
+    ports:
+      - "4122:4122" # P2P communication between sBTC signers
+      - "8801:8801" # So that Stacks event-observer can reach the sBTC signer
+      - "9184:9184" # Prometheus metrics
+
+  blocklist-client:
+    restart: on-failure
+    container_name: blocklist-client
+    image: blockstack/sbtc:blocklist-client-0.0.9-rc4
+    entrypoint: "/usr/local/bin/blocklist-client"
+    environment:
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: *BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL: https://public.chainalysis.com
+      BLOCKLIST_CLIENT_ASSESSMENT__ASSESSMENT_METHOD: sanctions
+      BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
+      BLOCKLIST_CLIENT_SERVER__PORT: "3032"
+
+  vector:
+    container_name: vector
+    image: timberio/vector:0.42.0-debian
+    volumes:
+      - ./logs:/logs
+      - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
+    environment:
+      STREAM_NAME: *STREAM_NAME
+      AWS_ACCESS_KEY_ID: *AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY: *AWS_SECRET_ACCESS_KEY
+      VECTOR_LOG: INFO

@@ -8,8 +8,8 @@
 # Default: <none>
 # Required: false
 # Environment: SIGNER_BLOCKLIST_CLIENT__ENDPOINT
-# [blocklist_client]
-# endpoint = "http://127.0.0.1:8080"
+[blocklist_client]
+endpoint = "http://blocklist-client:3032"
 
 # !! ==============================================================================
 # !! Emily API Configuration
@@ -26,7 +26,7 @@
 # Environment: SIGNER_EMILY__ENDPOINTS
 # Environment Example: '"https://1234567890abcdef@api.emilyexample.com",..'
 endpoints = [
-    "http://testApiKey@emily-server:3031",
+    "https://$EMILY_API_KEY@sbtc-emily.com"
 ]
 
 # !! ==============================================================================
@@ -44,7 +44,7 @@ endpoints = [
 # Environment: SIGNER_BITCOIN__RPC_ENDPOINTS
 # Environment Example: http://user:pass@seed-1:4122,http://foo:bar@seed-2:4122
 rpc_endpoints = [
-    "http://devnet:devnet@bitcoin:18443",
+    "http://$BITCOIN_RPC_USERNAME:$BITCOIN_RPC_PASSWORD@$BITCOIN_RPC_HOST:$BITCOIN_RPC_PORT",
 ]
 
 # The URI(s) of the Bitcoin Core ZMQ block hash stream(s) to connect to.
@@ -59,7 +59,7 @@ rpc_endpoints = [
 # Environment: SIGNER_BITCOIN__BLOCK_HASH_STREAM_ENDPOINTS
 # Environment Example: tcp://10.0.0.1:28332,tcp://10.0.0.2:28332
 block_hash_stream_endpoints = [
-    "tcp://bitcoin:28332"
+    "tcp://$BITCOIN_ZMQ_HOST:$BITCOIN_ZMQ_PORT"
 ]
 
 # !! ==============================================================================
@@ -69,12 +69,21 @@ block_hash_stream_endpoints = [
 # The RPC URL(s) of the Stacks node(s) to connect to. At least one must be
 # provided. If multiple nodes are provided they will be tried in order when
 # making requests.
-endpoints = ["http://stacks-node:20443"]
+# Environment: SIGNER_STACKS__ENDPOINTS
+endpoints = [
+    "http://$STACKS_RPC_HOST:$STACKS_RPC_PORT",
+]
 
 # !! ==============================================================================
 # !! Signer Configuration
 # !! ==============================================================================
 [signer]
+# The signer database endpoint (pgsql connection string)
+#
+# Required: true
+# Environment: SIGNER_SIGNER__DB_ENDPOINT
+db_endpoint = "postgresql://$POSTGRES_USER:$POSTGRES_PASSWORD@$POSTGRES_HOST:$POSTGRES_PORT/$POSTGRES_DB"
+
 # The private key associated with the signer. This is used to generate the
 # signers associated public key and sign messages to other signers.
 #
@@ -86,105 +95,59 @@ endpoints = ["http://stacks-node:20443"]
 # Format: "<hex-encoded-private-key>" (64 or 66 hex-characters)
 # Required: true
 # Environment: SIGNER_SIGNER__PRIVATE_KEY
-private_key = ""
+# NOTE: Set through Environment: SIGNER_SIGNER__PRIVATE_KEY
+private_key = "0000000000000000000000000000000000000000000000000000000000000001"
 
 # Specifies which network to use when constructing and sending transactions
 # on stacks and bitcoin. This cooresponds to the `chain` flag in the
 # bitcoin.conf file of the connected bitcoin-core node, and the
 # `burnchain.mode` flag int he config.toml of the connected stacks-core
 # node.
-#
-# Required: true
-# Possible values: mainnet, testnet, regtest
-# Environment: SIGNER_SIGNER__NETWORK
-network = "regtest"
-
-# Seconds to wait before processing a new Bitcoin block.
-# Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
-# TODO(715): Add default delay (15 seconds? see #701)
-bitcoin_processing_delay = 3
-
-# How many bitcoin blocks back from the chain tip the signer will look for
-# requests. Must be strictly positive.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__CONTEXT_WINDOW
-# context_window = 500
-
-# The maximum amount of time, in seconds, a signing round will take before
-# the coordinator will time out and return an error. This value must be
-# strictly positive.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__SIGNER_ROUND_MAX_DURATION
-# signer_round_max_duration = 30
-
-# The maximum amount of time, in seconds, a coordinator will wait for
-# pre-sign ACKs before timing out. Must be strictly
-# positive.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__BITCOIN_PRESIGN_REQUEST_MAX_DURATION
-# bitcoin_presign_request_max_duration = 30
-
-# The maximum amount of time, in seconds, for a distributed key generation
-# round before the coordinator will time out and return an error. Must be
-# strictly positive.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__DKG_MAX_DURATION
-# dkg_max_duration = 120
-
-# The amount of time, in seconds, the signer should pause for after
-# receiving a DKG begin message before relaying to give the other signers.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__DKG_BEGIN_PAUSE
-dkg_begin_pause = 2
-
-# The minimum bitcoin block height for which the sbtc signers will backfill
-# bitcoin blocks to. The signers may not work if operated before this
-# height. Defaults to the Nakamoto start height returned from the stacks
-# node if not present.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__SBTC_BITCOIN_START_HEIGHT
-# sbtc_bitcoin_start_height = 231
-
-# When defined, this field sets the scrape endpoint as an IPv4 or IPv6
-# socket address for exporting metrics for Prometheus.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
-# prometheus_exporter_endpoint = "[::]:9184"
+network = "mainnet"
 
 # The address that deployed the sbtc smart contracts.
-#
-# Required: true
-deployer = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
+deployer = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4"
 
-# The signer database endpoint (pgsql connection string)
-#
-# Required: true
-# Environment: SIGNER_SIGNER__DB_ENDPOINT
-db_endpoint = ""
-
-# The public keys of the signer sit during the bootstrapping phase of
-# the signers.
-#
-# Required: true
-# Environment: SIGNER_SIGNER__BOOTSTRAP_SIGNING_SET
+# The public keys of the signer set used for bootstrapping.
 bootstrap_signing_set = [
-    "035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46",
-    "031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e6380",
-    "02007311430123d4cad97f4f7e86e023b28143130a18099ecf094d36fef0f6135c"
+    "03431638d7656f2b313776ab8e5fbffb994e0635cb53965d33cdb819384400286f",
+    "0396559be1e9b88988237fb7f92f7f2b81b7f644718fc3170e3bf45d703f05e490",
+    "02ce1efe968185ca9373fe0fce9e4d1a302d560201b549593830ca54f115318b9c",
+    "035b1c31ee3412fb5e7e4c510b957689c6f30ab591082c425c58af77d6e593d7f1",
+    "03d92e4ee96a6046c1ffb054b776631fc631b987819c98ecd2e97c79bd887fc24a",
+    "024e8daf0693ad298802462873bcb3b29d2cd4eb001c55dd58dea6a004d737770d",
+    "02de4e3f0df932cda285ffec2fb6e57b8c3d2c0cd5eed1e32859c704c5f5cd027a",
+    "024020d254667b90161127d4197d9cecfb1e7b5a5237c34cf45391d60254d293d7",
+    "0368d6742af52b9f7069570da3bdba120f7e760ea31c4bc0e5b96bba7a70f4d317",
+    "03830690830ab2790433231521edbad02715ce7d8b6a8aa43f83cad3e2407b96c4",
+    "031f53224e6250d31fd0d6a9b926402ca308e824e750daf5d5a75d5bf59d50d7b0",
+    "02c14b0daa6ddb9b74869fd947372a3622d2f88a871523dcd14c5c7c7f0c6c9cc0",
+    "03b5b8b594438c7101bbc5fb25d1b76c4643c713481031f7d06bde1f1668c8112d",
+    "03ed8edbcbb26010ae3a992ea1e4fffab3805e1303edbd3c130307b4cbcd38a481",
 ]
 
 # The number of signatures required for the signers' bootstrapped
 # multi-sig wallet on Stacks.
 #
 # Required: true
-bootstrap_signatures_required = 2
+bootstrap_signatures_required = 10
+
+# Seconds to wait before processing a new Bitcoin block.
+# Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
+bitcoin_processing_delay = 30
+
+# The number of blocks back the block observer should look for unprocessed
+# blocks before proceeding.
+# Required: true
+# Environment: SIGNER_SIGNER__BITCOIN_BLOCK_HORIZON
+bitcoin_block_horizon = 3000
+
+# When defined, this field sets the scrape endpoint as an IPv4 or IPv6
+# socket address for exporting metrics for Prometheus.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
+prometheus_exporter_endpoint = "0.0.0.0:9184"
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
@@ -220,8 +183,9 @@ bind = "0.0.0.0:8801"
 # Required: false
 # Environment: SIGNER_SIGNER__P2P__SEEDS
 # Environment Example: tcp://seed-1:4122,tcp://seed-2:4122
-# TODO(429): Add well-known seed nodes
-seeds = []
+seeds = [
+    "tcp://99.80.111.234:4122" # Bitcoin L2 Labs
+]
 
 # The local network interface(s) and port(s) to listen on.
 #
@@ -248,7 +212,8 @@ seeds = []
 # Default: ["tcp://0.0.0.0:4122", "quic-v1://0.0.0.0:4122"]
 # Required: false
 # Environment: SIGNER_SIGNER__P2P__LISTEN_ON
-listen_on = []
+listen_on = ["tcp://0.0.0.0:4122"]
+
 
 # The publicly accessible network endpoint to advertise to other nodes.
 #
@@ -265,12 +230,3 @@ listen_on = []
 # Required: true (but can be empty)
 # Environment: SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS
 public_endpoints = []
-
-# Enables/disables mDNS (multicast DNS) discovery. mDNS allows sBTC signers
-# running on the same local network to discover each other without explicitly
-# providing them as seed nodes.
-#
-# Default: false
-# Required: false
-# Environment: SIGNER_SIGNER__P2P__ENABLE_MDNS
-enable_mdns = false

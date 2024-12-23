@@ -26,7 +26,7 @@ RUN cargo build --bin blocklist-client ${CARGO_BUILD_ARGS}
 
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS blocklist-client
-COPY --from=build /code/sbtc/target/debug/blocklist-client /usr/local/bin/blocklist-client
+COPY --from=build /code/sbtc/target/release/blocklist-client /usr/local/bin/blocklist-client
 
 # ca-certificates is required to establish TLS connections.
 # gettext provides envsubst

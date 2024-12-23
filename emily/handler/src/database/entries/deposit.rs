@@ -569,7 +569,6 @@ impl DepositUpdatePackage {
 mod tests {
     use super::*;
     use test_case::test_case;
-    use testing_emily_client::models::fulfillment;
 
     #[test]
     fn deposit_update_should_be_unnecessary_when_event_is_present() {

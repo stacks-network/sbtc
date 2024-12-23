@@ -22,12 +22,12 @@ use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
+use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::TransactionType;
+use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
+use crate::storage::model::WithdrawalRejectEvent;
 
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::MAX_REORG_BLOCK_COUNT;
@@ -2442,8 +2442,8 @@ impl super::DbWrite for PgStore {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
-        .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.txid)
+        .bind(event.block_id)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.outpoint.txid.to_byte_array())
         .bind(i64::from(event.outpoint.vout))
@@ -2475,8 +2475,8 @@ impl super::DbWrite for PgStore {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
         )
-        .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.txid)
+        .bind(event.block_id)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sender.to_string())
@@ -2510,8 +2510,8 @@ impl super::DbWrite for PgStore {
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
         )
-        .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.txid)
+        .bind(event.block_id)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .bind(event.outpoint.txid.to_byte_array())
@@ -2541,8 +2541,8 @@ impl super::DbWrite for PgStore {
         )
         VALUES ($1, $2, $3, $4)",
         )
-        .bind(event.txid.0)
-        .bind(event.block_id.0)
+        .bind(event.txid)
+        .bind(event.block_id)
         .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.signer_bitmap.into_inner())
         .execute(&self.0)
