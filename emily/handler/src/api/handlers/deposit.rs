@@ -199,6 +199,7 @@ pub async fn get_deposits(
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 409, description = "Duplicate request", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
@@ -213,7 +214,32 @@ pub async fn create_deposit(
         context: EmilyContext,
         body: CreateDepositRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Set variables.
+        // Reject dups.
+        let query = GetDepositsQuery {
+            status: Status::Accepted,
+            next_token: None,
+            page_size: None,
+        };
+        let (entries, _next_token) = accessors::get_deposit_entries(
+            &context,
+            &query.status,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
+        for deposit in deposits {
+            if deposit.bitcoin_txid == body.bitcoin_txid
+                && deposit.bitcoin_tx_output_index == body.bitcoin_tx_output_index
+                && deposit.status == Status::Pending
+            {
+                return Ok(with_status(
+                    json(&409),
+                    StatusCode::CONFLICT,
+                ));
+            }
+        }
+
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 

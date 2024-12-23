@@ -548,3 +548,81 @@ async fn update_deposits_updates_chainstate() {
         );
     }
 }
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn overwrite_deposit() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+    let bitcoin_txid: &str = "bitcoin_txid_overwrite_deposit";
+    let bitcoin_tx_output_index = 0;
+
+    // Setup test deposit transaction.
+    let DepositTxnData {
+        reclaim_script, deposit_script, ..
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+
+    let create_deposit_body = CreateDepositRequestBody {
+        bitcoin_tx_output_index,
+        bitcoin_txid: bitcoin_txid.into(),
+        deposit_script: deposit_script.clone(),
+        reclaim_script: reclaim_script.clone(),
+    };
+
+    apis::deposit_api::create_deposit(&configuration, create_deposit_body.clone())
+        .await
+        .expect("Received an error after making a valid create deposit request api call.");
+
+    let response = apis::deposit_api::get_deposit(
+        &configuration,
+        bitcoin_txid,
+        &bitcoin_tx_output_index.to_string(),
+    )
+    .await
+    .expect("Received an error after making a valid get deposit api call.");
+    assert_eq!(response.bitcoin_txid, bitcoin_txid);
+    assert_eq!(response.status, Status::Pending);
+
+    apis::deposit_api::update_deposits(
+        &configuration,
+        UpdateDepositsRequestBody {
+            deposits: vec![DepositUpdate {
+                bitcoin_tx_output_index: bitcoin_tx_output_index,
+                bitcoin_txid: bitcoin_txid.into(),
+                fulfillment: None,
+                last_update_block_hash: "update_block_hash".into(),
+                last_update_height: 34,
+                status: Status::Accepted,
+                status_message: "foo".into(),
+            }],
+        },
+    )
+    .await
+    .expect("Received an error after making a valid update deposit request api call.");
+
+    let response = apis::deposit_api::get_deposit(
+        &configuration,
+        bitcoin_txid,
+        &bitcoin_tx_output_index.to_string(),
+    )
+    .await
+    .expect("Received an error after making a valid get deposit api call.");
+    assert_eq!(response.bitcoin_txid, bitcoin_txid);
+    assert_eq!(response.status, Status::Accepted);
+
+    apis::deposit_api::create_deposit(&configuration, create_deposit_body)
+        .await
+        .expect_err("We should reject duplicate deposits, if old one is accepted.");
+
+    let response = apis::deposit_api::get_deposit(
+        &configuration,
+        bitcoin_txid,
+        &bitcoin_tx_output_index.to_string(),
+    )
+    .await
+    .expect("Received an error after making a valid get deposit api call.");
+    assert_eq!(response.bitcoin_txid, bitcoin_txid);
+    assert_eq!(response.status, Status::Accepted);
+}
