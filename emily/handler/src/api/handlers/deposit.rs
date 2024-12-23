@@ -8,9 +8,6 @@ use stacks_common::codec::StacksMessageCodec as _;
 use tracing::{debug, instrument};
 use warp::reply::{json, with_status, Reply};
 
-use bitcoin::ScriptBuf;
-use warp::http::StatusCode;
-
 use crate::api::models::deposit::{Deposit, DepositInfo};
 use crate::api::models::{
     deposit::requests::{
@@ -26,6 +23,8 @@ use crate::database::entries::deposit::{
     DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
+use bitcoin::ScriptBuf;
+use warp::http::StatusCode;
 
 /// Get deposit handler.
 #[utoipa::path(
@@ -199,6 +198,7 @@ pub async fn get_deposits(
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 409, description = "Duplicate request", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
@@ -213,7 +213,24 @@ pub async fn create_deposit(
         context: EmilyContext,
         body: CreateDepositRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Set variables.
+        // Reject dups.
+        let (entries, _next_token) =
+            accessors::get_deposit_entries(&context, &Status::Accepted, None, None).await?;
+        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
+        for deposit in deposits {
+            if deposit.bitcoin_txid == body.bitcoin_txid
+                && deposit.bitcoin_tx_output_index == body.bitcoin_tx_output_index
+                && deposit.status == Status::Accepted
+            {
+                let responce = json(&serde_json::json!({
+                    "error": "Conflict",
+                    "message": "This deposit already exists and accepted."
+                }));
+                return Ok(with_status(responce, StatusCode::CONFLICT));
+            }
+        }
+
+        // Create deposit.
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
