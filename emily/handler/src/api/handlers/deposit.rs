@@ -8,9 +8,6 @@ use stacks_common::codec::StacksMessageCodec as _;
 use tracing::{debug, instrument};
 use warp::reply::{json, with_status, Reply};
 
-use bitcoin::ScriptBuf;
-use warp::http::StatusCode;
-
 use crate::api::models::deposit::{Deposit, DepositInfo};
 use crate::api::models::{
     deposit::requests::{
@@ -26,6 +23,8 @@ use crate::database::entries::deposit::{
     DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
+use bitcoin::ScriptBuf;
+use warp::http::StatusCode;
 
 /// Get deposit handler.
 #[utoipa::path(
@@ -215,31 +214,19 @@ pub async fn create_deposit(
         body: CreateDepositRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
         // Reject dups.
-        let query = GetDepositsQuery {
-            status: Status::Accepted,
-            next_token: None,
-            page_size: None,
-        };
-        let (entries, _next_token) = accessors::get_deposit_entries(
-            &context,
-            &query.status,
-            query.next_token,
-            query.page_size,
-        )
-        .await?;
+        let (entries, _next_token) =
+            accessors::get_deposit_entries(&context, &Status::Accepted, None, None).await?;
         let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
         for deposit in deposits {
             if deposit.bitcoin_txid == body.bitcoin_txid
                 && deposit.bitcoin_tx_output_index == body.bitcoin_tx_output_index
-                && deposit.status == Status::Pending
+                && deposit.status == Status::Accepted
             {
-                return Ok(with_status(
-                    json(&409),
-                    StatusCode::CONFLICT,
-                ));
+                return Ok(with_status(json(&409), StatusCode::CONFLICT));
             }
         }
 
+        // Create deposit.
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
