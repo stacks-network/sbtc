@@ -128,7 +128,7 @@ impl<'a> SbtcRequestsFilter<'a> {
     /// 2. The deposit amount must be greater than or equal to the per-deposit minimum
     /// 3. The deposit amount must be less than or equal to the per-deposit cap
     /// 4. The total amount being minted must stay under the maximum allowed mintable amount
-    fn validate_deposit(
+    fn validate_deposit_amount(
         &self,
         amount_to_mint: &mut Amount,
         req: &'a DepositRequest,
@@ -163,7 +163,7 @@ impl<'a> SbtcRequestsFilter<'a> {
         deposits
             .iter()
             .scan(Amount::from_sat(0), |amount_to_mint, deposit| {
-                Some(self.validate_deposit(amount_to_mint, deposit))
+                Some(self.validate_deposit_amount(amount_to_mint, deposit))
             })
             .flatten()
             .collect()
