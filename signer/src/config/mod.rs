@@ -506,6 +506,7 @@ mod tests {
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
+        assert!(settings.signer.max_deposits_per_bitcoin_tx.is_none());
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
         assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
@@ -618,6 +619,32 @@ mod tests {
         assert_eq!(
             settings.signer.private_key,
             PrivateKey::from_str(new).unwrap()
+        );
+    }
+
+    #[test]
+    fn default_config_toml_loads_max_deposits_per_bitcoin_tx() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert!(settings.signer.max_deposits_per_bitcoin_tx.is_none());
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx(),
+            MAX_DEPOSITS_PER_BITCOIN_TX
+        );
+
+        let new = "45";
+        let expected_value = NonZeroU16::new(45).unwrap();
+        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", new);
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx,
+            Some(expected_value)
+        );
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx(),
+            expected_value.get()
         );
     }
 
