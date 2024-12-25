@@ -2837,7 +2837,7 @@ mod tests {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
-            deposits: deposits,
+            deposits,
             withdrawals: vec![],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
