@@ -106,6 +106,10 @@ pub enum Error {
     /// in an update not being performed.
     #[error("Version conflict")]
     VersionConflict,
+
+    /// Bad request
+    #[error("Bad request {0}")]
+    BadRequest(String),
 }
 
 /// Error implementation.
@@ -129,6 +133,7 @@ impl Error {
             Error::TooManyInternalRetries => StatusCode::INTERNAL_SERVER_ERROR,
             Error::InconsistentState(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Reorganzing(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::BadRequest(_) => StatusCode::BAD_REQUEST,
             Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
