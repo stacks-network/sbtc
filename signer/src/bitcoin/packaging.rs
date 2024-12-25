@@ -23,7 +23,7 @@ const MEMPOOL_ANCESTORS_MAX_VSIZE: u64 = 95_000;
 pub fn compute_optimal_packages<I, T>(
     items: I,
     max_votes_against: u32,
-    max_signatures: u16,
+    max_needs_signature: u16,
 ) -> impl Iterator<Item = Vec<T>>
 where
     I: IntoIterator<Item = T>,
@@ -42,7 +42,7 @@ where
     // collection of bags afterward.
     let mut packager = OptimalPackager::new(
         max_votes_against,
-        max_signatures,
+        max_needs_signature,
         MEMPOOL_ANCESTORS_MAX_VSIZE,
     );
     for (_, item) in item_vec {
@@ -87,7 +87,7 @@ struct OptimalPackager<T> {
     max_votes_against: u32,
     /// The maximum number of items that can require signatures in a bag,
     /// regardless of the aggregated votes and their vsize.
-    max_signatures: u16,
+    max_needs_signature: u16,
     /// The maximum total virtual size of all bags.
     max_vsize: u64,
     /// The total virtual size of all items across all bags.
@@ -95,11 +95,11 @@ struct OptimalPackager<T> {
 }
 
 impl<T: Weighted> OptimalPackager<T> {
-    const fn new(max_votes_against: u32, max_signatures: u16, max_vsize: u64) -> Self {
+    const fn new(max_votes_against: u32, max_needs_signature: u16, max_vsize: u64) -> Self {
         Self {
             bags: Vec::new(),
             max_votes_against,
-            max_signatures,
+            max_needs_signature,
             max_vsize,
             total_vsize: 0,
         }
@@ -114,7 +114,7 @@ impl<T: Weighted> OptimalPackager<T> {
             .find(|(aggregate_votes, num_signatures, _)| {
                 let sig = item.needs_signature() as u16;
                 (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
-                    && num_signatures.saturating_add(sig) <= self.max_signatures
+                    && num_signatures.saturating_add(sig) <= self.max_needs_signature
             })
     }
 
@@ -191,7 +191,7 @@ mod tests {
         /// The item input into `compute_optimal_packages`.
         items: Vec<RequestItem>,
         /// Used when calling `compute_optimal_packages`.
-        max_signatures: u16,
+        max_needs_signature: u16,
         /// Used when calling `compute_optimal_packages`.
         max_votes_against: u32,
         /// After calling `compute_optimal_packages` with the `items` here,
@@ -206,14 +206,14 @@ mod tests {
 
     #[test_case(VotesTestCase {
         items: vec![RequestItem::new([false; 5], false, 0); 6],
-        max_signatures: 100,
+        max_needs_signature: 100,
         max_votes_against: 1,
         expected_bag_sizes: [6],
         expected_bag_vsizes: [0],
     } ; "no-votes-against-one-package")]
     #[test_case(VotesTestCase {
         items: vec![RequestItem::new([false, false, false, false, true], false, 0); 6],
-        max_signatures: 100,
+        max_needs_signature: 100,
         max_votes_against: 1,
         expected_bag_sizes: [6],
         expected_bag_vsizes: [0],
@@ -226,27 +226,28 @@ mod tests {
             RequestItem::new([false, false, false, true, false], false, 0),
             RequestItem::new([false, false, false, false, false], false, 0),
         ],
-        max_signatures: 100,
+        max_needs_signature: 100,
         max_votes_against: 1,
         expected_bag_sizes: [3, 2],
         expected_bag_vsizes: [0, 0],
     } ; "two-different-votes-against-two-packages")]
     #[test_case(VotesTestCase {
         items: vec![RequestItem::new([false; 5], true, 0); 25],
-        max_signatures: 10,
+        max_needs_signature: 10,
         max_votes_against: 1,
         expected_bag_sizes: [10, 10, 5],
         expected_bag_vsizes: [0, 0, 0],
     } ; "splits-when-too-many-required-signatures")]
     #[test_case(VotesTestCase {
         items: vec![RequestItem::new([false; 5], false, 4000); 25],
-        max_signatures: 10,
+        max_needs_signature: 10,
         max_votes_against: 1,
         expected_bag_sizes: [23],
         expected_bag_vsizes: [92000],
     } ; "ignores-when-vsize-exceeds-max")]
     fn returns_optimal_placements<const N: usize>(case: VotesTestCase<N>) {
-        let ans = compute_optimal_packages(case.items, case.max_votes_against, case.max_signatures);
+        let ans =
+            compute_optimal_packages(case.items, case.max_votes_against, case.max_needs_signature);
         let collection = ans.collect::<Vec<_>>();
         let iter = collection
             .iter()

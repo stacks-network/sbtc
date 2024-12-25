@@ -21,7 +21,7 @@ use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
-use crate::MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX;
+use crate::MAX_DEPOSITS_PER_BITCOIN_TX;
 
 mod error;
 mod serialization;
@@ -251,8 +251,8 @@ pub struct SignerConfig {
     /// a tenure of a bitcoin block, and higher values here imply lower
     /// likelihood of signing all inputs before the next bitcoin block
     /// arrives. The default here is controlled by the
-    /// [`MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX`] constant
-    pub max_deposit_signing_rounds_per_tx: Option<NonZeroU16>,
+    /// [`MAX_DEPOSITS_PER_BITCOIN_TX`] constant
+    pub max_deposits_per_bitcoin_tx: Option<NonZeroU16>,
 }
 
 impl Validatable for SignerConfig {
@@ -330,10 +330,10 @@ impl SignerConfig {
 
     /// Return the maximum number of deposit requests that can fit in a
     /// single bitcoin transaction.
-    pub fn max_deposit_signatures(&self) -> u16 {
-        self.max_deposit_signing_rounds_per_tx
+    pub fn max_deposits_per_bitcoin_tx(&self) -> u16 {
+        self.max_deposits_per_bitcoin_tx
             .map(NonZeroU16::get)
-            .unwrap_or(MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX)
+            .unwrap_or(MAX_DEPOSITS_PER_BITCOIN_TX)
     }
 }
 

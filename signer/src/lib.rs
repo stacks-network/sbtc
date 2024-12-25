@@ -78,13 +78,12 @@ pub const MAX_REORG_BLOCK_COUNT: i64 = 10;
 /// per block.
 pub const MAX_TX_PER_BITCOIN_BLOCK: i64 = 25;
 
-/// The maximum number of signing rounds for deposit inputs per bitcoin
-/// transaction.
+/// The maximum number of deposit inputs per bitcoin transaction.
 ///
 /// The default here is chosen so that there is a ~50% chance that the
 /// signers finish signing all bitcoin inputs, before the arrival of the
 /// next bitcoin block. This assumes signing rounds take ~16 seconds.
-pub const MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX: u16 = 25;
+pub const MAX_DEPOSITS_PER_BITCOIN_TX: u16 = 25;
 
 /// These are all build info variables. Many of them are set in build.rs.
 

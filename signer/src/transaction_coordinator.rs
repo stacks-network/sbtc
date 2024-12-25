@@ -1386,7 +1386,7 @@ where
             accept_threshold: threshold,
             num_signers,
             sbtc_limits: self.context.state().get_current_limits(),
-            max_deposit_signatures: self.context.config().signer.max_deposit_signatures(),
+            max_deposits_per_bitcoin_tx: self.context.config().signer.max_deposits_per_bitcoin_tx(),
         }))
     }
 
