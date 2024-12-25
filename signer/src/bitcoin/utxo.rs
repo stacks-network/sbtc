@@ -85,9 +85,6 @@ const OP_RETURN_VERSION: u8 = 0;
 /// transaction package.
 const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: usize = 25;
 
-/// The maximum number of signing rounds per transaction.
-const MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX: u16 = 25;
-
 /// A dummy Schnorr signature.
 static DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
     signature: secp256k1::schnorr::Signature::from_slice(&[0; 64]).unwrap(),
@@ -150,6 +147,9 @@ pub struct SbtcRequests {
     pub num_signers: u16,
     /// The maximum amount of sBTC that can be minted in sats.
     pub sbtc_limits: SbtcLimits,
+    /// The maximum number of deposit request inputs that can be included
+    /// in a single bitcoin transaction.
+    pub max_deposit_signatures: u16,
 }
 
 impl SbtcRequests {
@@ -208,7 +208,7 @@ impl SbtcRequests {
         let items = deposits.chain(withdrawals);
 
         let max_votes_against = self.reject_capacity();
-        compute_optimal_packages(items, max_votes_against, MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX)
+        compute_optimal_packages(items, max_votes_against, self.max_deposit_signatures)
             .scan(self.signer_state, |state, request_refs| {
                 let requests = Requests::new(request_refs);
                 let tx = UnsignedTransaction::new(requests, state);
@@ -1421,6 +1421,7 @@ mod tests {
 
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
+    use crate::MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX;
 
     /// The maximum virtual size of a transaction package in v-bytes.
     const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
@@ -1599,6 +1600,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 2,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
         let keypair = Keypair::new_global(&mut OsRng);
 
@@ -1698,6 +1700,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -1793,6 +1796,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         // We'll have the deposit get two vote against, and the withdrawals
@@ -1901,6 +1905,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1986,6 +1991,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -2030,6 +2036,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -2080,6 +2087,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2127,6 +2135,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2186,6 +2195,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2285,6 +2295,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2350,6 +2361,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let (old_fee_total, old_fee_rate) = {
@@ -2429,6 +2441,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -2465,6 +2478,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let transactions = requests.construct_transactions();
@@ -2522,6 +2536,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2839,6 +2854,7 @@ mod tests {
                 None,
                 Some(Amount::from_sat(max_mintable)),
             ),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
         let txs = requests.construct_transactions().unwrap();
         let nr_requests = txs.iter().map(|tx| tx.requests.len()).sum::<usize>();
@@ -2884,6 +2900,7 @@ mod tests {
             accept_threshold: 11,
             num_signers: 15,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2898,7 +2915,9 @@ mod tests {
         // transaction. The size of the transaction with these deposit
         // inputs is 3231 vbytes.
         let deposits: Vec<DepositRequest> =
-            (0..25).map(|_| create_deposit(10_000, 10_000, 3)).collect();
+            std::iter::repeat_with(|| create_deposit(10_000, 10_000, 3))
+                .take(MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX as usize)
+                .collect();
         // Each withdrawal request weighs about 31 vbytes (with the first
         // adding 51 vbytes). So, this would add about 124000 vbytes to the
         // transaction size, putting it over the limit. This means many of
@@ -2931,10 +2950,14 @@ mod tests {
             accept_threshold: 96,
             num_signers: 100,
             sbtc_limits: SbtcLimits::default(),
+            max_deposit_signatures: MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 25);
+        assert_eq!(
+            transactions.len(),
+            MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX as usize
+        );
         let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
         more_asserts::assert_le!(total_size, MEMPOOL_MAX_PACKAGE_SIZE);
 
@@ -2945,7 +2968,7 @@ mod tests {
         // Withdrawal outputs are the lightest, so we can bound the number
         // of requests by assuming nothing but withdrawals get included,
         // the maximum number of included withdrawals is bounded by 101000
-        // / 32 = 3156.25.
+        // 32 = 3156.25.
         more_asserts::assert_lt!(num_requests, 3157);
     }
 }

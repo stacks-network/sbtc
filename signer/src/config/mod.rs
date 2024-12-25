@@ -7,6 +7,7 @@ use libp2p::Multiaddr;
 use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
+use std::num::NonZeroU16;
 use std::path::Path;
 use url::Url;
 
@@ -20,6 +21,7 @@ use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
+use crate::MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX;
 
 mod error;
 mod serialization;
@@ -244,6 +246,13 @@ pub struct SignerConfig {
     /// The minimum bitcoin block height for which the sbtc signers will
     /// backfill bitcoin blocks to.
     pub sbtc_bitcoin_start_height: Option<u64>,
+    /// The maximum number of deposit inputs that will be included in a
+    /// single bitcoin transaction. Transactions must be constructed within
+    /// a tenure of a bitcoin block, and higher values here imply lower
+    /// likelihood of signing all inputs before the next bitcoin block
+    /// arrives. The default here is controlled by the
+    /// [`MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX`] constant
+    pub max_deposit_signing_rounds_per_tx: Option<NonZeroU16>,
 }
 
 impl Validatable for SignerConfig {
@@ -317,6 +326,14 @@ impl SignerConfig {
             .copied()
             .chain([self_public_key])
             .collect()
+    }
+
+    /// Return the maximum number of deposit requests that can fit in a
+    /// single bitcoin transaction.
+    pub fn max_deposit_signatures(&self) -> u16 {
+        self.max_deposit_signing_rounds_per_tx
+            .map(NonZeroU16::get)
+            .unwrap_or(MAX_DEPOSIT_SIGNING_ROUNDS_PER_TX)
     }
 }
 
