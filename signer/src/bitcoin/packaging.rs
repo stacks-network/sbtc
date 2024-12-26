@@ -11,7 +11,7 @@
 ///
 /// This constant is derived from bitcoin core, and has the property that
 /// if the packager ensure that the total vsize of the items in the package
-/// are under this limit, then the trasnaction package will be under the
+/// are under this limit, then the transaction package will be under the
 /// bitcoin vsize limit.
 ///
 /// This value is computed as follows:
@@ -26,10 +26,16 @@ const PACKAGE_MAX_VSIZE: u64 = 95_000;
 
 /// Package a list of items into bags.
 ///
-/// The items are assumed to be "voted on" and each bag cannot have items
-/// where the total number of distinct votes against is less than or equal
-/// to the `max_votes_against`. Moreover, each item has a weight, and the
-/// total weight of each bag must be less than or equal to the max_weight.
+/// Each item is required to have certain "weights" that affect how it may
+/// be included in a "bag". The weights are: 
+/// 1. The votes against. Each item is assumed to be "voted on" and each
+///    bag cannot have items where the total number of votes against is
+///    greater than the `max_votes_against`.
+/// 2. Whether the item requires a signature. The total number of items in
+///    a bag that require a signature must not exceed the
+///    `max_needs_signature`.
+/// 3. The items vsize, or virtual size. The aggregate vsize across all
+///    bags must not exceed [`PACKAGE_MAX_VSIZE`].
 pub fn compute_optimal_packages<I, T>(
     items: I,
     max_votes_against: u32,
@@ -39,8 +45,9 @@ where
     I: IntoIterator<Item = T>,
     T: Weighted,
 {
-    // This is an implementation of the Best-Fit-Decreasing algorithm, so
-    // we need to sort by weight decreasing.
+    // This is a variant of the Best-Fit-Decreasing algorithm, so we sort
+    // by "weight" decreasing. We use the votes against as the weight, but
+    // vsize is a reasonable weight metric as well.
     let mut item_vec: Vec<(u32, T)> = items
         .into_iter()
         .map(|item| (item.votes().count_ones(), item))
@@ -73,8 +80,9 @@ pub trait Weighted {
     /// signing round and that takes time. We try to get all inputs signed
     /// well before the arrival of the next bitcoin block.
     fn needs_signature(&self) -> bool;
-    /// A bitmap of how the signers voted. Here, we assume that a 1 (or
-    /// true) implies that the signer voted *against* the transaction.
+    /// A bitmap of how the signers voted. Here, we assume that if a bit
+    /// is 1 then the signer that corresponds to the bits position voted
+    /// *against* the transaction.
     fn votes(&self) -> u128;
     /// The virtual size of the item in vbytes. This is supposed to be the
     /// total weight of the requests on chain. For deposits, this is the
