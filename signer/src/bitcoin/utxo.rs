@@ -1426,6 +1426,7 @@ mod tests {
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
     use crate::MAX_DEPOSITS_PER_BITCOIN_TX;
+    use crate::MAX_TX_PER_BITCOIN_BLOCK;
 
     /// The maximum virtual size of a transaction package in v-bytes.
     const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
@@ -2915,26 +2916,32 @@ mod tests {
 
     #[test]
     fn test_construct_transactions_capped_by_size() {
-        // This is the default limit for the number of deposits in a sweep
-        // transaction. The size of the transaction with these deposit
-        // inputs is 3231 vbytes.
+        const NUM_DEPOSITS: usize =
+            MAX_DEPOSITS_PER_BITCOIN_TX as usize * MAX_TX_PER_BITCOIN_BLOCK as usize;
+        // We set the signer bitmap to 3, so that each deposit is
+        // interpreted as having two votes against (two bits are one in the
+        // binary representation of 3). Since the withdrawals all have one
+        // vote against, the packager will place all deposits in the
+        // transaction package because we use a variant of the best-fit
+        // decreasing algorithm when packaging requests.
         let deposits: Vec<DepositRequest> =
             std::iter::repeat_with(|| create_deposit(10_000, 10_000, 3))
-                .take(MAX_DEPOSITS_PER_BITCOIN_TX as usize)
+                .take(NUM_DEPOSITS)
                 .collect();
         // Each withdrawal request weighs about 31 vbytes (with the first
         // adding 51 vbytes). So, this would add about 124000 vbytes to the
-        // transaction size, putting it over the limit. This means many of
-        // these will be excluded from the transaction package, respecting
-        // the bitcoin limit.
+        // transaction size, putting it over the bitcoin limit. This means
+        // many of these should be excluded from the transaction package,
+        // respecting the bitcoin limit.
         //
-        // Note that the packager makes sure that the transaction size is
-        // under the bitcoin limit, where it only gets close if we create a
-        // transaction package with 25 different transactions. So we make
-        // sure that we create a package with that limit by making sure
-        // there are votes against the requests.
-        let withdrawals: Vec<WithdrawalRequest> = (0..4000)
-            .map(|shift| create_withdrawal(1000, 10_000, 1 << (shift % 100)))
+        // The packager is supposed to make sure that the transaction
+        // package vsize is under the bitcoin limit. It gets closest to
+        // that limit when the transaction package comprises 25 different
+        // transactions. We create a package with 25 transactions by
+        // ensuring lots of votes against the set of request.
+        const MAX_WITHDRAWALS: usize = 4000;
+        let withdrawals: Vec<WithdrawalRequest> = (0..MAX_WITHDRAWALS)
+            .map(|shift| create_withdrawal(1000, 10_000, 1 << (shift % 14)))
             .collect();
 
         let requests = SbtcRequests {
@@ -2951,25 +2958,47 @@ mod tests {
                 last_fees: None,
                 magic_bytes: [0; 2],
             },
-            accept_threshold: 96,
-            num_signers: 100,
+            accept_threshold: 10,
+            num_signers: 14,
             sbtc_limits: SbtcLimits::default(),
             max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
-        let transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), MAX_DEPOSITS_PER_BITCOIN_TX as usize);
-        let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
-        more_asserts::assert_le!(total_size, MEMPOOL_MAX_PACKAGE_SIZE);
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), MAX_TX_PER_BITCOIN_BLOCK as usize);
+        // Let's check that each transaction has the maximum allowed number
+        // of deposit inputs. We add one in the check because the signers
+        // UTXO is always included as an input.
+        let expected_input_count = MAX_DEPOSITS_PER_BITCOIN_TX as usize + 1;
+        transactions
+            .iter()
+            .for_each(|unsigned| assert_eq!(unsigned.tx.input.len(), expected_input_count));
 
+        // Now for the actual check of this test.
+        let total_vsize: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
+        more_asserts::assert_le!(total_vsize, MEMPOOL_MAX_PACKAGE_SIZE);
+
+        // Now we double-check that some withdrawal requests were excluded,
+        // while other were included.
         let num_requests = transactions
             .iter()
             .map(|tx| tx.requests.len())
             .sum::<usize>();
-        // Withdrawal outputs are the lightest, so we can bound the number
-        // of requests by assuming nothing but withdrawals get included,
-        // the maximum number of included withdrawals is bounded by 101000
-        // 32 = 3156.25.
-        more_asserts::assert_lt!(num_requests, 3157);
+        more_asserts::assert_gt!(num_requests, NUM_DEPOSITS);
+        more_asserts::assert_lt!(num_requests, MAX_WITHDRAWALS);
+
+        // As a sanity check, we sign each transaction input to get "full"
+        // transactions. We then make sure that we are below the limit and
+        // that our earlier total_vsize value is accurate.
+        let keypair = secp256k1::Keypair::new_global(&mut OsRng);
+        let package_vsize = transactions
+            .iter_mut()
+            .map(|unsigned| {
+                testing::set_witness_data(unsigned, keypair);
+                unsigned.tx.vsize() as u32
+            })
+            .sum::<u32>();
+
+        assert_eq!(package_vsize, total_vsize);
     }
 }

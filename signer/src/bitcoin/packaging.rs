@@ -1,18 +1,28 @@
 //! Generic bin-packing functionality
 
-/// The maximum size of a transaction package that can exist in the mempool
-/// at any given time in vbytes.
+/// The maximum vsize of all items in a package.
 ///
-/// A transaction package is one or more transactions that are linked in by
-/// inputs and outputs, and in this context it refers to a group of
-/// transactions in the mempool. This value comes from the limits set in
-/// bitcoin core, less 6000 vbytes since to make its use here much more
-/// simple.
+/// A bitcoin transaction package is a group of one or more transactions
+/// where:
+/// 1. Each transaction is unconfirmed, and
+/// 2. Each transaction has at least one input that is an outpoint from
+///    another transaction in the group or each transaction has an output
+///    that another transaction in the group spends.
+///
+/// This constant is derived from bitcoin core, and has the property that
+/// if the packager ensure that the total vsize of the items in the package
+/// are under this limit, then the trasnaction package will be under the
+/// bitcoin vsize limit.
+///
+/// This value is computed as follows:
+/// ```text
+/// ((101000 - MAX_TX_PER_BITCOIN_BLOCK * BASE_WITHDRAWAL_TX_VSIZE) // 5000) * 5000
+/// ```
 ///
 /// The actual limit is 101,000 vbytes, see:
 /// <https://bitcoincore.reviews/21800>
 /// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L60-L61>
-const MEMPOOL_ANCESTORS_MAX_VSIZE: u64 = 95_000;
+const PACKAGE_MAX_VSIZE: u64 = 95_000;
 
 /// Package a list of items into bags.
 ///
@@ -40,11 +50,8 @@ where
 
     // Now we just add each item into a bag, and return the
     // collection of bags afterward.
-    let mut packager = OptimalPackager::new(
-        max_votes_against,
-        max_needs_signature,
-        MEMPOOL_ANCESTORS_MAX_VSIZE,
-    );
+    let mut packager =
+        OptimalPackager::new(max_votes_against, max_needs_signature, PACKAGE_MAX_VSIZE);
     for (_, item) in item_vec {
         packager.insert_item(item);
     }
@@ -261,7 +268,7 @@ mod tests {
             assert_eq!(package_vsize, expected_vsize);
 
             // Now for the bitcoin requirement
-            more_asserts::assert_le!(package_vsize, MEMPOOL_ANCESTORS_MAX_VSIZE);
+            more_asserts::assert_le!(package_vsize, PACKAGE_MAX_VSIZE);
         }
     }
 }
