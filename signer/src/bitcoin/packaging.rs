@@ -27,7 +27,7 @@ const PACKAGE_MAX_VSIZE: u64 = 95_000;
 /// Package a list of items into bags.
 ///
 /// Each item is required to have certain "weights" that affect how it may
-/// be included in a "bag". The weights are: 
+/// be included in a "bag". The weights are:
 /// 1. The votes against. Each item is assumed to be "voted on" and each
 ///    bag cannot have items where the total number of votes against is
 ///    greater than the `max_votes_against`.
