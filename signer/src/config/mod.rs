@@ -641,6 +641,9 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.signer.max_deposits_per_bitcoin_tx, expected_value);
+
+        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", "0");
+        assert!(Settings::new_from_default_config().is_err());
     }
 
     #[test]
