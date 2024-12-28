@@ -4,7 +4,7 @@
 //! messages as byte sequences.
 //!
 //! ## Codec specification
-//! 
+//!
 //! The signers communicate with each other by sending protobuf messages
 //! serialized in a canonical way. Specifically, signer message
 //! serialization must adhere to the following constraints:

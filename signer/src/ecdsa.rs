@@ -90,12 +90,12 @@ impl Signed<SignerMessage> {
 
     /// Verify that the signature was created over the given digest with
     /// the public key in this struct.
-    /// 
+    ///
     /// # Notes
-    /// 
+    ///
     /// Since the sending signer might have a different protobuf schema
     /// than us, we cannot always recreate the signature digest from the
-    /// decoded bytes. Instead we must look at the pre-decoded bytes and
+    /// decoded bytes. Instead, we must look at the pre-decoded bytes and
     /// construct the digest using those bytes and pass the results here.
     pub fn verify_digest(&self, digest: [u8; 32]) -> Result<(), Error> {
         let msg = secp256k1::Message::from_digest(digest);
@@ -142,10 +142,23 @@ impl Signed<SignerMessage> {
         // bytes.
         let mut message = proto::Signed::default();
         let ctx = prost::encoding::DecodeContext::default();
+        let mut last_tag = 0;
 
         while buf.has_remaining() {
             let (tag, wire_type) =
                 prost::encoding::decode_key(&mut buf).map_err(Error::DecodeProtobuf)?;
+
+            // Protobuf message tags must start at 1. The sBTC protobuf
+            // codec requires that, for the proto::Signed protobuf, fields
+            // are serialized in tag order, meaning that field n must be
+            // serialized before field m if n < m. This is a general
+            // requirement, but it has not been enforced for other message
+            // types yet.
+            if tag < last_tag {
+                return Err(Error::ProtobufTagCodec);
+            }
+            last_tag = tag;
+
             message
                 .merge_field(tag, wire_type, &mut buf, ctx.clone())
                 .map_err(Error::DecodeProtobuf)?;

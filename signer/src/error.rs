@@ -25,6 +25,11 @@ pub enum Error {
     #[error("could not decode protobuf {0}")]
     DecodeProtobuf(#[source] prost::DecodeError),
 
+    /// This happens when the tag order of the serialized protobuf is not
+    /// increasing.
+    #[error("protobuf field not encoded in field tag order")]
+    ProtobufTagCodec,
+
     /// Attempted division by zero
     #[error("attempted division by zero")]
     DivideByZero,
