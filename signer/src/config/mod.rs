@@ -21,7 +21,7 @@ use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
-use crate::MAX_DEPOSITS_PER_BITCOIN_TX;
+use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 mod error;
 mod serialization;
@@ -252,7 +252,7 @@ pub struct SignerConfig {
     /// likelihood of signing all inputs before the next bitcoin block
     /// arrives. The default here is controlled by the
     /// [`MAX_DEPOSITS_PER_BITCOIN_TX`] constant
-    pub max_deposits_per_bitcoin_tx: Option<NonZeroU16>,
+    pub max_deposits_per_bitcoin_tx: NonZeroU16,
 }
 
 impl Validatable for SignerConfig {
@@ -331,9 +331,7 @@ impl SignerConfig {
     /// Return the maximum number of deposit requests that can fit in a
     /// single bitcoin transaction.
     pub fn max_deposits_per_bitcoin_tx(&self) -> u16 {
-        self.max_deposits_per_bitcoin_tx
-            .map(NonZeroU16::get)
-            .unwrap_or(MAX_DEPOSITS_PER_BITCOIN_TX)
+        self.max_deposits_per_bitcoin_tx.get()
     }
 }
 
@@ -395,6 +393,10 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
+        cfg_builder = cfg_builder.set_default(
+            "signer.max_deposits_per_bitcoin_tx",
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
+        )?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -506,7 +508,10 @@ mod tests {
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
-        assert!(settings.signer.max_deposits_per_bitcoin_tx.is_none());
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx,
+            NonZeroU16::new(DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX).unwrap()
+        );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
         assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
@@ -627,21 +632,17 @@ mod tests {
         clear_env();
 
         let settings = Settings::new_from_default_config().unwrap();
-        assert!(settings.signer.max_deposits_per_bitcoin_tx.is_none());
         assert_eq!(
             settings.signer.max_deposits_per_bitcoin_tx(),
-            MAX_DEPOSITS_PER_BITCOIN_TX
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX
         );
 
-        let new = "45";
-        let expected_value = NonZeroU16::new(45).unwrap();
-        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", new);
+        let value = "45";
+        let expected_value: NonZeroU16 = value.parse().unwrap();
+        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", value);
 
         let settings = Settings::new_from_default_config().unwrap();
-        assert_eq!(
-            settings.signer.max_deposits_per_bitcoin_tx,
-            Some(expected_value)
-        );
+        assert_eq!(settings.signer.max_deposits_per_bitcoin_tx, expected_value);
         assert_eq!(
             settings.signer.max_deposits_per_bitcoin_tx(),
             expected_value.get()
@@ -763,7 +764,7 @@ mod tests {
     }
 
     #[test]
-    fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
+    fn unprovided_optional_parameters_in_signer_config_set_to_default() {
         // In case there are some envs which provide values for this optional parameters,
         // this test will actually test nothing, so we need to reset them.
         clear_env();
@@ -783,6 +784,7 @@ mod tests {
         remove_parameter("context_window");
         remove_parameter("signer_round_max_duration");
         remove_parameter("bitcoin_presign_request_max_duration");
+        remove_parameter("dkg_max_duration");
         remove_parameter("dkg_max_duration");
 
         let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();

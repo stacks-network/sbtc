@@ -1425,7 +1425,7 @@ mod tests {
 
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
-    use crate::MAX_DEPOSITS_PER_BITCOIN_TX;
+    use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
     use crate::MAX_TX_PER_BITCOIN_BLOCK;
 
     /// The maximum virtual size of a transaction package in v-bytes.
@@ -1605,7 +1605,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 2,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let keypair = Keypair::new_global(&mut OsRng);
 
@@ -1705,7 +1705,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -1801,7 +1801,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // We'll have the deposit get two vote against, and the withdrawals
@@ -1910,7 +1910,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1996,7 +1996,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -2041,7 +2041,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -2092,7 +2092,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2140,7 +2140,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2200,7 +2200,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2300,7 +2300,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2366,7 +2366,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let (old_fee_total, old_fee_rate) = {
@@ -2446,7 +2446,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -2483,7 +2483,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 0,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions();
@@ -2541,7 +2541,7 @@ mod tests {
             num_signers: 10,
             accept_threshold: 8,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2859,7 +2859,7 @@ mod tests {
                 None,
                 Some(Amount::from_sat(max_mintable)),
             ),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let txs = requests.construct_transactions().unwrap();
         let nr_requests = txs.iter().map(|tx| tx.requests.len()).sum::<usize>();
@@ -2905,7 +2905,7 @@ mod tests {
             accept_threshold: 11,
             num_signers: 15,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2917,7 +2917,7 @@ mod tests {
     #[test]
     fn test_construct_transactions_capped_by_size() {
         const NUM_DEPOSITS: usize =
-            MAX_DEPOSITS_PER_BITCOIN_TX as usize * MAX_TX_PER_BITCOIN_BLOCK as usize;
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX as usize * MAX_TX_PER_BITCOIN_BLOCK as usize;
         // We set the signer bitmap to 3, so that each deposit is
         // interpreted as having two votes against (two bits are one in the
         // binary representation of 3). Since the withdrawals all have one
@@ -2961,7 +2961,7 @@ mod tests {
             accept_threshold: 10,
             num_signers: 14,
             sbtc_limits: SbtcLimits::default(),
-            max_deposits_per_bitcoin_tx: MAX_DEPOSITS_PER_BITCOIN_TX,
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2969,7 +2969,7 @@ mod tests {
         // Let's check that each transaction has the maximum allowed number
         // of deposit inputs. We add one in the check because the signers
         // UTXO is always included as an input.
-        let expected_input_count = MAX_DEPOSITS_PER_BITCOIN_TX as usize + 1;
+        let expected_input_count = DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX as usize + 1;
         transactions
             .iter()
             .for_each(|unsigned| assert_eq!(unsigned.tx.input.len(), expected_input_count));
