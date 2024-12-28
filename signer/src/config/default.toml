@@ -196,7 +196,7 @@ sbtc_bitcoin_start_height = 101
 # 
 # Required: false
 # Environment: SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX
-# max_deposits_per_bitcoin_tx = 20
+# max_deposits_per_bitcoin_tx = 25
 
 # When defined, this field sets the scrape endpoint as an IPv4 or IPv6
 # socket address for exporting metrics for Prometheus.
