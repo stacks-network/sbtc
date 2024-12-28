@@ -327,12 +327,6 @@ impl SignerConfig {
             .chain([self_public_key])
             .collect()
     }
-
-    /// Return the maximum number of deposit requests that can fit in a
-    /// single bitcoin transaction.
-    pub fn max_deposits_per_bitcoin_tx(&self) -> u16 {
-        self.max_deposits_per_bitcoin_tx.get()
-    }
 }
 
 /// Configuration for the Stacks event observer server (hosted within the signer).
@@ -633,20 +627,20 @@ mod tests {
 
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(
-            settings.signer.max_deposits_per_bitcoin_tx(),
+            settings.signer.max_deposits_per_bitcoin_tx.get(),
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX
         );
 
-        let value = "45";
+        let value = "42";
         let expected_value: NonZeroU16 = value.parse().unwrap();
+        // Let's make sure that this test is meaningful but checking that
+        // the `value` and the default are different.
+        assert_ne!(DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX, expected_value.get());
+
         std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", value);
 
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(settings.signer.max_deposits_per_bitcoin_tx, expected_value);
-        assert_eq!(
-            settings.signer.max_deposits_per_bitcoin_tx(),
-            expected_value.get()
-        );
     }
 
     #[test]
