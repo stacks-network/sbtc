@@ -111,15 +111,16 @@ impl Signed<SignerMessage> {
     ///
     /// # Notes
     ///
-    /// This function uses the fact that the protobuf [`proto::Signed`]
-    /// type has a particular layout when decoding the message to
+    /// The [`Signed`](proto::Signed) protobuf type has the signature field
+    /// as the field with tag 1, and everything after that field must be
+    /// signed. This function uses that fact when decoding the message to
     /// efficiently get the bytes that were signed by the signer that
     /// generated the message. It does the following:
     /// 1. Decode the first field using the given bytes. This field is the
     ///    signature field.
     /// 2. Takes a reference to the bytes after the protobuf signature
-    ///    field. These were supposed to be used generate the digest that
-    ///    was signed over.
+    ///    field. These were supposed to be used to generate the digest
+    ///    that was signed over.
     /// 3. Finish decoding the given bytes into the signed message.
     /// 4. Transform the protobuf type into the local type.
     /// 5. Use the local type along with the bytes from (2) to create the
@@ -130,7 +131,9 @@ impl Signed<SignerMessage> {
     /// serialized in order by their tag. This is not true for protobufs
     /// generally, but it is for the prost protobuf implementation. The
     /// implementation was checked by inspecting the output of `cargo
-    /// expand`.
+    /// expand`. These assumptions are part of the sBTC codec
+    /// specification, and this function enforces the tag order
+    /// requirement for the [`Signed`](proto::Signed) protobuf type.
     /// <https://protobuf.dev/programming-guides/serialization-not-canonical/>
     /// <https://protobuf.dev/programming-guides/encoding/#order>
     /// <https://github.com/tokio-rs/prost/blob/v0.12.6/prost/src/message.rs#L108-L134>
