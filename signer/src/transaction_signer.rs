@@ -568,19 +568,7 @@ where
                     "handling DkgPublicShares",
                 );
                 let id = StateMachineId::from(msg.txid);
-                let public_keys = match self.wsts_state_machines.get(&id) {
-                    Some(state_machine) => &state_machine.public_keys,
-                    None => return Err(Error::MissingStateMachine),
-                };
-                let signer_public_key = match public_keys.signers.get(&dkg_public_shares.signer_id)
-                {
-                    Some(key) => PublicKey::from(key),
-                    None => return Err(Error::MissingPublicKey),
-                };
-
-                if signer_public_key != msg_public_key {
-                    return Err(Error::InvalidSignature);
-                }
+                self.validate_sender(&id, dkg_public_shares.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -590,19 +578,7 @@ where
                     "handling DkgPrivateShares"
                 );
                 let id = StateMachineId::from(msg.txid);
-                let public_keys = match self.wsts_state_machines.get(&id) {
-                    Some(state_machine) => &state_machine.public_keys,
-                    None => return Err(Error::MissingStateMachine),
-                };
-                let signer_public_key = match public_keys.signers.get(&dkg_private_shares.signer_id)
-                {
-                    Some(key) => PublicKey::from(key),
-                    None => return Err(Error::MissingPublicKey),
-                };
-
-                if signer_public_key != msg_public_key {
-                    return Err(Error::InvalidSignature);
-                }
+                self.validate_sender(&id, dkg_private_shares.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -616,14 +592,6 @@ where
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
-            // Clippy complains about how we could refactor this to use the
-            // `std::collections::hash_map::Entry` type here to make things
-            // more idiomatic. The issue with that approach is that it
-            // requires a mutable reference of the `wsts_state_machines`
-            // self to be taken at the same time as an immutable reference.
-            // The compiler will complain about this, so we silence the
-            // warning.
-            #[allow(clippy::map_entry)]
             WstsNetMessage::NonceRequest(request) => {
                 tracing::info!("handling NonceRequest");
                 if !chain_tip_report.sender_is_coordinator {
@@ -633,9 +601,9 @@ where
 
                 let db = self.context.get_storage();
                 let sig_hash = &request.message;
-                let validation_outcome = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
+                let validation_sighash = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
 
-                let validation_status = match &validation_outcome {
+                let validation_status = match &validation_sighash {
                     Ok(_) => "success",
                     Err(Error::SigHashConversion(_)) => "improper-sighash",
                     Err(Error::UnknownSigHash(_)) => "unknown-sighash",
@@ -651,7 +619,7 @@ where
                 )
                 .increment(1);
 
-                let id = validation_outcome?.into();
+                let id = validation_sighash?.into();
 
                 let (maybe_aggregate_key, _) = self
                     .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
@@ -677,14 +645,20 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let id = Self::validate_bitcoin_sign_request(&db, &request.message).await?;
-                self.relay_message(id.into(), msg.txid, &msg.inner, bitcoin_chain_tip)
-                    .await?;
+                let sighash = Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+                let id = sighash.into();
+                let response = self
+                    .relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .await;
+
+                self.wsts_state_machines.remove(&id);
+                response?;
             }
             WstsNetMessage::DkgEnd(dkg_end) => {
                 match &dkg_end.status {
                     DkgStatus::Success => {
                         tracing::info!(
+                            sender_public_key = %msg_public_key,
                             signer_id = %dkg_end.signer_id,
                             "handling DkgEnd success from signer"
                         );
@@ -692,6 +666,7 @@ where
                     DkgStatus::Failure(fail) => {
                         // TODO(#414): handle DKG failure
                         tracing::info!(
+                            sender_public_key = %msg_public_key,
                             signer_id = %dkg_end.signer_id,
                             reason = ?fail,
                             "handling DkgEnd failure",
@@ -702,6 +677,31 @@ where
             WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {
                 tracing::trace!("ignoring message");
             }
+        }
+
+        Ok(())
+    }
+
+    fn validate_sender(
+        &self,
+        id: &StateMachineId,
+        signer_id: u32,
+        sender_public_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let public_keys = match self.wsts_state_machines.get(id) {
+            Some(state_machine) => &state_machine.public_keys,
+            None => return Err(Error::MissingStateMachine),
+        };
+
+        let expected_public_key = public_keys
+            .signers
+            .get(&signer_id)
+            .map(PublicKey::from)
+            .ok_or(Error::MissingPublicKey)?;
+
+        if &expected_public_key != sender_public_key {
+            tracing::error!(%sender_public_key, %expected_public_key, "public keys do not match");
+            return Err(Error::PublicKeyMismatch);
         }
 
         Ok(())
