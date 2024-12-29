@@ -700,8 +700,9 @@ where
             .ok_or(Error::MissingPublicKey)?;
 
         if &wsts_public_key != sender_public_key {
-            let sender_public_key = *sender_public_key;
-            return Err(Error::PublicKeyMismatch { wsts_public_key, sender_public_key });
+            let sender = Box::new(*sender_public_key);
+            let wsts = Box::new(wsts_public_key);
+            return Err(Error::PublicKeyMismatch { wsts, sender });
         }
 
         Ok(())
