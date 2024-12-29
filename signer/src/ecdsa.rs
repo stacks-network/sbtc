@@ -266,6 +266,7 @@ mod tests {
 
     use fake::Fake as _;
     use rand::rngs::OsRng;
+    use rand::SeedableRng as _;
 
     use crate::codec::Encode as _;
     use crate::ecdsa::SignEcdsa;
@@ -609,5 +610,120 @@ mod tests {
         let original_proto = SignedUpgraded2::decode(received_data.as_slice()).unwrap();
 
         assert_eq!(signed_message_v2, original_proto);
+    }
+
+    #[test]
+    fn poc_bypass_sign2() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1234);
+
+        let keypair = secp256k1::Keypair::new_global(&mut rng);
+        let private_key: PrivateKey = keypair.secret_key().into();
+        let public_key: PublicKey = keypair.public_key().into();
+
+        let payload: message::SignerWithdrawalDecision = fake::Faker.fake_with_rng(&mut rng);
+        let signer_message = SignerMessage {
+            bitcoin_chain_tip: fake::Faker.fake_with_rng(&mut rng),
+            payload: message::Payload::SignerWithdrawalDecision(payload.clone()),
+        };
+
+        let msg = signer_message.sign_ecdsa(&private_key);
+        let signed_proto = proto::Signed::from(msg.clone());
+
+        // Let's manually encode the message as a protobuf
+        let tag_1_key = [0b00001010]; // tag1: signature
+        let tag_1_data = signed_proto
+            .signature
+            .unwrap()
+            .encode_length_delimited_to_vec();
+
+        let tag_2_key = [0b00010010]; // tag2: signer_public_key
+        let tag_2_data = signed_proto
+            .signer_public_key
+            .unwrap()
+            .encode_length_delimited_to_vec();
+
+        let tag_3_key = [0b00011010]; // tag3: signer_message
+        let tag_3_data = signed_proto
+            .signer_message
+            .unwrap()
+            .encode_length_delimited_to_vec();
+
+        let mut encoded_data = Vec::new();
+        encoded_data.extend_from_slice(&tag_1_key);
+        encoded_data.extend_from_slice(&tag_1_data);
+        encoded_data.extend_from_slice(&tag_2_key);
+        encoded_data.extend_from_slice(&tag_2_data);
+        encoded_data.extend_from_slice(&tag_3_key);
+        encoded_data.extend_from_slice(&tag_3_data);
+
+        // We should be able to decode and verify the decoded message.
+        let (msg_recovered, expected_digest) =
+            Signed::<SignerMessage>::decode_with_digest(&encoded_data).unwrap();
+
+        msg_recovered.verify_digest(expected_digest).unwrap();
+        assert_eq!(msg_recovered.signer_public_key, public_key);
+        assert_eq!(msg_recovered, msg);
+
+        // Now to make sure that we cannot change the order of the encoded
+        // tags. If we were, then the signature field would be over the
+        // message's `type_tag`, bypassing the verification of the signature.
+        let hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
+        let empty_prefix_hash = secp256k1::Message::from_digest(hasher.finalize().into());
+
+        let signature = private_key.sign_ecdsa(&empty_prefix_hash);
+        let empty_prefix_sign: Vec<u8> =
+            proto::EcdsaSignature::from(signature).encode_length_delimited_to_vec();
+
+        let mut hack1 = Vec::new();
+        hack1.extend_from_slice(&tag_2_key);
+        hack1.extend_from_slice(&tag_2_data);
+        hack1.extend_from_slice(&tag_3_key);
+        hack1.extend_from_slice(&tag_3_data);
+        hack1.extend_from_slice(&tag_1_key);
+        hack1.extend_from_slice(&empty_prefix_sign);
+
+        let result = Signed::<SignerMessage>::decode_with_digest(&hack1);
+        assert!(result.is_err());
+
+        // Another test to make sure that we cannot tamper with any of the
+        // signed data.
+        let mut hack2 = Vec::new();
+        hack2.extend_from_slice(&tag_2_key);
+        hack2.extend_from_slice(&tag_2_data);
+        hack2.extend_from_slice(&tag_3_key);
+
+        let mut tag_3_data_tampering = tag_3_data.clone();
+        tag_3_data_tampering[10] = 0;
+        tag_3_data_tampering[11] = 0;
+        tag_3_data_tampering[12] = 0;
+        hack2.extend_from_slice(&tag_3_data_tampering);
+        hack2.extend_from_slice(&tag_1_key);
+        hack2.extend_from_slice(&empty_prefix_sign);
+        let result = Signed::<SignerMessage>::decode_with_digest(&hack2);
+        assert!(result.is_err());
+
+        // Finally, one more tamper test
+        let mut tag_3_data_tampering = tag_3_data.clone();
+        tag_3_data_tampering[10] = 0;
+        tag_3_data_tampering[11] = 0;
+        tag_3_data_tampering[12] = 0;
+
+        let mut encoded_data = Vec::new();
+        encoded_data.extend_from_slice(&tag_1_key);
+        encoded_data.extend_from_slice(&tag_1_data);
+        encoded_data.extend_from_slice(&tag_2_key);
+        encoded_data.extend_from_slice(&tag_2_data);
+        encoded_data.extend_from_slice(&tag_3_key);
+        encoded_data.extend_from_slice(&tag_3_data_tampering);
+
+        // We should be able to decode the decoded message, but it
+        // shouldn't pass verification.
+        let (msg_recovered, expected_digest) =
+            Signed::<SignerMessage>::decode_with_digest(&encoded_data).unwrap();
+
+        let verify_result = msg_recovered.verify_digest(expected_digest).unwrap_err();
+        assert!(matches!(verify_result, Error::InvalidEcdsaSignature(_)));
+        assert_eq!(msg_recovered.signer_public_key, public_key);
+        assert_ne!(msg_recovered, msg);
     }
 }
