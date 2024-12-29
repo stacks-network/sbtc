@@ -413,13 +413,13 @@ pub enum Error {
 
     /// The public key indicated in the message does not match the sender
     /// public key.
-    #[error("public key from sender does not match one in state machine {wsts_public_key} {sender_public_key}")]
-    PublicKeyMismatch { 
+    #[error("public key from sender does not match one in state machine {wsts} {sender}")]
+    PublicKeyMismatch {
         /// The sender sent a signer_id in their WSTS message, and this
         /// corresponds to the following public key. It is s
-        wsts_public_key: PublicKey, 
+        wsts: Box<PublicKey>,
         /// This is the public key of the sender of the WSTS message.
-        sender_public_key: PublicKey,
+        sender: Box<PublicKey>,
     },
 
     /// This should never happen. It arises when a signer gets a message
