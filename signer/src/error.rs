@@ -410,6 +410,11 @@ pub enum Error {
     #[error("missing signer utxo")]
     MissingSignerUtxo,
 
+    /// The public key indicated in the message does not match the sender
+    /// public key.
+    #[error("public key from sender does not match one in state machine")]
+    PublicKeyMismatch,
+
     /// This should never happen. It arises when a signer gets a message
     /// that requires DKG to have been run at some point, but it hasn't
     /// been.
