@@ -693,15 +693,15 @@ where
             None => return Err(Error::MissingStateMachine),
         };
 
-        let expected_public_key = public_keys
+        let wsts_public_key = public_keys
             .signers
             .get(&signer_id)
             .map(PublicKey::from)
             .ok_or(Error::MissingPublicKey)?;
 
-        if &expected_public_key != sender_public_key {
-            tracing::error!(%sender_public_key, %expected_public_key, "public keys do not match");
-            return Err(Error::PublicKeyMismatch);
+        if &wsts_public_key != sender_public_key {
+            let sender_public_key = *sender_public_key;
+            return Err(Error::PublicKeyMismatch { wsts_public_key, sender_public_key });
         }
 
         Ok(())

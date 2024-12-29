@@ -5,6 +5,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::codec;
 use crate::emily_client::EmilyClientError;
+use crate::keys::PublicKey;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
@@ -412,8 +413,14 @@ pub enum Error {
 
     /// The public key indicated in the message does not match the sender
     /// public key.
-    #[error("public key from sender does not match one in state machine")]
-    PublicKeyMismatch,
+    #[error("public key from sender does not match one in state machine {wsts_public_key} {sender_public_key}")]
+    PublicKeyMismatch { 
+        /// The sender sent a signer_id in their WSTS message, and this
+        /// corresponds to the following public key. It is s
+        wsts_public_key: PublicKey, 
+        /// This is the public key of the sender of the WSTS message.
+        sender_public_key: PublicKey,
+    },
 
     /// This should never happen. It arises when a signer gets a message
     /// that requires DKG to have been run at some point, but it hasn't
