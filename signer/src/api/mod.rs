@@ -1,9 +1,11 @@
 //! This module contains functions and structs for the Signer API.
 //!
 
+pub mod default;
 pub mod new_block;
 pub mod status;
 
+pub use default::default_handler;
 pub use new_block::new_block_handler;
 pub use status::status_handler;
 
