@@ -267,6 +267,7 @@ async fn run_api(ctx: impl Context + 'static) -> Result<(), Error> {
                     tracing::trace!(duration_ms = duration.as_millis(), "request completed");
                 }),
         )
+        .fallback(api::default::default_handler)
         .with_state(state);
 
     // Bind to the configured address and port
