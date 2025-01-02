@@ -84,7 +84,7 @@ pub const MAX_REORG_BLOCK_COUNT: i64 = 10;
 /// <https://github.com/bitcoin/bitcoin/blob/228aba2c4d9ac0b2ca3edd3c2cdf0a92e55f669b/doc/policy/mempool-limits.md>
 /// <https://bitcoincore.reviews/21800>
 /// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L58-L59>
-pub const MAX_TX_PER_BITCOIN_BLOCK: u64 = 25;
+pub const MAX_MEMPOOL_PACKAGE_TX_COUNT: u64 = 25;
 
 /// The default maximum number of deposit inputs per bitcoin transaction.
 ///

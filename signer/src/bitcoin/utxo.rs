@@ -52,6 +52,7 @@ use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
 use crate::DEPOSIT_DUST_LIMIT;
+use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -85,10 +86,6 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 /// The OP_RETURN version byte for deposit or withdrawal sweep
 /// transactions.
 const OP_RETURN_VERSION: u8 = 0;
-
-/// The maximum number of transactions that can be included in a single
-/// transaction package.
-const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: usize = 25;
 
 /// A dummy Schnorr signature.
 static DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
@@ -240,7 +237,7 @@ impl SbtcRequests {
                 }
                 Some(tx)
             })
-            .take(MEMPOOL_MAX_NUM_TX_PER_PACKAGE)
+            .take(MAX_MEMPOOL_PACKAGE_TX_COUNT as usize)
             .collect()
     }
 
@@ -1437,7 +1434,7 @@ mod tests {
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
     use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
-    use crate::MAX_TX_PER_BITCOIN_BLOCK;
+    use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
     /// The maximum virtual size of a transaction package in v-bytes.
     const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
@@ -2951,10 +2948,10 @@ mod tests {
         // we should generate 60 distinct transactions, but we should cap
         // the number of transactions to 25
         let deposits: Vec<DepositRequest> = (0..30)
-            .map(|shift| create_deposit(10_000, 10_000, 1 << shift))
+            .map(|shift| create_deposit(10_000, 10_000, 0b111 << shift))
             .collect();
         let withdrawals: Vec<WithdrawalRequest> = (0..30)
-            .map(|shift| create_withdrawal(10_000, 10_000, 1 << shift + 30))
+            .map(|shift| create_withdrawal(10_000, 10_000, 0b111 << shift + 30))
             .collect();
 
         let requests = SbtcRequests {
@@ -2978,15 +2975,15 @@ mod tests {
         };
 
         let transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 15);
+        assert_eq!(transactions.len(), MAX_MEMPOOL_PACKAGE_TX_COUNT as usize);
         let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
-        assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
+        more_asserts::assert_le!(total_size, MEMPOOL_MAX_PACKAGE_SIZE);
     }
 
     #[test]
     fn test_construct_transactions_capped_by_size() {
         const NUM_DEPOSITS: usize =
-            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX as usize * MAX_TX_PER_BITCOIN_BLOCK as usize;
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX as usize * MAX_MEMPOOL_PACKAGE_TX_COUNT as usize;
         // We set the signer bitmap to 3, so that each deposit is
         // interpreted as having two votes against (two bits are one in the
         // binary representation of 3). Since the withdrawals all have one
@@ -3034,7 +3031,7 @@ mod tests {
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), MAX_TX_PER_BITCOIN_BLOCK as usize);
+        assert_eq!(transactions.len(), MAX_MEMPOOL_PACKAGE_TX_COUNT as usize);
         // Let's check that each transaction has the maximum allowed number
         // of deposit inputs. We add one in the check because the signers
         // UTXO is always included as an input.

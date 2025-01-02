@@ -1,7 +1,7 @@
 //! Generic bin-packing functionality
 
 use crate::MAX_MEMPOOL_PACKAGE_SIZE;
-use crate::MAX_TX_PER_BITCOIN_BLOCK;
+use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
 use super::utxo::MAX_BASE_TX_VSIZE;
 
@@ -20,7 +20,7 @@ use super::utxo::MAX_BASE_TX_VSIZE;
 /// are under this limit, then the transaction package will be under the
 /// bitcoin vsize limit.
 const PACKAGE_MAX_VSIZE: u64 =
-    ((MAX_MEMPOOL_PACKAGE_SIZE - MAX_TX_PER_BITCOIN_BLOCK * MAX_BASE_TX_VSIZE) / 5000) * 5000;
+    ((MAX_MEMPOOL_PACKAGE_SIZE - MAX_MEMPOOL_PACKAGE_TX_COUNT * MAX_BASE_TX_VSIZE) / 5000) * 5000;
 
 /// Package a list of items into bags.
 ///
