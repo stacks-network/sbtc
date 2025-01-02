@@ -534,7 +534,7 @@ impl PgStore {
         // MAX_REORG_BLOCK_COUNT bitcoin blocks, plus one. We add the one
         // because we want the transaction right after
         // MAX_REORG_BLOCK_COUNT worth of transactions.
-        let max_transactions = MAX_TX_PER_BITCOIN_BLOCK * MAX_REORG_BLOCK_COUNT + 1;
+        let max_transactions = MAX_TX_PER_BITCOIN_BLOCK as i64 * MAX_REORG_BLOCK_COUNT + 1;
 
         // Find the block height of the sweep transaction that occurred at
         // or before block "best candidate block height" minus

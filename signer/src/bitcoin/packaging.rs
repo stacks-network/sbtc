@@ -1,5 +1,10 @@
 //! Generic bin-packing functionality
 
+use crate::MAX_MEMPOOL_PACKAGE_SIZE;
+use crate::MAX_TX_PER_BITCOIN_BLOCK;
+
+use super::utxo::MAX_BASE_TX_VSIZE;
+
 /// The maximum vsize of all items in a package.
 ///
 /// A bitcoin transaction package is a group of one or more transactions
@@ -14,16 +19,8 @@
 /// if the packager ensure that the total vsize of the items in the package
 /// are under this limit, then the transaction package will be under the
 /// bitcoin vsize limit.
-///
-/// This value is computed as follows:
-/// ```text
-/// ((101000 - MAX_TX_PER_BITCOIN_BLOCK * BASE_WITHDRAWAL_TX_VSIZE) // 5000) * 5000
-/// ```
-///
-/// The actual limit is 101,000 vbytes, see:
-/// <https://bitcoincore.reviews/21800>
-/// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L60-L61>
-const PACKAGE_MAX_VSIZE: u64 = 95_000;
+const PACKAGE_MAX_VSIZE: u64 =
+    ((MAX_MEMPOOL_PACKAGE_SIZE - MAX_TX_PER_BITCOIN_BLOCK * MAX_BASE_TX_VSIZE) / 5000) * 5000;
 
 /// Package a list of items into bags.
 ///
