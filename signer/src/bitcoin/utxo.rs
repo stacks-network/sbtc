@@ -2925,6 +2925,7 @@ mod tests {
             num_signers: 11,
             accept_threshold: 6,
             sbtc_limits: SbtcLimits::default(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // Let's construct the unsigned transaction and check to see if we
