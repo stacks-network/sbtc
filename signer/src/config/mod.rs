@@ -782,7 +782,7 @@ mod tests {
         remove_parameter("signer_round_max_duration");
         remove_parameter("bitcoin_presign_request_max_duration");
         remove_parameter("dkg_max_duration");
-        remove_parameter("dkg_max_duration");
+        remove_parameter("max_deposits_per_bitcoin_tx");
 
         let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
 
