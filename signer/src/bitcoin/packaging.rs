@@ -7,7 +7,8 @@
 /// 1. Each transaction is unconfirmed, and
 /// 2. Each transaction has at least one input that is an outpoint from
 ///    another transaction in the group or each transaction has an output
-///    that another transaction in the group spends.
+///    that another transaction in the group spends or the group consists
+///    of one transaction.
 ///
 /// This constant is derived from bitcoin core, and has the property that
 /// if the packager ensure that the total vsize of the items in the package
@@ -150,8 +151,9 @@ impl<T: Weighted> OptimalPackager<T> {
             .push((item.votes(), item.needs_signature() as u16, vec![item]));
     }
 
-    /// Insert an item into the best fit bag. Creates a new one if no
-    /// bag exists that can fit the item.
+    /// Insert an item into the best fit bag. Creates a new one if no bag
+    /// exists that can fit the item. If no bag can fit the item then it is
+    /// not added to any bag and is dropped.
     fn insert_item(&mut self, item: T) {
         let item_votes = item.votes();
         let item_vsize = item.vsize();
