@@ -65,7 +65,8 @@ where
     packager.bags.into_iter().map(|(_, _, items)| items)
 }
 
-/// A weighted item that can be packaged using [`compute_optimal_packages`].
+/// A weighted item that can be packaged using
+/// [`compute_optimal_packages`].
 ///
 /// The inclusion of a request in a bitcoin transaction depends on three
 /// factors:
@@ -73,21 +74,25 @@ where
 /// 2. Whether we are dealing with a deposit or a withdrawal request,
 /// 3. The virtual size of the request when included in a sweep
 ///    transaction.
+///
+/// This trait has methods that capture all of these factors.
 pub trait Weighted {
     /// Whether the item needs a signature or not.
     ///
     /// If a request needs a signature, then including it requires a
-    /// signing round and that takes time. We try to get all inputs signed
-    /// well before the arrival of the next bitcoin block.
+    /// signing round and that takes time. Since we try to get all inputs
+    /// signed well before the arrival of the next bitcoin block, we cap
+    /// the number of items that need a signature.
     fn needs_signature(&self) -> bool;
-    /// A bitmap of how the signers voted. Here, we assume that if a bit
-    /// is 1 then the signer that corresponds to the bits position voted
-    /// *against* the transaction.
+    /// A bitmap of how the signers voted.
+    ///
+    /// Here, we assume that if a bit is 1 then the signer that corresponds
+    /// to the bits position voted *against* the transaction.
     fn votes(&self) -> u128;
     /// The virtual size of the item in vbytes. This is supposed to be the
-    /// total weight of the requests on chain. For deposits, this is the
-    /// input UTXO including witness data, for outputs it's the entire
-    /// output vsize.
+    /// total bitcoin weight of the request once signed on the bitcoin
+    /// blockchain. For deposits this is the input UTXO including witness
+    /// data, for withdrawals it's the entire output vsize.
     fn vsize(&self) -> u64;
 }
 
@@ -95,10 +100,11 @@ pub trait Weighted {
 struct OptimalPackager<T> {
     /// Contains all the bags and their items. The first element of the
     /// tuple is a bitmap for how the signers would vote for the collection
-    /// of items in the associated bag, while the second element is the
-    /// number of items that require signatures in the bag itself.
+    /// of items in the associated bag, the second element is the number of
+    /// items that require signatures in the bag, and the third element is
+    /// the bag itself.
     bags: Vec<(u128, u16, Vec<T>)>,
-    /// Each bag has a fixed capacity threshold, this is that value.
+    /// Each bag has a fixed votes against threshold, this is that value.
     max_votes_against: u32,
     /// The maximum number of items that can require signatures in a bag,
     /// regardless of the aggregated votes and their vsize.
@@ -124,11 +130,13 @@ impl<T: Weighted> OptimalPackager<T> {
     /// and return the key for that bag. None is returned if no bag can
     /// accommodate an item with the given weight.
     fn find_best_key(&mut self, item: &T) -> Option<&mut (u128, u16, Vec<T>)> {
+        let sig = item.needs_signature() as u16;
+        let item_votes = item.votes();
+
         self.bags
             .iter_mut()
             .find(|(aggregate_votes, num_signatures, _)| {
-                let sig = item.needs_signature() as u16;
-                (aggregate_votes | item.votes()).count_ones() <= self.max_votes_against
+                (aggregate_votes | item_votes).count_ones() <= self.max_votes_against
                     && num_signatures.saturating_add(sig) <= self.max_needs_signature
             })
     }
