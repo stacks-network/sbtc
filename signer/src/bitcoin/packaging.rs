@@ -133,10 +133,11 @@ impl<T: Weighted> OptimalPackager<T> {
 
         self.bags
             .iter_mut()
-            .find(|(aggregate_votes, num_signatures, _)| {
+            .filter(|(aggregate_votes, num_signatures, _)| {
                 (aggregate_votes | item_votes).count_ones() <= self.max_votes_against
                     && num_signatures.saturating_add(sig) <= self.max_needs_signature
             })
+            .min_by_key(|(aggregate_votes, _, _)| (item_votes ^ aggregate_votes).count_ones())
     }
 
     /// Create a new bag for the given item.
