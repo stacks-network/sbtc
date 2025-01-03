@@ -268,6 +268,20 @@ mod tests {
         expected_bag_sizes: [23],
         expected_bag_vsizes: [92000],
     } ; "ignores-when-vsize-exceeds-max")]
+    #[test_case(VotesTestCase {
+        items: vec![
+            RequestItem::new([false, false, false, true, true], false, 0),
+            RequestItem::new([false, true, true, false, false], false, 0),
+            RequestItem::new([true, true, false, false, false], false, 0),
+            RequestItem::new([true, false, false, false, false], false, 0),
+            RequestItem::new([false, true, false, false, false], false, 0),
+            RequestItem::new([false, false, true, false, false], false, 0),
+        ],
+        max_needs_signature: 100,
+        max_votes_against: 3,
+        expected_bag_sizes: [1, 5],
+        expected_bag_vsizes: [0, 0],
+    } ; "two-different-votes-against-two-packages-v2")]
     fn returns_optimal_placements<const N: usize>(case: VotesTestCase<N>) {
         let ans =
             compute_optimal_packages(case.items, case.max_votes_against, case.max_needs_signature);
