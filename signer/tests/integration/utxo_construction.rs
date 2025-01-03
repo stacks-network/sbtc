@@ -30,6 +30,7 @@ use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::WithdrawalRequest;
 use signer::context::SbtcLimits;
+use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 use stacks_common::types::chainstate::StacksAddress;
 
 use regtest::Recipient;
@@ -225,6 +226,7 @@ fn deposits_add_to_controlled_amounts() {
         accept_threshold: 4,
         num_signers: 7,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
     // There should only be one transaction here since there is only one
@@ -290,6 +292,7 @@ fn withdrawals_reduce_to_signers_amounts() {
         accept_threshold: 4,
         num_signers: 7,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
     // There should only be one transaction here since there is only one

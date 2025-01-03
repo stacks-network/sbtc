@@ -1892,7 +1892,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
         })
         .await;
 
-    let mut coord = TxCoordinatorEventLoop {
+    let coord = TxCoordinatorEventLoop {
         context,
         private_key: PrivateKey::new(&mut rng),
         network: network.spawn(),
@@ -2028,7 +2028,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
         .build();
     let network = SignerNetwork::single(&context);
 
-    let mut coord = TxCoordinatorEventLoop {
+    let coord = TxCoordinatorEventLoop {
         context,
         private_key: PrivateKey::new(&mut rng),
         network: network.spawn(),

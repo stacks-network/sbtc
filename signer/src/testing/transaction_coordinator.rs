@@ -200,7 +200,7 @@ where
         // Create the coordinator
         self.context.state().set_sbtc_contracts_deployed();
         let signer_network = SignerNetwork::single(&self.context);
-        let mut coordinator = TxCoordinatorEventLoop {
+        let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
             private_key: select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info),

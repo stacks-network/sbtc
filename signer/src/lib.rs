@@ -76,12 +76,37 @@ pub const MAX_REORG_BLOCK_COUNT: i64 = 10;
 
 /// The maximum number of sweep transactions that the signers can confirm
 /// per block.
-pub const MAX_TX_PER_BITCOIN_BLOCK: i64 = 25;
+///
+/// This is the default maximum number of transactions in a transaction
+/// package in the bitcoin mempool. This value is configurable in bitcoin
+/// core as the `limitancestorcount` and/or `limitdescendantcount` limits.
+///
+/// <https://github.com/bitcoin/bitcoin/blob/228aba2c4d9ac0b2ca3edd3c2cdf0a92e55f669b/doc/policy/mempool-limits.md>
+/// <https://bitcoincore.reviews/21800>
+/// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L58-L59>
+pub const MAX_MEMPOOL_PACKAGE_TX_COUNT: u64 = 25;
+
+/// The default maximum number of deposit inputs per bitcoin transaction.
+///
+/// The default here is chosen so that there is a ~50% chance that the
+/// signers finish signing all bitcoin inputs, before the arrival of the
+/// next bitcoin block. This assumes signing rounds take ~16 seconds.
+pub const DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX: u16 = 25;
 
 /// This is the dust limit for deposits in the sBTC smart contracts.
 /// Deposit amounts that is less than this amount will be rejected by the
 /// smart contract.
 pub const DEPOSIT_DUST_LIMIT: u64 = 546;
+
+/// This is the default maximum virtual size of a bitcoin transaction
+/// package. This value is the default limit set in bitcoin core, and
+/// corresponds to the `limitancestorsize` and/or `limitdescendantsize`
+/// configurable limits.
+///
+/// <https://github.com/bitcoin/bitcoin/blob/228aba2c4d9ac0b2ca3edd3c2cdf0a92e55f669b/doc/policy/mempool-limits.md>
+/// <https://bitcoincore.reviews/21800>
+/// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L60-L61>
+pub const MAX_MEMPOOL_PACKAGE_SIZE: u64 = 101000;
 
 /// These are all build info variables. Many of them are set in build.rs.
 

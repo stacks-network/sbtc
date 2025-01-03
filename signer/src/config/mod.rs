@@ -7,6 +7,7 @@ use libp2p::Multiaddr;
 use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
+use std::num::NonZeroU16;
 use std::path::Path;
 use url::Url;
 
@@ -20,6 +21,7 @@ use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::wallet::SignerWallet;
+use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 mod error;
 mod serialization;
@@ -244,6 +246,13 @@ pub struct SignerConfig {
     /// The minimum bitcoin block height for which the sbtc signers will
     /// backfill bitcoin blocks to.
     pub sbtc_bitcoin_start_height: Option<u64>,
+    /// The maximum number of deposit inputs that will be included in a
+    /// single bitcoin transaction. Transactions must be constructed within
+    /// a tenure of a bitcoin block, and higher values here imply lower
+    /// likelihood of signing all inputs before the next bitcoin block
+    /// arrives. The default here is controlled by the
+    /// [`MAX_DEPOSITS_PER_BITCOIN_TX`] constant
+    pub max_deposits_per_bitcoin_tx: NonZeroU16,
 }
 
 impl Validatable for SignerConfig {
@@ -378,6 +387,10 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
+        cfg_builder = cfg_builder.set_default(
+            "signer.max_deposits_per_bitcoin_tx",
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
+        )?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -488,6 +501,10 @@ mod tests {
         assert_eq!(
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
+        );
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx,
+            NonZeroU16::new(DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX).unwrap()
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
@@ -605,6 +622,31 @@ mod tests {
     }
 
     #[test]
+    fn default_config_toml_loads_max_deposits_per_bitcoin_tx() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx.get(),
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX
+        );
+
+        let value = "42";
+        let expected_value: NonZeroU16 = value.parse().unwrap();
+        // Let's make sure that this test is meaningful but checking that
+        // the `value` and the default are different.
+        assert_ne!(DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX, expected_value.get());
+
+        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", value);
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.max_deposits_per_bitcoin_tx, expected_value);
+
+        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", "0");
+        assert!(Settings::new_from_default_config().is_err());
+    }
+
+    #[test]
     fn default_config_toml_loads_signer_network_with_environment() {
         clear_env();
 
@@ -719,7 +761,7 @@ mod tests {
     }
 
     #[test]
-    fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
+    fn unprovided_optional_parameters_in_signer_config_set_to_default() {
         // In case there are some envs which provide values for this optional parameters,
         // this test will actually test nothing, so we need to reset them.
         clear_env();
@@ -740,6 +782,7 @@ mod tests {
         remove_parameter("signer_round_max_duration");
         remove_parameter("bitcoin_presign_request_max_duration");
         remove_parameter("dkg_max_duration");
+        remove_parameter("max_deposits_per_bitcoin_tx");
 
         let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
 

@@ -41,6 +41,7 @@ use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
+use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
@@ -152,6 +153,7 @@ impl TestSweepSetup {
             accept_threshold: 4,
             num_signers: 7,
             sbtc_limits: SbtcLimits::default(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // There should only be one transaction here since there is only
@@ -762,6 +764,7 @@ impl TestSweepSetup2 {
             accept_threshold: 4,
             num_signers: 7,
             sbtc_limits: SbtcLimits::default(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // There should only be one transaction here since there is only
