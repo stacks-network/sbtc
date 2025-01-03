@@ -281,7 +281,7 @@ mod tests {
         max_votes_against: 3,
         expected_bag_sizes: [1, 5],
         expected_bag_vsizes: [0, 0],
-    } ; "two-different-votes-against-two-packages-v2")]
+    } ; "votes-against-placement")]
     fn returns_optimal_placements<const N: usize>(case: VotesTestCase<N>) {
         let ans =
             compute_optimal_packages(case.items, case.max_votes_against, case.max_needs_signature);
