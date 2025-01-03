@@ -2943,15 +2943,17 @@ mod tests {
     }
 
     #[test]
-    fn test_construct_transactions_capped_by_number() {
-        // with 30 deposits and 30 withdrawals with 4 votes against each,
-        // we should generate 60 distinct transactions, but we should cap
-        // the number of transactions to 25
+    fn construct_transactions_limits_transaction_count() {
+        // With 30 deposits and 30 withdrawals each with one nonoverlapping
+        // vote against, we should generate 60 distinct transactions since
+        // each transaction can tolerate a max of one vote against. But we
+        // should cap the number of transactions returned to
+        // MAX_MEMPOOL_PACKAGE_TX_COUNT.
         let deposits: Vec<DepositRequest> = (0..30)
-            .map(|shift| create_deposit(10_000, 10_000, 0b111 << shift))
+            .map(|shift| create_deposit(10_000, 10_000, 1 << shift))
             .collect();
         let withdrawals: Vec<WithdrawalRequest> = (0..30)
-            .map(|shift| create_withdrawal(10_000, 10_000, 0b111 << shift + 30))
+            .map(|shift| create_withdrawal(10_000, 10_000, 1 << shift + 30))
             .collect();
 
         let requests = SbtcRequests {
@@ -2968,8 +2970,8 @@ mod tests {
                 last_fees: None,
                 magic_bytes: [0; 2],
             },
-            accept_threshold: 11,
-            num_signers: 15,
+            accept_threshold: 127,
+            num_signers: 128,
             sbtc_limits: SbtcLimits::default(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
@@ -2981,7 +2983,7 @@ mod tests {
     }
 
     #[test]
-    fn test_construct_transactions_capped_by_size() {
+    fn construct_transactions_limits_package_vsize() {
         const NUM_DEPOSITS: usize =
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX as usize * MAX_MEMPOOL_PACKAGE_TX_COUNT as usize;
         // We set the signer bitmap to 3, so that each deposit is
