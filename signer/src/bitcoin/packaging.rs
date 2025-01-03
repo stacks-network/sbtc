@@ -56,7 +56,7 @@ where
     // Now we just add each item into a bag, and return the
     // collection of bags afterward.
     let mut packager =
-        OptimalPackager::new(max_votes_against, max_needs_signature, PACKAGE_MAX_VSIZE);
+        BestFitPackager::new(max_votes_against, max_needs_signature, PACKAGE_MAX_VSIZE);
     for (_, item) in item_vec {
         packager.insert_item(item);
     }
@@ -95,7 +95,7 @@ pub trait Weighted {
 }
 
 #[derive(Debug)]
-struct OptimalPackager<T> {
+struct BestFitPackager<T> {
     /// Contains all the bags and their items. The first element of the
     /// tuple is a bitmap for how the signers would vote for the collection
     /// of items in the associated bag, the second element is the number of
@@ -113,7 +113,7 @@ struct OptimalPackager<T> {
     total_vsize: u64,
 }
 
-impl<T: Weighted> OptimalPackager<T> {
+impl<T: Weighted> BestFitPackager<T> {
     const fn new(max_votes_against: u32, max_needs_signature: u16, max_vsize: u64) -> Self {
         Self {
             bags: Vec::new(),
@@ -149,9 +149,19 @@ impl<T: Weighted> OptimalPackager<T> {
             .push((item.votes(), item.needs_signature() as u16, vec![item]));
     }
 
-    /// Insert an item into the best fit bag. Creates a new one if no bag
-    /// exists that can fit the item. If no bag can fit the item then it is
-    /// not added to any bag and is dropped.
+    /// Try to insert an item into the best-fit bag, and create a new one
+    /// if no bag exists that can fit the item and the item's weights are
+    /// within the packager's limits.
+    ///
+    /// An item's weights exceed the packager's limits if any of the
+    /// following conditions hold:
+    /// 1. The votes against the item exceed the packager's
+    ///    `max_votes_against`.
+    /// 2. Including the item would bring the total vsize over the
+    ///    packager's `max_vsize`.
+    ///
+    /// If the item's weights are not within the packager's limits, then it
+    /// is not added to any bag and is dropped.
     fn insert_item(&mut self, item: T) {
         let item_votes = item.votes();
         let item_vsize = item.vsize();
