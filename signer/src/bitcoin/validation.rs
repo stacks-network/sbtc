@@ -107,9 +107,9 @@ impl BitcoinPreSignRequest {
         let no_requests = self
             .request_package
             .iter()
-            .all(|x| x.deposits.is_empty() && x.withdrawals.is_empty());
+            .any(|x| x.deposits.is_empty() && x.withdrawals.is_empty());
 
-        if no_requests {
+        if no_requests || self.request_package.is_empty() {
             return Err(Error::PreSignContainsNoRequests);
         }
 
@@ -1409,7 +1409,42 @@ mod tests {
             fee_rate: 1.0,
             last_fees: None,
         }, false; "basically-empty-package_requests")]
-    fn test_is_unique(requests: BitcoinPreSignRequest, result: bool) {
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
+                },
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "contains-empty-tx-requests")]
+    fn test_pre_validation(requests: BitcoinPreSignRequest, result: bool) {
         assert_eq!(requests.pre_validation().is_ok(), result);
     }
 
