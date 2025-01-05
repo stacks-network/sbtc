@@ -798,7 +798,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// Construct an unsigned transaction.
     ///
     /// This function can fail if the output amounts are greater than the
-    /// input amounts.
+    /// input amounts or if the [`Requests`] object is empty.
     ///
     /// The returned BTC transaction has the following properties:
     ///   1. The amounts for each output has taken fees into consideration.
@@ -822,7 +822,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// Construct a transaction with stub witness data.
     ///
     /// This function can fail if the output amounts are greater than the
-    /// input amounts.
+    /// input amounts or if the [`Requests`] object is empty.
     ///
     /// The returned BTC transaction has the following properties:
     ///   1. The amounts for each output has taken fees into consideration.
@@ -833,6 +833,9 @@ impl<'a> UnsignedTransaction<'a> {
     ///   5. All witness data is correctly set, except for the fake
     ///      signatures from (4).
     pub fn new_stub(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
+        if requests.is_empty() {
+            return Err(Error::BitcoinNoRequests);
+        }
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
         // estimates are accurate. Later we will update the fees.

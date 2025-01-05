@@ -454,6 +454,13 @@ impl BitcoinTxValidationData {
     /// not a part of the signing set locking one or more deposits. In such
     /// a case, it will just sign for the deposits that it can.
     pub fn is_valid_tx(&self) -> bool {
+        // A transaction is invalid if it is not servicing any deposit or
+        // withdrawal requests. Doing so costs fees and the signers do not
+        // gain anything by permitting such a transaction.
+        if self.reports.deposits.is_empty() && self.reports.withdrawals.is_empty() {
+            return false;
+        }
+
         let deposit_validation_results = self.reports.deposits.iter().all(|(_, report)| {
             matches!(
                 report.validate(

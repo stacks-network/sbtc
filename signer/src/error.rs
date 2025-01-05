@@ -535,6 +535,11 @@ pub enum Error {
     #[error("The BitcoinPreSignRequest object does not contain deposit or withdrawal requests")]
     PreSignContainsNoRequests,
 
+    /// Indicates that we tried to create an UnsignedTransaction object
+    /// without any deposit or withdrawal requests.
+    #[error("The UnsignedTransaction must contain deposit or withdrawal requests")]
+    BitcoinNoRequests,
+
     /// Indicates that the BitcoinPreSignRequest object contains a fee rate
     /// that is less than or equal to zero.
     #[error("The fee rate in the BitcoinPreSignRequest object is not greater than zero: {0}")]
