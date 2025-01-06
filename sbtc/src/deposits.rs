@@ -147,8 +147,12 @@ impl CreateDepositRequest {
         let deposit_script = deposit.deposit_script();
         let reclaim_script = reclaim.reclaim_script();
 
-        debug_assert_eq!(deposit_script, self.deposit_script);
-        debug_assert_eq!(reclaim_script, self.reclaim_script);
+        if deposit_script != self.deposit_script {
+            return Err(Error::InvalidDepositScript);
+        }
+        if reclaim_script != self.reclaim_script {
+            return Err(Error::InvalidReclaimScript);
+        }
 
         let expected_script_pubkey =
             to_script_pubkey(deposit_script.clone(), reclaim_script.clone());
