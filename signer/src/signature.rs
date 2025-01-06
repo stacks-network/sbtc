@@ -127,9 +127,9 @@ impl RecoverableEcdsaSignature for RecoverableSignature {
     fn to_byte_array(&self) -> [u8; 65] {
         let (recovery_id, bytes) = self.serialize_compact();
         let mut ret_bytes = [0u8; 65];
-        // The recovery ID will be 0, 1, 2, or 3
+        // The recovery ID will be 0, 1, 2, or 3 as described in the secp256k1 docs:
+        // https://docs.rs/secp256k1/0.30.0/secp256k1/ecdsa/enum.RecoveryId.html
         ret_bytes[0] = recovery_id.to_i32() as u8;
-        debug_assert!(recovery_id.to_i32() < 4);
 
         ret_bytes[1..].copy_from_slice(&bytes[..]);
         ret_bytes
