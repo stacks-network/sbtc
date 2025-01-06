@@ -2831,6 +2831,63 @@ mod tests {
         assert!(combined_fee <= (fee + Amount::from_sat(3u64)));
     }
 
+    #[test_case(
+        create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64,
+            10_000,
+            0
+        ),
+        true; "deposit amounts over the dust limit accepted")]
+    #[test_case(
+        create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1,
+            10_000,
+            0
+        ),
+        false; "deposit amounts under the dust limit rejected")]
+    fn deposit_requests_respect_dust_limits(req: DepositRequest, is_included: bool) {
+        let outpoint = req.outpoint;
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+
+        // We use a fee rate of 1 to simplify the computation. The
+        // filtering done here uses a heuristic where we take the maximum
+        // fee that the user could pay, and subtract that amount from the
+        // deposit amount. The maximum fee that a user could pay is the
+        // SOLO_DEPOSIT_TX_VSIZE times the fee rate so with a fee rate of 1
+        // we should filter the request if the deposit amount is less than
+        // SOLO_DEPOSIT_TX_VSIZE + DEPOSIT_DUST_LIMIT.
+        let requests = SbtcRequests {
+            deposits: vec![create_deposit(2500000, 100000, 0), req],
+            withdrawals: vec![],
+            signer_state: SignerBtcState {
+                utxo: SignerUtxo {
+                    outpoint: generate_outpoint(300_000, 0),
+                    amount: 300_000_000,
+                    public_key,
+                },
+                fee_rate: 1.0,
+                public_key,
+                last_fees: None,
+                magic_bytes: [0; 2],
+            },
+            num_signers: 11,
+            accept_threshold: 6,
+            sbtc_limits: SbtcLimits::default(),
+        };
+
+        // Let's construct the unsigned transaction and check to see if we
+        // include it in the deposit requests in the transaction.
+        let tx = requests.construct_transactions().unwrap().pop().unwrap();
+        let request_is_included = tx
+            .requests
+            .iter()
+            .filter_map(RequestRef::as_deposit)
+            .find(|req| req.outpoint == outpoint)
+            .is_some();
+
+        assert_eq!(request_is_included, is_included);
+    }
+
     #[test]
     fn test_construct_transactions_capped_by_number() {
         // with 30 deposits and 30 withdrawals with 4 votes against each, we should generate 60 distinct transactions
@@ -2907,10 +2964,17 @@ mod tests {
 
     #[test_case(
         &vec![create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64, 10_000, 0
+        )],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        SOLO_DEPOSIT_TX_VSIZE as u64,
+        1, DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64; "deposit_amounts_over_the_dust_limit_accepted")]
+    #[test_case(
+        &vec![create_deposit(
             DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1, 10_000, 0
         )],
         &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
-        1_000,
+        SOLO_DEPOSIT_TX_VSIZE as u64,
         0, 0; "should_reject_deposits_under_dust_limit")]
     #[test_case(
         &vec![
@@ -2980,7 +3044,7 @@ mod tests {
     #[test_case(
         &vec![
             create_deposit(10_000, 10_000, 0), // accepted
-            create_deposit(DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1, 10_000, 0), // rejected (below dust limit)
+            create_deposit(DEPOSIT_DUST_LIMIT + 999, 10_000, 0), // rejected (1 below dust limit) min_fee is 1_000
             create_deposit(9_000, 10_000, 0),  // rejected (below per_deposit_minimum)
             create_deposit(21_000, 10_000, 0), // rejected (above per_deposit_cap)
             create_deposit(20_000, 10_000, 0), // accepted
