@@ -237,6 +237,11 @@ pub enum Error {
     #[error("invalid tweak? seriously? {0}")]
     InvalidPublicKeyTweak(#[source] secp256k1::Error),
 
+    /// This happens when a tweak produced by [`XOnlyPublicKey::add_tweak`] was computed incorrectly.
+    /// One if possible reasons is that you tweaked same key twice.
+    #[error("Tweak was computed incorrectly.")]
+    InvalidPublicKeyTweakCheck,
+
     /// This occurs when converting a byte slice to our internal public key
     /// type, which is a thin wrapper around the secp256k1::SecretKey.
     #[error("invalid private key: {0}")]
