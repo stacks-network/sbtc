@@ -114,6 +114,10 @@ pub enum Error {
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,
 
+    /// This should never happen
+    #[error("get_tenure_raw returned unexpected responce: {0}. Expected: {1}")]
+    GetTenureRawMismatch(StacksBlockId, StacksBlockId),
+
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
     EstimateSmartFee(#[source] bitcoincore_rpc::Error, u16),
