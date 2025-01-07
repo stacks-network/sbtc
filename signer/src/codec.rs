@@ -8,24 +8,25 @@
 //! The signers communicate with each other by sending protobuf messages
 //! serialized in a canonical way. Specifically, signer message
 //! serialization must adhere to the following constraints:
-//! 1. Each field must be serialized in order of their tag number. So if
+//! 1. Each field must be serialized in the order of its tag number. If
 //!    `field_a` has a lower tag than `field_b`, then `field_a` will be
 //!    serialized before `field_b`.
 //! 2. Map protobuf fields can only be used if the key type is
-//!    well-ordered. In particular, the rust version of these types must
-//!    implement `Ord`.
+//!    well-ordered. In particular, the Rust version of these types must
+//!    implement the `Ord` trait.
 //! 3. Map elements must be serialized in order of their keys.
 //! 4. The specific encoding and decoding of a field or message must follow
 //!    the protobuf spec. In particular, missing fields are not serialized.
 //!
-//! This is achieved by:
-//! 1. Using [`prost`] to generate rust serialization and deserialization
+//! This is achieved by doing the following:
+//! 1. Use [`prost`] to generate rust serialization and deserialization
 //!    code. We do so in a way that satisfies all four of the above
 //!    constraints.
-//! 2. Providing the `Encode` and `Decode` traits, defining the encode and
-//!    decode methods we intend to use throughout the signer.
-//! 3. Implementing these traits for any type implementing
-//!    `ProtoSerializable` defined in here.
+//! 2. Provide a `ProtoSerializable` trait for types that can be serialized
+//!    by their corresponding protobuf analog.
+//! 3. Provide the `Encode` and `Decode` traits.  Use them for
+//!    serialization and deserialization of any types that implement the
+//!    `ProtoSerializable` trait.
 //!
 
 use std::io;
