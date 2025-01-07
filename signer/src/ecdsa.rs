@@ -154,9 +154,7 @@ impl Signed<SignerMessage> {
             // Protobuf message tags must start at 1. The sBTC protobuf
             // codec requires that, for the proto::Signed protobuf, fields
             // are serialized in tag order, meaning that field n must be
-            // serialized before field m if n < m. This is a general
-            // requirement, but it has not been enforced for other message
-            // types yet.
+            // serialized before field m if n < m.
             if tag < last_tag {
                 return Err(Error::ProtobufTagCodec);
             }
