@@ -151,6 +151,17 @@ dkg_begin_pause = 2
 # Environment: SIGNER_SIGNER__SBTC_BITCOIN_START_HEIGHT
 # sbtc_bitcoin_start_height = 231
 
+# The maximum number of deposit inputs that will be included in a single
+# bitcoin transaction. 
+# 
+# Transactions must be constructed within a tenure of a bitcoin block, and
+# higher values here imply lower likelihood of signing all inputs before
+# the next bitcoin block arrives.
+# 
+# Required: false
+# Environment: SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX
+# max_deposits_per_bitcoin_tx = 25
+
 # When defined, this field sets the scrape endpoint as an IPv4 or IPv6
 # socket address for exporting metrics for Prometheus.
 #

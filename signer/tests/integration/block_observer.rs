@@ -583,6 +583,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         accept_threshold: 4,
         num_signers: 7,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
 
     let mut transactions = requests.construct_transactions().unwrap();
