@@ -5,7 +5,7 @@ from unittest.mock import patch, MagicMock
 import json
 import requests
 
-from app import app
+from app import app, headers, url as chainstate_url
 
 
 def read_fixture(filename):
@@ -64,6 +64,28 @@ class NewBlockTestCase(unittest.TestCase):
         response = self.app.post('/new_block', json=FIXTURES["complete_deposit"])
         self.assertEqual(response.status_code, 500)
         self.assertIn("Failed to send chainstate", response.get_json()["error"])
+
+    @patch('requests.post')
+    def test_new_block_post_request_strips_0x_prefix(self, mock_post):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"message": "Success"}
+        mock_post.return_value = mock_response
+
+        fixture = FIXTURES["complete_deposit"].copy()
+        index_block_hash = "0" * 64
+        fixture["index_block_hash"] = f"0x{index_block_hash}"
+
+        response = self.app.post('/new_block', json=fixture)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({}, response.get_json())
+
+        chainstate = {
+            "stacksBlockHeight": fixture["block_height"],
+            "stacksBlockHash": index_block_hash,
+        }
+        self.assertEqual(mock_post.call_count, 1)
+        mock_post.assert_called_with(chainstate_url, headers=headers, json=chainstate)
 
 
 class AttachmentsTestCase(unittest.TestCase):
