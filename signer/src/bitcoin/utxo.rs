@@ -1809,10 +1809,9 @@ mod tests {
         assert_eq!(new_utxo.public_key, requests.signer_state.public_key);
     }
 
-    /// Transactions that do not service requests do not have the OP_RETURN
-    /// output.
+    /// You cannot create sweep transactions that do not service requests.
     #[test]
-    fn no_requests_no_op_return() {
+    fn no_requests_no_sweep() {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let signer_state = SignerBtcState {
             utxo: SignerUtxo {
@@ -1826,14 +1825,9 @@ mod tests {
             magic_bytes: [0; 2],
         };
 
-        // No requests so the first output should be the signers UTXO and
-        // that's it. No OP_RETURN output.
         let requests = Requests::new(Vec::new());
-        let unsigned = UnsignedTransaction::new(requests, &signer_state).unwrap();
-        assert_eq!(unsigned.tx.output.len(), 1);
-
-        // There is only one output and it's a P2TR output
-        assert!(unsigned.tx.output[0].script_pubkey.is_p2tr());
+        let sweep = UnsignedTransaction::new(requests, &signer_state);
+        assert!(sweep.is_err());
     }
 
     /// We aggregate the bitmaps to form a single one at the end. Check
