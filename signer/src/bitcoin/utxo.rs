@@ -110,6 +110,66 @@ pub trait GetFees {
     fn get_fees(&self) -> Result<Option<Fees>, Error>;
 }
 
+/// Filter out the deposit requests that do not meet the amount or fee requirements.
+pub struct SbtcRequestsFilter<'a> {
+    sbtc_limits: &'a SbtcLimits,
+    minimum_fee: u64,
+}
+
+impl<'a> SbtcRequestsFilter<'a> {
+    /// Create a new [`DepositFilter`] instance.
+    pub fn new(sbtc_limits: &'a SbtcLimits, minimum_fee: u64) -> Self {
+        Self { sbtc_limits, minimum_fee }
+    }
+
+    /// Validate deposit requests based on four constraints:
+    /// 1. The user's max fee must be >= our minimum required fee for deposits
+    ///     (based on fixed deposit tx size)
+    /// 2. The deposit amount must be greater than or equal to the per-deposit minimum
+    /// 3. The deposit amount must be less than or equal to the per-deposit cap
+    /// 4. The total amount being minted must stay under the maximum allowed mintable amount
+    fn validate_deposit_amount(
+        &self,
+        amount_to_mint: &mut Amount,
+        req: &'a DepositRequest,
+    ) -> Option<RequestRef<'a>> {
+        let is_fee_valid = req.max_fee.min(req.amount) >= self.minimum_fee;
+        let is_above_dust = req.amount.saturating_sub(self.minimum_fee) >= DEPOSIT_DUST_LIMIT;
+        let req_amount = Amount::from_sat(req.amount);
+        let is_above_per_deposit_minimum = req_amount >= self.sbtc_limits.per_deposit_minimum();
+        let is_within_per_deposit_cap = req_amount <= self.sbtc_limits.per_deposit_cap();
+        let is_within_max_mintable_cap =
+            if let Some(new_amount) = amount_to_mint.checked_add(req_amount) {
+                new_amount <= self.sbtc_limits.max_mintable_cap()
+            } else {
+                false
+            };
+
+        if is_fee_valid
+            && is_above_dust
+            && is_above_per_deposit_minimum
+            && is_within_per_deposit_cap
+            && is_within_max_mintable_cap
+        {
+            *amount_to_mint += req_amount;
+            Some(RequestRef::Deposit(req))
+        } else {
+            None
+        }
+    }
+
+    /// Filter sbtc deposits that don't meet the validation criteria.
+    pub fn filter_deposits(&self, deposits: &'a [DepositRequest]) -> Vec<RequestRef<'a>> {
+        deposits
+            .iter()
+            .scan(Amount::from_sat(0), |amount_to_mint, deposit| {
+                Some(self.validate_deposit_amount(amount_to_mint, deposit))
+            })
+            .flatten()
+            .collect()
+    }
+}
+
 /// Summary of the Signers' UTXO and information necessary for
 /// constructing their next UTXO.
 #[derive(Debug, Clone, Copy)]
@@ -173,40 +233,14 @@ impl SbtcRequests {
             })
             .map(RequestRef::Withdrawal);
 
-        // Filter deposit requests based on four constraints:
-        // 1. The user's max fee must be >= our minimum required fee for
-        //     deposits (based on fixed deposit tx size)
-        // 2. The deposit amount must be less than the per-deposit limit
-        // 3. The total amount being minted must stay under the maximum
-        //    allowed mintable amount
-        // 4. The mint amount is above the deposit dust limit in the smart
-        //    contract.
-        let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
-        let max_mintable_cap = self.sbtc_limits.max_mintable_cap().to_sat();
-        let per_deposit_cap = self.sbtc_limits.per_deposit_cap().to_sat();
+        let request_filter = SbtcRequestsFilter::new(
+            &self.sbtc_limits,
+            self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE),
+        );
+        let deposits = request_filter.filter_deposits(&self.deposits);
 
-        let mut amount_to_mint: u64 = 0;
-        let deposits = self.deposits.iter().filter_map(|req| {
-            let is_fee_valid = req.max_fee.min(req.amount) >= minimum_deposit_fee;
-            let is_within_per_deposit_cap = req.amount <= per_deposit_cap;
-            let is_within_max_mintable_cap =
-                if let Some(new_amount) = amount_to_mint.checked_add(req.amount) {
-                    new_amount <= max_mintable_cap
-                } else {
-                    false
-                };
-            if req.amount.saturating_sub(minimum_deposit_fee) < DEPOSIT_DUST_LIMIT {
-                return None;
-            }
-            if is_fee_valid && is_within_per_deposit_cap && is_within_max_mintable_cap {
-                amount_to_mint += req.amount;
-                Some(RequestRef::Deposit(req))
-            } else {
-                None
-            }
-        });
         // Create a list of requests where each request can be approved on its own.
-        let items = deposits.chain(withdrawals);
+        let items = deposits.into_iter().chain(withdrawals);
 
         compute_optimal_packages(items, self.reject_capacity())
             .scan(self.signer_state, |state, request_refs| {
@@ -1456,6 +1490,20 @@ mod tests {
         };
 
         OutPoint { txid: tx.compute_txid(), vout }
+    }
+
+    fn create_limits_for_deposits_and_max_mintable(
+        per_deposit_minimum: u64,
+        per_deposit_cap: u64,
+        max_mintable_cap: u64,
+    ) -> SbtcLimits {
+        SbtcLimits::new(
+            None,
+            Some(Amount::from_sat(per_deposit_minimum)),
+            Some(Amount::from_sat(per_deposit_cap)),
+            None,
+            Some(Amount::from_sat(max_mintable_cap)),
+        )
     }
 
     /// Create a new deposit request depositing from a random public key.
@@ -2783,79 +2831,6 @@ mod tests {
         assert!(combined_fee <= (fee + Amount::from_sat(3u64)));
     }
 
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-    ], 3, 30_000, 10_000, 30_000; "should_accept_deposits_until_max_mintable_reached")]
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-    ], 1, 10_000, 10_000, 15_000; "should_accept_all_deposits_when_under_max_mintable")]
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-    ], 0, 0, 0, 0; "should_handle_empty_deposit_list")]
-    #[test_case(vec![
-        create_deposit(10_000, 0, 0),
-        create_deposit(11_000, 10_000, 0),
-        create_deposit(9_000, 10_000, 0),
-    ], 1, 9_000, 10_000, 10_000; "should_skip_invalid_fee_and_accept_valid_deposits")]
-    #[test_case(vec![
-        create_deposit(10_001, 10_000, 0),
-    ], 0, 0, 10_001, 10_000; "should_reject_single_deposit_exceeding_max_mintable")]
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-    ], 0, 0, 8_000, 10_000; "should_reject_single_deposit_exceeding_per_deposit_cap")]
-    #[tokio::test]
-    async fn test_construct_transactions_filters_deposits_over_max_mintable(
-        deposits: Vec<DepositRequest>,
-        num_accepted_requests: usize,
-        accepted_amount: u64,
-        per_deposit_cap: u64,
-        max_mintable: u64,
-    ) {
-        // Each deposit and withdrawal has a max fee greater than the current market fee rate
-        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
-        let requests = SbtcRequests {
-            deposits: deposits,
-            withdrawals: vec![],
-            signer_state: SignerBtcState {
-                utxo: SignerUtxo {
-                    outpoint: generate_outpoint(300_000, 0),
-                    amount: 300_000_000,
-                    public_key,
-                },
-                fee_rate: 25.0,
-                public_key,
-                last_fees: None,
-                magic_bytes: [0; 2],
-            },
-            num_signers: 10,
-            accept_threshold: 8,
-            sbtc_limits: SbtcLimits::new(
-                None,
-                Some(Amount::from_sat(per_deposit_cap)),
-                None,
-                Some(Amount::from_sat(max_mintable)),
-            ),
-        };
-        let txs = requests.construct_transactions().unwrap();
-        let nr_requests = txs.iter().map(|tx| tx.requests.len()).sum::<usize>();
-        let total_amount: u64 = txs
-            .iter()
-            .map(|tx| {
-                tx.requests
-                    .iter()
-                    .map(|req| req.as_deposit().unwrap().amount)
-            })
-            .flatten()
-            .sum();
-        assert_eq!(nr_requests, num_accepted_requests);
-        assert_eq!(total_amount, accepted_amount);
-    }
-
     #[test_case(
         create_deposit(
             DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64,
@@ -2985,5 +2960,119 @@ mod tests {
         let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
         assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
         assert_eq!(transactions[0].requests.len(), 817);
+    }
+
+    #[test_case(
+        &vec![create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64, 10_000, 0
+        )],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        SOLO_DEPOSIT_TX_VSIZE as u64,
+        1, DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64; "deposit_amounts_over_the_dust_limit_accepted")]
+    #[test_case(
+        &vec![create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1, 10_000, 0
+        )],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        SOLO_DEPOSIT_TX_VSIZE as u64,
+        0, 0; "should_reject_deposits_under_dust_limit")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 1_000, 0),
+            create_deposit(11_000, 100, 0),
+            create_deposit(12_000, 2_000, 0),
+            create_deposit(13_000, 0, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        1_000,
+        2, 22_000; "should_accept_all_deposits_above_or_equal_min_fee")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_000, 30_000),
+        1_000,
+        3, 30_000; "should_accept_deposits_until_max_mintable_reached")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_000, 15_000),
+        1_000,
+        1, 10_000; "should_accept_all_deposits_when_under_max_mintable")]
+    #[test_case(
+        &vec![create_deposit(10_000, 10_000, 0),],
+        &create_limits_for_deposits_and_max_mintable(0, 0, 0),
+        1_000,
+        0, 0; "should_handle_empty_deposit_list")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 0, 0),
+            create_deposit(11_000, 10_000, 0),
+            create_deposit(9_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_000, 10_000),
+        1_000,
+        1, 9_000; "should_skip_invalid_fee_and_accept_valid_deposits")]
+    #[test_case(
+        &vec![
+            create_deposit(10_001, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_001, 10_000),
+        1_000,
+        0, 0; "should_reject_single_deposit_exceeding_max_mintable")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 8_000, 10_000),
+        1_000,
+        0, 0; "should_reject_single_deposit_exceeding_per_deposit_cap")]
+    #[test_case(
+        &vec![
+            create_deposit(5_000, 2_000, 0),
+            create_deposit(15_000, 2_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(10_000, 20_000, 30_000),
+        1_000,
+        1, 15_000; "should_reject_deposits_below_per_deposit_minimum")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0), // accepted
+            create_deposit(DEPOSIT_DUST_LIMIT + 999, 10_000, 0), // rejected (1 below dust limit) min_fee is 1_000
+            create_deposit(9_000, 10_000, 0),  // rejected (below per_deposit_minimum)
+            create_deposit(21_000, 10_000, 0), // rejected (above per_deposit_cap)
+            create_deposit(20_000, 10_000, 0), // accepted
+            create_deposit(20_000, 10_000, 0), // rejected (above max_mintable)
+            create_deposit(5_000, 500, 0),     // rejected (below minimum_fee)
+        ],
+        &create_limits_for_deposits_and_max_mintable(10_000, 20_000, 40_000),
+        1_000,
+        2, 30_000; "should_respect_all_limits")]
+    #[tokio::test]
+    async fn test_deposit_filter_filters_deposits_over_limits(
+        deposits: &Vec<DepositRequest>,
+        sbtc_limits: &SbtcLimits,
+        minimum_fee: u64,
+        num_accepted_deposits: usize,
+        accepted_amount: u64,
+    ) {
+        let filter = SbtcRequestsFilter::new(sbtc_limits, minimum_fee);
+
+        let deposits = filter.filter_deposits(deposits);
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        // let txs = requests.construct_transactions().unwrap();
+        let total_amount: u64 = deposits
+            .iter()
+            .map(|req| req.as_deposit().unwrap().amount)
+            .sum();
+
+        assert_eq!(deposits.len(), num_accepted_deposits);
+        assert_eq!(total_amount, accepted_amount);
     }
 }
