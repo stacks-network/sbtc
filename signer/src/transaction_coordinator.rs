@@ -1307,9 +1307,9 @@ where
 
     /// Constructs a new [`utxo::SignerBtcState`] based on the current market
     /// fee rate, the signer's UTXO, and the last sweep package.
-    #[tracing::instrument(skip(self, aggregate_key))]
+    #[tracing::instrument(skip_all)]
     pub async fn get_btc_state(
-        &mut self,
+        &self,
         chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
     ) -> Result<utxo::SignerBtcState, Error> {
@@ -1341,7 +1341,7 @@ where
     /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip_all)]
     pub async fn get_pending_requests(
-        &mut self,
+        &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
@@ -1379,6 +1379,7 @@ where
         if deposits.is_empty() && withdrawals.is_empty() {
             return Ok(None);
         }
+        let signer_config = &self.context.config().signer;
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
@@ -1386,6 +1387,7 @@ where
             accept_threshold: threshold,
             num_signers,
             sbtc_limits: self.context.state().get_current_limits(),
+            max_deposits_per_bitcoin_tx: signer_config.max_deposits_per_bitcoin_tx.get(),
         }))
     }
 

@@ -583,6 +583,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         accept_threshold: 4,
         num_signers: 7,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
 
     let mut transactions = requests.construct_transactions().unwrap();
@@ -663,9 +664,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(false, SbtcLimits::default(); "no contracts, default limits")]
-#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None); "no contracts, total cap limit")]
+#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "no contracts, total cap limit")]
 #[test_case::test_case(true, SbtcLimits::default(); "deployed contracts, default limits")]
-#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None); "deployed contracts, total cap limit")]
+#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "deployed contracts, total cap limit")]
 #[tokio::test]
 async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcLimits) {
     // We start with the typical setup with a fresh database and context

@@ -21,6 +21,7 @@ use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::utxo::WithdrawalRequest;
 use signer::context::SbtcLimits;
 use signer::storage::model::ScriptPubKey;
+use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
@@ -230,6 +231,7 @@ pub fn transaction_with_rbf(
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
     // Okay, lets submit the transaction. We also do a sanity check where
