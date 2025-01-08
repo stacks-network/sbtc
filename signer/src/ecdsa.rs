@@ -672,32 +672,32 @@ mod tests {
         let empty_prefix_sign: Vec<u8> =
             proto::EcdsaSignature::from(signature).encode_length_delimited_to_vec();
 
-        let mut hack1 = Vec::new();
-        hack1.extend_from_slice(&tag_2_key);
-        hack1.extend_from_slice(&tag_2_data);
-        hack1.extend_from_slice(&tag_3_key);
-        hack1.extend_from_slice(&tag_3_data);
-        hack1.extend_from_slice(&tag_1_key);
-        hack1.extend_from_slice(&empty_prefix_sign);
+        let mut tampered_tag_order_data = Vec::new();
+        tampered_tag_order_data.extend_from_slice(&tag_2_key);
+        tampered_tag_order_data.extend_from_slice(&tag_2_data);
+        tampered_tag_order_data.extend_from_slice(&tag_3_key);
+        tampered_tag_order_data.extend_from_slice(&tag_3_data);
+        tampered_tag_order_data.extend_from_slice(&tag_1_key);
+        tampered_tag_order_data.extend_from_slice(&empty_prefix_sign);
 
-        let result = Signed::<SignerMessage>::decode_with_digest(&hack1);
+        let result = Signed::<SignerMessage>::decode_with_digest(&tampered_tag_order_data);
         assert!(result.is_err());
 
         // Another test to make sure that we cannot tamper with any of the
         // signed data.
-        let mut hack2 = Vec::new();
-        hack2.extend_from_slice(&tag_2_key);
-        hack2.extend_from_slice(&tag_2_data);
-        hack2.extend_from_slice(&tag_3_key);
+        let mut tampered_data = Vec::new();
+        tampered_data.extend_from_slice(&tag_2_key);
+        tampered_data.extend_from_slice(&tag_2_data);
+        tampered_data.extend_from_slice(&tag_3_key);
 
         let mut tag_3_data_tampering = tag_3_data.clone();
         tag_3_data_tampering[10] = 0;
         tag_3_data_tampering[11] = 0;
         tag_3_data_tampering[12] = 0;
-        hack2.extend_from_slice(&tag_3_data_tampering);
-        hack2.extend_from_slice(&tag_1_key);
-        hack2.extend_from_slice(&empty_prefix_sign);
-        let result = Signed::<SignerMessage>::decode_with_digest(&hack2);
+        tampered_data.extend_from_slice(&tag_3_data_tampering);
+        tampered_data.extend_from_slice(&tag_1_key);
+        tampered_data.extend_from_slice(&empty_prefix_sign);
+        let result = Signed::<SignerMessage>::decode_with_digest(&tampered_data);
         assert!(result.is_err());
 
         // Finally, one more tamper test
