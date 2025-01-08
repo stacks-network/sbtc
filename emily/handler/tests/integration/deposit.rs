@@ -656,7 +656,7 @@ async fn overwrite_deposit() {
     }
 
     // Maybe looks weird from the first glance, but I like that this won't compile if
-    // a new option to Status enum will be added and not added to this test.
+    // a new option to Status enum will be added without updating this test.
     for status in [
         Status::Accepted,
         Status::Confirmed,
