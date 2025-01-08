@@ -811,12 +811,12 @@ impl StacksClient {
             // is always the block related to the given <block-id>. But we
             // already have that block, so we can skip adding it again.
 
-            if let Some(received_id) = blocks.first().map(|b| b.block_id()) {
-                if received_id != last_block_id {
-                    return Err(Error::GetTenureRawMismatch(received_id, last_block_id));
+            match blocks.first().map(|b| b.block_id()) {
+                Some(received_id) if received_id == last_block_id => {}
+                Some(received_id) => {
+                    return Err(Error::GetTenureRawMismatch(received_id, last_block_id))
                 }
-            } else {
-                return Err(Error::EmptyStacksTenure);
+                None => return Err(Error::EmptyStacksTenure),
             }
 
             tenure_blocks.extend(blocks.into_iter().skip(1))

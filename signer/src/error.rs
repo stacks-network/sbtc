@@ -114,8 +114,10 @@ pub enum Error {
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,
 
-    /// This should never happen
-    #[error("get_tenure_raw returned unexpected responce: {0}. Expected: {1}")]
+    /// This happens when StacksClient::get_tenure_raw returns an array of blocks which starts
+    /// with a block with id {0}, while we expect it to return an array of blocks starting with
+    /// a block with id {1}
+    #[error("get_tenure_raw returned unexpected response: {0}. Expected: {1}")]
     GetTenureRawMismatch(StacksBlockId, StacksBlockId),
 
     /// Received an error in call to estimatesmartfee RPC call
@@ -242,7 +244,6 @@ pub enum Error {
     InvalidPublicKeyTweak(#[source] secp256k1::Error),
 
     /// This happens when a tweak produced by [`XOnlyPublicKey::add_tweak`] was computed incorrectly.
-    /// One if possible reasons is that you tweaked same key twice.
     #[error("Tweak was computed incorrectly.")]
     InvalidPublicKeyTweakCheck,
 
@@ -453,12 +454,11 @@ pub enum Error {
     #[error("invalid configuration")]
     InvalidConfiguration,
 
-    /// We throw this error when MultisigTx was created incorrectly:
-    /// Txid of created MultisigTx is not equal to txid we expect
+    /// We throw this when signer produced txid, and txid coordinator sent are different
     #[error(
-        "MultisigTx creation error: MultisigTx was created with txid {0}, but expected txid {1}"
+        "Signer and coordinator txid mismatch. Signer produced txid {0}, but coordinator send txid {1}"
     )]
-    MultisigTxCreationError(
+    SignerCoordinatorTxidMismatch(
         blockstack_lib::burnchains::Txid,
         blockstack_lib::burnchains::Txid,
     ),

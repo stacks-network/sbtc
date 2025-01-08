@@ -414,7 +414,7 @@ where
         let txid = multi_sig.tx().txid();
 
         if txid != request.txid {
-            return Err(Error::MultisigTxCreationError(txid, request.txid));
+            return Err(Error::SignerCoordinatorTxidMismatch(txid, request.txid));
         }
 
         let signature = crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
