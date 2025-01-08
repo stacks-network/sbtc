@@ -213,24 +213,22 @@ pub async fn create_deposit(
         context: EmilyContext,
         body: CreateDepositRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Reject dups.
-        let (entries, _next_token) =
-            accessors::get_deposit_entries(&context, &Status::Accepted, None, None).await?;
-        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
-        for deposit in deposits {
-            if deposit.bitcoin_txid == body.bitcoin_txid
-                && deposit.bitcoin_tx_output_index == body.bitcoin_tx_output_index
-                && deposit.status == Status::Accepted
-            {
-                let response = json(&serde_json::json!({
-                    "error": "Conflict",
-                    "message": "This deposit already exists and accepted."
-                }));
-                return Ok(with_status(response, StatusCode::CONFLICT));
+        // Reject if we already have a deposit with the same txid and output index and it is NOT pending or reprocessing.
+        let entry = accessors::get_deposit_entry(
+            &context,
+            &DepositEntryKey {
+                bitcoin_txid: body.bitcoin_txid.clone(),
+                bitcoin_tx_output_index: body.bitcoin_tx_output_index,
+            },
+        )
+        .await;
+        if let Ok(deposit) = entry {
+            if deposit.status != Status::Pending && deposit.status != Status::Reprocessing {
+                return Err(Error::Conflict);
             }
         }
 
-        // Create deposit.
+        // Set variables.
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
 
