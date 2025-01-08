@@ -611,7 +611,7 @@ mod tests {
     }
 
     #[test]
-    fn poc_bypass_sign2() {
+    fn enforce_tag_ordering_signed_message() {
         let mut rng = rand::rngs::StdRng::seed_from_u64(1234);
 
         let keypair = secp256k1::Keypair::new_global(&mut rng);
