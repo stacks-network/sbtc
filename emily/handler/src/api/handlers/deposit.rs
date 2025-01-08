@@ -213,7 +213,15 @@ pub async fn create_deposit(
         context: EmilyContext,
         body: CreateDepositRequestBody,
     ) -> Result<impl warp::reply::Reply, Error> {
-        // Reject if we already have a deposit with the same txid and output index and it is NOT pending or reprocessing.
+        // Set variables.
+        let api_state = accessors::get_api_state(&context).await?;
+        api_state.error_if_reorganizing()?;
+
+        let chaintip = api_state.chaintip();
+        let mut stacks_block_hash: String = chaintip.key.hash;
+        let mut stacks_block_height: u64 = chaintip.key.height;
+
+        // Check if deposit with such txid and outindex already exists.
         let entry = accessors::get_deposit_entry(
             &context,
             &DepositEntryKey {
@@ -222,19 +230,21 @@ pub async fn create_deposit(
             },
         )
         .await;
-        if let Ok(deposit) = entry {
-            if deposit.status != Status::Pending && deposit.status != Status::Reprocessing {
-                return Err(Error::Conflict);
+        // Reject if we already have a deposit with the same txid and output index and it is NOT pending or reprocessing.
+        match entry {
+            Ok(deposit) => {
+                if deposit.status != Status::Pending && deposit.status != Status::Reprocessing {
+                    return Err(Error::Conflict);
+                } else {
+                    // If the deposit is pending or reprocessing, we should keep height and hash same as in the old deposit
+                    stacks_block_hash = deposit.last_update_block_hash;
+                    stacks_block_height = deposit.last_update_height;
+                }
             }
+            Err(Error::NotFound) => {}
+            Err(e) => return Err(e),
         }
 
-        // Set variables.
-        let api_state = accessors::get_api_state(&context).await?;
-        api_state.error_if_reorganizing()?;
-
-        let chaintip = api_state.chaintip();
-        let stacks_block_hash: String = chaintip.key.hash;
-        let stacks_block_height: u64 = chaintip.key.height;
         let status = Status::Pending;
 
         // Get parameters from scripts.
