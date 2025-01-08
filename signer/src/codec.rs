@@ -18,7 +18,8 @@
 //! 4. The specific encoding and decoding of a field or message must follow
 //!    the protobuf spec. In particular, missing fields are not serialized.
 //!
-//! This is achieved by doing the following:
+//! Serialization of signer messages that adhere to the above constraints
+//! is achieved by doing the following:
 //! 1. Use [`prost`] to generate rust serialization and deserialization
 //!    code. We do so in a way that satisfies all four of the above
 //!    constraints.
@@ -28,6 +29,10 @@
 //!    serialization and deserialization of any types that implement the
 //!    `ProtoSerializable` trait.
 //!
+//! At this time, we do not enforce the above serialization rules during
+//! deserialization, with a partial exception for the
+//! [`Signed<SignerMessage>`](crate::ecdsa::Signed) type, where we enforce
+//! rule (1).
 
 use std::io;
 
