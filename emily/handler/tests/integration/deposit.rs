@@ -552,7 +552,7 @@ async fn update_deposits_updates_chainstate() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn overwrite_deposit() {
-    async fn assert_duplicate_rejected(status: Status) {
+    async fn test_duplicate(status: Status, should_reject: bool) {
         let configuration = clean_setup().await;
 
         // Arrange.
@@ -626,11 +626,18 @@ async fn overwrite_deposit() {
         assert_eq!(response.bitcoin_txid, bitcoin_txid);
         assert_eq!(response.status, status);
 
-        apis::deposit_api::create_deposit(&configuration, create_deposit_body)
-            .await
-            .expect_err(
-                "We should reject duplicate deposits, if old one is not pending or reprocessing.",
-            );
+        if should_reject {
+            apis::deposit_api::create_deposit(&configuration, create_deposit_body)
+                .await
+                .expect_err(&format!(
+                    "We should reject duplicate deposits, if old one is {:#?}",
+                    status
+                ));
+        } else {
+            apis::deposit_api::create_deposit(&configuration, create_deposit_body)
+                .await
+                .expect("Received an error after making a valid get deposit api call.");
+        }
 
         let response = apis::deposit_api::get_deposit(
             &configuration,
@@ -640,10 +647,30 @@ async fn overwrite_deposit() {
         .await
         .expect("Received an error after making a valid get deposit api call.");
         assert_eq!(response.bitcoin_txid, bitcoin_txid);
-        assert_eq!(response.status, status);
+        let expected_status = if status == Status::Reprocessing {
+            Status::Pending
+        } else {
+            status
+        };
+        assert_eq!(response.status, expected_status);
     }
 
-    for status in vec![Status::Accepted, Status::Confirmed, Status::Failed] {
-        assert_duplicate_rejected(status).await;
+    // Maybe looks weird from the first glance, but I like that this won't compile if
+    // a new option to Status enum will be added and not added to this test.
+    for status in [
+        Status::Accepted,
+        Status::Confirmed,
+        Status::Failed,
+        Status::Pending,
+        Status::Reprocessing,
+    ] {
+        match status {
+            Status::Accepted | Status::Confirmed | Status::Failed => {
+                test_duplicate(status, true).await;
+            }
+            Status::Pending | Status::Reprocessing => {
+                test_duplicate(status, false).await;
+            }
+        }
     }
 }
