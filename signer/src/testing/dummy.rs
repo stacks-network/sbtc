@@ -60,11 +60,18 @@ use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::message::BitcoinPreSignAck;
 use crate::message::BitcoinPreSignRequest;
+use crate::message::Payload;
+use crate::message::SignerDepositDecision;
 use crate::message::SignerMessage;
+use crate::message::SignerWithdrawalDecision;
+use crate::message::StacksTransactionSignRequest;
+use crate::message::StacksTransactionSignature;
+use crate::message::WstsMessage;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
+use crate::stacks::contracts::SmartContract;
 use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
@@ -787,10 +794,61 @@ impl fake::Dummy<fake::Faker> for BitcoinPreSignAck {
     }
 }
 /// A struct to help with creating dummy values for testing
-pub struct Unit;
+pub struct FakeData;
 
-impl Dummy<Unit> for bitcoin::OutPoint {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+/// In general, we do not implement macros, but this is stupid simple, and
+/// the alternative is very repetitive.
+#[macro_export]
+macro_rules! impl_dummy_fake_data {
+    ($($my_type:ty),+ $(,)?) => {
+        $(
+            impl Dummy<FakeData> for $my_type {
+                fn dummy_with_rng<R: Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
+                    Faker.fake_with_rng(rng)
+                }
+            }
+        )*
+    }
+}
+
+impl_dummy_fake_data! {
+    [u8; 32],
+    AcceptWithdrawalV1,
+    BitcoinBlockHash,
+    BitcoinPreSignAck,
+    BitcoinPreSignRequest,
+    BitcoinTx,
+    BitcoinTxId,
+    CompleteDepositV1,
+    CompletedDepositEvent,
+    Fees,
+    Payload,
+    PublicKey,
+    PublicKeyXOnly,
+    QualifiedRequestId,
+    RejectWithdrawalV1,
+    RotateKeysV1,
+    ScriptPubKey,
+    SigHash,
+    Signed<SignerMessage>,
+    SignerDepositDecision,
+    SignerMessage,
+    SignerWithdrawalDecision,
+    SmartContract,
+    StacksBlockHash,
+    StacksPrincipal,
+    StacksTransactionSignRequest,
+    StacksTransactionSignature,
+    StacksTxId,
+    TxRequestIds,
+    WithdrawalAcceptEvent,
+    WithdrawalCreateEvent,
+    WithdrawalRejectEvent,
+    WstsMessage,
+}
+
+impl Dummy<FakeData> for bitcoin::OutPoint {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         let bytes: [u8; 32] = Faker.fake_with_rng(rng);
         let txid = bitcoin::Txid::from_byte_array(bytes);
         let vout: u32 = Faker.fake_with_rng(rng);
@@ -798,24 +856,24 @@ impl Dummy<Unit> for bitcoin::OutPoint {
     }
 }
 
-impl Dummy<Unit> for RecoverableSignature {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for RecoverableSignature {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         let private_key = PrivateKey::new(rng);
         let msg = secp256k1::Message::from_digest([0; 32]);
         private_key.sign_ecdsa_recoverable(&msg)
     }
 }
 
-impl Dummy<Unit> for secp256k1::ecdsa::Signature {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for secp256k1::ecdsa::Signature {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         let private_key = PrivateKey::new(rng);
         let msg = secp256k1::Message::from_digest([0; 32]);
         private_key.sign_ecdsa(&msg)
     }
 }
 
-impl Dummy<Unit> for StacksAddress {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for StacksAddress {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         let public_key: PublicKey = Faker.fake_with_rng(rng);
         let pubkey = public_key.into();
         let mainnet: bool = Faker.fake_with_rng(rng);
@@ -823,21 +881,21 @@ impl Dummy<Unit> for StacksAddress {
     }
 }
 
-impl Dummy<Unit> for Scalar {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for Scalar {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         let number: [u8; 32] = Faker.fake_with_rng(rng);
         p256k1::scalar::Scalar::from(number)
     }
 }
 
-impl Dummy<Unit> for Point {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for Point {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         Point::from(config.fake_with_rng::<Scalar, R>(rng))
     }
 }
 
-impl Dummy<Unit> for Polynomial<Scalar> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+impl Dummy<FakeData> for Polynomial<Scalar> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, _: &mut R) -> Self {
         Polynomial::new(
             fake::vec![[u8; 32]; 0..=15]
                 .into_iter()
@@ -847,21 +905,21 @@ impl Dummy<Unit> for Polynomial<Scalar> {
     }
 }
 
-impl Dummy<Unit> for (u32, Scalar) {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for (u32, Scalar) {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         (Faker.fake_with_rng(rng), config.fake_with_rng(rng))
     }
 }
 
-impl Dummy<Unit> for DkgBegin {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for DkgBegin {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         DkgBegin {
             dkg_id: Faker.fake_with_rng(rng),
         }
     }
 }
-impl Dummy<Unit> for DkgPrivateBegin {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for DkgPrivateBegin {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         DkgPrivateBegin {
             dkg_id: Faker.fake_with_rng(rng),
             signer_ids: Faker.fake_with_rng(rng),
@@ -870,8 +928,8 @@ impl Dummy<Unit> for DkgPrivateBegin {
     }
 }
 
-impl Dummy<Unit> for Vec<(u32, hashbrown::HashMap<u32, Vec<u8>>)> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+impl Dummy<FakeData> for Vec<(u32, hashbrown::HashMap<u32, Vec<u8>>)> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, _: &mut R) -> Self {
         fake::vec![u32; 0..16]
             .into_iter()
             .map(|v| (v, fake::vec![(u32, Vec<u8>); 0..16].into_iter().collect()))
@@ -879,8 +937,8 @@ impl Dummy<Unit> for Vec<(u32, hashbrown::HashMap<u32, Vec<u8>>)> {
     }
 }
 
-impl Dummy<Unit> for DkgPrivateShares {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for DkgPrivateShares {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         DkgPrivateShares {
             dkg_id: Faker.fake_with_rng(rng),
             signer_id: Faker.fake_with_rng(rng),
@@ -889,8 +947,8 @@ impl Dummy<Unit> for DkgPrivateShares {
     }
 }
 
-impl Dummy<Unit> for DkgEndBegin {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for DkgEndBegin {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         DkgEndBegin {
             dkg_id: Faker.fake_with_rng(rng),
             signer_ids: Faker.fake_with_rng(rng),
@@ -899,8 +957,8 @@ impl Dummy<Unit> for DkgEndBegin {
     }
 }
 
-impl Dummy<Unit> for TupleProof {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for TupleProof {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         TupleProof {
             R: config.fake_with_rng(rng),
             rB: config.fake_with_rng(rng),
@@ -909,8 +967,8 @@ impl Dummy<Unit> for TupleProof {
     }
 }
 
-impl Dummy<Unit> for BadPrivateShare {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for BadPrivateShare {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         BadPrivateShare {
             shared_key: config.fake_with_rng(rng),
             tuple_proof: config.fake_with_rng(rng),
@@ -918,8 +976,8 @@ impl Dummy<Unit> for BadPrivateShare {
     }
 }
 
-impl Dummy<Unit> for hashbrown::HashMap<u32, BadPrivateShare> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for hashbrown::HashMap<u32, BadPrivateShare> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         fake::vec![u32; 0..20]
             .into_iter()
             .map(|v| (v, config.fake_with_rng(rng)))
@@ -927,14 +985,14 @@ impl Dummy<Unit> for hashbrown::HashMap<u32, BadPrivateShare> {
     }
 }
 
-impl Dummy<Unit> for hashbrown::HashSet<u32> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+impl Dummy<FakeData> for hashbrown::HashSet<u32> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, _: &mut R) -> Self {
         fake::vec![u32; 0..20].into_iter().collect()
     }
 }
 
-impl Dummy<Unit> for DkgStatus {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for DkgStatus {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         match rng.gen_range(0..6usize) {
             0 => DkgStatus::Success,
             1 => DkgStatus::Failure(DkgFailure::BadState),
@@ -947,8 +1005,8 @@ impl Dummy<Unit> for DkgStatus {
     }
 }
 
-impl Dummy<Unit> for DkgEnd {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for DkgEnd {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         DkgEnd {
             dkg_id: Faker.fake_with_rng(rng),
             signer_id: Faker.fake_with_rng(rng),
@@ -957,8 +1015,8 @@ impl Dummy<Unit> for DkgEnd {
     }
 }
 
-impl Dummy<Unit> for SignatureType {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for SignatureType {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &FakeData, rng: &mut R) -> Self {
         match rng.gen_range(0..3usize) {
             0 => SignatureType::Frost,
             1 => SignatureType::Schnorr,
@@ -972,8 +1030,8 @@ impl Dummy<Unit> for SignatureType {
     }
 }
 
-impl Dummy<Unit> for NonceRequest {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for NonceRequest {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         NonceRequest {
             dkg_id: Faker.fake_with_rng(rng),
             sign_id: Faker.fake_with_rng(rng),
@@ -984,8 +1042,8 @@ impl Dummy<Unit> for NonceRequest {
     }
 }
 
-impl Dummy<Unit> for PublicNonce {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for PublicNonce {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         PublicNonce {
             D: config.fake_with_rng(rng),
             E: config.fake_with_rng(rng),
@@ -993,8 +1051,8 @@ impl Dummy<Unit> for PublicNonce {
     }
 }
 
-impl Dummy<Unit> for NonceResponse {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for NonceResponse {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         NonceResponse {
             dkg_id: Faker.fake_with_rng(rng),
             sign_id: Faker.fake_with_rng(rng),
@@ -1010,8 +1068,8 @@ impl Dummy<Unit> for NonceResponse {
     }
 }
 
-impl Dummy<Unit> for SignatureShareRequest {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for SignatureShareRequest {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         SignatureShareRequest {
             dkg_id: Faker.fake_with_rng(rng),
             sign_id: Faker.fake_with_rng(rng),
@@ -1026,8 +1084,8 @@ impl Dummy<Unit> for SignatureShareRequest {
     }
 }
 
-impl Dummy<Unit> for SignatureShare {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for SignatureShare {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         SignatureShare {
             id: Faker.fake_with_rng(rng),
             z_i: config.fake_with_rng(rng),
@@ -1036,8 +1094,8 @@ impl Dummy<Unit> for SignatureShare {
     }
 }
 
-impl Dummy<Unit> for SignatureShareResponse {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for SignatureShareResponse {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         SignatureShareResponse {
             dkg_id: Faker.fake_with_rng(rng),
             sign_id: Faker.fake_with_rng(rng),
@@ -1051,8 +1109,8 @@ impl Dummy<Unit> for SignatureShareResponse {
     }
 }
 
-impl Dummy<Unit> for Nonce {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for Nonce {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         Nonce {
             d: config.fake_with_rng(rng),
             e: config.fake_with_rng(rng),
@@ -1060,8 +1118,8 @@ impl Dummy<Unit> for Nonce {
     }
 }
 
-impl Dummy<Unit> for (u32, PartyState) {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for (u32, PartyState) {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         (
             Faker.fake_with_rng(rng),
             PartyState {
@@ -1076,8 +1134,8 @@ impl Dummy<Unit> for (u32, PartyState) {
     }
 }
 
-impl Dummy<Unit> for SignerState {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for SignerState {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         SignerState {
             id: Faker.fake_with_rng(rng),
             key_ids: Faker.fake_with_rng(rng),
@@ -1093,8 +1151,8 @@ impl Dummy<Unit> for SignerState {
     }
 }
 
-impl Dummy<Unit> for wsts::schnorr::ID {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for wsts::schnorr::ID {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         wsts::schnorr::ID {
             id: config.fake_with_rng(rng),
             kG: config.fake_with_rng(rng),
@@ -1103,8 +1161,8 @@ impl Dummy<Unit> for wsts::schnorr::ID {
     }
 }
 
-impl Dummy<Unit> for PolyCommitment {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for PolyCommitment {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         PolyCommitment {
             id: config.fake_with_rng(rng),
             poly: fake::vec![(); 0..20]
@@ -1115,14 +1173,14 @@ impl Dummy<Unit> for PolyCommitment {
     }
 }
 
-impl Dummy<Unit> for (u32, PolyCommitment) {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for (u32, PolyCommitment) {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         (Faker.fake_with_rng(rng), config.fake_with_rng(rng))
     }
 }
 
-impl Dummy<Unit> for DkgPublicShares {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for DkgPublicShares {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         DkgPublicShares {
             dkg_id: Faker.fake_with_rng(rng),
             signer_id: Faker.fake_with_rng(rng),
@@ -1134,8 +1192,8 @@ impl Dummy<Unit> for DkgPublicShares {
     }
 }
 
-impl Dummy<Unit> for BTreeMap<u32, DkgPublicShares> {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+impl Dummy<FakeData> for BTreeMap<u32, DkgPublicShares> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &FakeData, rng: &mut R) -> Self {
         fake::vec![(); 0..20]
             .into_iter()
             .map(|_| (Faker.fake_with_rng(rng), config.fake_with_rng(rng)))
