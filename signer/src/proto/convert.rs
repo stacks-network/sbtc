@@ -1676,7 +1676,7 @@ impl codec::ProtoSerializable for BTreeMap<u32, DkgPublicShares> {
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::dummy::Unit;
+    use crate::testing::dummy::FakeData;
 
     use super::*;
 
@@ -1727,33 +1727,6 @@ mod tests {
     #[test_case(PhantomData::<(Fees, proto::Fees)>; "Fees")]
     #[test_case(PhantomData::<(BitcoinPreSignRequest, proto::BitcoinPreSignRequest)>; "BitcoinPreSignRequest")]
     #[test_case(PhantomData::<(BitcoinPreSignAck, proto::BitcoinPreSignAck)>; "BitcoinPreSignAck")]
-    fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
-    where
-        // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
-        // `assert_eq!` requires `PartialEq + std::fmt::Debug`.
-        T: Dummy<Faker> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
-        U: From<T>,
-        E: std::fmt::Debug,
-    {
-        // The type T originates from a signer. Let's create a random
-        // instance of one.
-        let original: T = Faker.fake_with_rng(&mut OsRng);
-        // The type U is a protobuf type. Before sending it to other
-        // signers, we convert our internal type into it's protobuf
-        // counterpart. We can always infallibly create U from T.
-        let proto_original = U::from(original.clone());
-
-        // Some other signer receives an instance of U. This could be a
-        // malicious actor or a modified version of the signer binary
-        // where they made some mistake, so converting back to T can fail.
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        // In this case, we know U was created from T correctly, so we
-        // should be able to convert back without issues.
-        assert_eq!(original, original_from_proto);
-    }
-
-    /// This test is identical to [`convert_protobuf_types`] tests above,
-    /// except we cannot implement Dummy<Faker> on these types.
     #[test_case(PhantomData::<(bitcoin::OutPoint, proto::OutPoint)>; "OutPoint")]
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
     #[test_case(PhantomData::<(secp256k1::ecdsa::Signature, proto::EcdsaSignature)>; "EcdsaSignature")]
@@ -1784,16 +1757,28 @@ mod tests {
     #[test_case(PhantomData::<((u32, PolyCommitment), proto::PartyCommitment)>; "PartyCommitment")]
     #[test_case(PhantomData::<(DkgPublicShares, proto::SignerDkgPublicShares)>; "SignerDkgPublicShares")]
     #[test_case(PhantomData::<(BTreeMap<u32, DkgPublicShares>, proto::DkgPublicShares)>; "DkgPublicShares")]
-    fn convert_protobuf_type2<T, U, E>(_: PhantomData<(T, U)>)
+    fn convert_protobuf_type<T, U, E>(_: PhantomData<(T, U)>)
     where
-        T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
+        // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
+        // `assert_eq!` requires `PartialEq + std::fmt::Debug`.
+        T: Dummy<FakeData> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
         U: From<T>,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
+        // The type T originates from a signer. Let's create a random
+        // instance of one.
+        let original: T = FakeData.fake_with_rng(&mut OsRng);
+        // The type U is a protobuf type. Before sending it to other
+        // signers, we convert our internal type into it's protobuf
+        // counterpart. We can always infallibly create U from T.
         let proto_original = U::from(original.clone());
 
+        // Some other signer receives an instance of U. This could be a
+        // malicious actor or a modified version of the signer binary
+        // where they made some mistake, so converting back to T can fail.
         let original_from_proto = T::try_from(proto_original).unwrap();
+        // In this case, we know U was created from T correctly, so we
+        // should be able to convert back without issues.
         assert_eq!(original, original_from_proto);
     }
 
@@ -1835,12 +1820,12 @@ mod tests {
     #[test_case(PhantomData::<(SignerState, proto::SignerState)>, SignerStateWrapper; "SignerState")]
     fn convert_protobuf_type3<T, U, V, E>(_: PhantomData<(T, U)>, wrapper: fn(T) -> V)
     where
-        T: Dummy<Unit> + TryFrom<U, Error = E> + Clone,
+        T: Dummy<FakeData> + TryFrom<U, Error = E> + Clone,
         V: PartialEq + std::fmt::Debug,
         U: From<T>,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
+        let original: T = FakeData.fake_with_rng(&mut OsRng);
         let proto_original = U::from(original.clone());
 
         let original_from_proto = T::try_from(proto_original).unwrap();

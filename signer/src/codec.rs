@@ -138,7 +138,6 @@ mod tests {
 
     use fake::Dummy;
     use fake::Fake as _;
-    use fake::Faker;
     use prost::bytes::Buf as _;
     use rand::rngs::OsRng;
     use rand::SeedableRng as _;
@@ -191,7 +190,7 @@ mod tests {
     use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksPrincipal;
     use crate::storage::model::StacksTxId;
-    use crate::testing::dummy::Unit;
+    use crate::testing::dummy::FakeData;
 
     use super::*;
 
@@ -238,43 +237,6 @@ mod tests {
     #[test_case(PhantomData::<(Fees, proto::Fees)>; "Fees")]
     #[test_case(PhantomData::<(BitcoinPreSignRequest, proto::BitcoinPreSignRequest)>; "BitcoinPreSignRequest")]
     #[test_case(PhantomData::<(BitcoinPreSignAck, proto::BitcoinPreSignAck)>; "BitcoinPreSignAck")]
-    fn sbtc_protobuf_message_codec_tag_order<T, U, E>(_: PhantomData<(T, U)>)
-    where
-        // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
-        // `assert_eq!` requires `PartialEq + std::fmt::Debug`.
-        T: Dummy<Faker> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
-        U: From<T> + prost::Message + Default + PartialEq,
-        E: std::fmt::Debug,
-    {
-        let original: T = Faker.fake_with_rng(&mut OsRng);
-        let proto_original = U::from(original.clone());
-        let data = proto_original.encode_to_vec();
-        let mut buf = data.as_slice();
-
-        // This is almost exactly what prost does when decoding protobuf
-        // bytes.
-        let mut proto_orig = U::default();
-        let ctx = prost::encoding::DecodeContext::default();
-        let mut last_tag = 0;
-
-        while buf.has_remaining() {
-            let (tag, wire_type) = prost::encoding::decode_key(&mut buf).unwrap();
-
-            // Repeated fields are encoded with the same tag.
-            more_asserts::assert_le!(last_tag, tag);
-            last_tag = tag;
-
-            proto_orig
-                .merge_field(tag, wire_type, &mut buf, ctx.clone())
-                .unwrap();
-        }
-
-        assert_eq!(proto_original, proto_orig);
-
-        let orig = T::try_from(proto_orig).unwrap();
-        assert_eq!(original, orig);
-    }
-
     #[test_case(PhantomData::<(bitcoin::OutPoint, proto::OutPoint)>; "OutPoint")]
     #[test_case(PhantomData::<(RecoverableSignature, proto::RecoverableSignature)>; "RecoverableSignature")]
     #[test_case(PhantomData::<(secp256k1::ecdsa::Signature, proto::EcdsaSignature)>; "EcdsaSignature")]
@@ -305,13 +267,15 @@ mod tests {
     #[test_case(PhantomData::<((u32, PolyCommitment), proto::PartyCommitment)>; "PartyCommitment")]
     #[test_case(PhantomData::<(DkgPublicShares, proto::SignerDkgPublicShares)>; "SignerDkgPublicShares")]
     #[test_case(PhantomData::<(BTreeMap<u32, DkgPublicShares>, proto::DkgPublicShares)>; "DkgPublicShares")]
-    fn sbtc_protobuf_message_codec_tag_order2<T, U, E>(_: PhantomData<(T, U)>)
+    fn sbtc_protobuf_message_codec_tag_order<T, U, E>(_: PhantomData<(T, U)>)
     where
-        T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
+        // `.unwrap()` requires that `E` implement `std::fmt::Debug` and
+        // `assert_eq!` requires `PartialEq + std::fmt::Debug`.
+        T: Dummy<FakeData> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
         U: From<T> + prost::Message + Default + PartialEq,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
+        let original: T = FakeData.fake_with_rng(&mut OsRng);
         let proto_original = U::from(original.clone());
         let data = proto_original.encode_to_vec();
         let mut buf = data.as_slice();
