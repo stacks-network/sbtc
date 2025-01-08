@@ -7,7 +7,6 @@ use futures::StreamExt;
 use tokio::sync::broadcast::Sender;
 use tokio_stream::wrappers::BroadcastStream;
 
-use crate::codec::Decode as _;
 use crate::codec::Encode as _;
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -82,8 +81,12 @@ impl SignerNetwork {
                     // We do not send messages where the ID is the same as
                     // ours, since those originated with us.
                     Ok((id, msg)) if id != my_id => {
-                        let msg = match Msg::decode(msg.as_slice()) {
-                            Ok(msg) => msg,
+                        let msg = match Msg::decode_with_digest(msg.as_slice()) {
+                            Ok((msg, digest)) if msg.verify_digest(digest).is_ok() => msg,
+                            Ok(_) => {
+                                tracing::error!("received improperly signed message");
+                                continue;
+                            }
                             Err(error) => {
                                 tracing::error!(%error, "failed to decode the message");
                                 continue;
