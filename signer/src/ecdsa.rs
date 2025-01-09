@@ -90,6 +90,13 @@ impl Signed<SignerMessage> {
 
     /// Verify that the signature was created over the given digest with
     /// the public key in this struct.
+    ///
+    /// # Notes
+    ///
+    /// Since the sending signer might have a different protobuf schema
+    /// than us, we cannot always recreate the signature digest from the
+    /// decoded bytes. Instead, we must look at the pre-decoded bytes and
+    /// construct the digest using those bytes and pass the results here.
     pub fn verify_digest(&self, digest: [u8; 32]) -> Result<(), Error> {
         let msg = secp256k1::Message::from_digest(digest);
 
@@ -104,15 +111,16 @@ impl Signed<SignerMessage> {
     ///
     /// # Notes
     ///
-    /// This function uses the fact that the protobuf [`proto::Signed`]
-    /// type has a particular layout when decoding the message to
+    /// The [`Signed`](proto::Signed) protobuf type has the signature field
+    /// as the field with tag 1, and everything after that field must be
+    /// signed. This function uses that fact when decoding the message to
     /// efficiently get the bytes that were signed by the signer that
     /// generated the message. It does the following:
     /// 1. Decode the first field using the given bytes. This field is the
     ///    signature field.
     /// 2. Takes a reference to the bytes after the protobuf signature
-    ///    field. These were supposed to be used generate the digest that
-    ///    was signed over.
+    ///    field. These were supposed to be used to generate the digest
+    ///    that was signed over.
     /// 3. Finish decoding the given bytes into the signed message.
     /// 4. Transform the protobuf type into the local type.
     /// 5. Use the local type along with the bytes from (2) to create the
@@ -123,7 +131,9 @@ impl Signed<SignerMessage> {
     /// serialized in order by their tag. This is not true for protobufs
     /// generally, but it is for the prost protobuf implementation. The
     /// implementation was checked by inspecting the output of `cargo
-    /// expand`.
+    /// expand`. These assumptions are part of the sBTC codec
+    /// specification, and this function enforces the tag order
+    /// requirement for the [`Signed`](proto::Signed) protobuf type.
     /// <https://protobuf.dev/programming-guides/serialization-not-canonical/>
     /// <https://protobuf.dev/programming-guides/encoding/#order>
     /// <https://github.com/tokio-rs/prost/blob/v0.12.6/prost/src/message.rs#L108-L134>
@@ -135,10 +145,21 @@ impl Signed<SignerMessage> {
         // bytes.
         let mut message = proto::Signed::default();
         let ctx = prost::encoding::DecodeContext::default();
+        let mut last_tag = 0;
 
         while buf.has_remaining() {
             let (tag, wire_type) =
                 prost::encoding::decode_key(&mut buf).map_err(Error::DecodeProtobuf)?;
+
+            // Protobuf message tags must start at 1. The sBTC protobuf
+            // codec requires that, for the proto::Signed protobuf, fields
+            // are serialized in tag order, meaning that field n must be
+            // serialized before field m if n < m.
+            if tag < last_tag {
+                return Err(Error::ProtobufTagCodec);
+            }
+            last_tag = tag;
+
             message
                 .merge_field(tag, wire_type, &mut buf, ctx.clone())
                 .map_err(Error::DecodeProtobuf)?;
@@ -231,8 +252,8 @@ impl Signed<SignerMessage> {
     }
 
     /// Verify the signature over the inner data.
-    pub fn verify(&self, public_key: PublicKey) -> bool {
-        let digest = self.inner.to_digest(public_key);
+    pub fn verify(&self) -> bool {
+        let digest = self.inner.to_digest(self.signer_public_key);
         self.verify_digest(digest).is_ok()
     }
 }
@@ -243,6 +264,7 @@ mod tests {
 
     use fake::Fake as _;
     use rand::rngs::OsRng;
+    use rand::SeedableRng as _;
 
     use crate::codec::Encode as _;
     use crate::ecdsa::SignEcdsa;
@@ -586,5 +608,120 @@ mod tests {
         let original_proto = SignedUpgraded2::decode(received_data.as_slice()).unwrap();
 
         assert_eq!(signed_message_v2, original_proto);
+    }
+
+    #[test]
+    fn enforce_tag_ordering_signed_message() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(1234);
+
+        let keypair = secp256k1::Keypair::new_global(&mut rng);
+        let private_key: PrivateKey = keypair.secret_key().into();
+        let public_key: PublicKey = keypair.public_key().into();
+
+        let payload: message::SignerWithdrawalDecision = fake::Faker.fake_with_rng(&mut rng);
+        let signer_message = SignerMessage {
+            bitcoin_chain_tip: fake::Faker.fake_with_rng(&mut rng),
+            payload: message::Payload::SignerWithdrawalDecision(payload.clone()),
+        };
+
+        let msg = signer_message.sign_ecdsa(&private_key);
+        let signed_proto = proto::Signed::from(msg.clone());
+
+        // Let's manually encode the message as a protobuf
+        let tag_1_key = [0b00001010]; // tag1: signature
+        let tag_1_data = signed_proto
+            .signature
+            .unwrap()
+            .encode_length_delimited_to_vec();
+
+        let tag_2_key = [0b00010010]; // tag2: signer_public_key
+        let tag_2_data = signed_proto
+            .signer_public_key
+            .unwrap()
+            .encode_length_delimited_to_vec();
+
+        let tag_3_key = [0b00011010]; // tag3: signer_message
+        let tag_3_data = signed_proto
+            .signer_message
+            .unwrap()
+            .encode_length_delimited_to_vec();
+
+        let mut encoded_data = Vec::new();
+        encoded_data.extend_from_slice(&tag_1_key);
+        encoded_data.extend_from_slice(&tag_1_data);
+        encoded_data.extend_from_slice(&tag_2_key);
+        encoded_data.extend_from_slice(&tag_2_data);
+        encoded_data.extend_from_slice(&tag_3_key);
+        encoded_data.extend_from_slice(&tag_3_data);
+
+        // We should be able to decode and verify the decoded message.
+        let (msg_recovered, expected_digest) =
+            Signed::<SignerMessage>::decode_with_digest(&encoded_data).unwrap();
+
+        msg_recovered.verify_digest(expected_digest).unwrap();
+        assert_eq!(msg_recovered.signer_public_key, public_key);
+        assert_eq!(msg_recovered, msg);
+
+        // Now to make sure that we cannot change the order of the encoded
+        // tags. If we were, then the signature field would be over the
+        // message's `type_tag`, bypassing the verification of the signature.
+        let hasher = sha2::Sha256::new_with_prefix(msg.type_tag());
+        let empty_prefix_hash = secp256k1::Message::from_digest(hasher.finalize().into());
+
+        let signature = private_key.sign_ecdsa(&empty_prefix_hash);
+        let empty_prefix_sign: Vec<u8> =
+            proto::EcdsaSignature::from(signature).encode_length_delimited_to_vec();
+
+        let mut tampered_tag_order_data = Vec::new();
+        tampered_tag_order_data.extend_from_slice(&tag_2_key);
+        tampered_tag_order_data.extend_from_slice(&tag_2_data);
+        tampered_tag_order_data.extend_from_slice(&tag_3_key);
+        tampered_tag_order_data.extend_from_slice(&tag_3_data);
+        tampered_tag_order_data.extend_from_slice(&tag_1_key);
+        tampered_tag_order_data.extend_from_slice(&empty_prefix_sign);
+
+        let result = Signed::<SignerMessage>::decode_with_digest(&tampered_tag_order_data);
+        assert!(result.is_err());
+
+        // Another test to make sure that we cannot tamper with any of the
+        // signed data.
+        let mut tampered_data = Vec::new();
+        tampered_data.extend_from_slice(&tag_2_key);
+        tampered_data.extend_from_slice(&tag_2_data);
+        tampered_data.extend_from_slice(&tag_3_key);
+
+        let mut tag_3_data_tampering = tag_3_data.clone();
+        tag_3_data_tampering[10] = 0;
+        tag_3_data_tampering[11] = 0;
+        tag_3_data_tampering[12] = 0;
+        tampered_data.extend_from_slice(&tag_3_data_tampering);
+        tampered_data.extend_from_slice(&tag_1_key);
+        tampered_data.extend_from_slice(&empty_prefix_sign);
+        let result = Signed::<SignerMessage>::decode_with_digest(&tampered_data);
+        assert!(result.is_err());
+
+        // Finally, one more tamper test
+        let mut tag_3_data_tampering = tag_3_data.clone();
+        tag_3_data_tampering[10] = 0;
+        tag_3_data_tampering[11] = 0;
+        tag_3_data_tampering[12] = 0;
+
+        let mut encoded_data = Vec::new();
+        encoded_data.extend_from_slice(&tag_1_key);
+        encoded_data.extend_from_slice(&tag_1_data);
+        encoded_data.extend_from_slice(&tag_2_key);
+        encoded_data.extend_from_slice(&tag_2_data);
+        encoded_data.extend_from_slice(&tag_3_key);
+        encoded_data.extend_from_slice(&tag_3_data_tampering);
+
+        // We should be able to decode the decoded message, but it
+        // shouldn't pass verification.
+        let (msg_recovered, expected_digest) =
+            Signed::<SignerMessage>::decode_with_digest(&encoded_data).unwrap();
+
+        let verify_result = msg_recovered.verify_digest(expected_digest).unwrap_err();
+        assert!(matches!(verify_result, Error::InvalidEcdsaSignature(_)));
+        assert_eq!(msg_recovered.signer_public_key, public_key);
+        assert_ne!(msg_recovered, msg);
     }
 }
