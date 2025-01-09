@@ -1,0 +1,7 @@
+{
+    "bitcoinTxid": "f75cb869600c6a75ab90c872435da38d54d53c27afe5e03ac7dedae7822958de",
+    "bitcoinTxOutputIndex": 0,
+    "reclaimScript": "5cb275204384f64fdbe709bec8cbecdb1780258449313fb2c02801098bb56ef742308d54ac",
+    "depositScript": "1e000000000001388005160bf8a0a80e3a205534977e0d9e00bcd8b9c1b3a17520f898f8a6ddb86dd4608dd168355ec6135fe2839222240c01942e8e7e50dd4c89ac",
+    "transactionHex": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+}
