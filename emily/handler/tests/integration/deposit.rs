@@ -630,18 +630,12 @@ async fn overwrite_deposit(status: Status, should_reject: bool) {
     assert_eq!(response.bitcoin_txid, bitcoin_txid);
     assert_eq!(response.status, status);
 
-    if should_reject {
+    assert_eq!(
         apis::deposit_api::create_deposit(&configuration, create_deposit_body)
             .await
-            .expect_err(&format!(
-                "We should reject duplicate deposits, if old one is {:#?}",
-                status
-            ));
-    } else {
-        apis::deposit_api::create_deposit(&configuration, create_deposit_body)
-            .await
-            .expect("Received an error after making a valid get deposit api call.");
-    }
+            .is_err(),
+        should_reject
+    );
 
     let response = apis::deposit_api::get_deposit(
         &configuration,
