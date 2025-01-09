@@ -7,7 +7,6 @@ use std::time::Duration;
 use clarity::util::secp256k1::Secp256k1PublicKey;
 use clarity::vm::types::PrincipalData;
 use fake::Fake;
-use rand::rngs::OsRng;
 use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
@@ -265,12 +264,12 @@ impl Signer {
 
                 let outbound_packets = self
                     .wsts_signer
-                    .process_inbound_messages(&[packet], &mut OsRng)
+                    .process_inbound_messages(&[packet])
                     .expect("message processing failed");
 
                 for packet in outbound_packets {
                     self.wsts_signer
-                        .process_inbound_messages(&[packet.clone()], &mut OsRng)
+                        .process_inbound_messages(&[packet.clone()])
                         .expect("message processing failed");
 
                     self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
@@ -305,12 +304,12 @@ impl Signer {
 
                 let outbound_packets = self
                     .wsts_signer
-                    .process_inbound_messages(&[packet], &mut OsRng)
+                    .process_inbound_messages(&[packet])
                     .expect("message processing failed");
 
                 for packet in outbound_packets {
                     self.wsts_signer
-                        .process_inbound_messages(&[packet.clone()], &mut OsRng)
+                        .process_inbound_messages(&[packet.clone()])
                         .expect("message processing failed");
 
                     self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())

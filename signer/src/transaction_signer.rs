@@ -43,7 +43,6 @@ use crate::wsts_state_machine::SignerStateMachine;
 use bitcoin::hashes::Hash;
 use bitcoin::TapSighash;
 use futures::StreamExt;
-use rand::rngs::OsRng;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -722,13 +721,13 @@ where
         };
 
         let outbound_messages = state_machine
-            .process(msg, &mut OsRng)
+            .process(msg)
             .map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
             // The WSTS state machine assume we read our own messages
             state_machine
-                .process(outbound_message, &mut OsRng)
+                .process(outbound_message)
                 .map_err(Error::Wsts)?;
         }
 

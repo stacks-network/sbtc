@@ -13,7 +13,6 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
 
-use rand::rngs::OsRng;
 use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
@@ -75,7 +74,6 @@ impl SignerStateMachine {
             key_ids,
             signer_private_key.into(),
             public_keys,
-            &mut OsRng,
         );
 
         Ok(Self(state_machine))
