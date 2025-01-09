@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use test_case::test_case;
 
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
@@ -548,8 +549,6 @@ async fn update_deposits_updates_chainstate() {
         );
     }
 }
-
-use test_case::test_case;
 
 #[tokio::test]
 #[test_case(Status::Pending, false; "Should not reject pending duplicate")]
