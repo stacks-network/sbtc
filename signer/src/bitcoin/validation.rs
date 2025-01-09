@@ -98,15 +98,29 @@ pub fn is_unique(package: &[TxRequestIds]) -> bool {
 }
 
 impl BitcoinPreSignRequest {
-    /// Validate the current bitcoin transaction.
-    async fn pre_validation<'a, C>(&self, ctx: &C, cache: &ValidationCache<'a>) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
+    /// Check that the request object is valid
+    // TODO: Have the type system do these checks. Perhaps TxRequestIds
+    // should really be a wrapper around something like a (frozen)
+    // NonEmptySet<Either<OutPoint, QualifiedRequestId>> with the
+    // `request_package` field being a NonEmptySlice<TxRequestIds>.
+    fn pre_validation(&self) -> Result<(), Error> {
+        let no_requests = self
+            .request_package
+            .iter()
+            .any(|x| x.deposits.is_empty() && x.withdrawals.is_empty());
+
+        if no_requests || self.request_package.is_empty() {
+            return Err(Error::PreSignContainsNoRequests);
+        }
+
         if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
         }
-        self.validate_max_mintable(ctx, cache).await?;
+
+        if self.fee_rate <= 0.0 {
+            return Err(Error::PreSignInvalidFeeRate(self.fee_rate));
+        }
+
         Ok(())
     }
 
@@ -120,8 +134,8 @@ impl BitcoinPreSignRequest {
     {
         let mut cache = ValidationCache::default();
 
-        // Fetch all deposit reports and votes
         for requests in &self.request_package {
+            // Fetch all deposit reports and votes
             for outpoint in &requests.deposits {
                 let txid = outpoint.txid.into();
                 let output_index = outpoint.vout;
@@ -210,9 +224,11 @@ impl BitcoinPreSignRequest {
     where
         C: Context + Send + Sync,
     {
+        // Let's do basic validation of the request object itself.
+        self.pre_validation()?;
         let cache = self.fetch_all_reports(&ctx.get_storage(), btc_ctx).await?;
 
-        self.pre_validation(ctx, &cache).await?;
+        self.validate_max_mintable(ctx, &cache).await?;
 
         let signer_utxo = ctx
             .get_storage()
@@ -438,6 +454,13 @@ impl BitcoinTxValidationData {
     /// not a part of the signing set locking one or more deposits. In such
     /// a case, it will just sign for the deposits that it can.
     pub fn is_valid_tx(&self) -> bool {
+        // A transaction is invalid if it is not servicing any deposit or
+        // withdrawal requests. Doing so costs fees and the signers do not
+        // gain anything by permitting such a transaction.
+        if self.reports.deposits.is_empty() && self.reports.withdrawals.is_empty() {
+            return false;
+        }
+
         let deposit_validation_results = self.reports.deposits.iter().all(|(_, report)| {
             matches!(
                 report.validate(
@@ -1190,85 +1213,246 @@ mod tests {
     }
 
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                },
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([2; 32]),
-                }
-        ]}], true; "unique-requests")]
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, true; "unique-requests")]
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                },
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([2; 32]),
-                }
-        ]}], false; "duplicate-deposits-in-same-tx")]
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 0.0,
+            last_fees: None,
+        }, false; "unique-requests-zero-fee-rate")]
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                },
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                }
-        ]}], false; "duplicate-withdrawals-in-same-tx")]
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: -1.0,
+            last_fees: None,
+        }, false; "unique-requests-negative-fee-rate")]
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-deposits-in-same-tx")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-withdrawals-in-same-tx")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
+                            request_id: 1,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
                 },
-                QualifiedRequestId {
-                    request_id: 1,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([2; 32]),
-                }
-        ]},
-        TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
+                TxRequestIds {
+                    deposits: vec![OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    }],
+                    withdrawals: vec![],
+                },
             ],
-            withdrawals: vec![]
-        }], false; "duplicate-requests-in-different-txs")]
-    fn test_is_unique(requests: Vec<TxRequestIds>, result: bool) {
-        assert_eq!(is_unique(&requests), result);
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-requests-in-different-txs")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: Vec::new(),
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "empty-package_requests")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "basically-empty-package_requests")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
+                },
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "contains-empty-tx-requests")]
+    fn test_pre_validation(requests: BitcoinPreSignRequest, result: bool) {
+        assert_eq!(requests.pre_validation().is_ok(), result);
     }
 
     fn create_test_report(idx: u8, amount: u64) -> (DepositRequestReport, SignerVotes) {
