@@ -930,7 +930,7 @@ mod tests {
     }
 
     #[test_case(EVENT_OBSERVER_BODY_LIMIT, true; "event within limit")]
-    #[test_case(EVENT_OBSERVER_BODY_LIMIT+1, false; "event over limit")]
+    #[test_case(EVENT_OBSERVER_BODY_LIMIT + 1, false; "event over limit")]
     #[tokio::test]
     async fn test_big_event(event_size: usize, success: bool) {
         let mut ctx = TestContext::builder()
