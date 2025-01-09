@@ -51,6 +51,15 @@ use super::SBTC_REGISTRY_CONTRACT_NAME;
 /// See https://github.com/stacks-network/sbtc/issues/501.
 static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLock::new();
 
+/// Maximum request body size for the event observer endpoint.
+///
+/// Stacks blocks have a limit of 2 MB, which is enforced at the p2p level, but
+/// event observer events can be larger than that since they contain the
+/// subscribed sbtc events. Luckily, the size of the sbtc events themselves are
+/// bounded by the size of the transactions that create them, so a limit of 8 MB
+/// will be fine since it is twice as high as required.
+pub const EVENT_OBSERVER_BODY_LIMIT: usize = 8 * 1024 * 1024;
+
 /// An enum representing the result of the event processing.
 /// This is used to send the results of the events to Emily.
 enum UpdateResult {
@@ -401,6 +410,9 @@ async fn handle_key_rotation(
 mod tests {
     use super::*;
 
+    use axum::body::Body;
+    use axum::http::Method;
+    use axum::http::Request;
     use bitcoin::OutPoint;
     use bitvec::array::BitArray;
     use clarity::vm::types::PrincipalData;
@@ -411,7 +423,9 @@ mod tests {
     use rand::SeedableRng as _;
     use secp256k1::SECP256K1;
     use test_case::test_case;
+    use tower::ServiceExt;
 
+    use crate::api::get_router;
     use crate::storage::in_memory::Store;
     use crate::storage::model::DepositRequest;
     use crate::storage::model::ScriptPubKey;
@@ -913,5 +927,54 @@ mod tests {
         let db = db.lock().await;
         assert_eq!(db.rotate_keys_transactions.len(), 1);
         assert!(db.rotate_keys_transactions.get(&txid).is_some());
+    }
+
+    #[test_case(EVENT_OBSERVER_BODY_LIMIT, true; "event within limit")]
+    #[test_case(EVENT_OBSERVER_BODY_LIMIT + 1, false; "event over limit")]
+    #[tokio::test]
+    async fn test_big_event(event_size: usize, success: bool) {
+        let mut ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        ctx.with_emily_client(|client| {
+            client.expect_update_deposits().returning(move |_| {
+                Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
+            });
+            client.expect_update_withdrawals().returning(move |_| {
+                Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
+            });
+            client
+                .expect_create_withdrawals()
+                .returning(move |_| Box::pin(async { vec![] }));
+        })
+        .await;
+
+        let state = ApiState { ctx: ctx.clone() };
+        let app = get_router().with_state(state);
+
+        let db = ctx.inner_storage();
+        // We don't have anything here yet
+        assert!(db.lock().await.rotate_keys_transactions.is_empty());
+
+        let mut event: String = " ".repeat(event_size - ROTATE_KEYS_WEBHOOK.len());
+        event.push_str(ROTATE_KEYS_WEBHOOK);
+
+        let request = Request::builder()
+            .uri("/new_block")
+            .method(Method::POST)
+            .body(Body::from(event))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+
+        if success {
+            assert_eq!(response.status(), StatusCode::OK);
+            assert!(!db.lock().await.rotate_keys_transactions.is_empty());
+        } else {
+            assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+            assert!(db.lock().await.rotate_keys_transactions.is_empty());
+        }
     }
 }
