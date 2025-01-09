@@ -1822,7 +1822,8 @@
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
           "reclaimScript",
-          "depositScript"
+          "depositScript",
+          "transactionHex"
         ],
         "properties": {
           "bitcoinTxOutputIndex": {
@@ -1842,6 +1843,10 @@
           "reclaimScript": {
             "type": "string",
             "description": "Reclaim script."
+          },
+          "transactionHex": {
+            "type": "string",
+            "description": "The raw transaction hex."
           }
         }
       },
