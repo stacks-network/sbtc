@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -28,7 +26,6 @@ use url::Url;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
-use crate::DATABASE_NUM;
 
 fn test_environment(
     db: PgStore,
@@ -67,8 +64,7 @@ fn test_environment(
 }
 
 async fn create_signer_database() -> PgStore {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    signer::testing::storage::new_test_database(db_num, true).await
+    signer::testing::storage::new_test_database().await
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -128,8 +124,7 @@ async fn should_store_decisions_received_from_other_signers() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn handle_pending_deposit_request_address_script_pub_key() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
@@ -214,8 +209,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn handle_pending_deposit_request_not_in_signing_set() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
@@ -301,8 +295,7 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
