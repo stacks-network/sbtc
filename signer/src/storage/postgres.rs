@@ -2633,6 +2633,7 @@ impl super::DbWrite for PgStore {
         let mut validation_result = Vec::with_capacity(sighashes.len());
         let mut is_valid_tx = Vec::with_capacity(sighashes.len());
         let mut will_sign = Vec::with_capacity(sighashes.len());
+        let mut aggregate_key = Vec::with_capacity(sighashes.len());
 
         for tx_sighash in sighashes {
             txid.push(tx_sighash.txid);
@@ -2647,6 +2648,7 @@ impl super::DbWrite for PgStore {
             validation_result.push(tx_sighash.validation_result);
             is_valid_tx.push(tx_sighash.is_valid_tx);
             will_sign.push(tx_sighash.will_sign);
+            aggregate_key.push(tx_sighash.aggregate_key);
         }
 
         sqlx::query(
@@ -2660,6 +2662,7 @@ impl super::DbWrite for PgStore {
             , validation_result     AS (SELECT ROW_NUMBER() OVER (), validation_result FROM UNNEST($7::TEXT[]) AS validation_result)
             , is_valid_tx           AS (SELECT ROW_NUMBER() OVER (), is_valid_tx FROM UNNEST($8::BOOLEAN[]) AS is_valid_tx)
             , will_sign             AS (SELECT ROW_NUMBER() OVER (), will_sign FROM UNNEST($9::BOOLEAN[]) AS will_sign)
+            , x_only_public_key     AS (SELECT ROW_NUMBER() OVER (), x_only_public_key FROM UNNEST($10::BYTEA[]) AS x_only_public_key)
             INSERT INTO sbtc_signer.bitcoin_tx_sighashes (
                   txid
                 , chain_tip
@@ -2669,7 +2672,9 @@ impl super::DbWrite for PgStore {
                 , prevout_type
                 , validation_result
                 , is_valid_tx
-                , will_sign)
+                , will_sign
+                , x_only_public_key
+            )
             SELECT
                 txid
               , chain_tip
@@ -2680,6 +2685,7 @@ impl super::DbWrite for PgStore {
               , validation_result
               , is_valid_tx
               , will_sign
+              , x_only_public_key
             FROM tx_ids
             JOIN chain_tip USING (row_number)
             JOIN prevout_txid USING (row_number)
@@ -2689,6 +2695,7 @@ impl super::DbWrite for PgStore {
             JOIN validation_result USING (row_number)
             JOIN is_valid_tx USING (row_number)
             JOIN will_sign USING (row_number)
+            JOIN x_only_public_key USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(txid)
@@ -2700,6 +2707,7 @@ impl super::DbWrite for PgStore {
         .bind(validation_result)
         .bind(is_valid_tx)
         .bind(will_sign)
+        .bind(aggregate_key)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
