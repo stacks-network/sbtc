@@ -7,8 +7,8 @@ ADD COLUMN x_only_public_key BYTEA;
 -- keys, while, the values in the bitcoin_tx_sighashes.x_only_public_key
 -- column are supposed to be x-only public keys, naturally. So we need to
 -- lop off the first byte from the compressed public key.
-UPDATE sbtc_signer.bitcoin_tx_sighashes AS bts
-SET bts.x_only_public_key = substring(ds.aggregate_key FROM 2)
+UPDATE sbtc_signer.bitcoin_tx_sighashes
+SET x_only_public_key = substring(ds.aggregate_key FROM 2)
 FROM sbtc_signer.dkg_shares AS ds;
 
 ALTER TABLE sbtc_signer.bitcoin_tx_sighashes
