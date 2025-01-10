@@ -499,15 +499,43 @@ where
                     return Ok(());
                 }
 
-                let dkg_shares = self
-                    .context
-                    .get_storage()
-                    .get_latest_encrypted_dkg_shares()
-                    .await?;
+                let storage = self.context.get_storage();
 
-                if dkg_shares.is_some() {
-                    tracing::warn!("we do not support running DKG more than once");
-                    return Err(Error::DkgHasAlreadyRun);
+                // Get the bitcoin block at the chain tip so that we know the height
+                let bitcoin_chain_tip_block = storage
+                    .get_bitcoin_block(bitcoin_chain_tip)
+                    .await?
+                    .ok_or(Error::NoChainTip)?;
+
+                // Get the number of DKG shares that have been stored
+                let dkg_share_entry_count = storage.get_encrypted_dkg_share_count().await?;
+
+                // Get the minimum block height for rerunning DKG
+                let dkg_rerun_min_block_height =
+                    self.context.config().signer.dkg_rerun_bitcoin_height;
+
+                // Determine the action based on the DKG share count and the rerun height (if configured)
+                match (dkg_share_entry_count, dkg_rerun_min_block_height) {
+                    (0, _) => {
+                        tracing::info!("no DKG shares exist; proceeding with DKG");
+                    }
+                    (1, Some(dkg_rerun_height)) => {
+                        if bitcoin_chain_tip_block.block_height < dkg_rerun_height.get() {
+                            tracing::warn!(
+                                "bitcoin chain tip is below the minimum height for DKG rerun; aborting"
+                            );
+                            return Err(Error::DkgHasAlreadyRun);
+                        }
+                        tracing::info!("a single DKG entry exists and rerun height has been met; proceeding with DKG");
+                    }
+                    (1, None) => {
+                        tracing::warn!("attempt to run multiple DKGs without a configured re-run height; aborting");
+                        return Err(Error::DkgHasAlreadyRun);
+                    }
+                    _ => {
+                        tracing::warn!("multiple DKG shares already exist; aborting");
+                        return Err(Error::DkgHasAlreadyRun);
+                    }
                 }
 
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
