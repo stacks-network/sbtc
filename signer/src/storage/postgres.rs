@@ -1906,10 +1906,12 @@ impl super::DbRead for PgStore {
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
-    ) -> Result<Option<bool>, Error> {
-        sqlx::query_scalar::<_, bool>(
+    ) -> Result<Option<(bool, PublicKeyXOnly)>, Error> {
+        sqlx::query_as::<_, (bool, PublicKeyXOnly)>(
             r#"
-            SELECT will_sign
+            SELECT
+                will_sign
+              , x_only_public_key
             FROM sbtc_signer.bitcoin_tx_sighashes
             WHERE sighash = $1
             "#,

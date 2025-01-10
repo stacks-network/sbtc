@@ -341,7 +341,7 @@ pub trait DbRead {
     fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
-    ) -> impl Future<Output = Result<Option<bool>, Error>> + Send;
+    ) -> impl Future<Output = Result<Option<(bool, PublicKeyXOnly)>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

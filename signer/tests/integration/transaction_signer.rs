@@ -328,14 +328,14 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
     // Check that the intentions to sign the requests sighashes
     // are stored in the database
-    let will_sign = db
+    let (will_sign, _) = db
         .will_sign_bitcoin_tx_sighash(&signer_digest.sighash.into())
         .await
         .expect("query to check if signer sighash is stored failed")
         .expect("signer sighash not stored");
 
     assert!(will_sign);
-    let will_sign = db
+    let (will_sign, _) = db
         .will_sign_bitcoin_tx_sighash(&deposit_digest.sighash.into())
         .await
         .expect("query to check if deposit sighash is stored failed")

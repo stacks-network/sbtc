@@ -900,13 +900,13 @@ impl super::DbRead for SharedStore {
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
-    ) -> Result<Option<bool>, Error> {
+    ) -> Result<Option<(bool, PublicKeyXOnly)>, Error> {
         Ok(self
             .lock()
             .await
             .bitcoin_sighashes
             .get(sighash)
-            .map(|s| s.will_sign))
+            .map(|s| (s.will_sign, s.aggregate_key)))
     }
 }
 

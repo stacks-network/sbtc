@@ -2874,7 +2874,7 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     let results = join_all(withdrawal_outputs_futures).await;
 
     for (output, result) in sighashes.iter().zip(results) {
-        let result = result.unwrap().unwrap();
+        let (result, _) = result.unwrap().unwrap();
         assert_eq!(result, output.will_sign);
     }
     signer::testing::storage::drop_db(db).await;

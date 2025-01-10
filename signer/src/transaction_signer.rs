@@ -20,6 +20,7 @@ use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::message;
 use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
@@ -578,9 +579,9 @@ where
 
                 let db = self.context.get_storage();
                 let sig_hash = &request.message;
-                let validation_sighash = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
+                let locking_aggregate_key = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
 
-                let validation_status = match &validation_sighash {
+                let validation_status = match &locking_aggregate_key {
                     Ok(_) => "success",
                     Err(Error::SigHashConversion(_)) => "improper-sighash",
                     Err(Error::UnknownSigHash(_)) => "unknown-sighash",
@@ -727,17 +728,17 @@ where
 
     /// Check whether we will sign the message, which is supposed to be a
     /// bitcoin sighash
-    async fn validate_bitcoin_sign_request<D>(db: &D, message: &[u8]) -> Result<SigHash, Error>
+    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<(PublicKeyXOnly, SigHash), Error>
     where
         D: DbRead,
     {
-        let sighash = TapSighash::from_slice(message)
+        let sighash = TapSighash::from_slice(msg)
             .map_err(Error::SigHashConversion)?
             .into();
 
         match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
-            Some(true) => Ok(sighash),
-            Some(false) => Err(Error::InvalidSigHash(sighash)),
+            Some((true, public_key)) => Ok(public_key),
+            Some((false, _)) => Err(Error::InvalidSigHash(sighash)),
             None => Err(Error::UnknownSigHash(sighash)),
         }
     }

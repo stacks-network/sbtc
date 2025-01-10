@@ -113,7 +113,7 @@ impl SignerStateMachine {
     /// Create a state machine from loaded DKG shares for the given aggregate key
     pub async fn load<S>(
         storage: &S,
-        aggregate_key: PublicKey,
+        aggregate_key: PublicKeyXOnly,
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
@@ -121,7 +121,7 @@ impl SignerStateMachine {
         S: storage::DbRead,
     {
         let encrypted_shares = storage
-            .get_encrypted_dkg_shares(&aggregate_key)
+            .get_encrypted_dkg_shares(aggregate_key)
             .await?
             .ok_or(error::Error::MissingDkgShares(aggregate_key.into()))?;
 
