@@ -80,7 +80,7 @@ services:
   flyway:
     image: flyway/flyway:10.13.0
     command: >-
-      -url=jdbc:postgresql://postgres:5432/signer
+      -url=jdbc:postgresql://postgres:5432/postgres
       -user=postgres
       -password=postgres
       -sqlMigrationPrefix=""
