@@ -619,7 +619,6 @@ where
                 .increment(1);
 
                 let id = validation_sighash?.into();
-
                 let (maybe_aggregate_key, _) = self
                     .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
                     .await?;
