@@ -720,9 +720,7 @@ where
             return Err(Error::MissingStateMachine);
         };
 
-        let outbound_messages = state_machine
-            .process(msg)
-            .map_err(Error::Wsts)?;
+        let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
             // The WSTS state machine assume we read our own messages
