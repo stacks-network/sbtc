@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use fake::Fake as _;
@@ -34,7 +33,6 @@ use signer::transaction_signer::TxSignerEventLoop;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::fill_signers_utxo;
 use crate::setup::TestSweepSetup;
-use crate::DATABASE_NUM;
 
 /// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to
 /// the bootstrap config if there is no rotate-keys transaction in the
@@ -42,8 +40,7 @@ use crate::DATABASE_NUM;
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
@@ -136,8 +133,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn signing_set_validation_check_for_stacks_transactions() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
@@ -215,8 +211,7 @@ async fn signing_set_validation_check_for_stacks_transactions() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 pub async fn assert_should_be_able_to_handle_sbtc_requests() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let fee_rate = 1.3;

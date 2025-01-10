@@ -100,7 +100,6 @@ use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
 use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
-use crate::DATABASE_NUM;
 
 type IntegrationTestContext =
     TestContext<PgStore, BitcoinCoreClient, WrappedMock<MockStacksInteract>, EmilyClient>;
@@ -410,8 +409,7 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn process_complete_deposit() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -614,8 +612,7 @@ async fn deploy_smart_contracts_coordinator<F>(
     F: FnOnce(u64, Sender<StacksTransaction>) -> Box<dyn FnOnce(&mut MockStacksInteract)>,
 {
     signer::logging::setup_logging("info", false);
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let num_messages = smart_contracts.len();
@@ -778,8 +775,7 @@ async fn deploy_smart_contracts_coordinator<F>(
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
@@ -940,8 +936,7 @@ async fn run_dkg_from_scratch() {
 
     for (kp, data) in iter {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
-        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-        let db = testing::storage::new_test_database(db_num, true).await;
+        let db = testing::storage::new_test_database().await;
         let mut ctx = TestContext::builder()
             .with_storage(db.clone())
             .with_mocked_clients()
@@ -1176,8 +1171,7 @@ async fn sign_bitcoin_transaction() {
     // =========================================================================
     let mut signers = Vec::new();
     for kp in signer_key_pairs.iter() {
-        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-        let db = testing::storage::new_test_database(db_num, true).await;
+        let db = testing::storage::new_test_database().await;
         let ctx = TestContext::builder()
             .with_storage(db.clone())
             .with_first_bitcoin_core_client()
@@ -1579,8 +1573,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     // =========================================================================
     let mut signers = Vec::new();
     for kp in signer_key_pairs.iter() {
-        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-        let db = testing::storage::new_test_database(db_num, true).await;
+        let db = testing::storage::new_test_database().await;
         let ctx = TestContext::builder()
             .with_storage(db.clone())
             .with_first_bitcoin_core_client()
@@ -1874,8 +1867,7 @@ async fn wait_for_signers(signers: &[(IntegrationTestContext, PgStore, &Keypair,
 async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
 
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut context = TestContext::builder()
         .with_storage(db.clone())
@@ -2010,8 +2002,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
 
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let client = BitcoinCoreClient::new(
         "http://localhost:18443",

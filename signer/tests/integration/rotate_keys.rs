@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
 use rand::SeedableRng;
@@ -27,8 +25,6 @@ use signer::testing::context::*;
 
 use fake::Fake;
 use signer::testing::storage::model::TestData;
-
-use crate::DATABASE_NUM;
 
 struct TestRotateKeySetup {
     /// The signer object. It's public key represents the group of signers'
@@ -170,8 +166,7 @@ fn make_rotate_key(setup: &TestRotateKeySetup) -> (RotateKeysV1, ReqContext) {
 #[tokio::test]
 async fn rotate_key_validation_happy_path() {
     // Normal: preamble
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut db = testing::storage::new_test_database(db_num, true).await;
+    let mut db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let test_model_params = testing::storage::model::Params {
@@ -221,8 +216,7 @@ async fn rotate_key_validation_happy_path() {
 #[tokio::test]
 async fn rotate_key_validation_no_dkg() {
     // Normal: preamble
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut db = testing::storage::new_test_database(db_num, true).await;
+    let mut db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let test_model_params = testing::storage::model::Params {
@@ -260,8 +254,7 @@ async fn rotate_key_validation_no_dkg() {
 #[tokio::test]
 async fn rotate_key_validation_wrong_deployer() {
     // Normal: preamble
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut db = testing::storage::new_test_database(db_num, true).await;
+    let mut db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let test_model_params = testing::storage::model::Params {
@@ -305,8 +298,7 @@ async fn rotate_key_validation_wrong_deployer() {
 #[tokio::test]
 async fn rotate_key_validation_wrong_signing_set() {
     // Normal: preamble
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut db = testing::storage::new_test_database(db_num, true).await;
+    let mut db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let test_model_params = testing::storage::model::Params {
@@ -356,8 +348,7 @@ async fn rotate_key_validation_wrong_signing_set() {
 #[tokio::test]
 async fn rotate_key_validation_wrong_aggregate_key() {
     // Normal: preamble
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut db = testing::storage::new_test_database(db_num, true).await;
+    let mut db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let test_model_params = testing::storage::model::Params {
@@ -407,8 +398,7 @@ async fn rotate_key_validation_wrong_aggregate_key() {
 #[tokio::test]
 async fn rotate_key_validation_wrong_signatures_required() {
     // Normal: preamble
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut db = testing::storage::new_test_database(db_num, true).await;
+    let mut db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let test_model_params = testing::storage::model::Params {
@@ -463,8 +453,7 @@ async fn rotate_key_validation_wrong_signatures_required() {
 #[tokio::test]
 async fn rotate_key_validation_replay() {
     // Normal: preamble
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let mut db = testing::storage::new_test_database(db_num, true).await;
+    let mut db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let test_model_params = testing::storage::model::Params {
