@@ -1514,7 +1514,7 @@ impl super::DbRead for PgStore {
             .await
             .map_err(Error::SqlxQuery)?;
 
-        Ok(u32::try_from(count).map_err(Error::ConversionDatabaseInt)?)
+        u32::try_from(count).map_err(Error::ConversionDatabaseInt)
     }
 
     /// Find the last key rotation by iterating backwards from the stacks
