@@ -53,3 +53,4 @@ services:
       - emily-dynamodb
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
+ 
