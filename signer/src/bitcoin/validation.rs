@@ -404,6 +404,7 @@ impl BitcoinTxValidationData {
                 txid: sighash.txid.into(),
                 sighash: sighash.sighash.into(),
                 chain_tip: self.chain_tip,
+                aggregate_key: sighash.aggregate_key.into(),
                 prevout_txid: sighash.outpoint.txid.into(),
                 prevout_output_index: sighash.outpoint.vout,
                 prevout_type: sighash.prevout_type,
