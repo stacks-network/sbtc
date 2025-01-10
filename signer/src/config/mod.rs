@@ -8,6 +8,7 @@ use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
 use std::num::NonZeroU16;
+use std::num::NonZeroU64;
 use std::path::Path;
 use url::Url;
 
@@ -253,6 +254,12 @@ pub struct SignerConfig {
     /// arrives. The default here is controlled by the
     /// [`MAX_DEPOSITS_PER_BITCOIN_TX`] constant
     pub max_deposits_per_bitcoin_tx: NonZeroU16,
+
+    /// Configures a DKG re-run Bitcoin block height. If this is set and DKG
+    /// has already been run, the coordinator will attempt to re-run DKG after
+    /// this block height at most once. If DKG has never been run, this
+    /// configuration has no effect.
+    pub dkg_rerun_bitcoin_height: Option<NonZeroU64>,
 }
 
 impl Validatable for SignerConfig {
@@ -644,6 +651,21 @@ mod tests {
 
         std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", "0");
         assert!(Settings::new_from_default_config().is_err());
+    }
+
+    #[test]
+    fn default_config_toml_loads_dkg_rerun_bitcoin_height() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_rerun_bitcoin_height, None);
+
+        std::env::set_var("SIGNER_SIGNER__DKG_RERUN_BITCOIN_HEIGHT", "42");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.dkg_rerun_bitcoin_height,
+            Some(NonZeroU64::new(42).unwrap())
+        );
     }
 
     #[test]

@@ -197,6 +197,14 @@ bootstrap_signing_set = [
 # Required: true
 bootstrap_signatures_required = 2
 
+# When defined, the signer will attempt to re-run DKG after the specified
+# Bitcoin block height. Please only use this parameter when instructed to by
+# the sBTC team.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_RERUN_BITCOIN_HEIGHT
+# dkg_rerun_bitcoin_height = 1234
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
