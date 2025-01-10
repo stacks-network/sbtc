@@ -75,9 +75,13 @@ enum UpdateResult {
 /// fixed number of times.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
-#[tracing::instrument(skip_all, name = "new-block")]
+#[tracing::instrument(skip_all, name = "new-block", fields(
+    block_hash = tracing::field::Empty,
+    block_height = tracing::field::Empty,
+    parent_hash = tracing::field::Empty,
+    bitcoin_anchor = tracing::field::Empty,
+))]
 pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
-    tracing::debug!("received a new block event from stacks-core");
     metrics::counter!(
         Metrics::BlocksObservedTotal,
         "blockchain" => STACKS_BLOCKCHAIN,
@@ -106,6 +110,24 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         }
     };
 
+    let stacks_chaintip = StacksBlock {
+        block_hash: new_block_event.index_block_hash.into(),
+        block_height: new_block_event.block_height,
+        parent_hash: new_block_event.parent_index_block_hash.into(),
+        bitcoin_anchor: new_block_event.burn_block_hash.into(),
+    };
+    let block_id = new_block_event.index_block_hash;
+
+    {
+        let span = tracing::span::Span::current();
+        span.record("block_hash", stacks_chaintip.block_hash.to_hex());
+        span.record("block_height", stacks_chaintip.block_height);
+        span.record("parent_hash", stacks_chaintip.parent_hash.to_hex());
+        span.record("bitcoin_anchor", stacks_chaintip.bitcoin_anchor.to_string());
+    }
+
+    tracing::debug!("received a new block event from stacks-core");
+
     // Although transactions can fail, only successful transactions emit
     // sBTC print events, since those events are emitted at the very end of
     // the contract call.
@@ -123,22 +145,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         return StatusCode::OK;
     }
 
-    let stacks_chaintip = StacksBlock {
-        block_hash: new_block_event.index_block_hash.into(),
-        block_height: new_block_event.block_height,
-        parent_hash: new_block_event.parent_index_block_hash.into(),
-        bitcoin_anchor: new_block_event.burn_block_hash.into(),
-    };
-    let block_id = new_block_event.index_block_hash;
-
-    tracing::debug!(
-        count = %events.len(),
-        block_hash = %stacks_chaintip.block_hash,
-        block_height = stacks_chaintip.block_height,
-        parent_hash = %stacks_chaintip.parent_hash,
-        bitcoin_anchor = %stacks_chaintip.bitcoin_anchor,
-        "processing events for new stack block"
-    );
+    tracing::debug!(count = %events.len(), "processing events for new stack block");
 
     // Create vectors to store the processed events for Emily.
     let mut completed_deposits = Vec::new();
