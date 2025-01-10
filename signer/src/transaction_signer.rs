@@ -680,6 +680,8 @@ where
         Ok(())
     }
 
+    /// This function is used to verify that the sender in the message
+    /// matches the signer in the corresponding state machine.
     fn validate_sender(
         &self,
         id: &StateMachineId,
