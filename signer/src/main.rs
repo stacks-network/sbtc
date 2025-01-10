@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -10,6 +10,7 @@ use axum::http::Response;
 use cfg_if::cfg_if;
 use clap::Parser;
 use clap::ValueEnum;
+use lru::LruCache;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
@@ -315,6 +316,13 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);
 
+    // This is the maximum number of inputs that can be signed during the
+    // tenure of a single bitcoin transaction. We know that it is non-zero
+    // because MAX_MEMPOOL_PACKAGE_TX_COUNT is non-zero.
+    let max_state_machines = signer::MAX_MEMPOOL_PACKAGE_TX_COUNT as usize
+        * (ctx.config().signer.max_deposits_per_bitcoin_tx.get() as usize + 1);
+    let max_state_machines = NonZeroUsize::new(max_state_machines).ok_or(Error::TypeConversion)?;
+
     let signer = transaction_signer::TxSignerEventLoop {
         network,
         context: ctx.clone(),
@@ -322,7 +330,7 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         threshold: config.signer.bootstrap_signatures_required.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
-        wsts_state_machines: HashMap::new(),
+        wsts_state_machines: LruCache::new(max_state_machines),
         dkg_begin_pause: config.signer.dkg_begin_pause.map(Duration::from_secs),
     };
 

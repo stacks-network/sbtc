@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -26,6 +26,7 @@ use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt;
+use lru::LruCache;
 use mockito;
 use rand::rngs::OsRng;
 use rand::SeedableRng as _;
@@ -1017,7 +1018,7 @@ async fn run_dkg_from_scratch() {
             threshold: context.config().signer.bootstrap_signatures_required as u32,
             context: context.clone(),
             context_window: 10000,
-            wsts_state_machines: HashMap::new(),
+            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
@@ -1324,7 +1325,7 @@ async fn sign_bitcoin_transaction() {
             threshold: ctx.config().signer.bootstrap_signatures_required as u32,
             context: ctx.clone(),
             context_window: 10000,
-            wsts_state_machines: HashMap::new(),
+            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
@@ -1712,7 +1713,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             threshold: ctx.config().signer.bootstrap_signatures_required as u32,
             context: ctx.clone(),
             context_window: 10000,
-            wsts_state_machines: HashMap::new(),
+            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,

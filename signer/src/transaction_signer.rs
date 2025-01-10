@@ -6,7 +6,6 @@
 //! For more details, see the [`TxSignerEventLoop`] documentation.
 
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::bitcoin::validation::BitcoinTxContext;
@@ -43,6 +42,7 @@ use crate::wsts_state_machine::SignerStateMachine;
 use bitcoin::hashes::Hash;
 use bitcoin::TapSighash;
 use futures::StreamExt;
+use lru::LruCache;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -127,7 +127,7 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     ///
     /// - For DKG rounds, TxID should be the ID of the transaction that
     ///   defined the signer set.
-    pub wsts_state_machines: HashMap<StateMachineId, SignerStateMachine>,
+    pub wsts_state_machines: LruCache<StateMachineId, SignerStateMachine>,
     /// The threshold for the signer
     pub threshold: u32,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
@@ -536,7 +536,7 @@ where
                     self.signer_private_key,
                 )?;
                 let id = StateMachineId::from(msg.txid);
-                self.wsts_state_machines.insert(id, state_machine);
+                self.wsts_state_machines.put(id, state_machine);
 
                 if let Some(pause) = self.dkg_begin_pause {
                     // Let's give the others some slack
@@ -631,7 +631,7 @@ where
                 )
                 .await?;
 
-                self.wsts_state_machines.insert(id, state_machine);
+                self.wsts_state_machines.put(id, state_machine);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -649,7 +649,7 @@ where
                     .relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await;
 
-                self.wsts_state_machines.remove(&id);
+                self.wsts_state_machines.pop(&id);
                 response?;
             }
             WstsNetMessage::DkgEnd(dkg_end) => {
@@ -683,7 +683,7 @@ where
     /// This function is used to verify that the sender in the message
     /// matches the signer in the corresponding state machine.
     fn validate_sender(
-        &self,
+        &mut self,
         id: &StateMachineId,
         signer_id: u32,
         sender_public_key: &PublicKey,

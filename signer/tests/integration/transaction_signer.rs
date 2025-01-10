@@ -1,9 +1,12 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use bitcoin::hashes::Hash;
 use fake::Fake as _;
 use fake::Faker;
+use lru::LruCache;
 use rand::SeedableRng as _;
 
 use signer::bitcoin::utxo::RequestRef;
@@ -65,7 +68,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
-        wsts_state_machines: HashMap::new(),
+        wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
         signer_private_key: ctx.config().signer.private_key,
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
@@ -175,7 +178,7 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
-        wsts_state_machines: HashMap::new(),
+        wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
@@ -261,7 +264,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         network: net.spawn(),
         context: ctx.clone(),
         context_window: 10000,
-        wsts_state_machines: HashMap::new(),
+        wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
@@ -375,7 +378,7 @@ pub async fn assert_always_create_new_state_machine() {
         network: net.spawn(),
         context: ctx.clone(),
         context_window: 10000,
-        wsts_state_machines: HashMap::new(),
+        wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
         signer_private_key: setup.signers.signer.keypair.secret_key().into(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
