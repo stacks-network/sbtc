@@ -579,7 +579,8 @@ where
 
                 let db = self.context.get_storage();
                 let sig_hash = &request.message;
-                let locking_aggregate_key = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
+                let locking_aggregate_key =
+                    Self::validate_bitcoin_sign_request(&db, sig_hash).await;
 
                 let validation_status = match &locking_aggregate_key {
                     Ok(_) => "success",

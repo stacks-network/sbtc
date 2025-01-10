@@ -123,7 +123,7 @@ impl SignerStateMachine {
         let encrypted_shares = storage
             .get_encrypted_dkg_shares(aggregate_key)
             .await?
-            .ok_or(error::Error::MissingDkgShares(aggregate_key.into()))?;
+            .ok_or_else(|| error::Error::MissingDkgShares(aggregate_key))?;
 
         let decrypted = wsts::util::decrypt(
             &signer_private_key.to_bytes(),
