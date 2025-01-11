@@ -43,8 +43,8 @@ use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
-use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 use signer::testing::dummy::Unit;
+use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
