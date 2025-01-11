@@ -143,8 +143,8 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StateMachineId([u8; 32]);
 
-impl From<bitcoin::Txid> for StateMachineId {
-    fn from(value: bitcoin::Txid) -> Self {
+impl From<&model::BitcoinBlockHash> for StateMachineId {
+    fn from(value: &model::BitcoinBlockHash) -> Self {
         StateMachineId(value.to_byte_array())
     }
 }
@@ -535,7 +535,7 @@ where
                     self.threshold,
                     self.signer_private_key,
                 )?;
-                let id = StateMachineId::from(msg.txid);
+                let id = StateMachineId::from(bitcoin_chain_tip);
                 self.wsts_state_machines.put(id, state_machine);
 
                 if let Some(pause) = self.dkg_begin_pause {
@@ -546,7 +546,7 @@ where
                     tokio::time::sleep(pause).await;
                 }
 
-                let id = StateMachineId::from(msg.txid);
+                let id = StateMachineId::from(bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -557,7 +557,7 @@ where
                     return Ok(());
                 }
 
-                let id = StateMachineId::from(msg.txid);
+                let id = StateMachineId::from(bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -566,7 +566,7 @@ where
                     signer_id = %dkg_public_shares.signer_id,
                     "handling DkgPublicShares",
                 );
-                let id = StateMachineId::from(msg.txid);
+                let id = StateMachineId::from(bitcoin_chain_tip);
                 self.validate_sender(&id, dkg_public_shares.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -576,7 +576,7 @@ where
                     signer_id = %dkg_private_shares.signer_id,
                     "handling DkgPrivateShares"
                 );
-                let id = StateMachineId::from(msg.txid);
+                let id = StateMachineId::from(bitcoin_chain_tip);
                 self.validate_sender(&id, dkg_private_shares.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -587,7 +587,7 @@ where
                     tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
-                let id = StateMachineId::from(msg.txid);
+                let id = StateMachineId::from(bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -737,6 +737,7 @@ where
             // peers.
             if let WstsNetMessage::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) = outbound {
                 self.store_dkg_shares(&id).await?;
+                self.wsts_state_machines.pop(&id);
             }
             let msg = message::WstsMessage { txid, inner: outbound };
 
