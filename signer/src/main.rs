@@ -319,9 +319,14 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     // This is the maximum number of inputs that can be signed during the
     // tenure of a single bitcoin transaction. We know that it is non-zero
     // because MAX_MEMPOOL_PACKAGE_TX_COUNT is non-zero.
-    let max_state_machines = signer::MAX_MEMPOOL_PACKAGE_TX_COUNT as usize
-        * (ctx.config().signer.max_deposits_per_bitcoin_tx.get() as usize + 1);
-    let max_state_machines = NonZeroUsize::new(max_state_machines).ok_or(Error::TypeConversion)?;
+    let max_state_machines = signer::MAX_MEMPOOL_PACKAGE_TX_COUNT
+        .saturating_mul(ctx.config().signer.max_deposits_per_bitcoin_tx.get() as u64 + 1)
+        .min(signer::MAX_SIGNER_STATE_MACHINES);
+    // The _ as usize cast is fine, since we know that the
+    // max_state_machines is less than u32::MAX, and we only support
+    // running this binary on 32 or 64 bit CPUs.
+    let max_state_machines =
+        NonZeroUsize::new(max_state_machines as usize).ok_or(Error::TypeConversion)?;
 
     let signer = transaction_signer::TxSignerEventLoop {
         network,

@@ -108,6 +108,14 @@ pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 /// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L60-L61>
 pub const MAX_MEMPOOL_PACKAGE_SIZE: u64 = 101000;
 
+/// This is an upper bound on the number of signer state machines that we
+/// "could" need if we wanted to sign all inputs in parallel.
+///
+/// The smallest vsize of a deposit input is 91 vbytes, so if the entire
+/// transaction package was nothing but deposit inputs then we would need
+/// this many state machines to sign the transaction in parallel.
+pub const MAX_SIGNER_STATE_MACHINES: u64 = MAX_MEMPOOL_PACKAGE_SIZE.div_ceil(91) + 1;
+
 /// These are all build info variables. Many of them are set in build.rs.
 
 /// The name of the binary that is being run,
