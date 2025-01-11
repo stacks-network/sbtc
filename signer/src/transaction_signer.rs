@@ -155,6 +155,14 @@ impl From<SigHash> for StateMachineId {
     }
 }
 
+#[cfg(any(test, feature = "testing"))]
+impl StateMachineId {
+    /// Create a new Id
+    pub fn new(value: [u8; 32]) -> Self {
+        StateMachineId(value)
+    }
+}
+
 /// This function defines which messages this event loop is interested
 /// in.
 fn run_loop_message_filter(signal: &SignerSignal) -> bool {

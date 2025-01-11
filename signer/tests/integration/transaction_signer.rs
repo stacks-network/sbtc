@@ -36,6 +36,7 @@ use signer::testing::context::*;
 use signer::testing::storage::model::TestData;
 use signer::transaction_signer::ChainTipStatus;
 use signer::transaction_signer::MsgChainTipReport;
+use signer::transaction_signer::StateMachineId;
 use signer::transaction_signer::TxSignerEventLoop;
 use wsts::net::NonceRequest;
 
@@ -345,7 +346,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-pub async fn assert_always_create_new_state_machine() {
+pub async fn assert_new_state_machine_per_valid_sighash() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -390,7 +391,7 @@ pub async fn assert_always_create_new_state_machine() {
 
     let sighash_message = [1; 32];
 
-    let nonce_request_msg = WstsMessage {
+    let mut nonce_request_msg = WstsMessage {
         txid: bitcoin::Txid::all_zeros(),
         inner: wsts::net::Message::NonceRequest(NonceRequest {
             dkg_id: 1,
@@ -414,7 +415,10 @@ pub async fn assert_always_create_new_state_machine() {
         will_sign: true,
     };
 
+    let id = StateMachineId::from(row.sighash);
     db.write_bitcoin_txs_sighashes(&[row]).await.unwrap();
+
+    assert!(tx_signer.wsts_state_machines.is_empty());
 
     tx_signer
         .handle_wsts_message(
@@ -425,6 +429,29 @@ pub async fn assert_always_create_new_state_machine() {
         )
         .await
         .unwrap();
+
+    assert!(tx_signer.wsts_state_machines.contains(&id));
+
+    let random_message: [u8; 32] = Faker.fake_with_rng(&mut rng);
+    match &mut nonce_request_msg.inner {
+        wsts::net::Message::NonceRequest(NonceRequest { message, .. }) => {
+            *message = random_message.to_vec();
+        }
+        _ => panic!("You forgot to update the variant"),
+    };
+
+    let response = tx_signer
+        .handle_wsts_message(
+            &nonce_request_msg,
+            &report.chain_tip,
+            msg_public_key,
+            &report,
+        )
+        .await;
+
+    assert!(response.is_err());
+    let id = StateMachineId::new(random_message);
+    assert!(!tx_signer.wsts_state_machines.contains(&id));
 
     testing::storage::drop_db(db).await;
 }
