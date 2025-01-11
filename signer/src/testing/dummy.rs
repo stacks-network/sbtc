@@ -83,9 +83,6 @@ use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
-use fake::Dummy;
-use fake::Faker;
-
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(
     config: &fake::Faker,

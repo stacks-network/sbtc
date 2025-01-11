@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use std::num::NonZeroUsize;
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use bitcoin::hashes::Hash;
@@ -348,8 +346,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 pub async fn assert_always_create_new_state_machine() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     // Build the test context with mocked clients
