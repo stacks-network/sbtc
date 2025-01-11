@@ -44,7 +44,7 @@ config = "0.11.0"
 futures = "0.3.24"
 hashbrown = "0.14.5"
 http = "1.1.0"
-lru = "0.12"
+lru = { version = "0.12", default-features = false }
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false, features = ["http-listener"] }
 # This is necessary to compile the AWS Lambda as a lambda.
