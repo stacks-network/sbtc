@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 
+use bitcoin::consensus::encode::serialize_hex;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -374,6 +375,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
         bitcoin_txid: setup.deposit_request.outpoint.txid.to_string(),
         deposit_script: setup.deposit_request.deposit_script.to_hex_string(),
         reclaim_script: setup.deposit_request.reclaim_script.to_hex_string(),
+        transaction_hex: serialize_hex(&setup.deposit_tx),
     };
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await

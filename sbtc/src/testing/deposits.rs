@@ -20,39 +20,47 @@ use crate::deposits::ReclaimScriptInputs;
 /// A properly formated transaction and the corresponding deposit and
 /// reclaim inputs.
 pub struct TxSetup {
-    /// The transaction   
+    /// The transaction
     pub tx: Transaction,
-    /// The deposit script and its variable inputs
-    pub deposit: DepositScriptInputs,
-    /// The reclaim script and its variable inputs
-    pub reclaim: ReclaimScriptInputs,
+    /// The deposit scripts and their variable inputs
+    pub deposits: Vec<DepositScriptInputs>,
+    /// The reclaim scripts and their variable inputs
+    pub reclaims: Vec<ReclaimScriptInputs>,
 }
 
 /// The BTC transaction that is in this TxSetup is consistent with
 /// the deposit and reclaim scripts.
-pub fn tx_setup(lock_time: u32, max_fee: u64, amount: u64) -> TxSetup {
-    let secret_key = SecretKey::new(&mut OsRng);
+pub fn tx_setup(lock_time: u32, max_fee: u64, amounts: &[u64]) -> TxSetup {
+    let mut tx_outs = Vec::with_capacity(amounts.len());
+    let mut deposits = Vec::with_capacity(amounts.len());
+    let mut reclaims = Vec::with_capacity(amounts.len());
 
-    let deposit = DepositScriptInputs {
-        signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
-        recipient: PrincipalData::from(StacksAddress::burn_address(false)),
-        max_fee,
-    };
-    let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap();
+    for &amount in amounts {
+        let secret_key = SecretKey::new(&mut OsRng);
+        let deposit = DepositScriptInputs {
+            signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
+            recipient: PrincipalData::from(StacksAddress::burn_address(false)),
+            max_fee,
+        };
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap();
 
-    let deposit_script = deposit.deposit_script();
-    let reclaim_script = reclaim.reclaim_script();
-    // This transaction is kinda invalid because it doesn't have any
-    // inputs. But it is fine for our purposes.
+        let deposit_script = deposit.deposit_script();
+        let reclaim_script = reclaim.reclaim_script();
+
+        tx_outs.push(TxOut {
+            value: Amount::from_sat(amount),
+            script_pubkey: deposits::to_script_pubkey(deposit_script, reclaim_script),
+        });
+        deposits.push(deposit);
+        reclaims.push(reclaim);
+    }
+
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
         input: Vec::new(),
-        output: vec![TxOut {
-            value: Amount::from_sat(amount),
-            script_pubkey: deposits::to_script_pubkey(deposit_script, reclaim_script),
-        }],
+        output: tx_outs,
     };
 
-    TxSetup { tx, reclaim, deposit }
+    TxSetup { tx, reclaims, deposits }
 }

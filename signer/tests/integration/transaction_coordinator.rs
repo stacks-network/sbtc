@@ -5,6 +5,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
@@ -1456,6 +1457,7 @@ async fn sign_bitcoin_transaction() {
         bitcoin_txid: deposit_request.outpoint.txid.to_string(),
         deposit_script: deposit_request.deposit_script.to_hex_string(),
         reclaim_script: deposit_request.reclaim_script.to_hex_string(),
+        transaction_hex: serialize_hex(&deposit_tx),
     };
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await

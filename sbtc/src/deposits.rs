@@ -814,12 +814,12 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
-            reclaim_script: setup.reclaim.reclaim_script(),
-            deposit_script: setup.deposit.deposit_script(),
+            reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
+            deposit_script: setup.deposits.first().unwrap().deposit_script(),
         };
 
         let parsed = request.validate_tx(&setup.tx).unwrap();
@@ -828,9 +828,12 @@ mod tests {
         assert_eq!(parsed.deposit_script, request.deposit_script);
         assert_eq!(parsed.reclaim_script, request.reclaim_script);
         assert_eq!(parsed.amount, amount_sats);
-        assert_eq!(parsed.signers_public_key, setup.deposit.signers_public_key);
+        assert_eq!(
+            parsed.signers_public_key,
+            setup.deposits.first().unwrap().signers_public_key
+        );
         assert_eq!(parsed.lock_time, LockTime::from_height(lock_time as u16));
-        assert_eq!(parsed.recipient, setup.deposit.recipient);
+        assert_eq!(parsed.recipient, setup.deposits.first().unwrap().recipient);
     }
 
     #[test]
@@ -839,16 +842,16 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let mut setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let mut setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
 
         // Let's modify the max_fee of the deposit script and send that in
         // the request.
-        setup.deposit.max_fee = 3000;
+        setup.deposits.first_mut().unwrap().max_fee = 3000;
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
-            deposit_script: setup.deposit.deposit_script(),
-            reclaim_script: setup.reclaim.reclaim_script(),
+            deposit_script: setup.deposits.first().unwrap().deposit_script(),
+            reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
         };
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
@@ -861,16 +864,16 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 0;
 
-        let mut setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let mut setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
 
         // Let's modify the lock time of the reclaim script to look more
         // reasonable in the request.
-        setup.reclaim.lock_time = LockTime::from_height(150);
+        setup.reclaims.first_mut().unwrap().lock_time = LockTime::from_height(150);
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
-            deposit_script: setup.deposit.deposit_script(),
-            reclaim_script: setup.reclaim.reclaim_script(),
+            deposit_script: setup.deposits.first().unwrap().deposit_script(),
+            reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
         };
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
@@ -883,13 +886,13 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
 
         let request = CreateDepositRequest {
             // This output index is guaranteed to always be incorrect.
             outpoint: OutPoint::new(setup.tx.compute_txid(), setup.tx.output.len() as u32),
-            deposit_script: setup.deposit.deposit_script(),
-            reclaim_script: setup.reclaim.reclaim_script(),
+            deposit_script: setup.deposits.first().unwrap().deposit_script(),
+            reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
         };
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
@@ -898,8 +901,8 @@ mod tests {
         let request = CreateDepositRequest {
             // This txid is almost certainly incorrect.
             outpoint: OutPoint::new(Txid::all_zeros(), 0),
-            deposit_script: setup.deposit.deposit_script(),
-            reclaim_script: setup.reclaim.reclaim_script(),
+            deposit_script: setup.deposits.first().unwrap().deposit_script(),
+            reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
         };
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
@@ -912,7 +915,7 @@ mod tests {
         let amount_sats = 500_000;
         let lock_time = 150;
 
-        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
@@ -920,7 +923,7 @@ mod tests {
             // they told us a lie and sent us an invalid deposit script in
             // their request.
             deposit_script: ScriptBuf::new(),
-            reclaim_script: setup.reclaim.reclaim_script(),
+            reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
         };
 
         let error = request.validate_tx(&setup.tx).unwrap_err();
@@ -928,7 +931,7 @@ mod tests {
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
-            deposit_script: setup.deposit.deposit_script(),
+            deposit_script: setup.deposits.first().unwrap().deposit_script(),
             // The actual reclaim script in the transaction is fine, but
             // they told us a lie, and sent us an invalid reclaim script in
             // their request.

@@ -17,7 +17,6 @@ use fake::Fake;
 use rand::rngs::OsRng;
 use sbtc::events::RegistryEvent;
 use sbtc::events::TxInfo;
-use sbtc::testing::deposits::TxSetup;
 use sbtc::webhooks::NewBlockEvent;
 use signer::api::new_block_handler;
 use signer::api::ApiState;
@@ -55,6 +54,9 @@ async fn test_context() -> TestContext<
         .with_emily_client(emily_client.clone())
         .build()
 }
+
+const CREATE_DEPOSIT_VALID: &str =
+    include_str!("../../../emily/handler/tests/fixtures/create-deposit-valid.json");
 
 const COMPLETED_DEPOSIT_WEBHOOK: &str =
     include_str!("../../tests/fixtures/completed-deposit-event.json");
@@ -113,13 +115,12 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         RegistryEvent::CompletedDeposit(event) => Some(event),
         _ => panic!("Expected CompletedDeposit event"),
     });
-
     let bitcoin_txid = deposit_completed_event.outpoint.txid.to_string();
 
     // Insert a dummy deposit request into the database. This will be retrieved by
     // handle_completed_deposit to compute the fee paid.
     let mut deposit: DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
-    deposit.amount = deposit_completed_event.amount + 100;
+    deposit.amount = deposit_completed_event.amount;
     deposit.txid = deposit_completed_event.outpoint.txid.into();
     deposit.output_index = deposit_completed_event.outpoint.vout;
 
@@ -130,12 +131,14 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         .expect("failed to insert dummy deposit request");
 
     // Add the deposit request to Emily
-    let tx_setup: TxSetup = sbtc::testing::deposits::tx_setup(15_000, 500_000, 150);
+    let request: CreateDepositRequestBody =
+        serde_json::from_str(CREATE_DEPOSIT_VALID).expect("failed to parse request");
     let create_deposity_req = CreateDepositRequestBody {
         bitcoin_tx_output_index: deposit_completed_event.outpoint.vout as u32,
         bitcoin_txid: bitcoin_txid.clone(),
-        deposit_script: tx_setup.deposit.deposit_script().to_hex_string(),
-        reclaim_script: tx_setup.reclaim.reclaim_script().to_hex_string(),
+        deposit_script: request.deposit_script,
+        reclaim_script: request.reclaim_script,
+        transaction_hex: request.transaction_hex,
     };
     let resp = create_deposit(&emily_context, create_deposity_req).await;
     assert!(resp.is_ok());
