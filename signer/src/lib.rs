@@ -109,12 +109,14 @@ pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 pub const MAX_MEMPOOL_PACKAGE_SIZE: u64 = 101000;
 
 /// This is an upper bound on the number of signer state machines that we
-/// "could" need if we wanted to sign all inputs in parallel.
+/// "could" need if we wanted to sign all inputs in parallel and running
+/// DKG.
 ///
 /// The smallest vsize of a deposit input is 91 vbytes, so if the entire
 /// transaction package was nothing but deposit inputs then we would need
-/// this many state machines to sign the transaction in parallel.
-pub const MAX_SIGNER_STATE_MACHINES: u64 = MAX_MEMPOOL_PACKAGE_SIZE.div_ceil(91) + 1;
+/// this many state machines to sign the transaction in parallel. We need
+/// to add one for signers' input UTXO and another for DKG, hence plus 2.
+pub const MAX_SIGNER_STATE_MACHINES: u64 = MAX_MEMPOOL_PACKAGE_SIZE.div_ceil(91) + 2;
 
 /// These are all build info variables. Many of them are set in build.rs.
 
