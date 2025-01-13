@@ -275,7 +275,7 @@ async fn handle_completed_deposit(
         .write_completed_deposit_event(&event)
         .await?;
 
-    tracing::info!("handled completed deposit event");
+    tracing::debug!(topic = "completed-deposit", "handled stacks event");
 
     // If the deposit request is not found, we don't want to update Emily about it because
     // we don't have the necessary information to compute the fee.
@@ -334,7 +334,7 @@ async fn handle_withdrawal_accept(
         .write_withdrawal_accept_event(&event)
         .await?;
 
-    tracing::info!("handled withdrawal accept event");
+    tracing::debug!(topic = "withdrawal-accept", "handled stacks event");
 
     Ok(WithdrawalUpdate {
         request_id: event.request_id,
@@ -377,7 +377,7 @@ async fn handle_withdrawal_create(
         .write_withdrawal_create_event(&event)
         .await?;
 
-    tracing::debug!("handled withdrawal creation event");
+    tracing::debug!(topic = "withdrawal-create", "handled stacks event");
 
     Ok(CreateWithdrawalRequestBody {
         amount: event.amount,
@@ -414,7 +414,7 @@ async fn handle_withdrawal_reject(
         .write_withdrawal_reject_event(&event)
         .await?;
 
-    tracing::info!("handled withdrawal rejection event");
+    tracing::debug!(topic = "withdrawal-reject", "handled stacks event");
 
     Ok(WithdrawalUpdate {
         fulfillment: None,
@@ -448,7 +448,7 @@ async fn handle_key_rotation(
         .write_rotate_keys_transaction(&key_rotation_tx)
         .await?;
 
-    tracing::info!("handled rotate-keys event");
+    tracing::debug!(topic = "key-rotation", "handled stacks event");
 
     Ok(())
 }
