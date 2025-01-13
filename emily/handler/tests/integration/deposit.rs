@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
-use test_case::test_case;
 use std::collections::HashMap;
+use test_case::test_case;
 
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
