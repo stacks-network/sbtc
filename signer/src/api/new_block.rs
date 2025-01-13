@@ -143,7 +143,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         return StatusCode::OK;
     }
 
-    tracing::debug!(count = %events.len(), "processing events for new stack block");
+    tracing::debug!(count = %events.len(), "processing events for new stacks block");
 
     // Create vectors to store the processed events for Emily.
     let mut completed_deposits = Vec::new();
