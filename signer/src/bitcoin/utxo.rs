@@ -769,7 +769,8 @@ pub struct SignatureHash {
     pub sighash: TapSighash,
     /// The type of prevout that we are referring to.
     pub prevout_type: TxPrevoutType,
-    /// The aggregate key that is locking the output associated with this signature hash
+    /// The aggregate key that is locking the output associated with this
+    /// signature hash.
     pub aggregate_key: XOnlyPublicKey,
 }
 
