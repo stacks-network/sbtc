@@ -262,8 +262,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 ///   information on the completed deposit to be sent to Emily.
 ///   In case of a database error, returns an `Error`
 #[tracing::instrument(skip_all, fields(
-    bitcoin_txid = %event.outpoint.txid,
-    bitcoin_vout = event.outpoint.vout,
+    bitcoin_outpoint = %event.outpoint,
     stacks_txid = %event.txid
 ))]
 async fn handle_completed_deposit(
