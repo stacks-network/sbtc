@@ -141,6 +141,18 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub dkg_begin_pause: Option<Duration>,
 }
 
+/// This struct is represents a signature hash and the public key that
+/// locks it.
+///
+/// The struct is only created when the signer has validated the bitcoin
+/// transaction and has agreed to sign the sighash.
+struct AcceptedSigHash {
+    /// The signature hash to be signed.
+    sighash: SigHash,
+    /// The public key that is used to locked the above signature hash.
+    public_key: PublicKeyXOnly,
+}
+
 /// This function defines which messages this event loop is interested
 /// in.
 fn run_loop_message_filter(signal: &SignerSignal) -> bool {
@@ -578,11 +590,10 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let sig_hash = &request.message;
-                let locking_aggregate_key =
-                    Self::validate_bitcoin_sign_request(&db, sig_hash).await;
+                let accepted_sighash =
+                    Self::validate_bitcoin_sign_request(&db, &request.message).await;
 
-                let validation_status = match &locking_aggregate_key {
+                let validation_status = match &accepted_sighash {
                     Ok(_) => "success",
                     Err(Error::SigHashConversion(_)) => "improper-sighash",
                     Err(Error::UnknownSigHash(_)) => "unknown-sighash",
@@ -598,14 +609,12 @@ where
                 )
                 .increment(1);
 
-                let id = validation_sighash?.into();
-                let (maybe_aggregate_key, _) = self
-                    .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
-                    .await?;
+                let accepted_sighash = accepted_sighash?;
+                let id = accepted_sighash.sighash.into();
 
                 let state_machine = SignerStateMachine::load(
                     &db,
-                    maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+                    accepted_sighash.public_key,
                     self.threshold,
                     self.signer_private_key,
                 )
@@ -623,8 +632,10 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let sighash = Self::validate_bitcoin_sign_request(&db, &request.message).await?;
-                let id = sighash.into();
+                let accepted_sighash =
+                    Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+
+                let id = accepted_sighash.sighash.into();
                 let response = self
                     .relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await;
@@ -729,7 +740,7 @@ where
 
     /// Check whether we will sign the message, which is supposed to be a
     /// bitcoin sighash
-    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<(PublicKeyXOnly, SigHash), Error>
+    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<AcceptedSigHash, Error>
     where
         D: DbRead,
     {
@@ -738,7 +749,7 @@ where
             .into();
 
         match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
-            Some((true, public_key)) => Ok(public_key),
+            Some((true, public_key)) => Ok(AcceptedSigHash { public_key, sighash }),
             Some((false, _)) => Err(Error::InvalidSigHash(sighash)),
             None => Err(Error::UnknownSigHash(sighash)),
         }

@@ -409,6 +409,7 @@ pub async fn new_state_machine_per_valid_sighash() {
         validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
         is_valid_tx: true,
         will_sign: true,
+        aggregate_key: PublicKey::from_private_key(&tx_signer.signer_private_key).into(),
     };
 
     db.write_bitcoin_txs_sighashes(&[row]).await.unwrap();
