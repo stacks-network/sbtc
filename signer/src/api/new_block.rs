@@ -118,13 +118,11 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
     };
     let block_id = new_block_event.index_block_hash;
 
-    {
-        let span = tracing::span::Span::current();
-        span.record("block_hash", stacks_chaintip.block_hash.to_hex());
-        span.record("block_height", stacks_chaintip.block_height);
-        span.record("parent_hash", stacks_chaintip.parent_hash.to_hex());
-        span.record("bitcoin_anchor", stacks_chaintip.bitcoin_anchor.to_string());
-    }
+    let span = tracing::span::Span::current();
+    span.record("block_hash", stacks_chaintip.block_hash.to_hex());
+    span.record("block_height", stacks_chaintip.block_height);
+    span.record("parent_hash", stacks_chaintip.parent_hash.to_hex());
+    span.record("bitcoin_anchor", stacks_chaintip.bitcoin_anchor.to_string());
 
     tracing::debug!("received a new block event from stacks-core");
 
