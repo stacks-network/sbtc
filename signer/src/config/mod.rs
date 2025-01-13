@@ -8,6 +8,7 @@ use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
 use std::num::NonZeroU16;
+use std::num::NonZeroU32;
 use std::num::NonZeroU64;
 use std::path::Path;
 use url::Url;
@@ -265,7 +266,7 @@ pub struct SignerConfig {
     /// and the number of DKG shares is less than this number, the coordinator
     /// will continue to run DKG rounds until this number of rounds is reached,
     /// assuming the conditions for `dkg_rerun_bitcoin_height` are also met.
-    pub dkg_rounds_target: Option<NonZeroU16>,
+    pub dkg_rounds_target: Option<NonZeroU32>,
 }
 
 impl Validatable for SignerConfig {
@@ -537,7 +538,7 @@ mod tests {
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
         assert_eq!(
             settings.signer.dkg_rounds_target,
-            Some(NonZeroU16::new(1).unwrap())
+            Some(NonZeroU32::new(1).unwrap())
         );
     }
 
@@ -686,14 +687,14 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(
             settings.signer.dkg_rounds_target,
-            Some(NonZeroU16::new(1).unwrap())
+            Some(NonZeroU32::new(1).unwrap())
         );
 
         std::env::set_var("SIGNER_SIGNER__DKG_ROUNDS_TARGET", "42");
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(
             settings.signer.dkg_rounds_target,
-            Some(NonZeroU16::new(42).unwrap())
+            Some(NonZeroU32::new(42).unwrap())
         );
     }
 
