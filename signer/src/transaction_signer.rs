@@ -500,6 +500,7 @@ where
                 }
 
                 let storage = self.context.get_storage();
+                let config = self.context.config();
 
                 // Get the bitcoin block at the chain tip so that we know the height
                 let bitcoin_chain_tip_block = storage
@@ -510,25 +511,33 @@ where
                 // Get the number of DKG shares that have been stored
                 let dkg_share_entry_count = storage.get_encrypted_dkg_share_count().await?;
 
-                // Get the minimum block height for rerunning DKG
-                let dkg_rerun_min_block_height =
-                    self.context.config().signer.dkg_rerun_bitcoin_height;
+                // Get DKG configuration parameters
+                let dkg_rerun_min_block_height = config.signer.dkg_rerun_bitcoin_height;
+                let dkg_rounds_target = config.signer.dkg_rounds_target;
 
                 // Determine the action based on the DKG share count and the rerun height (if configured)
-                match (dkg_share_entry_count, dkg_rerun_min_block_height) {
-                    (0, _) => {
+                match (
+                    dkg_share_entry_count,
+                    dkg_rounds_target,
+                    dkg_rerun_min_block_height,
+                ) {
+                    (0, _, _) => {
                         tracing::info!("no DKG shares exist; proceeding with DKG");
                     }
-                    (1, Some(dkg_rerun_height)) => {
-                        if bitcoin_chain_tip_block.block_height < dkg_rerun_height.get() {
+                    (current, target, Some(dkg_rerun_height)) => {
+                        if current >= target.get() {
                             tracing::warn!(
-                                "bitcoin chain tip is below the minimum height for DKG rerun; aborting"
+                                "The target number of DKG shares has been reached; aborting"
                             );
                             return Err(Error::DkgHasAlreadyRun);
                         }
-                        tracing::info!("a single DKG entry exists and rerun height has been met; proceeding with DKG");
+                        if bitcoin_chain_tip_block.block_height < dkg_rerun_height.get() {
+                            tracing::warn!("bitcoin chain tip is below the minimum height for DKG rerun; aborting");
+                            return Err(Error::DkgHasAlreadyRun);
+                        }
+                        tracing::info!("DKG rerun height has been met and we are below the target number of rounds; proceeding with DKG");
                     }
-                    (1, None) => {
+                    (1, _, None) => {
                         tracing::warn!("attempt to run multiple DKGs without a configured re-run height; aborting");
                         return Err(Error::DkgHasAlreadyRun);
                     }

@@ -8,6 +8,7 @@ use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
 use std::num::NonZeroU16;
+use std::num::NonZeroU32;
 use std::num::NonZeroU64;
 use std::path::Path;
 use url::Url;
@@ -260,6 +261,12 @@ pub struct SignerConfig {
     /// this block height at most once. If DKG has never been run, this
     /// configuration has no effect.
     pub dkg_rerun_bitcoin_height: Option<NonZeroU64>,
+
+    /// Configures a target number of DKG rounds to run/accept. If this is set
+    /// and the number of DKG shares is less than this number, the coordinator
+    /// will continue to run DKG rounds until this number of rounds is reached,
+    /// assuming the conditions for `dkg_rerun_bitcoin_height` are also met.
+    pub dkg_rounds_target: NonZeroU32,
 }
 
 impl Validatable for SignerConfig {
@@ -398,6 +405,7 @@ impl Settings {
             "signer.max_deposits_per_bitcoin_tx",
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         )?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_rounds_target", 1)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
