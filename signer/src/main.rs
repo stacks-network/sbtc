@@ -323,8 +323,9 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         .saturating_mul(ctx.config().signer.max_deposits_per_bitcoin_tx.get() as u64 + 1)
         .min(signer::MAX_SIGNER_STATE_MACHINES);
     // The _ as usize cast is fine, since we know that the
-    // max_state_machines is less than u32::MAX, and we only support
-    // running this binary on 32 or 64 bit CPUs.
+    // max_state_machines <= MAX_SIGNER_STATE_MACHINES and that is less
+    // than u32::MAX. Moreover, we only support running this binary on 32
+    // or 64 bit CPUs.
     let max_state_machines =
         NonZeroUsize::new(max_state_machines as usize).ok_or(Error::TypeConversion)?;
 
