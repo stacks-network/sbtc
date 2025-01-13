@@ -58,8 +58,8 @@ async fn test_context() -> TestContext<
 const CREATE_DEPOSIT_VALID: &str =
     include_str!("../../../emily/handler/tests/fixtures/create-deposit-valid.json");
 
-const COMPLETED_DEPOSIT_WEBHOOK: &str =
-    include_str!("../../tests/fixtures/completed-deposit-event.json");
+const COMPLETED_VALID_DEPOSIT_WEBHOOK: &str =
+    include_str!("../../../emily/handler/tests/fixtures/completed-valid-deposit-event.json");
 
 const WITHDRAWAL_ACCEPT_WEBHOOK: &str =
     include_str!("../../tests/fixtures/withdrawal-accept-event.json");
@@ -110,7 +110,7 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         .await
         .expect("Wiping Emily database in test setup failed.");
 
-    let body = COMPLETED_DEPOSIT_WEBHOOK.to_string();
+    let body = COMPLETED_VALID_DEPOSIT_WEBHOOK.to_string();
     let deposit_completed_event = get_registry_event_from_webhook(&body, |event| match event {
         RegistryEvent::CompletedDeposit(event) => Some(event),
         _ => panic!("Expected CompletedDeposit event"),
