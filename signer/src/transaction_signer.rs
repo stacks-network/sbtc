@@ -38,8 +38,9 @@ use crate::storage::model::SigHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
+use crate::wsts_state_machine::StateMachineId;
 
-use bitcoin::hashes::Hash;
+use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
 use futures::StreamExt;
 use lru::LruCache;
@@ -137,35 +138,6 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// The time the signer should pause for after receiving a DKG begin message
     /// before relaying to give the other signers time to catch up.
     pub dkg_begin_pause: Option<Duration>,
-}
-
-/// An identifier for signer state machines.
-///
-/// Signer state machines are used for either DKG or signing rounds on
-/// bitcoin. For DKG, the state machine is identified by the bitcoin block
-/// hash bytes while for the signing rounds we identify the state machine
-/// by the sighash bytes.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StateMachineId([u8; 32]);
-
-impl From<&model::BitcoinBlockHash> for StateMachineId {
-    fn from(value: &model::BitcoinBlockHash) -> Self {
-        StateMachineId(value.to_byte_array())
-    }
-}
-
-impl From<SigHash> for StateMachineId {
-    fn from(value: SigHash) -> Self {
-        StateMachineId(value.to_byte_array())
-    }
-}
-
-#[cfg(any(test, feature = "testing"))]
-impl StateMachineId {
-    /// Create a new Id
-    pub fn new(value: [u8; 32]) -> Self {
-        StateMachineId(value)
-    }
 }
 
 /// This function defines which messages this event loop is interested

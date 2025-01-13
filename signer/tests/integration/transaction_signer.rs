@@ -37,8 +37,8 @@ use signer::testing::context::*;
 use signer::testing::storage::model::TestData;
 use signer::transaction_signer::ChainTipStatus;
 use signer::transaction_signer::MsgChainTipReport;
-use signer::transaction_signer::StateMachineId;
 use signer::transaction_signer::TxSignerEventLoop;
+use signer::wsts_state_machine::StateMachineId;
 use wsts::net::DkgBegin;
 use wsts::net::NonceRequest;
 
