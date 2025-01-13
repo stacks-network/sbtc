@@ -317,10 +317,10 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     let network = P2PNetwork::new(&ctx);
 
     // This is the maximum number of inputs that can be signed during the
-    // tenure of a single bitcoin transaction. We know that it is non-zero
-    // because MAX_MEMPOOL_PACKAGE_TX_COUNT is non-zero.
+    // tenure of a single bitcoin transaction plus one for DKG.
     let max_state_machines = signer::MAX_MEMPOOL_PACKAGE_TX_COUNT
         .saturating_mul(ctx.config().signer.max_deposits_per_bitcoin_tx.get() as u64 + 1)
+        .saturating_add(1)
         .min(signer::MAX_SIGNER_STATE_MACHINES);
     // The _ as usize cast is fine, since we know that the
     // max_state_machines <= MAX_SIGNER_STATE_MACHINES and that is less
