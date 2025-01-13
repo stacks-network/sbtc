@@ -699,7 +699,7 @@ async fn overwrite_deposit(status: Status, should_reject: bool) {
     // Setup test deposit transaction.
     let DepositTxnData {
         reclaim_script, deposit_script, ..
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let create_deposit_body = CreateDepositRequestBody {
         bitcoin_tx_output_index,
