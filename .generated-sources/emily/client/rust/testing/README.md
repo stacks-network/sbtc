@@ -45,7 +45,7 @@ Class | Method | HTTP request | Description
 *DepositApi* | [**create_deposit**](docs/DepositApi.md#create_deposit) | **POST** /deposit | Create deposit handler.
 *DepositApi* | [**get_deposit**](docs/DepositApi.md#get_deposit) | **GET** /deposit/{txid}/{index} | Get deposit handler.
 *DepositApi* | [**get_deposits**](docs/DepositApi.md#get_deposits) | **GET** /deposit | Get deposits handler.
-*DepositApi* | [**get_deposits_for_recipient**](docs/DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits handler.
+*DepositApi* | [**get_deposits_for_recipient**](docs/DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits by recipient handler.
 *DepositApi* | [**get_deposits_for_transaction**](docs/DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
 *DepositApi* | [**update_deposits**](docs/DepositApi.md#update_deposits) | **PUT** /deposit | Update deposits handler.
 *HealthApi* | [**check_health**](docs/HealthApi.md#check_health) | **GET** /health | Get health handler.

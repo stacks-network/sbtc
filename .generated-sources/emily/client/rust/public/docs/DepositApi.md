@@ -7,7 +7,7 @@ Method | HTTP request | Description
 [**create_deposit**](DepositApi.md#create_deposit) | **POST** /deposit | Create deposit handler.
 [**get_deposit**](DepositApi.md#get_deposit) | **GET** /deposit/{txid}/{index} | Get deposit handler.
 [**get_deposits**](DepositApi.md#get_deposits) | **GET** /deposit | Get deposits handler.
-[**get_deposits_for_recipient**](DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits handler.
+[**get_deposits_for_recipient**](DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits by recipient handler.
 [**get_deposits_for_transaction**](DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
 [**update_deposits**](DepositApi.md#update_deposits) | **PUT** /deposit | Update deposits handler.
 
@@ -103,7 +103,7 @@ No authorization required
 ## get_deposits_for_recipient
 
 > models::GetDepositsResponse get_deposits_for_recipient(recipient, next_token, page_size)
-Get deposits handler.
+Get deposits by recipient handler.
 
 ### Parameters
 
