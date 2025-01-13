@@ -141,11 +141,11 @@ async fn get_withdrawals() {
         expected_withdrawal_infos.push(expected_withdrawal_info);
     }
 
-    let chunksize: i32 = 2;
+    let chunksize: u16 = 2;
     // If the number of elements is an exact multiple of the chunk size the "final"
     // query will still have a next token, and the next query will now have a next
     // token and will return no additional data.
-    let expected_chunks = expected_withdrawal_infos.len() as i32 / chunksize + 1;
+    let expected_chunks = expected_withdrawal_infos.len() as u16 / chunksize + 1;
 
     // Act.
     // ----
@@ -159,7 +159,7 @@ async fn get_withdrawals() {
             &configuration,
             status,
             next_token.as_ref().and_then(|o| o.as_deref()),
-            Some(chunksize),
+            Some(chunksize as i32),
         )
         .await
         .expect("Received an error after making a valid get withdrawal api call.");
@@ -173,13 +173,13 @@ async fn get_withdrawals() {
 
     // Assert.
     // -------
-    assert_eq!(expected_chunks, gotten_withdrawal_info_chunks.len() as i32);
+    assert_eq!(expected_chunks, gotten_withdrawal_info_chunks.len() as u16);
     let max_chunk_size = gotten_withdrawal_info_chunks
         .iter()
         .map(|chunk| chunk.len())
         .max()
         .unwrap();
-    assert!(chunksize >= max_chunk_size as i32);
+    assert!(chunksize >= max_chunk_size as u16);
 
     let mut gotten_withdrawal_infos = gotten_withdrawal_info_chunks
         .into_iter()
