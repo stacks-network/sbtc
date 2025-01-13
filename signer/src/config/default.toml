@@ -213,6 +213,14 @@ sbtc_bitcoin_start_height = 101
 # Environment: SIGNER_SIGNER__DKG_RERUN_BITCOIN_HEIGHT
 # dkg_rerun_bitcoin_height = 1234
 
+# When defined, the signer will attempt/allow multiple rounds of DKG until the
+# specified number of rounds have been completed. Please only use this parameter
+# when instructed to by the sBTC team.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_ROUNDS_TARGET
+# dkg_rounds_target = 1
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

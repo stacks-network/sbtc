@@ -157,6 +157,14 @@ prometheus_exporter_endpoint = "0.0.0.0:9184"
 # Environment: SIGNER_SIGNER__DKG_RERUN_BITCOIN_HEIGHT
 dkg_rerun_bitcoin_height = 880088
 
+# When defined, the signer will attempt/allow multiple rounds of DKG until the
+# specified number of rounds have been completed. Please only use this parameter
+# when instructed to by the sBTC team.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_ROUNDS_TARGET
+dkg_rounds_target = 2
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

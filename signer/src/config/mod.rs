@@ -260,6 +260,12 @@ pub struct SignerConfig {
     /// this block height at most once. If DKG has never been run, this
     /// configuration has no effect.
     pub dkg_rerun_bitcoin_height: Option<NonZeroU64>,
+
+    /// Configures a target number of DKG rounds to run/accept. If this is set
+    /// and the number of DKG shares is less than this number, the coordinator
+    /// will continue to run DKG rounds until this number of rounds is reached,
+    /// assuming the conditions for `dkg_rerun_bitcoin_height` are also met.
+    pub dkg_rounds_target: Option<NonZeroU16>,
 }
 
 impl Validatable for SignerConfig {
@@ -398,6 +404,7 @@ impl Settings {
             "signer.max_deposits_per_bitcoin_tx",
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         )?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_rounds_target", 1)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -528,6 +535,10 @@ mod tests {
             Duration::from_secs(30)
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+        assert_eq!(
+            settings.signer.dkg_rounds_target,
+            Some(NonZeroU16::new(1).unwrap())
+        );
     }
 
     #[test]
@@ -665,6 +676,24 @@ mod tests {
         assert_eq!(
             settings.signer.dkg_rerun_bitcoin_height,
             Some(NonZeroU64::new(42).unwrap())
+        );
+    }
+
+    #[test]
+    fn default_config_toml_loads_dkg_rounds_target() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.dkg_rounds_target,
+            Some(NonZeroU16::new(1).unwrap())
+        );
+
+        std::env::set_var("SIGNER_SIGNER__DKG_ROUNDS_TARGET", "42");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.dkg_rounds_target,
+            Some(NonZeroU16::new(42).unwrap())
         );
     }
 
