@@ -140,6 +140,11 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
 }
 
 /// An identifier for signer state machines.
+///
+/// Signer state machines are used for either DKG or signing rounds on
+/// bitcoin. For DKG, the state machine is identified by the bitcoin block
+/// hash bytes while for the signing rounds we identify the state machine
+/// by the sighash bytes.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StateMachineId([u8; 32]);
 

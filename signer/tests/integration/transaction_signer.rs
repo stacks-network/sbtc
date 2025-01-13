@@ -383,26 +383,17 @@ pub async fn assert_new_state_machine_per_valid_sighash() {
         dkg_begin_pause: None,
     };
 
+    // We need to convince the signer event loop that it should accept the
+    // message that we are going to send it.
     let report = MsgChainTipReport {
         sender_is_coordinator: true,
         chain_tip_status: ChainTipStatus::Canonical,
         chain_tip: BitcoinBlockHash::from([0; 32]),
     };
 
+    // The message that we will send is for the following sighash. We'll
+    // need to make sure that it is in our database first
     let sighash_message = [1; 32];
-
-    let mut nonce_request_msg = WstsMessage {
-        txid: bitcoin::Txid::all_zeros(),
-        inner: wsts::net::Message::NonceRequest(NonceRequest {
-            dkg_id: 1,
-            sign_id: 1,
-            sign_iter_id: 1,
-            message: sighash_message.to_vec(),
-            signature_type: wsts::net::SignatureType::Schnorr,
-        }),
-    };
-    let msg_public_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
-
     let row = BitcoinTxSigHash {
         txid: BitcoinTxId::from([0; 32]),
         chain_tip: BitcoinBlockHash::from([0; 32]),
@@ -415,9 +406,22 @@ pub async fn assert_new_state_machine_per_valid_sighash() {
         will_sign: true,
     };
 
-    let id = StateMachineId::from(row.sighash);
     db.write_bitcoin_txs_sighashes(&[row]).await.unwrap();
 
+    // Now for the nonce request message
+    let mut nonce_request_msg = WstsMessage {
+        txid: bitcoin::Txid::all_zeros(),
+        inner: wsts::net::Message::NonceRequest(NonceRequest {
+            dkg_id: 1,
+            sign_id: 1,
+            sign_iter_id: 1,
+            message: sighash_message.to_vec(),
+            signature_type: wsts::net::SignatureType::Schnorr,
+        }),
+    };
+    let msg_public_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
+
+    // Sanity check, the state machines cache should be empty.
     assert!(tx_signer.wsts_state_machines.is_empty());
 
     tx_signer
@@ -430,8 +434,16 @@ pub async fn assert_new_state_machine_per_valid_sighash() {
         .await
         .unwrap();
 
-    assert!(tx_signer.wsts_state_machines.contains(&id));
+    // We should have a state machine associated with the sighash nonce
+    // request message that we just received.
+    let id1 = StateMachineId::new(sighash_message);
+    assert!(tx_signer.wsts_state_machines.contains(&id1));
+    assert_eq!(tx_signer.wsts_state_machines.len(), 1);
 
+    // Now let's see what happens when we receive a nonce request message
+    // for a sighash that we do not know about. Since the nonce request is
+    // not in the database we should return an error, and the state machine
+    // should not be in the local cache.
     let random_message: [u8; 32] = Faker.fake_with_rng(&mut rng);
     match &mut nonce_request_msg.inner {
         wsts::net::Message::NonceRequest(NonceRequest { message, .. }) => {
@@ -449,9 +461,11 @@ pub async fn assert_new_state_machine_per_valid_sighash() {
         )
         .await;
 
+    let id2 = StateMachineId::new(random_message);
     assert!(response.is_err());
-    let id = StateMachineId::new(random_message);
-    assert!(!tx_signer.wsts_state_machines.contains(&id));
+    assert!(tx_signer.wsts_state_machines.contains(&id1));
+    assert!(!tx_signer.wsts_state_machines.contains(&id2));
+    assert_eq!(tx_signer.wsts_state_machines.len(), 1);
 
     testing::storage::drop_db(db).await;
 }
