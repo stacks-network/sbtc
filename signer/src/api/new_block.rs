@@ -453,7 +453,7 @@ mod tests {
 
     const ROTATE_KEYS_WEBHOOK: &str = include_str!("../../tests/fixtures/rotate-keys-event.json");
 
-    const ROTATE_KEYS_AND_INVALID_WEBHOOK: &str =
+    const ROTATE_KEYS_AND_INVALID_EVENT_WEBHOOK: &str =
         include_str!("../../tests/fixtures/rotate-keys-and-invalid-event.json");
 
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
@@ -1002,15 +1002,14 @@ mod tests {
         })
         .await;
 
-        let state = ApiState { ctx: ctx.clone() };
-        let app = get_router().with_state(state);
+        let state = State(ApiState { ctx: ctx.clone() });
+        let body = ROTATE_KEYS_AND_INVALID_EVENT_WEBHOOK.to_string();
 
         let db = ctx.inner_storage();
         // We don't have anything here yet
         assert!(db.lock().await.rotate_keys_transactions.is_empty());
 
-        let new_block_event =
-            serde_json::from_str::<NewBlockEvent>(ROTATE_KEYS_AND_INVALID_WEBHOOK).unwrap();
+        let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
 
         // The first event is an invalid one
         let failing_event = new_block_event.events.first().unwrap();
@@ -1025,16 +1024,10 @@ mod tests {
         )
         .is_err());
 
-        let request = Request::builder()
-            .uri("/new_block")
-            .method(Method::POST)
-            .body(Body::from(ROTATE_KEYS_AND_INVALID_WEBHOOK))
-            .unwrap();
-
-        let response = app.oneshot(request).await.unwrap();
+        let res = new_block_handler(state, body).await;
 
         // But we expect the second (valid) event to be processed anyway
-        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(res, StatusCode::OK);
         assert!(!db.lock().await.rotate_keys_transactions.is_empty());
     }
 }
