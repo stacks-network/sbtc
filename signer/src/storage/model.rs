@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
+use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
@@ -1078,12 +1079,202 @@ pub struct BitcoinWithdrawalOutput {
     pub is_valid_tx: bool,
 }
 
+impl From<sbtc::events::StacksTxid> for StacksTxId {
+    fn from(value: sbtc::events::StacksTxid) -> Self {
+        Self(blockstack_lib::burnchains::Txid(value.0))
+    }
+}
+
+impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
+    fn from(sbtc_event: sbtc::events::CompletedDepositEvent) -> CompletedDepositEvent {
+        let sweep_hash = BitcoinBlockHash::from(sbtc_event.sweep_block_hash);
+        let txid = StacksTxId::from(sbtc_event.txid.0);
+        CompletedDepositEvent {
+            txid,
+            block_id: sbtc_event.block_id.into(),
+            amount: sbtc_event.amount,
+            outpoint: sbtc_event.outpoint,
+            sweep_block_hash: sweep_hash,
+            sweep_block_height: sbtc_event.sweep_block_height,
+            sweep_txid: sbtc_event.sweep_txid.into(),
+        }
+    }
+}
+
+impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
+    fn from(sbtc_event: sbtc::events::WithdrawalAcceptEvent) -> WithdrawalAcceptEvent {
+        WithdrawalAcceptEvent {
+            txid: sbtc_event.txid.into(),
+            block_id: sbtc_event.block_id.into(),
+            request_id: sbtc_event.request_id,
+            signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
+            outpoint: sbtc_event.outpoint,
+            fee: sbtc_event.fee,
+            sweep_block_hash: sbtc_event.sweep_block_hash.into(),
+            sweep_block_height: sbtc_event.sweep_block_height,
+            sweep_txid: sbtc_event.sweep_txid.into(),
+        }
+    }
+}
+
+impl From<sbtc::events::WithdrawalRejectEvent> for WithdrawalRejectEvent {
+    fn from(sbtc_event: sbtc::events::WithdrawalRejectEvent) -> WithdrawalRejectEvent {
+        WithdrawalRejectEvent {
+            txid: sbtc_event.txid.into(),
+            block_id: sbtc_event.block_id.into(),
+            request_id: sbtc_event.request_id,
+            signer_bitmap: BitArray::new(sbtc_event.signer_bitmap.to_le_bytes()),
+        }
+    }
+}
+
+impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
+    fn from(sbtc_event: sbtc::events::WithdrawalCreateEvent) -> WithdrawalCreateEvent {
+        WithdrawalCreateEvent {
+            txid: sbtc_event.txid.into(),
+            block_id: sbtc_event.block_id.into(),
+            request_id: sbtc_event.request_id,
+            amount: sbtc_event.amount,
+            sender: sbtc_event.sender.into(),
+            recipient: sbtc_event.recipient.into(),
+            max_fee: sbtc_event.max_fee,
+            block_height: sbtc_event.block_height,
+        }
+    }
+}
+
+impl From<sbtc::events::KeyRotationEvent> for KeyRotationEvent {
+    fn from(sbtc_event: sbtc::events::KeyRotationEvent) -> KeyRotationEvent {
+        KeyRotationEvent {
+            new_keys: sbtc_event
+                .new_keys
+                .into_iter()
+                .map(|key| key.into())
+                .collect(),
+            new_address: sbtc_event.new_address.into(),
+            new_aggregate_pubkey: sbtc_event.new_aggregate_pubkey.into(),
+            new_signature_threshold: sbtc_event.new_signature_threshold,
+        }
+    }
+}
+
+/// This is the event that is emitted from the `rotate-keys`
+/// public function in the sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct KeyRotationEvent {
+    /// The new set of public keys for all known signers during this
+    /// PoX cycle.
+    pub new_keys: Vec<PublicKey>,
+    /// The address that deployed the contract.
+    pub new_address: StacksPrincipal,
+    /// The new aggregate key created by combining the above public keys.
+    pub new_aggregate_pubkey: PublicKey,
+    /// The number of signatures required for the multi-sig wallet.
+    pub new_signature_threshold: u16,
+}
+
+/// This is the event that is emitted from the `create-withdrawal-request`
+/// public function in sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct CompletedDepositEvent {
+    /// The transaction id of the stacks transaction that generated this
+    /// event.
+    pub txid: StacksTxId,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockHash,
+    /// This is the amount of sBTC to mint to the intended recipient.
+    pub amount: u64,
+    /// This is the outpoint of the original bitcoin deposit transaction.
+    pub outpoint: OutPoint,
+    /// The bitcoin block hash where the sweep transaction was included.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The bitcoin block height where the sweep transaction was included.
+    pub sweep_block_height: u64,
+    /// The transaction id of the bitcoin transaction that fulfilled the
+    /// deposit.
+    pub sweep_txid: BitcoinTxId,
+}
+
+/// This is the event that is emitted from the `create-withdrawal-request`
+/// public function in sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct WithdrawalCreateEvent {
+    /// The transaction id of the stacks transaction that generated this
+    /// event.
+    pub txid: StacksTxId,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockHash,
+    /// This is the unique identifier of the withdrawal request.
+    pub request_id: u64,
+    /// This is the amount of sBTC that is locked and requested to be
+    /// withdrawal as sBTC.
+    pub amount: u64,
+    /// This is the principal who has their sBTC locked up.
+    pub sender: StacksPrincipal,
+    /// This is the address to send the BTC to when fulfilling the
+    /// withdrawal request.
+    pub recipient: ScriptPubKey,
+    /// This is the maximum amount of BTC "spent" to the miners for the
+    /// transaction fee.
+    pub max_fee: u64,
+    /// The block height of the bitcoin blockchain when the stacks
+    /// transaction that emitted this event was executed.
+    pub block_height: u64,
+}
+/// This is the event that is emitted from the `complete-withdrawal-accept`
+/// public function in sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct WithdrawalAcceptEvent {
+    /// The transaction id of the stacks transaction that generated this
+    /// event.
+    pub txid: StacksTxId,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockHash,
+    /// This is the unique identifier of the withdrawal request.
+    pub request_id: u64,
+    /// The bitmap of how the signers voted for the withdrawal request.
+    /// Here, a 1 (or true) implies that the signer did *not* vote to
+    /// accept the request.
+    pub signer_bitmap: BitArray<[u8; 16]>,
+    /// This is the outpoint for the bitcoin transaction that serviced the
+    /// request.
+    pub outpoint: OutPoint,
+    /// This is the fee that was spent to the bitcoin miners to confirm the
+    /// withdrawal request.
+    pub fee: u64,
+    /// The bitcoin block hash where the sweep transaction was included.
+    pub sweep_block_hash: BitcoinBlockHash,
+    /// The bitcoin block height where the sweep transaction was included.
+    pub sweep_block_height: u64,
+    /// The transaction id of the bitcoin transaction that fulfilled the
+    /// withdrawal request.
+    pub sweep_txid: BitcoinTxId,
+}
+
+/// This is the event that is emitted from the `complete-withdrawal-reject`
+/// public function in sbtc-registry smart contract.
+#[derive(Debug, Clone)]
+pub struct WithdrawalRejectEvent {
+    /// The transaction id of the stacks transaction that generated this
+    /// event.
+    pub txid: StacksTxId,
+    /// The block ID of the block for this event.
+    pub block_id: StacksBlockHash,
+    /// This is the unique identifier of user created the withdrawal
+    /// request.
+    pub request_id: u64,
+    /// The bitmap of how the signers voted for the withdrawal request.
+    /// Here, a 1 (or true) implies that the signer did *not* vote to
+    /// accept the request.
+    pub signer_bitmap: BitArray<[u8; 16]>,
+}
+
 #[cfg(test)]
 mod tests {
     use fake::Fake;
     use rand::SeedableRng;
 
-    use crate::stacks::events::FromLittleEndianOrder;
+    use sbtc::events::FromLittleEndianOrder;
 
     use super::*;
 

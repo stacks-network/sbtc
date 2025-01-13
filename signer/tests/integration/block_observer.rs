@@ -59,7 +59,6 @@ use crate::setup::TestSweepSetup;
 use crate::transaction_coordinator::mock_reqwests_status_code_error;
 use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
-use crate::DATABASE_NUM;
 
 pub const GET_POX_INFO_JSON: &str =
     include_str!("../../tests/fixtures/stacksapi-get-pox-info-test-data.json");
@@ -77,8 +76,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // database.
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
@@ -174,8 +172,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     // Our database shouldn't have any deposit requests. In fact, our
     // database doesn't have any blockchain data at all.
-    let db = &ctx.storage;
-    assert!(db
+    let db2 = &ctx.storage;
+    assert!(db2
         .get_bitcoin_canonical_chain_tip()
         .await
         .unwrap()
@@ -192,7 +190,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     }
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
-    let deposit_requests = db
+    let deposit_requests = db2
         .get_deposit_requests(&chain_tip_info.hash.into(), 100)
         .await
         .unwrap();
@@ -206,13 +204,13 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // We need to wait for the bitcoin-core to send us all the
     // notifications so that we are up to date with the expected chain tip.
     // For that we just wait until we know that we're up-to-date
-    let mut current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+    let mut current_chain_tip = db2.get_bitcoin_canonical_chain_tip().await.unwrap();
 
     let waiting_fut = async {
-        let db = db.clone();
+        let db2 = db2.clone();
         while current_chain_tip != Some(chain_tip) {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            current_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap();
+            current_chain_tip = db2.get_bitcoin_canonical_chain_tip().await.unwrap();
         }
     };
 
@@ -223,12 +221,12 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // Okay now lets check if we have these deposit requests in our
     // database. It should also have bitcoin blockchain data
 
-    assert!(db
+    assert!(db2
         .get_bitcoin_canonical_chain_tip()
         .await
         .unwrap()
         .is_some());
-    let deposit_requests = db.get_deposit_requests(&chain_tip, 100).await.unwrap();
+    let deposit_requests = db2.get_deposit_requests(&chain_tip, 100).await.unwrap();
 
     assert_eq!(deposit_requests.len(), 2);
     let req_outpoints: HashSet<OutPoint> =
@@ -236,6 +234,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     assert!(req_outpoints.contains(&setup0.deposit_info.outpoint));
     assert!(req_outpoints.contains(&setup1.deposit_info.outpoint));
+
+    testing::storage::drop_db(db).await;
 }
 
 /// Integration test for bitcoin and stack blocks link.
@@ -248,8 +248,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 async fn link_blocks() {
     setup_logging("info", true);
 
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let stacks_client = StacksClient::new(Url::parse("http://localhost:20443").unwrap()).unwrap();
 
@@ -394,8 +393,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // 1. Create a database, an associated context for the block observer.
 
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
@@ -581,6 +579,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         accept_threshold: 4,
         num_signers: 7,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
 
     let mut transactions = requests.construct_transactions().unwrap();
@@ -661,17 +660,16 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(false, SbtcLimits::default(); "no contracts, default limits")]
-#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None); "no contracts, total cap limit")]
+#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "no contracts, total cap limit")]
 #[test_case::test_case(true, SbtcLimits::default(); "deployed contracts, default limits")]
-#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None); "deployed contracts, total cap limit")]
+#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "deployed contracts, total cap limit")]
 #[tokio::test]
 async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcLimits) {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
     let (_, faucet) = regtest::initialize_blockchain();
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
@@ -822,8 +820,7 @@ async fn next_headers_to_process_gets_all_headers() {
     const START_HEIGHT: u64 = 103;
 
     let (_, faucet) = regtest::initialize_blockchain();
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -882,8 +879,7 @@ async fn next_headers_to_process_ignores_known_headers() {
     // with a real bitcoin core client and a real connection to our
     // database.
     let (rpc, _) = regtest::initialize_blockchain();
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let context = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()

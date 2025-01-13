@@ -33,7 +33,7 @@ p256k1.workspace = true
 prost.workspace = true
 rand.workspace = true
 reqwest.workspace = true
-sbtc = { path = "../sbtc", default-features = false }
+sbtc = { path = "../sbtc", features = ["webhooks"] }
 serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
@@ -52,7 +52,7 @@ tracing-attributes.workspace = true
 tracing-subscriber = { workspace = true }
 url.workspace = true
 # wsts.workspace = true
-wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "ebd7d7775ad5e44cdbf4f5c1fb468bdf6c467265" }
+wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "b7c009e4903bcf03351847a9341c25a26d36c042" }
 hex.workspace = true
 cfg-if = "1.0"
 include_dir = "0.7.4"
@@ -80,6 +80,7 @@ test-case = "3.1"
 test-log = { version = "0.2.16", default-features = false, features = ["trace"] }
 toml_edit = "0.22.22"
 tempfile = "3.6"
+tower = { version = "0.5.2", features = ["util"] }
 
 [build-dependencies]
 tonic-build.workspace = true

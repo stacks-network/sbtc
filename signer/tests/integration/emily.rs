@@ -1,4 +1,3 @@
-use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use bitcoin::block::Header;
@@ -62,7 +61,6 @@ use test_log::test;
 use url::Url;
 
 use crate::utxo_construction::make_deposit_request;
-use crate::DATABASE_NUM;
 
 async fn run_dkg<Rng, C>(
     ctx: &C,
@@ -144,8 +142,7 @@ async fn deposit_flow() {
     let signing_threshold = 5;
     let context_window = 10;
 
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);

@@ -1,3 +1,5 @@
+use std::env;
+
 fn main() {
     set_up_build_info();
     // compile_protos();
@@ -11,11 +13,16 @@ pub fn set_up_build_info() {
 
     let version = String::from_utf8_lossy(&output.stdout);
 
-    let git_hash = std::process::Command::new("git")
+    let git_output = std::process::Command::new("git")
         .args(["rev-parse", "HEAD"])
-        .output()
-        .map(|output| String::from_utf8_lossy(&output.stdout).to_string())
-        .unwrap_or_default();
+        .output();
+
+    let git_hash = match git_output {
+        Ok(output) if output.status.success() && !output.stdout.is_empty() => {
+            String::from_utf8_lossy(&output.stdout).to_string()
+        }
+        _ => std::env::var("GIT_COMMIT").unwrap_or_default(),
+    };
 
     let env_abi = std::env::var("CARGO_CFG_TARGET_ENV").unwrap();
     let arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap();

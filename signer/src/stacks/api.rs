@@ -1418,7 +1418,6 @@ mod tests {
     use crate::stacks::wallet::get_full_tx_size;
     use crate::storage::in_memory::Store;
     use crate::storage::DbWrite;
-    use crate::testing::storage::DATABASE_NUM;
 
     use clarity::types::Address;
     use clarity::vm::types::{
@@ -1432,7 +1431,6 @@ mod tests {
 
     use super::*;
     use std::io::Read;
-    use std::sync::atomic::Ordering;
 
     fn generate_wallet(num_keys: u16, signatures_required: u16) -> SignerWallet {
         let network_kind = NetworkKind::Regtest;
@@ -1448,8 +1446,7 @@ mod tests {
     #[ignore = "This is an integration test that hasn't been setup for CI yet"]
     #[test(tokio::test)]
     async fn fetch_unknown_ancestors_works() {
-        let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-        let db = crate::testing::storage::new_test_database(db_num, true).await;
+        let db = crate::testing::storage::new_test_database().await;
 
         let settings = Settings::new_from_default_config().unwrap();
         // This is an integration test that will read from the config, which provides

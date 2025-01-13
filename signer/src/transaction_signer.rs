@@ -147,7 +147,6 @@ fn run_loop_message_filter(signal: &SignerSignal) -> bool {
             message::Payload::SignerDepositDecision(_)
                 | message::Payload::SignerWithdrawalDecision(_)
                 | message::Payload::StacksTransactionSignature(_)
-                | message::Payload::BitcoinTransactionSignAck(_)
                 | message::Payload::BitcoinPreSignAck(_)
         ),
         SignerSignal::Command(SignerCommand::Shutdown)
@@ -272,8 +271,6 @@ where
             }
             // Message types ignored by the transaction signer
             (message::Payload::StacksTransactionSignature(_), _, _)
-            | (message::Payload::BitcoinTransactionSignRequest(_), _, _)
-            | (message::Payload::BitcoinTransactionSignAck(_), _, _)
             | (message::Payload::SignerDepositDecision(_), _, _)
             | (message::Payload::SignerWithdrawalDecision(_), _, _) => (),
 
@@ -915,25 +912,9 @@ mod tests {
 
     #[ignore = "we have a test for this"]
     #[tokio::test]
-    async fn should_respond_to_bitcoin_transaction_sign_requests() {
-        test_environment()
-            .assert_should_respond_to_bitcoin_transaction_sign_requests()
-            .await;
-    }
-
-    #[ignore = "we have a test for this"]
-    #[tokio::test]
     async fn should_be_able_to_participate_in_dkg() {
         test_environment()
             .assert_should_be_able_to_participate_in_dkg()
-            .await;
-    }
-
-    #[ignore = "we have a test for this"]
-    #[tokio::test]
-    async fn should_be_able_to_participate_in_signing_round() {
-        test_environment()
-            .assert_should_be_able_to_participate_in_signing_round()
             .await;
     }
 }

@@ -181,12 +181,10 @@ where
                     .await?;
             }
             Payload::StacksTransactionSignRequest(_)
-            | Payload::BitcoinTransactionSignRequest(_)
             | Payload::BitcoinPreSignRequest(_)
             | Payload::BitcoinPreSignAck(_)
             | Payload::WstsMessage(_)
-            | Payload::StacksTransactionSignature(_)
-            | Payload::BitcoinTransactionSignAck(_) => (),
+            | Payload::StacksTransactionSignature(_) => (),
         };
 
         Ok(())
@@ -264,7 +262,7 @@ where
 
         let msg = SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
-            block_hash: withdrawal_request.block_hash.0,
+            block_hash: withdrawal_request.block_hash.into_bytes(),
             accepted: is_accepted,
             txid: withdrawal_request.txid,
         };

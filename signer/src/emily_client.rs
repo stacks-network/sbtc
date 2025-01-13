@@ -336,6 +336,9 @@ impl EmilyInteract for EmilyClient {
             .map_err(Error::EmilyApi)?;
 
         let total_cap = limits.peg_cap.and_then(|cap| cap.map(Amount::from_sat));
+        let per_deposit_minimum: Option<Amount> = limits
+            .per_deposit_minimum
+            .and_then(|min| min.map(Amount::from_sat));
         let per_deposit_cap = limits
             .per_deposit_cap
             .and_then(|cap| cap.map(Amount::from_sat));
@@ -345,6 +348,7 @@ impl EmilyInteract for EmilyClient {
 
         Ok(SbtcLimits::new(
             total_cap,
+            per_deposit_minimum,
             per_deposit_cap,
             per_withdrawal_cap,
             None,

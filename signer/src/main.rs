@@ -7,9 +7,6 @@ use std::time::Duration;
 
 use axum::http::Request;
 use axum::http::Response;
-use axum::routing::get;
-use axum::routing::post;
-use axum::Router;
 use cfg_if::cfg_if;
 use clap::Parser;
 use clap::ValueEnum;
@@ -247,9 +244,7 @@ async fn run_api(ctx: impl Context + 'static) -> Result<(), Error> {
     let request_id = Arc::new(AtomicU64::new(0));
 
     // Build the signer API application
-    let app = Router::new()
-        .route("/", get(api::status_handler))
-        .route("/new_block", post(api::new_block_handler))
+    let app = api::get_router()
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(|request: &Request<_>| {

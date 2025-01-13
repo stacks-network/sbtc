@@ -9,6 +9,10 @@ use bitcoin::XOnlyPublicKey;
 
 pub mod deposits;
 pub mod error;
+pub mod events;
+
+#[cfg(feature = "webhooks")]
+pub mod webhooks;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;

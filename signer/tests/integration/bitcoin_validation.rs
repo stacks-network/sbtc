@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::ops::Deref;
-use std::sync::atomic::Ordering;
 
 use bitcoin::hashes::Hash as _;
 use rand::rngs::OsRng;
@@ -25,7 +24,6 @@ use signer::testing::context::*;
 
 use crate::setup::{backfill_bitcoin_blocks, TestSignerSet};
 use crate::setup::{DepositAmounts, TestSweepSetup2};
-use crate::DATABASE_NUM;
 
 const TEST_FEE_RATE: f64 = 10.0;
 const TEST_CONTEXT_WINDOW: u16 = 1000;
@@ -92,8 +90,7 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_tx_per_request_set() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -176,6 +173,8 @@ async fn one_tx_per_request_set() {
     assert_eq!(deposit.prevout_output_index, deposit_outpoint.vout);
     assert!(deposit.will_sign);
     assert!(deposit.is_valid_tx);
+
+    testing::storage::drop_db(db).await;
 }
 
 /// Test that including a single invalid transaction in a set of requests
@@ -186,8 +185,7 @@ async fn one_tx_per_request_set() {
 async fn one_invalid_deposit_invalidates_tx() {
     let low_fee = 10;
 
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -295,13 +293,14 @@ async fn one_invalid_deposit_invalidates_tx() {
     assert_eq!(deposit2.prevout_output_index, outpoint.vout);
     assert!(!deposit2.will_sign);
     assert!(!deposit2.is_valid_tx);
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_withdrawal_errors_validation() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -364,13 +363,14 @@ async fn one_withdrawal_errors_validation() {
     let result = request.construct_package_sighashes(&ctx, &btc_ctx).await;
 
     assert!(result.is_err());
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn cannot_sign_deposit_is_ok() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -516,6 +516,7 @@ async fn cannot_sign_deposit_is_ok() {
         accept_threshold: 2,
         num_signers: 3,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
     assert_eq!(txs.len(), 1);
@@ -527,13 +528,14 @@ async fn cannot_sign_deposit_is_ok() {
     assert_eq!(sighashes.deposits.len(), 2);
     assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
     assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sighashes_match_from_sbtc_requests_object() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -646,6 +648,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         accept_threshold: 2,
         num_signers: 3,
         sbtc_limits: SbtcLimits::default(),
+        max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
     assert_eq!(txs.len(), 1);
@@ -657,13 +660,14 @@ async fn sighashes_match_from_sbtc_requests_object() {
     assert_eq!(sighashes.deposits.len(), 2);
     assert_eq!(sighashes.deposits[0].1, *deposit1.sighash);
     assert_eq!(sighashes.deposits[1].1, *deposit2.sighash);
+
+    testing::storage::drop_db(db).await;
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn outcome_is_independent_of_input_order() {
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = OsRng;
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -742,4 +746,6 @@ async fn outcome_is_independent_of_input_order() {
     let input_rows2 = set2.to_input_rows();
 
     assert_eq!(input_rows1, input_rows2);
+
+    testing::storage::drop_db(db).await;
 }
