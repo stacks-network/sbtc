@@ -79,6 +79,7 @@ libp2p = { version = "0.54.1", features = [
     "relay", "identify", "tls", "dns", "autonat",
     "secp256k1"
 ] }
+testcontainers = "0.23.1"
 
 [workspace.dependencies.axum]
 version = "0.7"

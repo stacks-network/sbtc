@@ -37,7 +37,7 @@ use crate::setup::TestSweepSetup;
 /// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to
 /// the bootstrap config if there is no rotate-keys transaction in the
 /// database.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let db = testing::storage::new_test_database().await;

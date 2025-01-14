@@ -772,7 +772,7 @@ async fn deploy_smart_contracts_coordinator<F>(
 ///
 /// This tests that we prefer rotate keys transactions if it's available
 /// but will use the DKG shares behavior is indeed the case.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let db = testing::storage::new_test_database().await;
@@ -901,7 +901,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 /// Some of the preconditions for this test to run successfully includes
 /// having bootstrap public keys that align with the [`Keypair`] returned
 /// from the [`testing::wallet::regtest_bootstrap_wallet`] function.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn run_dkg_from_scratch() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -1862,7 +1862,7 @@ async fn wait_for_signers(signers: &[(IntegrationTestContext, PgStore, &Keypair,
 /// This test asserts that the `get_btc_state` function returns the correct
 /// `SignerBtcState` when there are no sweep transactions available, i.e.
 /// the `last_fees` field should be `None`.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[test(tokio::test)]
 async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);

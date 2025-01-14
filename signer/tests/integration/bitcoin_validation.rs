@@ -87,7 +87,7 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn one_tx_per_request_set() {
     let db = testing::storage::new_test_database().await;

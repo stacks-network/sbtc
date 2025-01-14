@@ -162,7 +162,7 @@ fn make_rotate_key(setup: &TestRotateKeySetup) -> (RotateKeysV1, ReqContext) {
     (rotate_key, req_ctx)
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_happy_path() {
     // Normal: preamble
@@ -212,7 +212,7 @@ async fn rotate_key_validation_happy_path() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_no_dkg() {
     // Normal: preamble
@@ -250,7 +250,7 @@ async fn rotate_key_validation_no_dkg() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_deployer() {
     // Normal: preamble
@@ -294,7 +294,7 @@ async fn rotate_key_validation_wrong_deployer() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_signing_set() {
     // Normal: preamble
@@ -344,7 +344,7 @@ async fn rotate_key_validation_wrong_signing_set() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_aggregate_key() {
     // Normal: preamble
@@ -394,7 +394,7 @@ async fn rotate_key_validation_wrong_aggregate_key() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_signatures_required() {
     // Normal: preamble
@@ -449,7 +449,7 @@ async fn rotate_key_validation_wrong_signatures_required() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_replay() {
     // Normal: preamble

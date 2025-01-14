@@ -7,6 +7,7 @@ edition = "2021"
 [features]
 default = ["testing"]
 integration-tests = ["testing"]
+integration-tests-parallel = ["testing"]
 testing = ["fake", "mockall", "sbtc/testing"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -81,6 +82,7 @@ test-log = { version = "0.2.16", default-features = false, features = ["trace"] 
 toml_edit = "0.22.22"
 tempfile = "3.6"
 tower = { version = "0.5.2", features = ["util"] }
+testcontainers.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
