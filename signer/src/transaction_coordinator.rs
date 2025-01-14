@@ -412,7 +412,8 @@ where
         transaction_package: &[utxo::UnsignedTransaction<'_>],
     ) -> Result<(), Error> {
         // Constructing a pre-sign request with empty request IDs is
-        // invalid. The other signers should reject an attempt to do so.
+        // invalid. The other signers should reject the message if we send
+        // one, so let's not create it.
         if transaction_package.is_empty() {
             tracing::debug!("no requests to handle this tenure, exiting");
             return Ok(());
