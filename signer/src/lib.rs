@@ -108,7 +108,7 @@ pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 /// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L60-L61>
 pub const MAX_MEMPOOL_PACKAGE_SIZE: u64 = 101000;
 
-/// These are all build info variables. Many of them are set in build.rs.
+// These are all build info variables. Many of them are set in build.rs.
 
 /// The name of the binary that is being run,
 pub const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
