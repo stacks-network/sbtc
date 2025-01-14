@@ -601,6 +601,10 @@ impl super::DbRead for SharedStore {
             .map(|(_, shares)| shares.clone()))
     }
 
+    async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
+        Ok(self.lock().await.encrypted_dkg_shares.len() as u32)
+    }
+
     async fn get_last_key_rotation(
         &self,
         chain_tip: &model::BitcoinBlockHash,
