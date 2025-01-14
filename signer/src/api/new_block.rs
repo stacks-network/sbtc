@@ -84,9 +84,13 @@ enum UpdateResult {
 /// fixed number of times.
 ///
 /// [^1]: <https://github.com/stacks-network/stacks-core/blob/09c4b066e25104be8b066e8f7530ff0c6df4ccd5/testnet/stacks-node/src/event_dispatcher.rs#L317-L385>
-#[tracing::instrument(skip_all, name = "new-block")]
+#[tracing::instrument(skip_all, name = "new-block", fields(
+    block_hash = tracing::field::Empty,
+    block_height = tracing::field::Empty,
+    parent_hash = tracing::field::Empty,
+    bitcoin_anchor = tracing::field::Empty,
+))]
 pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: String) -> StatusCode {
-    tracing::debug!("received a new block event from stacks-core");
     metrics::counter!(
         Metrics::BlocksObservedTotal,
         "blockchain" => STACKS_BLOCKCHAIN,
@@ -115,6 +119,22 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         }
     };
 
+    let stacks_chaintip = StacksBlock {
+        block_hash: new_block_event.index_block_hash.into(),
+        block_height: new_block_event.block_height,
+        parent_hash: new_block_event.parent_index_block_hash.into(),
+        bitcoin_anchor: new_block_event.burn_block_hash.into(),
+    };
+    let block_id = new_block_event.index_block_hash;
+
+    let span = tracing::span::Span::current();
+    span.record("block_hash", stacks_chaintip.block_hash.to_hex());
+    span.record("block_height", stacks_chaintip.block_height);
+    span.record("parent_hash", stacks_chaintip.parent_hash.to_hex());
+    span.record("bitcoin_anchor", stacks_chaintip.bitcoin_anchor.to_string());
+
+    tracing::debug!("received a new block event from stacks-core");
+
     // Although transactions can fail, only successful transactions emit
     // sBTC print events, since those events are emitted at the very end of
     // the contract call.
@@ -123,15 +143,16 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         .into_iter()
         .filter(|x| x.committed)
         .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)))
-        .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print");
+        .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print")
+        .collect::<Vec<_>>();
 
-    let stacks_chaintip = StacksBlock {
-        block_hash: new_block_event.index_block_hash.into(),
-        block_height: new_block_event.block_height,
-        parent_hash: new_block_event.parent_index_block_hash.into(),
-        bitcoin_anchor: new_block_event.burn_block_hash.into(),
-    };
-    let block_id = new_block_event.index_block_hash;
+    if events.is_empty() {
+        // If there are no events to process, we return early with a 200 OK
+        // status code so that the node does not retry the webhook.
+        return StatusCode::OK;
+    }
+
+    tracing::debug!(count = %events.len(), "processing events for new stacks block");
 
     // Create vectors to store the processed events for Emily.
     let mut completed_deposits = Vec::new();
@@ -249,6 +270,10 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 /// - `Result<DepositUpdate, Error>`: On success, returns a `DepositUpdate` struct containing
 ///   information on the completed deposit to be sent to Emily.
 ///   In case of a database error, returns an `Error`
+#[tracing::instrument(skip_all, fields(
+    bitcoin_outpoint = %event.outpoint,
+    stacks_txid = %event.txid
+))]
 async fn handle_completed_deposit(
     ctx: &impl Context,
     event: CompletedDepositEvent,
@@ -257,6 +282,9 @@ async fn handle_completed_deposit(
     ctx.get_storage_mut()
         .write_completed_deposit_event(&event)
         .await?;
+
+    tracing::debug!(topic = "completed-deposit", "handled stacks event");
+
     // If the deposit request is not found, we don't want to update Emily about it because
     // we don't have the necessary information to compute the fee.
     let deposit_request = ctx
@@ -301,6 +329,10 @@ async fn handle_completed_deposit(
 /// - `Result<WithdrawalUpdate, Error>`: On success, returns a `WithdrawalUpdate` struct
 ///   for Emily containing relevant withdrawal information.
 ///   In case of a database error, returns an `Error`
+#[tracing::instrument(skip_all, fields(
+    stacks_txid = %event.txid,
+    request_id = %event.request_id
+))]
 async fn handle_withdrawal_accept(
     ctx: &impl Context,
     event: WithdrawalAcceptEvent,
@@ -309,6 +341,8 @@ async fn handle_withdrawal_accept(
     ctx.get_storage_mut()
         .write_withdrawal_accept_event(&event)
         .await?;
+
+    tracing::debug!(topic = "withdrawal-accept", "handled stacks event");
 
     Ok(WithdrawalUpdate {
         request_id: event.request_id,
@@ -338,6 +372,10 @@ async fn handle_withdrawal_accept(
 /// # Returns
 /// - `Result<CreateWithdrawalRequestBody, Error>`: On success, returns a `CreateWithdrawalRequestBody`
 ///   with withdrawal information. In case of a database error, returns an `Error`
+#[tracing::instrument(skip_all, fields(
+    stacks_txid = %event.txid,
+    request_id = %event.request_id
+))]
 async fn handle_withdrawal_create(
     ctx: &impl Context,
     event: WithdrawalCreateEvent,
@@ -346,6 +384,8 @@ async fn handle_withdrawal_create(
     ctx.get_storage_mut()
         .write_withdrawal_create_event(&event)
         .await?;
+
+    tracing::debug!(topic = "withdrawal-create", "handled stacks event");
 
     Ok(CreateWithdrawalRequestBody {
         amount: event.amount,
@@ -369,6 +409,10 @@ async fn handle_withdrawal_create(
 /// # Returns
 /// - `Result<WithdrawalUpdate, Error>`: Returns a `WithdrawalUpdate` with rejection information.
 ///   In case of a database error, returns an `Error`.
+#[tracing::instrument(skip_all, fields(
+    stacks_txid = %event.txid,
+    request_id = %event.request_id
+))]
 async fn handle_withdrawal_reject(
     ctx: &impl Context,
     event: WithdrawalRejectEvent,
@@ -377,6 +421,8 @@ async fn handle_withdrawal_reject(
     ctx.get_storage_mut()
         .write_withdrawal_reject_event(&event)
         .await?;
+
+    tracing::debug!(topic = "withdrawal-reject", "handled stacks event");
 
     Ok(WithdrawalUpdate {
         fulfillment: None,
@@ -388,6 +434,11 @@ async fn handle_withdrawal_reject(
     })
 }
 
+#[tracing::instrument(skip_all, fields(
+    %stacks_txid,
+    address = %event.new_address.to_string(),
+    aggregate_key = %event.new_aggregate_pubkey
+))]
 async fn handle_key_rotation(
     ctx: &impl Context,
     event: KeyRotationEvent,
@@ -400,9 +451,13 @@ async fn handle_key_rotation(
         signer_set: event.new_keys.into_iter().map(Into::into).collect(),
         signatures_required: event.new_signature_threshold,
     };
+
     ctx.get_storage_mut()
         .write_rotate_keys_transaction(&key_rotation_tx)
         .await?;
+
+    tracing::debug!(topic = "key-rotation", "handled stacks event");
+
     Ok(())
 }
 
@@ -564,19 +619,19 @@ mod tests {
         ctx.with_emily_client(|client| {
             client
                 .expect_update_deposits()
-                .times(1)
+                .times(0)
                 .returning(move |_| {
                     Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
                 });
             client
                 .expect_update_withdrawals()
-                .times(1)
+                .times(0)
                 .returning(move |_| {
                     Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
                 });
             client
                 .expect_create_withdrawals()
-                .times(1)
+                .times(0)
                 .returning(move |_| Box::pin(async { vec![] }));
         })
         .await;
