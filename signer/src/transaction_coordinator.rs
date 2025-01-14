@@ -411,6 +411,12 @@ where
         signer_btc_state: &utxo::SignerBtcState,
         transaction_package: &[utxo::UnsignedTransaction<'_>],
     ) -> Result<(), Error> {
+        // Constructing a pre-sign request with empty request IDs is
+        // invalid. The other signers should reject an attempt to do so.
+        if transaction_package.is_empty() {
+            tracing::debug!("no requests to handle this tenure, exiting");
+            return Ok(());
+        }
         // Create the BitcoinPreSignRequest from the transaction package
         let sbtc_requests = BitcoinPreSignRequest {
             request_package: transaction_package
