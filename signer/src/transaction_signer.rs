@@ -499,53 +499,9 @@ where
                     return Ok(());
                 }
 
-                let storage = self.context.get_storage();
-                let config = self.context.config();
-
-                // Get the bitcoin block at the chain tip so that we know the height
-                let bitcoin_chain_tip_block = storage
-                    .get_bitcoin_block(bitcoin_chain_tip)
-                    .await?
-                    .ok_or(Error::NoChainTip)?;
-
-                // Get the number of DKG shares that have been stored
-                let dkg_share_entry_count = storage.get_encrypted_dkg_share_count().await?;
-
-                // Get DKG configuration parameters
-                let dkg_rerun_min_block_height = config.signer.dkg_rerun_bitcoin_height;
-                let dkg_rounds_target = config.signer.dkg_rounds_target;
-
-                // Determine the action based on the DKG share count and the rerun height (if configured)
-                match (
-                    dkg_share_entry_count,
-                    dkg_rounds_target,
-                    dkg_rerun_min_block_height,
-                ) {
-                    (0, _, _) => {
-                        tracing::info!("no DKG shares exist; proceeding with DKG");
-                    }
-                    (current, target, Some(dkg_rerun_height)) => {
-                        if current >= target.get() {
-                            tracing::warn!(
-                                "The target number of DKG shares has been reached; aborting"
-                            );
-                            return Err(Error::DkgHasAlreadyRun);
-                        }
-                        if bitcoin_chain_tip_block.block_height < dkg_rerun_height.get() {
-                            tracing::warn!("bitcoin chain tip is below the minimum height for DKG rerun; aborting");
-                            return Err(Error::DkgHasAlreadyRun);
-                        }
-                        tracing::info!("DKG rerun height has been met and we are below the target number of rounds; proceeding with DKG");
-                    }
-                    (1, _, None) => {
-                        tracing::warn!("attempt to run multiple DKGs without a configured re-run height; aborting");
-                        return Err(Error::DkgHasAlreadyRun);
-                    }
-                    _ => {
-                        tracing::warn!("multiple DKG shares already exist; aborting");
-                        return Err(Error::DkgHasAlreadyRun);
-                    }
-                }
+                // Assert that DKG should be allowed to proceed given the current state
+                // and configuration.
+                assert_allow_dkg_begin(&self.context, bitcoin_chain_tip).await?;
 
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
@@ -883,6 +839,85 @@ where
     }
 }
 
+/// Asserts whether a `DkgBegin` WSTS message should be allowed to proceed
+/// based on the current state of the signer and the DKG configuration.
+async fn assert_allow_dkg_begin(
+    context: &impl Context,
+    bitcoin_chain_tip: &model::BitcoinBlockHash,
+) -> Result<(), Error> {
+    let storage = context.get_storage();
+    let config = context.config();
+
+    // Get the bitcoin block at the chain tip so that we know the height
+    let bitcoin_chain_tip_block = storage
+        .get_bitcoin_block(bitcoin_chain_tip)
+        .await?
+        .ok_or(Error::NoChainTip)?;
+
+    // Get the number of DKG shares that have been stored
+    let dkg_share_entry_count = storage.get_encrypted_dkg_share_count().await?;
+
+    // Get DKG configuration parameters
+    let dkg_min_bitcoin_block_height = config.signer.dkg_min_bitcoin_block_height;
+    let dkg_target_rounds = config.signer.dkg_target_rounds;
+
+    // Determine the action based on the DKG share count and the rerun height (if configured)
+    match (
+        dkg_share_entry_count,
+        dkg_target_rounds,
+        dkg_min_bitcoin_block_height,
+    ) {
+        (0, _, _) => {
+            tracing::info!(
+                ?dkg_min_bitcoin_block_height,
+                %dkg_target_rounds,
+                "no DKG shares exist; proceeding with DKG"
+            );
+        }
+        (current, target, Some(dkg_min_height)) => {
+            if current >= target.get() {
+                tracing::warn!(
+                    ?dkg_min_bitcoin_block_height,
+                    %dkg_target_rounds,
+                    "The target number of DKG shares has been reached; aborting"
+                );
+                return Err(Error::DkgHasAlreadyRun);
+            }
+            if bitcoin_chain_tip_block.block_height < dkg_min_height.get() {
+                tracing::warn!(
+                    ?dkg_min_bitcoin_block_height,
+                    %dkg_target_rounds,
+                    "bitcoin chain tip is below the minimum height for DKG rerun; aborting"
+                );
+                return Err(Error::DkgHasAlreadyRun);
+            }
+            tracing::info!(
+                ?dkg_min_bitcoin_block_height,
+                %dkg_target_rounds,
+                "DKG rerun height has been met and we are below the target number of rounds; proceeding with DKG"
+            );
+        }
+        (1, _, None) => {
+            tracing::warn!(
+                ?dkg_min_bitcoin_block_height,
+                %dkg_target_rounds,
+                "attempt to run multiple DKGs without a configured re-run height; aborting"
+            );
+            return Err(Error::DkgHasAlreadyRun);
+        }
+        _ => {
+            tracing::warn!(
+                ?dkg_min_bitcoin_block_height,
+                %dkg_target_rounds,
+                "multiple DKG shares already exist; aborting"
+            );
+            return Err(Error::DkgHasAlreadyRun);
+        }
+    }
+
+    Ok(())
+}
+
 /// Relevant information for validating incoming messages
 /// relating to a particular chain tip.
 #[derive(Debug, Clone, Copy)]
@@ -909,12 +944,21 @@ enum ChainTipStatus {
 
 #[cfg(test)]
 mod tests {
+    use std::num::{NonZeroU32, NonZeroU64};
+
+    use fake::{Fake, Faker};
+    use test_case::test_case;
+
     use crate::bitcoin::MockBitcoinInteract;
+    use crate::context::Context;
     use crate::emily_client::MockEmilyInteract;
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
+    use crate::storage::{model, DbWrite};
     use crate::testing;
     use crate::testing::context::*;
+
+    use super::*;
 
     fn test_environment() -> testing::transaction_signer::TestEnvironment<
         TestContext<
@@ -953,5 +997,60 @@ mod tests {
         test_environment()
             .assert_should_be_able_to_participate_in_dkg()
             .await;
+    }
+
+    #[test_case(0, None, 1, 100, true; "first DKG allowed without min height")]
+    #[test_case(0, Some(100), 1, 5, true; "first DKG allowed regardless of min height")]
+    #[test_case(1, None, 2, 100, false; "subsequent DKG not allowed without min height")]
+    #[test_case(1, Some(101), 1, 100, false; "subsequent DKG not allowed with current height lower than min height")]
+    #[test_case(1, Some(100), 1, 100, false; "subsequent DKG not allowed when target rounds reached")]
+    #[test_case(1, Some(100), 2, 100, true; "subsequent DKG allowed when target rounds not reached and min height met")]
+    #[test_log::test(tokio::test)]
+    async fn test_assert_allow_dkg_begin(
+        dkg_rounds_current: u32,
+        dkg_min_bitcoin_block_height: Option<u64>,
+        dkg_target_rounds: u32,
+        chain_tip_height: u64,
+        should_allow: bool,
+    ) {
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|s| {
+                s.signer.dkg_min_bitcoin_block_height =
+                    dkg_min_bitcoin_block_height.map(NonZeroU64::new).flatten();
+                s.signer.dkg_target_rounds = NonZeroU32::new(dkg_target_rounds).unwrap();
+            })
+            .build();
+
+        let storage = context.get_storage_mut();
+
+        // Write `dkg_shares` entries for the `current` number of rounds, simulating
+        // the signer having participated in that many successful DKG rounds.
+        for _ in 0..dkg_rounds_current {
+            storage
+                .write_encrypted_dkg_shares(&Faker.fake())
+                .await
+                .unwrap();
+        }
+
+        // Dummy chain tip hash which will be used to fetch the block height
+        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+
+        // Write a bitcoin block at the given height, simulating the chain tip.
+        storage
+            .write_bitcoin_block(&model::BitcoinBlock {
+                block_height: chain_tip_height,
+                parent_hash: Faker.fake(),
+                block_hash: bitcoin_chain_tip,
+            })
+            .await
+            .unwrap();
+
+        // Test the case
+        let result = assert_allow_dkg_begin(&context, &bitcoin_chain_tip).await;
+
+        // Assert the result
+        assert_eq!(result.is_ok(), should_allow);
     }
 }
