@@ -13,6 +13,10 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The aggregate key for the given block hash could not be determined.
+    #[error("the signer set aggregate key could not be determined for bitcoin block {0}")]
+    MissingAggregateKey(bitcoin::BlockHash),
+
     /// An error occurred while attempting to connect to the Bitcoin Core ZMQ socket.
     #[error("timed-out trying to connect to bitcoin-core ZMQ endpoint: {0}")]
     BitcoinCoreZmqConnectTimeout(String),
