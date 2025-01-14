@@ -1508,7 +1508,7 @@ impl super::DbRead for PgStore {
     }
 
     /// Returns the number of rows in the `dkg_shares` table.
-    async fn get_encrypted_dkg_share_count(&self) -> Result<u32, Error> {
+    async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sbtc_signer.dkg_shares;")
             .fetch_one(&self.0)
             .await

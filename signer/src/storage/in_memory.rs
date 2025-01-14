@@ -601,7 +601,7 @@ impl super::DbRead for SharedStore {
             .map(|(_, shares)| shares.clone()))
     }
 
-    async fn get_encrypted_dkg_share_count(&self) -> Result<u32, Error> {
+    async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
         Ok(self.lock().await.encrypted_dkg_shares.len() as u32)
     }
 

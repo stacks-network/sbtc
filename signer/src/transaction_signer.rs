@@ -855,7 +855,7 @@ async fn assert_allow_dkg_begin(
         .ok_or(Error::NoChainTip)?;
 
     // Get the number of DKG shares that have been stored
-    let dkg_share_entry_count = storage.get_encrypted_dkg_share_count().await?;
+    let dkg_shares_entry_count = storage.get_encrypted_dkg_shares_count().await?;
 
     // Get DKG configuration parameters
     let dkg_min_bitcoin_block_height = config.signer.dkg_min_bitcoin_block_height;
@@ -863,7 +863,7 @@ async fn assert_allow_dkg_begin(
 
     // Determine the action based on the DKG share count and the rerun height (if configured)
     match (
-        dkg_share_entry_count,
+        dkg_shares_entry_count,
         dkg_target_rounds,
         dkg_min_bitcoin_block_height,
     ) {
@@ -879,7 +879,7 @@ async fn assert_allow_dkg_begin(
                 tracing::warn!(
                     ?dkg_min_bitcoin_block_height,
                     %dkg_target_rounds,
-                    dkg_current_rounds = %dkg_share_entry_count,
+                    dkg_current_rounds = %dkg_shares_entry_count,
                     "The target number of DKG shares has been reached; aborting"
                 );
                 return Err(Error::DkgHasAlreadyRun);
@@ -888,7 +888,7 @@ async fn assert_allow_dkg_begin(
                 tracing::warn!(
                     ?dkg_min_bitcoin_block_height,
                     %dkg_target_rounds,
-                    dkg_current_rounds = %dkg_share_entry_count,
+                    dkg_current_rounds = %dkg_shares_entry_count,
                     "bitcoin chain tip is below the minimum height for DKG rerun; aborting"
                 );
                 return Err(Error::DkgHasAlreadyRun);
@@ -896,7 +896,7 @@ async fn assert_allow_dkg_begin(
             tracing::info!(
                 ?dkg_min_bitcoin_block_height,
                 %dkg_target_rounds,
-                dkg_current_rounds = %dkg_share_entry_count,
+                dkg_current_rounds = %dkg_shares_entry_count,
                 "DKG rerun height has been met and we are below the target number of rounds; proceeding with DKG"
             );
         }
@@ -904,7 +904,7 @@ async fn assert_allow_dkg_begin(
             tracing::warn!(
                 ?dkg_min_bitcoin_block_height,
                 %dkg_target_rounds,
-                dkg_current_rounds = %dkg_share_entry_count,
+                dkg_current_rounds = %dkg_shares_entry_count,
                 "attempt to run multiple DKGs without a configured re-run height; aborting"
             );
             return Err(Error::DkgHasAlreadyRun);
@@ -913,7 +913,7 @@ async fn assert_allow_dkg_begin(
             tracing::warn!(
                 ?dkg_min_bitcoin_block_height,
                 %dkg_target_rounds,
-                dkg_current_rounds = %dkg_share_entry_count,
+                dkg_current_rounds = %dkg_shares_entry_count,
                 "multiple DKG shares already exist; aborting"
             );
             return Err(Error::DkgHasAlreadyRun);
