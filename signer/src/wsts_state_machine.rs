@@ -44,7 +44,7 @@ impl From<SigHash> for StateMachineId {
 
 #[cfg(any(test, feature = "testing"))]
 impl StateMachineId {
-    /// Create a new Id
+    /// Create a new identifier
     pub fn new(value: [u8; 32]) -> Self {
         StateMachineId(value)
     }

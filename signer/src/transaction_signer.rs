@@ -141,15 +141,15 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub dkg_begin_pause: Option<Duration>,
 }
 
-/// This struct is represents a signature hash and the public key that
-/// locks it.
+/// This struct represents a signature hash and the public key that locks
+/// it.
 ///
 /// The struct is only created when the signer has validated the bitcoin
 /// transaction and has agreed to sign the sighash.
 struct AcceptedSigHash {
     /// The signature hash to be signed.
     sighash: SigHash,
-    /// The public key that is used to locked the above signature hash.
+    /// The public key that is used to lock the above signature hash.
     public_key: PublicKeyXOnly,
 }
 
