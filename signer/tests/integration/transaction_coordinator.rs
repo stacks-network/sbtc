@@ -1326,6 +1326,13 @@ async fn run_subsequent_dkg() {
     // 7. Check that they all have the same aggregate keys in the
     //    `dkg_shares` table.
     assert_eq!(all_aggregate_keys.len(), 2);
+    let new_aggregate_key = all_aggregate_keys
+        .iter()
+        .filter(|k| *k != &aggregate_key_1)
+        .next()
+        .unwrap()
+        .clone();
+    assert_ne!(aggregate_key_1, new_aggregate_key);
 
     // 8. Check that the coordinator broadcast a rotate key tx
     broadcast_stacks_txs.verify().unwrap();
@@ -1344,8 +1351,9 @@ async fn run_subsequent_dkg() {
     let rotate_keys = RotateKeysV1::new(
         &signer_wallet,
         signers.first().unwrap().0.config().signer.deployer,
-        all_aggregate_keys.iter().next().unwrap(),
+        &new_aggregate_key,
     );
+
     assert_eq!(contract_call.function_args, rotate_keys.as_contract_args());
 
     for (_ctx, db, _, _) in signers {

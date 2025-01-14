@@ -1938,7 +1938,7 @@ mod tests {
             .with_mocked_clients()
             .modify_settings(|s| {
                 s.signer.dkg_min_bitcoin_block_height =
-                    dkg_min_bitcoin_block_height.map(NonZeroU64::new).flatten();
+                    dkg_min_bitcoin_block_height.and_then(NonZeroU64::new);
                 s.signer.dkg_target_rounds = NonZeroU32::new(dkg_target_rounds).unwrap();
             })
             .build();
