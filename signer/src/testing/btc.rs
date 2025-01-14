@@ -9,6 +9,10 @@ use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitcoin::Witness;
 
+use emily_client::models::CreateDepositRequestBody;
+
+use crate::bitcoin::utxo;
+
 /// Return a transaction that is kinda like the signers' transaction,
 /// but it does not service any requests, and it does not have any
 /// signatures.
@@ -38,5 +42,17 @@ pub fn base_signer_transaction() -> Transaction {
                 script_pubkey: ScriptBuf::new_op_return([0; 21]),
             },
         ],
+    }
+}
+
+impl utxo::DepositRequest {
+    /// Transform this deposit request into the body that Emily expects.
+    pub fn as_emily_request(&self) -> CreateDepositRequestBody {
+        CreateDepositRequestBody {
+            bitcoin_tx_output_index: self.outpoint.vout,
+            bitcoin_txid: self.outpoint.txid.to_string(),
+            deposit_script: self.deposit_script.to_hex_string(),
+            reclaim_script: self.reclaim_script.to_hex_string(),
+        }
     }
 }

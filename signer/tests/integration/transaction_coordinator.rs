@@ -1387,10 +1387,6 @@ async fn run_subsequent_dkg() {
 /// ```
 ///
 /// then, once everything is up and running, run the test.
-///
-/// This test is still a little flaky. DKG doesn't run correctly every
-/// time, and even when it does it might not pick up and process the
-/// deposit correctly.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sign_bitcoin_transaction() {
@@ -1518,7 +1514,7 @@ async fn sign_bitcoin_transaction() {
                 .returning(move |_| Box::pin(std::future::ready(Ok(None))));
 
             // Only the client that corresponds to the coordinator will
-            // submit a transaction so we don't make explicit the
+            // submit a transaction, so we don't make explicit the
             // expectation here.
             client.expect_submit_tx().returning(move |tx| {
                 let tx = tx.clone();
@@ -1634,7 +1630,7 @@ async fn sign_bitcoin_transaction() {
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
     // We first need to wait for bitcoin-core to send us all the
-    // notifications so that we are up to date with the chain tip.
+    // notifications so that we are up-to-date with the chain tip.
     let db_update_futs = signers
         .iter()
         .map(|(_, db, _, _)| testing::storage::wait_for_chain_tip(db, chain_tip));
@@ -1692,12 +1688,7 @@ async fn sign_bitcoin_transaction() {
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
 
-    let body = CreateDepositRequestBody {
-        bitcoin_tx_output_index: deposit_request.outpoint.vout,
-        bitcoin_txid: deposit_request.outpoint.txid.to_string(),
-        deposit_script: deposit_request.deposit_script.to_hex_string(),
-        reclaim_script: deposit_request.reclaim_script.to_hex_string(),
-    };
+    let body = deposit_request.as_emily_request();
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -1707,12 +1698,12 @@ async fn sign_bitcoin_transaction() {
     //          job.
     // -------------------------------------------------------------------------
     // - Confirm the deposit request. This will trigger the block observer
-    //   to reach out to Emily about deposits. It was have one so the
+    //   to reach out to Emily about deposits. It will have one so the
     //   signers should do basic validations and store the deposit request.
     // - Each TxSigner process should vote on the deposit request and
     //   submit the votes to each other.
     // - The coordinator should submit a sweep transaction. We check the
-    //   mempool for its existance.
+    //   mempool for its existence.
     // =========================================================================
     faucet.generate_blocks(1);
 
@@ -1735,7 +1726,7 @@ async fn sign_bitcoin_transaction() {
     //   anything else.
     // - The last transaction should be to mint sBTC using the
     //   complete-deposit contract call.
-    // - Is the sweep trasnaction in our database.
+    // - Is the sweep transaction in our database.
     // - Does the sweep transaction spend to the signers' scriptPubKey.
     // =========================================================================
     let sleep_fut = tokio::time::sleep(Duration::from_secs(5));
@@ -2056,7 +2047,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     // =========================================================================
     // Step 5 - Wait some more, maybe the signers will do something
     // -------------------------------------------------------------------------
-    // - DKG has run and they think the smart constracts are up to date so
+    // - DKG has run, and they think the smart contracts are up-to-date so
     //   they shouldn't do anything
     // =========================================================================
     faucet.generate_blocks(1);
