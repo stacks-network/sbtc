@@ -255,13 +255,11 @@ pub struct SignerConfig {
     /// arrives. The default here is controlled by the
     /// [`MAX_DEPOSITS_PER_BITCOIN_TX`] constant
     pub max_deposits_per_bitcoin_tx: NonZeroU16,
-
     /// Configures a DKG re-run Bitcoin block height. If this is set and DKG has
     /// already been run, the coordinator will attempt to re-run DKG after this
     /// block height is met if `dkg_target_rounds` has not been reached. If DKG
     /// has never been run, this configuration has no effect.
     pub dkg_min_bitcoin_block_height: Option<NonZeroU64>,
-
     /// Configures a target number of DKG rounds to run/accept. If this is set
     /// and the number of DKG shares is less than this number, the coordinator
     /// will continue to run DKG rounds until this number of rounds is reached,
