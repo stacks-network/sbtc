@@ -951,7 +951,9 @@ enum ChainTipStatus {
 mod tests {
     use std::num::{NonZeroU32, NonZeroU64};
 
+    use bitcoin::Txid;
     use fake::{Fake, Faker};
+    use network::InMemoryNetwork;
     use test_case::test_case;
 
     use crate::bitcoin::MockBitcoinInteract;
@@ -1060,5 +1062,71 @@ mod tests {
             true => assert!(result.is_ok()),
             false => assert!(matches!(result, Err(Error::DkgHasAlreadyRun))),
         }
+    }
+
+    #[tokio::test]
+    async fn test_handle_wsts_message_asserts_dkg_begin() {
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let storage = context.get_storage_mut();
+        let network = InMemoryNetwork::new();
+
+        // Write 1 DKG share entry to the database, simulating that DKG has
+        // successfully run once.
+        storage
+            .write_encrypted_dkg_shares(&Faker.fake())
+            .await
+            .unwrap();
+
+        // Dummy chain tip hash which will be used to fetch the block height.
+        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+
+        // Write a bitcoin block at the given height, simulating the chain tip.
+        storage
+            .write_bitcoin_block(&model::BitcoinBlock {
+                block_height: 100,
+                parent_hash: Faker.fake(),
+                block_hash: bitcoin_chain_tip,
+            })
+            .await
+            .unwrap();
+
+        // Create our signer instance.
+        let mut signer = TxSignerEventLoop {
+            context,
+            network: network.connect(),
+            signer_private_key: PrivateKey::new(&mut rand::rngs::OsRng),
+            context_window: 1,
+            wsts_state_machines: Default::default(),
+            threshold: 1,
+            rng: rand::rngs::OsRng,
+            dkg_begin_pause: None,
+        };
+
+        // Create a DkgBegin message to be handled by the signer.
+        let msg = message::WstsMessage {
+            txid: Txid::all_zeros(),
+            inner: WstsNetMessage::DkgBegin(wsts::net::DkgBegin { dkg_id: 0 }),
+        };
+
+        // Create a chain tip report for the message.
+        let chain_tip_report = MsgChainTipReport {
+            sender_is_coordinator: true,
+            chain_tip_status: ChainTipStatus::Canonical,
+            chain_tip: bitcoin_chain_tip,
+        };
+
+        // Attempt to handle the DkgBegin message. This should fail using the
+        // default settings, as the default settings allow only one DKG round.
+        let result = signer
+            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .await;
+
+        // Assert that the DkgBegin message was not allowed to proceed and
+        // that we receive the expected error.
+        assert!(matches!(result, Err(Error::DkgHasAlreadyRun)));
     }
 }
