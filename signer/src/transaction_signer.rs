@@ -861,7 +861,7 @@ async fn assert_allow_dkg_begin(
     let dkg_min_bitcoin_block_height = config.signer.dkg_min_bitcoin_block_height;
     let dkg_target_rounds = config.signer.dkg_target_rounds;
 
-    // Determine the action based on the DKG share count and the rerun height (if configured)
+    // Determine the action based on the DKG shares count and the rerun height (if configured)
     match (
         dkg_shares_entry_count,
         dkg_target_rounds,
@@ -1074,7 +1074,7 @@ mod tests {
         let storage = context.get_storage_mut();
         let network = InMemoryNetwork::new();
 
-        // Write 1 DKG share entry to the database, simulating that DKG has
+        // Write 1 DKG shares entry to the database, simulating that DKG has
         // successfully run once.
         storage
             .write_encrypted_dkg_shares(&Faker.fake())
