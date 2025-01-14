@@ -900,21 +900,13 @@ async fn assert_allow_dkg_begin(
                 "DKG rerun height has been met and we are below the target number of rounds; proceeding with DKG"
             );
         }
-        (current, _, None) if current >= 1 => {
+        // Note that we account for all (0, _, _) cases above (i.e. first DKG round)
+        (_, _, None) => {
             tracing::warn!(
                 ?dkg_min_bitcoin_block_height,
                 %dkg_target_rounds,
                 dkg_current_rounds = %dkg_shares_entry_count,
                 "attempt to run multiple DKGs without a configured re-run height; aborting"
-            );
-            return Err(Error::DkgHasAlreadyRun);
-        }
-        _ => {
-            tracing::warn!(
-                ?dkg_min_bitcoin_block_height,
-                %dkg_target_rounds,
-                dkg_current_rounds = %dkg_shares_entry_count,
-                "multiple DKG shares already exist; aborting"
             );
             return Err(Error::DkgHasAlreadyRun);
         }
