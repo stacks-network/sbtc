@@ -263,8 +263,8 @@ pub struct SignerConfig {
     /// Configures a target number of DKG rounds to run/accept. If this is set
     /// and the number of DKG shares is less than this number, the coordinator
     /// will continue to run DKG rounds until this number of rounds is reached,
-    /// assuming the conditions for `dkg_rerun_bitcoin_height` are also met. If
-    /// DKG has never been run, this configuration has no effect.
+    /// assuming the conditions for `dkg_min_bitcoin_block_height` are also met.
+    /// If DKG has never been run, this configuration has no effect.
     pub dkg_target_rounds: NonZeroU32,
 }
 
@@ -666,7 +666,7 @@ mod tests {
     }
 
     #[test]
-    fn default_config_toml_loads_dkg_rerun_bitcoin_height() {
+    fn default_config_toml_loads_dkg_min_bitcoin_block_height() {
         clear_env();
 
         let settings = Settings::new_from_default_config().unwrap();
@@ -681,7 +681,7 @@ mod tests {
     }
 
     #[test]
-    fn default_config_toml_loads_dkg_rounds_target() {
+    fn default_config_toml_loads_dkg_target_rounds() {
         clear_env();
 
         let settings = Settings::new_from_default_config().unwrap();
