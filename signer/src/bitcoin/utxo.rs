@@ -1695,6 +1695,20 @@ mod tests {
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
     }
 
+    #[ignore = "this is for generating the MIN_BITCOIN_INPUT_VSIZE constant"]
+    #[test]
+    fn create_taproot_utxo_min_size() {
+        // This generates a UTXO with the same vsize as the signers input
+        // or donation. This is smaller than the min deposit vsize.
+        let utxo = TxIn {
+            previous_output: OutPoint::null(),
+            sequence: Sequence::ZERO,
+            witness: Witness::p2tr_key_spend(&DUMMY_SIGNATURE),
+            script_sig: ScriptBuf::new(),
+        };
+        println!("Min input vsize: {}", utxo.segwit_weight().to_vbytes_ceil());
+    }
+
     #[test_case(&[true, true, false, true, false, false, false], 3; "case 1")]
     #[test_case(&[true, true, false, false, false, false, false], 2; "case 2")]
     #[test_case(&[false, false, false, false, false, false, false], 0; "case 3")]
