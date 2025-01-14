@@ -205,6 +205,22 @@ sbtc_bitcoin_start_height = 101
 # Environment: SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT
 # prometheus_exporter_endpoint = "[::]:9184"
 
+# When defined, the signer will attempt to re-run DKG after the specified
+# Bitcoin block height. Please only use this parameter when instructed to by
+# the sBTC team.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_MIN_BITCOIN_BLOCK_HEIGHT
+# dkg_min_bitcoin_block_height = 1234
+
+# When defined, the signer will attempt/allow multiple rounds of DKG until the
+# specified number of rounds have been completed. Please only use this parameter
+# when instructed to by the sBTC team.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_TARGET_ROUNDS
+# dkg_target_rounds = 1
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!

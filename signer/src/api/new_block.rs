@@ -189,8 +189,8 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
                 handle_key_rotation(&api.ctx, event.into(), tx_info.txid.into()).await
             }
             Err(error) => {
-                tracing::error!(%error, "got an error when transforming the event ClarityValue");
-                return StatusCode::OK;
+                tracing::error!(%error, %txid, "got an error when transforming the event ClarityValue");
+                continue;
             }
         };
         // If we got an error writing to the database, this might be an
@@ -470,6 +470,7 @@ mod tests {
     use axum::http::Request;
     use bitcoin::OutPoint;
     use bitvec::array::BitArray;
+    use clarity::types::chainstate::StacksBlockId;
     use clarity::vm::types::PrincipalData;
     use emily_client::models::UpdateDepositsResponse;
     use emily_client::models::UpdateWithdrawalsResponse;
@@ -506,6 +507,9 @@ mod tests {
         include_str!("../../tests/fixtures/withdrawal-reject-event.json");
 
     const ROTATE_KEYS_WEBHOOK: &str = include_str!("../../tests/fixtures/rotate-keys-event.json");
+
+    const ROTATE_KEYS_AND_INVALID_EVENT_WEBHOOK: &str =
+        include_str!("../../tests/fixtures/rotate-keys-and-invalid-event.json");
 
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
     #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
@@ -1031,5 +1035,54 @@ mod tests {
             assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
             assert!(db.lock().await.rotate_keys_transactions.is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn test_invalid_event() {
+        let mut ctx = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        ctx.with_emily_client(|client| {
+            client.expect_update_deposits().returning(move |_| {
+                Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
+            });
+            client.expect_update_withdrawals().returning(move |_| {
+                Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
+            });
+            client
+                .expect_create_withdrawals()
+                .returning(move |_| Box::pin(async { vec![] }));
+        })
+        .await;
+
+        let state = State(ApiState { ctx: ctx.clone() });
+        let body = ROTATE_KEYS_AND_INVALID_EVENT_WEBHOOK.to_string();
+
+        let db = ctx.inner_storage();
+        // We don't have anything here yet
+        assert!(db.lock().await.rotate_keys_transactions.is_empty());
+
+        let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
+
+        // The first event is an invalid one
+        let failing_event = new_block_event.events.first().unwrap();
+
+        let tx_info = TxInfo {
+            txid: sbtc::events::StacksTxid([0; 32]),
+            block_id: StacksBlockId([0; 32]),
+        };
+        assert!(RegistryEvent::try_new(
+            failing_event.contract_event.as_ref().unwrap().value.clone(),
+            tx_info
+        )
+        .is_err());
+
+        let res = new_block_handler(state, body).await;
+
+        // But we expect the second (valid) event to be processed anyway
+        assert_eq!(res, StatusCode::OK);
+        assert!(!db.lock().await.rotate_keys_transactions.is_empty());
     }
 }
