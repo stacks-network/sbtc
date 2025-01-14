@@ -1056,6 +1056,9 @@ mod tests {
         let result = assert_allow_dkg_begin(&context, &bitcoin_chain_tip).await;
 
         // Assert the result
-        assert_eq!(result.is_ok(), should_allow);
+        match should_allow {
+            true => assert!(result.is_ok()),
+            false => assert!(matches!(result, Err(Error::DkgHasAlreadyRun))),
+        }
     }
 }
