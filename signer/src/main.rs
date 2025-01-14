@@ -316,18 +316,11 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);
 
-    // This is the maximum number of inputs that can be signed during the
-    // tenure of a single bitcoin transaction plus one for DKG.
-    let max_state_machines = signer::MAX_MEMPOOL_PACKAGE_TX_COUNT
-        .saturating_mul(ctx.config().signer.max_deposits_per_bitcoin_tx.get() as u64 + 1)
-        .saturating_add(1)
-        .min(signer::MAX_SIGNER_STATE_MACHINES);
-    // The _ as usize cast is fine, since we know that the
-    // max_state_machines <= MAX_SIGNER_STATE_MACHINES and that is less
-    // than u32::MAX. Moreover, we only support running this binary on 32
-    // or 64 bit CPUs.
-    let max_state_machines =
-        NonZeroUsize::new(max_state_machines as usize).ok_or(Error::TypeConversion)?;
+    // The _ as usize cast is fine, since we know that
+    // MAX_SIGNER_STATE_MACHINES is less than u32::MAX, and we only support
+    // running this binary on 32 or 64-bit CPUs.
+    let max_state_machines = NonZeroUsize::new(signer::MAX_SIGNER_STATE_MACHINES as usize)
+        .ok_or(Error::TypeConversion)?;
 
     let signer = transaction_signer::TxSignerEventLoop {
         network,
