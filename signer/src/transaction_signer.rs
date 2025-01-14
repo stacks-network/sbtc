@@ -699,6 +699,41 @@ where
         Ok(())
     }
 
+    /// Check whether we will sign the message, which is supposed to be a
+    /// bitcoin sighash
+    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<AcceptedSigHash, Error>
+    where
+        D: DbRead,
+    {
+        let sighash = TapSighash::from_slice(msg)
+            .map_err(Error::SigHashConversion)?
+            .into();
+
+        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
+            Some((true, public_key)) => Ok(AcceptedSigHash { public_key, sighash }),
+            Some((false, _)) => Err(Error::InvalidSigHash(sighash)),
+            None => Err(Error::UnknownSigHash(sighash)),
+        }
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn store_dkg_shares(&mut self, id: &StateMachineId) -> Result<(), Error> {
+        let state_machine = self
+            .wsts_state_machines
+            .get(id)
+            .ok_or(Error::MissingStateMachine)?;
+
+        let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
+
+        tracing::debug!("storing DKG shares");
+        self.context
+            .get_storage_mut()
+            .write_encrypted_dkg_shares(&encrypted_dkg_shares)
+            .await?;
+
+        Ok(())
+    }
+
     #[tracing::instrument(skip_all)]
     async fn relay_message(
         &mut self,
@@ -734,41 +769,6 @@ where
 
             self.send_message(msg, bitcoin_chain_tip).await?;
         }
-
-        Ok(())
-    }
-
-    /// Check whether we will sign the message, which is supposed to be a
-    /// bitcoin sighash
-    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<AcceptedSigHash, Error>
-    where
-        D: DbRead,
-    {
-        let sighash = TapSighash::from_slice(msg)
-            .map_err(Error::SigHashConversion)?
-            .into();
-
-        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
-            Some((true, public_key)) => Ok(AcceptedSigHash { public_key, sighash }),
-            Some((false, _)) => Err(Error::InvalidSigHash(sighash)),
-            None => Err(Error::UnknownSigHash(sighash)),
-        }
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn store_dkg_shares(&mut self, id: &StateMachineId) -> Result<(), Error> {
-        let state_machine = self
-            .wsts_state_machines
-            .get(id)
-            .ok_or(Error::MissingStateMachine)?;
-
-        let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
-
-        tracing::debug!("storing DKG shares");
-        self.context
-            .get_storage_mut()
-            .write_encrypted_dkg_shares(&encrypted_dkg_shares)
-            .await?;
 
         Ok(())
     }
