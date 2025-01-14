@@ -900,7 +900,7 @@ async fn assert_allow_dkg_begin(
                 "DKG rerun height has been met and we are below the target number of rounds; proceeding with DKG"
             );
         }
-        (1, _, None) => {
+        (current, _, None) if current >= 1 => {
             tracing::warn!(
                 ?dkg_min_bitcoin_block_height,
                 %dkg_target_rounds,
