@@ -1,5 +1,6 @@
 //! Handlers for Deposit endpoints.
 use crate::api::models::common::Status;
+use crate::api::models::deposit::requests::BasicPaginationQuery;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
@@ -182,6 +183,58 @@ pub async fn get_deposits(
     }
     // Handle and respond.
     handler(context, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Get deposits by recipient handler.
+#[utoipa::path(
+    get,
+    operation_id = "getDepositsForRecipient",
+    path = "/deposit/recipient/{recipient}",
+    params(
+        ("recipient" = String, Path, description = "the status to search by when getting all deposits."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+    ),
+    tag = "deposit",
+    responses(
+        (status = 200, description = "Deposits retrieved successfully", body = GetDepositsResponse),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+#[instrument(skip(context))]
+pub async fn get_deposits_for_recipient(
+    context: EmilyContext,
+    recipient: String,
+    query: BasicPaginationQuery,
+) -> impl warp::reply::Reply {
+    debug!("In get deposits for recipient");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        recipient: String,
+        query: BasicPaginationQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        let (entries, next_token) = accessors::get_deposit_entries_by_recipient(
+            &context,
+            &recipient,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into resource types.
+        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
+        // Create response.
+        let response = GetDepositsResponse { deposits, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, recipient, query)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }

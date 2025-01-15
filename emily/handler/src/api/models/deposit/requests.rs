@@ -14,7 +14,7 @@ pub struct GetDepositsForTransactionQuery {
     pub next_token: Option<String>,
     /// Maximum number of results to show.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub page_size: Option<i32>,
+    pub page_size: Option<u16>,
 }
 
 /// Query structure for the GetDepositsQuery struct.
@@ -28,7 +28,19 @@ pub struct GetDepositsQuery {
     pub next_token: Option<String>,
     /// Maximum number of results to show.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub page_size: Option<i32>,
+    pub page_size: Option<u16>,
+}
+
+/// Query structure common for all paginated queries.
+#[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct BasicPaginationQuery {
+    /// Next token for the search.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_token: Option<String>,
+    /// Maximum number of results to show.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<u16>,
 }
 
 /// Request structure for create deposit request.

@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use test_case::test_case;
 
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
 use stacks_common::codec::StacksMessageCodec as _;
+use stacks_common::types::chainstate::StacksAddress;
 use testing_emily_client::models::{Fulfillment, Status, UpdateDepositsRequestBody};
 use testing_emily_client::{
     apis::{self, configuration::Configuration},
@@ -70,8 +72,16 @@ struct DepositTxnData {
 }
 
 impl DepositTxnData {
-    pub fn new(lock_time: u32, max_fee: u64, amount_sats: u64) -> Self {
-        let test_deposit_tx: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+    pub fn new(lock_time: u32, max_fee: u64, amount_sats: u64, recipient: u8) -> Self {
+        let test_deposit_tx: TxSetup = testing::deposits::tx_setup_with_recipient(
+            lock_time,
+            max_fee,
+            amount_sats,
+            StacksAddress {
+                version: 0,
+                bytes: stacks_common::util::hash::Hash160([recipient; 20]),
+            },
+        );
         let recipient_hex_string =
             hex::encode(&test_deposit_tx.deposit.recipient.serialize_to_vec());
         Self {
@@ -97,7 +107,7 @@ async fn create_and_get_deposit_happy_path() {
         recipient: expected_recipient,
         reclaim_script,
         deposit_script,
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let request = CreateDepositRequestBody {
         bitcoin_tx_output_index,
@@ -160,7 +170,7 @@ async fn wipe_databases_test() {
         recipient: _,
         reclaim_script,
         deposit_script,
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let request = CreateDepositRequestBody {
         bitcoin_tx_output_index,
@@ -209,7 +219,7 @@ async fn get_deposits_for_transaction() {
         recipient: expected_recipient,
         reclaim_script,
         deposit_script,
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let mut create_requests: Vec<CreateDepositRequestBody> = Vec::new();
     let mut expected_deposits: Vec<Deposit> = Vec::new();
@@ -281,7 +291,7 @@ async fn get_deposits() {
         recipient: expected_recipient,
         reclaim_script,
         deposit_script,
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let mut create_requests: Vec<CreateDepositRequestBody> = Vec::new();
     let mut expected_deposit_infos: Vec<DepositInfo> = Vec::new();
@@ -311,11 +321,11 @@ async fn get_deposits() {
         }
     }
 
-    let chunksize: i32 = 2;
+    let chunksize: u16 = 2;
     // If the number of elements is an exact multiple of the chunk size the "final"
     // query will still have a next token, and the next query will now have a next
     // token and will return no additional data.
-    let expected_chunks = expected_deposit_infos.len() as i32 / chunksize + 1;
+    let expected_chunks: u16 = expected_deposit_infos.len() as u16 / chunksize + 1;
 
     // Act.
     // ----
@@ -329,7 +339,7 @@ async fn get_deposits() {
             &configuration,
             status,
             next_token.as_ref().and_then(|o| o.as_deref()),
-            Some(chunksize),
+            Some(chunksize as i32),
         )
         .await
         .expect("Received an error after making a valid get deposits api call.");
@@ -343,13 +353,13 @@ async fn get_deposits() {
 
     // Assert.
     // -------
-    assert_eq!(expected_chunks, gotten_deposit_info_chunks.len() as i32);
+    assert_eq!(expected_chunks, gotten_deposit_info_chunks.len() as u16);
     let max_chunk_size = gotten_deposit_info_chunks
         .iter()
         .map(|chunk| chunk.len())
         .max()
         .unwrap();
-    assert!(chunksize >= max_chunk_size as i32);
+    assert!(chunksize >= max_chunk_size as u16);
 
     let mut gotten_deposit_infos = gotten_deposit_info_chunks
         .into_iter()
@@ -359,6 +369,128 @@ async fn get_deposits() {
     expected_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
     gotten_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
     assert_eq!(expected_deposit_infos, gotten_deposit_infos);
+}
+
+struct RecipientTestSetupData {
+    num_deposits: u32,
+    bitcoin_txid: String,
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposits_for_recipient() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+
+    // Setup the test information that we'll use to arrange the test.
+    let recipient_test_setup: Vec<RecipientTestSetupData> = vec![
+        RecipientTestSetupData {
+            num_deposits: 3,
+            bitcoin_txid: "test_bitcoin_txid_1".into(),
+        },
+        RecipientTestSetupData {
+            num_deposits: 1,
+            bitcoin_txid: "test_bitcoin_txid_2".into(),
+        },
+        RecipientTestSetupData {
+            num_deposits: 4,
+            bitcoin_txid: "test_bitcoin_txid_3".into(),
+        },
+    ];
+
+    let mut expected_recipient_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    let mut create_requests: Vec<CreateDepositRequestBody> = Vec::new();
+    for (recipient_number, recipient_test_setup) in recipient_test_setup.iter().enumerate() {
+        // Setup test deposit transaction.
+        let DepositTxnData {
+            recipient,
+            reclaim_script,
+            deposit_script,
+        } = DepositTxnData::new(
+            DEPOSIT_LOCK_TIME,
+            DEPOSIT_MAX_FEE,
+            DEPOSIT_AMOUNT_SATS,
+            recipient_number as u8,
+        );
+        // Make create requests.
+        let mut expected_deposit_infos: Vec<DepositInfo> = Vec::new();
+        for bitcoin_tx_output_index in 0..recipient_test_setup.num_deposits {
+            // Make the create request.
+            let request = CreateDepositRequestBody {
+                bitcoin_tx_output_index,
+                bitcoin_txid: recipient_test_setup.bitcoin_txid.clone(),
+                deposit_script: deposit_script.clone(),
+                reclaim_script: reclaim_script.clone(),
+            };
+            create_requests.push(request);
+            // Store the expected deposit info that should come from it.
+            let expected_deposit_info = DepositInfo {
+                amount: DEPOSIT_AMOUNT_SATS,
+                bitcoin_tx_output_index,
+                bitcoin_txid: recipient_test_setup.bitcoin_txid.clone(),
+                last_update_block_hash: BLOCK_HASH.into(),
+                last_update_height: BLOCK_HEIGHT,
+                recipient: recipient.clone(),
+                status: testing_emily_client::models::Status::Pending,
+                reclaim_script: reclaim_script.clone(),
+                deposit_script: deposit_script.clone(),
+            };
+            expected_deposit_infos.push(expected_deposit_info);
+        }
+        // Add the recipient data to the recipient data hashmap that stores what
+        // we expect to see from the recipient.
+        expected_recipient_data.insert(recipient.clone(), expected_deposit_infos.clone());
+    }
+
+    // The size of the chunks to grab from the api.
+    let chunksize: u16 = 2;
+
+    // Act.
+    // ----
+    batch_create_deposits(&configuration, create_requests).await;
+
+    let mut actual_recipient_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    for recipient in expected_recipient_data.keys() {
+        // Loop over the api calls to get all the deposits for the recipient.
+        let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
+        let mut next_token: Option<Option<String>> = None;
+        loop {
+            let response = apis::deposit_api::get_deposits_for_recipient(
+                &configuration,
+                recipient,
+                next_token.as_ref().and_then(|o| o.as_deref()),
+                Some(chunksize as i32),
+            )
+            .await
+            .expect("Received an error after making a valid get deposits for recipient api call.");
+            gotten_deposit_info_chunks.push(response.deposits);
+            next_token = response.next_token;
+            if !next_token.as_ref().is_some_and(|inner| inner.is_some()) {
+                break;
+            }
+        }
+        // Store the actual data received from the api.
+        actual_recipient_data.insert(
+            recipient.clone(),
+            gotten_deposit_info_chunks
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    // Assert.
+    // -------
+    for recipient in expected_recipient_data.keys() {
+        let mut expected_deposit_infos = expected_recipient_data.get(recipient).unwrap().clone();
+        expected_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
+        let mut actual_deposit_infos = actual_recipient_data.get(recipient).unwrap().clone();
+        actual_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
+        // Assert that the expected and actual deposit infos are the same.
+        assert_eq!(expected_deposit_infos, actual_deposit_infos);
+    }
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
@@ -376,7 +508,7 @@ async fn update_deposits() {
         recipient: expected_recipient,
         reclaim_script,
         deposit_script,
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let update_status_message: &str = "test_status_message";
     let update_block_hash: &str = "update_block_hash";
@@ -472,7 +604,7 @@ async fn update_deposits_updates_chainstate() {
         recipient: _,
         reclaim_script,
         deposit_script,
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let create_request = CreateDepositRequestBody {
         bitcoin_tx_output_index,
@@ -567,7 +699,7 @@ async fn overwrite_deposit(status: Status, should_reject: bool) {
     // Setup test deposit transaction.
     let DepositTxnData {
         reclaim_script, deposit_script, ..
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS);
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, DEPOSIT_AMOUNT_SATS, 0);
 
     let create_deposit_body = CreateDepositRequestBody {
         bitcoin_tx_output_index,

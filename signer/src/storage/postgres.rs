@@ -1507,6 +1507,16 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    /// Returns the number of rows in the `dkg_shares` table.
+    async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sbtc_signer.dkg_shares;")
+            .fetch_one(&self.0)
+            .await
+            .map_err(Error::SqlxQuery)?;
+
+        u32::try_from(count).map_err(Error::ConversionDatabaseInt)
+    }
+
     /// Find the last key rotation by iterating backwards from the stacks
     /// chain tip scanning all transactions until we encounter a key
     /// rotation transactions.

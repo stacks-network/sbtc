@@ -241,7 +241,7 @@ pub(crate) trait TableIndexTrait {
         settings: &Settings,
         partition_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
         maybe_next_token: Option<String>,
-        maybe_page_size: Option<i32>,
+        maybe_page_size: Option<u16>,
     ) -> Result<(Vec<Self::Entry>, Option<String>), Error> {
         // Convert inputs into the types needed for querying.
         let exclusive_start_key =
@@ -252,7 +252,7 @@ pub(crate) trait TableIndexTrait {
             .table_name(Self::table_name(settings))
             .set_index_name(Self::INDEX_NAME_IF_GSI.map(|s| s.to_string()))
             .set_exclusive_start_key(exclusive_start_key)
-            .set_limit(maybe_page_size)
+            .set_limit(maybe_page_size.map(|u| u as i32))
             .key_condition_expression("#pk = :v")
             .expression_attribute_names(
                 "#pk",
@@ -280,7 +280,7 @@ pub(crate) trait TableIndexTrait {
         sort_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
         sort_key_operator: &str,
         maybe_next_token: Option<String>,
-        maybe_page_size: Option<i32>,
+        maybe_page_size: Option<u16>,
     ) -> Result<(Vec<Self::Entry>, Option<String>), Error> {
         // Convert inputs into the types needed for querying.
         let exclusive_start_key =
@@ -292,7 +292,7 @@ pub(crate) trait TableIndexTrait {
             .table_name(Self::table_name(settings))
             .set_index_name(Self::INDEX_NAME_IF_GSI.map(|s| s.to_string()))
             .set_exclusive_start_key(exclusive_start_key)
-            .set_limit(maybe_page_size)
+            .set_limit(maybe_page_size.map(|u| u as i32))
             .key_condition_expression(format!("#pk = :pk AND #sk {sort_key_operator} :sk"))
             .expression_attribute_names(
                 "#pk",

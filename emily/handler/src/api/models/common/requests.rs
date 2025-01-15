@@ -13,5 +13,5 @@ pub struct PaginatedQuery<T> {
     pub next_token: Option<T>,
     /// Maximum number of results to show.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub page_size: Option<i32>,
+    pub page_size: Option<u16>,
 }
