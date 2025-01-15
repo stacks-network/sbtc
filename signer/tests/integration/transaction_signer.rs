@@ -516,7 +516,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // We need to convince the signer event loop that it should accept the
     // message that we are going to send it. DkgBegin messages are only
     // accepted from the coordinator on the canonical chain tip.
-    let report = MsgChainTipReport {
+    let mut report = MsgChainTipReport {
         sender_is_coordinator: true,
         chain_tip_status: ChainTipStatus::Canonical,
         chain_tip,
@@ -566,16 +566,14 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
 
     // If we say the current chain tip is something else, a new state
     // machine will be created associated with that chain tip
-    let random_block: model::BitcoinBlock = Faker.fake_with_rng(&mut rng);
-    let chain_tip = random_block.block_hash;
-    db.write_bitcoin_block(&random_block).await.unwrap();
+    report.chain_tip = Faker.fake_with_rng(&mut rng);
 
     tx_signer
         .handle_wsts_message(&dkg_begin_msg, msg_public_key, &report)
         .await
         .unwrap();
 
-    let id2 = StateMachineId::from(&chain_tip);
+    let id2 = StateMachineId::from(&report.chain_tip.block_hash);
     let state_machine = tx_signer.wsts_state_machines.get(&id2).unwrap();
     assert_eq!(state_machine.dkg_id, dkg_id);
     assert_eq!(tx_signer.wsts_state_machines.len(), 2);
