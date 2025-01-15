@@ -18,7 +18,8 @@ impl BitcoinCore {
             exposed_ports: vec![ContainerPort::Tcp(18443), ContainerPort::Tcp(28332)],
         };
         let bitcoind = bitcoind.start().await.expect("failed to start bitcoind");
-        //tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // A small extra delay to try to make sure the bitcoind is ready
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         BitcoinCoreContainer::new(bitcoind).await
     }
 }
