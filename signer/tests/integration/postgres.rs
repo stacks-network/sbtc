@@ -64,6 +64,7 @@ use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use test_case::test_case;
 use test_log::test;
 
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::DepositAmounts;
 use crate::setup::TestSignerSet;
@@ -376,20 +377,22 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 
 /// Test that [`DbRead::get_pending_deposit_requests`] returns deposit
 /// requests that do not have a vote on them yet.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_pending_deposit_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
     let amounts = DepositAmounts { amount: 123456, max_fee: 12345 };
     let signers = TestSignerSet::new(&mut rng);
-    let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+    let setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), faucet, &[amounts]);
 
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
     // There aren't any deposit requests in the database.
@@ -429,20 +432,22 @@ async fn get_pending_deposit_requests_only_pending() {
 
 /// Test that [`DbRead::get_pending_withdrawal_requests`] returns
 /// withdrawal requests that do not have a vote on them yet.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_pending_withdrawal_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
     let amounts = DepositAmounts { amount: 123456, max_fee: 12345 };
     let signers = TestSignerSet::new(&mut rng);
-    let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+    let setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), faucet, &[amounts]);
 
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
     // There aren't any withdrawal requests in the database.
@@ -690,7 +695,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
 }
 
 /// This tests that when fetching pending accepted deposits we ingore swept ones.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn should_not_return_swept_deposits_as_pending_accepted() {
     let db = testing::storage::new_test_database().await;
@@ -701,8 +706,10 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
 
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
@@ -710,7 +717,7 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.sweep_block_hash).await;
     setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
@@ -1853,7 +1860,7 @@ async fn is_known_bitcoin_block_hash_works() {
 /// This tests that deposit requests where there is an associated sweep
 /// transaction will show up in the query results from
 /// [`DbRead::get_swept_deposit_requests`].
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     let db = testing::storage::new_test_database().await;
@@ -1864,12 +1871,14 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.sweep_block_hash).await;
     setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
@@ -1914,7 +1923,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 /// This function tests that deposit requests that do not have a confirmed
 /// response (sweep) bitcoin transaction are not returned from
 /// [`DbRead::get_swept_deposit_requests`].
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     let db = testing::storage::new_test_database().await;
@@ -1925,12 +1934,14 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.sweep_block_hash).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -1965,7 +1976,7 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
 /// We use two sweep setups: we add confirming events to both but for one
 /// of them the event is not in the canonical chain, then we push another event
 /// (on the canonical chain) resulting in both being confirmed on the canonical chain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_responses() {
     let db = testing::storage::new_test_database().await;
@@ -1976,9 +1987,11 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup_fork = TestSweepSetup::new_setup(&rpc, &faucet, 2_000_000, &mut rng);
-    let mut setup_canonical = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+    let mut setup_fork = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 2_000_000, &mut rng);
+    let mut setup_canonical = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
 
     let context_window = 20;
 
@@ -1987,7 +2000,7 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip).await;
 
     for setup in [&mut setup_fork, &mut setup_canonical] {
         // We almost always need a stacks genesis block, so let's store it.
@@ -2172,7 +2185,7 @@ async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
 /// function return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the Stacks blockchain
 /// but that transaction has been reorged while the sweep transaction has not.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_response_tx_reorged() {
     let db = testing::storage::new_test_database().await;
@@ -2183,9 +2196,11 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
 
     let context_window = 20;
 
@@ -2194,7 +2209,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip).await;
     setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit

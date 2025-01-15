@@ -96,10 +96,10 @@ use signer::transaction_signer::TxSignerEventLoop;
 use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
 use crate::utxo_construction::make_deposit_request;
-use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
 
 type IntegrationTestContext =
     TestContext<PgStore, BitcoinCoreClient, WrappedMock<MockStacksInteract>, EmilyClient>;
@@ -406,15 +406,17 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
     })
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[test(tokio::test)]
 async fn process_complete_deposit() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
 
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.sweep_block_hash).await;
     setup.store_deposit_tx(&db).await;
     setup.store_sweep_tx(&db).await;
     setup.store_dkg_shares(&db).await;
@@ -432,7 +434,7 @@ async fn process_complete_deposit() {
 
     let mut context = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.get_client())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -1148,7 +1150,9 @@ async fn run_dkg_from_scratch() {
 #[tokio::test]
 async fn sign_bitcoin_transaction() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
@@ -1160,7 +1164,7 @@ async fn sign_bitcoin_transaction() {
 
     let network = WanNetwork::default();
 
-    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    let chain_tip_info = bitcoin_client.get_chain_tips().unwrap().pop().unwrap();
 
     // =========================================================================
     // Step 1 - Create a database, an associated context, and a Keypair for
@@ -1174,12 +1178,12 @@ async fn sign_bitcoin_transaction() {
         let db = testing::storage::new_test_database().await;
         let ctx = TestContext::builder()
             .with_storage(db.clone())
-            .with_first_bitcoin_core_client()
+            .with_bitcoin_client(bitcoin_client.clone())
             .with_emily_client(emily_client.clone())
             .with_mocked_stacks_client()
             .build();
 
-        backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
+        backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip_info.hash).await;
 
         let network = network.connect(&ctx);
 
@@ -1349,7 +1353,7 @@ async fn sign_bitcoin_transaction() {
         });
 
         let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
+            BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
                 .await
                 .unwrap();
         let (sender, receiver) = tokio::sync::mpsc::channel(100);
@@ -1434,14 +1438,14 @@ async fn sign_bitcoin_transaction() {
     //   request transaction. Submit it and inform Emily about it.
     // =========================================================================
     // Now lets make a deposit transaction and submit it
-    let utxo = depositor.get_utxos(rpc, None).pop().unwrap();
+    let utxo = depositor.get_utxos(&bitcoin_client, None).pop().unwrap();
 
     let amount = 2_500_000;
     let signers_public_key = shares.aggregate_key.into();
     let max_fee = amount / 2;
     let (deposit_tx, deposit_request, _) =
         make_deposit_request(&depositor, amount, utxo, max_fee, signers_public_key);
-    rpc.send_raw_transaction(&deposit_tx).unwrap();
+    bitcoin_client.send_raw_transaction(&deposit_tx).unwrap();
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
 
@@ -1550,7 +1554,9 @@ async fn sign_bitcoin_transaction() {
 #[tokio::test]
 async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
@@ -1562,7 +1568,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
 
     let network = WanNetwork::default();
 
-    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    let chain_tip_info = bitcoin_client.get_chain_tips().unwrap().pop().unwrap();
 
     // =========================================================================
     // Step 1 - Create a database, an associated context, and a Keypair for
@@ -1576,12 +1582,12 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
         let db = testing::storage::new_test_database().await;
         let ctx = TestContext::builder()
             .with_storage(db.clone())
-            .with_first_bitcoin_core_client()
+            .with_bitcoin_client(bitcoin_client.clone())
             .with_emily_client(emily_client.clone())
             .with_mocked_stacks_client()
             .build();
 
-        backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
+        backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip_info.hash).await;
 
         let network = network.connect(&ctx);
 
@@ -1737,7 +1743,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
         });
 
         let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
+            BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
                 .await
                 .unwrap();
         let (sender, receiver) = tokio::sync::mpsc::channel(100);
@@ -1997,7 +2003,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 /// This test asserts that the `get_btc_state` function returns the correct
 /// `SignerBtcState` when there are multiple outstanding sweep transaction
 /// packages available, simulating the case where there has been an RBF.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[test(tokio::test)]
 async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);

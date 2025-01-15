@@ -1,5 +1,6 @@
 //! Contains client wrappers for bitcoin core and electrum.
 
+use std::ops::Deref;
 use std::sync::Arc;
 
 use bitcoin::Amount;
@@ -281,6 +282,14 @@ impl TryFrom<&Url> for BitcoinCoreClient {
         let endpoint = format!("{}://{host}:{port}", url.scheme());
 
         Self::new(&endpoint, username, password)
+    }
+}
+
+impl Deref for BitcoinCoreClient {
+    type Target = bitcoincore_rpc::Client;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }
 

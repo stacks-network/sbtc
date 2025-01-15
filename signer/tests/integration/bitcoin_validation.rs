@@ -6,7 +6,6 @@ use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
 
-use sbtc::testing::regtest;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::validation::BitcoinTxContext;
@@ -22,6 +21,7 @@ use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
 
+use crate::docker;
 use crate::setup::{backfill_bitcoin_blocks, TestSignerSet};
 use crate::setup::{DepositAmounts, TestSweepSetup2};
 
@@ -92,11 +92,13 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
 async fn one_tx_per_request_set() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -107,9 +109,9 @@ async fn one_tx_per_request_set() {
         max_fee: 500_000,
     }];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
 
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
@@ -180,18 +182,20 @@ async fn one_tx_per_request_set() {
 /// Test that including a single invalid transaction in a set of requests
 /// results in the entire bitcoin transaction being invalid, and that will
 /// sign for the associated sighashes are all false.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn one_invalid_deposit_invalidates_tx() {
     let low_fee = 10;
 
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -210,9 +214,9 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
 
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
@@ -297,19 +301,15 @@ async fn one_invalid_deposit_invalidates_tx() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn one_withdrawal_errors_validation() {
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-
-    let ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
-        .with_mocked_stacks_client()
-        .with_mocked_emily_client()
-        .build();
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -325,9 +325,16 @@ async fn one_withdrawal_errors_validation() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_bitcoin_client(bitcoin_client)
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
 
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
@@ -367,18 +374,20 @@ async fn one_withdrawal_errors_validation() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn cannot_sign_deposit_is_ok() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -396,7 +405,7 @@ async fn cannot_sign_deposit_is_ok() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     // Let's suppose that signer 0 cannot sign for the deposit, but that
     // they still accept the deposit. That means the bitmap at signer 0
@@ -404,7 +413,7 @@ async fn cannot_sign_deposit_is_ok() {
     // the inputs in the transaction.
     setup.deposits[0].1.signer_bitmap.set(0, true);
 
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
 
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
@@ -532,16 +541,18 @@ async fn cannot_sign_deposit_is_ok() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn sighashes_match_from_sbtc_requests_object() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -558,9 +569,9 @@ async fn sighashes_match_from_sbtc_requests_object() {
         },
     ];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
 
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
@@ -664,16 +675,18 @@ async fn sighashes_match_from_sbtc_requests_object() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn outcome_is_independent_of_input_order() {
     let db = testing::storage::new_test_database().await;
     let mut rng = OsRng;
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -698,9 +711,9 @@ async fn outcome_is_independent_of_input_order() {
         },
     ];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &setup.deposit_block_hash).await;
 
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;

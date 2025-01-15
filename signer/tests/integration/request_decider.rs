@@ -24,6 +24,7 @@ use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
 use url::Url;
 
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
 
@@ -121,27 +122,30 @@ async fn should_store_decisions_received_from_other_signers() {
 /// Test that [`TxSignerEventLoop::handle_pending_deposit_request`] does
 /// not error when attempting to check the scriptPubKeys of the
 /// inputs of a deposit.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn handle_pending_deposit_request_address_script_pub_key() {
     let db = testing::storage::new_test_database().await;
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_mocked_clients()
+        .with_bitcoin_client(bitcoind.get_client())
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
         .build();
-
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -206,7 +210,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
 /// Test that [`RequestDeciderEventLoop::handle_pending_deposit_request`]
 /// will write the can_sign field to be false if the current signer is not
 /// part of the signing set locking the deposit transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn handle_pending_deposit_request_not_in_signing_set() {
     let db = testing::storage::new_test_database().await;
@@ -218,15 +222,17 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+        let bitcoind = docker::BitcoinCore::start().await;
+        let bitcoin_client = bitcoind.get_client();
+        let faucet = bitcoind.initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -299,6 +305,10 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+
     let emily_client =
         EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
 
@@ -308,7 +318,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_emily_client(emily_client.clone())
         .with_mocked_stacks_client()
         .build();
@@ -318,15 +328,13 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     // error when trying to send a message at the end.
     let _rec = ctx.get_signal_receiver();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip).await;
 
     let network = SignerNetwork::single(&ctx);
 

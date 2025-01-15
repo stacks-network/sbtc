@@ -30,6 +30,7 @@ use signer::testing::context::*;
 use signer::testing::storage::model::TestData;
 use signer::transaction_signer::TxSignerEventLoop;
 
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::fill_signers_utxo;
 use crate::setup::TestSweepSetup;
@@ -130,28 +131,31 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 
 /// Test that [`TxSignerEventLoop::assert_valid_stacks_tx_sign_request`]
 /// errors when the signer is not in the signer set.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 async fn signing_set_validation_check_for_stacks_transactions() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(bitcoind.get_client())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let mut setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let mut setup = TestSweepSetup::new_setup(&bitcoin_client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip).await;
 
     // This is all normal things that need to happen in order to pass
     // validation.
@@ -208,33 +212,34 @@ async fn signing_set_validation_check_for_stacks_transactions() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 #[tokio::test]
 pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let db = testing::storage::new_test_database().await;
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let fee_rate = 1.3;
     // Build the test context with mocked clients
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_mocked_bitcoin_client()
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-
     // Create a test setup with a confirmed deposit transaction
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&bitcoin_client, faucet, 10000, &mut rng);
     // Backfill the blockchain data into the database
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip).await;
     let bitcoin_block = db.get_bitcoin_block(&chain_tip).await.unwrap();
 
     let public_aggregate_key = setup.aggregated_signer.keypair.public_key().into();
 
-    // // Fill the signer's UTXO in the database
+    // Fill the signer's UTXO in the database
     fill_signers_utxo(&db, bitcoin_block.unwrap(), &public_aggregate_key, &mut rng).await;
 
     // Store the necessary data for passing validation

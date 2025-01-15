@@ -1,21 +1,23 @@
 use bitcoin::Block;
 use bitcoin::BlockHash;
 use futures::StreamExt;
-use sbtc::testing::regtest;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 
-pub const BITCOIN_CORE_ZMQ_ENDPOINT: &str = "tcp://localhost:28332";
+use crate::docker;
 
 /// This tests that out bitcoin block stream receives new blocks from
 /// bitcoin-core as it receives them. We create the stream, generate
 /// bitcoin blocks, and wait for the blocks to be received from the stream.
 #[tokio::test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 async fn block_stream_streams_blocks() {
-    let (_, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let faucet = bitcoind.initialize_blockchain();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["rawblock"])
+        BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["rawblock"])
             .await
             .unwrap();
 
@@ -64,12 +66,15 @@ async fn block_stream_streams_blocks() {
 /// stream. This also checks that we parse block hashes correctly, since
 /// they are supposed to be little-endian formatted.
 #[tokio::test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[cfg_attr(not(feature = "integration-tests-parallel"), ignore)]
 async fn block_hash_stream_streams_block_hashes() {
-    let (_, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let faucet = bitcoind.initialize_blockchain();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
+        BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
             .await
             .unwrap();
 

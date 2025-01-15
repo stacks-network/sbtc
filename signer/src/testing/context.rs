@@ -14,6 +14,7 @@ use blockstack_lib::{
     },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
+use sbtc::testing::regtest;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
@@ -697,6 +698,30 @@ where
         let config = self.get_config();
         let url = config.settings.bitcoin.rpc_endpoints.first().unwrap();
         let bitcoin_client = crate::bitcoin::rpc::BitcoinCoreClient::try_from(url).unwrap();
+        ContextBuilder {
+            config: ContextConfig {
+                settings: config.settings,
+                storage: config.storage,
+                bitcoin: bitcoin_client,
+                stacks: config.stacks,
+                emily: config.emily,
+            },
+        }
+    }
+
+    /// Configure the context to use a [`BitcoinCoreClient`](crate::bitcoin::rpc::BitcoinCoreClient)
+    /// with the specified URL and credentials.
+    fn with_bitcoin_client_from_url(
+        self,
+        url: &url::Url,
+    ) -> ContextBuilder<Storage, crate::bitcoin::rpc::BitcoinCoreClient, Stacks, Emily> {
+        let config = self.get_config();
+        let bitcoin_client =
+            crate::bitcoin::rpc::BitcoinCoreClient::new(
+                url.as_str(), 
+                regtest::BITCOIN_CORE_RPC_USERNAME.to_owned(), 
+                regtest::BITCOIN_CORE_RPC_PASSWORD.to_owned()
+            ).unwrap();
         ContextBuilder {
             config: ContextConfig {
                 settings: config.settings,
