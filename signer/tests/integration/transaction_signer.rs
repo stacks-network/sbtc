@@ -561,7 +561,10 @@ pub async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
 
     // If we say the current chain tip is something else, a new state
     // machine will be created associated with that chain tip
-    let chain_tip = BitcoinBlockHash::from([0; 32]);
+    let random_block: model::BitcoinBlock = Faker.fake_with_rng(&mut rng);
+    let chain_tip = random_block.block_hash;
+    db.write_bitcoin_block(&random_block).await.unwrap();
+
     tx_signer
         .handle_wsts_message(&dkg_begin_msg, &chain_tip, msg_public_key, &report)
         .await
