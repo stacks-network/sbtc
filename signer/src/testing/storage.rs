@@ -133,13 +133,11 @@ where
 
 /// This is a helper function for waiting for the database to have a row in
 /// the dkg_shares, signaling that DKG has finished successfully.
-pub async fn wait_for_dkg(db: &PgStore) {
-    let mut db_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+pub async fn wait_for_dkg(db: &PgStore, count: u32) {
     let waiting_fut = async {
         let db = db.clone();
-        while db_shares.is_none() {
+        while db.get_encrypted_dkg_shares_count().await.unwrap() < count {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            db_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
         }
     };
 

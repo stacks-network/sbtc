@@ -1643,7 +1643,7 @@ async fn sign_bitcoin_transaction() {
     // so that we can make a donation, and get the party started.
     let dkg_futs = signers
         .iter()
-        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db));
+        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db, 1));
     futures::future::join_all(dkg_futs).await;
     let (_, db, _, _) = signers.first().unwrap();
     let shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
@@ -1809,7 +1809,7 @@ async fn sign_bitcoin_transaction() {
 /// 7. Have the signers UTXO locked by the aggregate key from the second
 ///    DKG run.
 ///
-/// For step 6, we "hide" the DKG shares to get the signers to run DKG
+/// For step 5, we "hide" the DKG shares to get the signers to run DKG
 /// again. We reveal them so that they can use them for a signing round.
 ///
 /// To start the test environment do:
@@ -1823,6 +1823,7 @@ async fn sign_bitcoin_transaction() {
 async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let (rpc, faucet) = regtest::initialize_blockchain();
+    signer::logging::setup_logging("info,signer=debug", false);
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
@@ -1835,6 +1836,14 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let network = WanNetwork::default();
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    // This is the height where the signers will run DKG afterwards. We
+    // create 4 bitcoin blocks between now and when we want DKG to run a
+    // second time: 
+    // 1. run DKG
+    // 2. confirm a donation and a deposit request, 
+    // 3. confirm the sweep, mint sbtc
+    // 4. run DKG again.
+    let dkg_run_two_height = chain_tip_info.height + 4;
 
     // =========================================================================
     // Step 1 - Create a database, an associated context, and a Keypair for
@@ -1851,6 +1860,10 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             .with_first_bitcoin_core_client()
             .with_emily_client(emily_client.clone())
             .with_mocked_stacks_client()
+            .modify_settings(|settings| {
+                settings.signer.dkg_target_rounds = NonZeroU32::new(2).unwrap();
+                settings.signer.dkg_min_bitcoin_block_height = NonZeroU64::new(dkg_run_two_height);
+            })
             .build();
 
         backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
@@ -2053,11 +2066,18 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // =========================================================================
     // Step 4 - Wait for DKG
     // -------------------------------------------------------------------------
+    // - Give a "depositor" some UTXOs so that they can make a deposit for
+    //   sBTC.
     // - Once they are all running, generate a bitcoin block to kick off
     //   the database updating process.
     // - After they have the same view of the canonical bitcoin blockchain,
     //   the signers should all participate in DKG.
     // =========================================================================
+    let depositor1 = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+    faucet.send_to(50_000_000, &depositor1.address);
+
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
     // We first need to wait for bitcoin-core to send us all the
@@ -2072,7 +2092,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // so that we can make a donation, and get the party started.
     let dkg_futs = signers
         .iter()
-        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db));
+        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db, 1));
     futures::future::join_all(dkg_futs).await;
     let (_, db, _, _) = signers.first().unwrap();
     let shares1 = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
@@ -2083,23 +2103,12 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // - Before the signers can process anything, they need a UTXO to call
     //   their own. For that we make a donation, and confirm it. The
     //   signers should pick it up.
-    // - Give a "depositor" some UTXOs so that they can make a deposit for
-    //   sBTC.
     // =========================================================================
     let script_pub_key1 = shares1.aggregate_key.signers_script_pubkey();
     let network = bitcoin::Network::Regtest;
     let address = Address::from_script(&script_pub_key1, network).unwrap();
 
     faucet.send_to(100_000, &address);
-
-    let depositor1 = Recipient::new(AddressType::P2tr);
-
-    // Start off with some initial UTXOs to work with.
-
-    faucet.send_to(50_000_000, &depositor1.address);
-    faucet.generate_blocks(1);
-
-    wait_for_signers(&signers).await;
 
     // =========================================================================
     // Step 6 - Make a proper deposit
@@ -2161,21 +2170,22 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     assert_eq!(actual_script_pub_key, script_pub_key1.as_bytes());
     assert_eq!(&tx_info.tx.output[0].script_pubkey, &script_pub_key1);
 
-    // Now we check that out database has the sweep transaction
-    let tx = sqlx::query_scalar::<_, BitcoinTx>(
-        r#"
-        SELECT tx
-        FROM sbtc_signer.transactions
-        WHERE txid = $1
-        "#,
-    )
-    .bind(txid.to_byte_array())
-    .fetch_one(ctx.storage.pool())
-    .await
-    .unwrap();
-
-    let script = tx.output[0].script_pubkey.clone().into();
+    // Now we check that each database has the sweep transaction and is
+    // recognized as a signer script_pubkey.
     for (_, db, _, _) in signers.iter() {
+        let tx = sqlx::query_scalar::<_, BitcoinTx>(
+            r#"
+            SELECT tx
+            FROM sbtc_signer.transactions
+            WHERE txid = $1
+            "#,
+        )
+        .bind(txid.to_byte_array())
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+        let script = tx.output[0].script_pubkey.clone().into();
         assert!(db.is_signer_script_pub_key(&script).await.unwrap());
     }
 
@@ -2188,20 +2198,12 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     //   will use them later.
     // =========================================================================
     for (_, db, _, _) in signers.iter() {
-        sqlx::query(
-            r#"
-            CREATE TABLE dkg_shares_copy AS
-            SELECT * FROM dkg_shares;
-            "#,
-        )
-        .execute(db.pool())
-        .await
-        .unwrap();
-
-        sqlx::query("TRUNCATE TABLE dkg_shares;")
-            .execute(db.pool())
+        let dkg_share_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM dkg_shares;")
+            .fetch_one(db.pool())
             .await
             .unwrap();
+
+        assert_eq!(dkg_share_count, 1);
     }
 
     // After the next bitcoin block, each of the signers will think that
@@ -2215,26 +2217,26 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         .map(|(_, db, _, _)| testing::storage::wait_for_chain_tip(db, chain_tip));
     futures::future::join_all(db_update_futs).await;
 
-    // Now we wait for DKG to successfully complete. For that we just watch
-    // the dkg_shares table.
+    // We wait for DKG to successfully complete again. For that we just
+    // watch the dkg_shares table.
     let dkg_futs = signers
         .iter()
-        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db));
+        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db, 2));
     futures::future::join_all(dkg_futs).await;
     let (_, db, _, _) = signers.first().unwrap();
     let shares2 = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
 
     // Time to "reveal" the DKG shares for each of the signers.
     for (_, db, _, _) in signers.iter() {
-        sqlx::query(
-            r#"
-            INSERT INTO dkg_shares
-            SELECT * FROM dkg_shares_copy;
-            "#,
-        )
-        .execute(db.pool())
-        .await
-        .unwrap();
+        // sqlx::query(
+        //     r#"
+        //     INSERT INTO dkg_shares
+        //     SELECT * FROM dkg_shares_copy;
+        //     "#,
+        // )
+        // .execute(db.pool())
+        // .await
+        // .unwrap();
 
         let dkg_share_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM dkg_shares;")
             .fetch_one(db.pool())
@@ -2432,7 +2434,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // No withdrawals, so 2 outputs
     assert_eq!(tx_info.outputs().len(), 2);
 
-    for (ctx, db, _, _) in signers {
+    for (_, db, _, _) in signers {
         // Lastly we check that our database has the sweep transaction
         let tx = sqlx::query_scalar::<_, BitcoinTx>(
             r#"
@@ -2442,7 +2444,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             "#,
         )
         .bind(txid.to_byte_array())
-        .fetch_one(ctx.storage.pool())
+        .fetch_one(db.pool())
         .await
         .unwrap();
 
@@ -2694,7 +2696,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     // so that we can make a donation, and get the party started.
     let dkg_futs = signers
         .iter()
-        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db));
+        .map(|(_, db, _, _)| testing::storage::wait_for_dkg(db, 1));
     futures::future::join_all(dkg_futs).await;
 
     // =========================================================================
