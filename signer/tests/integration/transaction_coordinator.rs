@@ -1810,7 +1810,7 @@ async fn sign_bitcoin_transaction() {
 ///    DKG run.
 ///
 /// For step 6, we "hide" the DKG shares to get the signers to run DKG
-/// again. We unhide them so that they can use them for a signing round.
+/// again. We reveal them so that they can use them for a signing round.
 ///
 /// To start the test environment do:
 /// ```bash
@@ -2205,7 +2205,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     }
 
     // After the next bitcoin block, each of the signers will think that
-    // DKG beeds to be run. So we need to wait for it.
+    // DKG needs to be run. So we need to wait for it.
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
     // We first need to wait for bitcoin-core to send us all the
@@ -2268,6 +2268,8 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // - Use the UTXOs confirmed in steps (5) and (10) to construct two
     //   proper deposit request transactions. Submit them to the bitcoin
     //   network and then inform Emily.
+    // - The two deposits are locked using two different aggregate keys,
+    //   the old one and the new one.
     // =========================================================================
     // Now lets make a deposit transaction and submit it
     let utxo = depositor2.get_utxos(rpc, None).pop().unwrap();
@@ -2427,31 +2429,31 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // The transaction should sweep two deposits, so 3 inputs total because
     // of the signers' UTXO.
     assert_eq!(tx_info.inputs().len(), 3);
-    // No withdrawals, to 2 outputs
+    // No withdrawals, so 2 outputs
     assert_eq!(tx_info.outputs().len(), 2);
 
-    // Lastly we check that out database has the sweep transaction
-    let tx = sqlx::query_scalar::<_, BitcoinTx>(
-        r#"
-        SELECT tx
-        FROM sbtc_signer.transactions
-        WHERE txid = $1
-        "#,
-    )
-    .bind(txid.to_byte_array())
-    .fetch_one(ctx.storage.pool())
-    .await
-    .unwrap();
+    for (ctx, db, _, _) in signers {
+        // Lastly we check that our database has the sweep transaction
+        let tx = sqlx::query_scalar::<_, BitcoinTx>(
+            r#"
+            SELECT tx
+            FROM sbtc_signer.transactions
+            WHERE txid = $1
+            "#,
+        )
+        .bind(txid.to_byte_array())
+        .fetch_one(ctx.storage.pool())
+        .await
+        .unwrap();
 
-    let script = tx.output[0].script_pubkey.clone().into();
-    for (_, db, _, _) in signers {
+        let script = tx.output[0].script_pubkey.clone().into();
         assert!(db.is_signer_script_pub_key(&script).await.unwrap());
         testing::storage::drop_db(db).await;
     }
 }
 
 /// Check that we do not try to deploy the smart contracts or rotate keys
-/// if we think things are up to date.
+/// if we think things are up-to-date.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
@@ -2681,7 +2683,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
     // We first need to wait for bitcoin-core to send us all the
-    // notifications so that we are up to date with the chain tip.
+    // notifications so that we are up-to-date with the chain tip.
     let db_update_futs = signers
         .iter()
         .map(|(_, db, _, _)| testing::storage::wait_for_chain_tip(db, chain_tip));
@@ -2706,7 +2708,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
     // We first need to wait for bitcoin-core to send us all the
-    // notifications so that we are up to date with the chain tip.
+    // notifications so that we are up-to-date with the chain tip.
     let db_update_futs = signers
         .iter()
         .map(|(_, db, _, _)| testing::storage::wait_for_chain_tip(db, chain_tip));
@@ -2715,7 +2717,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     // =========================================================================
     // Step 5 - Wait some more, maybe the signers will do something
     // -------------------------------------------------------------------------
-    // - DKG has run, and they think the smart contracts are up-to-date so
+    // - DKG has run, and they think the smart contracts are up-to-date, so
     //   they shouldn't do anything
     // =========================================================================
     faucet.generate_blocks(1);
@@ -3083,7 +3085,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     let expected_fees = Fees {
         total: 2_000,
-        rate: 2_000 as f64 / tx2.vsize() as f64,
+        rate: 2_000f64 / tx2.vsize() as f64,
     };
 
     // Assert that everything's as expected.
