@@ -348,7 +348,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-pub async fn new_state_machine_per_valid_sighash() {
+async fn new_state_machine_per_valid_sighash() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -478,7 +478,7 @@ pub async fn new_state_machine_per_valid_sighash() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-pub async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
+async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -562,13 +562,15 @@ pub async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
 
     // If we say the current chain tip is something else, a new state
     // machine will be created associated with that chain tip
-    let chain_tip = BitcoinBlockHash::from([0; 32]);
+    let random_block: model::BitcoinBlock = Faker.fake_with_rng(&mut rng);
+    db.write_bitcoin_block(&random_block).await.unwrap();
+
     tx_signer
-        .handle_wsts_message(&dkg_begin_msg, &chain_tip, msg_public_key, &report)
+        .handle_wsts_message(&dkg_begin_msg, &random_block.block_hash, msg_public_key, &report)
         .await
         .unwrap();
 
-    let id2 = StateMachineId::from(&chain_tip);
+    let id2 = StateMachineId::from(&random_block.block_hash);
     let state_machine = tx_signer.wsts_state_machines.get(&id2).unwrap();
     assert_eq!(state_machine.dkg_id, dkg_id);
     assert_eq!(tx_signer.wsts_state_machines.len(), 2);
