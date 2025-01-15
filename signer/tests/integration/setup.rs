@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use bitcoin::consensus::Encodable as _;
@@ -28,6 +29,7 @@ use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::TxDeconstructor as _;
 use signer::block_observer::BlockObserver;
 use signer::block_observer::Deposit;
+use signer::codec::Encode as _;
 use signer::config::Settings;
 use signer::context::SbtcLimits;
 use signer::keys::PublicKey;
@@ -41,6 +43,7 @@ use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
+use signer::testing::dummy::Unit;
 use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 use crate::utxo_construction::generate_withdrawal;
@@ -942,12 +945,36 @@ impl TestSweepSetup2 {
     /// We need to have a row in the dkg_shares table for the scriptPubKey
     /// associated with the signers aggregate key.
     pub async fn store_dkg_shares(&self, db: &PgStore) {
+        let num_signers = self.signers.keys.len() as u32;
         let aggregate_key: PublicKey = self.signers.signer.keypair.public_key().into();
+        let private_shares = wsts::traits::SignerState {
+            id: 0,
+            key_ids: self
+                .signers
+                .keys
+                .iter()
+                .enumerate()
+                .map(|(id, _)| id as u32 + 1)
+                .collect(),
+            num_keys: num_signers,
+            num_parties: num_signers,
+            threshold: self.signatures_required as u32,
+            group_key: aggregate_key.into(),
+            parties: vec![Unit.fake_with_rng(&mut OsRng)],
+        };
+        let encoded = private_shares.encode_to_vec();
+        let signer_private_key = self.signers.signer.keypair.secret_bytes();
+
+        let encrypted_private_shares =
+            wsts::util::encrypt(&signer_private_key, &encoded, &mut OsRng)
+                .expect("failed to encrypt");
+        let public_shares: BTreeMap<u32, wsts::net::DkgPublicShares> = BTreeMap::new();
+
         let shares = EncryptedDkgShares {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
-            encrypted_private_shares: Vec::new(),
-            public_shares: Vec::new(),
+            encrypted_private_shares,
+            public_shares: public_shares.encode_to_vec(),
             aggregate_key,
             signer_set_public_keys: self.signers.keys.clone(),
             signature_share_threshold: self.signatures_required,
