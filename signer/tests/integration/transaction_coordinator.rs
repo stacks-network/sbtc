@@ -2064,20 +2064,28 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     }
 
     // =========================================================================
-    // Step 4 - Wait for DKG
+    // Step 4 - Give deposits seed funds.
     // -------------------------------------------------------------------------
-    // - Give a "depositor" some UTXOs so that they can make a deposit for
+    // - Give "depositors" some UTXOs so that they can make deposits for
     //   sBTC.
+    // =========================================================================
+    let depositor1 = Recipient::new(AddressType::P2tr);
+    let depositor2 = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+    faucet.send_to(50_000_000, &depositor1.address);
+    faucet.send_to(50_000_000, &depositor2.address);
+
+    // =========================================================================
+    // Step 5 - Wait for DKG
+    // -------------------------------------------------------------------------
     // - Once they are all running, generate a bitcoin block to kick off
     //   the database updating process.
     // - After they have the same view of the canonical bitcoin blockchain,
     //   the signers should all participate in DKG.
     // =========================================================================
-    let depositor1 = Recipient::new(AddressType::P2tr);
 
-    // Start off with some initial UTXOs to work with.
-    faucet.send_to(50_000_000, &depositor1.address);
-
+    // This should kick off DKG.
     let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
     // We first need to wait for bitcoin-core to send us all the
@@ -2098,7 +2106,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let shares1 = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
 
     // =========================================================================
-    // Step 5 - Prepare for deposits
+    // Step 6 - Prepare for deposits
     // -------------------------------------------------------------------------
     // - Before the signers can process anything, they need a UTXO to call
     //   their own. For that we make a donation, and confirm it. The
@@ -2111,7 +2119,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     faucet.send_to(100_000, &address);
 
     // =========================================================================
-    // Step 6 - Make a proper deposit
+    // Step 7 - Make a proper deposit
     // -------------------------------------------------------------------------
     // - Use the UTXOs confirmed in step (5) to construct a proper deposit
     //   request transaction. Submit it and inform Emily about it.
@@ -2134,7 +2142,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         .unwrap();
 
     // =========================================================================
-    // Step 7 - Confirm the deposit and wait for the signers to do their
+    // Step 8 - Confirm the deposit and wait for the signers to do their
     //          job.
     // -------------------------------------------------------------------------
     // - Confirm the deposit request. This will trigger the block observer
@@ -2226,18 +2234,8 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let (_, db, _, _) = signers.first().unwrap();
     let shares2 = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
 
-    // Time to "reveal" the DKG shares for each of the signers.
+    // Check that we have new DKG shares for each of the signers.
     for (_, db, _, _) in signers.iter() {
-        // sqlx::query(
-        //     r#"
-        //     INSERT INTO dkg_shares
-        //     SELECT * FROM dkg_shares_copy;
-        //     "#,
-        // )
-        // .execute(db.pool())
-        // .await
-        // .unwrap();
-
         let dkg_share_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM dkg_shares;")
             .fetch_one(db.pool())
             .await
@@ -2247,25 +2245,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     }
 
     // =========================================================================
-    // Step 10 - Prepare for 2 more deposits
-    // -------------------------------------------------------------------------
-    // - Let's create a new depositor. He will make a deposit that is
-    //   locked by the new signer aggregate key. We also make a deposit
-    //   from the old deposit, and they happen to use the old aggregate
-    //   key.
-    // - Give the new "depositor" some UTXOs so that they can make a
-    //   deposit for sBTC.
-    // =========================================================================
-    let depositor2 = Recipient::new(AddressType::P2tr);
-
-    // Start off with some initial UTXOs to work with.
-    faucet.send_to(50_000_000, &depositor2.address);
-    faucet.generate_blocks(1);
-
-    wait_for_signers(&signers).await;
-
-    // =========================================================================
-    // Step 11 - Make two proper deposits
+    // Step 10 - Make two proper deposits
     // -------------------------------------------------------------------------
     // - Use the UTXOs confirmed in steps (5) and (10) to construct two
     //   proper deposit request transactions. Submit them to the bitcoin
@@ -2302,7 +2282,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         .unwrap();
 
     // =========================================================================
-    // Step 12 - Confirm the deposit and wait for the signers to do their
+    // Step 11 - Confirm the deposit and wait for the signers to do their
     //           job.
     // -------------------------------------------------------------------------
     // - Confirm the deposit request. This will trigger the block observer
@@ -2327,7 +2307,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     wait_for_signers(&signers).await;
 
     // =========================================================================
-    // Step 13 - Assertions
+    // Step 12 - Assertions
     // -------------------------------------------------------------------------
     // - During each bitcoin block, the signers should sign and broadcast a
     //   rotate keys contract call. This is because they haven't received a
