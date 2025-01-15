@@ -1838,9 +1838,9 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
     // This is the height where the signers will run DKG afterwards. We
     // create 4 bitcoin blocks between now and when we want DKG to run a
-    // second time: 
+    // second time:
     // 1. run DKG
-    // 2. confirm a donation and a deposit request, 
+    // 2. confirm a donation and a deposit request,
     // 3. confirm the sweep, mint sbtc
     // 4. run DKG again.
     let dkg_run_two_height = chain_tip_info.height + 4;
