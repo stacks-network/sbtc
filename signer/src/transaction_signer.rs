@@ -859,7 +859,7 @@ where
 /// based on the current state of the signer and the DKG configuration.
 async fn assert_allow_dkg_begin(
     context: &impl Context,
-    chain_tip: &model::BitcoinBlockRef,
+    bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<(), Error> {
     let storage = context.get_storage();
     let config = context.config();
@@ -894,7 +894,7 @@ async fn assert_allow_dkg_begin(
                 );
                 return Err(Error::DkgHasAlreadyRun);
             }
-            if chain_tip.block_height < dkg_min_height.get() {
+            if bitcoin_chain_tip.block_height < dkg_min_height.get() {
                 tracing::warn!(
                     ?dkg_min_bitcoin_block_height,
                     %dkg_target_rounds,
