@@ -716,12 +716,12 @@ where
         url: &url::Url,
     ) -> ContextBuilder<Storage, crate::bitcoin::rpc::BitcoinCoreClient, Stacks, Emily> {
         let config = self.get_config();
-        let bitcoin_client =
-            crate::bitcoin::rpc::BitcoinCoreClient::new(
-                url.as_str(), 
-                regtest::BITCOIN_CORE_RPC_USERNAME.to_owned(), 
-                regtest::BITCOIN_CORE_RPC_PASSWORD.to_owned()
-            ).unwrap();
+        let bitcoin_client = crate::bitcoin::rpc::BitcoinCoreClient::new(
+            url.as_str(),
+            regtest::BITCOIN_CORE_RPC_USERNAME.to_owned(),
+            regtest::BITCOIN_CORE_RPC_PASSWORD.to_owned(),
+        )
+        .unwrap();
         ContextBuilder {
             config: ContextConfig {
                 settings: config.settings,

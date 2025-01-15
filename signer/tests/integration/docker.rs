@@ -1,4 +1,3 @@
-
 use bitcoincore_rpc::RpcApi;
 use sbtc::testing::regtest;
 use signer::bitcoin::rpc::BitcoinCoreClient;
@@ -19,6 +18,7 @@ impl BitcoinCore {
             exposed_ports: vec![ContainerPort::Tcp(18443), ContainerPort::Tcp(28332)],
         };
         let bitcoind = bitcoind.start().await.expect("failed to start bitcoind");
+        //tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         BitcoinCoreContainer::new(bitcoind).await
     }
 }
@@ -27,11 +27,11 @@ impl Image for BitcoinCore {
     fn name(&self) -> &str {
         "bitcoin/bitcoin"
     }
-    
+
     fn tag(&self) -> &str {
         "28"
     }
-    
+
     fn ready_conditions(&self) -> Vec<WaitFor> {
         vec![WaitFor::message_on_stdout("dnsseed thread exit")]
     }
@@ -39,7 +39,7 @@ impl Image for BitcoinCore {
     fn expose_ports(&self) -> &[ContainerPort] {
         &self.exposed_ports
     }
-    
+
     fn entrypoint(&self) -> Option<&str> {
         Some("/bin/bash")
     }
@@ -47,7 +47,7 @@ impl Image for BitcoinCore {
     fn cmd(&self) -> impl IntoIterator<Item = impl Into<std::borrow::Cow<'_, str>>> {
         vec![
             "-c".to_owned(),
-            format!("bitcoind -chain=regtest -server -rpcbind=0.0.0.0 -rpcuser={rpcuser} -rpcpassword={rpcpassword} -rpcallowip=0.0.0.0/0 -rpcallowip=::/0 -txindex -zmqpubhashblock='tcp://*:28332' -zmqpubrawblock='tcp://*:28332'",
+            format!("bitcoind -chain=regtest -server -rpcbind=0.0.0.0 -rpcuser={rpcuser} -rpcpassword={rpcpassword} -rpcallowip=0.0.0.0/0 -rpcallowip=::/0 -txindex -zmqpubhashblock='tcp://*:28332' -zmqpubrawblock='tcp://*:28332' -fallbackfee=0.00001 ",
                 rpcuser = regtest::BITCOIN_CORE_RPC_USERNAME,
                 rpcpassword = regtest::BITCOIN_CORE_RPC_PASSWORD
             ),
@@ -81,17 +81,22 @@ impl BitcoinCoreContainer {
     }
 
     pub fn get_rpc_endpoint(&self) -> Url {
-        let url = format!("http://{username}:{password}@{host}:{port}", 
-            username = self.rpc_username, 
-            password = self.rpc_password, 
-            host = self.host, 
+        let url = format!(
+            "http://{username}:{password}@{host}:{port}",
+            username = self.rpc_username,
+            password = self.rpc_password,
+            host = self.host,
             port = self.rpc_port
         );
         Url::parse(&url).unwrap()
     }
 
     pub fn get_zmq_endpoint(&self) -> Url {
-        let url = format!("tcp://{host}:{port}", host = self.host, port = self.zmq_port);
+        let url = format!(
+            "tcp://{host}:{port}",
+            host = self.host,
+            port = self.zmq_port
+        );
         Url::parse(&url).unwrap()
     }
 
@@ -118,7 +123,7 @@ impl BitcoinCoreContainer {
 #[test_log::test(tokio::test)]
 async fn test_bitcoind() {
     let bitcoind = BitcoinCore::start().await;
-    
+
     let client = bitcoind.get_client();
 
     let info = client.inner_client().get_blockchain_info().unwrap();

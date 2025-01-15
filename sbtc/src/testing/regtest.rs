@@ -99,7 +99,7 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
     (rpc, faucet)
 }
 
-/// 
+/// Same as `initialize_blockchain` but allows for specifying a custom endpoint.
 pub fn initialize_blockchain_at(endpoint: &str) -> (&'static Client, &'static Faucet) {
     static BTC_CLIENT: OnceLock<Client> = OnceLock::new();
     static FAUCET: OnceLock<Faucet> = OnceLock::new();
@@ -329,6 +329,19 @@ impl Faucet {
         };
         self.rpc.send_raw_transaction(&tx).unwrap();
         OutPoint::new(tx.compute_txid(), 0)
+    }
+
+    /// Creates enough dummy transactions to ensure that fee estimation will
+    /// not fail with "insufficient data".
+    pub fn init_for_fee_estimation(&self) {
+        let dummy = Recipient::new(AddressType::P2tr);
+        for _ in 0..5 {
+            self.generate_blocks(1);
+            for _ in 0..10 {
+                self.send_to(1_000_000, &dummy.address);
+            }
+        }
+        self.generate_blocks(1);
     }
 }
 

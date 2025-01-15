@@ -104,7 +104,12 @@ impl TestSweepSetup {
     /// 5. Generate a set of "signer keys" that kinda represent the
     ///    signers. Transactions can be signed using only the private keys
     ///    of the "signer" from (1).
-    pub fn new_setup<R>(bitcoin_client: &BitcoinCoreClient, faucet: &Faucet, amount: u64, rng: &mut R) -> Self
+    pub fn new_setup<R>(
+        bitcoin_client: &BitcoinCoreClient,
+        faucet: &Faucet,
+        amount: u64,
+        rng: &mut R,
+    ) -> Self
     where
         R: rand::Rng,
     {
@@ -172,8 +177,10 @@ impl TestSweepSetup {
 
         // Let's sweep in the transaction
         let sweep_block_hash = faucet.generate_blocks(1).pop().unwrap();
-        let sweep_block_height =
-            bitcoin_client.get_block_header_info(&sweep_block_hash).unwrap().height as u64;
+        let sweep_block_height = bitcoin_client
+            .get_block_header_info(&sweep_block_hash)
+            .unwrap()
+            .height as u64;
 
         let sweep_tx_info = bitcoin_client
             .get_tx_info(&txid, &sweep_block_hash)
@@ -607,7 +614,12 @@ impl TestSweepSetup2 {
     /// 4. Generate a set of "signer keys" that kinda represent the
     ///    signers. Transactions can be signed using only the private keys
     ///    of the "signer" from (1).
-    pub fn new_setup(signers: TestSignerSet, bitcoin_client: BitcoinCoreClient, faucet: &Faucet, amounts: &[DepositAmounts]) -> Self {
+    pub fn new_setup(
+        signers: TestSignerSet,
+        bitcoin_client: BitcoinCoreClient,
+        faucet: &Faucet,
+        amounts: &[DepositAmounts],
+    ) -> Self {
         let signer = &signers.signer;
         let rpc = faucet.rpc;
         let signers_public_key = signer.keypair.x_only_public_key().0;
@@ -734,7 +746,10 @@ impl TestSweepSetup2 {
         // Okay now we try to peg-in the deposit by making a transaction.
         // Let's start by getting the signer's sole UTXO.
         let aggregated_signer = &self.signers.signer;
-        let signer_utxo = aggregated_signer.get_utxos(&self.bitcoin_client, None).pop().unwrap();
+        let signer_utxo = aggregated_signer
+            .get_utxos(&self.bitcoin_client, None)
+            .pop()
+            .unwrap();
 
         let withdrawals = if with_withdrawals {
             vec![self.withdrawal_request.clone()]
@@ -775,16 +790,26 @@ impl TestSweepSetup2 {
             // Add the signature and/or other required information to the
             // witness data.
             signer::testing::set_witness_data(&mut unsigned, aggregated_signer.keypair);
-            self.bitcoin_client.send_raw_transaction(&unsigned.tx).unwrap();
+            self.bitcoin_client
+                .send_raw_transaction(&unsigned.tx)
+                .unwrap();
             // Return the txid and the sweep transaction.
             unsigned.tx.compute_txid()
         };
 
         // Let's sweep in the transaction
         let block_hash = faucet.generate_blocks(1).pop().unwrap();
-        let block_height = self.bitcoin_client.get_block_header_info(&block_hash).unwrap().height as u64;
+        let block_height = self
+            .bitcoin_client
+            .get_block_header_info(&block_hash)
+            .unwrap()
+            .height as u64;
 
-        let tx_info = self.bitcoin_client.get_tx_info(&txid, &block_hash).unwrap().unwrap();
+        let tx_info = self
+            .bitcoin_client
+            .get_tx_info(&txid, &block_hash)
+            .unwrap()
+            .unwrap();
 
         self.sweep_tx_info = Some(SweepTxInfo {
             block_hash: block_hash.into(),

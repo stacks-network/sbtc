@@ -16,10 +16,14 @@ async fn block_stream_streams_blocks() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    let stream =
-        BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["rawblock"])
-            .await
-            .unwrap();
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(
+        bitcoind.get_zmq_endpoint().as_str(),
+        &["rawblock"],
+    )
+    .await
+    .unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let mut block_stream = stream.to_block_stream();
 
@@ -73,10 +77,14 @@ async fn block_hash_stream_streams_block_hashes() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    let stream =
-        BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
-            .await
-            .unwrap();
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(
+        bitcoind.get_zmq_endpoint().as_str(),
+        &["hashblock"],
+    )
+    .await
+    .unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
     let mut block_hash_stream = stream.to_block_hash_stream();
 

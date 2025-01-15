@@ -148,7 +148,7 @@ async fn complete_deposit_validation_happy_path() {
     // This is just setup and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    
+
     let bitcoind = docker::BitcoinCore::start().await;
     let bitcoin_client = bitcoind.get_client();
     let faucet = bitcoind.initialize_blockchain();

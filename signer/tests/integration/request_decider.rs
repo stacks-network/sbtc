@@ -222,9 +222,9 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         .with_mocked_clients()
         .build();
 
-        let bitcoind = docker::BitcoinCore::start().await;
-        let bitcoin_client = bitcoind.get_client();
-        let faucet = bitcoind.initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.

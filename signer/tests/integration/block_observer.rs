@@ -150,10 +150,12 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 
     // We jump through all of these hoops to make sure that the block
     // stream object is Send + Sync.
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
-            .await
-            .unwrap();
+    let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(
+        bitcoind.get_zmq_endpoint().as_str(),
+        &["hashblock"],
+    )
+    .await
+    .unwrap();
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
 
     tokio::spawn(async move {
@@ -271,10 +273,12 @@ async fn link_blocks() {
     })
     .await;
 
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
-            .await
-            .unwrap();
+    let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(
+        bitcoind.get_zmq_endpoint().as_str(),
+        &["hashblock"],
+    )
+    .await
+    .unwrap();
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
 
     tokio::spawn(async move {
@@ -443,10 +447,12 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 
     // We jump through all of these hoops to make sure that the block
     // stream object is Send + Sync.
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
-            .await
-            .unwrap();
+    let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(
+        bitcoind.get_zmq_endpoint().as_str(),
+        &["hashblock"],
+    )
+    .await
+    .unwrap();
     let (sender, receiver) = tokio::sync::mpsc::channel(1000);
 
     tokio::spawn(async move {
@@ -677,7 +683,7 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
     let bitcoind = docker::BitcoinCore::start().await;
     let bitcoin_client = bitcoind.get_client();
     let faucet = bitcoind.initialize_blockchain();
-    
+
     let db = testing::storage::new_test_database().await;
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -764,10 +770,12 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
 
     // We jump through all of these hoops to make sure that the block
     // stream object is Send + Sync.
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(&bitcoind.get_zmq_endpoint().to_string(), &["hashblock"])
-            .await
-            .unwrap();
+    let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(
+        &bitcoind.get_zmq_endpoint().to_string(),
+        &["hashblock"],
+    )
+    .await
+    .unwrap();
     let (sender, receiver) = tokio::sync::mpsc::channel(100);
 
     tokio::spawn(async move {

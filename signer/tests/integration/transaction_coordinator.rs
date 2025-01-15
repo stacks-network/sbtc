@@ -30,7 +30,6 @@ use mockito;
 use rand::rngs::OsRng;
 use rand::SeedableRng as _;
 use reqwest;
-use sbtc::testing::regtest;
 use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use sbtc::testing::regtest::AsUtxo as _;
 use sbtc::testing::regtest::Recipient;
@@ -1147,12 +1146,13 @@ async fn run_dkg_from_scratch() {
 /// time, and even when it does it might not pick up and process the
 /// deposit correctly.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
+#[test(tokio::test)]
 async fn sign_bitcoin_transaction() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let bitcoind = docker::BitcoinCore::start().await;
     let bitcoin_client = bitcoind.get_client();
     let faucet = bitcoind.initialize_blockchain();
+    faucet.init_for_fee_estimation();
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
@@ -1163,8 +1163,8 @@ async fn sign_bitcoin_transaction() {
         .unwrap();
 
     let network = WanNetwork::default();
-
     let chain_tip_info = bitcoin_client.get_chain_tips().unwrap().pop().unwrap();
+    let depositor = Recipient::new(AddressType::P2tr);
 
     // =========================================================================
     // Step 1 - Create a database, an associated context, and a Keypair for
@@ -1352,10 +1352,12 @@ async fn sign_bitcoin_transaction() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
-                .await
-                .unwrap();
+        let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(
+            bitcoind.get_zmq_endpoint().as_str(),
+            &["hashblock"],
+        )
+        .await
+        .unwrap();
         let (sender, receiver) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(async move {
@@ -1420,12 +1422,8 @@ async fn sign_bitcoin_transaction() {
     let network = bitcoin::Network::Regtest;
     let address = Address::from_script(&script_pub_key, network).unwrap();
 
-    faucet.send_to(100_000, &address);
-
-    let depositor = Recipient::new(AddressType::P2tr);
-
     // Start off with some initial UTXOs to work with.
-
+    faucet.send_to(100_000, &address);
     faucet.send_to(50_000_000, &depositor.address);
     faucet.generate_blocks(1);
 
@@ -1438,7 +1436,10 @@ async fn sign_bitcoin_transaction() {
     //   request transaction. Submit it and inform Emily about it.
     // =========================================================================
     // Now lets make a deposit transaction and submit it
-    let utxo = depositor.get_utxos(&bitcoin_client, None).pop().unwrap();
+    let utxo = depositor
+        .get_utxos(&bitcoin_client, Some(1_500_000))
+        .pop()
+        .unwrap();
 
     let amount = 2_500_000;
     let signers_public_key = shares.aggregate_key.into();
@@ -1477,6 +1478,7 @@ async fn sign_bitcoin_transaction() {
 
     let (ctx, _, _, _) = signers.first().unwrap();
     let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
+    dbg!(&txids);
     assert_eq!(txids.len(), 1);
 
     let block_hash = faucet.generate_blocks(1).pop().unwrap();
@@ -1742,10 +1744,12 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
-                .await
-                .unwrap();
+        let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(
+            bitcoind.get_zmq_endpoint().as_str(),
+            &["hashblock"],
+        )
+        .await
+        .unwrap();
         let (sender, receiver) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(async move {
@@ -2010,16 +2014,14 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     let db = testing::storage::new_test_database().await;
 
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+    faucet.init_for_fee_estimation();
 
     let context = TestContext::builder()
         .with_storage(db.clone())
-        .with_bitcoin_client(client.clone())
+        .with_bitcoin_client(bitcoin_client.clone())
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
@@ -2046,14 +2048,13 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
 
-    let (rpc, faucet) = regtest::initialize_blockchain();
     let addr = Recipient::new(AddressType::P2wpkh);
 
     // Get some coins to spend (and our "utxo" outpoint).
     let outpoint = faucet.send_to(10_000, &addr.address);
     let signer_utxo_block_hash = faucet.generate_blocks(1).pop().unwrap();
 
-    let signer_utxo_tx = client.get_tx(&outpoint.txid).unwrap().unwrap();
+    let signer_utxo_tx = bitcoin_client.get_tx(&outpoint.txid).unwrap().unwrap();
     let signer_utxo_txid = signer_utxo_tx.tx.compute_txid();
 
     let mut signer_utxo_tx_encoded = Vec::new();
@@ -2114,7 +2115,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     assert_eq!(utxo.outpoint.txid, signer_utxo_txid.into());
 
     // Get a utxo to spend.
-    let utxo = addr.get_utxos(rpc, Some(10_000)).pop().unwrap();
+    let utxo = addr.get_utxos(&bitcoin_client, Some(10_000)).pop().unwrap();
     assert_eq!(utxo.txid, outpoint.txid);
 
     // Create a transaction that spends the utxo.
@@ -2135,7 +2136,11 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     // Sign and broadcast the transaction
     p2wpkh_sign_transaction(&mut tx1, 0, &utxo, &addr.keypair);
-    client.broadcast_transaction(&tx1).await.unwrap();
+    bitcoin_client.broadcast_transaction(&tx1).await.unwrap();
+
+    // Give the node a little time to process the transaction before
+    // we check the BTC state (which asks the node for fee estimates).
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Grab the BTC state.
     let btc_state = coord
@@ -2173,7 +2178,11 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     // Sign and broadcast the transaction
     p2wpkh_sign_transaction(&mut tx2, 0, &utxo, &addr.keypair);
-    client.broadcast_transaction(&tx2).await.unwrap();
+    bitcoin_client.broadcast_transaction(&tx2).await.unwrap();
+
+    // Give the node a little time to process the transaction before
+    // we check the BTC state (which asks the node for fee estimates).
+    tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Grab the BTC state.
     let btc_state = coord

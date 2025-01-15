@@ -1991,7 +1991,8 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     let bitcoin_client = bitcoind.get_client();
     let faucet = bitcoind.initialize_blockchain();
     let mut setup_fork = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 2_000_000, &mut rng);
-    let mut setup_canonical = TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
+    let mut setup_canonical =
+        TestSweepSetup::new_setup(&bitcoin_client, &faucet, 1_000_000, &mut rng);
 
     let context_window = 20;
 

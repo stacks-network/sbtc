@@ -83,7 +83,10 @@ async fn calculate_transaction_fee_works_confirmed() {
 
     // Get a utxo to spend (this method gives us an `AsUtxo` type which is
     // needed for signing below).
-    let utxo = addr1.get_utxos(client.inner_client(), Some(1_000)).pop().unwrap();
+    let utxo = addr1
+        .get_utxos(client.inner_client(), Some(1_000))
+        .pop()
+        .unwrap();
     assert_eq!(utxo.outpoint(), outpoint);
 
     // Create a transaction that spends the utxo.
@@ -149,7 +152,10 @@ async fn calculate_transaction_fee_works_mempool() {
 
     // Get a utxo to spend (this method gives us an `AsUtxo` type which is
     // needed for signing below).
-    let utxo = addr1.get_utxos(client.inner_client(), Some(1_000)).pop().unwrap();
+    let utxo = addr1
+        .get_utxos(client.inner_client(), Some(1_000))
+        .pop()
+        .unwrap();
     assert_eq!(utxo.outpoint(), outpoint);
 
     // Create a transaction that spends the utxo.
