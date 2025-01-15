@@ -954,7 +954,7 @@ pub enum ChainTipStatus {
 
 #[cfg(test)]
 mod tests {
-    use std::num::{NonZeroU32, NonZeroU64};
+    use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 
     use bitcoin::Txid;
     use fake::{Fake, Faker};
@@ -1105,7 +1105,7 @@ mod tests {
             network: network.connect(),
             signer_private_key: PrivateKey::new(&mut rand::rngs::OsRng),
             context_window: 1,
-            wsts_state_machines: Default::default(),
+            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,

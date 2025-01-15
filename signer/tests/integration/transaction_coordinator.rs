@@ -1,5 +1,4 @@
 use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::num::NonZeroU32;
 use std::num::NonZeroU64;
 use std::num::NonZeroUsize;
@@ -1253,7 +1252,7 @@ async fn run_subsequent_dkg() {
             threshold: context.config().signer.bootstrap_signatures_required as u32,
             context: context.clone(),
             context_window: 10000,
-            wsts_state_machines: HashMap::new(),
+            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
