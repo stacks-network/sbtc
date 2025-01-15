@@ -13,6 +13,7 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
 
+use rand::rngs::OsRng;
 use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
@@ -32,6 +33,7 @@ impl SignerStateMachine {
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error> {
+        let mut rng = OsRng;
         let signer_pub_key = PublicKey::from_private_key(&signer_private_key);
         let signers: hashbrown::HashMap<u32, _> = signers
             .into_iter()
@@ -74,6 +76,7 @@ impl SignerStateMachine {
             key_ids,
             signer_private_key.into(),
             public_keys,
+            &mut rng,
         );
 
         Ok(Self(state_machine))
