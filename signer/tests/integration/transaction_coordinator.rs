@@ -2044,10 +2044,12 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
-                .await
-                .unwrap();
+        let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(
+            bitcoind.get_zmq_endpoint().as_str(),
+            &["hashblock"],
+        )
+        .await
+        .unwrap();
         let (sender, receiver) = tokio::sync::mpsc::channel(100);
 
         tokio::spawn(async move {
