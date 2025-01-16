@@ -71,7 +71,7 @@ pub struct Deposit {
 }
 
 impl DepositRequestValidator for CreateDepositRequest {
-    async fn validate<C>(&self, client: &C) -> Result<Option<Deposit>, Error>
+    async fn validate<C>(&self, client: &C, is_mainnet: bool) -> Result<Option<Deposit>, Error>
     where
         C: BitcoinInteract,
     {
@@ -98,7 +98,7 @@ impl DepositRequestValidator for CreateDepositRequest {
         // script.
 
         Ok(Some(Deposit {
-            info: self.validate_tx(&tx_info.tx)?,
+            info: self.validate_tx(&tx_info.tx, is_mainnet)?,
             tx_info,
         }))
     }
@@ -112,7 +112,11 @@ pub trait DepositRequestValidator {
     /// This function fetches the transaction using the given client and
     /// checks that the transaction has been submitted. The transaction
     /// need not be confirmed.
-    fn validate<C>(&self, client: &C) -> impl Future<Output = Result<Option<Deposit>, Error>>
+    fn validate<C>(
+        &self,
+        client: &C,
+        is_mainnet: bool,
+    ) -> impl Future<Output = Result<Option<Deposit>, Error>>
     where
         C: BitcoinInteract;
 }
@@ -205,10 +209,11 @@ impl<C: Context, B> BlockObserver<C, B> {
     pub async fn load_requests(&self, requests: &[CreateDepositRequest]) -> Result<(), Error> {
         let mut deposit_requests = Vec::new();
         let bitcoin_client = self.context.get_bitcoin_client();
+        let is_mainnet = self.context.config().signer.network.is_mainnet();
 
         for request in requests {
             let deposit = request
-                .validate(&bitcoin_client)
+                .validate(&bitcoin_client, is_mainnet)
                 .await
                 .inspect_err(|error| tracing::warn!(%error, "could not validate deposit request"));
 
