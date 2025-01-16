@@ -11,13 +11,13 @@ importers:
 
   .: {}
 
-  .generated-sources/blocklist-openapi-gen:
+  .generated-sources/emily/openapi:
     devDependencies:
       '@openapitools/openapi-generator-cli':
         specifier: ^2.13.2
         version: 2.13.4
 
-  .generated-sources/emily/openapi:
+  blocklist-openapi-gen:
     devDependencies:
       '@openapitools/openapi-generator-cli':
         specifier: ^2.13.2

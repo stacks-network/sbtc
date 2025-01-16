@@ -5,11 +5,12 @@ members = [
   "emily/handler",
   ".generated-sources/emily/openapi",
   "blocklist-client",
-  ".generated-sources/blocklist-openapi-gen",
+  "blocklist-openapi-gen",
   "sbtc",
   ".generated-sources/emily/client/rust/public",
   ".generated-sources/emily/client/rust/private",
   ".generated-sources/emily/client/rust/testing",
+  ".generated-sources/blocklist-api"
 ]
 
 [profile.dev]
