@@ -125,6 +125,8 @@ impl CreateDepositRequest {
     ///   the expected formats for deposit transactions.
     /// * That deposit script and the reclaim script are part of the UTXO
     ///   ScriptPubKey.
+    /// * That the Stacks network for the recipient address matches the one
+    ///   given as input to this function.
     pub fn validate_tx(&self, tx: &Transaction, is_mainnet: bool) -> Result<DepositInfo, Error> {
         if tx.compute_txid() != self.outpoint.txid {
             // The expectation is that the transaction was fetched from the
