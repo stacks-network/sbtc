@@ -1836,7 +1836,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let network = WanNetwork::default();
 
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
-    // This is the height where the signers will run DKG afterwards. We
+    // This is the height where the signers will run DKG afterward. We
     // create 4 bitcoin blocks between now and when we want DKG to run a
     // second time:
     // 1. run DKG
@@ -2145,9 +2145,10 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // Step 8 - Confirm the deposit and wait for the signers to do their
     //          job.
     // -------------------------------------------------------------------------
-    // - Confirm the deposit request. This will trigger the block observer
-    //   to reach out to Emily about deposits. Emily will have one so the
-    //   signers should do basic validations and store the deposit request.
+    // - Confirm the deposit request. The arrival of a new bitcoin block
+    //   will trigger the block observer to reach out to Emily about
+    //   deposits. Emily will have one so the signers should do basic
+    //   validations and store the deposit request.
     // - Each TxSigner process should vote on the deposit request and
     //   submit the votes to each other.
     // - The coordinator should submit a sweep transaction. We check the
@@ -2200,10 +2201,8 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // =========================================================================
     // Step 9 - Run DKG Again
     // -------------------------------------------------------------------------
-    // - "Hide" the DKG shares from the database so that the signers think
-    //   that they need to run DKG again.
-    // - After DKG has run a second time, "reveal" the old DKG shares. We
-    //   will use them later.
+    // - The signers should run DKG again after they see the next bitcoin
+    //   block, this was configured above.
     // =========================================================================
     for (_, db, _, _) in signers.iter() {
         let dkg_share_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM dkg_shares;")
@@ -2247,9 +2246,9 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // =========================================================================
     // Step 10 - Make two proper deposits
     // -------------------------------------------------------------------------
-    // - Use the UTXOs confirmed in steps (5) and (10) to construct two
-    //   proper deposit request transactions. Submit them to the bitcoin
-    //   network and then inform Emily.
+    // - Use the UTXOs generated in step (4) to construct two proper
+    //   deposit request transactions. Submit them to the bitcoin network
+    //   and then inform Emily.
     // - The two deposits are locked using two different aggregate keys,
     //   the old one and the new one.
     // =========================================================================
@@ -2317,8 +2316,9 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     //   also broadcast a complete-deposit contract call. There should be
     //   duplicates here as well since the signers do not receive events
     //   about the success of the contract call.
-    // - We should have sweep transactions in our database.
-    // - Does the sweep transaction spend to the signers' scriptPubKey.
+    // - They should have sweep transactions in their database.
+    // - Check that the sweep transaction spend to the signers'
+    //   scriptPubKey.
     // =========================================================================
     let sleep_fut = tokio::time::sleep(Duration::from_secs(5));
     let broadcast_stacks_txs: Vec<StacksTransaction> = stacks_tx_stream
@@ -2340,11 +2340,11 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         .cloned()
         .collect();
 
-    // We should try to mint for each of the three deposits. Unfortunately,
-    // we try more than one time for some of the deposits, so we need to
-    // deduplicate the contract calls.
+    // We should try to mint for each of the three deposits. But since the
+    // signers continually submit Stacks transaction for each swept
+    // deposit, we need to deduplicate the contract calls before checking.
     complete_deposit_txs.sort_by_key(|tx| match &tx.payload {
-        // The second argument in the contract call is the transaction ID
+        // The first argument in the contract call is the transaction ID
         // of the deposit
         TransactionPayload::ContractCall(cc) => match cc.function_args.first() {
             Some(ClarityValue::Sequence(SequenceData::Buffer(buff))) => buff.data.clone(),
@@ -2353,7 +2353,6 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         _ => Vec::new(),
     });
     complete_deposit_txs.dedup_by_key(|tx| match &tx.payload {
-        // The second argument in the contract call is the aggregate key
         TransactionPayload::ContractCall(cc) => cc.function_args.first().cloned(),
         _ => None,
     });
