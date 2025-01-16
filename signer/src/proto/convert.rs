@@ -1683,7 +1683,7 @@ mod tests {
     use std::marker::PhantomData;
 
     use fake::Dummy;
-    use fake::Fake;
+    use fake::Fake as _;
     use fake::Faker;
     use rand::rngs::OsRng;
     use test_case::test_case;

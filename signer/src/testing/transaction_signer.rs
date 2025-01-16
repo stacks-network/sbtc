@@ -1,7 +1,7 @@
 //! Test utilities for the transaction signer
 
 use std::collections::BTreeSet;
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::blocklist_client;
@@ -21,6 +21,7 @@ use crate::testing;
 use crate::testing::storage::model::TestData;
 use crate::transaction_signer;
 
+use lru::LruCache;
 use rand::SeedableRng as _;
 use tokio::sync::broadcast;
 use tokio::time::error::Elapsed;
@@ -54,7 +55,7 @@ where
                 network,
                 signer_private_key,
                 context_window,
-                wsts_state_machines: HashMap::new(),
+                wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
                 threshold,
                 rng,
                 dkg_begin_pause: None,

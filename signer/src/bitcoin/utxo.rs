@@ -749,6 +749,9 @@ pub struct SignatureHashes<'a> {
     pub signer_outpoint: OutPoint,
     /// The sighash of the signers' input UTXO for the transaction.
     pub signers: TapSighash,
+    /// The aggregate key associated with the signers' UTXO that is being
+    /// spent in the transaction.
+    pub signers_aggregate_key: XOnlyPublicKey,
     /// Each deposit request is associated with a UTXO input for the peg-in
     /// transaction. This field contains digests/signature hashes that need
     /// Schnorr signatures and the associated deposit request for each hash.
@@ -766,6 +769,9 @@ pub struct SignatureHash {
     pub sighash: TapSighash,
     /// The type of prevout that we are referring to.
     pub prevout_type: TxPrevoutType,
+    /// The aggregate key that is locking the output associated with this
+    /// signature hash.
+    pub aggregate_key: XOnlyPublicKey,
 }
 
 impl<'a> SignatureHashes<'a> {
@@ -779,6 +785,7 @@ impl<'a> SignatureHashes<'a> {
                 outpoint: deposit.outpoint,
                 sighash,
                 prevout_type: TxPrevoutType::Deposit,
+                aggregate_key: deposit.signers_public_key,
             })
             .collect()
     }
@@ -790,6 +797,7 @@ impl<'a> SignatureHashes<'a> {
             outpoint: self.signer_outpoint,
             sighash: self.signers,
             prevout_type: TxPrevoutType::SignersInput,
+            aggregate_key: self.signers_aggregate_key,
         }
     }
 }
@@ -911,6 +919,7 @@ impl<'a> UnsignedTransaction<'a> {
         Ok(SignatureHashes {
             txid: self.tx.compute_txid(),
             signer_outpoint: self.signer_utxo.utxo.outpoint,
+            signers_aggregate_key: self.signer_utxo.utxo.public_key,
             signers: signer_sighash,
             deposits: deposit_sighashes,
         })
@@ -1693,6 +1702,20 @@ mod tests {
         testing::set_witness_data(&mut unsigned, keypair);
 
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
+    }
+
+    #[ignore = "this is for generating the MIN_BITCOIN_INPUT_VSIZE constant"]
+    #[test]
+    fn create_taproot_utxo_min_size() {
+        // This generates a UTXO with the same vsize as the signers input
+        // or donation. This is smaller than the min deposit vsize.
+        let utxo = TxIn {
+            previous_output: OutPoint::null(),
+            sequence: Sequence::ZERO,
+            witness: Witness::p2tr_key_spend(&DUMMY_SIGNATURE),
+            script_sig: ScriptBuf::new(),
+        };
+        println!("Min input vsize: {}", utxo.segwit_weight().to_vbytes_ceil());
     }
 
     #[test_case(&[true, true, false, true, false, false, false], 3; "case 1")]

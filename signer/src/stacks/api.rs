@@ -810,7 +810,15 @@ impl StacksClient {
             // The first block in the GET /v3/tenures/<block-id> response
             // is always the block related to the given <block-id>. But we
             // already have that block, so we can skip adding it again.
-            debug_assert_eq!(blocks.first().map(|b| b.block_id()), Some(last_block_id));
+
+            match blocks.first().map(|b| b.block_id()) {
+                Some(received_id) if received_id == last_block_id => {}
+                Some(received_id) => {
+                    return Err(Error::GetTenureRawMismatch(received_id, last_block_id))
+                }
+                None => return Err(Error::EmptyStacksTenure),
+            }
+
             tenure_blocks.extend(blocks.into_iter().skip(1))
         }
 
