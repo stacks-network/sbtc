@@ -77,7 +77,7 @@ fn tx_validation_from_mempool() {
     regtest::p2tr_sign_transaction(&mut setup.tx, 0, &utxos, &depositor.keypair);
     rpc.send_raw_transaction(&setup.tx).unwrap();
 
-    let parsed = request.validate_tx(&setup.tx).unwrap();
+    let parsed = request.validate_tx(&setup.tx, false).unwrap();
 
     assert_eq!(parsed.outpoint, request.outpoint);
     assert_eq!(parsed.deposit_script, request.deposit_script);
@@ -492,7 +492,7 @@ fn reclaiming_rejected_deposits() {
         deposit_script: deposit_script.clone(),
     };
 
-    let _ = request.validate_tx(&deposit_tx).unwrap();
+    let _ = request.validate_tx(&deposit_tx, false).unwrap();
 
     // Alright now we know the signers haven't moved our funds, so we
     // reclaim it. We construct a transaction spending the funds back to
