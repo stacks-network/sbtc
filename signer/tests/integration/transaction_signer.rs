@@ -365,13 +365,15 @@ async fn new_state_machine_per_valid_sighash() {
         .with_mocked_stacks_client()
         .build();
 
-    let (_, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
     // Create a test setup object so that we can simply create proper DKG
     // shares in the database. Note that calling TestSweepSetup2::new_setup
     // creates two bitcoin block.
-    let setup = TestSweepSetup2::new_setup(signers, faucet, &[]);
+    let setup = TestSweepSetup2::new_setup(signers, bitcoin_client.clone(), faucet, &[]);
 
     // Store the necessary data for passing validation
     setup.store_dkg_shares(&db).await;

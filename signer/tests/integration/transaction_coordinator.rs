@@ -1828,7 +1828,10 @@ async fn sign_bitcoin_transaction() {
 #[tokio::test]
 async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoin_client = bitcoind.get_client();
+    let faucet = bitcoind.initialize_blockchain();
+    faucet.init_for_fee_estimation();
     signer::logging::setup_logging("info,signer=debug", false);
 
     // We need to populate our databases, so let's fetch the data.
@@ -1841,7 +1844,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
 
     let network = WanNetwork::default();
 
-    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    let chain_tip_info = bitcoin_client.get_chain_tips().unwrap().pop().unwrap();
     // This is the height where the signers will run DKG afterward. We
     // create 4 bitcoin blocks between now and when we want DKG to run a
     // second time:
@@ -1863,7 +1866,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         let db = testing::storage::new_test_database().await;
         let ctx = TestContext::builder()
             .with_storage(db.clone())
-            .with_first_bitcoin_core_client()
+            .with_bitcoin_client(bitcoin_client.clone())
             .with_emily_client(emily_client.clone())
             .with_mocked_stacks_client()
             .modify_settings(|settings| {
@@ -1872,7 +1875,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             })
             .build();
 
-        backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
+        backfill_bitcoin_blocks(&db, &bitcoin_client, &chain_tip_info.hash).await;
 
         let network = network.connect(&ctx);
 
@@ -2042,7 +2045,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         });
 
         let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
+            BitcoinCoreMessageStream::new_from_endpoint(bitcoind.get_zmq_endpoint().as_str(), &["hashblock"])
                 .await
                 .unwrap();
         let (sender, receiver) = tokio::sync::mpsc::channel(100);
@@ -2131,14 +2134,14 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     //   request transaction. Submit it and inform Emily about it.
     // =========================================================================
     // Now lets make a deposit transaction and submit it
-    let utxo = depositor1.get_utxos(rpc, None).pop().unwrap();
+    let utxo = depositor1.get_utxos(&bitcoin_client, None).pop().unwrap();
 
     let amount = 2_500_000;
     let signers_public_key = shares1.aggregate_key.into();
     let max_fee = amount / 2;
     let (deposit_tx, deposit_request, _) =
         make_deposit_request(&depositor1, amount, utxo, max_fee, signers_public_key);
-    rpc.send_raw_transaction(&deposit_tx).unwrap();
+    bitcoin_client.send_raw_transaction(&deposit_tx).unwrap();
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
 
@@ -2259,27 +2262,27 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     //   the old one and the new one.
     // =========================================================================
     // Now lets make a deposit transaction and submit it
-    let utxo = depositor2.get_utxos(rpc, None).pop().unwrap();
+    let utxo = depositor2.get_utxos(&bitcoin_client, None).pop().unwrap();
 
     let amount = 3_500_000;
     let signers_public_key2 = shares2.aggregate_key.into();
     let max_fee = amount / 2;
     let (deposit_tx, deposit_request, _) =
         make_deposit_request(&depositor2, amount, utxo, max_fee, signers_public_key2);
-    rpc.send_raw_transaction(&deposit_tx).unwrap();
+    bitcoin_client.send_raw_transaction(&deposit_tx).unwrap();
 
     let body = deposit_request.as_emily_request();
     deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
 
-    let utxo = depositor1.get_utxos(rpc, None).pop().unwrap();
+    let utxo = depositor1.get_utxos(&bitcoin_client, None).pop().unwrap();
     let amount = 4_500_000;
     let signers_public_key1 = shares1.aggregate_key.into();
     let max_fee = amount / 2;
     let (deposit_tx, deposit_request, _) =
         make_deposit_request(&depositor1, amount, utxo, max_fee, signers_public_key1);
-    rpc.send_raw_transaction(&deposit_tx).unwrap();
+    bitcoin_client.send_raw_transaction(&deposit_tx).unwrap();
 
     let body = deposit_request.as_emily_request();
     deposit_api::create_deposit(emily_client.config(), body)
