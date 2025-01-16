@@ -44,7 +44,7 @@ impl From<SigHash> for StateMachineId {
 
 #[cfg(any(test, feature = "testing"))]
 impl StateMachineId {
-    /// Create a new Id
+    /// Create a new identifier
     pub fn new(value: [u8; 32]) -> Self {
         StateMachineId(value)
     }
@@ -113,7 +113,7 @@ impl SignerStateMachine {
     /// Create a state machine from loaded DKG shares for the given aggregate key
     pub async fn load<S>(
         storage: &S,
-        aggregate_key: PublicKey,
+        aggregate_key: PublicKeyXOnly,
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
@@ -121,9 +121,9 @@ impl SignerStateMachine {
         S: storage::DbRead,
     {
         let encrypted_shares = storage
-            .get_encrypted_dkg_shares(&aggregate_key)
+            .get_encrypted_dkg_shares(aggregate_key)
             .await?
-            .ok_or(error::Error::MissingDkgShares(aggregate_key.into()))?;
+            .ok_or_else(|| error::Error::MissingDkgShares(aggregate_key))?;
 
         let decrypted = wsts::util::decrypt(
             &signer_private_key.to_bytes(),

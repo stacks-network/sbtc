@@ -20,6 +20,7 @@ use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::message;
 use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
@@ -138,6 +139,18 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// The time the signer should pause for after receiving a DKG begin message
     /// before relaying to give the other signers time to catch up.
     pub dkg_begin_pause: Option<Duration>,
+}
+
+/// This struct represents a signature hash and the public key that locks
+/// it.
+///
+/// The struct is only created when the signer has validated the bitcoin
+/// transaction and has agreed to sign the sighash.
+struct AcceptedSigHash {
+    /// The signature hash to be signed.
+    sighash: SigHash,
+    /// The public key that is used to lock the above signature hash.
+    public_key: PublicKeyXOnly,
 }
 
 /// This function defines which messages this event loop is interested
@@ -577,10 +590,10 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let sig_hash = &request.message;
-                let validation_sighash = Self::validate_bitcoin_sign_request(&db, sig_hash).await;
+                let accepted_sighash =
+                    Self::validate_bitcoin_sign_request(&db, &request.message).await;
 
-                let validation_status = match &validation_sighash {
+                let validation_status = match &accepted_sighash {
                     Ok(_) => "success",
                     Err(Error::SigHashConversion(_)) => "improper-sighash",
                     Err(Error::UnknownSigHash(_)) => "unknown-sighash",
@@ -596,14 +609,12 @@ where
                 )
                 .increment(1);
 
-                let id = validation_sighash?.into();
-                let (maybe_aggregate_key, _) = self
-                    .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
-                    .await?;
+                let accepted_sighash = accepted_sighash?;
+                let id = accepted_sighash.sighash.into();
 
                 let state_machine = SignerStateMachine::load(
                     &db,
-                    maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+                    accepted_sighash.public_key,
                     self.threshold,
                     self.signer_private_key,
                 )
@@ -621,8 +632,10 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let sighash = Self::validate_bitcoin_sign_request(&db, &request.message).await?;
-                let id = sighash.into();
+                let accepted_sighash =
+                    Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+
+                let id = accepted_sighash.sighash.into();
                 let response = self
                     .relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await;
@@ -686,6 +699,41 @@ where
         Ok(())
     }
 
+    /// Check whether we will sign the message, which is supposed to be a
+    /// bitcoin sighash
+    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<AcceptedSigHash, Error>
+    where
+        D: DbRead,
+    {
+        let sighash = TapSighash::from_slice(msg)
+            .map_err(Error::SigHashConversion)?
+            .into();
+
+        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
+            Some((true, public_key)) => Ok(AcceptedSigHash { public_key, sighash }),
+            Some((false, _)) => Err(Error::InvalidSigHash(sighash)),
+            None => Err(Error::UnknownSigHash(sighash)),
+        }
+    }
+
+    #[tracing::instrument(skip(self))]
+    async fn store_dkg_shares(&mut self, id: &StateMachineId) -> Result<(), Error> {
+        let state_machine = self
+            .wsts_state_machines
+            .get(id)
+            .ok_or(Error::MissingStateMachine)?;
+
+        let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
+
+        tracing::debug!("storing DKG shares");
+        self.context
+            .get_storage_mut()
+            .write_encrypted_dkg_shares(&encrypted_dkg_shares)
+            .await?;
+
+        Ok(())
+    }
+
     #[tracing::instrument(skip_all)]
     async fn relay_message(
         &mut self,
@@ -721,41 +769,6 @@ where
 
             self.send_message(msg, bitcoin_chain_tip).await?;
         }
-
-        Ok(())
-    }
-
-    /// Check whether we will sign the message, which is supposed to be a
-    /// bitcoin sighash
-    async fn validate_bitcoin_sign_request<D>(db: &D, message: &[u8]) -> Result<SigHash, Error>
-    where
-        D: DbRead,
-    {
-        let sighash = TapSighash::from_slice(message)
-            .map_err(Error::SigHashConversion)?
-            .into();
-
-        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
-            Some(true) => Ok(sighash),
-            Some(false) => Err(Error::InvalidSigHash(sighash)),
-            None => Err(Error::UnknownSigHash(sighash)),
-        }
-    }
-
-    #[tracing::instrument(skip(self))]
-    async fn store_dkg_shares(&mut self, id: &StateMachineId) -> Result<(), Error> {
-        let state_machine = self
-            .wsts_state_machines
-            .get(id)
-            .ok_or(Error::MissingStateMachine)?;
-
-        let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
-
-        tracing::debug!("storing DKG shares");
-        self.context
-            .get_storage_mut()
-            .write_encrypted_dkg_shares(&encrypted_dkg_shares)
-            .await?;
 
         Ok(())
     }

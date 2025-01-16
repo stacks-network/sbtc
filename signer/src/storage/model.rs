@@ -1026,6 +1026,9 @@ pub struct BitcoinTxSigHash {
     pub chain_tip: BitcoinBlockHash,
     /// The txid that created the output that is being spent.
     pub prevout_txid: BitcoinTxId,
+    /// The signers' aggregate key that is locking the output that is being
+    /// spent.
+    pub aggregate_key: PublicKeyXOnly,
     /// The index of the vout from the transaction that created this
     /// output.
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]

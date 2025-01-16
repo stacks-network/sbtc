@@ -913,15 +913,15 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
+        let sighashes = transaction.construct_digests()?;
         let mut coordinator_state_machine = CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
-            transaction.signer_utxo.public_key,
+            sighashes.signers_aggregate_key,
             signer_public_keys.clone(),
             self.threshold,
             self.private_key,
         )
         .await?;
-        let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
         let txid = transaction.tx.compute_txid();

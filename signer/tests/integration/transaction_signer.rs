@@ -328,14 +328,14 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
     // Check that the intentions to sign the requests sighashes
     // are stored in the database
-    let will_sign = db
+    let (will_sign, _) = db
         .will_sign_bitcoin_tx_sighash(&signer_digest.sighash.into())
         .await
         .expect("query to check if signer sighash is stored failed")
         .expect("signer sighash not stored");
 
     assert!(will_sign);
-    let will_sign = db
+    let (will_sign, _) = db
         .will_sign_bitcoin_tx_sighash(&deposit_digest.sighash.into())
         .await
         .expect("query to check if deposit sighash is stored failed")
@@ -348,7 +348,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-pub async fn new_state_machine_per_valid_sighash() {
+async fn new_state_machine_per_valid_sighash() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -409,6 +409,7 @@ pub async fn new_state_machine_per_valid_sighash() {
         validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
         is_valid_tx: true,
         will_sign: true,
+        aggregate_key: PublicKey::from_private_key(&tx_signer.signer_private_key).into(),
     };
 
     db.write_bitcoin_txs_sighashes(&[row]).await.unwrap();
@@ -477,7 +478,7 @@ pub async fn new_state_machine_per_valid_sighash() {
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
-pub async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
+async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
