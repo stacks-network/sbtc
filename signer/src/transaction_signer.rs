@@ -428,7 +428,9 @@ where
         let multi_sig = MultisigTx::new_tx(&request.contract_tx, &wallet, request.tx_fee);
         let txid = multi_sig.tx().txid();
 
-        debug_assert_eq!(txid, request.txid);
+        if txid != request.txid {
+            return Err(Error::SignerCoordinatorTxidMismatch(txid, request.txid));
+        }
 
         let signature = crate::signature::sign_stacks_tx(multi_sig.tx(), &self.signer_private_key);
 
