@@ -454,7 +454,7 @@ pub enum Error {
     #[error("invalid configuration")]
     InvalidConfiguration,
 
-    /// We throw this when signer produced txid, and txid coordinator sent are different
+    /// We throw this when signer produced txid and coordinator produced txid differ.
     #[error(
         "Signer and coordinator txid mismatch. Signer produced txid {0}, but coordinator send txid {1}"
     )]
