@@ -23,14 +23,25 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: "25.3"
+      - uses: bufbuild/buf-action@v1
+        with:
+          version: 1.42.0
+          setup_only: true
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy, rustfmt
           cache-key: "rust-tests"
       - name: Install Package Dependencies
         run: make install
-      - name: Run Lints
-        run: make lint
+      - name: Lint (Rustfmt)
+        run: cargo fmt --all -- --check
+      - name: Lint (Clippy)
+        run: cargo clippy -- -D warnings
+      - name: Lint (Protobuf)
+        run: |
+          cd protobufs
+          buf format --diff --exit-code
+          buf lint
 
   unit-tests:
     name: Run Unit Tests
@@ -90,5 +101,6 @@ jobs:
       - name: Stop Integration Test Environment
         run: make integration-env-down-ci
         if: always()
+        continue-on-error: true
 
     

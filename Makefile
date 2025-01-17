@@ -70,7 +70,7 @@ integration-env-up:
 	docker compose --file docker/docker-compose.test.yml up --detach
 
 integration-test: blocklist-client-codegen emily-client-codegen
-	cargo nextest run --test integration --all-features --no-fail-fast -- --test-threads=1
+	cargo nextest run --test integration --all-features --no-fail-fast --test-threads 1
 
 integration-env-down:
 	docker compose --file docker/docker-compose.test.yml down -v
