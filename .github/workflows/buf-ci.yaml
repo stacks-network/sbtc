@@ -1,4 +1,4 @@
-name: Buf CI
+name: Protobuf Linting
 on: [push]
 
 concurrency:

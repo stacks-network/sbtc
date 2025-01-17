@@ -1,4 +1,4 @@
-name: Contract tests
+name: Contract Tests
 on: [push]
 
 concurrency:
