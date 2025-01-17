@@ -115,7 +115,7 @@ jobs:
         uses: docker/bake-action@v3
         with:
           files: |-
-            docker/docker-compose.ci.yml
+            ./docker/docker-compose.ci.yml
           load: true
       - name: Install Package Dependencies
         run: make install
