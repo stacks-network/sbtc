@@ -110,15 +110,18 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
-      - uses: docker/setup-buildx-action@v3
-      - name: Build AWS-Setup Docker Image
-        uses: docker/bake-action@v3
-        with:
-          source: ./docker
-          files: docker-compose.ci.yml
-          load: true
+      # - uses: docker/setup-buildx-action@v3
+      # - name: Build AWS-Setup Docker Image
+      #   uses: docker/bake-action@v3
+      #   with:
+      #     source: ./docker
+      #     files: docker-compose.ci.yml
+      #     load: true
       - name: Install Package Dependencies
         run: make install
+      - name: Build AWS-Setup Image
+        run: docker buildx bake --allow=fs.read=.. --load -f docker-compose.ci.yml emily-aws-setup
+        working-directory: ./docker
       - name: Build Integration Tests
         run: make integration-test-build
       - name: Start Integration Test Environment
