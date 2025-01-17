@@ -191,7 +191,7 @@ EMILY_CLIENT_SOURCE_FILES := $(shell find $(EMILY_CLIENTS_DIR) -type f -name 'li
 # one for each of the Emily API variants (public, private, testing).
 $(EMILY_OPENAPI_SPEC_PATHS): $(EMILY_OPENAPI_SOURCE_FILES)
 	@echo "Generating Emily OpenAPI spec"
-	cargo build --package $(EMILY_OPENAPI_SPEC_PROJECT_NAME) ${CARGO_BUILD_ARGS}
+	cargo build --package $(EMILY_OPENAPI_SPEC_PROJECT_NAME) --target-dir ./target/emily-spec-gen ${CARGO_BUILD_ARGS}
 
 # Generate Rust client code for the Emily APIs if any of the generated source
 # files are older than any of the spec files. Note that this generates the code
@@ -227,7 +227,7 @@ BLOCKLIST_CLIENT_SOURCE_FILES := $(BLOCKLIST_CLIENT_SOURCE_DIR)/src/lib.rs
 # than any of the source files.
 $(BLOCKLIST_OPENAPI_SPEC_PATH): $(BLOCKLIST_OPENAPI_SOURCE_FILES)
 	@echo "Generating Blocklist OpenAPI spec"
-	cargo build --package $(BLOCKLIST_OPENAPI_SPEC_PROJECT_NAME) ${CARGO_BUILD_ARGS}
+	cargo build --package $(BLOCKLIST_OPENAPI_SPEC_PROJECT_NAME) --target-dir ./target/blocklist-spec-gen ${CARGO_BUILD_ARGS}
 
 # Geneate Rust client code for the Blocklist API if any of the generated source
 # files are older than the OpenAPI spec file.
