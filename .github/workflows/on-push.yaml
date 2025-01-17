@@ -114,8 +114,7 @@ jobs:
       - name: Build AWS-Setup Docker Image
         uses: docker/bake-action@v3
         with:
-          files: |-
-            ./docker/docker-compose.ci.yml
+          files: docker-compose.ci.yml
           load: true
       - name: Install Package Dependencies
         run: make install
