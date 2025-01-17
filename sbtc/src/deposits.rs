@@ -15,7 +15,9 @@ use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::XOnlyPublicKey;
 use clarity::codec::StacksMessageCodec;
+use clarity::types::chainstate::StacksAddress;
 use clarity::vm::types::PrincipalData;
+use clarity::vm::types::QualifiedContractIdentifier;
 use secp256k1::SECP256K1;
 use stacks_common::types::chainstate::STACKS_ADDRESS_ENCODED_SIZE;
 
@@ -123,7 +125,9 @@ impl CreateDepositRequest {
     ///   the expected formats for deposit transactions.
     /// * That deposit script and the reclaim script are part of the UTXO
     ///   ScriptPubKey.
-    pub fn validate_tx(&self, tx: &Transaction) -> Result<DepositInfo, Error> {
+    /// * That the Stacks network for the recipient address matches the one
+    ///   given as input to this function.
+    pub fn validate_tx(&self, tx: &Transaction, is_mainnet: bool) -> Result<DepositInfo, Error> {
         if tx.compute_txid() != self.outpoint.txid {
             // The expectation is that the transaction was fetched from the
             // blockchain using the txid, so in practice this should never
@@ -147,8 +151,12 @@ impl CreateDepositRequest {
         let deposit_script = deposit.deposit_script();
         let reclaim_script = reclaim.reclaim_script();
 
-        debug_assert_eq!(deposit_script, self.deposit_script);
-        debug_assert_eq!(reclaim_script, self.reclaim_script);
+        if deposit_script != self.deposit_script {
+            return Err(Error::InvalidDepositScript);
+        }
+        if reclaim_script != self.reclaim_script {
+            return Err(Error::InvalidReclaimScript);
+        }
 
         let expected_script_pubkey =
             to_script_pubkey(deposit_script.clone(), reclaim_script.clone());
@@ -156,6 +164,11 @@ impl CreateDepositRequest {
         // key of our parsed UTXO.
         if expected_script_pubkey != tx_out.script_pubkey {
             return Err(Error::UtxoScriptPubKeyMismatch(self.outpoint));
+        }
+
+        // Check that the recipient network matches what we expect
+        if principal_is_mainnet(deposit.recipient.clone()) != is_mainnet {
+            return Err(Error::RecipientNetworkMismatch(deposit.recipient));
         }
 
         Ok(DepositInfo {
@@ -169,6 +182,15 @@ impl CreateDepositRequest {
             outpoint: self.outpoint,
         })
     }
+}
+
+/// Return whether the given principal address is a mainnet address.
+fn principal_is_mainnet(principal: PrincipalData) -> bool {
+    let standard_address = match principal {
+        PrincipalData::Contract(QualifiedContractIdentifier { issuer, .. }) => issuer,
+        PrincipalData::Standard(issuer) => issuer,
+    };
+    StacksAddress::from(standard_address).is_mainnet()
 }
 
 /// Construct the expected taproot info for a deposit UTXO on the given
@@ -335,14 +357,14 @@ impl DepositScriptInputs {
         let Some((max_fee_bytes, mut address)) = deposit_data.split_first_chunk::<8>() else {
             return Err(Error::InvalidDepositScript);
         };
-        let stacks_address = PrincipalData::consensus_deserialize(&mut address)
+        let recipient = PrincipalData::consensus_deserialize(&mut address)
             .map_err(Error::ParseStacksAddress)?;
 
         Ok(DepositScriptInputs {
             signers_public_key: XOnlyPublicKey::from_slice(public_key)
                 .map_err(Error::InvalidXOnlyPublicKey)?,
             max_fee: u64::from_be_bytes(*max_fee_bytes),
-            recipient: stacks_address,
+            recipient,
         })
     }
 }
@@ -822,7 +844,7 @@ mod tests {
             deposit_script: setup.deposit.deposit_script(),
         };
 
-        let parsed = request.validate_tx(&setup.tx).unwrap();
+        let parsed = request.validate_tx(&setup.tx, false).unwrap();
 
         assert_eq!(parsed.outpoint, request.outpoint);
         assert_eq!(parsed.deposit_script, request.deposit_script);
@@ -831,6 +853,23 @@ mod tests {
         assert_eq!(parsed.signers_public_key, setup.deposit.signers_public_key);
         assert_eq!(parsed.lock_time, LockTime::from_height(lock_time as u16));
         assert_eq!(parsed.recipient, setup.deposit.recipient);
+    }
+
+    #[test_case(true ; "is mainnet address")]
+    #[test_case(false ; "is testnet address")]
+    fn tx_validation_network(is_mainnet: bool) {
+        let recipient = StacksAddress::burn_address(is_mainnet);
+        let setup: TxSetup =
+            testing::deposits::tx_setup_with_recipient(150, 2500, 35000, recipient);
+
+        let request = CreateDepositRequest {
+            outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
+            reclaim_script: setup.reclaim.reclaim_script(),
+            deposit_script: setup.deposit.deposit_script(),
+        };
+
+        assert!(request.validate_tx(&setup.tx, is_mainnet).is_ok());
+        assert!(request.validate_tx(&setup.tx, !is_mainnet).is_err());
     }
 
     #[test]
@@ -851,7 +890,7 @@ mod tests {
             reclaim_script: setup.reclaim.reclaim_script(),
         };
 
-        let error = request.validate_tx(&setup.tx).unwrap_err();
+        let error = request.validate_tx(&setup.tx, false).unwrap_err();
         assert!(matches!(error, Error::UtxoScriptPubKeyMismatch(_)));
     }
 
@@ -873,7 +912,7 @@ mod tests {
             reclaim_script: setup.reclaim.reclaim_script(),
         };
 
-        let error = request.validate_tx(&setup.tx).unwrap_err();
+        let error = request.validate_tx(&setup.tx, false).unwrap_err();
         assert!(matches!(error, Error::UtxoScriptPubKeyMismatch(_)));
     }
 
@@ -892,7 +931,7 @@ mod tests {
             reclaim_script: setup.reclaim.reclaim_script(),
         };
 
-        let error = request.validate_tx(&setup.tx).unwrap_err();
+        let error = request.validate_tx(&setup.tx, false).unwrap_err();
         assert!(matches!(error, Error::OutpointIndex(_, _)));
 
         let request = CreateDepositRequest {
@@ -902,7 +941,7 @@ mod tests {
             reclaim_script: setup.reclaim.reclaim_script(),
         };
 
-        let error = request.validate_tx(&setup.tx).unwrap_err();
+        let error = request.validate_tx(&setup.tx, false).unwrap_err();
         assert!(matches!(error, Error::TxidMismatch { .. }));
     }
 
@@ -923,7 +962,7 @@ mod tests {
             reclaim_script: setup.reclaim.reclaim_script(),
         };
 
-        let error = request.validate_tx(&setup.tx).unwrap_err();
+        let error = request.validate_tx(&setup.tx, false).unwrap_err();
         assert!(matches!(error, Error::InvalidDepositScriptLength));
 
         let request = CreateDepositRequest {
@@ -935,7 +974,7 @@ mod tests {
             reclaim_script: ScriptBuf::new(),
         };
 
-        let error = request.validate_tx(&setup.tx).unwrap_err();
+        let error = request.validate_tx(&setup.tx, false).unwrap_err();
         assert!(matches!(error, Error::InvalidReclaimScript));
     }
 
