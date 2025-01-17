@@ -98,9 +98,5 @@ jobs:
         run: make integration-env-up-ci
       - name: Run Integration Tests
         run: make integration-test
-      - name: Stop Integration Test Environment
-        run: make integration-env-down-ci
-        if: always()
-        continue-on-error: true
 
     
