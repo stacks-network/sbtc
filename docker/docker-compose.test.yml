@@ -31,7 +31,6 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: signer
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
@@ -40,23 +39,6 @@ services:
       interval: 2s
       timeout: 1s
       retries: 5
-
-  flyway:
-    image: flyway/flyway:10.13.0
-    command: >-
-      -url=jdbc:postgresql://postgres:5432/signer
-      -user=postgres
-      -password=postgres
-      -sqlMigrationPrefix=""
-      -connectRetries=60
-      migrate
-    volumes:
-      - ../signer/migrations:/flyway/sql
-    depends_on:
-      postgres:
-        condition: service_healthy
-    profiles:
-      - manual_start
 
   # DynamoDB Tables for the Emily API.
   emily-dynamodb:
@@ -94,3 +76,20 @@ services:
       - PORT=3031
     ports:
       - "3031:3031"
+
+  flyway:
+    image: flyway/flyway:10.13.0
+    command: >-
+      -url=jdbc:postgresql://postgres:5432/postgres
+      -user=postgres
+      -password=postgres
+      -sqlMigrationPrefix=""
+      -connectRetries=60
+      migrate
+    volumes:
+      - ../signer/migrations:/flyway/sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - manual_start

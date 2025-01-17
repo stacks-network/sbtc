@@ -1,8 +1,11 @@
 use std::cmp::Ordering;
-use test_case::test_case;
+use std::collections::HashMap;
 
 use bitcoin::consensus::encode::serialize_hex;
 use sbtc::testing;
+use sbtc::testing::deposits::TxSetup;
+use stacks_common::types::chainstate::StacksAddress;
+use test_case::test_case;
 use testing_emily_client::models::{Fulfillment, Status, UpdateDepositsRequestBody};
 use testing_emily_client::{
     apis::{self, configuration::Configuration},
@@ -67,8 +70,7 @@ struct DepositTxnData {
 }
 
 impl DepositTxnData {
-    pub fn new(lock_time: u32, max_fee: u64, amounts: &[u64]) -> Self {
-        let test_deposit_tx = testing::deposits::tx_setup(lock_time, max_fee, amounts);
+    fn from_tx_setup(test_deposit_tx: TxSetup) -> Self {
         Self {
             bitcoin_txid: test_deposit_tx.tx.compute_txid().to_string(),
             transaction_hex: serialize_hex(&test_deposit_tx.tx),
@@ -88,6 +90,29 @@ impl DepositTxnData {
                 .map(|d| d.deposit_script().to_hex_string())
                 .collect(),
         }
+    }
+
+    pub fn new_with_recipient(
+        lock_time: u32,
+        max_fee: u64,
+        amounts: &[u64],
+        recipient: u8,
+    ) -> Self {
+        let tx_setup = testing::deposits::tx_setup_with_recipient(
+            lock_time,
+            max_fee,
+            amounts,
+            StacksAddress {
+                version: 0,
+                bytes: stacks_common::util::hash::Hash160([recipient; 20]),
+            },
+        );
+        Self::from_tx_setup(tx_setup)
+    }
+
+    pub fn new(lock_time: u32, max_fee: u64, amounts: &[u64]) -> Self {
+        let tx_setup = testing::deposits::tx_setup(lock_time, max_fee, amounts);
+        Self::from_tx_setup(tx_setup)
     }
 }
 
@@ -348,11 +373,11 @@ async fn get_deposits() {
         }
     }
 
-    let chunksize: i32 = 2;
+    let chunksize: u16 = 2;
     // If the number of elements is an exact multiple of the chunk size the "final"
     // query will still have a next token, and the next query will now have a next
     // token and will return no additional data.
-    let expected_chunks = expected_deposit_infos.len() as i32 / chunksize + 1;
+    let expected_chunks: u16 = expected_deposit_infos.len() as u16 / chunksize + 1;
 
     // Act.
     // ----
@@ -366,7 +391,7 @@ async fn get_deposits() {
             &configuration,
             status,
             next_token.as_ref().and_then(|o| o.as_deref()),
-            Some(chunksize),
+            Some(chunksize as i32),
         )
         .await
         .expect("Received an error after making a valid get deposits api call.");
@@ -380,13 +405,13 @@ async fn get_deposits() {
 
     // Assert.
     // -------
-    assert_eq!(expected_chunks, gotten_deposit_info_chunks.len() as i32);
+    assert_eq!(expected_chunks, gotten_deposit_info_chunks.len() as u16);
     let max_chunk_size = gotten_deposit_info_chunks
         .iter()
         .map(|chunk| chunk.len())
         .max()
         .unwrap();
-    assert!(chunksize >= max_chunk_size as i32);
+    assert!(chunksize >= max_chunk_size as u16);
 
     let mut gotten_deposit_infos = gotten_deposit_info_chunks
         .into_iter()
@@ -396,6 +421,120 @@ async fn get_deposits() {
     expected_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
     gotten_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
     assert_eq!(expected_deposit_infos, gotten_deposit_infos);
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposits_for_recipient() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+
+    // Setup the test information that we'll use to arrange the test.
+    let deposits_per_tx = vec![2, 3, 4];
+
+    let mut expected_recipient_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    let mut create_requests: Vec<CreateDepositRequestBody> = Vec::new();
+    for (recipient_number, num_deposits) in deposits_per_tx.iter().enumerate() {
+        let amounts = vec![DEPOSIT_AMOUNT_SATS; *num_deposits as usize];
+        // Setup test deposit transaction.
+        let DepositTxnData {
+            recipients,
+            reclaim_scripts,
+            deposit_scripts,
+            bitcoin_txid,
+            transaction_hex,
+        } = DepositTxnData::new_with_recipient(
+            DEPOSIT_LOCK_TIME,
+            DEPOSIT_MAX_FEE,
+            &amounts,
+            recipient_number as u8,
+        );
+
+        // Make create requests.
+        let mut expected_deposit_infos: Vec<DepositInfo> = Vec::new();
+        let mut recipient = recipients.first().unwrap();
+        for bitcoin_tx_output_index in 0..*num_deposits {
+            let tx_output_index = bitcoin_tx_output_index as usize;
+            recipient = &recipients[tx_output_index];
+            let reclaim_script = reclaim_scripts[tx_output_index].clone();
+            let deposit_script = deposit_scripts[tx_output_index].clone();
+            // Make the create request.
+            let request = CreateDepositRequestBody {
+                bitcoin_tx_output_index,
+                bitcoin_txid: bitcoin_txid.clone(),
+                deposit_script: deposit_script.clone(),
+                reclaim_script: reclaim_script.clone(),
+                transaction_hex: transaction_hex.clone(),
+            };
+            create_requests.push(request);
+            // Store the expected deposit info that should come from it.
+            let expected_deposit_info = DepositInfo {
+                amount: DEPOSIT_AMOUNT_SATS,
+                bitcoin_tx_output_index,
+                bitcoin_txid: bitcoin_txid.clone(),
+                last_update_block_hash: BLOCK_HASH.into(),
+                last_update_height: BLOCK_HEIGHT,
+                recipient: recipient.clone(),
+                status: testing_emily_client::models::Status::Pending,
+                reclaim_script: reclaim_script,
+                deposit_script: deposit_script,
+            };
+            expected_deposit_infos.push(expected_deposit_info);
+        }
+        // Add the recipient data to the recipient data hashmap that stores what
+        // we expect to see from the recipient.
+        expected_recipient_data.insert(recipient.clone(), expected_deposit_infos.clone());
+    }
+
+    // The size of the chunks to grab from the api.
+    let chunksize: u16 = 2;
+
+    // Act.
+    // ----
+    batch_create_deposits(&configuration, create_requests).await;
+
+    let mut actual_recipient_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    for recipient in expected_recipient_data.keys() {
+        // Loop over the api calls to get all the deposits for the recipient.
+        let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
+        let mut next_token: Option<Option<String>> = None;
+        loop {
+            let response = apis::deposit_api::get_deposits_for_recipient(
+                &configuration,
+                recipient,
+                next_token.as_ref().and_then(|o| o.as_deref()),
+                Some(chunksize as i32),
+            )
+            .await
+            .expect("Received an error after making a valid get deposits for recipient api call.");
+            gotten_deposit_info_chunks.push(response.deposits);
+            next_token = response.next_token;
+            if !next_token.as_ref().is_some_and(|inner| inner.is_some()) {
+                break;
+            }
+        }
+        // Store the actual data received from the api.
+        actual_recipient_data.insert(
+            recipient.clone(),
+            gotten_deposit_info_chunks
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
+    }
+
+    // Assert.
+    // -------
+    for recipient in expected_recipient_data.keys() {
+        let mut expected_deposit_infos = expected_recipient_data.get(recipient).unwrap().clone();
+        expected_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
+        let mut actual_deposit_infos = actual_recipient_data.get(recipient).unwrap().clone();
+        actual_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
+        // Assert that the expected and actual deposit infos are the same.
+        assert_eq!(expected_deposit_infos, actual_deposit_infos);
+    }
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]

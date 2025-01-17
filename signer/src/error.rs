@@ -13,6 +13,10 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The aggregate key for the given block hash could not be determined.
+    #[error("the signer set aggregate key could not be determined for bitcoin block {0}")]
+    MissingAggregateKey(bitcoin::BlockHash),
+
     /// An error occurred while attempting to connect to the Bitcoin Core ZMQ socket.
     #[error("timed-out trying to connect to bitcoin-core ZMQ endpoint: {0}")]
     BitcoinCoreZmqConnectTimeout(String),
@@ -24,6 +28,11 @@ pub enum Error {
     /// Indicates an error when decoding a protobuf
     #[error("could not decode protobuf {0}")]
     DecodeProtobuf(#[source] prost::DecodeError),
+
+    /// This happens when the tag order of the serialized protobuf is not
+    /// increasing.
+    #[error("protobuf field not encoded in field tag order")]
+    ProtobufTagCodec,
 
     /// Attempted division by zero
     #[error("attempted division by zero")]
@@ -529,6 +538,21 @@ pub enum Error {
     /// Indicates that the request packages contain duplicate deposit or withdrawal entries.
     #[error("The request packages contain duplicate deposit or withdrawal entries.")]
     DuplicateRequests,
+
+    /// Indicates that the BitcoinPreSignRequest object does not contain
+    /// any deposit or withdrawal requests.
+    #[error("The BitcoinPreSignRequest object does not contain deposit or withdrawal requests")]
+    PreSignContainsNoRequests,
+
+    /// Indicates that we tried to create an UnsignedTransaction object
+    /// without any deposit or withdrawal requests.
+    #[error("The UnsignedTransaction must contain deposit or withdrawal requests")]
+    BitcoinNoRequests,
+
+    /// Indicates that the BitcoinPreSignRequest object contains a fee rate
+    /// that is less than or equal to zero.
+    #[error("The fee rate in the BitcoinPreSignRequest object is not greater than zero: {0}")]
+    PreSignInvalidFeeRate(f64),
 
     /// Error when deposit requests would exceed sBTC supply cap
     #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]

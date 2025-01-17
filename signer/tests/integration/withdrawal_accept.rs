@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
@@ -19,7 +17,6 @@ use signer::testing::context::*;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
-use crate::DATABASE_NUM;
 
 /// Create a "proper" [`AcceptWithdrawalV1`] object and context with the
 /// given information. If the information here is correct then the returned
@@ -91,8 +88,7 @@ async fn accept_withdrawal_validation_happy_path() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request. This is just setup
     // and should be essentially the same between tests.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -141,8 +137,7 @@ async fn accept_withdrawal_validation_happy_path() {
 async fn accept_withdrawal_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -200,8 +195,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
 async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -260,8 +254,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
 async fn accept_withdrawal_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -320,8 +313,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
 async fn accept_withdrawal_validation_invalid_amount() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -378,8 +370,7 @@ async fn accept_withdrawal_validation_invalid_amount() {
 async fn accept_withdrawal_validation_invalid_fee() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -438,8 +429,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
 async fn accept_withdrawal_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -500,8 +490,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
 async fn accept_withdrawal_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -571,8 +560,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
 async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -633,8 +621,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
 async fn accept_withdrawal_validation_bitmap_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -694,8 +681,7 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
 async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -753,8 +739,7 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
 async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);

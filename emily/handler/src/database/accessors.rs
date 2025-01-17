@@ -12,7 +12,9 @@ use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
-use super::entries::deposit::ValidatedDepositUpdate;
+use super::entries::deposit::{
+    DepositInfoByRecipientEntry, DepositTableByRecipientSecondaryIndex, ValidatedDepositUpdate,
+};
 use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
@@ -66,11 +68,28 @@ pub async fn get_deposit_entries(
     context: &EmilyContext,
     status: &Status,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<DepositInfoEntry>, Option<String>), Error> {
     query_with_partition_key::<DepositTableSecondaryIndex>(
         context,
         status,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get deposit entries by recipient.
+#[allow(clippy::ptr_arg)]
+pub async fn get_deposit_entries_by_recipient(
+    context: &EmilyContext,
+    recipient: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<DepositInfoByRecipientEntry>, Option<String>), Error> {
+    query_with_partition_key::<DepositTableByRecipientSecondaryIndex>(
+        context,
+        recipient,
         maybe_next_token,
         maybe_page_size,
     )
@@ -91,7 +110,7 @@ const ALL_STATUSES: &[Status] = &[
 pub async fn get_all_deposit_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<DepositInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
@@ -113,7 +132,7 @@ pub async fn get_all_deposit_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<DepositInfoEntry>, Error> {
     // Make the query.
     query_all_with_partition_and_sort_key::<DepositTableSecondaryIndex>(
@@ -132,7 +151,7 @@ pub async fn get_deposit_entries_for_transaction(
     context: &EmilyContext,
     bitcoin_txid: &String,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<DepositEntry>, Option<String>), Error> {
     query_with_partition_key::<DepositTablePrimaryIndex>(
         context,
@@ -289,7 +308,7 @@ pub async fn get_withdrawal_entries(
     context: &EmilyContext,
     status: &Status,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<WithdrawalInfoEntry>, Option<String>), Error> {
     query_with_partition_key::<WithdrawalTableSecondaryIndex>(
         context,
@@ -304,7 +323,7 @@ pub async fn get_withdrawal_entries(
 pub async fn get_all_withdrawal_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<WithdrawalInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
@@ -326,7 +345,7 @@ pub async fn get_all_withdrawal_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<WithdrawalInfoEntry>, Error> {
     // Make the query.
     query_all_with_partition_and_sort_key::<WithdrawalTableSecondaryIndex>(
@@ -576,7 +595,7 @@ pub async fn get_chainstate_entries_for_height(
     context: &EmilyContext,
     height: &u64,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<ChainstateEntry>, Option<String>), Error> {
     query_with_partition_key::<ChainstateTablePrimaryIndex>(
         context,
@@ -787,7 +806,7 @@ async fn query_with_partition_key<T: TableIndexTrait>(
     context: &EmilyContext,
     parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<<T as TableIndexTrait>::Entry>, Option<String>), Error> {
     <T as TableIndexTrait>::query_with_partition_key(
         &context.dynamodb_client,
@@ -804,7 +823,7 @@ async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
     parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
     sort_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
     sort_key_operator: &str,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<<T as TableIndexTrait>::Entry>, Error> {
     // item aggregator.
     let mut items: Vec<<T as TableIndexTrait>::Entry> = Vec::new();

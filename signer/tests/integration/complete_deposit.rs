@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
 use rand::SeedableRng;
@@ -23,7 +21,6 @@ use crate::setup::DepositAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
-use crate::DATABASE_NUM;
 
 /// Create a "proper" [`CompleteDepositV1`] object and context with the
 /// given information. If the information here is correct then the returned
@@ -149,8 +146,7 @@ async fn complete_deposit_validation_happy_path() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
     // This is just setup and should be essentially the same between tests.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -212,8 +208,7 @@ async fn complete_deposit_validation_happy_path() {
 async fn complete_deposit_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -280,8 +275,7 @@ async fn complete_deposit_validation_deployer_mismatch() {
 async fn complete_deposit_validation_missing_deposit_request() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -342,8 +336,7 @@ async fn complete_deposit_validation_missing_deposit_request() {
 async fn complete_deposit_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -424,8 +417,7 @@ async fn complete_deposit_validation_recipient_mismatch() {
 async fn complete_deposit_validation_fee_too_low() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
@@ -555,8 +547,7 @@ async fn complete_deposit_validation_fee_too_low() {
 async fn complete_deposit_validation_fee_too_high() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -628,8 +619,7 @@ async fn complete_deposit_validation_fee_too_high() {
 async fn complete_deposit_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -698,8 +688,7 @@ async fn complete_deposit_validation_sweep_tx_missing() {
 async fn complete_deposit_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -778,8 +767,7 @@ async fn complete_deposit_validation_sweep_reorged() {
 async fn complete_deposit_validation_deposit_not_in_sweep() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -850,8 +838,7 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
 async fn complete_deposit_validation_deposit_incorrect_fee() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
@@ -919,8 +906,7 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
 async fn complete_deposit_validation_deposit_invalid_sweep() {
     // Normal: this generates the blockchain as well as deposit request
     // transactions and a transaction sweeping in the deposited funds.
-    let db_num = DATABASE_NUM.fetch_add(1, Ordering::SeqCst);
-    let db = testing::storage::new_test_database(db_num, true).await;
+    let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
     let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);

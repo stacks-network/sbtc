@@ -2,6 +2,7 @@
 //!
 
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{get, post},
     Router,
 };
@@ -20,7 +21,11 @@ async fn new_attachment_handler() -> StatusCode {
 pub fn get_router<C: Context + 'static>() -> Router<ApiState<C>> {
     Router::new()
         .route("/", get(status::status_handler))
-        .route("/new_block", post(new_block::new_block_handler))
+        .route(
+            "/new_block",
+            post(new_block::new_block_handler)
+                .layer(DefaultBodyLimit::max(new_block::EVENT_OBSERVER_BODY_LIMIT)),
+        )
         // TODO: remove this once https://github.com/stacks-network/stacks-core/issues/5558
         // is addressed
         .route("/attachments/new", post(new_attachment_handler))

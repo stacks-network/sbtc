@@ -249,12 +249,11 @@ mod tests {
     {
         let rng = &mut rand::rngs::StdRng::seed_from_u64(1337);
         let private_key = PrivateKey::new(rng);
-        let public_key = PublicKey::from_private_key(&private_key);
 
         let signed_message =
             SignerMessage::random_with_payload_type::<P, _>(rng).sign_ecdsa(&private_key);
 
-        assert!(signed_message.verify(public_key));
+        assert!(signed_message.verify());
     }
 
     #[test_case(PhantomData::<SignerDepositDecision> ; "SignerDepositDecision")]
