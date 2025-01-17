@@ -107,7 +107,9 @@ jobs:
       - name: Run Integration Tests
         run: |
           make blocklist-client-codegen
+          rm -rf ~/.cargo/.package-cache
           make emily-client-codegen
+          rm -rf ~/.cargo/.package-cache
           make integration-test
 
   contracts:
