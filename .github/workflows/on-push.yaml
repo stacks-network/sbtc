@@ -9,6 +9,7 @@ concurrency:
 env:
   NODE_VERSION: 22.1.0
   BUF_VERSION: 1.42.0
+  PYTHON_VERSION: 3.13
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_STRIP: "debuginfo"
 
@@ -107,21 +108,15 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: "25.3"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install boto3
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
-      - uses: docker/setup-buildx-action@v3
-      # - name: Build AWS-Setup Docker Image
-      #   uses: docker/bake-action@v3
-      #   with:
-      #     source: ./docker
-      #     files: docker-compose.ci.yml
-      #     load: true
       - name: Install Package Dependencies
         run: make install
-      - name: Build AWS-Setup Image
-        run: docker buildx bake --allow=fs.read=.. --load -f docker-compose.ci.yml emily-aws-setup
-        working-directory: ./docker
       - name: Build Integration Tests
         run: make integration-test-build
       - name: Start Integration Test Environment

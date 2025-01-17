@@ -69,14 +69,14 @@ nextest-archive-run:
 # INTEGRATION TESTS
 # ##############################################################################
 
-integration-env-up:
-	docker compose --file docker/docker-compose.test.yml up --detach
+integration-env-up: emily-cdk-synth
+	docker compose --file docker/docker-compose.test.yml up -d
 
 integration-test: blocklist-client-codegen emily-client-codegen
-	cargo nextest run --test integration --all-features --no-fail-fast --test-threads 1
+	cargo nextest run $(CARGO_FLAGS) --test integration --all-features --no-fail-fast --test-threads 1
 
 integration-test-build: blocklist-client-codegen emily-client-codegen
-	cargo test build --test integration --all-features --no-run --locked
+	cargo test build $(CARGO_FLAGS) --test integration --all-features --no-run --locked
 
 integration-env-down:
 	docker compose --file docker/docker-compose.test.yml down -v
@@ -88,14 +88,18 @@ integration-test-full: integration-env-down integration-env-up integration-test 
 
 integration-env-up-ci: emily-cdk-synth
 	docker compose --file docker/docker-compose.ci.yml up --detach --quiet-pull
-	@echo "Wait for aws resources to be set up..."
-	@while docker compose --file docker/docker-compose.ci.yml ps | grep -q 'emily-aws-setup'; do echo "waiting..." && sleep 1; done
+	DYNAMODB_ENDPOINT=http://localhost:8000 \
+		INPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.template.json \
+		OUTPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.devenv.template.json \
+		LOCAL_LAMBDA_PATH=empty.zip \
+		TRUSTED_REORG_API_KEY=testApiKey \
+		python3 docker/sbtc/emily-aws-setup/initialize.py
 	AWS_ACCESS_KEY_ID=xxxxxxxxxxxx \
-	AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
-	AWS_REGION=us-west-2 \
-	TRUSTED_REORG_API_KEY=testApiKey \
-	cargo run --bin emily-server -- \
-		--host 127.0.0.1 --port 3031 --dynamodb-endpoint http://localhost:8000 > ./target/emily-server.log 2>&1 &
+		AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
+		AWS_REGION=us-west-2 \
+		TRUSTED_REORG_API_KEY=testApiKey \
+		cargo run --bin emily-server -- \
+			--host 127.0.0.1 --port 3031 --dynamodb-endpoint http://localhost:8000 > ./target/emily-server.log 2>&1 &
 
 integration-env-down-ci:
 	docker compose --file docker/docker-compose.ci.yml down
