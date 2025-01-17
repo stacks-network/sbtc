@@ -26,17 +26,25 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust-tests"
+      - name: Install Package Dependencies
+        run: make install
       - name: Run Lints
         run: make lint
 
   prepare-tests:
-    name: Run Unit Tests
+    name: Create NexTest Archives
     runs-on: ubuntu-20.04
     steps:
       - uses: rui314/setup-mold@v1
         with:
           make-default: true
       - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "rust-tests"
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v3
@@ -46,7 +54,6 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: "25.3"
-      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
