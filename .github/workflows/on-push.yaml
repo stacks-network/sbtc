@@ -9,10 +9,12 @@ concurrency:
 env:
   NODE_VERSION: 22.1.0
   BUF_VERSION: 1.42.0
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_STRIP: "debuginfo"
 
 jobs:
   lint:
-    name: Lint
+    name: Run Lints
     runs-on: ubuntu-20.04
     steps:
       - uses: rui314/setup-mold@v1
@@ -102,15 +104,12 @@ jobs:
           tool: nextest@0.9.82
       - name: Install Package Dependencies
         run: make install
+      - name: Build Integration Tests
+        run: make integration-test-build
       - name: Start Integration Test Environment
         run: make integration-env-up-ci
       - name: Run Integration Tests
-        run: |
-          make blocklist-client-codegen
-          rm -rf ~/.cargo/.package-cache
-          make emily-client-codegen
-          rm -rf ~/.cargo/.package-cache
-          make integration-test
+        run: make integration-test
 
   contracts:
     name: Run Contract Checks

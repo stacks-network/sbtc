@@ -72,6 +72,9 @@ integration-env-up:
 integration-test: blocklist-client-codegen emily-client-codegen
 	cargo nextest run --test integration --all-features --no-fail-fast --test-threads 1
 
+integration-test-build: blocklist-client-codegen emily-client-codegen
+	cargo test build --test integration --all-features --no-run --locked
+
 integration-env-down:
 	docker compose --file docker/docker-compose.test.yml down -v
 
@@ -96,7 +99,7 @@ integration-env-down-ci:
 	@echo "killing emily server process..."
 	ps -ef | awk  '/[e]mily-server/{print $$2}' | xargs kill -9
 
-.PHONY: integration-env-up integration-test integration-env-up integration-test-full
+.PHONY: integration-env-up integration-test integration-test-build integration-env-up integration-test-full
 
 # ##############################################################################
 # DEVENV (development testing environment)
