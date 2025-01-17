@@ -1,4 +1,4 @@
-name: Rust Tests
+name: Rust Jobs
 on: [push]
 
 concurrency:
@@ -26,9 +26,10 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: "rust-tests"
+          cache-key: "rust-tests"
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     shared-key: "rust-tests"
       - name: Install Package Dependencies
         run: make install
       - name: Run Lints
@@ -43,9 +44,11 @@ jobs:
           make-default: true
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
-      - uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "rust-tests"
+          cache-key: "rust-tests"
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     shared-key: "rust-tests"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v3
         with:
