@@ -93,6 +93,7 @@ integration-env-up-ci: emily-cdk-synth
 		LOCAL_LAMBDA_PATH=empty.zip \
 		TRUSTED_REORG_API_KEY=testApiKey \
 		python3 docker/sbtc/emily-aws-setup/initialize.py
+	cargo build --bin emily-server
 	AWS_ACCESS_KEY_ID=xxxxxxxxxxxx \
 		AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
 		AWS_REGION=us-west-2 \
