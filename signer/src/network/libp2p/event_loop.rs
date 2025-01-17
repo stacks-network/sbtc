@@ -58,10 +58,9 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
         loop {
             // Poll the libp2p swarm for events, waiting for a maximum of 5ms
             // so that we don't starve the outbox.
-            let event =
-                tokio::time::timeout(Duration::from_millis(5), swarm.lock().await.next())
-                    .await
-                    .unwrap_or_default();
+            let event = tokio::time::timeout(Duration::from_millis(5), swarm.lock().await.next())
+                .await
+                .unwrap_or_default();
 
             // Handle the event if one was received.
             if let Some(event) = event {
