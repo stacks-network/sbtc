@@ -1,4 +1,4 @@
-name: Rust Jobs
+name: On Push
 on: [push]
 
 concurrency:
@@ -45,9 +45,9 @@ jobs:
         run: pnpm --recursive run lint
       - name: Lint (Protobuf)
         run: |
-          cd protobufs
           buf format --diff --exit-code
           buf lint
+        working-directory: ./protobufs
       - name: Typecheck (pnpm)
         run: pnpm --recursive typecheck
 
@@ -105,7 +105,10 @@ jobs:
       - name: Start Integration Test Environment
         run: make integration-env-up-ci
       - name: Run Integration Tests
-        run: make integration-test
+        run: |
+          make blocklist-client-codegen
+          make emily-client-codegen
+          make integration-test
 
   contracts:
     name: Run Contract Checks
