@@ -49,6 +49,11 @@ services:
       context: ..
       dockerfile: docker/sbtc/emily-aws-setup/Dockerfile.ci
       target: emily-aws-setup
+      x-bake:
+        cache-to:
+          - type=gha,ignore-error=true,mode=max,scope=emily-aws-setup
+        cache-from:
+          - type=gha,scope=emily-aws-setup
     depends_on:
       - emily-dynamodb
     environment:
