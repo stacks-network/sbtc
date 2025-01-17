@@ -82,6 +82,8 @@ jobs:
         with:
           cache: false
       - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
@@ -104,6 +106,8 @@ jobs:
         with:
           cache: false
       - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
