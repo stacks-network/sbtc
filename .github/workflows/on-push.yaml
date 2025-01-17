@@ -15,12 +15,14 @@ env:
 jobs:
   lint:
     name: Run Lints
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: rui314/setup-mold@v1
         with:
           make-default: true
       - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v3
         with:
@@ -55,12 +57,14 @@ jobs:
 
   unit-tests:
     name: Run Unit Tests
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: rui314/setup-mold@v1
         with:
           make-default: true
       - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: "rust-tests"
@@ -77,17 +81,21 @@ jobs:
           tool: nextest@0.9.82
       - name: Install Package Dependencies
         run: make install
+      - name: Build Unit Tests
+        run: make test-build
       - name: Run Unit Tests
         run: make test
 
   integration-tests:
     name: Run Integration Tests
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: rui314/setup-mold@v1
         with:
           make-default: true
       - uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: "rust-tests"
@@ -113,7 +121,7 @@ jobs:
 
   contracts:
     name: Run Contract Checks
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

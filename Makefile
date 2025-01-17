@@ -22,9 +22,12 @@ install:
 build: blocklist-client-codegen emily-client-codegen
 	cargo build $(CARGO_FLAGS) ${CARGO_BUILD_ARGS}
 
-test: build
+test: test-build
 	cargo nextest run $(CARGO_FLAGS) --no-fail-fast ${CARGO_BUILD_ARGS}
 	pnpm --recursive test
+
+test-build:
+	cargo test build $(CARGO_FLAGS) --no-run --locked ${CARGO_BUILD_ARGS}
 
 lint:
 	cargo fmt --all -- --check
@@ -41,7 +44,7 @@ clean:
 	cargo clean
 	pnpm --recursive clean
 
-.PHONY: install build test lint format contracts clean
+.PHONY: install build test test-build lint format contracts clean
 
 # ##############################################################################
 # NEXTEST
