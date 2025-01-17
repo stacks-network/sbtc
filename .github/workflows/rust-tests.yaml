@@ -1,0 +1,83 @@
+name: Rust Tests
+on: [push]
+
+concurrency:
+  # limit concurrency of entire workflow runs for a specific branch
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: rui314/setup-mold@v1
+        with:
+          make-default: true
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 22.1.0
+          cache: "pnpm"
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "25.3"
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: clippy, rustfmt
+      - name: Run Lints
+        run: make lint
+
+  prepare-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: rui314/setup-mold@v1
+        with:
+          make-default: true
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 22.1.0
+          cache: "pnpm"
+      - uses: arduino/setup-protoc@v3
+        with:
+          version: "25.3"
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.82
+
+      - name: Install Package Dependencies
+        run: make install
+
+      - name: Create Nextest Archives
+        run: make nextest-archive
+
+      - name: Upload Nextest Archives
+        uses: actions/upload-artifact@v4
+        with:
+          path: ./target/nextest/*.tar.zst
+          overwrite: true
+
+      # - name: Run Unit Tests
+      #   run: make test
+
+      # - name: Docker test service setup
+      #   run: make integration-env-up-ci
+
+      # - name: Run integration tests
+      #   run: make integration-test-ci
+
+      # - name: Docker compose down
+      #   if: always()
+      #   run: make integration-env-down-ci
+
+      # - name: Upload integration test logs
+      #   uses: actions/upload-artifact@v4
+      #   if: always()
+      #   with:
+      #     path: ./target/emily-server.log
