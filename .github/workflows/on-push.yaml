@@ -86,8 +86,8 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
-      - name: Install Package Dependencies
-        run: make install
+      # - name: Install Package Dependencies
+      #   run: make install
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
