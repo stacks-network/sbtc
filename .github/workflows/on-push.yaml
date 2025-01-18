@@ -57,7 +57,7 @@ jobs:
         run: pnpm --recursive typecheck
 
   build-tests:
-    name: Build & Archive Tests
+    name: Build Test Artifacts
     runs-on: ubuntu-24.04
     steps:
       - uses: rui314/setup-mold@v1
@@ -123,7 +123,7 @@ jobs:
       - name: Run Unit Tests (PNPM)
         run: pnpm --recursive test
       - name: Run Unit Tests (Rust)
-        run: cargo-nextest run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
+        run: cargo-nextest nextest run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
 
   integration-tests:
     name: Run Integration Tests

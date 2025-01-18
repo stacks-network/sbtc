@@ -53,7 +53,7 @@ NEXTEST_ARCHIVE_FILE := target/nextest/nextest-archive.tar.zst
 NEXTEST_SERIAL_ARCHIVE_FILE := target/nextest/nextest-archive-serial.tar.zst
 
 # Creates nextest archives
-nextest-archive: blocklist-client-codegen emily-client-codegen
+nextest-archive:
 	cargo nextest archive $(CARGO_FLAGS) --lib --archive-file $(NEXTEST_ARCHIVE_FILE) ${CARGO_BUILD_ARGS}
 	cargo nextest archive $(CARGO_FLAGS) --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE) --test integration ${CARGO_BUILD_ARGS}
 
