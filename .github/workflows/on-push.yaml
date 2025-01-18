@@ -141,6 +141,9 @@ jobs:
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        partition: [1, 2]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -191,7 +194,7 @@ jobs:
           name: nextest-archives
           path: .
       - name: Run Integration Tests (Rust)
-        run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --retries 2 --archive-file nextest-archive-serial.tar.zst
+        run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --retries 2 --partition hash:${{ matrix.partition }}/2 --archive-file nextest-archive-serial.tar.zst
       
 
   # Runs checks on the generated code in the project for contracts, the
