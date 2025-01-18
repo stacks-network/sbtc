@@ -147,6 +147,8 @@ jobs:
       - name: Install Package Dependencies
         run: make install
       - name: Start Integration Test Environment
+        run: make integration-env-up-ci
+      - name: Wait for Test Artifacts
         uses: kachick/wait-other-jobs@v3.6.0
         timeout-minutes: 5
         with:
