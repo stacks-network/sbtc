@@ -87,7 +87,7 @@ jobs:
       - name: Create Nextest Archives
         run: make nextest-archive
       - name: Upload Nextest Archives
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: nextest-archives
           path: ./target/nextest/*.tar.zst
@@ -120,7 +120,7 @@ jobs:
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v4
         with:
           name: nextest-archives
           path: .
