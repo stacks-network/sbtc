@@ -74,10 +74,10 @@ nextest-archive-clean:
 integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
-integration-test: blocklist-client-codegen emily-client-codegen
+integration-test:
 	cargo nextest run $(CARGO_FLAGS) --test integration --no-fail-fast --test-threads 1
 
-integration-test-build: blocklist-client-codegen emily-client-codegen
+integration-test-build:
 	cargo test build $(CARGO_FLAGS) --test integration --no-run --locked
 
 integration-env-down:

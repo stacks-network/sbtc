@@ -97,9 +97,6 @@ jobs:
     runs-on: ubuntu-24.04
     needs: build-tests
     steps:
-      - uses: rui314/setup-mold@v1
-        with:
-          make-default: true
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
@@ -108,9 +105,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-      - uses: arduino/setup-protoc@v3
-        with:
-          version: "25.3"
       - name: Install Nextest
         run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
       - name: Install Package Dependencies
@@ -120,18 +114,15 @@ jobs:
         with:
           name: nextest-archives
           path: .
-      - name: Run Unit Tests (PNPM)
+      - name: Run Unit Tests (Node)
         run: pnpm --recursive test
       - name: Run Unit Tests (Rust)
-        run: cargo-nextest nextest run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
+        run: cargo-nextest nextest --color always run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
 
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: rui314/setup-mold@v1
-        with:
-          make-default: true
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
@@ -155,12 +146,32 @@ jobs:
           tool: nextest@0.9.82
       - name: Install Package Dependencies
         run: make install
-      - name: Build Integration Tests
-        run: make integration-test-build
       - name: Start Integration Test Environment
-        run: make integration-env-up-ci
-      - name: Run Integration Tests
-        run: make integration-test
+        uses: kachick/wait-other-jobs@v3.6.0
+        timeout-minutes: 5
+        with:
+          retry-method: 'equal_intervals'
+          wait-seconds-before-first-polling: 1
+          min-interval-seconds: 5
+          wait-list: |
+            [
+              {
+                "workflowFile": "on-push.yaml",
+                "jobName": "Build Test Artifacts",
+                "optional": false,
+                "startupGracePeriod": {
+                  "minutes": 5
+                },
+              }
+            ]
+      - name: Download Nextest Archives
+        uses: actions/download-artifact@v4
+        with:
+          name: nextest-archives
+          path: .
+      - name: Run Integration Tests (Rust)
+        run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --retries 2 --archive-file nextest-archive-serial.tar.zst
+      
 
   contracts:
     name: Run Contract Checks
