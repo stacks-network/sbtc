@@ -14,6 +14,9 @@ env:
   CARGO_PROFILE_DEV_STRIP: "debuginfo"
 
 jobs:
+
+  # Runs various lints and checks for the project, including Rustfmt, Clippy,
+  # Protobuf lints, and pnpm lints.
   lint:
     name: Run Lints
     runs-on: ubuntu-24.04
@@ -56,6 +59,9 @@ jobs:
       - name: Typecheck (pnpm)
         run: pnpm --recursive typecheck
 
+  # Builds the Rust test artifacts for the project, packages them as Nextest
+  # archives and uploads them as artifacts. This job is used as a dependency for
+  # the `unit-tests` and `integration-tests` jobs.
   build-tests:
     name: Build Test Artifacts
     runs-on: ubuntu-24.04
@@ -69,14 +75,14 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: "rust-tests"
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v3
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-      - uses: arduino/setup-protoc@v3
-        with:
-          version: "25.3"
+      # - uses: pnpm/action-setup@v4
+      # - uses: actions/setup-node@v3
+      #   with:
+      #     node-version: ${{ env.NODE_VERSION }}
+      #     cache: "pnpm"
+      # - uses: arduino/setup-protoc@v3
+      #   with:
+      #     version: "25.3"
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
@@ -92,6 +98,10 @@ jobs:
           name: nextest-archives
           path: ./target/nextest/*.tar.zst
 
+  # Runs the unit tests for the project (Rust + pnpm). It depends on the
+  # `build-tests` job to build the Nextest test archives and upload them as
+  # artifacts. Note that since we are using nextest archives, we do not need
+  # Rust to be installed in this job.
   unit-tests:
     name: Run Unit Tests
     runs-on: ubuntu-24.04
@@ -119,6 +129,15 @@ jobs:
       - name: Run Unit Tests (Rust)
         run: cargo-nextest nextest --color always run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
 
+  # Runs the Rust integration tests for the project. It depends on the
+  # `build-tests` job to build the nextest test archives and upload them as
+  # artifacts, however we do not define an explicit dependency with `needs`.
+  # This is because in this job, we also need to get the integration environment
+  # running, which generally takes around a minute. So, we start this job
+  # immediately and once the environment is running we use the `wait-other-jobs`
+  # action to wait until the `build-tests` job is complete and the artifacts are
+  # available. This lets us start the environment while the tests are building,
+  # and then run the tests as soon as the artifacts are available.
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-24.04
@@ -175,28 +194,58 @@ jobs:
         run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --retries 2 --archive-file nextest-archive-serial.tar.zst
       
 
-  contracts:
-    name: Run Contract Checks
+  # Runs checks on the generated code in the project for contracts, the
+  # blocklist client and the emily clients. This job is used to ensure that the
+  # generated code is up-to-date with the latest changes in the project. It does
+  # this by re-generating the code and then checking if the git status is clean
+  # (the generated code should exactly match the committed code). If the git
+  # status is dirty for any of the components, it fails the job and prints an
+  # error message.
+  check-generated-code:
+    name: Run Generated Code Checks
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          cache-key: "rust-tests"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v3
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
       - name: Install Package Dependencies
-        run: pnpm install
-        working-directory: ./contracts
+        run: pnpm --recursive install
       - name: Generate Contract Docs and Types
-        run: pnpm build
-        working-directory: ./contracts
-      - name: Ensure Git is Clean
-        id: gitStatus
+        run: make contracts
+      - name: Ensure Git is Clean (Contracts)
+        id: git-status-contracts
         run: git diff --no-ext-diff --exit-code
         continue-on-error: true
-      - name: Error Message if Git is Dirty
-        if: steps.gitStatus.outcome == 'failure'
+      - name: Git is Dirty (Contracts)
+        if: steps.git-status-contracts.outcome == 'failure'
         run: |
-          echo "::error::Git is dirty. Make sure you ran \`make build\` before pushing."
+          echo "::error title=Contracts are dirty:: Make sure you ran 'make contracts' before pushing."
+          exit 1
+      - name: Generate Blocklist Client
+        run: make blocklist-client-codegen
+      - name: Ensure Git is Clean (Blocklist Client)
+        id: git-status-blocklist-client
+        run: git diff --no-ext-diff --exit-code
+        continue-on-error: true
+      - name: Git is Dirty (Blocklist Client)
+        if: steps.git-status-blocklist-client.outcome == 'failure'
+        run: |
+          echo "::error title=Blocklist client is dirty:: Make sure you ran 'make blocklist-client-codegen' before pushing."
+          exit 1
+      - name: Generate Emily Clients
+        run: make emily-client-codegen
+      - name: Ensure Git is Clean (Emily Clients)
+        id: git-status-emily-clients
+        run: git diff --no-ext-diff --exit-code
+        continue-on-error: true
+      - name: Git is Dirty (Emily Clients)
+        if: steps.git-status-emily-clients.outcome == 'failure'
+        run: |
+          echo "::error title=Emily clients are dirty:: Make sure you ran 'make emily-client-codegen' before pushing."
           exit 1

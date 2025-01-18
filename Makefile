@@ -18,7 +18,7 @@ CARGO_FLAGS := --workspace --exclude emily-openapi-spec --exclude blocklist-open
 install:
 	pnpm install
 
-build: blocklist-client-codegen emily-client-codegen
+build: blocklist-client-codegen emily-client-codegen contracts
 	cargo build --all-targets $(CARGO_FLAGS) ${CARGO_BUILD_ARGS}
 
 test:
