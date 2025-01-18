@@ -21,7 +21,7 @@ install:
 build: blocklist-client-codegen emily-client-codegen
 	cargo build $(CARGO_FLAGS) ${CARGO_BUILD_ARGS}
 
-test: test-build
+test:
 	cargo nextest run $(CARGO_FLAGS) --no-fail-fast ${CARGO_BUILD_ARGS}
 	pnpm --recursive test
 
