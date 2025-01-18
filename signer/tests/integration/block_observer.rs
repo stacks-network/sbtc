@@ -66,7 +66,6 @@ pub const GET_POX_INFO_JSON: &str =
 /// The [`BlockObserver::load_latest_deposit_requests`] function is
 /// supposed to fetch all deposit requests from Emily and persist the ones
 /// that pass validation, regardless of when they were confirmed.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(1; "one block ago")]
 #[test_case::test_case(5; "five blocks ago")]
 #[tokio::test]
@@ -374,7 +373,6 @@ async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout>
 /// - make integration-env-up-ci
 ///
 /// Then you should be good to go.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn block_observer_stores_donation_and_sbtc_utxos() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -658,7 +656,6 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_case(false, SbtcLimits::default(); "no contracts, default limits")]
 #[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "no contracts, total cap limit")]
 #[test_case::test_case(true, SbtcLimits::default(); "deployed contracts, default limits")]
@@ -811,7 +808,6 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn next_headers_to_process_gets_all_headers() {
     // We start with the typical setup with a fresh database and context
@@ -872,7 +868,6 @@ async fn next_headers_to_process_gets_all_headers() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn next_headers_to_process_ignores_known_headers() {
     // We start with the typical setup with a fresh database and context

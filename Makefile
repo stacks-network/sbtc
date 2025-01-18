@@ -19,10 +19,10 @@ install:
 	pnpm install
 
 build: blocklist-client-codegen emily-client-codegen
-	cargo build $(CARGO_FLAGS) ${CARGO_BUILD_ARGS}
+	cargo build --all-targets $(CARGO_FLAGS) ${CARGO_BUILD_ARGS}
 
 test:
-	cargo nextest run $(CARGO_FLAGS) --no-fail-fast ${CARGO_BUILD_ARGS}
+	cargo nextest run --lib $(CARGO_FLAGS) --no-fail-fast ${CARGO_BUILD_ARGS}
 	pnpm --recursive test
 
 test-build:
@@ -54,15 +54,18 @@ NEXTEST_SERIAL_ARCHIVE_FILE := target/nextest/nextest-archive-serial.tar.zst
 
 # Creates nextest archives
 nextest-archive: blocklist-client-codegen emily-client-codegen
-	cargo nextest archive $(CARGO_FLAGS) --archive-file $(NEXTEST_ARCHIVE_FILE) ${CARGO_BUILD_ARGS}
-	cargo nextest archive $(CARGO_FLAGS) --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE) --features integration-tests --test integration ${CARGO_BUILD_ARGS}
+	cargo nextest archive $(CARGO_FLAGS) --lib --archive-file $(NEXTEST_ARCHIVE_FILE) ${CARGO_BUILD_ARGS}
+	cargo nextest archive $(CARGO_FLAGS) --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE) --test integration ${CARGO_BUILD_ARGS}
 
 # Runs nextest archives
 nextest-archive-run:
-	cargo nextest run --no-fail-fast --archive-file $(NEXTEST_ARCHIVE_FILE)
+	cargo nextest run --no-fail-fast --retries 2 --archive-file $(NEXTEST_ARCHIVE_FILE)
 	cargo nextest run --no-fail-fast --test-threads 1 --retries 2 --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE)
 
-.PHONY: nextest-archive nextest-archive-run
+nextest-archive-clean:
+	rm -f $(NEXTEST_ARCHIVE_FILE) $(NEXTEST_SERIAL_ARCHIVE_FILE)
+
+.PHONY: nextest-archive nextest-archive-run nextest-archive-clean
 
 # ##############################################################################
 # INTEGRATION TESTS
@@ -72,10 +75,10 @@ integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
 integration-test: blocklist-client-codegen emily-client-codegen
-	cargo nextest run $(CARGO_FLAGS) --test integration --all-features --no-fail-fast --test-threads 1
+	cargo nextest run $(CARGO_FLAGS) --test integration --no-fail-fast --test-threads 1
 
 integration-test-build: blocklist-client-codegen emily-client-codegen
-	cargo test build $(CARGO_FLAGS) --test integration --all-features --no-run --locked
+	cargo test build $(CARGO_FLAGS) --test integration --no-run --locked
 
 integration-env-down:
 	docker compose --file docker/docker-compose.test.yml down -v

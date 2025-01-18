@@ -7,7 +7,6 @@ edition = "2021"
 
 [features]
 default = []
-integration-tests = ["testing"]
 testing = ["dep:bitcoincore-rpc", "dep:bitcoincore-rpc-json"]
 webhooks = ["dep:stackslib", "dep:hex"]
 

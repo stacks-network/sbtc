@@ -217,7 +217,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg_attr(not(feature = "integration-tests"), ignore)]
     async fn prod_estimate_fee_rate_works() {
         let client = reqwest::Client::new();
 

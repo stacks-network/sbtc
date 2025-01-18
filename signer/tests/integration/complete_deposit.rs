@@ -140,7 +140,6 @@ pub fn make_complete_deposit2(data: &TestSweepSetup2) -> (CompleteDepositV1, Req
     (complete_deposit_tx, req_ctx)
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_happy_path() {
     // Normal: this generates the blockchain as well as deposit request
@@ -203,7 +202,6 @@ async fn complete_deposit_validation_happy_path() {
 /// For this test we check that the `CompleteDepositV1::validate` function
 /// returns a deposit validation error with a DeployerMismatch message when
 /// the deployer doesn't match but everything else is okay.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
@@ -270,7 +268,6 @@ async fn complete_deposit_validation_deployer_mismatch() {
 /// returns a deposit validation error with a DepositRequestMissing message
 /// when the signer does not have a record of the deposit request doesn't
 /// match but everything else is okay.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_missing_deposit_request() {
     // Normal: this generates the blockchain as well as deposit request
@@ -331,7 +328,6 @@ async fn complete_deposit_validation_missing_deposit_request() {
 /// returns a deposit validation error with a RecipientMismatch message
 /// when the recipient in the complete-deposit transaction does not match
 /// the recipient in our records.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as deposit request
@@ -412,7 +408,6 @@ async fn complete_deposit_validation_recipient_mismatch() {
 /// Moreover, our testing apparatus goes through code that filters deposits
 /// based off of the DUST amount, so we need custom code to trigger this
 /// error.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_fee_too_low() {
     // Normal: this generates the blockchain as well as deposit request
@@ -542,7 +537,6 @@ async fn complete_deposit_validation_fee_too_low() {
 /// returns a deposit validation error with a FeeTooHigh message when the
 /// amount of sBTC to mint is less than the `amount - max-fee` from in the
 /// signer's deposit request record.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_fee_too_high() {
     // Normal: this generates the blockchain as well as deposit request
@@ -614,7 +608,6 @@ async fn complete_deposit_validation_fee_too_high() {
 /// returns a deposit validation error with a SweepTransactionMissing
 /// message when the signer does not have a record of the sweep
 /// transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as deposit request
@@ -683,7 +676,6 @@ async fn complete_deposit_validation_sweep_tx_missing() {
 /// returns a deposit validation error with a SweepTransactionReorged
 /// message when the sweep transaction is in our records but is not on what
 /// the signer thinks is the canonical bitcoin blockchain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as deposit request
@@ -762,7 +754,6 @@ async fn complete_deposit_validation_sweep_reorged() {
 /// message when the sweep transaction is in our records, is on what the
 /// signer thinks is the canonical bitcoin blockchain, but it does not have
 /// an input that that matches the deposit request outpoint.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_deposit_not_in_sweep() {
     // Normal: this generates the blockchain as well as deposit request
@@ -833,7 +824,6 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
 /// sweep transaction is in our records, is on what the signer thinks is
 /// the canonical bitcoin blockchain, but the fee assessed differs from
 /// what we would expect.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_deposit_incorrect_fee() {
     // Normal: this generates the blockchain as well as deposit request
@@ -901,7 +891,6 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
 /// returns a deposit validation error with a InvalidSweep message when the
 /// sweep transaction does not have a prevout with a scriptPubKey that the
 /// signers control.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn complete_deposit_validation_deposit_invalid_sweep() {
     // Normal: this generates the blockchain as well as deposit request
