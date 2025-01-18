@@ -103,9 +103,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: "recursive"
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
-        with:
-          cache-key: "rust-tests"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v3
         with:
@@ -114,9 +111,8 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: "25.3"
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: nextest@0.9.82
+      - name: Install Nextest
+        run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
@@ -127,7 +123,7 @@ jobs:
       - name: Run Unit Tests (PNPM)
         run: pnpm --recursive test
       - name: Run Unit Tests (Rust)
-        run: cargo nextest run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
+        run: cargo-nextest run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
 
   integration-tests:
     name: Run Integration Tests
