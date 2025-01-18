@@ -163,7 +163,7 @@ jobs:
                 "optional": false,
                 "startupGracePeriod": {
                   "minutes": 5
-                },
+                }
               }
             ]
       - name: Download Nextest Archives
