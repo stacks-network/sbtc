@@ -108,6 +108,7 @@ mod tests {
     use std::time::Duration;
 
     use futures::StreamExt;
+    use libp2p::Multiaddr;
     use test_log::test;
     use tokio_stream::wrappers::BroadcastStream;
 
@@ -116,7 +117,7 @@ mod tests {
     use crate::{
         keys::{PrivateKey, PublicKey},
         network::libp2p::SignerSwarmBuilder,
-        testing::{self, clear_env, context::*},
+        testing::{self, clear_env, context::*, network::RandomMemoryMultiaddr},
     };
 
     #[test(tokio::test)]
@@ -165,13 +166,20 @@ mod tests {
         let term1 = context1.get_termination_handle();
         let term2 = context2.get_termination_handle();
 
-        let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+        let swarm1_addr = Multiaddr::random_memory();
+        let swarm2_addr = Multiaddr::random_memory();
+
+        let mut swarm1 = SignerSwarmBuilder::new(&key1)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm1_addr.clone())
+            .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 1");
 
-        let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+        let mut swarm2 = SignerSwarmBuilder::new(&key2)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm2_addr)
+            .add_seed_addr(swarm1_addr)
             .build()
             .expect("Failed to build swarm 2");
 
@@ -252,23 +260,30 @@ mod tests {
             current_signer_set3.add_signer(PublicKey::from_private_key(&key));
         }
 
+        let swarm1_addr = Multiaddr::random_memory();
+        let swarm2_addr = Multiaddr::random_memory();
+        let swarm3_addr = Multiaddr::random_memory();
+
         // Configure the swarms to listen on hard-coded ports
-        let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/23001".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/23002".parse().unwrap())
+        let mut swarm1 = SignerSwarmBuilder::new(&key1)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm1_addr.clone())
+            .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 1");
 
-        let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/23002".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/23001".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/23003".parse().unwrap())
+        let mut swarm2 = SignerSwarmBuilder::new(&key2)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm2_addr.clone())
+            .add_seed_addr(swarm1_addr.clone())
+            .add_seed_addr(swarm3_addr.clone())
             .build()
             .expect("Failed to build swarm 2");
 
-        let mut swarm3 = SignerSwarmBuilder::new(&key3, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/23003".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/23002".parse().unwrap())
+        let mut swarm3 = SignerSwarmBuilder::new(&key3)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm3_addr.clone())
+            .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 3");
 
@@ -398,22 +413,29 @@ mod tests {
             current_signer_set3.add_signer(PublicKey::from_private_key(&key));
         }
 
-        let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/25001".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/25002".parse().unwrap())
+        let swarm1_addr = Multiaddr::random_memory();
+        let swarm2_addr = Multiaddr::random_memory();
+        let swarm3_addr = Multiaddr::random_memory();
+
+        let mut swarm1 = SignerSwarmBuilder::new(&key1)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm1_addr.clone())
+            .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 1");
 
-        let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/25002".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/25001".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/25003".parse().unwrap())
+        let mut swarm2 = SignerSwarmBuilder::new(&key2)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm2_addr.clone())
+            .add_seed_addr(swarm1_addr.clone())
+            .add_seed_addr(swarm3_addr.clone())
             .build()
             .expect("Failed to build swarm 2");
 
-        let mut swarm3 = SignerSwarmBuilder::new(&key3, true)
-            .add_listen_endpoint("/ip4/0.0.0.0/tcp/25003".parse().unwrap())
-            .add_seed_addr("/ip4/0.0.0.0/tcp/25002".parse().unwrap())
+        let mut swarm3 = SignerSwarmBuilder::new(&key3)
+            .configure_for_testing()
+            .add_listen_endpoint(swarm3_addr.clone())
+            .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 3");
 

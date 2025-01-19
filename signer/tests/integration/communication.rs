@@ -4,6 +4,7 @@
 use std::str::FromStr as _;
 use std::time::Duration;
 
+use libp2p::Multiaddr;
 use signer::context::Context as _;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
@@ -13,6 +14,7 @@ use signer::network::Msg;
 use signer::network::P2PNetwork;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
+use signer::testing::network::RandomMemoryMultiaddr;
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
@@ -93,18 +95,28 @@ async fn swarm_rejects_connections_from_unknown_peers() {
         .current_signer_set()
         .add_signer(PublicKey::from_private_key(&key2));
 
+    let swarm1_addr = Multiaddr::random_memory();
+    let swarm2_addr = Multiaddr::random_memory();
+    let swarm3_addr = Multiaddr::random_memory();
+
     // Create the two trusted swarms.
-    let mut swarm1 = SignerSwarmBuilder::new(&key1, true)
-        .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+    let mut swarm1 = SignerSwarmBuilder::new(&key1)
+        .enable_memory_transport(true)
+        .add_listen_endpoint(swarm1_addr.clone())
+        .add_seed_addrs(&[swarm2_addr.clone(), swarm3_addr.clone()])
         .build()
         .expect("Failed to build swarm 1");
-    let mut swarm2 = SignerSwarmBuilder::new(&key2, true)
-        .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+    let mut swarm2 = SignerSwarmBuilder::new(&key2)
+        .enable_memory_transport(true)
+        .add_listen_endpoint(swarm2_addr.clone())
+        .add_seed_addrs(&[swarm1_addr.clone(), swarm3_addr.clone()])
         .build()
         .expect("Failed to build swarm 2");
     // Create the adversarial swarm.
-    let mut swarm3 = SignerSwarmBuilder::new(&key3, true)
-        .add_listen_endpoint("/ip4/0.0.0.0/tcp/0".parse().unwrap())
+    let mut swarm3 = SignerSwarmBuilder::new(&key3)
+        .enable_memory_transport(true)
+        .add_listen_endpoint(swarm3_addr.clone())
+        .add_seed_addrs(&[swarm1_addr, swarm2_addr])
         .build()
         .expect("Failed to build swarm 3");
 

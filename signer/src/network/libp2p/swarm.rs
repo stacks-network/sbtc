@@ -4,13 +4,16 @@ use std::time::Duration;
 
 use crate::context::Context;
 use crate::keys::PrivateKey;
+use libp2p::core::muxing::StreamMuxerBox;
+use libp2p::core::transport::dummy::DummyTransport;
+use libp2p::core::upgrade::Version;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
-    autonat, gossipsub, identify, kad, mdns, noise, ping, tcp, yamux, Multiaddr, PeerId, Swarm,
-    SwarmBuilder,
+    autonat, gossipsub, identify, kad, mdns, noise, ping, quic, tcp, yamux, Multiaddr, PeerId,
+    Swarm, Transport,
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
@@ -110,29 +113,52 @@ pub struct SignerSwarmBuilder<'a> {
     listen_on: Vec<Multiaddr>,
     seed_addrs: Vec<Multiaddr>,
     external_addresses: Vec<Multiaddr>,
-    use_mdns: bool,
+    enable_mdns: bool,
+    enable_tcp_transport: bool,
+    enable_quic_transport: bool,
+    enable_memory_transport: bool,
 }
 
 impl<'a> SignerSwarmBuilder<'a> {
     /// Create a new [`SignerSwarmBuilder`] with the given private key.
-    pub fn new(private_key: &'a PrivateKey, use_mdns: bool) -> Self {
+    pub fn new(private_key: &'a PrivateKey) -> Self {
         Self {
             private_key,
             listen_on: Vec::new(),
             seed_addrs: Vec::new(),
             external_addresses: Vec::new(),
-            use_mdns,
+            enable_mdns: false,
+            enable_tcp_transport: true,
+            enable_quic_transport: false,
+            enable_memory_transport: false,
         }
     }
 
     /// Sets whether or not this swarm should use mdns.
-    pub fn use_mdns(mut self, use_mdns: bool) -> Self {
-        self.use_mdns = use_mdns;
+    pub fn enable_mdns(mut self, use_mdns: bool) -> Self {
+        self.enable_mdns = use_mdns;
+        self
+    }
+
+    /// Sets whether or not this swarm should use the TCP transport.
+    pub fn enable_tcp_transport(mut self, enable: bool) -> Self {
+        self.enable_tcp_transport = enable;
+        self
+    }
+
+    /// Sets whether or not this swarm should use the QUIC transport.
+    pub fn enable_quic_transport(mut self, enable: bool) -> Self {
+        self.enable_quic_transport = enable;
+        self
+    }
+
+    /// Sets whether or not this swarm should use the memory transport.
+    pub fn enable_memory_transport(mut self, enable: bool) -> Self {
+        self.enable_memory_transport = enable;
         self
     }
 
     /// Add a listen endpoint to the builder.
-    #[allow(dead_code)]
     pub fn add_listen_endpoint(mut self, addr: Multiaddr) -> Self {
         if !self.listen_on.contains(&addr) {
             self.listen_on.push(addr);
@@ -141,7 +167,6 @@ impl<'a> SignerSwarmBuilder<'a> {
     }
 
     /// Add multiple listen endpoints to the builder.
-    #[allow(dead_code)]
     pub fn add_listen_endpoints(mut self, addrs: &[Multiaddr]) -> Self {
         for addr in addrs {
             if !self.listen_on.contains(addr) {
@@ -152,7 +177,6 @@ impl<'a> SignerSwarmBuilder<'a> {
     }
 
     /// Add a seed address to the builder.
-    #[allow(dead_code)]
     pub fn add_seed_addr(mut self, addr: Multiaddr) -> Self {
         if !self.seed_addrs.contains(&addr) {
             self.seed_addrs.push(addr);
@@ -161,7 +185,6 @@ impl<'a> SignerSwarmBuilder<'a> {
     }
 
     /// Add multiple seed addresses to the builder.
-    #[allow(dead_code)]
     pub fn add_seed_addrs(mut self, addrs: &[Multiaddr]) -> Self {
         for addr in addrs {
             if !self.seed_addrs.contains(addr) {
@@ -192,23 +215,66 @@ impl<'a> SignerSwarmBuilder<'a> {
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
         let keypair: Keypair = (*self.private_key).into();
-        let behavior = SignerBehavior::new(keypair.clone(), self.use_mdns)?;
+        let behavior = SignerBehavior::new(keypair.clone(), self.enable_mdns)?;
+        let noise =
+            noise::Config::new(&keypair).map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+        let yamux = yamux::Config::default();
+        let swarm_config = libp2p::swarm::Config::with_tokio_executor()
+            .with_idle_connection_timeout(Duration::from_secs(60));
 
-        let swarm = SwarmBuilder::with_existing_identity(keypair.clone())
-            .with_tokio()
-            .with_tcp(
-                tcp::Config::default(),
-                noise::Config::new,
-                yamux::Config::default,
-            )
+        // Start with a dummy transport, and add the transports that are enabled.
+        let mut transport = DummyTransport::new().boxed();
+
+        // If TCP transport is enabled, add it to the transport.
+        if self.enable_tcp_transport {
+            let tcp_transport = tcp::tokio::Transport::default()
+                .upgrade(Version::V1)
+                .authenticate(noise.clone())
+                .multiplex(yamux.clone())
+                .boxed();
+            transport = transport
+                .or_transport(tcp_transport)
+                .map(|either, _| either.into_inner())
+                .boxed();
+        }
+
+        // If QUIC transport is enabled, add it to the transport.
+        if self.enable_quic_transport {
+            let config = quic::Config::new(&keypair);
+            let quic_transport = quic::tokio::Transport::new(config)
+                .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)))
+                .boxed();
+            transport = transport
+                .or_transport(quic_transport)
+                .map(|either, _| either.into_inner())
+                .boxed();
+        }
+
+        // If memory transport is enabled, add it to the transport.
+        if self.enable_memory_transport {
+            let memory_transport = libp2p::core::transport::MemoryTransport::default()
+                .upgrade(Version::V1)
+                .authenticate(noise.clone())
+                .multiplex(yamux.clone())
+                .boxed();
+            transport = transport
+                .or_transport(memory_transport)
+                .map(|either, _| either.into_inner())
+                .boxed();
+        }
+
+        // Add the DNS transport to the transport.
+        transport = libp2p::dns::tokio::Transport::system(transport)
             .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?
-            .with_quic()
-            .with_dns()
-            .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?
-            .with_behaviour(|_| behavior)
-            .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?
-            .with_swarm_config(|c| c.with_idle_connection_timeout(Duration::from_secs(60)))
-            .build();
+            .boxed();
+
+        // Create the swarm.
+        let swarm = Swarm::new(
+            transport,
+            behavior,
+            keypair.public().to_peer_id(),
+            swarm_config,
+        );
 
         Ok(SignerSwarm {
             keypair,
@@ -274,6 +340,19 @@ impl SignerSwarm {
 }
 
 #[cfg(test)]
+impl SignerSwarmBuilder<'_> {
+    /// Configure the builder for testing purposes. This will disable mdns and
+    /// the tcp and quic transports, and enable the memory transport.
+    pub fn configure_for_testing(mut self) -> Self {
+        self.enable_mdns = false;
+        self.enable_tcp_transport = false;
+        self.enable_quic_transport = false;
+        self.enable_memory_transport = true;
+        self
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use crate::testing::context::*;
 
@@ -284,7 +363,7 @@ mod tests {
         let addr: Multiaddr = "/ip4/127.0.0.1/tcp/0".parse().unwrap();
         let private_key = PrivateKey::new(&mut rand::thread_rng());
         let keypair: Keypair = private_key.into();
-        let builder = SignerSwarmBuilder::new(&private_key, true)
+        let builder = SignerSwarmBuilder::new(&private_key)
             .add_listen_endpoint(addr.clone())
             .add_seed_addr(addr.clone());
         let swarm = builder.build().unwrap();
@@ -300,7 +379,7 @@ mod tests {
     #[tokio::test]
     async fn swarm_shuts_down_on_shutdown_signal() {
         let private_key = PrivateKey::new(&mut rand::thread_rng());
-        let builder = SignerSwarmBuilder::new(&private_key, true);
+        let builder = SignerSwarmBuilder::new(&private_key);
         let mut swarm = builder.build().unwrap();
 
         let ctx = TestContext::builder()
