@@ -367,6 +367,10 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
+
+    async fn get_best_chain_tip(&self) -> Result<(bitcoin::BlockHash, u64), Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for WrappedMock<MockStacksInteract> {

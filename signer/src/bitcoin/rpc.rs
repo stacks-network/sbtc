@@ -567,6 +567,23 @@ impl BitcoinCoreClient {
             Err(err) => Err(Error::BitcoinCoreRpc(err)),
         }
     }
+
+    /// Gets the best chain-tip and its height from the Bitcoin node.
+    pub fn get_best_chain_tip(&self) -> Result<(BlockHash, u64), Error> {
+        let best_tip = self
+            .inner
+            .get_best_block_hash()
+            .map_err(Error::BitcoinCoreRpc)?;
+        let block = self
+            .inner
+            .get_block_header_info(&best_tip)
+            .map_err(Error::BitcoinCoreRpc)?;
+
+        Ok((
+            best_tip,
+            u64::try_from(block.height).map_err(|_| Error::TypeConversion)?,
+        ))
+    }
 }
 
 impl BitcoinInteract for BitcoinCoreClient {
@@ -705,5 +722,9 @@ impl BitcoinInteract for BitcoinCoreClient {
 
     async fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
         self.get_mempool_entry(txid)
+    }
+
+    async fn get_best_chain_tip(&self) -> Result<(BlockHash, u64), Error> {
+        self.get_best_chain_tip()
     }
 }

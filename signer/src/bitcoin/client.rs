@@ -122,4 +122,9 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
         self.exec(|client, _| async { client.get_mempool_entry(txid) })
             .await
     }
+
+    async fn get_best_chain_tip(&self) -> Result<(BlockHash, u64), Error> {
+        self.exec(|client, _| async { client.get_best_chain_tip() })
+            .await
+    }
 }
