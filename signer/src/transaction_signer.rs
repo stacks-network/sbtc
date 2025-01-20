@@ -220,7 +220,7 @@ where
             sender_is_coordinator,
             chain_tip_status,
             chain_tip,
-            chain_tip_height,
+            chain_tip_height: _,
         } = chain_tip_report;
 
         let span = tracing::Span::current();
