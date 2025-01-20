@@ -85,7 +85,7 @@ impl CreateDepositRequestBody {
     /// Validates that the deposit request is valid.
     /// This includes validating the request fields, if their content matches the transaction
     /// and if the amount is within the limits.
-    pub fn validate(&self, limits: &Limits) -> Result<DepositInfo, Error> {
+    pub fn validate(&self, limits: &Limits, is_mainnet: bool) -> Result<DepositInfo, Error> {
         let deposit_req = CreateDepositRequest {
             outpoint: OutPoint {
                 txid: parse_hex(&self.bitcoin_txid, "invalid bitcoin_txid", Txid::from_str)?,
@@ -138,7 +138,7 @@ impl CreateDepositRequestBody {
         }
 
         deposit_req
-            .validate_tx(&tx)
+            .validate_tx(&tx, is_mainnet)
             .map_err(|e| Error::HttpRequest(StatusCode::BAD_REQUEST, e.to_string()))
     }
 }
@@ -230,7 +230,7 @@ mod tests {
     async fn test_deposit_validate_happy_path() {
         let deposit_request = helpers::parse_request(CREATE_DEPOSIT_VALID);
         let limits = helpers::create_test_limits(None, None);
-        assert!(deposit_request.validate(&limits).is_ok());
+        assert!(deposit_request.validate(&limits, true).is_ok());
     }
 
     #[test_case(CREATE_DEPOSIT_INVALID_TXID, "invalid bitcoin_txid"; "invalid_txid")]
@@ -252,7 +252,7 @@ mod tests {
         let deposit_request = helpers::parse_request(input);
         let limits = helpers::create_test_limits(Some(DEPOSIT_DUST_LIMIT), None);
 
-        let result = deposit_request.validate(&limits);
+        let result = deposit_request.validate(&limits, true);
         assert_eq!(
             result.unwrap_err().to_string(),
             format!("HTTP request failed with status code 400 Bad Request: {expected_error}")
@@ -268,7 +268,7 @@ mod tests {
     async fn test_deposit_validate_limits(input: &str, min: Option<u64>, max: Option<u64>) {
         let deposit_request = helpers::parse_request(input);
         let limits = helpers::create_test_limits(min, max);
-        assert!(deposit_request.validate(&limits).is_ok());
+        assert!(deposit_request.validate(&limits, true).is_ok());
     }
 
     #[test_case(CREATE_DEPOSIT_VALID, Some(1_000_000 + 1), None, "deposit amount below minimum (1000001)"; "below_min_limit")]
@@ -283,7 +283,7 @@ mod tests {
         let deposit_request = helpers::parse_request(input);
         let limits = helpers::create_test_limits(min, max);
 
-        let result = deposit_request.validate(&limits);
+        let result = deposit_request.validate(&limits, true);
 
         assert_eq!(
             result.unwrap_err().to_string(),

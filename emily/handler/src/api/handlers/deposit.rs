@@ -300,7 +300,7 @@ pub async fn create_deposit(
         }
 
         let limits = accessors::get_limits(&context).await?;
-        let deposit_info = body.validate(&limits)?;
+        let deposit_info = body.validate(&limits, context.settings.is_mainnet)?;
 
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {

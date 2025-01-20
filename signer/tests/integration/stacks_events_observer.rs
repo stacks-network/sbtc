@@ -56,10 +56,10 @@ async fn test_context() -> TestContext<
 }
 
 const CREATE_DEPOSIT_VALID: &str =
-    include_str!("../../../emily/handler/tests/fixtures/create-deposit-valid.json");
+    include_str!("../../../emily/handler/tests/fixtures/create-deposit-valid-testnet.json");
 
 const COMPLETED_VALID_DEPOSIT_WEBHOOK: &str =
-    include_str!("../../../emily/handler/tests/fixtures/completed-valid-deposit-event.json");
+    include_str!("../../../emily/handler/tests/fixtures/completed-deposit-testnet-event.json");
 
 const WITHDRAWAL_ACCEPT_WEBHOOK: &str =
     include_str!("../../tests/fixtures/withdrawal-accept-event.json");

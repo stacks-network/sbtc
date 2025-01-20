@@ -863,12 +863,12 @@ mod tests {
     fn tx_validation_network(is_mainnet: bool) {
         let recipient = StacksAddress::burn_address(is_mainnet);
         let setup: TxSetup =
-            testing::deposits::tx_setup_with_recipient(150, 2500, 35000, recipient);
+            testing::deposits::tx_setup_with_recipient(150, 2500, &[35000], recipient);
 
         let request = CreateDepositRequest {
             outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
-            reclaim_script: setup.reclaim.reclaim_script(),
-            deposit_script: setup.deposit.deposit_script(),
+            reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
+            deposit_script: setup.deposits.first().unwrap().deposit_script(),
         };
 
         assert!(request.validate_tx(&setup.tx, is_mainnet).is_ok());
