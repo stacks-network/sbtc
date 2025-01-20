@@ -340,19 +340,6 @@ impl SignerSwarm {
 }
 
 #[cfg(test)]
-impl SignerSwarmBuilder<'_> {
-    /// Configure the builder for testing purposes. This will disable mdns and
-    /// the tcp and quic transports, and enable the memory transport.
-    pub fn configure_for_testing(mut self) -> Self {
-        self.enable_mdns = false;
-        self.enable_tcp_transport = false;
-        self.enable_quic_transport = false;
-        self.enable_memory_transport = true;
-        self
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use crate::testing::{context::*, network::RandomMemoryMultiaddr};
 
@@ -459,6 +446,8 @@ mod tests {
         assert!(result.to_string().contains(MULTIADDR_NOT_SUPPORTED));
     }
 
+    /// Note: This test will create an actual listening socket on the system on
+    /// an OS-provided port.
     #[tokio::test]
     async fn swarm_with_tcp_transport() {
         let private_key = PrivateKey::new(&mut rand::thread_rng());
@@ -505,6 +494,8 @@ mod tests {
         assert!(result.to_string().contains(MULTIADDR_NOT_SUPPORTED));
     }
 
+    /// Note: This test will create an actual listening socket on the system on
+    /// an OS-provided port.
     #[tokio::test]
     async fn swarm_with_quic_transport() {
         let private_key = PrivateKey::new(&mut rand::thread_rng());

@@ -170,14 +170,14 @@ mod tests {
         let swarm2_addr = Multiaddr::random_memory();
 
         let mut swarm1 = SignerSwarmBuilder::new(&key1)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm1_addr.clone())
             .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 1");
 
         let mut swarm2 = SignerSwarmBuilder::new(&key2)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm2_addr)
             .add_seed_addr(swarm1_addr)
             .build()
@@ -266,14 +266,14 @@ mod tests {
 
         // Configure the swarms to listen on hard-coded ports
         let mut swarm1 = SignerSwarmBuilder::new(&key1)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm1_addr.clone())
             .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 1");
 
         let mut swarm2 = SignerSwarmBuilder::new(&key2)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm2_addr.clone())
             .add_seed_addr(swarm1_addr.clone())
             .add_seed_addr(swarm3_addr.clone())
@@ -281,7 +281,7 @@ mod tests {
             .expect("Failed to build swarm 2");
 
         let mut swarm3 = SignerSwarmBuilder::new(&key3)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm3_addr.clone())
             .add_seed_addr(swarm2_addr.clone())
             .build()
@@ -418,14 +418,14 @@ mod tests {
         let swarm3_addr = Multiaddr::random_memory();
 
         let mut swarm1 = SignerSwarmBuilder::new(&key1)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm1_addr.clone())
             .add_seed_addr(swarm2_addr.clone())
             .build()
             .expect("Failed to build swarm 1");
 
         let mut swarm2 = SignerSwarmBuilder::new(&key2)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm2_addr.clone())
             .add_seed_addr(swarm1_addr.clone())
             .add_seed_addr(swarm3_addr.clone())
@@ -433,7 +433,7 @@ mod tests {
             .expect("Failed to build swarm 2");
 
         let mut swarm3 = SignerSwarmBuilder::new(&key3)
-            .configure_for_testing()
+            .enable_memory_transport(true)
             .add_listen_endpoint(swarm3_addr.clone())
             .add_seed_addr(swarm2_addr.clone())
             .build()
