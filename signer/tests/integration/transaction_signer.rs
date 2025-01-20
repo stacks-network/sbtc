@@ -394,6 +394,7 @@ async fn new_state_machine_per_valid_sighash() {
         sender_is_coordinator: true,
         chain_tip_status: ChainTipStatus::Canonical,
         chain_tip: BitcoinBlockHash::from([0; 32]),
+        chain_tip_height: 0,
     };
 
     // The message that we will send is for the following sighash. We'll
@@ -493,6 +494,11 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // Let's make sure that the database has the chain tip.
     let (rpc, _) = sbtc::testing::regtest::initialize_blockchain();
     let chain_tip: BitcoinBlockHash = rpc.get_best_block_hash().unwrap().into();
+    let chain_tip_height = rpc
+        .get_block(&chain_tip)
+        .unwrap()
+        .bip34_block_height()
+        .unwrap();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
 
     // Initialize the transaction signer event loop
@@ -516,6 +522,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
         sender_is_coordinator: true,
         chain_tip_status: ChainTipStatus::Canonical,
         chain_tip,
+        chain_tip_height,
     };
 
     // Now for the DKG begin message. We pick an arbitrary dkg_id, and an

@@ -220,6 +220,7 @@ where
             sender_is_coordinator,
             chain_tip_status,
             chain_tip,
+            chain_tip_height,
         } = chain_tip_report;
 
         let span = tracing::Span::current();
@@ -312,6 +313,12 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        let chain_tip_height = storage
+            .get_bitcoin_block(&chain_tip)
+            .await?
+            .ok_or(Error::MissingBitcoinBlock(chain_tip))?
+            .block_height;
+
         let is_known = storage
             .get_bitcoin_block(msg_bitcoin_chain_tip)
             .await?
@@ -335,6 +342,7 @@ where
             sender_is_coordinator,
             chain_tip_status,
             chain_tip,
+            chain_tip_height,
         })
     }
 
@@ -519,7 +527,7 @@ where
 
                 // Assert that DKG should be allowed to proceed given the current state
                 // and configuration.
-                assert_allow_dkg_begin(&self.context, bitcoin_chain_tip).await?;
+                assert_allow_dkg_begin(&self.context, chain_tip_report.chain_tip_height).await?;
 
                 let signer_public_keys = self.get_signer_public_keys(bitcoin_chain_tip).await?;
 
@@ -871,16 +879,10 @@ where
 /// based on the current state of the signer and the DKG configuration.
 async fn assert_allow_dkg_begin(
     context: &impl Context,
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    bitcoin_chain_tip_height: u64,
 ) -> Result<(), Error> {
     let storage = context.get_storage();
     let config = context.config();
-
-    // Get the bitcoin block at the chain tip so that we know the height
-    let bitcoin_chain_tip_block = storage
-        .get_bitcoin_block(bitcoin_chain_tip)
-        .await?
-        .ok_or(Error::NoChainTip)?;
 
     // Get the number of DKG shares that have been stored
     let dkg_shares_entry_count = storage.get_encrypted_dkg_shares_count().await?;
@@ -912,7 +914,7 @@ async fn assert_allow_dkg_begin(
                 );
                 return Err(Error::DkgHasAlreadyRun);
             }
-            if bitcoin_chain_tip_block.block_height < dkg_min_height.get() {
+            if bitcoin_chain_tip_height < dkg_min_height.get() {
                 tracing::warn!(
                     ?dkg_min_bitcoin_block_height,
                     %dkg_target_rounds,
@@ -953,6 +955,8 @@ pub struct MsgChainTipReport {
     pub chain_tip_status: ChainTipStatus,
     /// The bitcoin chain tip.
     pub chain_tip: model::BitcoinBlockHash,
+    /// The bitcoin chain tip height.
+    pub chain_tip_height: u64,
 }
 
 /// The status of a chain tip relative to the known blocks in the signer database.
@@ -1132,11 +1136,18 @@ mod tests {
             inner: WstsNetMessage::DkgBegin(wsts::net::DkgBegin { dkg_id: 0 }),
         };
 
+        let chain_tip_height = storage
+            .get_bitcoin_block(&bitcoin_chain_tip)
+            .await?
+            .unwrap()
+            .block_height;
+
         // Create a chain tip report for the message.
         let chain_tip_report = MsgChainTipReport {
             sender_is_coordinator: true,
             chain_tip_status: ChainTipStatus::Canonical,
             chain_tip: bitcoin_chain_tip,
+            chain_tip_height,
         };
 
         // Attempt to handle the DkgBegin message. This should fail using the
