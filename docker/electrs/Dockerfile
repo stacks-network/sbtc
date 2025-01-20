@@ -10,13 +10,16 @@ RUN apt-get install -qqy librocksdb-dev curl git
 # --------------------------------------------------------
 ### Electrum Rust Server ###
 FROM builder AS electrs-build
-RUN apt-get install -qqy cargo clang cmake
+RUN apt-get install -qqy clang cmake
 ARG GIT_URI='https://github.com/mempool/electrs.git'
 ARG GIT_BRANCH='mempool'
+# Install rust nightly
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+RUN ~/.cargo/bin/rustup --verbose toolchain install nightly
 # Install electrs
 WORKDIR /build/electrs
 RUN git clone ${GIT_URI} -b ${GIT_BRANCH} .
-RUN cargo install --locked --path .
+RUN ~/.cargo/bin/cargo +nightly install --locked --path .
 # --------------------------------------------------------
 FROM builder AS result
 # Copy the binaries
