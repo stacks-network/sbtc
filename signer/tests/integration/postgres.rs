@@ -1400,6 +1400,71 @@ async fn fetching_deposit_request_votes() {
     signer::testing::storage::drop_db(store).await;
 }
 
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn fetching_deposit_signer_decisions() {
+    let pg_store = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This is just a sql test, where we use the `TestData` struct to help
+    // populate the database with test data. We set all the other
+    // unnecessary parameters to zero.
+    let num_signers = 3;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 5,
+        num_stacks_blocks_per_bitcoin_block: 0,
+        num_deposit_requests_per_block: 1,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&pg_store).await;
+
+    let chain_tip = test_data
+        .bitcoin_blocks
+        .iter()
+        .max_by_key(|x| (x.block_height, x.block_hash))
+        .unwrap();
+
+    for signer_pub_key in signer_set.iter() {
+        for deposit in test_data.deposit_requests.iter() {
+            let decision = model::DepositSigner {
+                txid: deposit.txid,
+                output_index: deposit.output_index,
+                signer_pub_key: *signer_pub_key,
+                can_accept: true,
+                can_sign: true,
+            };
+            pg_store
+                .write_deposit_signer_decision(&decision)
+                .await
+                .unwrap();
+        }
+    }
+
+    let signer_pub_key = signer_set.first().unwrap();
+
+    let deposit_decisions = pg_store
+        .get_deposit_signer_decisions(&chain_tip.block_hash, 3, signer_pub_key)
+        .await
+        .unwrap();
+
+    assert_eq!(deposit_decisions.len(), 3);
+    for deposit in test_data.deposit_requests[3..].iter() {
+        assert!(deposit_decisions
+            .iter()
+            .find(|decision| {
+                decision.txid == deposit.txid && decision.output_index == deposit.output_index
+            })
+            .is_some());
+    }
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
 /// For this test we check that when we get the votes for a withdrawal
 /// request for a specific aggregate key, that we get a vote for all public
 /// keys for the specific aggregate key. This includes "implicit" votes

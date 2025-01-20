@@ -488,7 +488,7 @@ impl PgStore {
                 JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
                 WHERE prevout_type = 'signers_input'
             )
-            SELECT 
+            SELECT
                 bo.txid
               , bb.block_height
             FROM sbtc_signer.bitcoin_tx_outputs AS bo
@@ -1796,7 +1796,7 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
             WITH RECURSIVE bitcoin_blockchain AS (
-                SELECT 
+                SELECT
                     block_hash
                   , block_height
                 FROM bitcoin_blockchain_of($1, $2)
@@ -1810,9 +1810,9 @@ impl super::DbRead for PgStore {
                 JOIN bitcoin_blockchain as bb
                     ON bb.block_hash = stacks_blocks.bitcoin_anchor
                 WHERE stacks_blocks.block_hash = $3
-        
+
                 UNION ALL
-        
+
                 SELECT
                     parent.block_hash
                   , parent.block_height
@@ -1841,7 +1841,7 @@ impl super::DbRead for PgStore {
             LEFT JOIN completed_deposit_events AS cde
               ON cde.bitcoin_txid = deposit_req.txid
              AND cde.output_index = deposit_req.output_index
-            LEFT JOIN stacks_blockchain AS sb 
+            LEFT JOIN stacks_blockchain AS sb
               ON sb.block_hash = cde.block_hash
             GROUP BY
                 bc_trx.txid
@@ -1918,6 +1918,54 @@ impl super::DbRead for PgStore {
         )
         .bind(sighash)
         .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_deposit_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::DepositSigner>, Error> {
+        sqlx::query_as::<_, model::DepositSigner>(
+            r#"
+            WITH RECURSIVE context_window AS (
+                -- Anchor member: Initialize the recursion with the chain tip
+                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
+                FROM sbtc_signer.bitcoin_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                -- Recursive member: Fetch the parent block using the last block's parent_hash
+                SELECT parent.block_hash, parent.block_height, parent.parent_hash,
+                       parent.created_at, last.depth + 1
+                FROM sbtc_signer.bitcoin_blocks parent
+                JOIN context_window last ON parent.block_hash = last.parent_hash
+                WHERE last.depth < $2
+            ),
+            transactions_in_window AS (
+                SELECT transactions.txid
+                FROM context_window blocks_in_window
+                JOIN sbtc_signer.bitcoin_transactions transactions ON
+                    transactions.block_hash = blocks_in_window.block_hash
+            )
+            SELECT
+                deposit_signers.txid
+              , deposit_signers.output_index
+              , deposit_signers.signer_pub_key
+              , deposit_signers.can_sign
+              , deposit_signers.can_accept
+            FROM transactions_in_window transactions
+            JOIN sbtc_signer.deposit_signers USING (txid)
+            WHERE deposit_signers.signer_pub_key = $3
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(signer_public_key)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }

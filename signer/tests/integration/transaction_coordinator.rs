@@ -1584,6 +1584,7 @@ async fn sign_bitcoin_transaction() {
             network: network.spawn(),
             context: ctx.clone(),
             context_window: 10000,
+            deposit_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -2026,6 +2027,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             network: network.spawn(),
             context: ctx.clone(),
             context_window: 10000,
+            deposit_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -2616,6 +2618,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             network: network.spawn(),
             context: ctx.clone(),
             context_window: 10000,
+            deposit_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
