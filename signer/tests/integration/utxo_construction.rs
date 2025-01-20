@@ -109,7 +109,7 @@ where
         reclaim_script,
     };
 
-    let dep = create_req.validate_tx(&deposit_tx).unwrap();
+    let dep = create_req.validate_tx(&deposit_tx, false).unwrap();
 
     let req = DepositRequest {
         outpoint: dep.outpoint,

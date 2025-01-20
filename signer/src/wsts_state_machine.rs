@@ -12,12 +12,43 @@ use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::SigHash;
 
+use bitcoin::hashes::Hash as _;
 use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
 use wsts::state_machine::StateMachine as _;
 use wsts::traits::Signer as _;
+
+/// An identifier for signer state machines.
+///
+/// Signer state machines are used for either DKG or signing rounds on
+/// bitcoin. For DKG, the state machine is identified by the bitcoin block
+/// hash bytes while for the signing rounds we identify the state machine
+/// by the sighash bytes.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StateMachineId([u8; 32]);
+
+impl From<&model::BitcoinBlockHash> for StateMachineId {
+    fn from(value: &model::BitcoinBlockHash) -> Self {
+        StateMachineId(value.to_byte_array())
+    }
+}
+
+impl From<SigHash> for StateMachineId {
+    fn from(value: SigHash) -> Self {
+        StateMachineId(value.to_byte_array())
+    }
+}
+
+#[cfg(any(test, feature = "testing"))]
+impl StateMachineId {
+    /// Create a new identifier
+    pub fn new(value: [u8; 32]) -> Self {
+        StateMachineId(value)
+    }
+}
 
 /// Wrapper around a WSTS signer state machine
 #[derive(Debug, Clone, PartialEq)]
@@ -82,7 +113,7 @@ impl SignerStateMachine {
     /// Create a state machine from loaded DKG shares for the given aggregate key
     pub async fn load<S>(
         storage: &S,
-        aggregate_key: PublicKey,
+        aggregate_key: PublicKeyXOnly,
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error>
@@ -90,9 +121,9 @@ impl SignerStateMachine {
         S: storage::DbRead,
     {
         let encrypted_shares = storage
-            .get_encrypted_dkg_shares(&aggregate_key)
+            .get_encrypted_dkg_shares(aggregate_key)
             .await?
-            .ok_or(error::Error::MissingDkgShares(aggregate_key.into()))?;
+            .ok_or_else(|| error::Error::MissingDkgShares(aggregate_key))?;
 
         let decrypted = wsts::util::decrypt(
             &signer_private_key.to_bytes(),

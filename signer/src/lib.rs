@@ -108,6 +108,24 @@ pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 /// <https://github.com/bitcoin/bitcoin/blob/v25.0/src/policy/policy.h#L60-L61>
 pub const MAX_MEMPOOL_PACKAGE_SIZE: u64 = 101000;
 
+/// This is an upper bound on the number of signer state machines that we
+/// "could" need if we wanted to sign all inputs in parallel and running
+/// DKG.
+///
+/// If the entire transaction package was nothing but donation inputs then
+/// we would need this many state machines to sign the transaction in
+/// parallel. We need to add one for DKG, hence plus 1. We then add a
+/// little buff by going to the next power of 2.
+pub const MAX_SIGNER_STATE_MACHINES: u64 = MAX_MEMPOOL_PACKAGE_SIZE
+    .div_ceil(MIN_BITCOIN_INPUT_VSIZE)
+    .saturating_add(1)
+    .next_power_of_two();
+
+/// This is the vsize of a signed key-spend taproot input on bitcoin, which
+/// should be the smallest vsize that a signed taproot input could have on
+/// bitcoin.
+pub const MIN_BITCOIN_INPUT_VSIZE: u64 = 58;
+
 /// These are all build info variables. Many of them are set in build.rs.
 
 /// The name of the binary that is being run,

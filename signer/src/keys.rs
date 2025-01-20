@@ -453,7 +453,9 @@ impl SignerScriptPubKey for secp256k1::XOnlyPublicKey {
             .add_tweak(SECP256K1, &tweak)
             .map_err(Error::InvalidPublicKeyTweak)?;
 
-        debug_assert!(self.tweak_add_check(SECP256K1, &output_key, parity, tweak));
+        if !self.tweak_add_check(SECP256K1, &output_key, parity, tweak) {
+            return Err(Error::InvalidPublicKeyTweakCheck);
+        }
         let pk = secp256k1::PublicKey::from_x_only_public_key(output_key, parity);
         Ok(PublicKey(pk))
     }

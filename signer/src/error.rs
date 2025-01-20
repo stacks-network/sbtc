@@ -5,6 +5,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::codec;
 use crate::emily_client::EmilyClientError;
+use crate::keys::PublicKey;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
@@ -122,6 +123,12 @@ pub enum Error {
     /// This should never happen
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,
+
+    /// This happens when StacksClient::get_tenure_raw returns an array of blocks which starts
+    /// with a block with id {0}, while we expect it to return an array of blocks starting with
+    /// a block with id {1}
+    #[error("get_tenure_raw returned unexpected response: {0}. Expected: {1}")]
+    GetTenureRawMismatch(StacksBlockId, StacksBlockId),
 
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
@@ -245,6 +252,10 @@ pub enum Error {
     /// to an invalid public key.
     #[error("invalid tweak? seriously? {0}")]
     InvalidPublicKeyTweak(#[source] secp256k1::Error),
+
+    /// This happens when a tweak produced by [`XOnlyPublicKey::add_tweak`] was computed incorrectly.
+    #[error("Tweak was computed incorrectly.")]
+    InvalidPublicKeyTweakCheck,
 
     /// This occurs when converting a byte slice to our internal public key
     /// type, which is a thin wrapper around the secp256k1::SecretKey.
@@ -414,6 +425,17 @@ pub enum Error {
     #[error("missing signer utxo")]
     MissingSignerUtxo,
 
+    /// The public key indicated in the message does not match the sender
+    /// public key.
+    #[error("public key from sender does not match one in state machine {wsts} {sender}")]
+    PublicKeyMismatch {
+        /// The sender sent a signer_id in their WSTS message, and this
+        /// corresponds to the following public key. It is s
+        wsts: Box<PublicKey>,
+        /// This is the public key of the sender of the WSTS message.
+        sender: Box<PublicKey>,
+    },
+
     /// This should never happen. It arises when a signer gets a message
     /// that requires DKG to have been run at some point, but it hasn't
     /// been.
@@ -452,6 +474,15 @@ pub enum Error {
     /// Invalid configuration
     #[error("invalid configuration")]
     InvalidConfiguration,
+
+    /// We throw this when signer produced txid and coordinator produced txid differ.
+    #[error(
+        "Signer and coordinator txid mismatch. Signer produced txid {0}, but coordinator send txid {1}"
+    )]
+    SignerCoordinatorTxidMismatch(
+        blockstack_lib::burnchains::Txid,
+        blockstack_lib::burnchains::Txid,
+    ),
 
     /// Observer dropped
     #[error("observer dropped")]

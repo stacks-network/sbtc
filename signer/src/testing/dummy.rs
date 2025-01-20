@@ -53,6 +53,7 @@ use wsts::traits::SignerState;
 
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::validation::TxRequestIds;
+use crate::codec::Encode;
 use crate::ecdsa::Signed;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -66,15 +67,10 @@ use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
 use crate::storage::model;
-use crate::storage::model::CompletedDepositEvent;
-use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
-use crate::storage::model::WithdrawalRejectEvent;
-
-use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::RotateKeysTransaction;
@@ -83,6 +79,9 @@ use crate::storage::model::SigHash;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalCreateEvent;
+use crate::storage::model::WithdrawalRejectEvent;
 
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(
