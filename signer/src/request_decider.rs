@@ -122,7 +122,7 @@ where
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
         let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
         if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("sleeping before processing new bitcoin block");
+            tracing::debug!("sleeping before processing new requests");
             tokio::time::sleep(bitcoin_processing_delay).await;
         }
 
