@@ -218,13 +218,7 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     tracing::debug!("building the libp2p swarm");
     let config = ctx.config();
 
-    let enable_quic = config
-        .signer
-        .p2p
-        .listen_on
-        .iter()
-        .chain(config.signer.p2p.seeds.iter())
-        .any(|addr| addr.protocol_stack().any(|proto| proto == "quic"));
+    let enable_quic = config.signer.p2p.is_quic_used();
 
     let mut swarm = SignerSwarmBuilder::new(&config.signer.private_key)
         .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
