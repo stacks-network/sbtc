@@ -354,9 +354,11 @@ impl SignerSwarmBuilder<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::testing::context::*;
+    use crate::testing::{context::*, network::RandomMemoryMultiaddr};
 
     use super::*;
+
+    const MULTIADDR_NOT_SUPPORTED: &str = "Multiaddr is not supported";
 
     #[tokio::test]
     async fn test_signer_swarm_builder() {
@@ -409,5 +411,143 @@ mod tests {
             Ok(_) => (),
             Err(_) => panic!("Swarm did not shut down within the timeout"),
         }
+    }
+
+    #[tokio::test]
+    async fn swarm_with_memory_transport() {
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let builder = SignerSwarmBuilder::new(&private_key);
+        let mut swarm = builder
+            .enable_memory_transport(true)
+            .add_listen_endpoint(Multiaddr::random_memory())
+            .build()
+            .unwrap();
+
+        let ctx = TestContext::default_mocked();
+        let term = ctx.get_termination_handle();
+
+        let handle = tokio::spawn(async move { swarm.start(&ctx).await });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        term.signal_shutdown();
+
+        handle
+            .await
+            .expect("Task failed")
+            .expect("Swarm failed to start");
+    }
+
+    #[tokio::test]
+    async fn swarm_with_memory_transport_disabled() {
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let builder = SignerSwarmBuilder::new(&private_key);
+        let mut swarm = builder
+            .enable_memory_transport(false)
+            .add_listen_endpoint(Multiaddr::random_memory())
+            .build()
+            .unwrap();
+
+        let ctx = TestContext::default_mocked();
+        let term = ctx.get_termination_handle();
+
+        let handle = tokio::spawn(async move { swarm.start(&ctx).await });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        term.signal_shutdown();
+
+        let result = handle.await.unwrap().unwrap_err();
+        assert!(result.to_string().contains(MULTIADDR_NOT_SUPPORTED));
+    }
+
+    #[tokio::test]
+    async fn swarm_with_tcp_transport() {
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let builder = SignerSwarmBuilder::new(&private_key);
+        let mut swarm = builder
+            .enable_tcp_transport(true)
+            .add_listen_endpoint("/ip4/127.0.0.1/tcp/0".parse().unwrap())
+            .build()
+            .unwrap();
+
+        let ctx = TestContext::default_mocked();
+        let term = ctx.get_termination_handle();
+
+        let handle = tokio::spawn(async move { swarm.start(&ctx).await });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        term.signal_shutdown();
+
+        handle
+            .await
+            .expect("Task failed")
+            .expect("Swarm failed to start");
+    }
+
+    #[tokio::test]
+    async fn swarm_with_tcp_transport_disabled() {
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let builder = SignerSwarmBuilder::new(&private_key);
+        let mut swarm = builder
+            .enable_tcp_transport(false)
+            .add_listen_endpoint("/ip4/127.0.0.1/tcp/0".parse().unwrap())
+            .build()
+            .unwrap();
+
+        let ctx = TestContext::default_mocked();
+        let term = ctx.get_termination_handle();
+
+        let handle = tokio::spawn(async move { swarm.start(&ctx).await });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        term.signal_shutdown();
+
+        let result = handle.await.unwrap().unwrap_err();
+        assert!(result.to_string().contains(MULTIADDR_NOT_SUPPORTED));
+    }
+
+    #[tokio::test]
+    async fn swarm_with_quic_transport() {
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let builder = SignerSwarmBuilder::new(&private_key);
+        let mut swarm = builder
+            .enable_quic_transport(true)
+            .add_listen_endpoint("/ip4/127.0.0.1/udp/0/quic-v1".parse().unwrap())
+            .build()
+            .unwrap();
+
+        let ctx = TestContext::default_mocked();
+        let term = ctx.get_termination_handle();
+
+        let handle = tokio::spawn(async move { swarm.start(&ctx).await });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        term.signal_shutdown();
+
+        handle
+            .await
+            .expect("Task failed")
+            .expect("Swarm failed to start");
+    }
+
+    #[tokio::test]
+    async fn swarm_with_quic_transport_disabled() {
+        let private_key = PrivateKey::new(&mut rand::thread_rng());
+        let builder = SignerSwarmBuilder::new(&private_key);
+        let mut swarm = builder
+            .enable_quic_transport(false)
+            .add_listen_endpoint("/ip4/127.0.0.1/udp/0/quic-v1".parse().unwrap())
+            .build()
+            .unwrap();
+
+        let ctx = TestContext::default_mocked();
+        let term = ctx.get_termination_handle();
+
+        let handle = tokio::spawn(async move { swarm.start(&ctx).await });
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        term.signal_shutdown();
+
+        let result = handle.await.unwrap().unwrap_err();
+        assert!(result.to_string().contains(MULTIADDR_NOT_SUPPORTED));
     }
 }

@@ -1819,11 +1819,10 @@ async fn sign_bitcoin_transaction() {
 ///
 /// then, once everything is up and running, run the test.
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[tokio::test]
+#[test(tokio::test)]
 async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let (rpc, faucet) = regtest::initialize_blockchain();
-    signer::logging::setup_logging("info,signer=debug", false);
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =

@@ -1165,6 +1165,18 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[test]
+    fn p2p_memory_transport_cannot_be_used() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "memory://localhost:123");
+        let result = Settings::new_from_default_config();
+        assert!(matches!(
+            result,
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::InvalidP2PScheme("memory".into()).to_string()
+        ))
+    }
+
     #[test_case::test_case(NetworkKind::Mainnet; "mainnet network, testnet deployer")]
     #[test_case::test_case(NetworkKind::Testnet; "testnet network, mainnet deployer")]
     fn network_mismatch_network_of_deployer(network: NetworkKind) {
