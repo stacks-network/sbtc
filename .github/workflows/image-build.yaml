@@ -108,6 +108,6 @@ jobs:
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ${{ steps.docker_metadata.outputs.tags }}
+          subject-name: docker.io/${{ env.docker-org }}/sbtc
           subject-digest: ${{ steps.docker_build.outputs.digest }}
           push-to-registry: true
