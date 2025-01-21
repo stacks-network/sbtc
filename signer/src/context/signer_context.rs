@@ -93,7 +93,7 @@ where
         }
         state.update_current_limits(SbtcLimits::new(
             Some(Amount::ZERO),
-            Some(Amount::ZERO),
+            Some(Amount::MAX_MONEY),
             Some(Amount::ZERO),
             Some(Amount::ZERO),
             Some(Amount::ZERO),
