@@ -45,7 +45,7 @@ use secp256k1::Keypair;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::utxo::BitcoinInputsOutputs;
 use signer::bitcoin::utxo::Fees;
-use signer::bitcoin::BitcoinInteract;
+use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
 
 use signer::context::SbtcLimits;
