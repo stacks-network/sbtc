@@ -1,6 +1,8 @@
 name: On Push
 on: [push]
 
+permissions: read-all
+
 concurrency:
   # limit concurrency of entire workflow runs for a specific branch
   group: ${{ github.workflow }}-${{ github.ref }}
