@@ -75,19 +75,9 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           cache-key: "rust-tests"
-      # - uses: pnpm/action-setup@v4
-      # - uses: actions/setup-node@v3
-      #   with:
-      #     node-version: ${{ env.NODE_VERSION }}
-      #     cache: "pnpm"
-      # - uses: arduino/setup-protoc@v3
-      #   with:
-      #     version: "25.3"
       - uses: taiki-e/install-action@v2
         with:
           tool: nextest@0.9.82
-      # - name: Install Package Dependencies
-      #   run: make install
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
