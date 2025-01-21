@@ -121,7 +121,7 @@ jobs:
       - name: Run Unit Tests (Node)
         run: pnpm --recursive test
       - name: Run Unit Tests (Rust)
-        run: cargo-nextest nextest --color always run --no-fail-fast --retries 2 --archive-file nextest-archive.tar.zst
+        run: cargo-nextest nextest --color always run --no-fail-fast --archive-file nextest-archive.tar.zst
 
   # Runs the Rust integration tests for the project. It depends on the
   # `build-tests` job to build the nextest test archives and upload them as
@@ -188,7 +188,7 @@ jobs:
           name: nextest-archives
           path: .
       - name: Run Integration Tests (Rust)
-        run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --retries 2 --partition hash:${{ matrix.partition }}/2 --archive-file nextest-archive-serial.tar.zst
+        run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --partition hash:${{ matrix.partition }}/2 --archive-file nextest-archive-serial.tar.zst
       
   # Runs checks on the generated code in the project for contracts, the
   # blocklist client and the emily clients. This job is used to ensure that the
