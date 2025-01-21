@@ -26,7 +26,7 @@ config.workspace = true
 futures.workspace = true
 hashbrown.workspace = true
 libp2p.workspace = true
-lru.workspace = true
+lru = { workspace = true, default-features = false }
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 p256k1.workspace = true
