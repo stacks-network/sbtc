@@ -12,22 +12,22 @@ RUN apt-get install -y \
     npm \
     default-jre
 RUN npm install -g pnpm@9
-RUN npm install -g @openapitools/openapi-generator-cli
 
 # Download the sbtc code base so that the initial build is done with
 # an appropriate version of the code and the result can be cached.
-WORKDIR /code
-RUN git clone https://github.com/stacks-network/sbtc.git
-WORKDIR /code/sbtc
+# WORKDIR /code
+# RUN git clone https://github.com/stacks-network/sbtc.git
+# WORKDIR /code/sbtc
 
-ARG GIT_BRANCH=main
-RUN git checkout $GIT_BRANCH
+# ARG GIT_BRANCH=main
+# RUN git checkout $GIT_BRANCH
 
 # Run an install that we'll cache the result of and then build the code
-RUN make install && make build
+#RUN make install && make build
 
 # Build the codebase from the local sources.
 # -------------------------------------------
+WORKDIR /code/sbtc
 COPY . /code/sbtc/
 RUN make install && make build
 
@@ -39,7 +39,6 @@ RUN cargo build --bin emily-server
 # -----------------------
 ARG AWS_STAGE=local
 ARG TABLES_ONLY=true
-WORKDIR /code/sbtc
 RUN make emily-cdk-synth
 
 # Create Docker image to run the signer.
