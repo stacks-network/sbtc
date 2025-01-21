@@ -1,6 +1,8 @@
 //! Emily API client module
 
 use std::str::FromStr;
+use std::time::Duration;
+use std::time::Instant;
 
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -132,6 +134,7 @@ pub trait EmilyInteract: Sync + Send {
 #[derive(Clone)]
 pub struct EmilyClient {
     config: EmilyApiConfig,
+    pagination_timeout: Duration,
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -140,13 +143,12 @@ impl EmilyClient {
     pub fn config(&self) -> &EmilyApiConfig {
         &self.config
     }
-}
 
-#[cfg(any(test, feature = "testing"))]
-impl TryFrom<&Url> for EmilyClient {
-    type Error = Error;
-    /// Initialize a new Emily client from just a URL for testing scenarios.
-    fn try_from(url: &Url) -> Result<Self, Self::Error> {
+    /// Initialize a new Emily client from just the URL and duration for testing scenarios.
+    pub fn try_from_url_and_duration(
+        url: &Url,
+        pagination_timeout: Duration,
+    ) -> Result<Self, Error> {
         let mut url = url.clone();
         let api_key = if url.username().is_empty() {
             None
@@ -178,7 +180,7 @@ impl TryFrom<&Url> for EmilyClient {
         config.base_path = url.to_string().trim_end_matches("/").to_string();
         config.api_key = api_key;
 
-        Ok(Self { config })
+        Ok(Self { config, pagination_timeout })
     }
 }
 
@@ -214,18 +216,25 @@ impl EmilyInteract for EmilyClient {
                 .map_err(Error::DecodeHexScript)?,
         }))
     }
+
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
-        // TODO: hanlde pagination -- if the queried data is over 1MB DynamoDB will
-        // paginate the results even if we pass `None` as page limit.
-        let resp = deposit_api::get_deposits(&self.config, Status::Pending, None, None)
+        let mut all_deposits = Vec::new();
+        let mut next_token: Option<String> = None;
+        let start_time = Instant::now();
+        loop {
+            let resp = deposit_api::get_deposits(
+                &self.config,
+                Status::Pending,
+                next_token.as_deref(),
+                None,
+            )
             .await
             .map_err(EmilyClientError::GetDeposits)
             .map_err(Error::EmilyApi)?;
 
-        resp.deposits
-            .iter()
-            .map(|deposit| {
-                Ok(CreateDepositRequest {
+            // Convert each deposit to our CreateDepositRequest
+            for deposit in resp.deposits.iter() {
+                let req = CreateDepositRequest {
                     outpoint: OutPoint {
                         txid: Txid::from_str(&deposit.bitcoin_txid)
                             .map_err(Error::DecodeHexTxid)?,
@@ -235,9 +244,27 @@ impl EmilyInteract for EmilyClient {
                         .map_err(Error::DecodeHexScript)?,
                     deposit_script: ScriptBuf::from_hex(&deposit.deposit_script)
                         .map_err(Error::DecodeHexScript)?,
-                })
-            })
-            .collect()
+                };
+                all_deposits.push(req);
+            }
+
+            // If more pages exist, loop again; otherwise stop
+            match resp.next_token.flatten() {
+                Some(token) => next_token = Some(token),
+                None => break,
+            }
+
+            if start_time.elapsed() > self.pagination_timeout {
+                tracing::warn!(
+                    "timeout fetching deposits, breaking at page {:?}, fetched {} deposits",
+                    next_token,
+                    all_deposits.len()
+                );
+                break;
+            }
+        }
+
+        Ok(all_deposits)
     }
 
     async fn update_deposits(
@@ -366,10 +393,8 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
             .await
     }
 
-    fn get_deposits(
-        &self,
-    ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> {
-        self.exec(|client, _| client.get_deposits())
+    async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
+        self.exec(|client, _| client.get_deposits()).await
     }
 
     async fn update_deposits(
@@ -426,7 +451,9 @@ impl TryFrom<&EmilyClientConfig> for ApiFallbackClient<EmilyClient> {
         let clients = config
             .endpoints
             .iter()
-            .map(EmilyClient::try_from)
+            .map(|url| {
+                EmilyClient::try_from_url_and_duration(url, config.pagination_timeout.clone())
+            })
             .collect::<Result<Vec<_>, _>>()?;
 
         Self::new(clients).map_err(Into::into)
@@ -442,7 +469,7 @@ mod tests {
         // Arrange.
         let url = Url::parse("http://test_key@localhost:8080").unwrap();
         // Act.
-        let client = EmilyClient::try_from(&url).unwrap();
+        let client = EmilyClient::try_from_url_and_duration(&url, Duration::from_secs(1)).unwrap();
         // Assert.
         assert_eq!(client.config.base_path, "http://localhost:8080");
         assert_eq!(client.config.api_key.unwrap().key, "test_key");
@@ -453,7 +480,7 @@ mod tests {
         // Arrange.
         let url = Url::parse("http://localhost:8080").unwrap();
         // Act.
-        let client = EmilyClient::try_from(&url).unwrap();
+        let client = EmilyClient::try_from_url_and_duration(&url, Duration::from_secs(1)).unwrap();
         // Assert.
         assert_eq!(client.config.base_path, "http://localhost:8080");
         assert!(client.config.api_key.is_none());

@@ -11,6 +11,7 @@ use std::num::NonZeroU16;
 use std::num::NonZeroU32;
 use std::num::NonZeroU64;
 use std::path::Path;
+use std::time::Duration;
 use url::Url;
 
 use crate::config::error::SignerConfigError;
@@ -165,6 +166,9 @@ pub struct EmilyClientConfig {
     /// Emily API endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<Url>,
+    /// Pagination timeout in seconds.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub pagination_timeout: Duration,
 }
 
 impl Validatable for EmilyClientConfig {

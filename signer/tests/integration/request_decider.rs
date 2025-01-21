@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -299,8 +301,11 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_from_url_and_duration(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+    )
+    .unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await
