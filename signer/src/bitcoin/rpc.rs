@@ -738,10 +738,6 @@ impl BitcoinInteract for BitcoinCoreClient {
         self.get_mempool_entry(txid)
     }
 
-    async fn get_best_chain_tip(&self) -> Result<(BlockHash, u64), Error> {
-        self.get_best_chain_tip()
-    }
-
     async fn get_blockchain_info(
         &self,
     ) -> Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error> {

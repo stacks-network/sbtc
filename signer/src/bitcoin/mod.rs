@@ -138,10 +138,6 @@ pub trait BitcoinInteract: Sync + Send {
         txid: &Txid,
     ) -> impl Future<Output = Result<Option<GetMempoolEntryResult>, Error>> + Send;
 
-    /// Gets the block hash and height of the best chain tip according to the
-    /// Bitcoin node.
-    fn get_best_chain_tip(&self) -> impl Future<Output = Result<(BlockHash, u64), Error>> + Send;
-
     /// Gets information about the blockchain from the Bitcoin node.
     fn get_blockchain_info(
         &self,

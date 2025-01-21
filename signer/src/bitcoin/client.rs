@@ -123,11 +123,6 @@ impl BitcoinInteract for ApiFallbackClient<BitcoinCoreClient> {
             .await
     }
 
-    async fn get_best_chain_tip(&self) -> Result<(BlockHash, u64), Error> {
-        self.exec(|client, _| async { client.get_best_chain_tip() })
-            .await
-    }
-
     async fn get_blockchain_info(
         &self,
     ) -> Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error> {

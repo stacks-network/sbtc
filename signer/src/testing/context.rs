@@ -368,10 +368,6 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
         unimplemented!()
     }
 
-    async fn get_best_chain_tip(&self) -> Result<(bitcoin::BlockHash, u64), Error> {
-        self.inner.lock().await.get_best_chain_tip().await
-    }
-
     async fn get_blockchain_info(
         &self,
     ) -> Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error> {
