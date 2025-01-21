@@ -36,7 +36,7 @@ jobs:
 
       - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
-          tool: nextest@b44b7adf77b9efaeda1a008a02ea57673862241d #v0.98.88
+          tool: nextest@0.9.82
 
       - name: Install package dependencies.
         run: make install
