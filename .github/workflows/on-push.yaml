@@ -24,25 +24,25 @@ jobs:
     name: Run Lints
     runs-on: ubuntu-24.04
     steps:
-      - uses: rui314/setup-mold@v1
+      - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
         with:
           make-default: true
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
         with:
           submodules: "recursive"
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v3
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-      - uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b #v3.0.0
         with:
           version: "25.3"
-      - uses: bufbuild/buf-action@v1
+      - uses: bufbuild/buf-action@3fb70352251376e958c4c2c92c3818de82a71c2b #v1.0.2
         with:
           version: ${{ env.BUF_VERSION }}
           setup_only: true
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
         with:
           components: clippy, rustfmt
           cache-key: "rust-tests"
@@ -69,16 +69,16 @@ jobs:
     name: Build Test Artifacts
     runs-on: ubuntu-24.04
     steps:
-      - uses: rui314/setup-mold@v1
+      - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
         with:
           make-default: true
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
         with:
           submodules: "recursive"
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
         with:
           cache-key: "rust-tests"
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Build Tests
@@ -86,7 +86,7 @@ jobs:
       - name: Create Nextest Archives
         run: make nextest-archive
       - name: Upload Nextest Archives
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 #v4.6.0
         with:
           name: nextest-archives
           path: ./target/nextest/*.tar.zst
@@ -100,21 +100,21 @@ jobs:
     runs-on: ubuntu-24.04
     needs: build-tests
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
         with:
           submodules: "recursive"
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v3
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 #v4.1.8
         with:
           name: nextest-archives
           path: .
@@ -139,25 +139,25 @@ jobs:
       matrix:
         partition: [1, 2]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
         with:
           submodules: "recursive"
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
         with:
           cache-key: "rust-tests"
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v3
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-      - uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b #v3.0.0
         with:
           version: "25.3"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b #v5.3.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install boto3
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install Package Dependencies
@@ -165,7 +165,7 @@ jobs:
       - name: Start Integration Test Environment
         run: make integration-env-up-ci
       - name: Wait for Test Artifacts
-        uses: kachick/wait-other-jobs@v3.6.0
+        uses: kachick/wait-other-jobs@0584f1460011b97726c04abf4bbec5bfb5cdb654 #v3.6.0
         timeout-minutes: 5
         with:
           retry-method: 'equal_intervals'
@@ -183,14 +183,13 @@ jobs:
               }
             ]
       - name: Download Nextest Archives
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 #v4.1.8
         with:
           name: nextest-archives
           path: .
       - name: Run Integration Tests (Rust)
         run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --retries 2 --partition hash:${{ matrix.partition }}/2 --archive-file nextest-archive-serial.tar.zst
       
-
   # Runs checks on the generated code in the project for contracts, the
   # blocklist client and the emily clients. This job is used to ensure that the
   # generated code is up-to-date with the latest changes in the project. It does
@@ -202,12 +201,12 @@ jobs:
     name: Run Generated Code Checks
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
         with:
           cache-key: "rust-tests"
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v3
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
