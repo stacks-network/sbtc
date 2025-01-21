@@ -12,6 +12,7 @@ env:
   NODE_VERSION: 22.1.0
   BUF_VERSION: 1.42.0
   PYTHON_VERSION: 3.13
+  NEXTEST_VERSION: 0.9.88
   CARGO_INCREMENTAL: 0
   CARGO_PROFILE_DEV_STRIP: "debuginfo"
 
@@ -79,7 +80,7 @@ jobs:
           cache-key: "rust-tests"
       - uses: taiki-e/install-action@v2
         with:
-          tool: nextest@0.9.82
+          tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Build Tests
         run: make test-build
       - name: Create Nextest Archives
@@ -107,11 +108,9 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-      # - name: Install Nextest
-      #   run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
       - uses: taiki-e/install-action@v2
         with:
-          tool: nextest@0.9.82
+          tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
@@ -160,7 +159,7 @@ jobs:
       - run: pip install boto3
       - uses: taiki-e/install-action@v2
         with:
-          tool: nextest@0.9.82
+          tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install Package Dependencies
         run: make install
       - name: Start Integration Test Environment
