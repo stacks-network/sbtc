@@ -451,9 +451,7 @@ impl TryFrom<&EmilyClientConfig> for ApiFallbackClient<EmilyClient> {
         let clients = config
             .endpoints
             .iter()
-            .map(|url| {
-                EmilyClient::try_from_url_and_duration(url, config.pagination_timeout.clone())
-            })
+            .map(|url| EmilyClient::try_from_url_and_duration(url, config.pagination_timeout))
             .collect::<Result<Vec<_>, _>>()?;
 
         Self::new(clients).map_err(Into::into)
