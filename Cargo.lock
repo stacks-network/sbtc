@@ -6207,7 +6207,6 @@ dependencies = [
  "futures",
  "hashbrown 0.14.5",
  "hex",
- "http-body-util",
  "include_dir",
  "libp2p",
  "lru",

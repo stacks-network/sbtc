@@ -82,7 +82,6 @@ test-log = { version = "0.2.16", default-features = false, features = ["trace"] 
 toml_edit = "0.22.22"
 tempfile = "3.6"
 tower = { version = "0.5.2", features = ["util"] }
-http-body-util = "0.1.0"
 
 [build-dependencies]
 tonic-build.workspace = true
