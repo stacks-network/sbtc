@@ -107,8 +107,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "pnpm"
-      - name: Install Nextest
-        run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
+      # - name: Install Nextest
+      #   run: curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /usr/local/bin
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: nextest@0.9.82
       - name: Install Package Dependencies
         run: make install
       - name: Download Nextest Archives
