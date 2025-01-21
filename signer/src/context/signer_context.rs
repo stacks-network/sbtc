@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use bitcoin::Amount;
 use tokio::sync::broadcast::Sender;
 use url::Url;
 
@@ -13,7 +14,7 @@ use crate::{
     SIGNER_CHANNEL_CAPACITY,
 };
 
-use super::{Context, SignerSignal, SignerState, TerminationHandle};
+use super::{Context, SbtcLimits, SignerSignal, SignerState, TerminationHandle};
 
 /// Signer context which is passed to different components within the
 /// signer binary.
@@ -90,6 +91,13 @@ where
         if let Some(height) = config.signer.sbtc_bitcoin_start_height {
             state.set_sbtc_bitcoin_start_height(height);
         }
+        state.update_current_limits(SbtcLimits::new(
+            Some(Amount::ZERO),
+            Some(Amount::ZERO),
+            Some(Amount::ZERO),
+            Some(Amount::ZERO),
+            Some(Amount::ZERO),
+        ));
 
         Self {
             config,

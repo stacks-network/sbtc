@@ -100,6 +100,7 @@ async fn one_tx_per_request_set() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::default());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [DepositAmounts {
@@ -195,6 +196,7 @@ async fn one_invalid_deposit_invalidates_tx() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::default());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -382,6 +384,7 @@ async fn cannot_sign_deposit_is_ok() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::default());
 
     let amounts = [
         DepositAmounts {
@@ -545,6 +548,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::default());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -677,6 +681,7 @@ async fn outcome_is_independent_of_input_order() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::default());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
