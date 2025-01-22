@@ -64,7 +64,7 @@ mod tests {
     use secp256k1::{PublicKey, Secp256k1};
     use std::str::FromStr;
 
-    /// This test proves, that the DERIVED_NUMS_X_COORDINATE is the correct,
+    /// This test proves, that the DERIVED_NUMS_X_COORDINATE is correct,
     /// and is derived from the NUMS_X_COORDINATE using the derivation path "0/0".
     #[test]
     fn test_derivation() {
