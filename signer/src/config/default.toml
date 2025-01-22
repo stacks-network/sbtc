@@ -32,14 +32,10 @@ endpoints = [
     "http://testApiKey@localhost:3031",
 ]
 
-# The pagination timeout, in seconds used to fetch deposits and withdrawals
+# The pagination timeout, in seconds, used to fetch deposits and withdrawals
 # requests from Emily.
-#
-# Format: <seconds>
-# Default: <none>
 # Required: true
 # Environment: SIGNER_EMILY__PAGINATION_TIMEOUT
-# Environment Example: 30
 pagination_timeout = 30
 
 # !! ==============================================================================

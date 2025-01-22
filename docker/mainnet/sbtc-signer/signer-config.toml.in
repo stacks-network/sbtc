@@ -29,6 +29,12 @@ endpoints = [
     "https://$EMILY_API_KEY@sbtc-emily.com"
 ]
 
+# The pagination timeout, in seconds, used to fetch deposits and withdrawals
+# requests from Emily.
+# Required: true
+# Environment: SIGNER_EMILY__PAGINATION_TIMEOUT
+pagination_timeout = 30
+
 # !! ==============================================================================
 # !! Bitcoin Core Configuration
 # !! ==============================================================================
