@@ -82,7 +82,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
-    ctx.state().update_current_limits(SbtcLimits::default());
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     // We're going to create two confirmed deposits. This also generates
     // sweep transactions, but this information is not in our database, so
@@ -104,7 +104,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         client
             .expect_get_limits()
             .times(1..)
-            .returning(|| Box::pin(async { Ok(SbtcLimits::default()) }));
+            .returning(|| Box::pin(async { Ok(SbtcLimits::unlimited()) }));
     })
     .await;
 
@@ -575,7 +575,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
 
@@ -656,9 +656,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case::test_case(false, SbtcLimits::default(); "no contracts, default limits")]
+#[test_case::test_case(false, SbtcLimits::unlimited(); "no contracts, default limits")]
 #[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "no contracts, total cap limit")]
-#[test_case::test_case(true, SbtcLimits::default(); "deployed contracts, default limits")]
+#[test_case::test_case(true, SbtcLimits::unlimited(); "deployed contracts, default limits")]
 #[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "deployed contracts, total cap limit")]
 #[tokio::test]
 async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcLimits) {

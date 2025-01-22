@@ -3256,7 +3256,7 @@ async fn test_conservative_initial_sbtc_limits() {
                 // we need the coordinator to be able to fetch them.
                 // But we want the other signers to fail fetching limits.
                 let limits = if i == 0 || enable_emily_limits.load(Ordering::SeqCst) {
-                    Ok(SbtcLimits::default())
+                    Ok(SbtcLimits::unlimited())
                 } else {
                     // Just a random error, we don't care about it
                     Err(Error::InvalidStacksResponse("dummy"))
