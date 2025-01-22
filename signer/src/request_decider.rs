@@ -5,8 +5,6 @@
 //!
 //! For more details, see the [`RequestDeciderEventLoop`] documentation.
 
-use std::time::Duration;
-
 use crate::block_observer::BlockObserver;
 use crate::blocklist_client::BlocklistChecker;
 use crate::context::Context;
