@@ -44,9 +44,10 @@ async fn test_context() -> TestContext<
     WrappedMock<MockStacksInteract>,
     EmilyClient,
 > {
-    let emily_client = EmilyClient::try_from_url_and_duration(
+    let emily_client = EmilyClient::try_new_test_client(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::from_secs(1),
+        None,
     )
     .unwrap();
     let stacks_client = WrappedMock::default();

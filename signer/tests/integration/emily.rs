@@ -19,6 +19,7 @@ use clarity::types::chainstate::BurnchainHeaderHash;
 use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api::wipe_databases;
 use emily_client::models::CreateDepositRequestBody;
+use futures::future::join_all;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
@@ -147,9 +148,10 @@ async fn deposit_flow() {
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let emily_client = EmilyClient::try_from_url_and_duration(
+    let emily_client = EmilyClient::try_new_test_client(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::from_secs(1),
+        None,
     )
     .unwrap();
     let stacks_client = WrappedMock::default();
@@ -568,9 +570,10 @@ async fn get_deposit_request_works() {
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let emily_client = EmilyClient::try_from_url_and_duration(
+    let emily_client = EmilyClient::try_new_test_client(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::from_secs(1),
+        None,
     )
     .unwrap();
 
@@ -602,4 +605,82 @@ async fn get_deposit_request_works() {
     // This one doesn't exist
     let request = emily_client.get_deposit(&txid, 50).await.unwrap();
     assert!(request.is_none());
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposits_request_handles_paging() {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 150;
+
+    let num_deposits: usize = 3;
+    let emily_client = EmilyClient::try_new_test_client(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(10),
+        Some(2), // Limits to 2 results per page
+    )
+    .unwrap();
+
+    wipe_databases(&emily_client.config())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
+    let futures = (0..num_deposits).map(|_| {
+        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+
+        let create_deposit_request_body = CreateDepositRequestBody {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            deposit_script: setup.deposit.deposit_script().to_hex_string(),
+            reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+        };
+
+        deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
+    });
+    let results = join_all(futures).await;
+    for result in results {
+        result.expect("cannot create emily deposit");
+    }
+
+    let request = emily_client.get_deposits().await.unwrap();
+    assert_eq!(request.len(), num_deposits);
+}
+
+#[cfg_attr(not(feature = "integration-tests"), ignore)]
+#[tokio::test]
+async fn get_deposits_request_handles_timeout() {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 150;
+    let num_deposits = 3;
+
+    let emily_client = EmilyClient::try_new_test_client(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::ZERO, // Zero will cause a timeout right after the first response is received
+        Some(2),        // Limits to 2 results per page
+    )
+    .unwrap();
+
+    wipe_databases(&emily_client.config())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
+    let futures = (0..num_deposits).map(|_| {
+        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+
+        let create_deposit_request_body = CreateDepositRequestBody {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            deposit_script: setup.deposit.deposit_script().to_hex_string(),
+            reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+        };
+
+        deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
+    });
+    let results = join_all(futures).await;
+    for result in results {
+        result.expect("cannot create emily deposit");
+    }
+
+    let request = emily_client.get_deposits().await.unwrap();
+    assert_eq!(request.len(), 2);
 }
