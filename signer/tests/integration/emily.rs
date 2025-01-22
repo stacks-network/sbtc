@@ -148,7 +148,7 @@ async fn deposit_flow() {
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let emily_client = EmilyClient::try_new_test_client(
+    let emily_client = EmilyClient::try_new(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::from_secs(1),
         None,
@@ -570,7 +570,7 @@ async fn get_deposit_request_works() {
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let emily_client = EmilyClient::try_new_test_client(
+    let emily_client = EmilyClient::try_new(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::from_secs(1),
         None,
@@ -615,7 +615,7 @@ async fn get_deposits_request_handles_paging() {
     let lock_time = 150;
 
     let num_deposits: usize = 3;
-    let emily_client = EmilyClient::try_new_test_client(
+    let emily_client = EmilyClient::try_new(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::from_secs(10),
         Some(2), // Limits to 2 results per page
@@ -654,7 +654,7 @@ async fn get_deposits_request_handles_timeout() {
     let lock_time = 150;
     let num_deposits = 3;
 
-    let emily_client = EmilyClient::try_new_test_client(
+    let emily_client = EmilyClient::try_new(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::ZERO, // Zero will cause a timeout right after the first response is received
         Some(2),        // Limits to 2 results per page

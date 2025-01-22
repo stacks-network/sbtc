@@ -382,7 +382,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     // signer::logging::setup_logging("info,signer=debug", false);
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client = EmilyClient::try_new_test_client(
+    let emily_client = EmilyClient::try_new(
         &Url::parse("http://testApiKey@localhost:3031").unwrap(),
         Duration::from_secs(1),
         None,
