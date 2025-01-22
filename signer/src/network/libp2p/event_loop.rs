@@ -12,6 +12,7 @@ use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
 use crate::error::Error;
 use crate::network::Msg;
 
+use super::bootstrap::BootstrapEvent;
 use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
 
@@ -58,13 +59,9 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
         loop {
             // Poll the libp2p swarm for events, waiting for a maximum of 5ms
             // so that we don't starve the outbox.
-            let event =
-                match tokio::time::timeout(Duration::from_millis(5), swarm.lock().await.next())
-                    .await
-                {
-                    Ok(event) => event,
-                    Err(_) => None,
-                };
+            let event = (tokio::time::timeout(Duration::from_millis(5), swarm.lock().await.next())
+                .await)
+                .unwrap_or_default();
 
             // Handle the event if one was received.
             if let Some(event) = event {
@@ -170,6 +167,17 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                             "autonat server event"
                         );
                     }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::Bootstrap(event)) => match event {
+                        BootstrapEvent::Complete => {
+                            tracing::info!("network bootstraping complete");
+                        }
+                        BootstrapEvent::Started { addresses } => {
+                            tracing::info!(?addresses, "network bootstrapping started");
+                        }
+                        BootstrapEvent::Needed => {
+                            tracing::info!("no connected peers; network bootstrapping needed");
+                        }
+                    },
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
                     event => tracing::trace!(?event, "unhandled swarm event"),
@@ -403,6 +411,17 @@ fn handle_gossipsub_event(
         }
         Event::GossipsubNotSupported { peer_id } => {
             tracing::warn!(%peer_id, "peer does not support gossipsub");
+        }
+        Event::SlowPeer { peer_id, failed_messages } => {
+            tracing::warn!(
+                %peer_id,
+                failed_publishes = %failed_messages.publish,
+                failed_forwards = %failed_messages.forward,
+                failed_priority = %failed_messages.priority,
+                failed_non_priority = %failed_messages.non_priority,
+                failed_timeout = %failed_messages.timeout,
+                "peer has been flagged as slow"
+            );
         }
     }
 }

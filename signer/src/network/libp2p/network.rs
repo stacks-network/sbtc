@@ -224,6 +224,7 @@ mod tests {
             .with_mocked_clients()
             .modify_settings(|settings| {
                 settings.signer.private_key = key1;
+                settings.signer.p2p.enable_mdns = false;
             })
             .build();
         let context2 = TestContext::builder()
@@ -231,6 +232,7 @@ mod tests {
             .with_mocked_clients()
             .modify_settings(|settings| {
                 settings.signer.private_key = key2;
+                settings.signer.p2p.enable_mdns = false;
             })
             .build();
         let context3 = TestContext::builder()
@@ -238,6 +240,7 @@ mod tests {
             .with_mocked_clients()
             .modify_settings(|settings| {
                 settings.signer.private_key = key3;
+                settings.signer.p2p.enable_mdns = false;
             })
             .build();
 
@@ -368,6 +371,7 @@ mod tests {
             .with_mocked_clients()
             .modify_settings(|settings| {
                 settings.signer.private_key = key1;
+                settings.signer.p2p.enable_mdns = false;
             })
             .build();
         let context2 = TestContext::builder()
@@ -375,6 +379,7 @@ mod tests {
             .with_mocked_clients()
             .modify_settings(|settings| {
                 settings.signer.private_key = key2;
+                settings.signer.p2p.enable_mdns = false;
             })
             .build();
         let context3 = TestContext::builder()
@@ -382,6 +387,7 @@ mod tests {
             .with_mocked_clients()
             .modify_settings(|settings| {
                 settings.signer.private_key = key3;
+                settings.signer.p2p.enable_mdns = false;
             })
             .build();
 
