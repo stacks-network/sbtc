@@ -31,6 +31,9 @@ mod serialization;
 /// Maximum configurable delay (in seconds) before processing new Bitcoin blocks.
 pub const MAX_BITCOIN_PROCESSING_DELAY_SECONDS: u64 = 300;
 
+/// Maximum configurable delay (in seconds) before processing new SBTC requests.
+pub const MAX_REQUESTS_PROCESSING_DELAY_SECONDS: u64 = 300;
+
 /// Trait for validating configuration values.
 trait Validatable {
     /// Validate the configuration values.
@@ -223,9 +226,14 @@ pub struct SignerConfig {
     pub bootstrap_signatures_required: u16,
     /// The number of seconds the coordinator will wait
     /// before processing a new Bitcoin block
-    /// (allowing it to propagate to the others signers)
+    /// (allowing it to propagate the request decisions the others signers)
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub bitcoin_processing_delay: std::time::Duration,
+    /// The number of seconds the request decider will wait
+    /// before processing the new sbtc requests
+    /// (allowing it to propagate the bitcoin block the others signers)
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub requests_processing_delay: std::time::Duration,
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
     pub context_window: u16,
@@ -297,6 +305,17 @@ impl Validatable for SignerConfig {
             return Err(ConfigError::Message(
                 SignerConfigError::InvalidBitcoinProcessingDelay(
                     MAX_BITCOIN_PROCESSING_DELAY_SECONDS,
+                    delay_secs,
+                )
+                .to_string(),
+            ));
+        }
+
+        let delay_secs = cfg.signer.requests_processing_delay.as_secs();
+        if delay_secs > MAX_REQUESTS_PROCESSING_DELAY_SECONDS {
+            return Err(ConfigError::Message(
+                SignerConfigError::InvalidRequestsProcessingDelay(
+                    MAX_REQUESTS_PROCESSING_DELAY_SECONDS,
                     delay_secs,
                 )
                 .to_string(),
@@ -810,6 +829,18 @@ mod tests {
             settings.signer.bitcoin_processing_delay,
             std::time::Duration::from_secs(delay),
         );
+
+        let delay = 42;
+        std::env::set_var(
+            "SIGNER_SIGNER__REQUESTS_PROCESSING_DELAY",
+            delay.to_string(),
+        );
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.requests_processing_delay,
+            std::time::Duration::from_secs(delay),
+        );
     }
 
     #[test]
@@ -905,6 +936,24 @@ mod tests {
         assert!(matches!(
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == SignerConfigError::InvalidBitcoinProcessingDelay(MAX_BITCOIN_PROCESSING_DELAY_SECONDS, delay).to_string()
+        ));
+    }
+
+    #[test]
+    fn invalid_requests_processing_delay_returns_correct_error() {
+        clear_env();
+
+        let delay = MAX_REQUESTS_PROCESSING_DELAY_SECONDS + 1;
+        std::env::set_var(
+            "SIGNER_SIGNER__REQUESTS_PROCESSING_DELAY",
+            delay.to_string(),
+        );
+
+        let settings = Settings::new_from_default_config();
+        assert!(settings.is_err());
+        assert!(matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidRequestsProcessingDelay(MAX_REQUESTS_PROCESSING_DELAY_SECONDS, delay).to_string()
         ));
     }
 
