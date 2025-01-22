@@ -229,7 +229,7 @@ message DkgStatus {
     // DKG private shares were bad from these signer_ids
     BadPrivateShares bad_private_shares = 6;
     // The DKG threshold was not met
-    Threshold Threshold = 7;
+    Threshold threshold = 7;
   }
 }
 
