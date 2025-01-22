@@ -57,6 +57,7 @@ pub const DERIVED_NUMS_X_COORDINATE: [u8; 32] = [
 pub static UNSPENDABLE_TAPROOT_KEY: LazyLock<XOnlyPublicKey> =
     LazyLock::new(|| XOnlyPublicKey::from_slice(&DERIVED_NUMS_X_COORDINATE).unwrap());
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use bitcoin::bip32::{ChainCode, ChildNumber, DerivationPath, Fingerprint, Xpub};
