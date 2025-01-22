@@ -265,6 +265,12 @@ where
             return Ok(());
         }
 
+        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
+        if bitcoin_processing_delay > Duration::ZERO {
+            tracing::debug!("sleeping before processing new bitcoin block");
+            tokio::time::sleep(bitcoin_processing_delay).await;
+        }
+
         let bitcoin_chain_tip = self
             .context
             .get_storage()

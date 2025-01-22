@@ -123,12 +123,6 @@ where
 
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
     async fn handle_new_requests(&mut self) -> Result<(), Error> {
-        let bitcoin_processing_delay = self.context.config().signer.bitcoin_processing_delay;
-        if bitcoin_processing_delay > Duration::ZERO {
-            tracing::debug!("sleeping before processing new requests");
-            tokio::time::sleep(bitcoin_processing_delay).await;
-        }
-
         let db = self.context.get_storage();
         let chain_tip = db
             .get_bitcoin_canonical_chain_tip()
