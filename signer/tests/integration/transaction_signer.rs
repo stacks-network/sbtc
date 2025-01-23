@@ -52,7 +52,6 @@ use crate::setup::TestSweepSetup2;
 /// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to
 /// the bootstrap config if there is no rotate-keys transaction in the
 /// database.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let db = testing::storage::new_test_database().await;
@@ -145,7 +144,6 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 
 /// Test that [`TxSignerEventLoop::assert_valid_stacks_tx_sign_request`]
 /// errors when the signer is not in the signer set.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn signing_set_validation_check_for_stacks_transactions() {
     let db = testing::storage::new_test_database().await;
@@ -223,7 +221,6 @@ async fn signing_set_validation_check_for_stacks_transactions() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let db = testing::storage::new_test_database().await;
@@ -348,7 +345,6 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn new_state_machine_per_valid_sighash() {
     let db = testing::storage::new_test_database().await;
@@ -478,7 +474,6 @@ async fn new_state_machine_per_valid_sighash() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     let db = testing::storage::new_test_database().await;

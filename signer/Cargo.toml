@@ -6,7 +6,6 @@ edition = "2021"
 
 [features]
 default = ["testing"]
-integration-tests = ["testing"]
 testing = ["fake", "mockall", "sbtc/testing"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,15 +14,15 @@ testing = ["fake", "mockall", "sbtc/testing"]
 aquamarine.workspace = true
 axum.workspace = true
 backoff.workspace = true
-bitcoin = { workspace = true, features = ["rand-std"] }
+bitcoin.workspace = true
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
-bitvec = { workspace = true, default-features = false, features = ["std"] }
+bitvec.workspace = true
 blocklist-api = { path = "../.generated-sources/blocklist-api" }
 emily-client.workspace = true
 clap.workspace = true
 clarity.workspace = true
-config = "0.14"
+config.workspace = true
 futures.workspace = true
 hashbrown.workspace = true
 libp2p.workspace = true
@@ -46,7 +45,7 @@ strum.workspace = true
 thiserror.workspace = true
 time.workspace = true
 tonic.workspace = true
-tokio = { workspace = true, features = ["signal", "macros", "rt-multi-thread"] }
+tokio.workspace = true
 tokio-stream.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
@@ -58,14 +57,14 @@ hex.workspace = true
 cfg-if = "1.0"
 include_dir = "0.7.4"
 polynomial = "0.2.6"
-bitcoincore-zmq = { version = "1.5.2", features = ["async"] }
+bitcoincore-zmq.workspace = true
 
 # Only used to setup logging for the signer's axum http server
 tower-http = { version = "0.6.2", features = ["trace", "request-id"] }
 
 # Only for testing
 mockall = { version = "0.12.1", optional = true }
-fake = { version = "2.9.2", features = ["derive", "time"], optional = true }
+fake = { workspace = true, optional = true }
 
 [dependencies.secp256k1]
 version = "*"

@@ -131,7 +131,6 @@ struct RbfContext {
 ///    fees paid for the last successfully submitted transaction to
 ///    construct and submit an RBF transaction.
 /// 4. Check that the withdrawal recipients have the expected balance.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_matrix(
     [5, 0, 9],
     [5, 0, 9],

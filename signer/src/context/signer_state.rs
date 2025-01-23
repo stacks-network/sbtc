@@ -178,6 +178,7 @@ impl SbtcLimits {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
 
+    /// TODO: Document this
     #[cfg(test)]
     /// Create a new Self with only the given deposit minimum and maximums
     /// set.

@@ -421,7 +421,6 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
     })
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn process_complete_deposit() {
     let db = testing::storage::new_test_database().await;
@@ -786,7 +785,6 @@ async fn deploy_smart_contracts_coordinator<F>(
 ///
 /// This tests that we prefer rotate keys transactions if it's available
 /// but will use the DKG shares behavior is indeed the case.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     let db = testing::storage::new_test_database().await;
@@ -915,7 +913,6 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 /// Some of the preconditions for this test to run successfully includes
 /// having bootstrap public keys that align with the [`Keypair`] returned
 /// from the [`testing::wallet::regtest_bootstrap_wallet`] function.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn run_dkg_from_scratch() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -1133,7 +1130,6 @@ async fn run_dkg_from_scratch() {
 /// This test is very similar to the `run_dkg_from_scratch` test, but it
 /// simulates that DKG has been run once before and uses a signer configuration
 /// that allows for multiple DKG rounds.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn run_subsequent_dkg() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -1398,7 +1394,6 @@ async fn run_subsequent_dkg() {
 /// ```
 ///
 /// then, once everything is up and running, run the test.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sign_bitcoin_transaction() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
@@ -1827,7 +1822,6 @@ async fn sign_bitcoin_transaction() {
 /// ```
 ///
 /// then, once everything is up and running, run the test.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
@@ -2443,7 +2437,6 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
 
 /// Check that we do not try to deploy the smart contracts or rotate keys
 /// if we think things are up-to-date.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
@@ -2759,7 +2752,6 @@ async fn wait_for_signers(signers: &[(IntegrationTestContext, PgStore, &Keypair,
 /// This test asserts that the `get_btc_state` function returns the correct
 /// `SignerBtcState` when there are no sweep transactions available, i.e.
 /// the `last_fees` field should be `None`.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
@@ -2894,7 +2886,6 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
 /// This test asserts that the `get_btc_state` function returns the correct
 /// `SignerBtcState` when there are multiple outstanding sweep transaction
 /// packages available, simulating the case where there has been an RBF.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(46);
@@ -3169,7 +3160,6 @@ fn create_test_setup(
 /// If the default limits are permissive (ie, default all `None`), they will
 /// happily mint anything. If the limits are conservative, they will refuse to
 /// mint (eg, `would exceed sBTC supply cap`).
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_conservative_initial_sbtc_limits() {
     let (rpc, faucet) = regtest::initialize_blockchain();
