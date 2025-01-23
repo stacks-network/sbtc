@@ -3417,6 +3417,7 @@ async fn test_conservative_initial_sbtc_limits() {
             context_window: 10000,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
+            deposit_decisions_retry_window: 1,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
