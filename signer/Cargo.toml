@@ -53,7 +53,7 @@ tracing-attributes.workspace = true
 tracing-subscriber = { workspace = true }
 url.workspace = true
 # wsts.workspace = true
-wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "b7c009e4903bcf03351847a9341c25a26d36c042" }
+wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "53ae23f5f35def420877ccc8c0fe3662e64e38a1" }
 hex.workspace = true
 cfg-if = "1.0"
 include_dir = "0.7.4"
