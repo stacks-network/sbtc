@@ -226,7 +226,7 @@ pub struct SignerConfig {
     pub bootstrap_signatures_required: u16,
     /// The number of seconds the coordinator will wait
     /// before processing a new Bitcoin block
-    /// (allowing it to propagate the request decisions the others signers)
+    /// (allowing the request decisions to propagate to the others signers)
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub bitcoin_processing_delay: std::time::Duration,
     /// The number of seconds the request decider will wait
