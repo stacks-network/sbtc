@@ -1423,43 +1423,28 @@ async fn fetching_deposit_signer_decisions() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
     test_data.write_to(&pg_store).await;
 
-    let chain_tip = test_data
-        .bitcoin_blocks
-        .iter()
-        .max_by_key(|x| (x.block_height, x.block_hash))
+    let chain_tip = pg_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
         .unwrap();
-
-    for signer_pub_key in signer_set.iter() {
-        for deposit in test_data.deposit_requests.iter() {
-            let decision = model::DepositSigner {
-                txid: deposit.txid,
-                output_index: deposit.output_index,
-                signer_pub_key: *signer_pub_key,
-                can_accept: true,
-                can_sign: true,
-            };
-            pg_store
-                .write_deposit_signer_decision(&decision)
-                .await
-                .unwrap();
-        }
-    }
 
     let signer_pub_key = signer_set.first().unwrap();
 
     let deposit_decisions = pg_store
-        .get_deposit_signer_decisions(&chain_tip.block_hash, 3, signer_pub_key)
+        .get_deposit_signer_decisions(&chain_tip, 3, signer_pub_key)
         .await
         .unwrap();
 
     assert_eq!(deposit_decisions.len(), 3);
-    for deposit in test_data.deposit_requests[3..].iter() {
-        assert!(deposit_decisions
-            .iter()
-            .find(|decision| {
-                decision.txid == deposit.txid && decision.output_index == deposit.output_index
-            })
-            .is_some());
+    // Test data contains 5 deposit requests, we should get decisions for
+    // the last 3.
+    for deposit in test_data.deposit_requests[2..].iter() {
+        assert!(deposit_decisions.iter().any(|decision| {
+            decision.txid == deposit.txid
+                && decision.output_index == deposit.output_index
+                && decision.signer_pub_key == *signer_pub_key
+        }));
     }
 
     signer::testing::storage::drop_db(pg_store).await;
