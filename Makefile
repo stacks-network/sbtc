@@ -133,7 +133,7 @@ devenv-sbtc-up:
 devenv-sbtc-down:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer down
 
-.PHONY devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down
+.PHONY: devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down
 
 # ##############################################################################
 # EMILY
