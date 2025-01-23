@@ -583,7 +583,7 @@ mod tests {
             .current_signer_set()
             .add_signer(PublicKey::from_private_key(&key1));
 
-        // Create the context for signer2.
+        // Create the context for signer3.
         let context3 = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
