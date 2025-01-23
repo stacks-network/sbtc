@@ -662,7 +662,9 @@ mod tests {
         trusted_msg_from_2_to_1
             .await
             .expect("Failed to receive message from trusted 2 to trusted 1");
-        msg_from_2_to_adversarial.await.expect_err("Adversarial should not receive messages");
+        msg_from_2_to_adversarial
+            .await
+            .expect_err("Adversarial should not receive messages");
 
         // Test that trusted 1 can send a message to trusted 2.
         let trusted_msg_from_1_to_2 = tokio::time::timeout(Duration::from_secs(1), async {
@@ -678,7 +680,9 @@ mod tests {
         trusted_msg_from_1_to_2
             .await
             .expect("Failed to receive message from trusted 1 to trusted 2");
-        msg_from_1_to_adversarial.await.expect_err("Adversarial should not receive messages");
+        msg_from_1_to_adversarial
+            .await
+            .expect_err("Adversarial should not receive messages");
 
         // Test that adversarial can't send a message to trusted 1.
         let adversarial_msg_to_1 = tokio::time::timeout(Duration::from_secs(1), async {
