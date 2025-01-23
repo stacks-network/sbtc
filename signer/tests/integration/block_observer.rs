@@ -28,7 +28,6 @@ use signer::context::SbtcLimits;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
 use signer::keys::SignerScriptPubKey as _;
-use signer::logging::setup_logging;
 use signer::stacks::api::TenureBlocks;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
@@ -83,6 +82,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     // We're going to create two confirmed deposits. This also generates
     // sweep transactions, but this information is not in our database, so
@@ -104,7 +104,7 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
         client
             .expect_get_limits()
             .times(1..)
-            .returning(|| Box::pin(async { Ok(SbtcLimits::default()) }));
+            .returning(|| Box::pin(async { Ok(SbtcLimits::unlimited()) }));
     })
     .await;
 
@@ -246,8 +246,6 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
 #[ignore = "This is an integration test that requires devenv running"]
 #[tokio::test]
 async fn link_blocks() {
-    setup_logging("info", true);
-
     let db = testing::storage::new_test_database().await;
 
     let stacks_client = StacksClient::new(Url::parse("http://localhost:20443").unwrap()).unwrap();
@@ -379,7 +377,6 @@ async fn fetch_input(db: &PgStore, output_type: TxPrevoutType) -> Vec<TxPrevout>
 async fn block_observer_stores_donation_and_sbtc_utxos() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    // signer::logging::setup_logging("info,signer=debug", false);
 
     // We need to populate our databases, so let's fetch the data.
     let emily_client =
@@ -578,7 +575,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
 
@@ -659,9 +656,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 }
 
 #[cfg_attr(not(feature = "integration-tests"), ignore)]
-#[test_case::test_case(false, SbtcLimits::default(); "no contracts, default limits")]
+#[test_case::test_case(false, SbtcLimits::unlimited(); "no contracts, default limits")]
 #[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "no contracts, total cap limit")]
-#[test_case::test_case(true, SbtcLimits::default(); "deployed contracts, default limits")]
+#[test_case::test_case(true, SbtcLimits::unlimited(); "deployed contracts, default limits")]
 #[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "deployed contracts, total cap limit")]
 #[tokio::test]
 async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcLimits) {

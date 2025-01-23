@@ -6,13 +6,16 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   buf:
     name: Run protobuf lints
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: bufbuild/buf-action@v1
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - uses: bufbuild/buf-action@3fb70352251376e958c4c2c92c3818de82a71c2b #v1.0.2
         with:
           version: 1.42.0
           setup_only: true

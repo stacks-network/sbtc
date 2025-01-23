@@ -1,6 +1,6 @@
 FROM rust:1.81.0-slim-bookworm AS build
 
-ARG CARGO_BUILD_ARGS="--release"
+ARG CARGO_BUILD_ARGS="--release --locked"
 
 # Install dependencies.
 RUN apt-get update

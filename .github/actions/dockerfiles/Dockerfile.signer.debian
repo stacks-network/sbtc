@@ -3,7 +3,7 @@ FROM rust:1.81.0-slim-bookworm AS build
 ARG GIT_COMMIT
 RUN test -n "$GIT_COMMIT" || (echo "GIT_COMMIT not set" && false)
 
-ARG CARGO_BUILD_ARGS="--release"
+ARG CARGO_BUILD_ARGS="--release --locked"
 
 # Install dependencies.
 RUN apt-get update
