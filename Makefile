@@ -116,22 +116,24 @@ integration-env-down-ci:
 # ##############################################################################
 
 devenv-no-sbtc-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool up
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool up -d
 
 devenv-no-sbtc-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool down
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool down -t 0 -v
 
 devenv-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up --detach
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
 
 devenv-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0 -v
 
 devenv-sbtc-up:
-	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build
+	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build -d
 
 devenv-sbtc-down:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer down
+
+.PHONY devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down
 
 # ##############################################################################
 # EMILY
