@@ -292,7 +292,7 @@ mod tests {
 
         // The swarms are discovering themselves via mDNS, so we need to give
         // them a bit of time to connect.
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_secs(3)).await;
 
         // Let's generate some messages for signer 3 to try to send to signer 1.
         let number_of_messages = 10;
