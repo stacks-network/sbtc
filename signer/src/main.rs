@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -10,6 +10,7 @@ use axum::http::Response;
 use cfg_if::cfg_if;
 use clap::Parser;
 use clap::ValueEnum;
+use lru::LruCache;
 use signer::api;
 use signer::api::ApiState;
 use signer::bitcoin::rpc::BitcoinCoreClient;
@@ -315,6 +316,12 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
     let config = ctx.config().clone();
     let network = P2PNetwork::new(&ctx);
 
+    // The _ as usize cast is fine, since we know that
+    // MAX_SIGNER_STATE_MACHINES is less than u32::MAX, and we only support
+    // running this binary on 32 or 64-bit CPUs.
+    let max_state_machines = NonZeroUsize::new(signer::MAX_SIGNER_STATE_MACHINES as usize)
+        .ok_or(Error::TypeConversion)?;
+
     let signer = transaction_signer::TxSignerEventLoop {
         network,
         context: ctx.clone(),
@@ -322,7 +329,7 @@ async fn run_transaction_signer(ctx: impl Context) -> Result<(), Error> {
         threshold: config.signer.bootstrap_signatures_required.into(),
         rng: rand::thread_rng(),
         signer_private_key: config.signer.private_key,
-        wsts_state_machines: HashMap::new(),
+        wsts_state_machines: LruCache::new(max_state_machines),
         dkg_begin_pause: config.signer.dkg_begin_pause.map(Duration::from_secs),
     };
 

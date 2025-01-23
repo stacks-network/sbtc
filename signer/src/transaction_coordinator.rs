@@ -303,25 +303,24 @@ where
             return Ok(());
         }
 
-        tracing::debug!("we are the coordinator, we may need to coordinate DKG");
+        tracing::debug!("we are the coordinator");
         metrics::counter!(Metrics::CoordinatorTenuresTotal).increment(1);
-        // If Self::get_signer_set_and_aggregate_key did not return an
-        // aggregate key, then we know that we have not run DKG yet. Since
-        // we are the coordinator, we should coordinate DKG.
-        let aggregate_key = match maybe_aggregate_key {
-            Some(key) => key,
-            // This function returns the new DKG aggregate key.
-            None => {
-                let dkg_result = self.coordinate_dkg(&bitcoin_chain_tip).await?;
-                // TODO: in `run_dkg_from_scratch` test, `dkg_result` differs from
-                // value fetched from the db. Adding a temporary fix for the (probably)
-                // race condition, but we should address this properly.
-                self.get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
-                    .await
-                    .ok()
-                    .and_then(|res| res.0)
-                    .unwrap_or(dkg_result)
-            }
+
+        tracing::debug!("determining if we need to coordinate DKG");
+        let should_coordinate_dkg =
+            should_coordinate_dkg(&self.context, &bitcoin_chain_tip).await?;
+        let aggregate_key = if should_coordinate_dkg {
+            let dkg_result = self.coordinate_dkg(&bitcoin_chain_tip).await?;
+            // TODO: in `run_dkg_from_scratch` test, `dkg_result` differs from
+            // value fetched from the db. Adding a temporary fix for the (probably)
+            // race condition, but we should address this properly.
+            self.get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
+                .await
+                .ok()
+                .and_then(|res| res.0)
+                .unwrap_or(dkg_result)
+        } else {
+            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip))?
         };
 
         self.deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
@@ -411,6 +410,13 @@ where
         signer_btc_state: &utxo::SignerBtcState,
         transaction_package: &[utxo::UnsignedTransaction<'_>],
     ) -> Result<(), Error> {
+        // Constructing a pre-sign request with empty request IDs is
+        // invalid. The other signers should reject the message if we send
+        // one, so let's not create it.
+        if transaction_package.is_empty() {
+            tracing::debug!("no requests to handle this tenure, exiting");
+            return Ok(());
+        }
         // Create the BitcoinPreSignRequest from the transaction package
         let sbtc_requests = BitcoinPreSignRequest {
             request_package: transaction_package
@@ -907,15 +913,15 @@ where
         signer_public_keys: &BTreeSet<PublicKey>,
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
+        let sighashes = transaction.construct_digests()?;
         let mut coordinator_state_machine = CoordinatorStateMachine::load(
             &mut self.context.get_storage_mut(),
-            transaction.signer_utxo.public_key,
+            sighashes.signers_aggregate_key,
             signer_public_keys.clone(),
             self.threshold,
             self.private_key,
         )
         .await?;
-        let sighashes = transaction.construct_digests()?;
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
         let txid = transaction.tx.compute_txid();
@@ -1748,17 +1754,77 @@ pub fn coordinator_public_key(
         .copied()
 }
 
+/// Determine, according to the current state of the signer and configuration,
+/// whether or not a new DKG round should be coordinated.
+pub async fn should_coordinate_dkg(
+    context: &impl Context,
+    bitcoin_chain_tip: &model::BitcoinBlockHash,
+) -> Result<bool, Error> {
+    let storage = context.get_storage();
+    let config = context.config();
+
+    // Get the bitcoin block at the chain tip so that we know the height
+    let bitcoin_chain_tip_block = storage
+        .get_bitcoin_block(bitcoin_chain_tip)
+        .await?
+        .ok_or(Error::NoChainTip)?;
+
+    // Get the number of DKG shares that have been stored
+    let dkg_shares_entry_count = storage.get_encrypted_dkg_shares_count().await?;
+
+    // Get DKG configuration parameters
+    let dkg_min_bitcoin_block_height = config.signer.dkg_min_bitcoin_block_height;
+    let dkg_target_rounds = config.signer.dkg_target_rounds;
+
+    // Determine the action based on the DKG shares count and the rerun height (if configured)
+    match (
+        dkg_shares_entry_count,
+        dkg_target_rounds,
+        dkg_min_bitcoin_block_height,
+    ) {
+        (0, _, _) => {
+            tracing::info!(
+                ?dkg_min_bitcoin_block_height,
+                %dkg_target_rounds,
+                "no DKG shares exist; proceeding with DKG"
+            );
+            Ok(true)
+        }
+        (current, target, Some(dkg_min_height))
+            if current < target.get()
+                && bitcoin_chain_tip_block.block_height >= dkg_min_height.get() =>
+        {
+            tracing::info!(
+                ?dkg_min_bitcoin_block_height,
+                %dkg_target_rounds,
+                dkg_current_rounds = %dkg_shares_entry_count,
+                "DKG rerun height has been met and we are below the target number of rounds; proceeding with DKG"
+            );
+            Ok(true)
+        }
+        _ => Ok(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::num::{NonZeroU32, NonZeroU64};
+
     use crate::bitcoin::MockBitcoinInteract;
+    use crate::context::Context;
     use crate::emily_client::MockEmilyInteract;
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
+    use crate::storage::{model, DbWrite};
     use crate::testing;
     use crate::testing::context::*;
     use crate::testing::transaction_coordinator::TestEnvironment;
 
+    use fake::{Fake, Faker};
+    use test_case::test_case;
     use test_log::test;
+
+    use super::should_coordinate_dkg;
 
     fn test_environment() -> TestEnvironment<
         TestContext<
@@ -1858,5 +1924,62 @@ mod tests {
     #[tokio::test]
     async fn should_ignore_withdrawals() {
         test_environment().assert_ignore_withdrawals().await;
+    }
+
+    #[test_case(0, None, 1, 100, true; "first DKG allowed without min height")]
+    #[test_case(0, Some(100), 1, 5, true; "first DKG allowed regardless of min height")]
+    #[test_case(1, None, 2, 100, false; "subsequent DKG not allowed without min height")]
+    #[test_case(1, Some(101), 1, 100, false; "subsequent DKG not allowed with current height lower than min height")]
+    #[test_case(1, Some(100), 1, 100, false; "subsequent DKG not allowed when target rounds reached")]
+    #[test_case(1, Some(100), 2, 100, true; "subsequent DKG allowed when target rounds not reached and min height met")]
+    #[test_log::test(tokio::test)]
+    async fn test_should_coordinate_dkg(
+        dkg_rounds_current: u32,
+        dkg_min_bitcoin_block_height: Option<u64>,
+        dkg_target_rounds: u32,
+        chain_tip_height: u64,
+        should_allow: bool,
+    ) {
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .modify_settings(|s| {
+                s.signer.dkg_min_bitcoin_block_height =
+                    dkg_min_bitcoin_block_height.and_then(NonZeroU64::new);
+                s.signer.dkg_target_rounds = NonZeroU32::new(dkg_target_rounds).unwrap();
+            })
+            .build();
+
+        let storage = context.get_storage_mut();
+
+        // Write `dkg_shares` entries for the `current` number of rounds, simulating
+        // the signer having participated in that many successful DKG rounds.
+        for _ in 0..dkg_rounds_current {
+            storage
+                .write_encrypted_dkg_shares(&Faker.fake())
+                .await
+                .unwrap();
+        }
+
+        // Dummy chain tip hash which will be used to fetch the block height
+        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+
+        // Write a bitcoin block at the given height, simulating the chain tip.
+        storage
+            .write_bitcoin_block(&model::BitcoinBlock {
+                block_height: chain_tip_height,
+                parent_hash: Faker.fake(),
+                block_hash: bitcoin_chain_tip,
+            })
+            .await
+            .unwrap();
+
+        // Test the case
+        let result = should_coordinate_dkg(&context, &bitcoin_chain_tip)
+            .await
+            .expect("failed to check if DKG should be coordinated");
+
+        // Assert the result
+        assert_eq!(result, should_allow);
     }
 }

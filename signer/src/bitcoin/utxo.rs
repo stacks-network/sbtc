@@ -749,6 +749,9 @@ pub struct SignatureHashes<'a> {
     pub signer_outpoint: OutPoint,
     /// The sighash of the signers' input UTXO for the transaction.
     pub signers: TapSighash,
+    /// The aggregate key associated with the signers' UTXO that is being
+    /// spent in the transaction.
+    pub signers_aggregate_key: XOnlyPublicKey,
     /// Each deposit request is associated with a UTXO input for the peg-in
     /// transaction. This field contains digests/signature hashes that need
     /// Schnorr signatures and the associated deposit request for each hash.
@@ -766,6 +769,9 @@ pub struct SignatureHash {
     pub sighash: TapSighash,
     /// The type of prevout that we are referring to.
     pub prevout_type: TxPrevoutType,
+    /// The aggregate key that is locking the output associated with this
+    /// signature hash.
+    pub aggregate_key: XOnlyPublicKey,
 }
 
 impl SignatureHashes<'_> {
@@ -779,6 +785,7 @@ impl SignatureHashes<'_> {
                 outpoint: deposit.outpoint,
                 sighash,
                 prevout_type: TxPrevoutType::Deposit,
+                aggregate_key: deposit.signers_public_key,
             })
             .collect()
     }
@@ -790,6 +797,7 @@ impl SignatureHashes<'_> {
             outpoint: self.signer_outpoint,
             sighash: self.signers,
             prevout_type: TxPrevoutType::SignersInput,
+            aggregate_key: self.signers_aggregate_key,
         }
     }
 }
@@ -911,6 +919,7 @@ impl<'a> UnsignedTransaction<'a> {
         Ok(SignatureHashes {
             txid: self.tx.compute_txid(),
             signer_outpoint: self.signer_utxo.utxo.outpoint,
+            signers_aggregate_key: self.signer_utxo.utxo.public_key,
             signers: signer_sighash,
             deposits: deposit_sighashes,
         })
@@ -1663,7 +1672,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 2,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let keypair = Keypair::new_global(&mut OsRng);
@@ -1693,6 +1702,20 @@ mod tests {
         testing::set_witness_data(&mut unsigned, keypair);
 
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
+    }
+
+    #[ignore = "this is for generating the MIN_BITCOIN_INPUT_VSIZE constant"]
+    #[test]
+    fn create_taproot_utxo_min_size() {
+        // This generates a UTXO with the same vsize as the signers input
+        // or donation. This is smaller than the min deposit vsize.
+        let utxo = TxIn {
+            previous_output: OutPoint::null(),
+            sequence: Sequence::ZERO,
+            witness: Witness::p2tr_key_spend(&DUMMY_SIGNATURE),
+            script_sig: ScriptBuf::new(),
+        };
+        println!("Min input vsize: {}", utxo.segwit_weight().to_vbytes_ceil());
     }
 
     #[test_case(&[true, true, false, true, false, false, false], 3; "case 1")]
@@ -1763,7 +1786,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -1853,7 +1876,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -1962,7 +1985,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2048,7 +2071,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2093,7 +2116,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2144,7 +2167,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2192,7 +2215,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2252,7 +2275,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2352,7 +2375,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2418,7 +2441,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2498,7 +2521,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2535,7 +2558,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2593,7 +2616,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2896,7 +2919,7 @@ mod tests {
             },
             num_signers: 11,
             accept_threshold: 6,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2943,7 +2966,7 @@ mod tests {
             },
             accept_threshold: 127,
             num_signers: 128,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2999,7 +3022,7 @@ mod tests {
             },
             accept_threshold: 10,
             num_signers: 14,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
