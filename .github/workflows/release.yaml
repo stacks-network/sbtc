@@ -54,11 +54,10 @@ jobs:
               body: 
                 `
                 ${context.payload.release.body}
-                \n\n
+                
                 **Release Docker Image:** [https://${link}](https://${link})
-                \n\n
-                You can verify the attestation using this [guide]
-                (https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
+                
+                You can verify the attestation using this [guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
                 `
             });
         env:
