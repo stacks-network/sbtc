@@ -28,8 +28,6 @@ jobs:
         with:
           make-default: true
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
-        with:
-          submodules: "recursive"
       - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
@@ -73,8 +71,6 @@ jobs:
         with:
           make-default: true
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
-        with:
-          submodules: "recursive"
       - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
         with:
           cache-key: "rust-tests"
@@ -101,8 +97,6 @@ jobs:
     needs: build-tests
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
-        with:
-          submodules: "recursive"
       - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
@@ -140,8 +134,6 @@ jobs:
         partition: [1, 2]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
-        with:
-          submodules: "recursive"
       - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
         with:
           cache-key: "rust-tests"
