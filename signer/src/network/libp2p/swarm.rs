@@ -309,7 +309,7 @@ impl SignerSwarm {
             .await
             .listeners()
             .cloned()
-            .collect::<Vec<_>>()
+            .collect()
     }
 
     /// Dials the given address.
