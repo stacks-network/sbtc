@@ -42,7 +42,7 @@ jobs:
             const releaseId = ${github.event.inputs.release_id};
             const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
 
-            await octokit.rest.repos.updateRelease({
+            await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: releaseId,
