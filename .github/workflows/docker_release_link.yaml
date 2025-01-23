@@ -20,6 +20,7 @@ permissions:
 jobs:
   update-release:
     name: Update Release Page
+    permissions: write-all
     runs-on: ubuntu-latest
 
     steps:

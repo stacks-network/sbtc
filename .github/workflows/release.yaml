@@ -12,6 +12,7 @@ permissions:
 jobs:
   trigger-delayed:
     name: Trigger Delayed Workflow
+    permissions: write-all
     runs-on: ubuntu-latest
 
     steps:
