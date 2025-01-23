@@ -645,12 +645,8 @@ mod tests {
             swarm3.start(&context3).await.unwrap();
         });
 
-        // The swarms are discovering themselves via mDNS, so we need to give
-        // them a bit of time to connect. 2 seconds seems to be enough to
-        // allow the swarms to consistently connect; 1 second is too little.
-        // TODO: This is a bit of a hack, we should probably keep a count
-        // of connected peers and wait until we have the expected number.
-        tokio::time::sleep(Duration::from_secs(2)).await;
+        // Give the swarms a bit of time to connect.
+        tokio::time::sleep(Duration::from_millis(100)).await;
 
         // Test that trusted 2 can send a message to trusted 1.
         let trusted_msg_from_2_to_1 = tokio::time::timeout(Duration::from_secs(1), async {
