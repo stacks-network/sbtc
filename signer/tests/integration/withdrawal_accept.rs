@@ -82,7 +82,6 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
 /// returns okay when everything matches the way that it is supposed to.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_happy_path() {
     // Normal: this generates the blockchain as well as a transaction
@@ -132,7 +131,6 @@ async fn accept_withdrawal_validation_happy_path() {
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
 /// returns a withdrawal validation error with a DeployerMismatch message
 /// when the deployer doesn't match but everything else is okay.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_deployer_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
@@ -190,7 +188,6 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
 /// returns a withdrawal validation error with a RequestMissing message
 /// when the signer does not have a record of the withdrawal request
 /// doesn't match but everything else is okay.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // Normal: this generates the blockchain as well as a transaction
@@ -249,7 +246,6 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
 /// returns a withdrawal validation error with a RecipientMismatch message
 /// when the recipient in the complete-withdrawal transaction does not
 /// match the recipient in our records.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_recipient_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
@@ -308,7 +304,6 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
 /// returns a withdrawal validation error with a InvalidAmount message
 /// when the amount of sBTC to mint exceeds the amount in the signer's
 /// withdrawal request record.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_invalid_amount() {
     // Normal: this generates the blockchain as well as a transaction
@@ -365,7 +360,6 @@ async fn accept_withdrawal_validation_invalid_amount() {
 /// returns a withdrawal validation error with a InvalidFee message when
 /// the amount of sBTC to mint is less than the `amount - max-fee` from in
 /// the signer's withdrawal request record.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_invalid_fee() {
     // Normal: this generates the blockchain as well as a transaction
@@ -424,7 +418,6 @@ async fn accept_withdrawal_validation_invalid_fee() {
 /// returns a withdrawal validation error with a SweepTransactionMissing
 /// message when the signer does not have a record of the sweep
 /// transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_sweep_tx_missing() {
     // Normal: this generates the blockchain as well as a transaction
@@ -485,7 +478,6 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
 /// returns a withdrawal validation error with a SweepTransactionReorged
 /// message when the sweep transaction is in our records but is not on what
 /// the signer thinks is the canonical bitcoin blockchain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_sweep_reorged() {
     // Normal: this generates the blockchain as well as a transaction
@@ -555,7 +547,6 @@ async fn accept_withdrawal_validation_sweep_reorged() {
 /// message when the sweep transaction is in our records, is on what the
 /// signer thinks is the canonical bitcoin blockchain, but it does not have
 /// an input that that matches the withdrawal request outpoint.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // Normal: this generates the blockchain as well as a transaction
@@ -616,7 +607,6 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
 /// returns a withdrawal validation error with a BitmapMismatch message
 /// when bitmap in the transaction does not match what our records would
 /// create for the bitmap.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_bitmap_mismatch() {
     // Normal: this generates the blockchain as well as a transaction
@@ -676,7 +666,6 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
 /// the sweep transaction is in our records, is on what the signer thinks
 /// is the canonical bitcoin blockchain, but the supplied transaction
 /// object does not have what we think should be the correct fee.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // Normal: this generates the blockchain as well as a transaction
@@ -734,7 +723,6 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
 /// returns a withdrawal validation error with a InvalidSweep message when
 /// the sweep transaction does not have a prevout with a scriptPubKey that
 /// the signers control.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     // Normal: this generates the blockchain as well as a transaction

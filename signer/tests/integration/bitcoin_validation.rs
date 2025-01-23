@@ -87,7 +87,6 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_tx_per_request_set() {
     let db = testing::storage::new_test_database().await;
@@ -181,7 +180,6 @@ async fn one_tx_per_request_set() {
 /// Test that including a single invalid transaction in a set of requests
 /// results in the entire bitcoin transaction being invalid, and that will
 /// sign for the associated sighashes are all false.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_invalid_deposit_invalidates_tx() {
     let low_fee = 10;
@@ -299,7 +297,6 @@ async fn one_invalid_deposit_invalidates_tx() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_withdrawal_errors_validation() {
     let db = testing::storage::new_test_database().await;
@@ -369,7 +366,6 @@ async fn one_withdrawal_errors_validation() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn cannot_sign_deposit_is_ok() {
     let db = testing::storage::new_test_database().await;
@@ -535,7 +531,6 @@ async fn cannot_sign_deposit_is_ok() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sighashes_match_from_sbtc_requests_object() {
     let db = testing::storage::new_test_database().await;
@@ -668,7 +663,6 @@ async fn sighashes_match_from_sbtc_requests_object() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn outcome_is_independent_of_input_order() {
     let db = testing::storage::new_test_database().await;
