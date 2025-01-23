@@ -14,7 +14,6 @@ use signer::network::P2PNetwork;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn swarm_rejects_connections_from_unknown_peers() {
     // In this test we create three swarms (simulating three signers). We

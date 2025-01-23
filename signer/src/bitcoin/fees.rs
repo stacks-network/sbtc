@@ -80,15 +80,16 @@ struct BitcoinerLiveResponse {
 /// 360 minutes.
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
-struct BitcoinerLiveEstimates {
+pub struct BitcoinerLiveEstimates {
     #[serde(alias = "30")]
     thirty: BitcoinerLiveFeeEstimate,
     #[serde(alias = "60")]
     sixty: BitcoinerLiveFeeEstimate,
 }
 
+/// A single fee estimate from bitcoiner.live
 #[derive(Debug, Deserialize)]
-struct BitcoinerLiveFeeEstimate {
+pub struct BitcoinerLiveFeeEstimate {
     /// estimated fee rate in satoshis per virtual-byte
     sat_per_vbyte: f64,
 }
@@ -99,15 +100,23 @@ struct BitcoinerLiveFeeEstimate {
 /// while the specific docs for getting recommended fees can be found at
 /// https://mempool.space/docs/api/rest#get-recommended-fees
 #[derive(Debug, Clone)]
-struct MempoolSpace {
+pub struct MempoolSpace {
     base_url: String,
     client: reqwest::Client,
 }
 
+impl MempoolSpace {
+    /// Create a new MempoolSpace instance
+    pub fn new(base_url: String, client: reqwest::Client) -> Self {
+        Self { base_url, client }
+    }
+}
+
+/// The response from mempool.space when requesting fee estimates
 #[allow(dead_code)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct MempoolSpaceResponse {
+pub struct MempoolSpaceResponse {
     fastest_fee: u64,
     half_hour_fee: u64,
     hour_fee: u64,
@@ -214,26 +223,6 @@ mod tests {
         let est = estimate_fee_rate_impl(&sources).await.unwrap();
 
         assert_eq!(est.sats_per_vbyte, 5.);
-    }
-
-    #[tokio::test]
-    #[cfg_attr(not(feature = "integration-tests"), ignore)]
-    async fn prod_estimate_fee_rate_works() {
-        let client = reqwest::Client::new();
-
-        let ans = estimate_fee_rate(&client).await.unwrap();
-        more_asserts::assert_gt!(ans.sats_per_vbyte, 0.0);
-
-        // It's not obvious from the docs that mempool.space returns a fee
-        // rate in sats per vbyte, so this is to help manually validate
-        // that.
-        let mempool = MempoolSpace {
-            base_url: "https://mempool.space".to_string(),
-            client: client.clone(),
-        };
-
-        let ans = mempool.estimate_fee_rate().await.unwrap();
-        more_asserts::assert_gt!(ans.sats_per_vbyte, 0.0);
     }
 
     #[tokio::test]
