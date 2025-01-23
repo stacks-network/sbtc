@@ -11,9 +11,8 @@ use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use test_case::test_case;
 
-#[ignore = "This test is flaky when run multiple times within a short time span (ports) and can be run manually"]
-#[test_case("/ip4/127.0.0.1/tcp/47818", "/ip4/127.0.0.1/tcp/47819"; "tcp")]
-#[test_case("/ip4/127.0.0.1/udp/47818/quic-v1", "/ip4/127.0.0.1/udp/47819/quic-v1"; "quic-v1")]
+#[test_case("/ip4/127.0.0.1/tcp/0", "/ip4/127.0.0.1/tcp/0"; "tcp")]
+#[test_case("/ip4/127.0.0.1/udp/0/quic-v1", "/ip4/127.0.0.1/udp/0/quic-v1"; "quic-v1")]
 #[tokio::test]
 async fn libp2p_clients_can_exchange_messages_given_real_network(addr1: &str, addr2: &str) {
     let swarm1_addr: Multiaddr = addr1.parse().expect("Failed to parse swarm1 address");
@@ -61,19 +60,17 @@ async fn libp2p_clients_can_exchange_messages_given_real_network(addr1: &str, ad
     let term1 = context1.get_termination_handle();
     let term2 = context2.get_termination_handle();
 
-    let mut swarm1 = SignerSwarmBuilder::new(&key1)
+    let swarm1 = SignerSwarmBuilder::new(&key1)
         .enable_mdns(false)
         .enable_quic_transport(true)
         .add_listen_endpoint(swarm1_addr.clone())
-        .add_seed_addr(swarm2_addr.clone())
         .build()
         .expect("Failed to build swarm 1");
 
-    let mut swarm2 = SignerSwarmBuilder::new(&key2)
+    let swarm2 = SignerSwarmBuilder::new(&key2)
         .enable_mdns(false)
         .enable_quic_transport(true)
         .add_listen_endpoint(swarm2_addr)
-        .add_seed_addr(swarm1_addr)
         .build()
         .expect("Failed to build swarm 2");
 
@@ -81,16 +78,29 @@ async fn libp2p_clients_can_exchange_messages_given_real_network(addr1: &str, ad
     let network2 = P2PNetwork::new(&context2);
 
     // Start the two swarms.
+    let mut swarm1_clone = swarm1.clone();
     let handle1 = tokio::spawn(async move {
-        swarm1.start(&context1).await.unwrap();
-    });
-    let handle2 = tokio::spawn(async move {
-        swarm2.start(&context2).await.unwrap();
+        swarm1_clone.start(&context1).await.unwrap();
     });
 
-    // The swarms are discovering themselves via mDNS, so we need to give
-    // them a bit of time to connect.
-    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+    let mut swarm2_clone = swarm2.clone();
+    let handle2 = tokio::spawn(async move {
+        swarm2_clone.start(&context2).await.unwrap();
+    });
+
+    // Wait for the swarms to start.
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+    let swarm1_addr = swarm1.listen_addrs().await.pop().unwrap();
+    let swarm2_addr = swarm2.listen_addrs().await.pop().unwrap();
+
+    dbg!(&swarm1_addr);
+    dbg!(&swarm2_addr);
+
+    swarm1.dial(swarm2_addr).await.unwrap();
+    swarm2.dial(swarm1_addr).await.unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
     // Run the test with a 30-second timeout for the swarms to exchange messages.
     if let Err(_) = tokio::time::timeout(

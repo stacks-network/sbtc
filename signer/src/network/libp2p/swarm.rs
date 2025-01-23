@@ -10,6 +10,7 @@ use libp2p::core::upgrade::Version;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::behaviour::toggle::Toggle;
+use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::NetworkBehaviour;
 use libp2p::{
     autonat, gossipsub, identify, kad, mdns, noise, ping, quic, tcp, yamux, Multiaddr, PeerId,
@@ -286,6 +287,7 @@ impl<'a> SignerSwarmBuilder<'a> {
     }
 }
 
+#[derive(Clone)]
 pub struct SignerSwarm {
     keypair: Keypair,
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
@@ -298,6 +300,25 @@ impl SignerSwarm {
     /// Get the local peer ID of the signer.
     pub fn local_peer_id(&self) -> PeerId {
         PeerId::from_public_key(&self.keypair.public())
+    }
+
+    /// Get the current listen addresses of the swarm.
+    pub async fn listen_addrs(&self) -> Vec<Multiaddr> {
+        self.swarm
+            .lock()
+            .await
+            .listeners()
+            .cloned()
+            .collect::<Vec<_>>()
+    }
+
+    /// Dials the given address.
+    pub async fn dial(&self, addr: Multiaddr) -> Result<(), SignerSwarmError> {
+        self.swarm
+            .lock()
+            .await
+            .dial(DialOpts::unknown_peer_id().address(addr).build())
+            .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))
     }
 
     /// Start the [`SignerSwarm`] and run the event loop. This function will block until the
