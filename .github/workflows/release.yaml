@@ -22,7 +22,7 @@ jobs:
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: 'delayed-update.yml',
+              workflow_id: 'docker_release_link.yml',
               ref: context.ref,
               inputs: {
                 release_id: context.payload.release.id,
