@@ -100,6 +100,7 @@ async fn one_tx_per_request_set() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [DepositAmounts {
@@ -195,6 +196,7 @@ async fn one_invalid_deposit_invalidates_tx() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -382,6 +384,7 @@ async fn cannot_sign_deposit_is_ok() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let amounts = [
         DepositAmounts {
@@ -515,7 +518,7 @@ async fn cannot_sign_deposit_is_ok() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
@@ -545,6 +548,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -647,7 +651,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
@@ -677,6 +681,7 @@ async fn outcome_is_independent_of_input_order() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [

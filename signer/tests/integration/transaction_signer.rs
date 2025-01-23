@@ -13,6 +13,7 @@ use signer::bitcoin::utxo::Requests;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::validation::TxRequestIds;
 use signer::context::Context;
+use signer::context::SbtcLimits;
 use signer::error::Error;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
@@ -236,6 +237,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 

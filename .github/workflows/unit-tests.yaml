@@ -6,31 +6,35 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   tests:
     name: Run Unit Tests
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
 
       - name: Set Node Version
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
         with:
           node-version: 22.1.0
           cache: "pnpm"
 
-      - uses: arduino/setup-protoc@v3
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b #v3.0
         with:
           version: "25.3"
 
       - name: Setup rust toolchain
         run: rustup show
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 #v2.7.7
 
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
         with:
           tool: nextest@0.9.82
 
@@ -54,7 +58,7 @@ jobs:
         run: make integration-env-down-ci
 
       - name: Upload integration test logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 #v4.6.0
         if: always()
         with:
           path: ./target/emily-server.log
