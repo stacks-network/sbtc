@@ -81,7 +81,7 @@ integration-test-build:
 	cargo test build $(CARGO_FLAGS) --test integration --no-run --locked
 
 integration-env-down:
-	docker compose --file docker/docker-compose.test.yml down -v
+	docker compose --file docker/docker-compose.test.yml down -t 0 -v
 
 integration-env-build:
 	docker compose --file docker/docker-compose.test.yml build
