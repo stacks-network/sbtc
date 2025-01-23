@@ -32,13 +32,13 @@ jobs:
           DOCKER_REPO="blockstack/sbtc"
           TAG=${{ github.event.inputs.release_tag }}
           DIGEST=$(curl -s https://hub.docker.com/v2/repositories/$DOCKER_REPO/tags/signer-$TAG | jq -r '.images[0].digest')
-          echo "latest_digest=hub.docker.com/layers/$DOCKER_REPO/$TAG/images/$DIGEST" >> $GITHUB_ENV
+          echo "link=hub.docker.com/layers/$DOCKER_REPO/$TAG/images/$DIGEST" >> $GITHUB_ENV
 
       - name: Update Release with Docker Image Link
-        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea #v7.0.1
+        uses: actions/github-script@e69ef5462fd455e02edcaf4dd7708eda96b9eda0 #v7.0.0
         with:
           script: |
-            const latestDigest = process.env.latest_digest;
+            const link = process.env.link;
             const releaseId = ${github.event.inputs.release_id};
             const octokit = github.getOctokit(process.env.GITHUB_TOKEN);
 
@@ -46,7 +46,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: releaseId,
-              body: `${github.event.inputs.release_body}\n\n**Release Docker Image:** [${latestDigest}](https://${latestDigest})`
+              body: `${github.event.inputs.release_body}\n\n**Release Docker Image:** [${https://link}](https://${link})`
             });
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
