@@ -304,12 +304,7 @@ impl SignerSwarm {
 
     /// Get the current listen addresses of the swarm.
     pub async fn listen_addrs(&self) -> Vec<Multiaddr> {
-        self.swarm
-            .lock()
-            .await
-            .listeners()
-            .cloned()
-            .collect()
+        self.swarm.lock().await.listeners().cloned().collect()
     }
 
     /// Dials the given address.
