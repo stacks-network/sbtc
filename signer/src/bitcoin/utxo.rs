@@ -599,7 +599,7 @@ impl<'a> RequestRef<'a> {
     }
 }
 
-impl<'a> Weighted for RequestRef<'a> {
+impl Weighted for RequestRef<'_> {
     fn needs_signature(&self) -> bool {
         match self {
             Self::Deposit(req) => req.needs_signature(),
@@ -774,7 +774,7 @@ pub struct SignatureHash {
     pub aggregate_key: XOnlyPublicKey,
 }
 
-impl<'a> SignatureHashes<'a> {
+impl SignatureHashes<'_> {
     /// Get deposit sighashes
     pub fn deposit_sighashes(mut self) -> Vec<SignatureHash> {
         self.deposits.sort_by_key(|(x, _)| x.outpoint);
@@ -1257,7 +1257,7 @@ impl BitcoinInputsOutputs for Transaction {
     }
 }
 
-impl<'a> BitcoinInputsOutputs for UnsignedTransaction<'a> {
+impl BitcoinInputsOutputs for UnsignedTransaction<'_> {
     fn tx_ref(&self) -> &Transaction {
         &self.tx
     }
