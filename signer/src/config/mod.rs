@@ -174,7 +174,6 @@ impl Validatable for P2PNetworkConfig {
                     match (&public_protocol, listen_protocol) {
                         (Protocol::Tcp(_), Protocol::Tcp(_)) => true, // Port-agnostic comparison for TCP
                         (Protocol::QuicV1, Protocol::QuicV1) => true,
-                        (Protocol::Memory(_), Protocol::Memory(_)) => true,
                         _ => false,
                     }
                 });
