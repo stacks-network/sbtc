@@ -171,7 +171,7 @@ impl Validatable for P2PNetworkConfig {
         for public_endpoint in &self.public_endpoints {
             if let Some(public_protocol) = public_endpoint.get_transport_protocol() {
                 let is_valid = listen_on_protocols.iter().any(|listen_protocol| {
-                    match (public_protocol.clone(), listen_protocol) {
+                    match (&public_protocol, listen_protocol) {
                         (Protocol::Tcp(_), Protocol::Tcp(_)) => true, // Port-agnostic comparison for TCP
                         (Protocol::QuicV1, Protocol::QuicV1) => true,
                         (Protocol::Memory(_), Protocol::Memory(_)) => true,
