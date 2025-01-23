@@ -20,13 +20,6 @@ jobs:
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea #v7.0.1
         with:
           script: |
-            await github.rest.repos.updateRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: context.payload.release.id,
-              body: `${context.payload.release.body}\n\n**Release Docker Image:** [https://https://hub.docker.com/layers/blockstack/sbtc/signer-0.0.9-rc5p/images/sha256:17aeb2c93aa62c640005cfd2575b81f93e6caa409762327a4a9e99adccbe5527](https://https://hub.docker.com/layers/blockstack/sbtc/signer-0.0.9-rc5p/images/sha256:17aeb2c93aa62c640005cfd2575b81f93e6caa409762327a4a9e99adccbe5527)`
-            });
-
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
