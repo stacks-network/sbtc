@@ -583,12 +583,6 @@ mod tests {
             .current_signer_set()
             .add_signer(PublicKey::from_private_key(&key1));
 
-        // Add key2 to the known signers for signer1.
-        context1
-            .state()
-            .current_signer_set()
-            .add_signer(PublicKey::from_private_key(&key2));
-
         // Create the context for signer2.
         let context3 = TestContext::builder()
             .with_in_memory_storage()
