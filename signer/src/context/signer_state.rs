@@ -14,7 +14,7 @@ use crate::keys::PublicKey;
 /// A struct for holding internal signer state. This struct is served by
 /// the [`SignerContext`] and can be used to cache global state instead of
 /// fetching it via I/O for frequently accessed information.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SignerState {
     current_signer_set: SignerSet,
     current_limits: RwLock<SbtcLimits>,
@@ -77,8 +77,20 @@ impl SignerState {
     }
 }
 
+impl Default for SignerState {
+    fn default() -> Self {
+        Self {
+            current_signer_set: Default::default(),
+            current_limits: RwLock::new(SbtcLimits::zero()),
+            sbtc_contracts_deployed: Default::default(),
+            sbtc_bitcoin_start_height: Default::default(),
+            is_sbtc_bitcoin_start_height_set: Default::default(),
+        }
+    }
+}
+
 /// Represents the current sBTC limits.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SbtcLimits {
     /// Represents the total cap for all pegged-in BTC/sBTC.
     total_cap: Option<Amount>,
@@ -118,6 +130,22 @@ impl SbtcLimits {
             per_withdrawal_cap,
             max_mintable_cap,
         }
+    }
+
+    /// Create a new `SbtcLimits` object without any limits
+    pub fn unlimited() -> Self {
+        Self::new(None, None, None, None, None)
+    }
+
+    /// Create a new `SbtcLimits` object with limits set to zero (fully constraining)
+    pub fn zero() -> Self {
+        Self::new(
+            Some(Amount::ZERO),
+            Some(Amount::MAX_MONEY),
+            Some(Amount::ZERO),
+            Some(Amount::ZERO),
+            Some(Amount::ZERO),
+        )
     }
 
     /// Get the total cap for all pegged-in BTC/sBTC.
