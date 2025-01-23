@@ -60,7 +60,7 @@ impl MultiaddrExt for Multiaddr {
         parts.find(|part| {
             matches!(
                 part,
-                Protocol::Tcp(_) | Protocol::QuicV1 | Protocol::Memory(_)
+                Protocol::Tcp(_) | Protocol::QuicV1 | Protocol::Quic | Protocol::Memory(_)
             )
         })
     }
