@@ -231,7 +231,7 @@ pub struct SignerConfig {
     pub bitcoin_processing_delay: std::time::Duration,
     /// The number of seconds the request decider will wait
     /// before processing the new sbtc requests
-    /// (allowing it to propagate the bitcoin block the others signers)
+    /// (allowing the bitcoin block to propagate to the others signers)
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub requests_processing_delay: std::time::Duration,
     /// How many bitcoin blocks back from the chain tip the signer will
