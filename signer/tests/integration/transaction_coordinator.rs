@@ -3160,7 +3160,6 @@ fn create_test_setup(
 /// If the default limits are permissive (ie, default all `None`), they will
 /// happily mint anything. If the limits are conservative, they will refuse to
 /// mint (eg, `would exceed sBTC supply cap`).
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_conservative_initial_sbtc_limits() {
     let (rpc, faucet) = regtest::initialize_blockchain();
