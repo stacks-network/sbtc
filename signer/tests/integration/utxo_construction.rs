@@ -223,7 +223,7 @@ fn deposits_add_to_controlled_amounts() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
@@ -288,7 +288,7 @@ fn withdrawals_reduce_to_signers_amounts() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 

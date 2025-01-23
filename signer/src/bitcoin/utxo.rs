@@ -1672,7 +1672,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 2,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let keypair = Keypair::new_global(&mut OsRng);
@@ -1786,7 +1786,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -1876,7 +1876,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -1985,7 +1985,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2071,7 +2071,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2116,7 +2116,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2167,7 +2167,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2215,7 +2215,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2275,7 +2275,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2375,7 +2375,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2441,7 +2441,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2521,7 +2521,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2558,7 +2558,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2616,7 +2616,7 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2919,7 +2919,7 @@ mod tests {
             },
             num_signers: 11,
             accept_threshold: 6,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -2966,7 +2966,7 @@ mod tests {
             },
             accept_threshold: 127,
             num_signers: 128,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
@@ -3022,7 +3022,7 @@ mod tests {
             },
             accept_threshold: 10,
             num_signers: 14,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
