@@ -570,23 +570,6 @@ impl BitcoinCoreClient {
         }
     }
 
-    /// Gets the best chain-tip and its height from the Bitcoin node.
-    pub fn get_best_chain_tip(&self) -> Result<(BlockHash, u64), Error> {
-        let best_tip = self
-            .inner
-            .get_best_block_hash()
-            .map_err(Error::BitcoinCoreRpc)?;
-        let block = self
-            .inner
-            .get_block_header_info(&best_tip)
-            .map_err(Error::BitcoinCoreRpc)?;
-
-        Ok((
-            best_tip,
-            u64::try_from(block.height).map_err(|_| Error::TypeConversion)?,
-        ))
-    }
-
     /// Gets the blockchain info from the Bitcoin node.
     pub fn get_blockchain_info(&self) -> Result<GetBlockchainInfoResult, Error> {
         self.inner
