@@ -126,7 +126,6 @@ where
 /// This test just checks that many of the methods on the Recipient struct
 /// work as advertised.
 #[test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn helper_struct_methods_work() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let signer = Recipient::new(AddressType::P2tr);
@@ -164,7 +163,6 @@ fn helper_struct_methods_work() {
 /// Check that deposits, when sent with the expected format, are
 /// spent using the transactions generated in the utxo module.
 #[test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn deposits_add_to_controlled_amounts() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
@@ -225,7 +223,7 @@ fn deposits_add_to_controlled_amounts() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
@@ -250,7 +248,6 @@ fn deposits_add_to_controlled_amounts() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn withdrawals_reduce_to_signers_amounts() {
     const FEE_RATE: f64 = 10.0;
 
@@ -291,7 +288,7 @@ fn withdrawals_reduce_to_signers_amounts() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 

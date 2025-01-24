@@ -416,7 +416,7 @@ export class EmilyStack extends cdk.Stack {
             restApiName: EmilyStackUtils.getResourceName(apiId, props),
             apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
                 EmilyStackUtils.getPathFromProjectRoot(
-                    `.generated-sources/emily/openapi/generated-specs/${apiPurpose}-emily-openapi-spec.json`
+                    `emily/openapi-gen/generated-specs/${apiPurpose}-emily-openapi-spec.json`
                 ),
                 [
                     // This must match the Lambda name from the @aws.apigateway#integration trait in the

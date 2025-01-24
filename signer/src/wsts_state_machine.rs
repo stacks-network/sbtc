@@ -15,6 +15,8 @@ use crate::storage::model;
 use crate::storage::model::SigHash;
 
 use bitcoin::hashes::Hash as _;
+use hashbrown::HashMap;
+use hashbrown::HashSet;
 use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
@@ -81,6 +83,7 @@ impl SignerStateMachine {
             .try_into()
             .map_err(|_| error::Error::TypeConversion)?;
         let num_keys = num_parties;
+        let dkg_threshold = num_parties;
 
         let p256k1_public_key = p256k1::keys::PublicKey::from(&signer_pub_key);
         let id: u32 = *signers
@@ -89,7 +92,19 @@ impl SignerStateMachine {
             .ok_or_else(|| error::Error::MissingPublicKey)?
             .0;
 
-        let public_keys = wsts::state_machine::PublicKeys { signers, key_ids };
+        let signer_key_ids: HashMap<u32, HashSet<u32>> = signers
+            .iter()
+            .map(|(&signer_id, _)| {
+                let mut keys = HashSet::new();
+                keys.insert(signer_id + 1);
+                (signer_id, keys)
+            })
+            .collect();
+        let public_keys = wsts::state_machine::PublicKeys {
+            signers,
+            key_ids,
+            signer_key_ids,
+        };
 
         let key_ids = vec![id + 1];
 
@@ -99,13 +114,15 @@ impl SignerStateMachine {
 
         let state_machine = WstsStateMachine::new(
             threshold,
+            dkg_threshold,
             num_parties,
             num_keys,
             id,
             key_ids,
             signer_private_key.into(),
             public_keys,
-        );
+        )
+        .map_err(Error::Wsts)?;
 
         Ok(Self(state_machine))
     }

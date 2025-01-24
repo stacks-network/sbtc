@@ -514,7 +514,7 @@ impl EmilyInteract for TestHarness {
     }
 
     async fn get_limits(&self) -> Result<SbtcLimits, Error> {
-        Ok(SbtcLimits::default())
+        Ok(SbtcLimits::unlimited())
     }
 }
 

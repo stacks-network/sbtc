@@ -87,7 +87,6 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_tx_per_request_set() {
     let db = testing::storage::new_test_database().await;
@@ -100,6 +99,7 @@ async fn one_tx_per_request_set() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [DepositAmounts {
@@ -180,7 +180,6 @@ async fn one_tx_per_request_set() {
 /// Test that including a single invalid transaction in a set of requests
 /// results in the entire bitcoin transaction being invalid, and that will
 /// sign for the associated sighashes are all false.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_invalid_deposit_invalidates_tx() {
     let low_fee = 10;
@@ -195,6 +194,7 @@ async fn one_invalid_deposit_invalidates_tx() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -297,7 +297,6 @@ async fn one_invalid_deposit_invalidates_tx() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn one_withdrawal_errors_validation() {
     let db = testing::storage::new_test_database().await;
@@ -367,7 +366,6 @@ async fn one_withdrawal_errors_validation() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn cannot_sign_deposit_is_ok() {
     let db = testing::storage::new_test_database().await;
@@ -382,6 +380,7 @@ async fn cannot_sign_deposit_is_ok() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let amounts = [
         DepositAmounts {
@@ -515,7 +514,7 @@ async fn cannot_sign_deposit_is_ok() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
@@ -532,7 +531,6 @@ async fn cannot_sign_deposit_is_ok() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn sighashes_match_from_sbtc_requests_object() {
     let db = testing::storage::new_test_database().await;
@@ -545,6 +543,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -647,7 +646,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         signer_state: signer_btc_state(&ctx, &request, &btc_ctx).await,
         accept_threshold: 2,
         num_signers: 3,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
         max_deposits_per_bitcoin_tx: ctx.config().signer.max_deposits_per_bitcoin_tx.get(),
     };
     let txs = sbtc_requests.construct_transactions().unwrap();
@@ -664,7 +663,6 @@ async fn sighashes_match_from_sbtc_requests_object() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn outcome_is_independent_of_input_order() {
     let db = testing::storage::new_test_database().await;
@@ -677,6 +675,7 @@ async fn outcome_is_independent_of_input_order() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
