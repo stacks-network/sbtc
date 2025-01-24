@@ -29,10 +29,10 @@ pub struct InfoResponse {
 
 #[derive(Debug, Serialize)]
 pub struct BuildInfo {
-    pub rust_version: String,
-    pub git_revision: String,
-    pub target_arch: String,
-    pub target_env_abi: Option<String>,
+    pub rust_version: &'static str,
+    pub git_revision: &'static str,
+    pub target_arch: &'static str,
+    pub target_env_abi: Option<&'static str>,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -90,7 +90,7 @@ impl Default for InfoResponse {
         let target_env_abi = if crate::TARGET_ENV_ABI.is_empty() {
             None
         } else {
-            Some(crate::TARGET_ENV_ABI.to_string())
+            Some(crate::TARGET_ENV_ABI)
         };
 
         Self {
@@ -103,9 +103,9 @@ impl Default for InfoResponse {
             },
             config: None,
             build_info: BuildInfo {
-                rust_version: crate::RUSTC_VERSION.to_string(),
-                git_revision: crate::GIT_COMMIT.to_string(),
-                target_arch: crate::TARGET_ARCH.to_string(),
+                rust_version: crate::RUSTC_VERSION,
+                git_revision: crate::GIT_COMMIT,
+                target_arch: crate::TARGET_ARCH,
                 target_env_abi,
             },
             timestamp: time::OffsetDateTime::now_utc().to_string(),
@@ -402,7 +402,7 @@ mod tests {
         let target_env_abi = if crate::TARGET_ENV_ABI.is_empty() {
             None
         } else {
-            Some(crate::TARGET_ENV_ABI.to_string())
+            Some(crate::TARGET_ENV_ABI)
         };
         assert_eq!(result.build_info.rust_version, crate::RUSTC_VERSION);
         assert_eq!(result.build_info.git_revision, crate::GIT_COMMIT);
