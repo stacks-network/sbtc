@@ -730,6 +730,7 @@ impl std::fmt::Display for BitcoinTxId {
 
 /// Bitcoin block hash
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
 pub struct BitcoinBlockHash(bitcoin::BlockHash);
 
 impl BitcoinBlockHash {
@@ -837,6 +838,7 @@ impl From<&BitcoinBlock> for BitcoinBlockRef {
 
 /// The Stacks block ID. This is different from the block header hash.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
 pub struct StacksBlockHash(StacksBlockId);
 
 impl Deref for StacksBlockHash {
