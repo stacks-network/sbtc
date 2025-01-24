@@ -33,7 +33,7 @@ pub struct BuildInfo {
     pub target_env_abi: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct BitcoinInfo {
     pub signer_tip: Option<ChainTipInfo<BitcoinBlockHash>>,
     pub node_tip: Option<ChainTipInfo<BitcoinBlockHash>>,
@@ -42,7 +42,7 @@ pub struct BitcoinInfo {
     pub node_subversion: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct StacksInfo {
     pub signer_tip: Option<ChainTipInfo<StacksBlockHash>>,
     pub node_tip: Option<ChainTipInfo<StacksBlockHash>>,
@@ -76,19 +76,8 @@ impl Default for InfoResponse {
         };
 
         Self {
-            bitcoin: BitcoinInfo {
-                signer_tip: None,
-                node_tip: None,
-                node_chain: None,
-                node_version: None,
-                node_subversion: None,
-            },
-            stacks: StacksInfo {
-                signer_tip: None,
-                node_tip: None,
-                node_bitcoin_block_height: None,
-                node_version: None,
-            },
+            bitcoin: Default::default(),
+            stacks: Default::default(),
             dkg: DkgInfo {
                 rounds: 0,
                 current_aggregate_key: None,
