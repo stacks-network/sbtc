@@ -373,7 +373,7 @@ pub struct ProofIdentifier {
 #[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgStatus {
-    #[prost(oneof = "dkg_status::Mode", tags = "1, 2, 3, 4, 5, 6")]
+    #[prost(oneof = "dkg_status::Mode", tags = "1, 2, 3, 4, 5, 6, 7")]
     pub mode: ::core::option::Option<dkg_status::Mode>,
 }
 /// Nested message and enum types in `DkgStatus`.
@@ -399,6 +399,9 @@ pub mod dkg_status {
         /// DKG private shares were bad from these signer_ids
         #[prost(message, tag = "6")]
         BadPrivateShares(super::BadPrivateShares),
+        /// The DKG threshold was not met
+        #[prost(message, tag = "7")]
+        Threshold(super::Threshold),
     }
 }
 /// DKG completed successfully
@@ -514,3 +517,7 @@ pub struct SignatureShare {
     #[prost(uint32, repeated, tag = "3")]
     pub key_ids: ::prost::alloc::vec::Vec<u32>,
 }
+/// The DKG threshold has not been upheld by the coordinator.
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Threshold {}

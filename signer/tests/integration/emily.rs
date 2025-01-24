@@ -558,7 +558,6 @@ async fn deposit_flow() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposit_request_works() {
     let max_fee: u64 = 15000;
