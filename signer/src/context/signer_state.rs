@@ -180,6 +180,8 @@ impl SbtcLimits {
 
     /// TODO: Document this
     #[cfg(test)]
+    /// Create a new Self with only the given deposit minimum and maximums
+    /// set.
     pub fn new_per_deposit(min: u64, max: u64) -> Self {
         Self {
             total_cap: None,
