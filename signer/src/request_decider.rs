@@ -5,6 +5,8 @@
 //!
 //! For more details, see the [`RequestDeciderEventLoop`] documentation.
 
+use std::time::Duration;
+
 use crate::block_observer::BlockObserver;
 use crate::blocklist_client::BlocklistChecker;
 use crate::context::Context;
@@ -33,6 +35,9 @@ use crate::storage::DbWrite as _;
 
 use futures::StreamExt;
 use futures::TryStreamExt;
+
+/// Delay for the immediate retry in case of blocklist client errors
+const RETRY_DELAY: Duration = Duration::from_millis(100);
 
 /// This struct is responsible for deciding whether to accept or reject
 /// requests and persisting requests from other signers.
@@ -116,8 +121,9 @@ where
         Ok(())
     }
 
+    /// Vote on pending deposit requests
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
-    async fn handle_new_requests(&mut self) -> Result<(), Error> {
+    pub async fn handle_new_requests(&mut self) -> Result<(), Error> {
         let db = self.context.get_storage();
         let chain_tip = db
             .get_bitcoin_canonical_chain_tip()
@@ -325,14 +331,25 @@ where
             .map_err(|err| Error::BitcoinAddressFromScript(err, req.outpoint()))?;
 
         let responses = futures::stream::iter(&addresses)
-            .then(|address| async { client.can_accept(&address.to_string()).await })
+            .then(|address| async {
+                let response = client.can_accept(&address.to_string()).await;
+                if let Err(error) = response {
+                    tracing::error!(%error, "blocklist client issue, retrying");
+                    tokio::time::sleep(RETRY_DELAY).await;
+                    client.can_accept(&address.to_string()).await
+                } else {
+                    response
+                }
+            })
             .inspect_err(|error| tracing::error!(%error, "blocklist client issue"))
             .collect::<Vec<_>>()
-            .await;
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
 
         // If all of the inputs addresses are fine then we pass the deposit
         // request.
-        let can_accept = responses.into_iter().all(|res| res.unwrap_or(false));
+        let can_accept = responses.into_iter().all(|res| res);
         Ok(can_accept)
     }
 

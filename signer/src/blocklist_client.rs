@@ -8,19 +8,24 @@
 use blocklist_api::apis::address_api::{check_address, CheckAddressError};
 use blocklist_api::apis::configuration::Configuration;
 use blocklist_api::apis::Error as ClientError;
-use blocklist_api::models::BlocklistStatus;
 use std::future::Future;
 
 use crate::context::Context;
+use crate::error::Error;
+
+/// Blocklist client error variants.
+#[derive(Debug, thiserror::Error)]
+pub enum BlocklistClientError {
+    /// An error occurred while checking an address
+    #[error("error checking an address: {0}")]
+    CheckAddress(ClientError<CheckAddressError>),
+}
 
 /// A trait for checking if an address is blocklisted.
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
     /// Returns `true` if the address is blocklisted, otherwise `false`.
-    fn can_accept(
-        &self,
-        address: &str,
-    ) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send;
+    fn can_accept(&self, address: &str) -> impl Future<Output = Result<bool, Error>> + Send;
 }
 
 /// A client for interacting with the blocklist service.
@@ -30,12 +35,15 @@ pub struct BlocklistClient {
 }
 
 impl BlocklistChecker for BlocklistClient {
-    async fn can_accept(&self, address: &str) -> Result<bool, ClientError<CheckAddressError>> {
+    async fn can_accept(&self, address: &str) -> Result<bool, Error> {
         let config = self.config.clone();
 
         // Call the generated function from blocklist-api
-        let resp: BlocklistStatus = check_address(&config, address).await?;
-        Ok(resp.accept)
+        check_address(&config, address)
+            .await
+            .map_err(BlocklistClientError::CheckAddress)
+            .map_err(Error::BlocklistClient)
+            .map(|resp| resp.accept)
     }
 }
 
@@ -60,8 +68,9 @@ impl BlocklistClient {
         Some(BlocklistClient { config })
     }
 
-    #[cfg(test)]
-    fn with_base_url(base_url: String) -> Self {
+    /// Construct a new [`BlocklistClient`] from a base url
+    #[cfg(any(test, feature = "testing"))]
+    pub fn with_base_url(base_url: String) -> Self {
         let config = Configuration {
             base_path: base_url.clone(),
             ..Default::default()
