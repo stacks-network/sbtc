@@ -26,7 +26,7 @@ services:
       retries: 3
 
   postgres:
-    image: postgres:16.3
+    image: postgres:16.6-alpine3.21@sha256:aba1fab94626cf8b0f4549055214239a37e0a690f03f142b7bca05b9ed36c6db
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
