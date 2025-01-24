@@ -1,6 +1,7 @@
 //! Handler for the `/info` endpoint.
 
 use axum::{extract::State, response::IntoResponse, Json};
+use clarity::types::chainstate::StacksBlockId;
 use serde::Serialize;
 
 use crate::{
@@ -45,7 +46,7 @@ pub struct BitcoinInfo {
 #[derive(Debug, Default, Serialize)]
 pub struct StacksInfo {
     pub signer_tip: Option<ChainTipInfo<StacksBlockHash>>,
-    pub node_tip: Option<ChainTipInfo<StacksBlockHash>>,
+    pub node_tip: Option<ChainTipInfo<StacksBlockId>>,
     pub node_bitcoin_block_height: Option<u64>,
     pub node_version: Option<String>,
 }
@@ -201,17 +202,25 @@ impl InfoResponse {
     /// Populates the Stacks node tip information from the provided Stacks client.
     /// This uses the `/v2/info` RPC endpoint to populate the information.
     async fn populate_stacks_node_info(&mut self, stacks_client: &impl StacksInteract) {
+        match stacks_client.get_tenure_info().await {
+            Ok(tenure_info) => {
+                self.stacks.node_tip = Some(ChainTipInfo {
+                    block_hash: tenure_info.tip_block_id,
+                    block_height: tenure_info.tip_height,
+                });
+            }
+            Err(e) => {
+                tracing::error!("error getting stacks tenure info: {}", e);
+            }
+        }
+
         match stacks_client.get_node_info().await {
             Ok(node_info) => {
-                self.stacks.node_tip = Some(ChainTipInfo {
-                    block_hash: node_info.stacks_tip.0.into(),
-                    block_height: node_info.stacks_tip_height,
-                });
                 self.stacks.node_bitcoin_block_height = Some(node_info.burn_block_height);
                 self.stacks.node_version = Some(node_info.server_version);
             }
             Err(e) => {
-                tracing::error!("error getting stacks node tip: {}", e);
+                tracing::error!("error getting stacks node info: {}", e);
             }
         }
     }
