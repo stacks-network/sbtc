@@ -77,14 +77,16 @@ impl Settings {
     /// Initializing the global config first with default values and then with provided/overwritten environment variables.
     /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new() -> Result<Self, ConfigError> {
-        let mut cfg = Config::new();
-        cfg.merge(File::from_str(
-            include_str!("config/default.toml"),
-            FileFormat::Toml,
-        ))?;
         let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
-        cfg.merge(env)?;
-        let settings: Settings = cfg.try_into()?;
+
+        let cfg = Config::builder()
+            .add_source(File::from_str(
+                include_str!("config/default.toml"),
+                FileFormat::Toml,
+            ))
+            .add_source(env)
+            .build()?;
+        let settings: Settings = cfg.try_deserialize()?;
 
         settings.validate()?;
 
@@ -94,11 +96,14 @@ impl Settings {
     /// Initializing the global config with values from provided config file and then with provided/overwritten environment variables.
     /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new_from_path(path: &str) -> Result<Self, ConfigError> {
-        let mut cfg = Config::new();
-        cfg.merge(File::with_name(path))?;
         let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
-        cfg.merge(env)?;
-        let settings: Settings = cfg.try_into()?;
+
+        let cfg = Config::builder()
+            .add_source(File::with_name(path))
+            .add_source(env)
+            .build()?;
+
+        let settings: Settings = cfg.try_deserialize()?;
 
         settings.validate()?;
 

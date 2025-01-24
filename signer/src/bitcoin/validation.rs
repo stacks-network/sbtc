@@ -180,10 +180,10 @@ impl BitcoinPreSignRequest {
         Ok(cache)
     }
 
-    async fn validate_max_mintable<'a, C>(
+    async fn validate_max_mintable<C>(
         &self,
         ctx: &C,
-        cache: &ValidationCache<'a>,
+        cache: &ValidationCache<'_>,
     ) -> Result<(), Error>
     where
         C: Context + Send + Sync,

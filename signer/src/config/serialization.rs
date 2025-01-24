@@ -135,7 +135,7 @@ pub fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> 
     let host_str = url
         .host_str()
         .ok_or(P2PHostRequired)?
-        .trim_matches(&['[', ']']); // `Url` includes brackets for IPv6 addresses
+        .trim_matches(['[', ']']); // `Url` includes brackets for IPv6 addresses
 
     let mut addr = if let Ok(addr) = IpAddr::from_str(host_str) {
         Multiaddr::empty().with(Protocol::from(addr))

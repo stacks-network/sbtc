@@ -13,10 +13,10 @@ path = "src/main.rs"
 clap.workspace = true
 config.workspace = true
 reqwest.workspace = true
-serde = { workspace = true, features = ["derive"] }
+serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread", "rt", "macros"] }
+tokio.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true

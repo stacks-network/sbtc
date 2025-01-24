@@ -7,7 +7,7 @@ const RELATIVE_SPEC_DIRECTORY: &str = "./generated-specs";
 /// Main function.
 fn main() {
     // Ensure that we rerun if the API spec changes.
-    println!("cargo:rerun-if-changed=../../../emily/handler/src/api");
+    println!("cargo:rerun-if-changed=../handler/src/api");
     // Ensure that we rerun if the scripts responsible for building change.
     println!("cargo:rerun-if-changed=generators");
     println!("cargo:rerun-if-changed=api-config");
