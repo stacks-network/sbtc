@@ -14,13 +14,10 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::model::SigHash;
 
-<<<<<<< HEAD
 use bitcoin::hashes::Hash as _;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
-=======
 use rand::rngs::OsRng;
->>>>>>> 6f51a822 (update for wsts 11)
 use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;

@@ -44,11 +44,8 @@ use crate::wsts_state_machine::StateMachineId;
 use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
 use futures::StreamExt;
-<<<<<<< HEAD
 use lru::LruCache;
-=======
 use rand::rngs::OsRng;
->>>>>>> 6f51a822 (update for wsts 11)
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
