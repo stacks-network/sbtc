@@ -94,17 +94,14 @@ async fn libp2p_clients_can_exchange_messages_given_real_network(addr1: &str, ad
     let swarm1_addr = swarm1.listen_addrs().await.pop().unwrap();
     let swarm2_addr = swarm2.listen_addrs().await.pop().unwrap();
 
-    dbg!(&swarm1_addr);
-    dbg!(&swarm2_addr);
-
     swarm1.dial(swarm2_addr).await.unwrap();
     swarm2.dial(swarm1_addr).await.unwrap();
 
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Run the test with a 30-second timeout for the swarms to exchange messages.
+    // Run the test with a 10-second timeout for the swarms to exchange messages.
     if let Err(_) = tokio::time::timeout(
-        tokio::time::Duration::from_secs(30),
+        tokio::time::Duration::from_secs(10),
         signer::testing::network::assert_clients_can_exchange_messages(
             network1, network2, key1, key2,
         ),
@@ -114,7 +111,7 @@ async fn libp2p_clients_can_exchange_messages_given_real_network(addr1: &str, ad
         handle1.abort();
         handle2.abort();
         panic!(
-            r#"Test timed out, we waited for 30 seconds but this usually takes around 5 seconds.
+            r#"Test timed out, we waited for 10 seconds but this usually takes around 5 seconds.
         This is generally due to connectivity issues between the two swarms."#
         );
     }
