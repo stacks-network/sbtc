@@ -172,8 +172,8 @@ impl InfoResponse {
                 let bitcoin_block = storage
                     .get_bitcoin_block(&local_bitcoin_chain_tip)
                     .await
-                    .inspect_err(|e| {
-                        tracing::error!("error reading bitcoin block from the database: {}", e)
+                    .inspect_err(|error| {
+                        tracing::error!(%error, "error reading bitcoin block from the database")
                     });
 
                 let Ok(Some(bitcoin_block)) = bitcoin_block else {
@@ -201,16 +201,16 @@ impl InfoResponse {
                     Ok(None) => {
                         tracing::debug!("no local stacks tip found in the database.");
                     }
-                    Err(e) => {
-                        tracing::error!("error reading local Stacks tip from the database: {}", e);
+                    Err(error) => {
+                        tracing::error!(%error, "error reading local Stacks tip from the database");
                     }
                 }
             }
             Ok(None) => {
                 tracing::debug!("no local bitcoin tip found in the database.");
             }
-            Err(e) => {
-                tracing::error!("error reading bitcoin tip from the database: {}", e);
+            Err(error) => {
+                tracing::error!(%error, "error reading bitcoin tip from the database");
             }
         }
     }
@@ -227,8 +227,8 @@ impl InfoResponse {
                     block_height: info.blocks,
                 });
             }
-            Err(e) => {
-                tracing::error!("error getting bitcoin node blockchain info: {}", e);
+            Err(error) => {
+                tracing::error!(%error, "error getting bitcoin node blockchain info");
             }
         }
 
@@ -237,8 +237,8 @@ impl InfoResponse {
                 self.bitcoin.node_version = Some(info.version);
                 self.bitcoin.node_subversion = Some(info.subversion);
             }
-            Err(e) => {
-                tracing::error!("error getting bitcoin node network info: {}", e);
+            Err(error) => {
+                tracing::error!(%error, "error getting bitcoin node network info");
             }
         }
     }
@@ -253,8 +253,8 @@ impl InfoResponse {
                     block_height: tenure_info.tip_height,
                 });
             }
-            Err(e) => {
-                tracing::error!("error getting stacks tenure info: {}", e);
+            Err(error) => {
+                tracing::error!(%error, "error getting stacks tenure info");
             }
         }
 
@@ -263,8 +263,8 @@ impl InfoResponse {
                 self.stacks.node_bitcoin_block_height = Some(node_info.burn_block_height);
                 self.stacks.node_version = Some(node_info.server_version);
             }
-            Err(e) => {
-                tracing::error!("error getting stacks node info: {}", e);
+            Err(error) => {
+                tracing::error!(%error, "error getting stacks node info");
             }
         }
     }
@@ -283,10 +283,10 @@ impl InfoResponse {
                     Ok(count) => {
                         self.dkg.rounds = count;
                     }
-                    Err(e) => {
+                    Err(error) => {
                         tracing::error!(
-                            "error reading encrypted DKG shares count from the database: {}",
-                            e
+                            %error,
+                            "error reading encrypted DKG shares count from the database"
                         );
                     }
                 }
@@ -294,8 +294,8 @@ impl InfoResponse {
             Ok(None) => {
                 self.dkg.rounds = 0;
             }
-            Err(e) => {
-                tracing::error!("error reading aggregate keys from the database: {}", e);
+            Err(error) => {
+                tracing::error!(%error, "error reading aggregate keys from the database");
             }
         }
 
