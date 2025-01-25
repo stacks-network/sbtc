@@ -17,7 +17,6 @@ sbtc = { workspace = true, features = ["webhooks"] }
 blocklist-api.workspace = true
 aquamarine.workspace = true
 axum.workspace = true
-backoff.workspace = true
 bitcoin.workspace = true
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
@@ -50,7 +49,6 @@ tonic.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
 tracing.workspace = true
-tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 hex.workspace = true
@@ -79,3 +77,6 @@ tower.workspace = true
 
 [build-dependencies]
 tonic-build.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["tonic", "tonic-build", "stackslib"]

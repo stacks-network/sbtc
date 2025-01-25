@@ -28,3 +28,6 @@ hex = { workspace = true, optional = true }
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
 test-case.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["bitcoincore-rpc-json", "stackslib"]

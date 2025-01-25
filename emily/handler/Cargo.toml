@@ -11,7 +11,7 @@ name = "emily-server"
 
 [features]
 default = ["testing"]
-testing = ["fake"]
+testing = []
 populate = ["testing"]
 
 [dependencies]
@@ -22,7 +22,6 @@ bitcoin.workspace = true
 config.workspace = true
 clap.workspace = true
 hex.workspace = true
-openssl.workspace = true
 reqwest.workspace = true
 sbtc.workspace = true
 serde.workspace = true
@@ -33,18 +32,15 @@ thiserror.workspace = true
 time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
 utoipa.workspace = true
 warp.workspace = true
 warp_lambda.workspace = true
 
-fake = { workspace = true, optional = true }
-
 [dev-dependencies]
 testing-emily-client.workspace = true
-rand.workspace = true
-mockito.workspace = true
-mockall.workspace = true
 sbtc = { workspace = true, features = ["testing"] }
 test-case.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = []
