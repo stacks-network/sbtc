@@ -73,7 +73,7 @@ serde_json = { version = "1.0.137", default-features = false }
 sha2 = { version = "0.10.8", default-features = false }
 sqlx = { version = "0.8.3", default-features = false, features = [ "postgres", "runtime-tokio", "tls-rustls", "derive", "macros" ] }
 strum = { version = "0.26.3", default-features = false, features = ["derive"] }
-thiserror = { version = "1.0.69", default-features = false }
+thiserror = { version = "2.0.11", default-features = false }
 time = { version = "0.3.37", default-features = false, features = ["serde"] }
 tonic = { version = "0.12.3", default-features = false, features = ["prost"] }
 tonic-build = { version = "0.12.3", default-features = false, features = ["prost"] }

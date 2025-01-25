@@ -929,7 +929,7 @@ dependencies = [
  "reqwest 0.11.27",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
+ "thiserror 2.0.11",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1652,7 +1652,7 @@ dependencies = [
  "stacks-common",
  "test-case",
  "testing-emily-client",
- "thiserror 1.0.69",
+ "thiserror 2.0.11",
  "time 0.3.37",
  "tokio",
  "tracing",
@@ -5315,7 +5315,7 @@ dependencies = [
  "stacks-common",
  "stackslib",
  "test-case",
- "thiserror 1.0.69",
+ "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -5708,7 +5708,7 @@ dependencies = [
  "tempfile",
  "test-case",
  "test-log",
- "thiserror 1.0.69",
+ "thiserror 2.0.11",
  "time 0.3.37",
  "tokio",
  "tokio-stream",
