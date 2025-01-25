@@ -914,6 +914,10 @@ criteria = "safe-to-deploy"
 version = "1.5.1"
 criteria = "safe-to-deploy"
 
+[[exemptions.hyper-rustls]]
+version = "0.24.2"
+criteria = "safe-to-deploy"
+
 [[exemptions.hyper-tls]]
 version = "0.6.0"
 criteria = "safe-to-deploy"
@@ -1831,7 +1835,19 @@ version = "0.38.44"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls]]
+version = "0.21.12"
+criteria = "safe-to-deploy"
+
+[[exemptions.rustls]]
 version = "0.23.12"
+criteria = "safe-to-deploy"
+
+[[exemptions.rustls-native-certs]]
+version = "0.6.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.rustls-pemfile]]
+version = "1.0.4"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls-pemfile]]
@@ -1876,6 +1892,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.scopeguard]]
 version = "1.2.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.sct]]
+version = "0.7.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.secp256k1]]
@@ -2288,6 +2308,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.tokio-native-tls]]
 version = "0.3.1"
+criteria = "safe-to-deploy"
+
+[[exemptions.tokio-rustls]]
+version = "0.24.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.tokio-stream]]

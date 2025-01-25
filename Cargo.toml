@@ -42,7 +42,7 @@ wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "53ae23f5f35d
 
 # Crates.io
 aquamarine = { version = "0.6.0", default-features = false }
-aws-config = { version = "1.5.15", default-features = false }
+aws-config = { version = "1.5.15", default-features = false, features = ["rustls", "rt-tokio"] }
 aws_lambda_events = { version = "0.16.0", default-features = false }
 aws-sdk-dynamodb = { version = "1.62.0", default-features = false }
 backoff = { version = "0.4.0", default-features = false, features = ["tokio"] }
