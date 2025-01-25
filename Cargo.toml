@@ -63,7 +63,7 @@ metrics = { version = "0.24.1", default-features = false }
 metrics-exporter-prometheus = { version = "0.16.1", default-features = false, features = ["http-listener"] }
 openssl = { version = "0.10.68", default-features = false, features = ["vendored"] }
 p256k1 = { version = "7.2.0", default-features = false }
-prost = { version = "0.12.5", default-features = false, features = ["derive"] }
+prost = { version = "0.13.4", default-features = false, features = ["derive"] }
 rand = { version = "0.8.5", default-features = false }
 reqwest = { version = "0.11.27", default-features = false, features = ["json"] }
 serde = { version = "1.0.217", default-features = false, features = ["derive"] }
@@ -75,8 +75,8 @@ sqlx = { version = "0.8.3", default-features = false, features = [ "postgres", "
 strum = { version = "0.26.3", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.69", default-features = false }
 time = { version = "0.3.37", default-features = false, features = ["serde"] }
-tonic = { version = "0.11.0", default-features = false, features = ["prost"] }
-tonic-build = { version = "0.11.0", default-features = false, features = ["prost"] }
+tonic = { version = "0.12.3", default-features = false, features = ["prost"] }
+tonic-build = { version = "0.12.3", default-features = false, features = ["prost"] }
 tokio = { version = "1.43.0", default-features = false, features = ["signal", "macros", "rt-multi-thread", "rt"] }
 tokio-stream = { version = "0.1.15", default-features = false, features = ["sync"] }
 tracing = { version = "0.1.41", default-features = false }
