@@ -3,6 +3,9 @@ name = "sbtc"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.cargo-machete]
+ignored = ["bitcoincore-rpc-json", "stackslib"]
+
 [features]
 default = []
 testing = ["dep:bitcoincore-rpc", "dep:bitcoincore-rpc-json"]
@@ -12,22 +15,19 @@ webhooks = ["dep:stackslib", "dep:hex"]
 bitcoin.workspace = true
 clarity.workspace = true
 rand.workspace = true
+secp256k1.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 stacks-common.workspace = true
 thiserror.workspace = true
-secp256k1.workspace = true
 
 # Optional Dependencies
 bitcoincore-rpc = { workspace = true, optional = true }
 bitcoincore-rpc-json = { workspace = true, optional = true }
-stackslib = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+stackslib = { workspace = true, optional = true }
 
 [dev-dependencies]
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
 test-case.workspace = true
-
-[package.metadata.cargo-machete]
-ignored = ["bitcoincore-rpc-json", "stackslib"]

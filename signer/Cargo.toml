@@ -3,80 +3,80 @@ name = "signer"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "demo-cli"
-path = "src/bin/demo_cli.rs"
+[package.metadata.cargo-machete]
+ignored = ["tonic", "tonic-build", "stackslib"]
 
 [features]
 default = ["testing"]
 testing = ["fake", "mockall", "sbtc/testing"]
 
 [dependencies]
-wsts.workspace = true
-sbtc = { workspace = true, features = ["webhooks"] }
-blocklist-api.workspace = true
 aquamarine.workspace = true
 axum.workspace = true
 bitcoin.workspace = true
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
+bitcoincore-zmq.workspace = true
 bitvec.workspace = true
-emily-client.workspace = true
+blocklist-api.workspace = true
+cfg-if.workspace = true
 clap.workspace = true
 clarity.workspace = true
 config.workspace = true
+emily-client.workspace = true
 futures.workspace = true
 hashbrown.workspace = true
+hex.workspace = true
+include_dir.workspace = true
 libp2p.workspace = true
 lru.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 p256k1.workspace = true
+polynomial.workspace = true
 prost.workspace = true
 rand.workspace = true
 reqwest.workspace = true
+sbtc = { workspace = true, features = ["webhooks"] }
+secp256k1.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
-stackslib.workspace = true
 stacks-common.workspace = true
+stackslib.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 time.workspace = true
-tonic.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tonic.workspace = true
+tower-http.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
-hex.workspace = true
-cfg-if.workspace = true
-include_dir.workspace = true
-polynomial.workspace = true
-bitcoincore-zmq.workspace = true
-secp256k1.workspace = true
-tower-http.workspace = true
+wsts.workspace = true
 
 # Only for testing
-mockall = { workspace = true, optional = true }
 fake = { workspace = true, optional = true }
-
-[dev-dependencies]
-sbtc = { workspace = true, features = ["testing"] }
-bitcoincore-rpc.workspace = true
-mockito.workspace = true
-more-asserts.workspace = true
-ripemd.workspace = true
-test-case.workspace = true
-test-log.workspace = true
-toml_edit.workspace = true
-tempfile.workspace = true
-tower.workspace = true
+mockall = { workspace = true, optional = true }
 
 [build-dependencies]
 tonic-build.workspace = true
 
-[package.metadata.cargo-machete]
-ignored = ["tonic", "tonic-build", "stackslib"]
+[dev-dependencies]
+bitcoincore-rpc.workspace = true
+mockito.workspace = true
+more-asserts.workspace = true
+ripemd.workspace = true
+sbtc = { workspace = true, features = ["testing"] }
+tempfile.workspace = true
+test-case.workspace = true
+test-log.workspace = true
+toml_edit.workspace = true
+tower.workspace = true
+
+[[bin]]
+name = "demo-cli"
+path = "src/bin/demo_cli.rs"

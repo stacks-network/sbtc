@@ -3,11 +3,8 @@ name = "emily-handler"
 version = "0.1.0"
 edition = "2021"
 
-[[bin]]
-name = "emily-lambda"
-
-[[bin]]
-name = "emily-server"
+[package.metadata.cargo-machete]
+ignored = []
 
 [features]
 default = ["testing"]
@@ -19,8 +16,8 @@ aws-config.workspace = true
 aws-sdk-dynamodb.workspace = true
 base64.workspace = true
 bitcoin.workspace = true
-config.workspace = true
 clap.workspace = true
+config.workspace = true
 hex.workspace = true
 reqwest.workspace = true
 sbtc.workspace = true
@@ -38,9 +35,12 @@ warp.workspace = true
 warp_lambda.workspace = true
 
 [dev-dependencies]
-testing-emily-client.workspace = true
 sbtc = { workspace = true, features = ["testing"] }
 test-case.workspace = true
+testing-emily-client.workspace = true
 
-[package.metadata.cargo-machete]
-ignored = []
+[[bin]]
+name = "emily-lambda"
+
+[[bin]]
+name = "emily-server"
