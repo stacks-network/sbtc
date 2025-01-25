@@ -358,10 +358,6 @@ mod tests {
             result,
             Err(Error::HttpRequest(StatusCode::BAD_REQUEST, _))
         ));
-        // match result {
-        //     Err(Error::HttpRequest(code, _)) => assert_eq!(code, StatusCode::BAD_REQUEST),
-        //     _ => panic!("Expected HttpRequest for bad registration"),
-        // }
     }
 
     #[tokio::test]
