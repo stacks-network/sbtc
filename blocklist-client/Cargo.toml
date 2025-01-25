@@ -20,8 +20,8 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
-utoipa = "4.2.3"
-warp = "0.3"
+utoipa.workspace = true
+warp.workspace = true
 
 [dev-dependencies]
-mockito = "0.28"
+mockito.workspace = true

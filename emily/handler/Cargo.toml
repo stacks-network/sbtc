@@ -35,16 +35,16 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-attributes.workspace = true
 tracing-subscriber.workspace = true
-utoipa = "4.2.3"
-warp = "0.3"
+utoipa.workspace = true
+warp.workspace = true
 warp_lambda.workspace = true
 
 fake = { workspace = true, optional = true }
 
 [dev-dependencies]
 testing-emily-client.workspace = true
-rand = "0.8"
-mockito = "0.28"
-mockall = "0.10"
+rand.workspace = true
+mockito.workspace = true
+mockall.workspace = true
 sbtc = { workspace = true, features = ["testing"] }
-test-case = "3.1"
+test-case.workspace = true

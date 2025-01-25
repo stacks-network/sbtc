@@ -6,9 +6,9 @@ edition = "2021"
 [dependencies]
 emily-handler.workspace = true
 serde_json.workspace = true
-utoipa = "4.2.3"
+utoipa.workspace = true
 
 [build-dependencies]
 emily-handler.workspace = true
 serde_json.workspace = true
-utoipa = "4.2.3"
+utoipa.workspace = true
