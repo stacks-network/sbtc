@@ -85,7 +85,7 @@ warp_lambda = { version = "0.1.4", default-features = false }
 utoipa = { version = "4.2.3", default-features = false }
 warp = { version = "0.3.7", default-features = false }
 hex = { version = "0.4.3", default-features = false, features = ["std"] }
-libp2p = { version = "0.54.1", default-features = false, features = [
+libp2p = { version = "0.55.0", default-features = false, features = [
     "macros", "kad", "noise", "ping", "tcp", "tokio", "yamux", "mdns", "quic", 
     "gossipsub", "identify", "tls", "dns", "autonat", "secp256k1"
 ] }
