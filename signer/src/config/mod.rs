@@ -3,6 +3,7 @@ use config::Config;
 use config::ConfigError;
 use config::Environment;
 use config::File;
+use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
@@ -22,6 +23,7 @@ use crate::config::serialization::url_deserializer_single;
 use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::network::libp2p::MultiaddrExt as _;
 use crate::stacks::wallet::SignerWallet;
 use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
@@ -137,6 +139,17 @@ pub struct P2PNetworkConfig {
     pub enable_mdns: bool,
 }
 
+impl P2PNetworkConfig {
+    /// Returns whether QUIC is used in the P2P network configuration, i.e. if
+    /// any of the seeds or listen_on addresses use the QUIC protocol.
+    pub fn is_quic_used(&self) -> bool {
+        self.listen_on
+            .iter()
+            .chain(self.seeds.iter())
+            .any(|addr| addr.is_quic())
+    }
+}
+
 impl Validatable for P2PNetworkConfig {
     fn validate(&self, cfg: &Settings) -> Result<(), ConfigError> {
         if [NetworkKind::Mainnet, NetworkKind::Testnet].contains(&cfg.signer.network)
@@ -145,6 +158,35 @@ impl Validatable for P2PNetworkConfig {
             return Err(ConfigError::Message(
                 SignerConfigError::P2PSeedPeerRequired.to_string(),
             ));
+        }
+
+        // Validate that any public endpoints use protocols that are currently
+        // used in the listen_on addresses.
+        let listen_on_protocols = self
+            .listen_on
+            .iter()
+            .filter_map(|addr| addr.get_transport_protocol())
+            .collect::<Vec<_>>();
+
+        for public_endpoint in &self.public_endpoints {
+            if let Some(public_protocol) = public_endpoint.get_transport_protocol() {
+                let is_valid = listen_on_protocols.iter().any(|listen_protocol| {
+                    match (&public_protocol, listen_protocol) {
+                        (Protocol::Tcp(_), Protocol::Tcp(_)) => true, // Port-agnostic comparison for TCP
+                        (Protocol::QuicV1, Protocol::QuicV1) => true,
+                        _ => false,
+                    }
+                });
+
+                if !is_valid {
+                    return Err(ConfigError::Message(
+                        SignerConfigError::P2PPublicEndpointProtocolMismatch(
+                            public_endpoint.clone(),
+                        )
+                        .to_string(),
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -1085,6 +1127,53 @@ mod tests {
             .with(Protocol::Tcp(4122));
 
         assert_eq!(*actual, expected);
+    }
+
+    #[test]
+    fn p2p_public_endpoint_transport_protocols_must_match_listen_on() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://127.0.0.1:4122");
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS",
+            "tcp://127.0.0.1:4122",
+        );
+        let result = Settings::new_from_default_config();
+        assert!(result.is_ok());
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://127.0.0.1:4122");
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS",
+            "quic-v1://127.0.0.1:4122",
+        );
+        let result = Settings::new_from_default_config();
+        assert!(matches!(
+            result,
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PPublicEndpointProtocolMismatch("/ip4/127.0.0.1/udp/4122/quic-v1".parse().unwrap()).to_string()
+        ));
+
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__LISTEN_ON",
+            "tcp://127.0.0.1:4122,quic-v1://127.0.0.1:4122",
+        );
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS",
+            "quic-v1://127.0.0.1:4122",
+        );
+        let result = Settings::new_from_default_config();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn p2p_memory_transport_cannot_be_used() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "memory://localhost:123");
+        let result = Settings::new_from_default_config();
+        assert!(matches!(
+            result,
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::InvalidP2PScheme("memory".into()).to_string()
+        ))
     }
 
     #[test_case::test_case(NetworkKind::Mainnet; "mainnet network, testnet deployer")]

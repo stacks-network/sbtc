@@ -1,6 +1,22 @@
 //! Test utilities for the `network` module
 
+use libp2p::{multiaddr::Protocol, Multiaddr};
+use rand::{rngs::OsRng, RngCore};
+
 use crate::{keys::PrivateKey, network};
+
+/// Trait for generating random memory `Multiaddr`s for testing purposes.
+pub trait RandomMemoryMultiaddr {
+    /// Generates a random [`Multiaddr`] with the
+    /// [`libp2p::core::transport::MemoryTransport`] transport.
+    fn random_memory() -> Multiaddr;
+}
+
+impl RandomMemoryMultiaddr for Multiaddr {
+    fn random_memory() -> Multiaddr {
+        Protocol::Memory(OsRng.next_u64()).into()
+    }
+}
 
 /// Test helper that spawns two concurrent tasks for the provided clients and have them
 /// broadcasting randomly generated messages.
