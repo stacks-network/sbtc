@@ -62,6 +62,16 @@ impl From<NetworkKind> for bitcoin::NetworkKind {
     }
 }
 
+impl std::fmt::Display for NetworkKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkKind::Mainnet => write!(f, "mainnet"),
+            NetworkKind::Testnet => write!(f, "testnet"),
+            NetworkKind::Regtest => write!(f, "regtest"),
+        }
+    }
+}
+
 impl From<NetworkKind> for bitcoin::KnownHrp {
     fn from(value: NetworkKind) -> Self {
         match value {

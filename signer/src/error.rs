@@ -593,6 +593,13 @@ pub enum Error {
         /// Maximum sBTC mintable
         max_mintable: u64,
     },
+
+    /// An error which can be used in test code instead of `unimplemented!()` or
+    /// other alternatives, so that an an actual error is returned instead of
+    /// panicking.
+    #[cfg(test)]
+    #[error("Dummy (for testing purposes)")]
+    Dummy,
 }
 
 impl From<std::convert::Infallible> for Error {

@@ -16,7 +16,7 @@ CARGO_FLAGS := --workspace --exclude emily-openapi-spec --exclude blocklist-open
 # ##############################################################################
 
 install:
-	pnpm install
+	pnpm --recursive install
 
 build: blocklist-client-codegen emily-client-codegen contracts
 	cargo build --all-targets $(CARGO_FLAGS) ${CARGO_BUILD_ARGS}
@@ -133,7 +133,10 @@ devenv-sbtc-up:
 devenv-sbtc-down:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer down
 
-.PHONY: devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down
+devenv-sbtc-build:
+	docker compose -f docker/docker-compose.yml --profile sbtc-signer build
+
+.PHONY: devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down devenv-sbtc-build
 
 # ##############################################################################
 # EMILY
