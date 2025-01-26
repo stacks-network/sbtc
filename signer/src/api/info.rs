@@ -167,7 +167,9 @@ impl InfoResponse {
 
     /// Populates the local Bitcoin and Stacks chain tip information.
     async fn populate_local_chain_info(&mut self, storage: &impl DbRead) {
-        match storage.get_bitcoin_canonical_chain_tip().await {
+        let bitcoin_tip = storage.get_bitcoin_canonical_chain_tip().await;
+
+        match bitcoin_tip {
             Ok(Some(local_bitcoin_chain_tip)) => {
                 let bitcoin_block = storage
                     .get_bitcoin_block(&local_bitcoin_chain_tip)
@@ -188,10 +190,11 @@ impl InfoResponse {
                     block_height: bitcoin_block.block_height,
                 });
 
-                match storage
+                let stacks_tip = storage
                     .get_stacks_chain_tip(&bitcoin_block.block_hash)
-                    .await
-                {
+                    .await;
+
+                match stacks_tip {
                     Ok(Some(local_stacks_chain_tip)) => {
                         self.stacks.signer_tip = Some(ChainTipInfo {
                             block_hash: local_stacks_chain_tip.block_hash,
@@ -219,7 +222,10 @@ impl InfoResponse {
     /// client. This uses a combination of `getblockchaininfo` and
     /// `getnetworkinfo` RPC calls to populate the information.
     async fn populate_bitcoin_node_info(&mut self, bitcoin_client: &impl BitcoinInteract) {
-        match bitcoin_client.get_blockchain_info().await {
+        let blockchain_info = bitcoin_client.get_blockchain_info().await;
+        let network_info = bitcoin_client.get_network_info().await;
+
+        match blockchain_info {
             Ok(info) => {
                 self.bitcoin.node_chain = Some(info.chain.to_string());
                 self.bitcoin.node_tip = Some(ChainTipInfo {
@@ -232,7 +238,7 @@ impl InfoResponse {
             }
         }
 
-        match bitcoin_client.get_network_info().await {
+        match network_info {
             Ok(info) => {
                 self.bitcoin.node_version = Some(info.version);
                 self.bitcoin.node_subversion = Some(info.subversion);
@@ -246,7 +252,10 @@ impl InfoResponse {
     /// Populates the Stacks node tip information from the provided Stacks client.
     /// This uses the `/v2/info` RPC endpoint to populate the information.
     async fn populate_stacks_node_info(&mut self, stacks_client: &impl StacksInteract) {
-        match stacks_client.get_tenure_info().await {
+        let tenure_info = stacks_client.get_tenure_info().await;
+        let node_info = stacks_client.get_node_info().await;
+
+        match tenure_info {
             Ok(tenure_info) => {
                 self.stacks.node_tip = Some(ChainTipInfo {
                     block_hash: tenure_info.tip_block_id,
@@ -258,7 +267,7 @@ impl InfoResponse {
             }
         }
 
-        match stacks_client.get_node_info().await {
+        match node_info {
             Ok(node_info) => {
                 self.stacks.node_bitcoin_block_height = Some(node_info.burn_block_height);
                 self.stacks.node_version = Some(node_info.server_version);
@@ -276,10 +285,13 @@ impl InfoResponse {
         settings: &Settings,
         stacks_client: &impl StacksInteract,
     ) {
-        match storage.get_latest_encrypted_dkg_shares().await {
+        let latest_dkg_shares = storage.get_latest_encrypted_dkg_shares().await;
+
+        match latest_dkg_shares {
             Ok(Some(keys)) => {
                 self.dkg.current_aggregate_key = Some(keys.aggregate_key.to_string());
-                match storage.get_encrypted_dkg_shares_count().await {
+                let dkg_shares_count = storage.get_encrypted_dkg_shares_count().await;
+                match dkg_shares_count {
                     Ok(count) => {
                         self.dkg.rounds = count;
                     }
@@ -299,10 +311,11 @@ impl InfoResponse {
             }
         }
 
-        match stacks_client
+        let current_signers_aggregate_key = stacks_client
             .get_current_signers_aggregate_key(&settings.signer.deployer)
-            .await
-        {
+            .await;
+
+        match current_signers_aggregate_key {
             Ok(Some(key)) => {
                 self.dkg.contract_aggregate_key = Some(key.to_string());
             }
