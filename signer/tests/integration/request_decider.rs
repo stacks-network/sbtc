@@ -48,6 +48,7 @@ fn test_environment(
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
+        concatenate_blocks: false,
     };
 
     let context = TestContext::builder()

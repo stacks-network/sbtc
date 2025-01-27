@@ -737,6 +737,9 @@ impl PgStore {
     }
 }
 
+#[cfg(test)]
+impl PgStore {}
+
 impl From<sqlx::PgPool> for PgStore {
     fn from(value: sqlx::PgPool) -> Self {
         Self(value)
@@ -1930,36 +1933,22 @@ impl super::DbRead for PgStore {
     ) -> Result<Vec<model::DepositSigner>, Error> {
         sqlx::query_as::<_, model::DepositSigner>(
             r#"
-            WITH RECURSIVE context_window AS (
-                -- Anchor member: Initialize the recursion with the chain tip
-                SELECT block_hash, block_height, parent_hash, created_at, 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                -- Recursive member: Fetch the parent block using the last block's parent_hash
-                SELECT parent.block_hash, parent.block_height, parent.parent_hash,
-                       parent.created_at, last.depth + 1
-                FROM sbtc_signer.bitcoin_blocks parent
-                JOIN context_window last ON parent.block_hash = last.parent_hash
-                WHERE last.depth < $2
-            ),
-            transactions_in_window AS (
-                SELECT transactions.txid
-                FROM context_window blocks_in_window
-                JOIN sbtc_signer.bitcoin_transactions transactions ON
-                    transactions.block_hash = blocks_in_window.block_hash
+            WITH target_block AS (
+                SELECT blocks.block_hash, blocks.created_at
+                FROM sbtc_signer.bitcoin_blockchain_of($1, $2) chain
+                JOIN sbtc_signer.bitcoin_blocks blocks USING (block_hash)
+                ORDER BY chain.block_height ASC
+                LIMIT 1
             )
             SELECT
-                deposit_signers.txid
-              , deposit_signers.output_index
-              , deposit_signers.signer_pub_key
-              , deposit_signers.can_sign
-              , deposit_signers.can_accept
-            FROM transactions_in_window transactions
-            JOIN sbtc_signer.deposit_signers USING (txid)
-            WHERE deposit_signers.signer_pub_key = $3
+                ds.txid,
+                ds.output_index,
+                ds.signer_pub_key,
+                ds.can_sign,
+                ds.can_accept
+            FROM sbtc_signer.deposit_signers ds
+            WHERE ds.signer_pub_key = $3
+              AND ds.created_at >= (SELECT created_at FROM target_block)
             "#,
         )
         .bind(chain_tip)
