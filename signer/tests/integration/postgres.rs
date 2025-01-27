@@ -70,7 +70,6 @@ use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_be_able_to_query_bitcoin_blocks() {
     let mut store = testing::storage::new_test_database().await;
@@ -140,7 +139,6 @@ impl AsContractCall for InitiateWithdrawalRequest {
 /// Test that the write_stacks_blocks function does what it is supposed to
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(ContractCallWrapper(InitiateWithdrawalRequest {
     deployer: *testing::wallet::WALLET.0.address(),
 }); "initiate-withdrawal")]
@@ -273,7 +271,6 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 /// Here we test that the DbRead::stacks_block_exists function works, while
 /// implicitly testing the DbWrite::write_stacks_blocks function for the
 /// PgStore type
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn checking_stacks_blocks_exists_works() {
     let store = testing::storage::new_test_database().await;
@@ -314,7 +311,6 @@ async fn checking_stacks_blocks_exists_works() {
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending deposit requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -376,7 +372,6 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 
 /// Test that [`DbRead::get_pending_deposit_requests`] returns deposit
 /// requests that do not have a vote on them yet.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_pending_deposit_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
@@ -429,7 +424,6 @@ async fn get_pending_deposit_requests_only_pending() {
 
 /// Test that [`DbRead::get_pending_withdrawal_requests`] returns
 /// withdrawal requests that do not have a vote on them yet.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_pending_withdrawal_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
@@ -481,7 +475,6 @@ async fn get_pending_withdrawal_requests_only_pending() {
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending withdraw requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -558,7 +551,6 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted deposit requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -623,7 +615,6 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted withdraw requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -690,7 +681,6 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
 }
 
 /// This tests that when fetching pending accepted deposits we ingore swept ones.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_not_return_swept_deposits_as_pending_accepted() {
     let db = testing::storage::new_test_database().await;
@@ -766,7 +756,6 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
 ///
 /// TODO(#751): Add a test to ensure that the locktime buffer is interpreted the same way during
 /// DepositRequestReport validation and the get pending accepted deposits database accessor function.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bounds() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -953,7 +942,6 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
 /// This ensures that the postgres store and the in memory stores returns
 /// equivalent results when fetching pending the last key rotation.
 /// TODO(415): Make this robust to multiple key rotations.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -1026,7 +1014,6 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
 /// Here we test that we can store deposit request model objects. We also
 /// test that if we attempt to write another deposit request then we do not
 /// write it and that we do not error.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_deposit_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1070,7 +1057,6 @@ async fn writing_deposit_requests_postgres() {
 /// transaction model objects. We also test that if we attempt to write
 /// duplicate transactions then we do not write it and that we do not
 /// error.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_transactions_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1139,7 +1125,6 @@ async fn writing_transactions_postgres() {
 }
 
 /// Here we test that we can store completed deposit events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_completed_deposit_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1176,7 +1161,6 @@ async fn writing_completed_deposit_requests_postgres() {
 }
 
 /// Here we test that we can store withdrawal-create events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_withdrawal_create_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1224,7 +1208,6 @@ async fn writing_withdrawal_create_requests_postgres() {
 }
 
 /// Here we test that we can store withdrawal-accept events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_withdrawal_accept_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1266,7 +1249,6 @@ async fn writing_withdrawal_accept_requests_postgres() {
 }
 
 /// Here we test that we can store withdrawal-reject events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_withdrawal_reject_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1305,7 +1287,6 @@ async fn writing_withdrawal_reject_requests_postgres() {
 /// for the specific aggregate key. This includes "implicit" votes where we
 /// got no response from a particular signer but so we assume that they
 /// vote to reject the transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn fetching_deposit_request_votes() {
     // So we have 7 signers, but we will only receive votes from 4 of them.
@@ -1405,7 +1386,6 @@ async fn fetching_deposit_request_votes() {
 /// keys for the specific aggregate key. This includes "implicit" votes
 /// where we got no response from a particular signer but so we assume that
 /// they vote to reject the transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn fetching_withdrawal_request_votes() {
     // So we have 7 signers, but we will only receive votes from 4 of them.
@@ -1514,7 +1494,6 @@ async fn fetching_withdrawal_request_votes() {
 /// For this test we check that the `block_in_canonical_bitcoin_blockchain`
 /// function returns false when the input block is not in the canonical
 /// bitcoin blockchain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     let pg_store = testing::storage::new_test_database().await;
@@ -1588,7 +1567,6 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
 /// For this test we check that the `get_bitcoin_tx` function returns a
 /// transaction when the transaction exists in the block, and returns None
 /// otherwise.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn we_can_fetch_bitcoin_txs_from_db() {
     let pg_store = testing::storage::new_test_database().await;
@@ -1645,7 +1623,6 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
 
 /// Check that `is_signer_script_pub_key` correctly returns whether a
 /// scriptPubKey value exists in the dkg_shares table.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
     let db = testing::storage::new_test_database().await;
@@ -1689,7 +1666,6 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
 /// fetch the last 365 days worth of scriptPubKeys, but if there are no new
 /// encrypted shares in the database in a year, we should still return the
 /// most recent one.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
     let db = testing::storage::new_test_database().await;
@@ -1732,7 +1708,6 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
 
 /// The [`DbRead::get_last_encrypted_dkg_shares`] function is supposed to
 /// fetch the last encrypted DKG shares stored in the database.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     let db = testing::storage::new_test_database().await;
@@ -1780,7 +1755,6 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
 
 /// The [`DbRead::deposit_request_exists`] function is return true we have
 /// a record of the deposit request and false otherwise.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_request_exists_works() {
     let db = testing::storage::new_test_database().await;
@@ -1806,7 +1780,6 @@ async fn deposit_request_exists_works() {
 
 /// Check that is_known_bitcoin_block_hash correctly reports whether a
 /// given block is in the database.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn is_known_bitcoin_block_hash_works() {
     let db = testing::storage::new_test_database().await;
@@ -1853,7 +1826,6 @@ async fn is_known_bitcoin_block_hash_works() {
 /// This tests that deposit requests where there is an associated sweep
 /// transaction will show up in the query results from
 /// [`DbRead::get_swept_deposit_requests`].
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     let db = testing::storage::new_test_database().await;
@@ -1914,7 +1886,6 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 /// This function tests that deposit requests that do not have a confirmed
 /// response (sweep) bitcoin transaction are not returned from
 /// [`DbRead::get_swept_deposit_requests`].
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     let db = testing::storage::new_test_database().await;
@@ -1965,7 +1936,6 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
 /// We use two sweep setups: we add confirming events to both but for one
 /// of them the event is not in the canonical chain, then we push another event
 /// (on the canonical chain) resulting in both being confirmed on the canonical chain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_responses() {
     let db = testing::storage::new_test_database().await;
@@ -2111,7 +2081,6 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
 /// returns Some(true) if the caller is part of the signing set,
 /// Some(false) if it isn't and None if the deposit request record cannot
 /// be found.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
     let db = testing::storage::new_test_database().await;
@@ -2172,7 +2141,6 @@ async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
 /// function return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the Stacks blockchain
 /// but that transaction has been reorged while the sweep transaction has not.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_response_tx_reorged() {
     let db = testing::storage::new_test_database().await;
@@ -2296,7 +2264,6 @@ async fn transaction_coordinator_test_environment(
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 /// Tests that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
 async fn should_ignore_withdrawals() {
@@ -2310,7 +2277,6 @@ async fn should_ignore_withdrawals() {
     testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_simple() {
     let store = testing::storage::new_test_database().await;
@@ -2323,7 +2289,6 @@ async fn should_get_signer_utxo_simple() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_fork() {
     let store = testing::storage::new_test_database().await;
@@ -2336,7 +2301,6 @@ async fn should_get_signer_utxo_fork() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_unspent() {
     let store = testing::storage::new_test_database().await;
@@ -2349,7 +2313,6 @@ async fn should_get_signer_utxo_unspent() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_donations() {
     let store = testing::storage::new_test_database().await;
@@ -2378,7 +2341,6 @@ async fn should_get_signer_utxo_donations() {
 /// Check the expected report if the deposit request and transaction are in
 /// the database, but this signers vote is missing and the transaction is
 /// confirmed on the wrong blockchain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_only_deposit_request() {
     let db = testing::storage::new_test_database().await;
@@ -2478,7 +2440,6 @@ async fn deposit_report_with_only_deposit_request() {
 /// [`deposit_report_with_only_deposit_request`] is that we write the
 /// signer decision to the database here and check that it gets reproduced
 /// in the report.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_reorged() {
     let db = testing::storage::new_test_database().await;
@@ -2553,7 +2514,6 @@ async fn deposit_report_with_deposit_request_reorged() {
 /// Check that if the deposit has been included in a sweep transaction
 /// then the deposit report states that the deposit has been spent in the
 /// status.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_spent() {
     let db = testing::storage::new_test_database().await;
@@ -2651,7 +2611,6 @@ async fn deposit_report_with_deposit_request_spent() {
 /// Check that if the deposit has been included in a sweep transaction
 /// that gets reorged, then the deposit report states that the deposit is
 /// confirmed and not spent.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     let db = testing::storage::new_test_database().await;
@@ -2782,7 +2741,6 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 /// Check when we have a deposit that has been confirmed on the canonical
 /// bitcoin and hasn't been spent, that the deposit report has the
 /// appropriate "Confirmed" status.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_confirmed() {
     let db = testing::storage::new_test_database().await;
@@ -2858,7 +2816,6 @@ async fn deposit_report_with_deposit_request_confirmed() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     let db = testing::storage::new_test_database().await;
@@ -2880,7 +2837,6 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn can_write_multiple_bitcoin_withdrawal_outputs() {
     let db = testing::storage::new_test_database().await;
@@ -2894,7 +2850,6 @@ async fn can_write_multiple_bitcoin_withdrawal_outputs() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposit_request_returns_none_for_missing_deposit() {
     let db = testing::storage::new_test_database().await;
@@ -2912,7 +2867,6 @@ async fn get_deposit_request_returns_none_for_missing_deposit() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposit_request_returns_returns_inserted_deposit_request() {
     let db = testing::storage::new_test_database().await;
@@ -2980,7 +2934,6 @@ impl<const N: usize> ReorgDescription<N> {
 ///    blockchain in the database, so that it is the best chain.
 /// 5. Get the signers' UTXO and check that the transaction ID matches the
 ///    one expected.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(ReorgDescription {
     sweep_heights: [0, 3, 4, 5],
     reorg_height: 4,

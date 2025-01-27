@@ -77,7 +77,7 @@ impl DepositTxnData {
             recipients: test_deposit_tx
                 .deposits
                 .iter()
-                .map(|d| d.recipient.to_string())
+                .map(|d| hex::encode(d.recipient.to_string()))
                 .collect(),
             reclaim_scripts: test_deposit_tx
                 .reclaims
@@ -116,7 +116,6 @@ impl DepositTxnData {
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn create_and_get_deposit_happy_path() {
     let configuration = clean_setup().await;
@@ -185,7 +184,6 @@ async fn create_and_get_deposit_happy_path() {
     assert_eq!(expected_deposit, gotten_deposit);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn wipe_databases_test() {
     let configuration = clean_setup().await;
@@ -239,7 +237,6 @@ async fn wipe_databases_test() {
     assert_eq!(attempted_get.status_code, 404);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposits_for_transaction() {
     let configuration = clean_setup().await;
@@ -318,7 +315,6 @@ async fn get_deposits_for_transaction() {
     assert_eq!(expected_deposits, gotten_deposits.deposits);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposits() {
     let configuration = clean_setup().await;
@@ -423,7 +419,6 @@ async fn get_deposits() {
     assert_eq!(expected_deposit_infos, gotten_deposit_infos);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposits_for_recipient() {
     let configuration = clean_setup().await;
@@ -537,7 +532,6 @@ async fn get_deposits_for_recipient() {
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn update_deposits() {
     let configuration = clean_setup().await;
@@ -640,7 +634,6 @@ async fn update_deposits() {
     assert_eq!(expected_deposits, updated_deposits);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn update_deposits_updates_chainstate() {
     let configuration = clean_setup().await;
@@ -743,7 +736,6 @@ async fn update_deposits_updates_chainstate() {
 #[test_case(Status::Confirmed, true; "Should reject confirmed duplicate")]
 #[test_case(Status::Failed, true; "Should reject failed duplicate")]
 #[test_case(Status::Accepted, true; "Should reject accepted duplicate")]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 async fn overwrite_deposit(status: Status, should_reject: bool) {
     let configuration = clean_setup().await;
     // Arrange.

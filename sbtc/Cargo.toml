@@ -7,12 +7,11 @@ edition = "2021"
 
 [features]
 default = []
-integration-tests = ["testing"]
 testing = ["dep:bitcoincore-rpc", "dep:bitcoincore-rpc-json"]
 webhooks = ["dep:stackslib", "dep:hex"]
 
 [dependencies]
-bitcoin = { workspace = true, features = ["rand-std"] }
+bitcoin.workspace = true
 bitcoincore-rpc = { workspace = true, optional = true }
 bitcoincore-rpc-json = { workspace = true, optional = true }
 stackslib = { workspace = true, optional = true }

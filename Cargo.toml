@@ -3,19 +3,21 @@ resolver = "2"
 members = [
   "signer",
   "emily/handler",
-  ".generated-sources/emily/openapi",
+  "emily/openapi-gen",
   "blocklist-client",
-  ".generated-sources/blocklist-openapi-gen",
+  "blocklist-openapi-gen",
   "sbtc",
   ".generated-sources/emily/client/rust/public",
   ".generated-sources/emily/client/rust/private",
   ".generated-sources/emily/client/rust/testing",
+  ".generated-sources/blocklist-api"
 ]
 
 [profile.dev]
 # Disabling debug info speeds up builds a bunch,
 # and we don't rely on it for debugging that much.
-debug = 0
+debug = false
+split-debuginfo = "unpacked"
 
 [profile.release]
 lto = "thin"
@@ -34,13 +36,14 @@ aws-sdk-dynamodb = { version = "1.36.0" }
 backoff = { version = "0.4.0", features = ["tokio"] }
 base64 = "0.22.1"
 bincode = "1.3.3"
-bitcoin = { version = "0.32", features = ["serde"] }
+bitcoin = { version = "0.32", features = ["serde", "rand-std"] }
 bitcoincore-rpc = { version = "0.19" }
 bitcoincore-rpc-json = { version = "0.19" }
-bitvec = { version = "1.0", default-features = false, features = ["serde"] }
+bitcoincore-zmq = { version = "1.5.2", features = ["async"] }
+bitvec = { version = "1.0", default-features = false, features = ["serde", "std"] }
 clarity = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a" }
 clap = { version = "4.5.4", features = ["derive", "env"] }
-config = "0.11.0"
+config = "0.14.0"
 futures = "0.3.24"
 hashbrown = "0.14.5"
 http = "1.1.0"
@@ -53,7 +56,7 @@ p256k1 = "7.2.0"
 prost = "0.12.5"
 rand = "0.8"
 reqwest = { version = "0.11", features = ["json"] }
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_bytes = "0.11"
 serde_dynamo = {version = "4.2", features = ["aws-sdk-dynamodb+1"] }
 serde_json = "1.0"
@@ -63,10 +66,10 @@ stackslib = { git = "https://github.com/stacks-network/stacks-core", rev = "4977
 stacks-common = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a" }
 strum = { version = "0.26", features = ["derive"] }
 thiserror = "1.0"
-time = "0.3.36"
+time = { version = "0.3.36", features = ["serde"] }
 tonic = "0.11.0"
 tonic-build = "0.11.0"
-tokio = "1.32.0"
+tokio = { version = "1.32.0", default-features = false, features = ["signal", "macros", "rt-multi-thread", "rt"] }
 tokio-stream = {version = "0.1.15", features = ["sync"] }
 tracing = { version = "0.1", default-features = false }
 tracing-attributes = "0.1"
@@ -74,12 +77,13 @@ url = "2.5"
 warp_lambda = "0.1.4"
 wsts = "9.2.0"
 hex = "0.4.3"
-libp2p = { version = "0.54.1", features = [
+libp2p = { version = "0.54.1", default-features = false, features = [
     "macros", "kad", "noise", "ping", "tcp",
     "tokio", "yamux", "mdns", "quic", "gossipsub",
     "relay", "identify", "tls", "dns", "autonat",
     "secp256k1"
 ] }
+fake = { version = "2.9.2", features = ["derive", "time"] }
 
 [workspace.dependencies.axum]
 version = "0.7"

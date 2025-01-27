@@ -228,6 +228,8 @@ message DkgStatus {
     MissingPrivateShares missing_private_shares = 5;
     // DKG private shares were bad from these signer_ids
     BadPrivateShares bad_private_shares = 6;
+    // The DKG threshold was not met
+    Threshold threshold = 7;
   }
 }
 
@@ -318,3 +320,6 @@ message SignatureShare {
   // The key IDs of the party
   repeated uint32 key_ids = 3;
 }
+
+// The DKG threshold has not been upheld by the coordinator.
+message Threshold {}
