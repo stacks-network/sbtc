@@ -23,6 +23,7 @@ use crate::database::entries::deposit::{
     DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
+use stacks_common::codec::StacksMessageCodec as _;
 use warp::http::StatusCode;
 
 /// Get deposit handler.
@@ -308,7 +309,7 @@ pub async fn create_deposit(
                 bitcoin_txid: body.bitcoin_txid,
                 bitcoin_tx_output_index: body.bitcoin_tx_output_index,
             },
-            recipient: deposit_info.recipient.to_string(),
+            recipient: hex::encode(deposit_info.recipient.serialize_to_vec()),
             parameters: DepositParametersEntry {
                 max_fee: deposit_info.max_fee,
                 lock_time: deposit_info.lock_time.to_consensus_u32(),

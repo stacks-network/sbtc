@@ -1,10 +1,9 @@
-use std::cmp::Ordering;
-use std::collections::HashMap;
-
 use bitcoin::consensus::encode::serialize_hex;
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
 use stacks_common::types::chainstate::StacksAddress;
+use std::cmp::Ordering;
+use std::collections::HashMap;
 use test_case::test_case;
 use testing_emily_client::models::{Fulfillment, Status, UpdateDepositsRequestBody};
 use testing_emily_client::{
