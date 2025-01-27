@@ -33,7 +33,7 @@ x-common-vars:
 # Templates.
 # ------------------------------------------------------------------------------
 x-postgres: &postgres
-  image: postgres:15-alpine
+  image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
   stop_grace_period: 5s
   environment:
     POSTGRES_USER: postgres
@@ -461,7 +461,7 @@ services:
   # Stacks / Hiro API.
   # ------------------
   postgres-stacks-api:
-    image: postgres:15-alpine
+    image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
     container_name: postgres-stacks-api
     stop_grace_period: 5s
     environment:
