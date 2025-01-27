@@ -126,7 +126,7 @@ pub const MAX_SIGNER_STATE_MACHINES: u64 = MAX_MEMPOOL_PACKAGE_SIZE
 /// bitcoin.
 pub const MIN_BITCOIN_INPUT_VSIZE: u64 = 58;
 
-/// These are all build info variables. Many of them are set in build.rs.
+// These are all build info variables. Many of them are set in build.rs.
 
 /// The name of the binary that is being run,
 pub const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");

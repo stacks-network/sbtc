@@ -96,7 +96,6 @@ where
 /// Test that the handler can handle a new block event with a valid payload
 /// that contains a CompletedDeposit event.
 /// The handler should update the chain state in Emily and mark the deposit as confirmed.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_new_blocks_sends_update_deposits_to_emily() {
     let context = test_context().await;
@@ -161,7 +160,6 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
 /// Test that the handler can handle a new block event with a valid payload
 /// that contains a WithdrawalCreate event.
 /// The handler should update the chain state in Emily and mark the withdrawal as pending.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_new_blocks_sends_create_withdrawal_request() {
     let context = test_context().await;
@@ -193,7 +191,6 @@ async fn test_new_blocks_sends_create_withdrawal_request() {
 /// Test that the handler can handle a new block event with a valid payload
 /// that contains a WithdrawalAccept event.
 /// The handler should update the chain state in Emily and mark the withdrawal as confirmed.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_new_blocks_sends_withdrawal_accept_update() {
     let context = test_context().await;
@@ -238,7 +235,6 @@ async fn test_new_blocks_sends_withdrawal_accept_update() {
 /// Test that the handler can handle a new block event with a valid payload
 /// that contains a WithdrawalReject event.
 /// The handler should update the chain state in Emily and mark the withdrawal as failed.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_new_blocks_sends_withdrawal_reject_update() {
     let context = test_context().await;

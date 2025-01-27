@@ -43,13 +43,3 @@ services:
     command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ."
     ports:
       - "8000:8000"
-
-  emily-aws-setup:
-    build:
-      context: ..
-      dockerfile: docker/sbtc/emily-aws-setup/Dockerfile.ci
-      target: emily-aws-setup
-    depends_on:
-      - emily-dynamodb
-    environment:
-      - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000

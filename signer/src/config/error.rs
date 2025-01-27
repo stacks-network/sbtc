@@ -1,3 +1,5 @@
+use libp2p::Multiaddr;
+
 /// Configuration error variants.
 #[derive(Debug, thiserror::Error)]
 pub enum SignerConfigError {
@@ -52,6 +54,11 @@ pub enum SignerConfigError {
         "At least one P2P seed peer is required when the network kind is 'mainnet' or 'testnet'."
     )]
     P2PSeedPeerRequired,
+
+    /// A public endpoint uses a protocol which is not enabled in the listen_on
+    /// addresses.
+    #[error("P2P public endpoint protocol mismatch: '{0}'. The listen_on addresses must include the protocol.")]
+    P2PPublicEndpointProtocolMismatch(Multiaddr),
 
     /// Unsupported database driver
     #[error("Unsupported database driver: {0}. Supported drivers are: 'postgresql'.")]
