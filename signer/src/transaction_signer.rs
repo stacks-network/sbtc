@@ -45,6 +45,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
 use futures::StreamExt;
 use lru::LruCache;
+use sha2::Digest;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -129,6 +130,9 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     ///
     /// - For DKG rounds, TxID should be the ID of the transaction that
     ///   defined the signer set.
+    /// 
+    /// - For signing arbitrary data, the TxID is all zeroes.
+    /// 
     pub wsts_state_machines: LruCache<StateMachineId, SignerStateMachine>,
     /// The threshold for the signer
     pub threshold: u32,
@@ -528,7 +532,7 @@ where
                     self.threshold,
                     self.signer_private_key,
                 )?;
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::Dkg(*bitcoin_chain_tip);
                 self.wsts_state_machines.put(id, state_machine);
 
                 if let Some(pause) = self.dkg_begin_pause {
@@ -539,7 +543,7 @@ where
                     tokio::time::sleep(pause).await;
                 }
 
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::Dkg(*bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -550,7 +554,7 @@ where
                     return Ok(());
                 }
 
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::Dkg(*bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -559,7 +563,7 @@ where
                     signer_id = %dkg_public_shares.signer_id,
                     "handling DkgPublicShares",
                 );
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::Dkg(*bitcoin_chain_tip);
                 self.validate_sender(&id, dkg_public_shares.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -569,7 +573,7 @@ where
                     signer_id = %dkg_private_shares.signer_id,
                     "handling DkgPrivateShares"
                 );
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::Dkg(*bitcoin_chain_tip);
                 self.validate_sender(&id, dkg_private_shares.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -580,7 +584,7 @@ where
                     tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
                 }
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::Dkg(*bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
@@ -592,31 +596,56 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let accepted_sighash =
-                    Self::validate_bitcoin_sign_request(&db, &request.message).await;
 
-                let validation_status = match &accepted_sighash {
-                    Ok(_) => "success",
-                    Err(Error::SigHashConversion(_)) => "improper-sighash",
-                    Err(Error::UnknownSigHash(_)) => "unknown-sighash",
-                    Err(Error::InvalidSigHash(_)) => "invalid-sighash",
-                    Err(_) => "unexpected-failure",
+                // If the txid is all zeroes then we know that we are signing arbitrary data,
+                // otherwise we assume that we are signing a Bitcoin transaction
+                // and perform the necessary checks.
+                let (id, aggregate_key) = if msg.txid != bitcoin::Txid::all_zeros() {
+                    
+                    let accepted_sighash =
+                        Self::validate_bitcoin_sign_request(&db, &request.message).await;
+
+                    let validation_status = match &accepted_sighash {
+                        Ok(_) => "success",
+                        Err(Error::SigHashConversion(_)) => "improper-sighash",
+                        Err(Error::UnknownSigHash(_)) => "unknown-sighash",
+                        Err(Error::InvalidSigHash(_)) => "invalid-sighash",
+                        Err(_) => "unexpected-failure",
+                    };
+
+                    metrics::counter!(
+                        Metrics::SignRequestsTotal,
+                        "blockchain" => BITCOIN_BLOCKCHAIN,
+                        "kind" => "sweep",
+                        "status" => validation_status,
+                    )
+                    .increment(1);
+
+                    let accepted_sighash = accepted_sighash?;
+                    let id = StateMachineId::BitcoinSign(accepted_sighash.sighash);
+
+                    (id, accepted_sighash.public_key)
+                } else {
+                    // Create a `StateMachineId` that is deterministic and
+                    // unique for each signing round, and not likely to 
+                    let mut hasher = sha2::Sha256::new_with_prefix("arbitrary-data");
+                    hasher.update(request.message.as_slice());
+                    let digest: [u8; 32] = hasher.finalize().into();
+                    let id = StateMachineId::ArbitrarySign(digest);
+
+                    let aggregate_key = db
+                        .get_latest_encrypted_dkg_shares()
+                        .await?
+                        .ok_or(Error::NoDkgShares)?
+                        .aggregate_key
+                        .into();
+
+                    (id, aggregate_key)
                 };
-
-                metrics::counter!(
-                    Metrics::SignRequestsTotal,
-                    "blockchain" => BITCOIN_BLOCKCHAIN,
-                    "kind" => "sweep",
-                    "status" => validation_status,
-                )
-                .increment(1);
-
-                let accepted_sighash = accepted_sighash?;
-                let id = accepted_sighash.sighash.into();
 
                 let state_machine = SignerStateMachine::load(
                     &db,
-                    accepted_sighash.public_key,
+                    aggregate_key,
                     self.threshold,
                     self.signer_private_key,
                 )
@@ -634,10 +663,19 @@ where
                 }
 
                 let db = self.context.get_storage();
-                let accepted_sighash =
+
+                let id = if msg.txid != bitcoin::Txid::all_zeros() {
+                    let accepted_sighash =
                     Self::validate_bitcoin_sign_request(&db, &request.message).await?;
 
-                let id = accepted_sighash.sighash.into();
+                    accepted_sighash.sighash.into()
+                } else {
+                    let mut hasher = sha2::Sha256::new_with_prefix("arbitrary-data");
+                    hasher.update(request.message.as_slice());
+                    let digest: [u8; 32] = hasher.finalize().into();
+                    StateMachineId::ArbitrarySign(digest)
+                };
+                
                 let response = self
                     .relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await;

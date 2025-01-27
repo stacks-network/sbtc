@@ -14,7 +14,6 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::model::SigHash;
 
-use bitcoin::hashes::Hash as _;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
 use wsts::common::PolyCommitment;
@@ -30,17 +29,30 @@ use wsts::traits::Signer as _;
 /// hash bytes while for the signing rounds we identify the state machine
 /// by the sighash bytes.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StateMachineId([u8; 32]);
+pub enum StateMachineId {
+    /// Identifier for a DKG state machines
+    Dkg(model::BitcoinBlockHash),
+    /// Identifier for a Bitcoin signing state machines
+    BitcoinSign(SigHash),
+    /// Identifier for arbitrary signing state machines
+    ArbitrarySign([u8; 32]),
+}
 
 impl From<&model::BitcoinBlockHash> for StateMachineId {
     fn from(value: &model::BitcoinBlockHash) -> Self {
-        StateMachineId(value.to_byte_array())
+        StateMachineId::Dkg(*value)
     }
 }
 
 impl From<SigHash> for StateMachineId {
     fn from(value: SigHash) -> Self {
-        StateMachineId(value.to_byte_array())
+        StateMachineId::BitcoinSign(value)
+    }
+}
+
+impl From<[u8; 32]> for StateMachineId {
+    fn from(value: [u8; 32]) -> Self {
+        StateMachineId::ArbitrarySign(value)
     }
 }
 
@@ -48,7 +60,7 @@ impl From<SigHash> for StateMachineId {
 impl StateMachineId {
     /// Create a new identifier
     pub fn new(value: [u8; 32]) -> Self {
-        StateMachineId(value)
+        StateMachineId::ArbitrarySign(value)
     }
 }
 

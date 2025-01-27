@@ -13,6 +13,8 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::future::try_join_all;
 use futures::Stream;
 use futures::StreamExt as _;
+use rand::rngs::OsRng;
+use rand::Rng;
 use sha2::Digest;
 
 use crate::bitcoin::utxo;
@@ -721,6 +723,35 @@ where
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
 
+        // We run a DKG signing round on random data with the new aggregate key
+        // and the threshold set to the full set of signers (i.e. 100%). By doing
+        // this, we can ensure that all signers have correctly provided signatures
+        // which use the new aggregate key, asserting that the new aggregate key
+        // is stored and valid.
+        tracing::info!("running a signing round on random data to assert that all signers have signed with the new aggregate key");
+        let mut coordinator_state_machine = CoordinatorStateMachine::load(
+            &mut self.context.get_storage_mut(),
+            rotate_key_aggregate_key,
+            wallet.public_keys().iter().cloned(),
+            wallet.signatures_required(),
+            self.private_key,
+        )
+        .await?;
+
+        let random_bytes: [u8; 32] = OsRng.gen();
+        self.coordinate_signing_round(
+            bitcoin_chain_tip, 
+            &mut coordinator_state_machine,
+            bitcoin::Txid::all_zeros(),
+            &random_bytes,
+            SignatureType::Schnorr
+        ).await
+        .inspect_err(|error| {
+            tracing::error!(%error, "failed to assert that all signers have signed random data with the new aggregate key; aborting");
+        })?;
+        tracing::info!("all signers have signed random data with the new aggregate key; proceeding");
+
+        // We can now proceed with the actual rotate key transaction.
         let sign_request = StacksTransactionSignRequest {
             aggregate_key: *aggregate_key,
             contract_tx: contract_call.into(),
@@ -848,6 +879,22 @@ where
     ) -> Result<StacksTransaction, Error> {
         let txid = req.txid;
 
+        // Determine the number of signatures required for the transaction. If
+        // the transaction is a rotate keys transaction, then we require all
+        // signers to sign the transaction to ensure that all signers have
+        // successfully finished DKG. Otherwise, we only need the number of
+        // signatures required by the wallet.
+        //
+        // Note: this check is naive and assumes that signers are correctly
+        // validating the new aggregate key. A malicious/faulty signer can
+        // still sign the transaction as the signer simply signs the transaction
+        // using their configured private key.
+        let signatures_required = if req.contract_tx.is_rotate_keys() {
+            wallet.signatures_required()
+        } else {
+            wallet.num_signers()
+        };
+
         // We ask for the signers to sign our transaction (including
         // ourselves, via our tx signer event loop)
         self.send_message(req, chain_tip).await?;
@@ -861,7 +908,7 @@ where
         tokio::pin!(signal_stream);
 
         let future = async {
-            while multi_tx.num_signatures() < wallet.signatures_required() {
+            while multi_tx.num_signatures() < signatures_required {
                 // If signal_stream.next() returns None then one of the
                 // underlying streams has closed. That means either the
                 // network stream, the internal message stream, or the
