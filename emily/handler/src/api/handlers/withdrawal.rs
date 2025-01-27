@@ -28,7 +28,6 @@ use warp::http::StatusCode;
     ),
     tag = "withdrawal",
     responses(
-        // TODO(271): Add success body.
         (status = 200, description = "Withdrawal retrieved successfully", body = Withdrawal),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
@@ -69,7 +68,6 @@ pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp
     ),
     tag = "withdrawal",
     responses(
-        // TODO(271): Add success body.
         (status = 200, description = "Withdrawals retrieved successfully", body = GetWithdrawalsResponse),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
@@ -117,7 +115,6 @@ pub async fn get_withdrawals(
     tag = "withdrawal",
     request_body = CreateWithdrawalRequestBody,
     responses(
-        // TODO(271): Add success body.
         (status = 201, description = "Withdrawal created successfully", body = Withdrawal),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
@@ -159,7 +156,6 @@ pub async fn create_withdrawal(
         let withdrawal_entry: WithdrawalEntry = WithdrawalEntry {
             key: WithdrawalEntryKey {
                 request_id,
-                // TODO(396): Remove dummy hash.
                 stacks_block_hash: stacks_block_hash.clone(),
             },
             recipient,
