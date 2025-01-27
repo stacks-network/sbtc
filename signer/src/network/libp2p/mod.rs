@@ -6,10 +6,12 @@ use libp2p::gossipsub::IdentTopic;
 
 mod errors;
 mod event_loop;
+mod multiaddr;
 mod network;
 mod swarm;
 
 pub use self::errors::SignerSwarmError;
+pub use self::multiaddr::MultiaddrExt;
 pub use self::network::P2PNetwork;
 pub use self::swarm::SignerSwarmBuilder;
 

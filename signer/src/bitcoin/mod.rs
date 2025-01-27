@@ -137,4 +137,14 @@ pub trait BitcoinInteract: Sync + Send {
         &self,
         txid: &Txid,
     ) -> impl Future<Output = Result<Option<GetMempoolEntryResult>, Error>> + Send;
+
+    /// Gets information about the blockchain from the Bitcoin node.
+    fn get_blockchain_info(
+        &self,
+    ) -> impl Future<Output = Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error>> + Send;
+
+    /// Gets information about the network from the Bitcoin node.
+    fn get_network_info(
+        &self,
+    ) -> impl Future<Output = Result<bitcoincore_rpc_json::GetNetworkInfoResult, Error>> + Send;
 }
