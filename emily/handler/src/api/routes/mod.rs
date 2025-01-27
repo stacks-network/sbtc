@@ -1,4 +1,4 @@
-//! Route definitiions for the Emily API.
+//! Route definitions for the Emily API.
 
 use crate::context::EmilyContext;
 

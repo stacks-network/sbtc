@@ -252,8 +252,8 @@ export class EmilyStackUtils {
         //
         // It would be nice if there were a solution that didn't involve doing this ourselves.
         // At the moment, there isn't.
-        let apiJsonDefiniton = JSON.parse(fs.readFileSync(restApiPathOrFileDescriptor, 'utf-8'));
-        let paths = apiJsonDefiniton["paths"];
+        let apiJsonDefinition = JSON.parse(fs.readFileSync(restApiPathOrFileDescriptor, 'utf-8'));
+        let paths = apiJsonDefinition["paths"];
         Object.keys(paths).forEach(path => {
             let verbs = paths[path];
             Object.keys(verbs).forEach(verb => {
@@ -266,8 +266,8 @@ export class EmilyStackUtils {
                             // replace the identifier with the lambda arn.
                             //
                             // This will incorrectly handle the already invalid case where two function ARNS are in the uri.
-                            // Handling multiple replacements is left as an exercize for the reader.
-                            apiJsonDefiniton["paths"][path][verb]["x-amazon-apigateway-integration"]["uri"]["Fn::Sub"] =
+                            // Handling multiple replacements is left as an exercise for the reader.
+                            apiJsonDefinition["paths"][path][verb]["x-amazon-apigateway-integration"]["uri"]["Fn::Sub"] =
                                 [ originalSubString, { [lambdaIdentifier] : lambdaFunction.functionArn } ]
                         }
                     })
@@ -276,6 +276,6 @@ export class EmilyStackUtils {
         })
 
         // Return the modified template as an ApiDefinition.
-        return ApiDefinition.fromInline(apiJsonDefiniton)
+        return ApiDefinition.fromInline(apiJsonDefinition)
     }
 }
