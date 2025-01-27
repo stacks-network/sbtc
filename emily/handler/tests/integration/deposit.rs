@@ -1,6 +1,7 @@
 use bitcoin::consensus::encode::serialize_hex;
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
+use stacks_common::codec::StacksMessageCodec as _;
 use stacks_common::types::chainstate::StacksAddress;
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -76,7 +77,7 @@ impl DepositTxnData {
             recipients: test_deposit_tx
                 .deposits
                 .iter()
-                .map(|d| hex::encode(d.recipient.to_string()))
+                .map(|d| hex::encode(d.recipient.serialize_to_vec()))
                 .collect(),
             reclaim_scripts: test_deposit_tx
                 .reclaims
