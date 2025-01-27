@@ -335,3 +335,115 @@ impl std::ops::DerefMut for CoordinatorStateMachine {
         &mut self.0
     }
 }
+
+/// Wrapper around a WSTS FROST coordinator state machine
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrostCoordinatorStateMachine(FrostCoordinator);
+
+type FrostCoordinator = wsts::state_machine::coordinator::frost::Coordinator<wsts::v2::Aggregator>;
+
+impl FrostCoordinatorStateMachine {
+    /// Create a new state machine
+    pub fn new<I>(signers: I, threshold: u16, message_private_key: PrivateKey) -> Self
+    where
+        I: IntoIterator<Item = PublicKey>,
+    {
+        let signer_public_keys: hashbrown::HashMap<u32, _> = signers
+            .into_iter()
+            .enumerate()
+            .map(|(idx, key)| (idx as u32, key.into()))
+            .collect();
+
+        // The number of possible signers is capped at a number well below
+        // u32::MAX, so this conversion should always work.
+        let num_signers: u32 = signer_public_keys
+            .len()
+            .try_into()
+            .expect("the number of signers is greater than u32::MAX?");
+        let signer_key_ids = (0..num_signers)
+            .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
+            .collect();
+        let config = wsts::state_machine::coordinator::Config {
+            num_signers,
+            num_keys: num_signers,
+            threshold: threshold as u32,
+            dkg_threshold: num_signers,
+            message_private_key: message_private_key.into(),
+            dkg_public_timeout: None,
+            dkg_private_timeout: None,
+            dkg_end_timeout: None,
+            nonce_timeout: None,
+            sign_timeout: None,
+            signer_key_ids,
+            signer_public_keys,
+        };
+
+        let wsts_coordinator = FrostCoordinator::new(config);
+        Self(wsts_coordinator)
+    }
+
+    /// Create a new coordinator state machine from the given aggregate
+    /// key.
+    ///
+    /// # Notes
+    ///
+    /// The `WstsCoordinator` is a state machine that is responsible for
+    /// DKG and for facilitating signing rounds. When created the
+    /// `WstsCoordinator` state machine starts off in the `IDLE` state,
+    /// where you can either start a signing round or start DKG. This
+    /// function is for loading the state with the assumption that DKG has
+    /// already been successfully completed.
+    pub async fn load<I, S, X>(
+        storage: &mut S,
+        aggregate_key: X,
+        signers: I,
+        threshold: u16,
+        message_private_key: PrivateKey,
+    ) -> Result<Self, Error>
+    where
+        I: IntoIterator<Item = PublicKey>,
+        S: storage::DbRead + storage::DbWrite,
+        X: Into<PublicKeyXOnly>,
+    {
+        let x_only_aggregate_key: PublicKeyXOnly = aggregate_key.into();
+        let encrypted_shares = storage
+            .get_encrypted_dkg_shares(x_only_aggregate_key)
+            .await?
+            .ok_or(Error::MissingDkgShares(x_only_aggregate_key))?;
+
+        let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
+            BTreeMap::decode(encrypted_shares.public_shares.as_slice())?;
+        let party_polynomials = public_dkg_shares
+            .iter()
+            .flat_map(|(_, share)| share.comms.clone())
+            .collect::<Vec<(u32, PolyCommitment)>>();
+
+        let mut coordinator = Self::new(signers, threshold, message_private_key);
+
+        let aggregate_key = encrypted_shares.aggregate_key.into();
+        coordinator
+            .set_key_and_party_polynomials(aggregate_key, party_polynomials)
+            .map_err(Error::wsts_coordinator)?;
+        coordinator.current_dkg_id = 1;
+
+        coordinator
+            .move_to(WstsState::Idle)
+            .map_err(Error::wsts_coordinator)?;
+
+        Ok(coordinator)
+    }
+}
+
+impl std::ops::Deref for FrostCoordinatorStateMachine {
+    type Target = FrostCoordinator;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for FrostCoordinatorStateMachine {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
