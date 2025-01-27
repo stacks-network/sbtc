@@ -31,7 +31,7 @@ services:
   postgres:
     container_name: postgres
     restart: on-failure
-    image: postgres:16.6-alpine3.21@sha256:aba1fab94626cf8b0f4549055214239a37e0a690f03f142b7bca05b9ed36c6db
+    image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
     stop_grace_period: 5s
     environment:
       POSTGRES_DB: *POSTGRES_DB
@@ -97,7 +97,7 @@ services:
 
   vector:
     container_name: vector
-    image: timberio/vector:0.44.0-alpine@sha256:e285e1543366ac306f3957c25d3aca4d2f86855ae274fa4de3522676d72fa0df
+    image: timberio/vector:0.44.0-debian@sha256:e285e1543366ac306f3957c25d3aca4d2f86855ae274fa4de3522676d72fa0df
     volumes:
       - ./logs:/logs
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro
