@@ -38,7 +38,6 @@ use warp::http::StatusCode;
     ),
     tag = "deposit",
     responses(
-        // TODO(271): Add success body.
         (status = 200, description = "Deposit retrieved successfully", body = Deposit),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
