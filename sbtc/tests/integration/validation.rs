@@ -48,7 +48,7 @@ fn tx_validation_from_mempool() {
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let mut setup: TxSetup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+    let mut setup: TxSetup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
 
     let (rpc, faucet) = regtest::initialize_blockchain();
     let depositor = Recipient::new(AddressType::P2tr);
@@ -66,11 +66,11 @@ fn tx_validation_from_mempool() {
         script_sig: ScriptBuf::new(),
         witness: Witness::new(),
     }];
-
+    let deposit = setup.deposits.first().unwrap();
     let request = CreateDepositRequest {
         outpoint: OutPoint::new(setup.tx.compute_txid(), 0),
-        reclaim_script: setup.reclaim.reclaim_script(),
-        deposit_script: setup.deposit.deposit_script(),
+        reclaim_script: setup.reclaims.first().unwrap().reclaim_script(),
+        deposit_script: deposit.deposit_script(),
     };
 
     regtest::p2tr_sign_transaction(&mut setup.tx, 0, &utxos, &depositor.keypair);
@@ -82,8 +82,8 @@ fn tx_validation_from_mempool() {
     assert_eq!(parsed.deposit_script, request.deposit_script);
     assert_eq!(parsed.reclaim_script, request.reclaim_script);
     assert_eq!(parsed.amount, amount_sats);
-    assert_eq!(parsed.signers_public_key, setup.deposit.signers_public_key);
-    assert_eq!(parsed.recipient, setup.deposit.recipient);
+    assert_eq!(parsed.signers_public_key, deposit.signers_public_key);
+    assert_eq!(parsed.recipient, deposit.recipient);
 
     let lock_time_height = bitcoin::relative::LockTime::from_height(lock_time as u16);
     assert_eq!(parsed.lock_time, lock_time_height);

@@ -49,7 +49,7 @@ describe('EmilyStack Test', () => {
             // TODO(TBD): Add check for properties linking resources created during cdk build.
             Handler: "main",
             Runtime: "provided.al2023",
-            Architectures: [ "x86_64" ],
+            Architectures: ["x86_64"],
             Timeout: 5,
         });
 
@@ -64,6 +64,7 @@ describe('EmilyStack Test', () => {
                 expect(environment.LIMIT_TABLE_NAME).toMatch(`LimitTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
                 expect(environment.TRUSTED_REORG_API_KEY).toEqual("testApiKey");
                 expect(environment.IS_LOCAL).toEqual("false");
+                expect(environment.IS_MAINNET).toEqual("false");
             });
     });
 
