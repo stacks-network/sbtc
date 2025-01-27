@@ -3,6 +3,7 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
 use crate::emily_client::EmilyClientError;
 use crate::keys::PublicKey;
@@ -70,6 +71,10 @@ pub enum Error {
     /// An error occurred while communicating with the Emily API
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
+
+    /// An error occurred while communicating with the blocklist client
+    #[error("blocklist client error: {0}")]
+    BlocklistClient(#[from] BlocklistClientError),
 
     /// Attempt to fetch a bitcoin blockhash ended in an unexpected error.
     /// This is not triggered if the block is missing.

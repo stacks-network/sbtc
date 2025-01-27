@@ -72,7 +72,7 @@ features = ["rand-std", "global-context"]
 
 [dev-dependencies]
 bitcoincore-rpc.workspace = true
-mockito = "1.4.0"
+mockito = "1.6.1"
 more-asserts = "0.3"
 ripemd = "0.1.3"
 sbtc = { path = "../sbtc", default-features = false, features = ["testing"] }
