@@ -818,7 +818,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
     test_data.write_to(&db).await;
@@ -927,7 +927,7 @@ async fn run_dkg_from_scratch() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
 
@@ -1145,7 +1145,7 @@ async fn run_subsequent_dkg() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
 

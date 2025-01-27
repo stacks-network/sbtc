@@ -82,7 +82,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, 7);
@@ -328,7 +328,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
@@ -570,7 +570,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
     let threshold = 4;
 
@@ -777,7 +777,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
     let threshold = 4;
 
@@ -962,7 +962,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
         num_signers_per_request: 7,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
     let num_signers = 7;
     let threshold = 4;
@@ -1617,7 +1617,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -1691,7 +1691,7 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
         num_deposit_requests_per_block: 2,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -1903,7 +1903,7 @@ async fn is_known_bitcoin_block_hash_works() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2466,7 +2466,7 @@ async fn deposit_report_with_only_deposit_request() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2566,7 +2566,7 @@ async fn deposit_report_with_deposit_request_reorged() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2641,7 +2641,7 @@ async fn deposit_report_with_deposit_request_spent() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2739,7 +2739,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2870,7 +2870,7 @@ async fn deposit_report_with_deposit_request_confirmed() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -3107,7 +3107,7 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
-        concatenate_blocks: true,
+        concatenate_blocks: false,
     };
 
     // Let's generate some dummy data and write it into the database.
