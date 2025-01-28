@@ -30,6 +30,7 @@ use signer::storage::postgres::PgStore;
 use signer::transaction_coordinator;
 use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
+use signer::keys::PublicKey;
 use tokio::signal;
 use tower_http::trace::TraceLayer;
 use tracing::Instrument;
@@ -74,11 +75,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         revision = signer::GIT_COMMIT,
         arch = signer::TARGET_ARCH,
         env_abi = signer::TARGET_ENV_ABI,
+        signer_version = signer::VERSION,
         "starting the sBTC signer",
     );
-
+    
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
+
+    tracing::info!(
+        signer_public_key = %PublicKey::from_private_key(&settings.signer.private_key),
+        "constructed signer settings",
+    );
+
+
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
@@ -101,6 +110,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // signing set, and only assume we are bootstrapping if that source is
     // empty.
     let settings = context.config();
+
     for signer in settings.signer.bootstrap_signing_set() {
         context.state().current_signer_set().add_signer(signer);
     }
