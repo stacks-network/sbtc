@@ -38,7 +38,7 @@ pub struct CreateWithdrawalRequestBody {
     pub parameters: WithdrawalParameters,
 }
 
-/// A singlular Withdrawal update that contains only the fields pertinent
+/// A singular Withdrawal update that contains only the fields pertinent
 /// to updating the status of a withdrawal. This includes the key related
 /// data in addition to status history related data.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]

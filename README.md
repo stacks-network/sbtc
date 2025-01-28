@@ -61,9 +61,9 @@ Below is the output on a machine that is able to build and run all the sources a
 
 ```
 --- sBTC tool versions ---
-cargo 1.77.2 (e52e36006 2024-03-26)
+cargo 1.84.0 (66221abde 2024-11-19)
 cargo-lambda 1.2.1 (12f9b61 2024-04-05Z)
-pnpm 8.15.4
+pnpm 9.1.0
 GNU Make 3.81
 ```
 
@@ -139,6 +139,29 @@ Finally, go to the deposit tab and issue a new deposit.
 Once you submitted a deposit request (either ways), you can follow it:
  - First, on the bitcoin explorer, you can see the deposit tx, and a block later the sweep tx from the signers consuming its output
  - Then, on the stacks explorer, you can see the `complete-deposit` contract call (to `SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS`), minting the net sBTC to the recipient account.
+
+### Cargo Vet CI
+
+This GitHub Actions workflow, Cargo Vet, is designed to automate the vetting of the project dependencies, ensuring they meet security and compliance standards. It runs on every push to the repository and provides detailed feedback if unvetted dependencies are detected.
+
+#### How to Use This Workflow
+
+- **Automatic Trigger**: The workflow runs automatically on every push to the repository. You don't need to manually trigger it unless you want to test it specifically.
+
+- **Reviewing Results**: Success: If all dependencies are vetted, the workflow completes successfully, and no further action is required.
+
+- **Failure**: Check the GitHub Actions logs for errors and annotations about unvetted dependencies.
+Download the audit-suggestions.txt artifact from the "Artifacts" section of the GitHub Actions interface for a detailed report.
+
+- **Addressing Unvetted Dependencies**: Use the suggestions in the audit-suggestions.txt file to update your dependency audit policies in the supply-chain.toml file. 
+
+Running this command you are able to check the suggestions offline:
+
+```bash
+cargo vet suggest > audit-suggestions.txt
+```
+
+Review the suggestions in audit-suggestions.txt and manually update your supply-chain.toml file to approve or reject dependencies based on your audit.
 
 
 ### Git hooks

@@ -296,6 +296,16 @@ impl BitcoinInteract for TestHarness {
     ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
+
+    async fn get_blockchain_info(
+        &self,
+    ) -> Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error> {
+        unimplemented!()
+    }
+
+    async fn get_network_info(&self) -> Result<bitcoincore_rpc_json::GetNetworkInfoResult, Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for TestHarness {
@@ -514,7 +524,7 @@ impl EmilyInteract for TestHarness {
     }
 
     async fn get_limits(&self) -> Result<SbtcLimits, Error> {
-        Ok(SbtcLimits::default())
+        Ok(SbtcLimits::unlimited())
     }
 }
 

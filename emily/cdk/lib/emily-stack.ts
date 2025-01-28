@@ -416,7 +416,7 @@ export class EmilyStack extends cdk.Stack {
             restApiName: EmilyStackUtils.getResourceName(apiId, props),
             apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
                 EmilyStackUtils.getPathFromProjectRoot(
-                    `.generated-sources/emily/openapi/generated-specs/${apiPurpose}-emily-openapi-spec.json`
+                    `emily/openapi-gen/generated-specs/${apiPurpose}-emily-openapi-spec.json`
                 ),
                 [
                     // This must match the Lambda name from the @aws.apigateway#integration trait in the
@@ -476,7 +476,7 @@ export class EmilyStack extends cdk.Stack {
             }
 
             // Create the custom domain name of the format:
-            //   if stage != prod: [stage].[purpose].[customRootDomainNameRoot]
+            //   if stage != prod: [purpose].[stage].[customRootDomainNameRoot]
             //   if stage == prod: [purpose].[customRootDomainNameRoot]
             const stagePrefix = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
                 ? ""

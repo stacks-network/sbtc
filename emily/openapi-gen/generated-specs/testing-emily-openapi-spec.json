@@ -1443,6 +1443,60 @@
         }
       }
     },
+    "/testing/wipe": {
+      "post": {
+        "tags": [
+          "testing"
+        ],
+        "summary": "Wipe databases handler.",
+        "operationId": "wipeDatabases",
+        "responses": {
+          "204": {
+            "description": "Successfully wiped databases."
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "404": {
+            "description": "Address not found"
+          },
+          "405": {
+            "description": "Method not allowed"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/withdrawal": {
       "get": {
         "tags": [
@@ -2117,7 +2171,7 @@
       },
       "DepositUpdate": {
         "type": "object",
-        "description": "A singlular Deposit update that contains only the fields pertinent\nto updating the status of a deposit. This includes the key related\ndata in addition to status history related data.",
+        "description": "A singular Deposit update that contains only the fields pertinent\nto updating the status of a deposit. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
@@ -2559,7 +2613,7 @@
       },
       "WithdrawalUpdate": {
         "type": "object",
-        "description": "A singlular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
+        "description": "A singular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "requestId",
           "lastUpdateHeight",

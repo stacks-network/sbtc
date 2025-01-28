@@ -69,7 +69,6 @@ async fn create_signer_database() -> PgStore {
     signer::testing::storage::new_test_database().await
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_store_decisions_for_pending_deposit_requests() {
     let num_signers = 3;
@@ -86,7 +85,6 @@ async fn should_store_decisions_for_pending_deposit_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_store_decisions_for_pending_withdraw_requests() {
     let num_signers = 3;
@@ -103,7 +101,6 @@ async fn should_store_decisions_for_pending_withdraw_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_store_decisions_received_from_other_signers() {
     let num_signers = 3;
@@ -123,7 +120,6 @@ async fn should_store_decisions_received_from_other_signers() {
 /// Test that [`TxSignerEventLoop::handle_pending_deposit_request`] does
 /// not error when attempting to check the scriptPubKeys of the
 /// inputs of a deposit.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn handle_pending_deposit_request_address_script_pub_key() {
     let db = testing::storage::new_test_database().await;
@@ -208,7 +204,6 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
 /// Test that [`RequestDeciderEventLoop::handle_pending_deposit_request`]
 /// will write the can_sign field to be false if the current signer is not
 /// part of the signing set locking the deposit transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn handle_pending_deposit_request_not_in_signing_set() {
     let db = testing::storage::new_test_database().await;
@@ -294,7 +289,6 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
 /// Test that
 /// [`RequestDeciderEventLoop::persist_received_deposit_decision`] will
 /// fetch the deposit request from emily if does not have a record of it.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     let db = testing::storage::new_test_database().await;
