@@ -218,8 +218,8 @@ services:
       dockerfile: docker/sbtc/Dockerfile
       target: blocklist-client
     environment:
-      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL: ${BLOCKLIST_CLIENT__RISK_ANALYSIS__API_URL:-https://public.chainalysis.com}
-      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT__RISK_ANALYSIS__API_KEY:-}
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_URL:-https://public.chainalysis.com}
+      BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY:-}
       BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
     ports:
       - "3030:3030"
