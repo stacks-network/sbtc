@@ -220,6 +220,11 @@ pub struct EmilyClientConfig {
     /// Emily API endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<Url>,
+    /// Pagination timeout in seconds.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub pagination_timeout: std::time::Duration,
+    /// Maximum items returned per page. If `None`, the response can include up to 1 MB of items.
+    pub page_size: Option<NonZeroU16>,
 }
 
 impl Validatable for EmilyClientConfig {
@@ -611,6 +616,8 @@ mod tests {
             NonZeroU32::new(1).unwrap()
         );
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
+        assert_eq!(settings.emily.page_size, None);
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(30));
     }
 
     #[test]
