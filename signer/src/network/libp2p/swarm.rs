@@ -21,7 +21,7 @@ use rand::SeedableRng as _;
 use tokio::sync::Mutex;
 
 use super::errors::SignerSwarmError;
-use super::event_loop;
+use super::{bootstrap, event_loop};
 
 /// Define the behaviors of the [`SignerSwarm`] libp2p network.
 #[derive(NetworkBehaviour)]
@@ -33,6 +33,7 @@ pub struct SignerBehavior {
     pub identify: identify::Behaviour,
     pub autonat_client: autonat::v2::client::Behaviour<StdRng>,
     pub autonat_server: autonat::v2::server::Behaviour<StdRng>,
+    pub bootstrap: bootstrap::Behavior,
 }
 
 impl SignerBehavior {
@@ -62,6 +63,8 @@ impl SignerBehavior {
             keypair.public(),
         ));
 
+        let bootstrap = bootstrap::Behavior::new(bootstrap::Config::new(local_peer_id));
+
         Ok(Self {
             gossipsub: Self::gossipsub(&keypair)?,
             mdns,
@@ -70,6 +73,7 @@ impl SignerBehavior {
             identify,
             autonat_client,
             autonat_server,
+            bootstrap,
         })
     }
 
@@ -216,7 +220,10 @@ impl<'a> SignerSwarmBuilder<'a> {
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
         let keypair: Keypair = (*self.private_key).into();
-        let behavior = SignerBehavior::new(keypair.clone(), self.enable_mdns)?;
+        let mut behavior = SignerBehavior::new(keypair.clone(), self.enable_mdns)?;
+        behavior
+            .bootstrap
+            .add_seed_addresses(self.seed_addrs.clone());
         let noise =
             noise::Config::new(&keypair).map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
         let yamux = yamux::Config::default();
@@ -281,7 +288,6 @@ impl<'a> SignerSwarmBuilder<'a> {
             keypair,
             swarm: Arc::new(Mutex::new(swarm)),
             listen_addrs: self.listen_on,
-            seed_addrs: self.seed_addrs,
             external_addresses: self.external_addresses,
         })
     }
@@ -292,7 +298,6 @@ pub struct SignerSwarm {
     keypair: Keypair,
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
     listen_addrs: Vec<Multiaddr>,
-    seed_addrs: Vec<Multiaddr>,
     external_addresses: Vec<Multiaddr>,
 }
 
@@ -322,30 +327,19 @@ impl SignerSwarm {
         let local_peer_id = *self.swarm.lock().await.local_peer_id();
         tracing::info!(%local_peer_id, "starting signer swarm");
 
-        // Start listening on the listen addresses.
-        for addr in self.listen_addrs.iter() {
-            self.swarm
-                .lock()
-                .await
-                .listen_on(addr.clone())
-                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
-        }
+        {
+            let mut swarm = self.swarm.lock().await;
 
-        // Dial the seed addresses.
-        for addr in self.seed_addrs.iter() {
-            self.swarm
-                .lock()
-                .await
-                .dial(addr.clone())
-                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
-        }
+            // Start listening on the listen addresses.
+            for addr in self.listen_addrs.iter() {
+                swarm
+                    .listen_on(addr.clone())
+                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+            }
 
-        for addr in self.external_addresses.iter() {
-            self.swarm
-                .lock()
-                .await
-                .dial(addr.clone())
-                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+            for addr in self.external_addresses.iter() {
+                swarm.add_external_address(addr.clone());
+            }
         }
 
         // Run the event loop, blocking until its completion.
@@ -374,7 +368,6 @@ mod tests {
         let swarm = builder.build().unwrap();
 
         assert!(swarm.listen_addrs.contains(&addr));
-        assert!(swarm.seed_addrs.contains(&addr));
         assert_eq!(
             swarm.swarm.lock().await.local_peer_id(),
             &PeerId::from_public_key(&keypair.public())
