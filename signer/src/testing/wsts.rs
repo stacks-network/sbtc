@@ -21,6 +21,7 @@ use crate::ecdsa::SignEcdsa as _;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::WstsMessageId;
 use crate::network;
 use crate::network::MessageTransfer as _;
 use crate::storage;
@@ -148,9 +149,9 @@ impl Coordinator {
             .start_public_shares()
             .expect("failed to start public shares");
 
-        self.send_packet(bitcoin_chain_tip, txid, outbound).await;
+        self.send_packet(bitcoin_chain_tip, txid.into(), outbound).await;
 
-        match self.loop_until_result(bitcoin_chain_tip, txid).await {
+        match self.loop_until_result(bitcoin_chain_tip, txid.into()).await {
             wsts::state_machine::OperationResult::Dkg(aggregate_key) => {
                 PublicKey::try_from(&aggregate_key).expect("Got the point at infinity")
             }
@@ -162,7 +163,7 @@ impl Coordinator {
     pub async fn run_signing_round(
         &mut self,
         bitcoin_chain_tip: model::BitcoinBlockHash,
-        txid: bitcoin::Txid,
+        id: WstsMessageId,
         msg: &[u8],
         signature_type: SignatureType,
     ) -> wsts::taproot::SchnorrProof {
@@ -171,9 +172,9 @@ impl Coordinator {
             .start_signing_round(msg, signature_type)
             .expect("failed to start signing round");
 
-        self.send_packet(bitcoin_chain_tip, txid, outbound).await;
+        self.send_packet(bitcoin_chain_tip, id, outbound).await;
 
-        match self.loop_until_result(bitcoin_chain_tip, txid).await {
+        match self.loop_until_result(bitcoin_chain_tip, id).await {
             wsts::state_machine::OperationResult::SignTaproot(signature)
             | wsts::state_machine::OperationResult::SignSchnorr(signature) => signature,
             _ => panic!("unexpected operation result"),
@@ -183,7 +184,7 @@ impl Coordinator {
     async fn loop_until_result(
         &mut self,
         bitcoin_chain_tip: model::BitcoinBlockHash,
-        txid: bitcoin::Txid,
+        id: WstsMessageId,
     ) -> wsts::state_machine::OperationResult {
         let future = async move {
             loop {
@@ -205,7 +206,7 @@ impl Coordinator {
 
                 if let Some(packet) = outbound_packet {
                     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                    self.send_packet(bitcoin_chain_tip, txid, packet).await;
+                    self.send_packet(bitcoin_chain_tip, id, packet).await;
                 }
 
                 if let Some(result) = operation_result {
@@ -274,7 +275,7 @@ impl Signer {
                         .process_inbound_messages(&[packet.clone()], &mut rng)
                         .expect("message processing failed");
 
-                    self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
+                    self.send_packet(bitcoin_chain_tip, wsts_msg.id, packet.clone())
                         .await;
 
                     if let wsts::net::Message::DkgEnd(_) = packet.msg {
@@ -315,7 +316,7 @@ impl Signer {
                         .process_inbound_messages(&[packet.clone()], &mut rng)
                         .expect("message processing failed");
 
-                    self.send_packet(bitcoin_chain_tip, wsts_msg.txid, packet.clone())
+                    self.send_packet(bitcoin_chain_tip, wsts_msg.id, packet.clone())
                         .await;
 
                     if let wsts::net::Message::SignatureShareResponse(_) = packet.msg {
@@ -342,10 +343,10 @@ trait WstsEntity {
     async fn send_packet(
         &mut self,
         bitcoin_chain_tip: model::BitcoinBlockHash,
-        txid: bitcoin::Txid,
+        id: WstsMessageId,
         packet: wsts::net::Packet,
     ) {
-        let payload: message::Payload = message::WstsMessage { txid, inner: packet.msg }.into();
+        let payload: message::Payload = message::WstsMessage { id, inner: packet.msg }.into();
 
         let msg = payload
             .to_message(bitcoin_chain_tip)

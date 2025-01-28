@@ -6,11 +6,12 @@ use secp256k1::ecdsa::RecoverableSignature;
 
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::validation::TxRequestIds;
+use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
-use crate::keys::PublicKeyXOnly;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -221,7 +222,7 @@ pub enum WstsMessageId {
     /// The WSTS message is related to a Bitcoin transaction.
     BitcoinTxid(bitcoin::Txid),
     /// The WSTS message is related to an aggregate key.
-    AggregateKey(PublicKeyXOnly),
+    AggregateKey(PublicKey),
     /// The WSTS message isn't specifically related to anything.
     Arbitrary([u8; 32])
 }
@@ -229,12 +230,6 @@ pub enum WstsMessageId {
 impl From<bitcoin::Txid> for WstsMessageId {
     fn from(txid: bitcoin::Txid) -> Self {
         Self::BitcoinTxid(txid)
-    }
-}
-
-impl From<PublicKeyXOnly> for WstsMessageId {
-    fn from(aggregate_key: PublicKeyXOnly) -> Self {
-        Self::AggregateKey(aggregate_key)
     }
 }
 
@@ -246,13 +241,28 @@ impl From<PublicKey> for WstsMessageId {
 
 impl From<&PublicKey> for WstsMessageId {
     fn from(aggregate_key: &PublicKey) -> Self {
-        Self::AggregateKey(aggregate_key.clone().into())
+        Self::AggregateKey(aggregate_key.clone())
     }
 }
 
 impl WstsMessageId {
-    pub fn random() -> Self {
+    /// Generate a random [`WstsMessageId::Arbitrary`] WSTS message ID
+    pub fn random_arbitrary() -> Self {
         Self::Arbitrary(OsRng.gen())
+    }
+
+    /// Generate a random [`WstsMessageId::BitcoinTxid`] WSTS message ID
+    pub fn random_bitcoin_txid() -> Self {
+        let random_bytes: [u8; 32] = OsRng.gen();
+        let txid = BitcoinTxId::from(random_bytes).into();
+        Self::BitcoinTxid(txid)
+    }
+
+    /// Generate a random [`WstsMessageId::AggregateKey`] WSTS message ID
+    pub fn random_aggregate_key() -> Self {
+        let private = PrivateKey::new(&mut OsRng);
+        let public = PublicKey::from_private_key(&private);
+        Self::AggregateKey(public)
     }
 }
 
@@ -271,9 +281,8 @@ impl std::fmt::Display for WstsMessageId {
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WstsMessage {
-    /// The transaction ID this message relates to,
-    /// will be a dummy ID for DKG messages
-    pub txid: WstsMessageId,
+    /// The id of the wsts message.
+    pub id: WstsMessageId,
     /// The wsts message
     pub inner: wsts::net::Message,
 }

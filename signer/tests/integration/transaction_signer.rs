@@ -20,6 +20,7 @@ use signer::keys::PublicKey;
 use signer::message::BitcoinPreSignRequest;
 use signer::message::StacksTransactionSignRequest;
 use signer::message::WstsMessage;
+use signer::message::WstsMessageId;
 use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
@@ -416,7 +417,7 @@ async fn new_state_machine_per_valid_sighash() {
 
     // Now for the nonce request message
     let mut nonce_request_msg = WstsMessage {
-        txid: *txid,
+        id: WstsMessageId::BitcoinTxid(*txid),
         inner: wsts::net::Message::NonceRequest(NonceRequest {
             dkg_id: 1,
             sign_id: 1,
@@ -521,7 +522,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // arbitrary transaction ID.
     let dkg_id = 2;
     let dkg_begin_msg = WstsMessage {
-        txid: bitcoin::Txid::all_zeros(),
+        id: WstsMessageId::random_arbitrary(),
         inner: wsts::net::Message::DkgBegin(DkgBegin { dkg_id }),
     };
     let msg_public_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
@@ -546,7 +547,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // machine gets created, overwriting any existing one.
     let dkg_id = 1234;
     let dkg_begin_msg = WstsMessage {
-        txid: bitcoin::Txid::from_byte_array(Faker.fake_with_rng(&mut rng)),
+        id: WstsMessageId::random_bitcoin_txid(),
         inner: wsts::net::Message::DkgBegin(DkgBegin { dkg_id }),
     };
 

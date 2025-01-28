@@ -8,6 +8,7 @@ use stacks_common::types::chainstate::StacksAddress;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::message;
+use crate::message::WstsMessageId;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::storage::model::BitcoinBlockHash;
@@ -113,7 +114,7 @@ impl fake::Dummy<fake::Faker> for message::WstsMessage {
         };
 
         Self {
-            txid: dummy::txid(config, rng),
+            id: WstsMessageId::random_arbitrary(),
             inner: wsts::net::Message::DkgEndBegin(dkg_end_begin),
         }
     }

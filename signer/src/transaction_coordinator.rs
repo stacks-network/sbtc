@@ -63,7 +63,6 @@ use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
-use crate::wsts_state_machine::TxidIdentifiers;
 use crate::wsts_state_machine::WstsCoordinator;
 
 use bitcoin::hashes::Hash as _;
@@ -1112,7 +1111,7 @@ where
             .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
-        let msg = message::WstsMessage { txid: txid.into(), inner: outbound.msg };
+        let msg = message::WstsMessage { id: txid.into(), inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
@@ -1167,8 +1166,8 @@ where
             .start_public_shares()
             .map_err(Error::wsts_coordinator)?;
 
-        let txid = WstsMessageId::random();
-        let msg = message::WstsMessage { txid: txid, inner: outbound.msg };
+        let txid = WstsMessageId::Arbitrary(self.coordinator_id(&chain_tip));
+        let msg = message::WstsMessage { id: txid, inner: outbound.msg };
 
         // We create a signal stream before sending a message so that there
         // is no race condition with the steam and the getting a response.
@@ -1272,7 +1271,7 @@ where
                 };
 
             if let Some(packet) = outbound_packet {
-                let msg = message::WstsMessage { txid, inner: packet.msg };
+                let msg = message::WstsMessage { id: txid, inner: packet.msg };
                 self.send_message(msg, bitcoin_chain_tip).await?;
             }
 

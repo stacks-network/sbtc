@@ -6,6 +6,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use crate::codec;
 use crate::emily_client::EmilyClientError;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
@@ -14,6 +15,10 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Expected two aggregate keys to match, but they did not.
+    #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
+    AggregateKeyMismatch(PublicKeyXOnly, PublicKeyXOnly),
+
     /// The aggregate key for the given block hash could not be determined.
     #[error("the signer set aggregate key could not be determined for bitcoin block {0}")]
     MissingAggregateKey(bitcoin::BlockHash),
