@@ -606,7 +606,6 @@ async fn get_deposit_request_works() {
     assert!(request.is_none());
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposits_request_handles_paging() {
     let max_fee: u64 = 15000;
@@ -645,7 +644,6 @@ async fn get_deposits_request_handles_paging() {
     assert_eq!(request.len(), num_deposits);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposits_request_handles_timeout() {
     let max_fee: u64 = 15000;
