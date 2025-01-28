@@ -51,6 +51,8 @@ pub struct TestData {
 
     /// transaction outputs
     pub tx_outputs: Vec<model::TxOutput>,
+
+    bitcoin_blocks_ref: Vec<BitcoinBlockRef>,
 }
 
 impl TestData {
@@ -66,8 +68,14 @@ impl TestData {
         let mut test_data = Self::new();
 
         for _ in 0..params.num_bitcoin_blocks {
-            let (next_chunk, _) = test_data.new_block(rng, signer_keys, params, None);
+            let parent = if params.concatenate_blocks {
+                test_data.bitcoin_blocks_ref.last()
+            } else {
+                None
+            };
+            let (next_chunk, block_ref) = test_data.new_block(rng, signer_keys, params, parent);
             test_data.push(next_chunk);
+            test_data.bitcoin_blocks_ref.push(block_ref);
         }
 
         test_data
@@ -114,7 +122,7 @@ impl TestData {
             .collect();
 
         let bitcoin_blocks = vec![block.clone()];
-
+        let bitcoin_blocks_refs = vec![BitcoinBlockRef::summarize(&block)];
         (
             Self {
                 bitcoin_blocks,
@@ -127,6 +135,7 @@ impl TestData {
                 stacks_transactions: withdraw_data.stacks_transactions,
                 transactions,
                 tx_outputs: Vec::new(),
+                bitcoin_blocks_ref: bitcoin_blocks_refs,
             },
             block.into(),
         )
@@ -515,6 +524,8 @@ pub struct Params {
     pub num_withdraw_requests_per_block: usize,
     /// The number of signers to hallucinate per request
     pub num_signers_per_request: usize,
+    /// Wheter to generate consecutive blocks or not
+    pub concatenate_blocks: bool,
 }
 
 impl BitcoinBlockRef {

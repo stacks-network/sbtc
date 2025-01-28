@@ -7,6 +7,7 @@ use crate::bitcoin::validation::TxRequestIds;
 use crate::keys::PublicKey;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
+use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksTxId;
 
@@ -137,6 +138,17 @@ pub struct SignerDepositDecision {
     /// This specifies whether the sending signer can provide signature
     /// shares for the associated deposit request.
     pub can_sign: bool,
+}
+
+impl From<model::DepositSigner> for SignerDepositDecision {
+    fn from(signer: model::DepositSigner) -> Self {
+        Self {
+            txid: signer.txid.into(),
+            output_index: signer.output_index,
+            can_accept: signer.can_accept,
+            can_sign: signer.can_sign,
+        }
+    }
 }
 
 /// Represents a decision related to signer withdrawal.
