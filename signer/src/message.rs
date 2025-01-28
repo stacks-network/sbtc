@@ -1,10 +1,13 @@
 //! Signer message definition for network communication
 
+use rand::rngs::OsRng;
+use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
 
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::validation::TxRequestIds;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model::BitcoinBlockHash;
@@ -212,12 +215,65 @@ pub struct BitcoinPreSignRequest {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinPreSignAck;
 
+/// The identifier for a WSTS message.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WstsMessageId {
+    /// The WSTS message is related to a Bitcoin transaction.
+    BitcoinTxid(bitcoin::Txid),
+    /// The WSTS message is related to an aggregate key.
+    AggregateKey(PublicKeyXOnly),
+    /// The WSTS message isn't specifically related to anything.
+    Arbitrary([u8; 32])
+}
+
+impl From<bitcoin::Txid> for WstsMessageId {
+    fn from(txid: bitcoin::Txid) -> Self {
+        Self::BitcoinTxid(txid)
+    }
+}
+
+impl From<PublicKeyXOnly> for WstsMessageId {
+    fn from(aggregate_key: PublicKeyXOnly) -> Self {
+        Self::AggregateKey(aggregate_key)
+    }
+}
+
+impl From<PublicKey> for WstsMessageId {
+    fn from(aggregate_key: PublicKey) -> Self {
+        Self::AggregateKey(aggregate_key.into())
+    }
+}
+
+impl From<&PublicKey> for WstsMessageId {
+    fn from(aggregate_key: &PublicKey) -> Self {
+        Self::AggregateKey(aggregate_key.clone().into())
+    }
+}
+
+impl WstsMessageId {
+    pub fn random() -> Self {
+        Self::Arbitrary(OsRng.gen())
+    }
+}
+
+impl std::fmt::Display for WstsMessageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WstsMessageId::BitcoinTxid(txid) => write!(f, "bitcoin-txid({})", txid),
+            WstsMessageId::AggregateKey(aggregate_key) => {
+                write!(f, "aggregate-key({})", aggregate_key)
+            }
+            WstsMessageId::Arbitrary(bytes) => write!(f, "arbitrary({})", hex::encode(bytes)),
+        }
+    }
+}
+
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WstsMessage {
     /// The transaction ID this message relates to,
     /// will be a dummy ID for DKG messages
-    pub txid: bitcoin::Txid,
+    pub txid: WstsMessageId,
     /// The wsts message
     pub inner: wsts::net::Message,
 }

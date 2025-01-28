@@ -24,6 +24,7 @@ use crate::keys::PublicKeyXOnly;
 use crate::message;
 use crate::message::BitcoinPreSignAck;
 use crate::message::StacksTransactionSignRequest;
+use crate::message::WstsMessageId;
 use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::metrics::STACKS_BLOCKCHAIN;
@@ -40,6 +41,7 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
 use crate::wsts_state_machine::SignerStateMachine;
 use crate::wsts_state_machine::StateMachineId;
+use crate::wsts_state_machine::TxidIdentifiers;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
@@ -598,49 +600,66 @@ where
 
                 let db = self.context.get_storage();
 
-                // If the txid is all zeroes then we know that we are signing arbitrary data,
-                // otherwise we assume that we are signing a Bitcoin transaction
-                // and perform the necessary checks.
-                let (id, aggregate_key) = if msg.txid != bitcoin::Txid::all_zeros() {
-                    let accepted_sighash =
+                let (id, aggregate_key) = match msg.txid {
+                    WstsMessageId::BitcoinTxid(txid) => {
+                        let accepted_sighash =
                         Self::validate_bitcoin_sign_request(&db, &request.message).await;
 
-                    let validation_status = match &accepted_sighash {
-                        Ok(_) => "success",
-                        Err(Error::SigHashConversion(_)) => "improper-sighash",
-                        Err(Error::UnknownSigHash(_)) => "unknown-sighash",
-                        Err(Error::InvalidSigHash(_)) => "invalid-sighash",
-                        Err(_) => "unexpected-failure",
-                    };
+                        let validation_status = match &accepted_sighash {
+                            Ok(_) => "success",
+                            Err(Error::SigHashConversion(_)) => "improper-sighash",
+                            Err(Error::UnknownSigHash(_)) => "unknown-sighash",
+                            Err(Error::InvalidSigHash(_)) => "invalid-sighash",
+                            Err(_) => "unexpected-failure",
+                        };
 
-                    metrics::counter!(
-                        Metrics::SignRequestsTotal,
-                        "blockchain" => BITCOIN_BLOCKCHAIN,
-                        "kind" => "sweep",
-                        "status" => validation_status,
-                    )
-                    .increment(1);
+                        metrics::counter!(
+                            Metrics::SignRequestsTotal,
+                            "blockchain" => BITCOIN_BLOCKCHAIN,
+                            "kind" => "sweep",
+                            "status" => validation_status,
+                        )
+                        .increment(1);
 
-                    let accepted_sighash = accepted_sighash?;
-                    let id = StateMachineId::BitcoinSign(accepted_sighash.sighash);
+                        let accepted_sighash = accepted_sighash?;
+                        let id = StateMachineId::BitcoinSign(accepted_sighash.sighash);
 
-                    (id, accepted_sighash.public_key)
-                } else {
-                    // Create a `StateMachineId` that is deterministic and
-                    // unique for each signing round, and not likely to
-                    let mut hasher = sha2::Sha256::new_with_prefix("arbitrary-data");
-                    hasher.update(request.message.as_slice());
-                    let digest: [u8; 32] = hasher.finalize().into();
-                    let id = StateMachineId::ArbitrarySign(digest);
+                        (id, accepted_sighash.public_key)
+                    }
+                    WstsMessageId::AggregateKey(key) => {
+                        // Create a `StateMachineId` that is deterministic and
+                        // unique for each signing round, and not likely to
+                        let mut hasher = sha2::Sha256::new_with_prefix("arbitrary-data");
+                        hasher.update(request.message.as_slice());
+                        let digest: [u8; 32] = hasher.finalize().into();
+                        let id = StateMachineId::ArbitrarySign(digest);
 
-                    let aggregate_key = db
-                        .get_latest_encrypted_dkg_shares()
-                        .await?
-                        .ok_or(Error::NoDkgShares)?
-                        .aggregate_key
-                        .into();
+                        let aggregate_key = db
+                            .get_latest_encrypted_dkg_shares()
+                            .await?
+                            .ok_or(Error::NoDkgShares)?
+                            .aggregate_key
+                            .into();
 
-                    (id, aggregate_key)
+                        (id, aggregate_key)
+                    }
+                    WstsMessageId::Arbitrary(id) => {
+                        // Create a `StateMachineId` that is deterministic and
+                        // unique for each signing round, and not likely to
+                        let mut hasher = sha2::Sha256::new_with_prefix("arbitrary-data");
+                        hasher.update(request.message.as_slice());
+                        let digest: [u8; 32] = hasher.finalize().into();
+                        let id = StateMachineId::ArbitrarySign(digest);
+
+                        let aggregate_key = db
+                            .get_latest_encrypted_dkg_shares()
+                            .await?
+                            .ok_or(Error::NoDkgShares)?
+                            .aggregate_key
+                            .into();
+
+                        (id, aggregate_key)
+                    }
                 };
 
                 let state_machine = SignerStateMachine::load(
@@ -664,7 +683,20 @@ where
 
                 let db = self.context.get_storage();
 
-                let id = if msg.txid != bitcoin::Txid::all_zeros() {
+                let id = match msg.txid {
+                    WstsMessageId::BitcoinTxid(txid) => {
+                        let accepted_sighash =
+                        Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+
+                        accepted_sighash.sighash.into()
+                    }
+                    WstsMessageId::AggregateKey(key) => {
+                        let id = sha2::Sha256::new();
+                        StateMachineId::ArbitrarySign(key.serialize())
+                    }
+                };
+
+                let id = if msg.txid != bitcoin::Txid::aggregate_key_txid() {
                     let accepted_sighash =
                         Self::validate_bitcoin_sign_request(&db, &request.message).await?;
 
@@ -778,7 +810,7 @@ where
     async fn relay_message(
         &mut self,
         id: StateMachineId,
-        txid: bitcoin::Txid,
+        txid: WstsMessageId,
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {

@@ -15,6 +15,7 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::model::SigHash;
 
+use bitcoin::hashes::Hash;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
 use rand::rngs::OsRng;
@@ -31,6 +32,39 @@ use wsts::state_machine::OperationResult;
 use wsts::state_machine::StateMachine as _;
 use wsts::traits::Signer as _;
 use wsts::v2::Aggregator;
+
+/// The bytes for a Bitcoin Txid which indicate the signing of an aggregate key.
+const TXID_AGGREGATE_KEY_TXID: [u8; 32] = *b"AGGREGATE_KEY\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+/// The bytes for a Bitcoin Txid which indicate the signing of a random data.
+const TXID_RANDOM_DATA: [u8; 32] = *b"RANDOM_DATA\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+
+/// A trait for extending Bitcoin Txid types to include additional constant Txids.
+pub trait TxidIdentifiers where Self: Sized {
+    /// Get a txid representing the signing of an aggregate key.
+    fn aggregate_key_txid() -> Self;
+    /// Get a txid representing the signing of random data.
+    fn random_data_txid() -> Self;
+}
+
+impl TxidIdentifiers for model::BitcoinTxId {
+    fn aggregate_key_txid() -> Self {
+        TXID_AGGREGATE_KEY_TXID.into()
+    }
+
+    fn random_data_txid() -> Self {
+        TXID_RANDOM_DATA.into()
+    }
+}
+
+impl TxidIdentifiers for bitcoin::Txid {
+    fn aggregate_key_txid() -> Self {
+        bitcoin::Txid::from_byte_array(TXID_AGGREGATE_KEY_TXID)
+    }
+
+    fn random_data_txid() -> Self {
+        bitcoin::Txid::from_byte_array(TXID_RANDOM_DATA)
+    }
+}
 
 /// An identifier for signer state machines.
 ///

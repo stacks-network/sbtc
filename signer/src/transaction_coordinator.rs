@@ -40,6 +40,7 @@ use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
+use crate::message::WstsMessageId;
 use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::metrics::STACKS_BLOCKCHAIN;
@@ -62,6 +63,7 @@ use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
+use crate::wsts_state_machine::TxidIdentifiers;
 use crate::wsts_state_machine::WstsCoordinator;
 
 use bitcoin::hashes::Hash as _;
@@ -748,7 +750,7 @@ where
         self.coordinate_signing_round(
             bitcoin_chain_tip,
             &mut coordinator_state_machine,
-            bitcoin::Txid::all_zeros(),
+            rotate_key_aggregate_key.into(),
             &random_bytes,
             SignatureType::Schnorr
         ).await
@@ -980,12 +982,13 @@ where
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
         let txid = transaction.tx.compute_txid();
+        let message_id = txid.into();
         let instant = std::time::Instant::now();
         let signature = self
             .coordinate_signing_round(
                 bitcoin_chain_tip,
                 &mut coordinator_state_machine,
-                txid,
+                message_id,
                 &msg,
                 SignatureType::Taproot(None),
             )
@@ -1026,7 +1029,7 @@ where
                 .coordinate_signing_round(
                     bitcoin_chain_tip,
                     &mut coordinator_state_machine,
-                    txid,
+                    message_id,
                     &msg,
                     SignatureType::Schnorr,
                 )
@@ -1093,7 +1096,7 @@ where
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         coordinator_state_machine: &mut Coordinator,
-        txid: bitcoin::Txid,
+        txid: WstsMessageId,
         msg: &[u8],
         signature_type: SignatureType,
     ) -> Result<TaprootSignature, Error>
@@ -1109,7 +1112,7 @@ where
             .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
-        let msg = message::WstsMessage { txid, inner: outbound.msg };
+        let msg = message::WstsMessage { txid: txid.into(), inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
@@ -1164,12 +1167,8 @@ where
             .start_public_shares()
             .map_err(Error::wsts_coordinator)?;
 
-        // We identify the DKG round by a 32-byte hash which we throw
-        // around as a bitcoin transaction ID, even when it is not one. We
-        // should probably change this
-        let identifier = self.coordinator_id(chain_tip);
-        let txid = bitcoin::Txid::from_byte_array(identifier);
-        let msg = message::WstsMessage { txid, inner: outbound.msg };
+        let txid = WstsMessageId::random();
+        let msg = message::WstsMessage { txid: txid, inner: outbound.msg };
 
         // We create a signal stream before sending a message so that there
         // is no race condition with the steam and the getting a response.
@@ -1205,7 +1204,7 @@ where
         signal_stream: S,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         coordinator_state_machine: &mut Coordinator,
-        txid: bitcoin::Txid,
+        txid: WstsMessageId,
     ) -> Result<WstsOperationResult, Error>
     where
         S: Stream<Item = Signed<SignerMessage>>,
