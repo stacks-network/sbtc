@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         signer_version = signer::VERSION,
         "starting the sBTC signer",
     );
-    
+
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
 
@@ -110,7 +110,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // signing set, and only assume we are bootstrapping if that source is
     // empty.
     let settings = context.config();
-
     for signer in settings.signer.bootstrap_signing_set() {
         context.state().current_signer_set().add_signer(signer);
     }
