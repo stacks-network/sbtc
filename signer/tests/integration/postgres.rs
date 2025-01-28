@@ -615,6 +615,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted withdraw requests
+/// NOTE: This test breaks with `fake` >= `2.10` due to the `dummy` version bump.
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
