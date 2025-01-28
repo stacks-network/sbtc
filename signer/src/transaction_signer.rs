@@ -45,8 +45,8 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
 use futures::StreamExt;
 use lru::LruCache;
-use sha2::Digest;
 use rand::rngs::OsRng;
+use sha2::Digest;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -131,9 +131,9 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     ///
     /// - For DKG rounds, TxID should be the ID of the transaction that
     ///   defined the signer set.
-    /// 
+    ///
     /// - For signing arbitrary data, the TxID is all zeroes.
-    /// 
+    ///
     pub wsts_state_machines: LruCache<StateMachineId, SignerStateMachine>,
     /// The threshold for the signer
     pub threshold: u32,
@@ -602,7 +602,6 @@ where
                 // otherwise we assume that we are signing a Bitcoin transaction
                 // and perform the necessary checks.
                 let (id, aggregate_key) = if msg.txid != bitcoin::Txid::all_zeros() {
-                    
                     let accepted_sighash =
                         Self::validate_bitcoin_sign_request(&db, &request.message).await;
 
@@ -628,7 +627,7 @@ where
                     (id, accepted_sighash.public_key)
                 } else {
                     // Create a `StateMachineId` that is deterministic and
-                    // unique for each signing round, and not likely to 
+                    // unique for each signing round, and not likely to
                     let mut hasher = sha2::Sha256::new_with_prefix("arbitrary-data");
                     hasher.update(request.message.as_slice());
                     let digest: [u8; 32] = hasher.finalize().into();
@@ -667,7 +666,7 @@ where
 
                 let id = if msg.txid != bitcoin::Txid::all_zeros() {
                     let accepted_sighash =
-                    Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+                        Self::validate_bitcoin_sign_request(&db, &request.message).await?;
 
                     accepted_sighash.sighash.into()
                 } else {
@@ -676,7 +675,7 @@ where
                     let digest: [u8; 32] = hasher.finalize().into();
                     StateMachineId::ArbitrarySign(digest)
                 };
-                
+
                 let response = self
                     .relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await;

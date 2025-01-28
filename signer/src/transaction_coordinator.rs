@@ -60,11 +60,12 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
-use crate::wsts_state_machine::CoordinatorStateMachine;
+use crate::wsts_state_machine::FireCoordinator;
+use crate::wsts_state_machine::FrostCoordinator;
+use crate::wsts_state_machine::WstsCoordinator;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
-use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 use wsts::state_machine::OperationResult as WstsOperationResult;
 use wsts::state_machine::StateMachine as _;
@@ -724,14 +725,19 @@ where
         let tx = multi_tx.tx();
 
         // We run a DKG signing round on random data with the new aggregate key
-        // and the threshold set to the full set of signers (i.e. 100%). By doing
-        // this, we can ensure that all signers have correctly provided signatures
-        // which use the new aggregate key, asserting that the new aggregate key
-        // is stored and valid.
-        tracing::info!("running a signing round on random data to assert that all signers have signed with the new aggregate key");
-        let mut coordinator_state_machine = CoordinatorStateMachine::load(
-            &mut self.context.get_storage_mut(),
-            rotate_key_aggregate_key,
+        // using the FROST coordinator, which requires 100% signing
+        // participation vs. FIRE which only uses {threshold} signers.
+        //
+        // The idea behind this is that since the rotate-keys contract call is a
+        // Stacks transaction and thus only signed using the signers' private
+        // keys, we have no guarantees at this point that there wasn't a fault
+        // in the DKG process. By running a FROST signing round on random data,
+        // we can cryptographically assert that all signers have signed with the
+        // new aggregate key, and thus have valid private shares.
+        tracing::info!("running a FROST signing round on random data to assert that all signers have signed with the new aggregate key");
+        let mut coordinator_state_machine = FrostCoordinator::load(
+            &self.context.get_storage(),
+            rotate_key_aggregate_key.into(),
             wallet.public_keys().iter().cloned(),
             wallet.signatures_required(),
             self.private_key,
@@ -740,7 +746,7 @@ where
 
         let random_bytes: [u8; 32] = OsRng.gen();
         self.coordinate_signing_round(
-            bitcoin_chain_tip, 
+            bitcoin_chain_tip,
             &mut coordinator_state_machine,
             bitcoin::Txid::all_zeros(),
             &random_bytes,
@@ -749,7 +755,9 @@ where
         .inspect_err(|error| {
             tracing::error!(%error, "failed to assert that all signers have signed random data with the new aggregate key; aborting");
         })?;
-        tracing::info!("all signers have signed random data with the new aggregate key; proceeding");
+        tracing::info!(
+            "all signers have signed random data with the new aggregate key; proceeding"
+        );
 
         // We can now proceed with the actual rotate key transaction.
         let sign_request = StacksTransactionSignRequest {
@@ -961,9 +969,9 @@ where
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let sighashes = transaction.construct_digests()?;
-        let mut coordinator_state_machine = CoordinatorStateMachine::load(
-            &mut self.context.get_storage_mut(),
-            sighashes.signers_aggregate_key,
+        let mut coordinator_state_machine = FireCoordinator::load(
+            &self.context.get_storage(),
+            sighashes.signers_aggregate_key.into(),
             signer_public_keys.clone(),
             self.threshold,
             self.private_key,
@@ -1004,9 +1012,9 @@ where
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
-            let mut coordinator_state_machine = CoordinatorStateMachine::load(
-                &mut self.context.get_storage_mut(),
-                deposit.signers_public_key,
+            let mut coordinator_state_machine = FireCoordinator::load(
+                &self.context.get_storage(),
+                deposit.signers_public_key.into(),
                 signer_public_keys.clone(),
                 self.threshold,
                 self.private_key,
@@ -1081,17 +1089,18 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn coordinate_signing_round(
+    async fn coordinate_signing_round<Coordinator>(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut CoordinatorStateMachine,
+        coordinator_state_machine: &mut Coordinator,
         txid: bitcoin::Txid,
         msg: &[u8],
         signature_type: SignatureType,
-    ) -> Result<TaprootSignature, Error> {
-        let outbound = coordinator_state_machine
-            .start_signing_round(msg, signature_type)
-            .map_err(Error::wsts_coordinator)?;
+    ) -> Result<TaprootSignature, Error>
+    where
+        Coordinator: WstsCoordinator,
+    {
+        let outbound = coordinator_state_machine.start_signing_round(msg, signature_type)?;
 
         // We create a signal stream before sending a message so that there
         // is no race condition with the steam and the getting a response.
@@ -1142,8 +1151,8 @@ where
         // never changing the signing set.
         let (_, signer_set) = self.get_signer_set_and_aggregate_key(chain_tip).await?;
 
-        let mut state_machine =
-            CoordinatorStateMachine::new(signer_set, self.threshold, self.private_key);
+        let mut state_machine: FireCoordinator =
+            WstsCoordinator::new(signer_set, self.threshold, self.private_key);
 
         // Okay let's move the coordinator state machine to the beginning
         // of the DKG phase.
@@ -1191,15 +1200,16 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn drive_wsts_state_machine<S>(
+    async fn drive_wsts_state_machine<S, Coordinator>(
         &mut self,
         signal_stream: S,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut CoordinatorStateMachine,
+        coordinator_state_machine: &mut Coordinator,
         txid: bitcoin::Txid,
     ) -> Result<WstsOperationResult, Error>
     where
         S: Stream<Item = Signed<SignerMessage>>,
+        Coordinator: WstsCoordinator,
     {
         // this assumes that the signer set doesn't change for the duration of this call,
         // but we're already assuming that the bitcoin chain tip doesn't change
