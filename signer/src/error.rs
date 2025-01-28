@@ -530,7 +530,7 @@ pub enum Error {
 
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
-    #[error("bitcoin address parse error: {0}; txid {}, vout: {}", .1.txid, .1.vout)]
+    #[error("bitcoin address parse error: {0}; txid {txid}, vout: {vout}", txid = .1.txid, vout = .1.vout)]
     BitcoinAddressFromScript(
         #[source] bitcoin::address::FromScriptError,
         bitcoin::OutPoint,

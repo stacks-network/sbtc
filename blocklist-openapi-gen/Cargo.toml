@@ -3,12 +3,13 @@ name = "blocklist-openapi-gen"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.cargo-machete]
+ignored = ["utoipa", "blocklist-client"]
+
 [dependencies]
-blocklist-client = { path = "../blocklist-client" }
-serde_json.workspace = true
-utoipa = "4.2.3"
+blocklist-client.workspace = true
+utoipa.workspace = true
 
 [build-dependencies]
-blocklist-client = { path = "../blocklist-client" }
-serde_json.workspace = true
-utoipa = "4.2.3"
+blocklist-client.workspace = true
+utoipa.workspace = true

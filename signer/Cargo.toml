@@ -1,89 +1,81 @@
-# The razor application, for fundraising.
 [package]
 name = "signer"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.cargo-machete]
+ignored = ["tonic", "tonic-build", "stackslib"]
+
 [features]
 default = ["testing"]
 testing = ["fake", "mockall", "sbtc/testing"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 aquamarine.workspace = true
 axum.workspace = true
-backoff.workspace = true
 bitcoin.workspace = true
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
+bitcoincore-zmq.workspace = true
 bitvec.workspace = true
-blocklist-api = { path = "../.generated-sources/blocklist-api" }
-emily-client.workspace = true
+blocklist-api.workspace = true
+cfg-if.workspace = true
 clap.workspace = true
 clarity.workspace = true
 config.workspace = true
+emily-client.workspace = true
 futures.workspace = true
 hashbrown.workspace = true
+hex.workspace = true
+include_dir.workspace = true
 libp2p.workspace = true
-lru = { workspace = true, default-features = false }
+lru.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 p256k1.workspace = true
+polynomial.workspace = true
 prost.workspace = true
 rand.workspace = true
 reqwest.workspace = true
-sbtc = { path = "../sbtc", features = ["webhooks"] }
+sbtc = { workspace = true, features = ["webhooks"] }
+secp256k1.workspace = true
 serde.workspace = true
 serde_bytes.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
-stackslib.workspace = true
 stacks-common.workspace = true
+stackslib.workspace = true
 strum.workspace = true
 thiserror.workspace = true
 time.workspace = true
-tonic.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tonic.workspace = true
+tower-http.workspace = true
 tracing.workspace = true
-tracing-attributes.workspace = true
-tracing-subscriber = { workspace = true }
+tracing-subscriber.workspace = true
 url.workspace = true
-# wsts.workspace = true
-wsts = { git = "https://github.com/Trust-Machines/wsts.git", rev = "53ae23f5f35def420877ccc8c0fe3662e64e38a1" }
-hex.workspace = true
-cfg-if = "1.0"
-include_dir = "0.7.4"
-polynomial = "0.2.6"
-bitcoincore-zmq.workspace = true
-
-# Only used to setup logging for the signer's axum http server
-tower-http = { version = "0.6.2", features = ["trace", "request-id"] }
+wsts.workspace = true
 
 # Only for testing
-mockall = { version = "0.12.1", optional = true }
 fake = { workspace = true, optional = true }
-
-[dependencies.secp256k1]
-version = "*"
-features = ["rand-std", "global-context"]
-
-[dev-dependencies]
-bitcoincore-rpc.workspace = true
-mockito = "1.4.0"
-more-asserts = "0.3"
-ripemd = "0.1.3"
-sbtc = { path = "../sbtc", default-features = false, features = ["testing"] }
-test-case = "3.1"
-test-log = { version = "0.2.16", default-features = false, features = ["trace"] }
-toml_edit = "0.22.22"
-tempfile = "3.6"
-tower = { version = "0.5.2", features = ["util"] }
+mockall = { workspace = true, optional = true }
 
 [build-dependencies]
 tonic-build.workspace = true
+
+[dev-dependencies]
+bitcoincore-rpc.workspace = true
+mockito.workspace = true
+more-asserts.workspace = true
+ripemd.workspace = true
+sbtc = { workspace = true, features = ["testing"] }
+tempfile.workspace = true
+test-case.workspace = true
+test-log.workspace = true
+toml_edit.workspace = true
+tower.workspace = true
 
 [[bin]]
 name = "demo-cli"
