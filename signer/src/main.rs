@@ -22,6 +22,7 @@ use signer::context::Context;
 use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
+use signer::keys::PublicKey;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
 use signer::request_decider::RequestDeciderEventLoop;
@@ -74,11 +75,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         revision = signer::GIT_COMMIT,
         arch = signer::TARGET_ARCH,
         env_abi = signer::TARGET_ENV_ABI,
+        signer_version = signer::VERSION,
         "starting the sBTC signer",
     );
 
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
+
+    tracing::info!(
+        signer_public_key = %PublicKey::from_private_key(&settings.signer.private_key),
+        "constructed signer settings",
+    );
+
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
