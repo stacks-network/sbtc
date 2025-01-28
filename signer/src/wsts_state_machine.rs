@@ -17,6 +17,7 @@ use crate::storage::model::SigHash;
 use bitcoin::hashes::Hash as _;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
+use rand::rngs::OsRng;
 use wsts::common::PolyCommitment;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
@@ -65,6 +66,7 @@ impl SignerStateMachine {
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error> {
+        let mut rng = OsRng;
         let signer_pub_key = PublicKey::from_private_key(&signer_private_key);
         let signers: hashbrown::HashMap<u32, _> = signers
             .into_iter()
@@ -121,6 +123,7 @@ impl SignerStateMachine {
             key_ids,
             signer_private_key.into(),
             public_keys,
+            &mut rng,
         )
         .map_err(Error::Wsts)?;
 
