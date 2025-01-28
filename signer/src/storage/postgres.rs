@@ -737,9 +737,6 @@ impl PgStore {
     }
 }
 
-#[cfg(test)]
-impl PgStore {}
-
 impl From<sqlx::PgPool> for PgStore {
     fn from(value: sqlx::PgPool) -> Self {
         Self(value)
