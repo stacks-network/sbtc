@@ -799,6 +799,22 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        sqlx::query_as::<_, model::BitcoinBlockRef>(
+            "SELECT
+                block_hash
+              , block_height
+             FROM sbtc_signer.bitcoin_blocks
+             ORDER BY block_height DESC, block_hash DESC
+             LIMIT 1",
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_stacks_chain_tip(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,

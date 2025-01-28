@@ -300,6 +300,18 @@ impl super::DbRead for SharedStore {
             .map(|block| block.block_hash))
     }
 
+    async fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .bitcoin_blocks
+            .values()
+            .max_by_key(|block| (block.block_height, block.block_hash))
+            .map(model::BitcoinBlockRef::from))
+    }
+
     async fn get_stacks_chain_tip(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
