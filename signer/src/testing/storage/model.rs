@@ -51,8 +51,6 @@ pub struct TestData {
 
     /// transaction outputs
     pub tx_outputs: Vec<model::TxOutput>,
-
-    bitcoin_blocks_ref: Vec<BitcoinBlockRef>,
 }
 
 impl TestData {
@@ -66,16 +64,14 @@ impl TestData {
         R: rand::RngCore,
     {
         let mut test_data = Self::new();
-
+        let mut parent: Option<BitcoinBlockRef> = None;
         for _ in 0..params.num_bitcoin_blocks {
-            let parent = if params.concatenate_blocks {
-                test_data.bitcoin_blocks_ref.last()
-            } else {
-                None
-            };
-            let (next_chunk, block_ref) = test_data.new_block(rng, signer_keys, params, parent);
+            let (next_chunk, block_ref) =
+                test_data.new_block(rng, signer_keys, params, parent.as_ref());
             test_data.push(next_chunk);
-            test_data.bitcoin_blocks_ref.push(block_ref);
+            if params.consecutive_blocks {
+                parent = Some(block_ref);
+            }
         }
 
         test_data
@@ -122,7 +118,6 @@ impl TestData {
             .collect();
 
         let bitcoin_blocks = vec![block.clone()];
-        let bitcoin_blocks_refs = vec![BitcoinBlockRef::summarize(&block)];
         (
             Self {
                 bitcoin_blocks,
@@ -135,7 +130,6 @@ impl TestData {
                 stacks_transactions: withdraw_data.stacks_transactions,
                 transactions,
                 tx_outputs: Vec::new(),
-                bitcoin_blocks_ref: bitcoin_blocks_refs,
             },
             block.into(),
         )
@@ -525,7 +519,7 @@ pub struct Params {
     /// The number of signers to hallucinate per request
     pub num_signers_per_request: usize,
     /// Wheter to generate consecutive blocks or not
-    pub concatenate_blocks: bool,
+    pub consecutive_blocks: bool,
 }
 
 impl BitcoinBlockRef {
