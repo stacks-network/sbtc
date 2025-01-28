@@ -22,6 +22,7 @@ use signer::context::Context;
 use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
+use signer::keys::PublicKey;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
 use signer::request_decider::RequestDeciderEventLoop;
@@ -30,7 +31,6 @@ use signer::storage::postgres::PgStore;
 use signer::transaction_coordinator;
 use signer::transaction_signer;
 use signer::util::ApiFallbackClient;
-use signer::keys::PublicKey;
 use tokio::signal;
 use tower_http::trace::TraceLayer;
 use tracing::Instrument;
@@ -86,7 +86,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         signer_public_key = %PublicKey::from_private_key(&settings.signer.private_key),
         "constructed signer settings",
     );
-
 
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
