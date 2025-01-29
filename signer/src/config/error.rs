@@ -69,6 +69,11 @@ pub enum SignerConfigError {
     #[error("The provided Bitcoin processing delay must be small than {0}s, got {1}s")]
     InvalidBitcoinProcessingDelay(u64, u64),
 
+    /// An error for a requests_processing_delay value that exceeded the
+    /// [`crate::config::MAX_REQUESTS_PROCESSING_DELAY_SECONDS`].
+    #[error("The provided requests processing delay must be smaller than {0}s, got {1}s")]
+    InvalidRequestsProcessingDelay(u64, u64),
+
     /// An error returned for duration parameters that must be positive.
     #[error("Duration for {0} must be nonzero")]
     ZeroDurationForbidden(&'static str),

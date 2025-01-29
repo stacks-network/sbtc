@@ -47,7 +47,6 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
     tag = "limits",
     request_body = Limits,
     responses(
-        // TODO(271): Add success body.
         (status = 200, description = "Limits updated successfully", body = Limits),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
@@ -111,7 +110,6 @@ pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::rep
     ),
     tag = "limits",
     responses(
-        // TODO(271): Add success body.
         (status = 201, description = "Account limits retrieved successfully", body = AccountLimits),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
@@ -153,7 +151,6 @@ pub async fn get_limits_for_account(
     tag = "limits",
     request_body = AccountLimits,
     responses(
-        // TODO(271): Add success body.
         (status = 201, description = "Set account limits successfully", body = AccountLimits),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),

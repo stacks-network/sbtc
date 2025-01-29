@@ -476,7 +476,7 @@ export class EmilyStack extends cdk.Stack {
             }
 
             // Create the custom domain name of the format:
-            //   if stage != prod: [stage].[purpose].[customRootDomainNameRoot]
+            //   if stage != prod: [purpose].[stage].[customRootDomainNameRoot]
             //   if stage == prod: [purpose].[customRootDomainNameRoot]
             const stagePrefix = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
                 ? ""
