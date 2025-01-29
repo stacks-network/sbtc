@@ -39,7 +39,10 @@ const TXID_AGGREGATE_KEY_TXID: [u8; 32] = *b"AGGREGATE_KEY\0\0\0\0\0\0\0\0\0\0\0
 const TXID_RANDOM_DATA: [u8; 32] = *b"RANDOM_DATA\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
 
 /// A trait for extending Bitcoin Txid types to include additional constant Txids.
-pub trait TxidIdentifiers where Self: Sized {
+pub trait TxidIdentifiers
+where
+    Self: Sized,
+{
     /// Get a txid representing the signing of an aggregate key.
     fn aggregate_key_txid() -> Self;
     /// Get a txid representing the signing of random data.

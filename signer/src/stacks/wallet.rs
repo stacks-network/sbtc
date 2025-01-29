@@ -402,7 +402,11 @@ impl MultisigTx {
 /// given payload.
 ///
 /// This function is very unlikely to fail in practice.
-pub fn get_full_tx_size<T>(payload: &T, wallet: &SignerWallet) -> Result<u64, Error>
+pub fn get_full_tx_size<T>(
+    payload: &T,
+    wallet: &SignerWallet,
+    num_signatures: u16,
+) -> Result<u64, Error>
 where
     T: AsTxPayload,
 {
@@ -422,7 +426,9 @@ where
         .collect();
 
     // This will only fail if we get very unlucky with private keys that we
-    // generate.
+    // generate. We create a new wallet so that we don't alter the state of the
+    // wallet that was passed in, which will increment nonces for new
+    // transactions.
     let wallet = SignerWallet::new(
         &public_keys,
         wallet.signatures_required,
@@ -431,10 +437,7 @@ where
     )?;
 
     let mut multisig_tx = MultisigTx::new_tx(payload, &wallet, 0);
-    for private_key in private_keys
-        .iter()
-        .take(wallet.signatures_required as usize)
-    {
+    for private_key in private_keys.iter().take(num_signatures as usize) {
         let signature = crate::signature::sign_stacks_tx(multisig_tx.tx(), private_key);
         // This won't fail, since this is a proper signature
         multisig_tx.add_signature(signature)?;
@@ -775,7 +778,7 @@ mod tests {
             + (signatures_required as u64 * SIGNATURE_SIZE)
             + ((num_keys - signatures_required) as u64 * PUBKEY_SIZE);
 
-        let size = get_full_tx_size(&payload, &wallet).unwrap();
+        let size = get_full_tx_size(&payload, &wallet, signatures_required).unwrap();
 
         assert_eq!(size, expected_size);
     }

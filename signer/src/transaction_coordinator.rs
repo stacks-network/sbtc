@@ -388,19 +388,27 @@ where
         }
 
         let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
+
         // current_aggregate_key define which wallet can sign stacks tx interacting
         // with the registry smart contract; fallbacks to `aggregate_key` if it's
         // the first rotate key tx.
         let signing_key = &current_aggregate_key.unwrap_or(*aggregate_key);
 
-        self.construct_and_sign_rotate_key_transaction(
-            bitcoin_chain_tip,
-            signing_key,
-            &last_dkg.aggregate_key,
-            &wallet,
-        )
-        .await
-        .map(|_| ())
+        tracing::info!("preparing to submit a rotate-key transaction");
+        let txid = self
+            .construct_and_sign_rotate_key_transaction(
+                bitcoin_chain_tip,
+                signing_key,
+                &last_dkg.aggregate_key,
+                &wallet,
+            )
+            .await
+            .inspect_err(
+                |error| tracing::error!(%error, "failed to sign or submit rotate-key transaction"),
+            )?;
+
+        tracing::info!(%txid, "rotate-key transaction submitted successfully");
+        Ok(())
     }
 
     /// Constructs a BitcoinPreSignRequest from the given transaction package and
@@ -715,26 +723,35 @@ where
         ));
 
         // Rotate key transactions should be done as soon as possible, so
-        // we set the fee rate to the high priority fee.
+        // we set the fee rate to the high priority fee. We also require
+        // signatures from all signers, so we specify the total signer count
+        // as the number of signatures to include in the estimation transaction
+        // as each signature increases the transaction size.
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_fees(
+                wallet,
+                &contract_call,
+                FeePriority::High,
+                wallet.num_signers(),
+            )
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
 
-        // We run a DKG signing round on random data with the new aggregate key
+        // We run a DKG signing round on random data using the new aggregate key
         // using the FROST coordinator, which requires 100% signing
         // participation vs. FIRE which only uses {threshold} signers.
         //
         // The idea behind this is that since the rotate-keys contract call is a
         // Stacks transaction and thus only signed using the signers' private
         // keys, we have no guarantees at this point that there wasn't a fault
-        // in the DKG process. By running a FROST signing round on random data,
-        // we can cryptographically assert that all signers have signed with the
-        // new aggregate key, and thus have valid private shares.
+        // in the DKG process. By running a FROST signing round, we can
+        // cryptographically assert that all signers have signed with the new
+        // aggregate key, and thus have valid private shares before we proceed
+        // with the actual rotate keys transaction.
         tracing::info!("running a FROST signing round on random data to assert that all signers have signed with the new aggregate key");
         let mut coordinator_state_machine = FrostCoordinator::load(
             &self.context.get_storage(),
@@ -806,7 +823,10 @@ where
         )
         .increment(1);
 
-        match self.context.get_stacks_client().submit_tx(&tx?).await {
+        // Submit the transaction to the Stacks node
+        let submit_tx_result = self.context.get_stacks_client().submit_tx(&tx?).await;
+
+        match submit_tx_result {
             Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
             Ok(SubmitTxResponse::Rejection(err)) => Err(err.into()),
             Err(err) => Err(err),
@@ -860,7 +880,12 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_fees(
+                wallet,
+                &contract_call,
+                FeePriority::High,
+                wallet.signatures_required(),
+            )
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -899,9 +924,10 @@ where
         // still sign the transaction as the signer simply signs the transaction
         // using their configured private key.
         let signatures_required = if req.contract_tx.is_rotate_keys() {
-            wallet.signatures_required()
-        } else {
+            tracing::info!("rotate keys transaction detected; requiring all signers to sign");
             wallet.num_signers()
+        } else {
+            wallet.signatures_required()
         };
 
         // We ask for the signers to sign our transaction (including
@@ -1111,7 +1137,7 @@ where
             .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
-        let msg = message::WstsMessage { id: txid.into(), inner: outbound.msg };
+        let msg = message::WstsMessage { id: txid, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
@@ -1166,7 +1192,7 @@ where
             .start_public_shares()
             .map_err(Error::wsts_coordinator)?;
 
-        let txid = WstsMessageId::Arbitrary(self.coordinator_id(&chain_tip));
+        let txid = WstsMessageId::Arbitrary(self.coordinator_id(chain_tip));
         let msg = message::WstsMessage { id: txid, inner: outbound.msg };
 
         // We create a signal stream before sending a message so that there
@@ -1589,7 +1615,12 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
+            .estimate_fees(
+                wallet,
+                &contract_deploy.tx_payload(),
+                FeePriority::High,
+                wallet.signatures_required(),
+            )
             .await?;
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();

@@ -478,7 +478,7 @@ services:
       context: stacks-api
       args:
         GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
-        GIT_BRANCH: "v8.0.3"
+        GIT_BRANCH: "v8.5.0"
     ports:
       - 3999:3999
       - 3700:3700
@@ -513,7 +513,7 @@ services:
       context: stacks-explorer
       args:
         GIT_URI: "https://github.com/hirosystems/explorer.git"
-        GIT_BRANCH: "v1.211.2"
+        GIT_BRANCH: "v1.245.0"
     ports:
       - 3020:3000
     depends_on:

@@ -623,7 +623,7 @@ where
                 span.record("sign_iter_id", request.sign_iter_id);
 
                 tracing::debug!(signature_type = ?request.signature_type, "responding to nonce-request");
-                
+
                 if !chain_tip_report.sender_is_coordinator {
                     tracing::warn!("received coordinator message from non-coordinator signer");
                     return Ok(());
@@ -634,10 +634,12 @@ where
                 let (id, aggregate_key) = match msg.id {
                     WstsMessageId::BitcoinTxid(txid) => {
                         span.record("txid", txid.to_string());
-                        tracing::info!("responding to nonce request for bitcoin transaction signing");
+                        tracing::info!(
+                            "responding to nonce request for bitcoin transaction signing"
+                        );
 
                         let accepted_sighash =
-                        Self::validate_bitcoin_sign_request(&db, &request.message).await;
+                            Self::validate_bitcoin_sign_request(&db, &request.message).await;
 
                         let validation_status = match &accepted_sighash {
                             Ok(_) => "success",
@@ -679,7 +681,10 @@ where
                         let key = PublicKeyXOnly::from(key.x_only_public_key().0);
 
                         if aggregate_key != key {
-                            return Err(Error::AggregateKeyMismatch(key, aggregate_key));
+                            return Err(Error::AggregateKeyMismatch(
+                                Box::new(key),
+                                Box::new(aggregate_key),
+                            ));
                         }
 
                         (id, aggregate_key)
@@ -733,10 +738,12 @@ where
                 let id = match msg.id {
                     WstsMessageId::BitcoinTxid(txid) => {
                         span.record("txid", txid.to_string());
-                        tracing::info!("responding to signature share request for bitcoin transaction signing");
+                        tracing::info!(
+                            "responding to signature share request for bitcoin transaction signing"
+                        );
 
                         let accepted_sighash =
-                        Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+                            Self::validate_bitcoin_sign_request(&db, &request.message).await?;
 
                         accepted_sighash.sighash.into()
                     }
@@ -750,14 +757,16 @@ where
                         StateMachineId::ArbitrarySign(digest)
                     }
                     WstsMessageId::Arbitrary(id) => {
-                        tracing::info!("responding to signature share request for arbitrary signing");
+                        tracing::info!(
+                            "responding to signature share request for arbitrary signing"
+                        );
 
                         let mut hasher = sha2::Sha256::new_with_prefix("arbitrary-data");
                         hasher.update(id);
                         hasher.update(&request.message);
                         let digest: [u8; 32] = hasher.finalize().into();
                         StateMachineId::ArbitrarySign(digest)
-                    },
+                    }
                 };
 
                 let response = self

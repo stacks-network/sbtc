@@ -17,7 +17,7 @@ use crate::storage::model::SigHash;
 pub enum Error {
     /// Expected two aggregate keys to match, but they did not.
     #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
-    AggregateKeyMismatch(PublicKeyXOnly, PublicKeyXOnly),
+    AggregateKeyMismatch(Box<PublicKeyXOnly>, Box<PublicKeyXOnly>),
 
     /// The aggregate key for the given block hash could not be determined.
     #[error("the signer set aggregate key could not be determined for bitcoin block {0}")]

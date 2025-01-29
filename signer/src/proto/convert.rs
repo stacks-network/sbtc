@@ -1062,6 +1062,7 @@ impl TryFrom<proto::SignatureShareResponse> for SignatureShareResponse {
     }
 }
 impl From<WstsMessage> for proto::WstsMessage {
+    #[allow(deprecated)]
     fn from(value: WstsMessage) -> Self {
         let inner = match value.inner {
             wsts::net::Message::DkgBegin(inner) => {
@@ -1094,13 +1095,18 @@ impl From<WstsMessage> for proto::WstsMessage {
             }
         };
         proto::WstsMessage {
-            #[allow(deprecated)]
             txid: match value.id {
-                WstsMessageId::BitcoinTxid(txid) => Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid))),
+                WstsMessageId::BitcoinTxid(txid) => {
+                    Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid)))
+                }
                 WstsMessageId::AggregateKey(_) | WstsMessageId::Arbitrary(_) => None,
             },
             id: Some(match value.id {
-                WstsMessageId::BitcoinTxid(txid) => wsts_message::Id::IdBitcoinTxid(proto::BitcoinTxid { txid: Some(proto::Uint256::from(txid.to_le_bytes())) }),
+                WstsMessageId::BitcoinTxid(txid) => {
+                    wsts_message::Id::IdBitcoinTxid(proto::BitcoinTxid {
+                        txid: Some(proto::Uint256::from(txid.to_le_bytes())),
+                    })
+                }
                 WstsMessageId::AggregateKey(pubkey) => wsts_message::Id::IdPublicKey(pubkey.into()),
                 WstsMessageId::Arbitrary(key) => wsts_message::Id::IdArbitrary(key.into()),
             }),
@@ -1147,13 +1153,19 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
         Ok(WstsMessage {
             id: match value.id {
                 Some(id) => match id {
-                    wsts_message::Id::IdBitcoinTxid(txid) => WstsMessageId::BitcoinTxid(BitcoinTxId::try_from(txid)?.into()),
-                    wsts_message::Id::IdPublicKey(pubkey) => WstsMessageId::AggregateKey(PublicKey::try_from(pubkey)?.into()),
-                    wsts_message::Id::IdArbitrary(key) => WstsMessageId::Arbitrary(key.try_into().map_err(|_| Error::TypeConversion)?),
+                    wsts_message::Id::IdBitcoinTxid(txid) => {
+                        WstsMessageId::BitcoinTxid(BitcoinTxId::try_from(txid)?.into())
+                    }
+                    wsts_message::Id::IdPublicKey(pubkey) => {
+                        WstsMessageId::AggregateKey(PublicKey::try_from(pubkey)?)
+                    }
+                    wsts_message::Id::IdArbitrary(key) => {
+                        WstsMessageId::Arbitrary(key.try_into().map_err(|_| Error::TypeConversion)?)
+                    }
                 },
                 None => return Err(Error::TypeConversion),
             },
-                //BitcoinTxId::try_from(value.txid.required()?)?.into(),
+            //BitcoinTxId::try_from(value.txid.required()?)?.into(),
             inner,
         })
     }

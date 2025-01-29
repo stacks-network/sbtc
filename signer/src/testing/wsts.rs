@@ -149,7 +149,8 @@ impl Coordinator {
             .start_public_shares()
             .expect("failed to start public shares");
 
-        self.send_packet(bitcoin_chain_tip, txid.into(), outbound).await;
+        self.send_packet(bitcoin_chain_tip, txid.into(), outbound)
+            .await;
 
         match self.loop_until_result(bitcoin_chain_tip, txid.into()).await {
             wsts::state_machine::OperationResult::Dkg(aggregate_key) => {

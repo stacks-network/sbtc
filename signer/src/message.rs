@@ -224,7 +224,7 @@ pub enum WstsMessageId {
     /// The WSTS message is related to an aggregate key.
     AggregateKey(PublicKey),
     /// The WSTS message isn't specifically related to anything.
-    Arbitrary([u8; 32])
+    Arbitrary([u8; 32]),
 }
 
 impl From<bitcoin::Txid> for WstsMessageId {
@@ -235,13 +235,13 @@ impl From<bitcoin::Txid> for WstsMessageId {
 
 impl From<PublicKey> for WstsMessageId {
     fn from(aggregate_key: PublicKey) -> Self {
-        Self::AggregateKey(aggregate_key.into())
+        Self::AggregateKey(aggregate_key)
     }
 }
 
 impl From<&PublicKey> for WstsMessageId {
     fn from(aggregate_key: &PublicKey) -> Self {
-        Self::AggregateKey(aggregate_key.clone())
+        Self::AggregateKey(*aggregate_key)
     }
 }
 
