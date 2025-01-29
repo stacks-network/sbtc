@@ -276,9 +276,12 @@ where
         chain_tip: &BitcoinBlockHash,
     ) -> Result<(), Error> {
         for decision in decisions.into_iter().map(SignerDepositDecision::from) {
-            if let Err(error) = self.send_message(decision, chain_tip).await {
-                tracing::warn!(%error, "error sending deposit decision to retry, skipping");
-            }
+            let _ = self
+                .send_message(decision, chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "error sending deposit decision to retry, skipping");
+                });
         }
         Ok(())
     }
