@@ -927,13 +927,19 @@ impl super::DbRead for SharedStore {
 
         let result = deposit_requests
             .into_iter()
-            .filter(|x| voted.contains(&(x.txid, x.output_index)))
-            .flat_map(|req| {
+            .filter_map(|request| {
+                if !voted.contains(&(request.txid, request.output_index)) {
+                    return None;
+                }
                 store
                     .deposit_request_to_signers
-                    .get(&(req.txid, req.output_index))
-                    .cloned()
-                    .unwrap_or_default()
+                    .get(&(request.txid, request.output_index))
+                    .and_then(|signers| {
+                        signers
+                            .iter()
+                            .find(|signer| signer.signer_pub_key == *signer_public_key)
+                            .cloned()
+                    })
             })
             .collect();
 
