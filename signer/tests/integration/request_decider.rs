@@ -493,6 +493,7 @@ async fn blocklist_client_retry(num_failures: u8, failing_iters: u8) {
         context_window: 10000,
         blocklist_checker: Some(blocklist_client),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
+        deposit_decisions_retry_window: 1,
     };
 
     // We need this so that there is a live "network". Otherwise we will error
