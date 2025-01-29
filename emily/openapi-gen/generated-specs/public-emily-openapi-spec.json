@@ -1917,7 +1917,7 @@
       },
       "DepositUpdate": {
         "type": "object",
-        "description": "A singlular Deposit update that contains only the fields pertinent\nto updating the status of a deposit. This includes the key related\ndata in addition to status history related data.",
+        "description": "A singular Deposit update that contains only the fields pertinent\nto updating the status of a deposit. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
@@ -2359,7 +2359,7 @@
       },
       "WithdrawalUpdate": {
         "type": "object",
-        "description": "A singlular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
+        "description": "A singular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "requestId",
           "lastUpdateHeight",

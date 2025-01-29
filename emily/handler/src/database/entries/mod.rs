@@ -83,13 +83,13 @@ pub enum StatusEntry {
     Reprocessing,
     /// Transaction has been seen and accepted by the sBTC Signers, but is not
     /// yet included in any on chain artifact. The transaction can still fail
-    /// at this point if the Signers fail to include the transaciton in an on
+    /// at this point if the Signers fail to include the transaction in an on
     /// chain artifact.
     ///
     /// For example, a deposit or withdrawal that has specified too low of a
     /// BTC fee may fail after being accepted.
     Accepted,
-    /// The articacts that fulill the operation have been observed in a valid fork of
+    /// The artifacts that fulfill the operation have been observed in a valid fork of
     /// both the Stacks blockchain and the Bitcoin blockchain by at least one signer.
     ///
     /// Note that if the signers detect a conflicting chainstate in which the operation
@@ -138,7 +138,7 @@ pub trait KeyTrait: serde::Serialize + for<'de> serde::Deserialize<'de> {
     type PartitionKey: serde::Serialize + for<'de> serde::Deserialize<'de>;
     /// Sort key type.
     type SortKey: serde::Serialize + for<'de> serde::Deserialize<'de>;
-    /// Parition key name.
+    /// Partition key name.
     const PARTITION_KEY_NAME: &'static str;
     /// Sort key name.
     const SORT_KEY_NAME: &'static str;
@@ -560,8 +560,8 @@ fn tokenize<T>(key: T) -> Result<String, Error>
 where
     T: Serialize,
 {
-    let serialied = serde_json::to_string(&key)?;
-    let encoded: String = URL_SAFE_NO_PAD.encode(serialied);
+    let serialized = serde_json::to_string(&key)?;
+    let encoded: String = URL_SAFE_NO_PAD.encode(serialized);
     Ok(encoded)
 }
 

@@ -11,7 +11,7 @@ use crate::context::Context;
 
 use axum::http::StatusCode;
 
-use super::{new_block, status, ApiState};
+use super::{info, new_block, status, ApiState};
 
 async fn new_attachment_handler() -> StatusCode {
     StatusCode::OK
@@ -21,6 +21,7 @@ async fn new_attachment_handler() -> StatusCode {
 pub fn get_router<C: Context + 'static>() -> Router<ApiState<C>> {
     Router::new()
         .route("/", get(status::status_handler))
+        .route("/info", get(info::info_handler))
         .route(
             "/new_block",
             post(new_block::new_block_handler)

@@ -1,6 +1,7 @@
 //! This module contains functions and structs for the Signer API.
 //!
 
+mod info;
 mod new_block;
 mod router;
 mod status;

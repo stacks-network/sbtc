@@ -400,6 +400,17 @@ fn handle_gossipsub_event(
         Event::GossipsubNotSupported { peer_id } => {
             tracing::warn!(%peer_id, "peer does not support gossipsub");
         }
+        Event::SlowPeer { peer_id, failed_messages } => {
+            tracing::warn!(
+                %peer_id,
+                failed_publishes = %failed_messages.publish,
+                failed_forwards = %failed_messages.forward,
+                failed_priority = %failed_messages.priority,
+                failed_non_priority = %failed_messages.non_priority,
+                failed_timeout = %failed_messages.timeout,
+                "peer has been flagged as slow"
+            );
+        }
     }
 }
 

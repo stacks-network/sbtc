@@ -1,3 +1,5 @@
+use libp2p::Multiaddr;
+
 /// Configuration error variants.
 #[derive(Debug, thiserror::Error)]
 pub enum SignerConfigError {
@@ -53,6 +55,11 @@ pub enum SignerConfigError {
     )]
     P2PSeedPeerRequired,
 
+    /// A public endpoint uses a protocol which is not enabled in the listen_on
+    /// addresses.
+    #[error("P2P public endpoint protocol mismatch: '{0}'. The listen_on addresses must include the protocol.")]
+    P2PPublicEndpointProtocolMismatch(Multiaddr),
+
     /// Unsupported database driver
     #[error("Unsupported database driver: {0}. Supported drivers are: 'postgresql'.")]
     UnsupportedDatabaseDriver(String),
@@ -61,6 +68,11 @@ pub enum SignerConfigError {
     /// [`crate::config::MAX_BITCOIN_PROCESSING_DELAY_SECONDS`].
     #[error("The provided Bitcoin processing delay must be small than {0}s, got {1}s")]
     InvalidBitcoinProcessingDelay(u64, u64),
+
+    /// An error for a requests_processing_delay value that exceeded the
+    /// [`crate::config::MAX_REQUESTS_PROCESSING_DELAY_SECONDS`].
+    #[error("The provided requests processing delay must be smaller than {0}s, got {1}s")]
+    InvalidRequestsProcessingDelay(u64, u64),
 
     /// An error returned for duration parameters that must be positive.
     #[error("Duration for {0} must be nonzero")]

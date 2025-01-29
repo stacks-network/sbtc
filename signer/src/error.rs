@@ -535,7 +535,7 @@ pub enum Error {
 
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
-    #[error("bitcoin address parse error: {0}; txid {}, vout: {}", .1.txid, .1.vout)]
+    #[error("bitcoin address parse error: {0}; txid {txid}, vout: {vout}", txid = .1.txid, vout = .1.vout)]
     BitcoinAddressFromScript(
         #[source] bitcoin::address::FromScriptError,
         bitcoin::OutPoint,
@@ -598,6 +598,13 @@ pub enum Error {
         /// Maximum sBTC mintable
         max_mintable: u64,
     },
+
+    /// An error which can be used in test code instead of `unimplemented!()` or
+    /// other alternatives, so that an an actual error is returned instead of
+    /// panicking.
+    #[cfg(test)]
+    #[error("Dummy (for testing purposes)")]
+    Dummy,
 }
 
 impl From<std::convert::Infallible> for Error {
