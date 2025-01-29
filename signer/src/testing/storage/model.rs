@@ -64,10 +64,14 @@ impl TestData {
         R: rand::RngCore,
     {
         let mut test_data = Self::new();
-
+        let mut parent: Option<BitcoinBlockRef> = None;
         for _ in 0..params.num_bitcoin_blocks {
-            let (next_chunk, _) = test_data.new_block(rng, signer_keys, params, None);
+            let (next_chunk, block_ref) =
+                test_data.new_block(rng, signer_keys, params, parent.as_ref());
             test_data.push(next_chunk);
+            if params.consecutive_blocks {
+                parent = Some(block_ref);
+            }
         }
 
         test_data
@@ -114,7 +118,6 @@ impl TestData {
             .collect();
 
         let bitcoin_blocks = vec![block.clone()];
-
         (
             Self {
                 bitcoin_blocks,
@@ -515,6 +518,8 @@ pub struct Params {
     pub num_withdraw_requests_per_block: usize,
     /// The number of signers to hallucinate per request
     pub num_signers_per_request: usize,
+    /// Wheter to generate consecutive blocks or not
+    pub consecutive_blocks: bool,
 }
 
 impl BitcoinBlockRef {

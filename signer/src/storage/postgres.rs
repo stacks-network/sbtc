@@ -488,7 +488,7 @@ impl PgStore {
                 JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
                 WHERE prevout_type = 'signers_input'
             )
-            SELECT 
+            SELECT
                 bo.txid
               , bb.block_height
             FROM sbtc_signer.bitcoin_tx_outputs AS bo
@@ -1796,7 +1796,7 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
             WITH RECURSIVE bitcoin_blockchain AS (
-                SELECT 
+                SELECT
                     block_hash
                   , block_height
                 FROM bitcoin_blockchain_of($1, $2)
@@ -1810,9 +1810,9 @@ impl super::DbRead for PgStore {
                 JOIN bitcoin_blockchain as bb
                     ON bb.block_hash = stacks_blocks.bitcoin_anchor
                 WHERE stacks_blocks.block_hash = $3
-        
+
                 UNION ALL
-        
+
                 SELECT
                     parent.block_hash
                   , parent.block_height
@@ -1841,7 +1841,7 @@ impl super::DbRead for PgStore {
             LEFT JOIN completed_deposit_events AS cde
               ON cde.bitcoin_txid = deposit_req.txid
              AND cde.output_index = deposit_req.output_index
-            LEFT JOIN stacks_blockchain AS sb 
+            LEFT JOIN stacks_blockchain AS sb
               ON sb.block_hash = cde.block_hash
             GROUP BY
                 bc_trx.txid
@@ -1918,6 +1918,40 @@ impl super::DbRead for PgStore {
         )
         .bind(sighash)
         .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_deposit_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::DepositSigner>, Error> {
+        sqlx::query_as::<_, model::DepositSigner>(
+            r#"
+            WITH target_block AS (
+                SELECT blocks.block_hash, blocks.created_at
+                FROM sbtc_signer.bitcoin_blockchain_of($1, $2) chain
+                JOIN sbtc_signer.bitcoin_blocks blocks USING (block_hash)
+                ORDER BY chain.block_height ASC
+                LIMIT 1
+            )
+            SELECT
+                ds.txid,
+                ds.output_index,
+                ds.signer_pub_key,
+                ds.can_sign,
+                ds.can_accept
+            FROM sbtc_signer.deposit_signers ds
+            WHERE ds.signer_pub_key = $3
+              AND ds.created_at >= (SELECT created_at FROM target_block)
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(signer_public_key)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }

@@ -9,7 +9,7 @@ x-common-vars:
 
 services:
   bitcoin:
-    image: bitcoin/bitcoin:28.0
+    image: bitcoin/bitcoin:28.1@sha256:40c4d17f6cf0b560a61d33a1d97ccb8b6d407db29e614d2c598cb9b2483a4383
     container_name: bitcoin
     restart: on-failure:3
     ports:
@@ -48,7 +48,7 @@ services:
           -zmqpubrawblock="tcp://*:$${BITCOIN_ZMQ_PORT}"
 
   stacks-blockchain:
-    image: blockstack/stacks-blockchain:3.1.0.0.2
+    image: blockstack/stacks-blockchain:3.1.0.0.4@sha256:bd0a8874224203dcd3f32dca4c8421a052f7afa8cd433bedecb2e6c88f04dd12
     container_name: stacks-blockchain
     restart: on-failure:3
     ports:
