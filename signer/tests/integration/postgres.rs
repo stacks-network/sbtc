@@ -1414,9 +1414,6 @@ async fn fetching_deposit_signer_decisions() {
 
     let signer_pub_key = signer_set.first().unwrap();
 
-    // move the oldest deposit request to the last block
-    // so that we change its created_at time to be the latest
-    test_data.deposit_requests.rotate_left(1);
     // We'll register each block with a 2 minute interval
     // i.e. times -> [-15, -13, -11, -9, -7]
     let mut new_time = OffsetDateTime::now_utc() - time::Duration::minutes(15);
@@ -1427,10 +1424,9 @@ async fn fetching_deposit_signer_decisions() {
             .unwrap();
         sqlx::query(
             r#"
-                UPDATE sbtc_signer.bitcoin_blocks
-                SET created_at = $1::timestamptz
-                WHERE block_hash = $2
-                "#,
+            UPDATE sbtc_signer.bitcoin_blocks
+            SET created_at = $1::timestamptz
+            WHERE block_hash = $2"#,
         )
         .bind(new_time_str) // Bind as string
         .bind(block.block_hash)
@@ -1440,10 +1436,24 @@ async fn fetching_deposit_signer_decisions() {
 
         new_time += time::Duration::minutes(2);
     }
-    // Now we'll update the deposit. Each deposit will be updated so that it will
-    // arrive 1 minute after its corresponding block.
-    // With the exception of the first deposit which will be updated to arrive last.
-    // i.e. times -> [-12, -10, -8, -6, -4 (the first deposit)]
+
+    // Rotate deposits to test edge case:
+    // Move first deposit to be processed last (latest timestamp)
+    // This tests that a deposit decision can still be returned
+    // even when its associated block falls outside the context window
+    test_data.deposit_requests.rotate_left(1);
+
+    // Now we'll update the deposits decisions. Each decision will be
+    // updated so that it will arrive 1 minute after its corresponding block.
+    // With the exception of the first one, which will be updated to arrive last.
+    // Block times:     [-15, -13, -11,  -9,  -7]
+    // Decision times:       [-12, -10,  -8,  -6,  -4]
+    //                         ^    ^     ^    ^    ^
+    //                         |    |     |    |    first deposit (moved to last)
+    //                         |    |     |    fifth deposit
+    //                         |    |     forth deposit
+    //                         |    third deposit
+    //                         second deposit
     new_time = OffsetDateTime::now_utc() - time::Duration::minutes(12);
     for deposit in test_data.deposit_requests.iter() {
         let new_time_str = new_time
@@ -1452,10 +1462,9 @@ async fn fetching_deposit_signer_decisions() {
 
         sqlx::query(
             r#"
-                UPDATE sbtc_signer.deposit_signers
-                SET created_at = $1::timestamptz
-                WHERE txid = $2 AND output_index = $3 AND signer_pub_key = $4
-                "#,
+            UPDATE sbtc_signer.deposit_signers
+            SET created_at = $1::timestamptz
+            WHERE txid = $2 AND output_index = $3 AND signer_pub_key = $4"#,
         )
         .bind(new_time_str) // Bind as string
         .bind(deposit.txid)
