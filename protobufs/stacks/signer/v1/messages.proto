@@ -62,7 +62,7 @@ message WstsMessage {
   }
   oneof id {
     bitcoin.BitcoinTxid id_bitcoin_txid = 12;
-    crypto.PublicKey id_public_key = 13;
+    crypto.PublicKey id_rotate_key = 13;
     bytes id_arbitrary = 14;
   }
 }

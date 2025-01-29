@@ -1099,7 +1099,7 @@ impl From<WstsMessage> for proto::WstsMessage {
                 WstsMessageId::BitcoinTxid(txid) => {
                     Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid)))
                 }
-                WstsMessageId::AggregateKey(_) | WstsMessageId::Arbitrary(_) => None,
+                WstsMessageId::RotateKey(_) | WstsMessageId::Arbitrary(_) => None,
             },
             id: Some(match value.id {
                 WstsMessageId::BitcoinTxid(txid) => {
@@ -1107,7 +1107,7 @@ impl From<WstsMessage> for proto::WstsMessage {
                         txid: Some(proto::Uint256::from(txid.to_le_bytes())),
                     })
                 }
-                WstsMessageId::AggregateKey(pubkey) => wsts_message::Id::IdPublicKey(pubkey.into()),
+                WstsMessageId::RotateKey(pubkey) => wsts_message::Id::IdRotateKey(pubkey.into()),
                 WstsMessageId::Arbitrary(key) => wsts_message::Id::IdArbitrary(key.into()),
             }),
             inner: Some(inner),
@@ -1156,8 +1156,8 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                     wsts_message::Id::IdBitcoinTxid(txid) => {
                         WstsMessageId::BitcoinTxid(BitcoinTxId::try_from(txid)?.into())
                     }
-                    wsts_message::Id::IdPublicKey(pubkey) => {
-                        WstsMessageId::AggregateKey(PublicKey::try_from(pubkey)?)
+                    wsts_message::Id::IdRotateKey(pubkey) => {
+                        WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
                     }
                     wsts_message::Id::IdArbitrary(key) => {
                         WstsMessageId::Arbitrary(key.try_into().map_err(|_| Error::TypeConversion)?)

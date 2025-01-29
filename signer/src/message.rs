@@ -221,8 +221,8 @@ pub struct BitcoinPreSignAck;
 pub enum WstsMessageId {
     /// The WSTS message is related to a Bitcoin transaction.
     BitcoinTxid(bitcoin::Txid),
-    /// The WSTS message is related to an aggregate key.
-    AggregateKey(PublicKey),
+    /// The WSTS message is related to a rotate key operation.
+    RotateKey(PublicKey),
     /// The WSTS message isn't specifically related to anything.
     Arbitrary([u8; 32]),
 }
@@ -230,18 +230,6 @@ pub enum WstsMessageId {
 impl From<bitcoin::Txid> for WstsMessageId {
     fn from(txid: bitcoin::Txid) -> Self {
         Self::BitcoinTxid(txid)
-    }
-}
-
-impl From<PublicKey> for WstsMessageId {
-    fn from(aggregate_key: PublicKey) -> Self {
-        Self::AggregateKey(aggregate_key)
-    }
-}
-
-impl From<&PublicKey> for WstsMessageId {
-    fn from(aggregate_key: &PublicKey) -> Self {
-        Self::AggregateKey(*aggregate_key)
     }
 }
 
@@ -259,10 +247,10 @@ impl WstsMessageId {
     }
 
     /// Generate a random [`WstsMessageId::AggregateKey`] WSTS message ID
-    pub fn random_aggregate_key() -> Self {
+    pub fn random_rotate_key() -> Self {
         let private = PrivateKey::new(&mut OsRng);
         let public = PublicKey::from_private_key(&private);
-        Self::AggregateKey(public)
+        Self::RotateKey(public)
     }
 }
 
@@ -270,8 +258,8 @@ impl std::fmt::Display for WstsMessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WstsMessageId::BitcoinTxid(txid) => write!(f, "bitcoin-txid({})", txid),
-            WstsMessageId::AggregateKey(aggregate_key) => {
-                write!(f, "aggregate-key({})", aggregate_key)
+            WstsMessageId::RotateKey(aggregate_key) => {
+                write!(f, "rotate-key({})", aggregate_key)
             }
             WstsMessageId::Arbitrary(bytes) => write!(f, "arbitrary({})", hex::encode(bytes)),
         }

@@ -656,8 +656,8 @@ where
 
                         (id, accepted_sighash.public_key)
                     }
-                    WstsMessageId::AggregateKey(key) => {
-                        tracing::info!(%key, "responding to nonce request for aggregate key signing");
+                    WstsMessageId::RotateKey(key) => {
+                        tracing::info!(%key, "responding to nonce request for rotate-key signing");
 
                         let mut hasher = sha2::Sha256::new();
                         hasher.update(key.serialize());
@@ -740,8 +740,8 @@ where
 
                         accepted_sighash.sighash.into()
                     }
-                    WstsMessageId::AggregateKey(key) => {
-                        tracing::info!(%key, "responding to signature share request for aggregate key signing");
+                    WstsMessageId::RotateKey(key) => {
+                        tracing::info!(%key, "responding to signature share request for rotate-key key signing");
 
                         let mut hasher = sha2::Sha256::new();
                         hasher.update(key.serialize());

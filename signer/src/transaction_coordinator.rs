@@ -766,7 +766,7 @@ where
         self.coordinate_signing_round(
             bitcoin_chain_tip,
             &mut coordinator_state_machine,
-            rotate_key_aggregate_key.into(),
+            WstsMessageId::RotateKey(*rotate_key_aggregate_key),
             &random_bytes,
             SignatureType::Schnorr
         ).await

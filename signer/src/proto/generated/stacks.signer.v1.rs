@@ -343,7 +343,7 @@ pub mod wsts_message {
         #[prost(message, tag = "12")]
         IdBitcoinTxid(super::super::super::super::bitcoin::BitcoinTxid),
         #[prost(message, tag = "13")]
-        IdPublicKey(super::super::super::super::crypto::PublicKey),
+        IdRotateKey(super::super::super::super::crypto::PublicKey),
         #[prost(bytes, tag = "14")]
         IdArbitrary(::prost::alloc::vec::Vec<u8>),
     }
