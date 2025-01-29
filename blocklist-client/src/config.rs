@@ -77,7 +77,9 @@ impl Settings {
     /// Initializing the global config first with default values and then with provided/overwritten environment variables.
     /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new() -> Result<Self, ConfigError> {
-        let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
+        let env = Environment::with_prefix("BLOCKLIST_CLIENT")
+            .separator("__")
+            .prefix_separator("_");
 
         let cfg = Config::builder()
             .add_source(File::from_str(
@@ -96,7 +98,9 @@ impl Settings {
     /// Initializing the global config with values from provided config file and then with provided/overwritten environment variables.
     /// The explicit separator with double underscores is needed to correctly parse the nested config structure.
     pub fn new_from_path(path: &str) -> Result<Self, ConfigError> {
-        let env = Environment::with_prefix("BLOCKLIST_CLIENT").separator("__");
+        let env = Environment::with_prefix("BLOCKLIST_CLIENT")
+            .separator("__")
+            .prefix_separator("_");
 
         let cfg = Config::builder()
             .add_source(File::with_name(path))
