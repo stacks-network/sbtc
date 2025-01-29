@@ -226,7 +226,7 @@ impl Store {
         .filter_map(|block| self.bitcoin_anchor_to_stacks_blocks.get(&block.block_hash))
         .flatten()
         .filter_map(|stacks_block_hash| self.stacks_blocks.get(stacks_block_hash))
-        .max_by_key(|block| (block.block_height, &block.block_hash))
+        .max_by_key(|block| (block.block_height, block.block_hash.to_bytes()))
         .cloned()
     }
 

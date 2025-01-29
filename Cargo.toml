@@ -88,7 +88,7 @@ axum = { version = "0.8.1", default-features = false, features = ["http1", "json
 tracing-subscriber = { version = "0.3.19", default-features = false, features = ["env-filter", "fmt", "json", "time", "ansi"] }
 
 # Crates used only for testing
-fake = { version = "2.9.2", default-features = false, features = ["derive", "time"] }
+fake = { version = "3.1.0", default-features = false, features = ["derive", "time"] }
 mockall = { version = "0.13.1", default-features = false }
 mockito = { version = "1.6.1", default-features = false }
 more-asserts = { version = "0.3.1", default-features = false }
