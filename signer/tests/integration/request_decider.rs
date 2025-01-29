@@ -40,6 +40,7 @@ fn test_environment(
     >,
 > {
     let context_window = 6;
+    let deposit_decisions_retry_window = 1;
 
     let test_model_parameters = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
@@ -47,6 +48,7 @@ fn test_environment(
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
 
     let context = TestContext::builder()
@@ -58,6 +60,7 @@ fn test_environment(
         context,
         num_signers,
         context_window,
+        deposit_decisions_retry_window,
         signing_threshold,
         test_model_parameters,
     }
@@ -166,6 +169,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
+        deposit_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
     };
@@ -250,6 +254,7 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         network: network.connect(),
         context: ctx.clone(),
         context_window: 10000,
+        deposit_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         // We generate a new private key here so that we know (with very
         // high probability) that this signer is not in the signer set.
@@ -328,6 +333,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
         network: network.spawn(),
         context: ctx.clone(),
         context_window: 10000,
+        deposit_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         signer_private_key: PrivateKey::new(&mut rng),
     };

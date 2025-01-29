@@ -14,6 +14,7 @@ use futures::future::join_all;
 use futures::StreamExt;
 use rand::seq::IteratorRandom;
 use rand::seq::SliceRandom;
+use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
 use signer::bitcoin::MockBitcoinInteract;
@@ -82,6 +83,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, 7);
@@ -327,6 +329,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
@@ -491,6 +494,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -567,6 +571,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
     let threshold = 4;
 
@@ -635,6 +640,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         // the threshold in order for the test to succeed with accepted
         // requests.
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
     let threshold = 4;
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -785,6 +791,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
     let threshold = 4;
 
@@ -969,6 +976,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
         num_signers_per_request: 7,
+        consecutive_blocks: false,
     };
     let num_signers = 7;
     let threshold = 4;
@@ -1395,6 +1403,119 @@ async fn fetching_deposit_request_votes() {
     signer::testing::storage::drop_db(store).await;
 }
 
+#[tokio::test]
+async fn fetching_deposit_signer_decisions() {
+    let pg_store = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This is just a sql test, where we use the `TestData` struct to help
+    // populate the database with test data. We set all the other
+    // unnecessary parameters to zero.
+    let num_signers = 3;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 5,
+        num_stacks_blocks_per_bitcoin_block: 0,
+        num_deposit_requests_per_block: 1,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: true,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+
+    let mut test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&pg_store).await;
+
+    let signer_pub_key = signer_set.first().unwrap();
+
+    // We'll register each block with a 2 minute interval
+    // i.e. times -> [-15, -13, -11, -9, -7]
+    let mut new_time = OffsetDateTime::now_utc() - time::Duration::minutes(15);
+    // Update Bitcoin blocks
+    for block in test_data.bitcoin_blocks.iter() {
+        let new_time_str = new_time
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.bitcoin_blocks
+            SET created_at = $1::timestamptz
+            WHERE block_hash = $2"#,
+        )
+        .bind(new_time_str) // Bind as string
+        .bind(block.block_hash)
+        .execute(pg_store.pool())
+        .await
+        .unwrap();
+
+        new_time += time::Duration::minutes(2);
+    }
+
+    // Rotate deposits to test edge case:
+    // Move first deposit to be processed last (latest timestamp)
+    // This tests that a deposit decision can still be returned
+    // even when its associated block falls outside the context window
+    test_data.deposit_requests.rotate_left(1);
+
+    // Now we'll update the deposits decisions. Each decision will be
+    // updated so that it will arrive 1 minute after its corresponding block.
+    // With the exception of the first one, which will be updated to arrive last.
+    // Block times:     [-15, -13, -11,  -9,  -7]
+    // Decision times:       [-12, -10,  -8,  -6,  -4]
+    //                         ^    ^     ^    ^    ^
+    //                         |    |     |    |    first deposit (moved to last)
+    //                         |    |     |    fifth deposit
+    //                         |    |     forth deposit
+    //                         |    third deposit
+    //                         second deposit
+    new_time = OffsetDateTime::now_utc() - time::Duration::minutes(12);
+    for deposit in test_data.deposit_requests.iter() {
+        let new_time_str = new_time
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.deposit_signers
+            SET created_at = $1::timestamptz
+            WHERE txid = $2 AND output_index = $3 AND signer_pub_key = $4"#,
+        )
+        .bind(new_time_str) // Bind as string
+        .bind(deposit.txid)
+        .bind(i32::try_from(deposit.output_index).unwrap())
+        .bind(signer_pub_key)
+        .execute(pg_store.pool())
+        .await
+        .unwrap();
+
+        new_time += time::Duration::minutes(2);
+    }
+
+    let chain_tip = pg_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let deposit_decisions = pg_store
+        .get_deposit_signer_decisions(&chain_tip, 3, signer_pub_key)
+        .await
+        .unwrap();
+
+    assert_eq!(deposit_decisions.len(), 4);
+    // Test data contains 5 deposit requests, we should get decisions for
+    // the last 4.
+    for deposit in test_data.deposit_requests[1..].iter() {
+        assert!(deposit_decisions.iter().any(|decision| {
+            decision.txid == deposit.txid
+                && decision.output_index == deposit.output_index
+                && decision.signer_pub_key == *signer_pub_key
+        }));
+    }
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
 /// For this test we check that when we get the votes for a withdrawal
 /// request for a specific aggregate key, that we get a vote for all public
 /// keys for the specific aggregate key. This includes "implicit" votes
@@ -1523,6 +1644,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -1596,6 +1718,7 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
         num_deposit_requests_per_block: 2,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -1807,6 +1930,7 @@ async fn is_known_bitcoin_block_hash_works() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2262,6 +2386,7 @@ async fn transaction_coordinator_test_environment(
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 7,
+        consecutive_blocks: false,
     };
 
     let context = TestContext::builder()
@@ -2368,6 +2493,7 @@ async fn deposit_report_with_only_deposit_request() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2467,6 +2593,7 @@ async fn deposit_report_with_deposit_request_reorged() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2541,6 +2668,7 @@ async fn deposit_report_with_deposit_request_spent() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2638,6 +2766,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2768,6 +2897,7 @@ async fn deposit_report_with_deposit_request_confirmed() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -3004,6 +3134,7 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     // Let's generate some dummy data and write it into the database.

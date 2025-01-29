@@ -50,6 +50,9 @@ pub struct RequestDeciderEventLoop<C, N, B> {
     pub signer_private_key: PrivateKey,
     /// How many bitcoin blocks back from the chain tip the signer will look for requests.
     pub context_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will look for deposit
+    /// decisions to retry to propagate.
+    pub deposit_decisions_retry_window: u16,
 }
 
 /// This function defines which messages this event loop is interested
@@ -136,6 +139,23 @@ where
 
         let span = tracing::Span::current();
         span.record("chain_tip", tracing::field::display(chain_tip));
+
+        // We retry the deposit decisions because some signers' bitcoin nodes might have
+        // been running behind and ignored the previous messages.
+        let deposit_decisions_to_retry = db
+            .get_deposit_signer_decisions(
+                &chain_tip,
+                self.deposit_decisions_retry_window,
+                &signer_public_key,
+            )
+            .await?;
+
+        let _ = self
+            .handle_deposit_decisions_to_retry(deposit_decisions_to_retry, &chain_tip)
+            .await
+            .inspect_err(
+                |error| tracing::warn!(%error, "error handling deposit decisions to retry"),
+            );
 
         let deposit_requests = db
             .get_pending_deposit_requests(&chain_tip, self.context_window, &signer_public_key)
@@ -253,6 +273,24 @@ where
         self.context
             .signal(RequestDeciderEvent::PendingDepositRequestRegistered.into())?;
 
+        Ok(())
+    }
+
+    /// Send the given deposit decisions to the other signers for redundancy.
+    #[tracing::instrument(skip_all)]
+    pub async fn handle_deposit_decisions_to_retry(
+        &mut self,
+        decisions: Vec<model::DepositSigner>,
+        chain_tip: &BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        for decision in decisions.into_iter().map(SignerDepositDecision::from) {
+            let _ = self
+                .send_message(decision, chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "error sending deposit decision to retry, skipping");
+                });
+        }
         Ok(())
     }
 
@@ -478,6 +516,7 @@ mod tests {
             num_deposit_requests_per_block: 5,
             num_withdraw_requests_per_block: 5,
             num_signers_per_request: 0,
+            consecutive_blocks: false,
         };
 
         let context = TestContext::builder()
@@ -488,6 +527,7 @@ mod tests {
         testing::request_decider::TestEnvironment {
             context,
             context_window: 6,
+            deposit_decisions_retry_window: 1,
             num_signers: 7,
             signing_threshold: 5,
             test_model_parameters,
