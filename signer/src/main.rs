@@ -370,7 +370,7 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
         network,
         context: ctx.clone(),
         context_window: config.signer.context_window,
-        blocklist_checker: config.blocklist_client.as_ref().map(|config| BlocklistClient::new(config)),
+        blocklist_checker: config.blocklist_client.as_ref().map(BlocklistClient::new),
         signer_private_key: config.signer.private_key,
     };
 
