@@ -507,13 +507,13 @@ where
 
     /// Process WSTS messages
     #[tracing::instrument(skip_all, fields(
-        id = %msg.id,
-        message_type = tracing::field::Empty,
-        signer_id = tracing::field::Empty,
+        msg_id = %msg.id,
+        msg_type = %msg.type_id(),
+        dkg_signer_id = tracing::field::Empty,
         dkg_id = tracing::field::Empty,
-        sign_id = tracing::field::Empty,
-        sign_iter_id = tracing::field::Empty,
-        txid = tracing::field::Empty,
+        dkg_sign_id = tracing::field::Empty,
+        dkg_iter_id = tracing::field::Empty,
+        dkg_txid = tracing::field::Empty,
         sender_public_key = %msg_public_key,
     ))]
     pub async fn handle_wsts_message(
@@ -527,7 +527,6 @@ where
 
         match &msg.inner {
             WstsNetMessage::DkgBegin(request) => {
-                span.record("message_type", "dkg-begin");
                 span.record("dkg_id", request.dkg_id);
 
                 tracing::debug!("responding to dkg-begin");
@@ -564,7 +563,6 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPrivateBegin(request) => {
-                span.record("message_type", "dkg-private-begin");
                 span.record("dkg_id", request.dkg_id);
 
                 tracing::debug!("responding to dkg-private-begin");
@@ -579,9 +577,8 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPublicShares(request) => {
-                span.record("message_type", "dkg-public-shares");
                 span.record("dkg_id", request.dkg_id);
-                span.record("signer_id", request.signer_id);
+                span.record("dkg_signer_id", request.signer_id);
 
                 tracing::debug!("responding to dkg-public-shares");
 
@@ -591,9 +588,8 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPrivateShares(request) => {
-                span.record("message_type", "dkg-private-shares");
                 span.record("dkg_id", request.dkg_id);
-                span.record("signer_id", request.signer_id);
+                span.record("dkg_signer_id", request.signer_id);
 
                 tracing::debug!("responding to dkg-private-shares");
 
@@ -603,7 +599,6 @@ where
                     .await?;
             }
             WstsNetMessage::DkgEndBegin(request) => {
-                span.record("message_type", "dkg-end-begin");
                 span.record("dkg_id", request.dkg_id);
 
                 tracing::debug!("responding to dkg-end-begin");
@@ -617,10 +612,9 @@ where
                     .await?;
             }
             WstsNetMessage::NonceRequest(request) => {
-                span.record("message_type", "nonce-request");
                 span.record("dkg_id", request.dkg_id);
-                span.record("sign_id", request.sign_id);
-                span.record("sign_iter_id", request.sign_iter_id);
+                span.record("dkg_sign_id", request.sign_id);
+                span.record("dkg_iter_id", request.sign_iter_id);
 
                 tracing::debug!(signature_type = ?request.signature_type, "responding to nonce-request");
 
@@ -721,10 +715,9 @@ where
                     .await?;
             }
             WstsNetMessage::SignatureShareRequest(request) => {
-                span.record("message_type", "signature-share-request");
                 span.record("dkg_id", request.dkg_id);
-                span.record("sign_id", request.sign_id);
-                span.record("sign_iter_id", request.sign_iter_id);
+                span.record("dkg_sign_id", request.sign_id);
+                span.record("dkg_iter_id", request.sign_iter_id);
 
                 tracing::debug!(signature_type = ?request.signature_type, "responding to signature-share-request");
 
@@ -777,9 +770,8 @@ where
                 response?;
             }
             WstsNetMessage::DkgEnd(request) => {
-                span.record("message_type", "dkg-end");
                 span.record("dkg_id", request.dkg_id);
-                span.record("signer_id", request.signer_id);
+                span.record("dkg_signer_id", request.signer_id);
 
                 match &request.status {
                     DkgStatus::Success => {

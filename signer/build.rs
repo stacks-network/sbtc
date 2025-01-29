@@ -2,7 +2,7 @@ use std::env;
 
 fn main() {
     set_up_build_info();
-    compile_protos();
+    // compile_protos();
 }
 
 pub fn set_up_build_info() {

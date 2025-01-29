@@ -287,6 +287,24 @@ pub struct WstsMessage {
     pub inner: wsts::net::Message,
 }
 
+impl WstsMessage {
+    /// Returns the type of the message as a &str.
+    pub fn type_id(&self) -> &'static str {
+        match self.inner {
+            wsts::net::Message::DkgBegin(_) => "dkg-begin",
+            wsts::net::Message::DkgEndBegin(_) => "dkg-end-begin",
+            wsts::net::Message::DkgEnd(_) => "dkg-end",
+            wsts::net::Message::DkgPrivateBegin(_) => "dkg-private-begin",
+            wsts::net::Message::DkgPrivateShares(_) => "dkg-private-shares",
+            wsts::net::Message::DkgPublicShares(_) => "dkg-public-shares",
+            wsts::net::Message::NonceRequest(_) => "nonce-request",
+            wsts::net::Message::NonceResponse(_) => "nonce-response",
+            wsts::net::Message::SignatureShareRequest(_) => "signature-share-request",
+            wsts::net::Message::SignatureShareResponse(_) => "signature-share-response",
+        }
+    }
+}
+
 /// Convenient type aliases
 type StacksBlockHash = [u8; 32];
 
