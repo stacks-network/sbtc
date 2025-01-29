@@ -108,3 +108,4 @@ split-debuginfo = "unpacked"
 [profile.release]
 lto = "thin"
 codegen-units = 16
+overflow-checks = true
