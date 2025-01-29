@@ -1417,42 +1417,47 @@ async fn fetching_deposit_signer_decisions() {
     // move the oldest deposit request to the last block
     // so that we change its created_at time to be the latest
     test_data.deposit_requests.rotate_left(1);
-    let mut new_time_block = OffsetDateTime::now_utc() - time::Duration::minutes(15);
-    let mut new_time_request = OffsetDateTime::now_utc() - time::Duration::minutes(12);
+    // We'll register each block with a 2 minute interval
+    // i.e. times -> [-15, -13, -11, -9, -7]
+    let mut new_time = OffsetDateTime::now_utc() - time::Duration::minutes(15);
     // Update Bitcoin blocks
-    for (block, deposit) in test_data
-        .bitcoin_blocks
-        .iter()
-        .zip(test_data.deposit_requests.iter())
-    {
-        let new_time_block_str = new_time_block
+    for block in test_data.bitcoin_blocks.iter() {
+        let new_time_str = new_time
             .format(&time::format_description::well_known::Rfc3339)
             .unwrap();
-        let new_time_request_str = new_time_request
-            .format(&time::format_description::well_known::Rfc3339)
-            .unwrap();
-
         sqlx::query(
             r#"
-            UPDATE sbtc_signer.bitcoin_blocks
-            SET created_at = $1::timestamptz
-            WHERE block_hash = $2
-            "#,
+                UPDATE sbtc_signer.bitcoin_blocks
+                SET created_at = $1::timestamptz
+                WHERE block_hash = $2
+                "#,
         )
-        .bind(new_time_block_str) // Bind as string
+        .bind(new_time_str) // Bind as string
         .bind(block.block_hash)
         .execute(pg_store.pool())
         .await
         .unwrap();
 
+        new_time += time::Duration::minutes(2);
+    }
+    // Now we'll update the deposit. Each deposit will be updated so that it will
+    // arrive 1 minute after its corresponding block.
+    // With the exception of the first deposit which will be updated to arrive last.
+    // i.e. times -> [-12, -10, -8, -6, -4 (the first deposit)]
+    new_time = OffsetDateTime::now_utc() - time::Duration::minutes(12);
+    for deposit in test_data.deposit_requests.iter() {
+        let new_time_str = new_time
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
         sqlx::query(
             r#"
-            UPDATE sbtc_signer.deposit_signers
-            SET created_at = $1::timestamptz
-            WHERE txid = $2 AND output_index = $3 AND signer_pub_key = $4
-            "#,
+                UPDATE sbtc_signer.deposit_signers
+                SET created_at = $1::timestamptz
+                WHERE txid = $2 AND output_index = $3 AND signer_pub_key = $4
+                "#,
         )
-        .bind(new_time_request_str) // Bind as string
+        .bind(new_time_str) // Bind as string
         .bind(deposit.txid)
         .bind(i32::try_from(deposit.output_index).unwrap())
         .bind(signer_pub_key)
@@ -1460,8 +1465,7 @@ async fn fetching_deposit_signer_decisions() {
         .await
         .unwrap();
 
-        new_time_block += time::Duration::minutes(2);
-        new_time_request += time::Duration::minutes(2);
+        new_time += time::Duration::minutes(2);
     }
 
     let chain_tip = pg_store
