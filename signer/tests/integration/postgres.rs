@@ -34,6 +34,7 @@ use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
 use signer::storage::model;
+use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::BitcoinTxSigHash;
@@ -615,7 +616,6 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted withdraw requests
-/// NOTE: This test breaks with `fake` >= `2.10` due to the `dummy` version bump.
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -656,6 +656,19 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
             .expect("failed to get canonical chain tip")
             .expect("no chain tip"),
         chain_tip
+    );
+
+    assert_eq!(
+        in_memory_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
     );
 
     let mut pending_accepted_withdraw_requests = in_memory_store
@@ -3114,4 +3127,117 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
     };
 
     signer::testing::storage::drop_db(db).await;
+}
+
+fn hex_to_block_hash(hash: &str) -> [u8; 32] {
+    hex::decode(hash).unwrap().as_slice().try_into().unwrap()
+}
+
+#[tokio::test]
+async fn compare_in_memory_bitcoin_chain_tip() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let pg_store = testing::storage::new_test_database().await;
+    let in_memory_store = storage::in_memory::Store::new_shared();
+
+    let root: BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
+    let mut blocks = vec![root.clone()];
+    for block_hash in [
+        "FF00000000000000000000000000000000000000000000000000000000000011",
+        "11000000000000000000000000000000000000000000000000000000000000FF",
+    ] {
+        blocks.push(BitcoinBlock {
+            block_hash: hex_to_block_hash(block_hash).into(),
+            block_height: root.block_height + 1,
+            parent_hash: root.block_hash,
+        })
+    }
+
+    for block in &blocks {
+        pg_store.write_bitcoin_block(block).await.unwrap();
+        in_memory_store.write_bitcoin_block(block).await.unwrap();
+    }
+
+    assert_eq!(
+        in_memory_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+    );
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
+#[tokio::test]
+async fn compare_in_memory_stacks_chain_tip() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let pg_store = testing::storage::new_test_database().await;
+    let in_memory_store = storage::in_memory::Store::new_shared();
+
+    let root_anchor: BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
+
+    pg_store.write_bitcoin_block(&root_anchor).await.unwrap();
+    in_memory_store
+        .write_bitcoin_block(&root_anchor)
+        .await
+        .unwrap();
+
+    let root: StacksBlock = fake::Faker.fake_with_rng(&mut rng);
+
+    let mut blocks = vec![root.clone()];
+    for block_hash in [
+        "FF00000000000000000000000000000000000000000000000000000000000011",
+        "11000000000000000000000000000000000000000000000000000000000000FF",
+    ] {
+        blocks.push(StacksBlock {
+            block_hash: hex_to_block_hash(block_hash).into(),
+            block_height: root.block_height + 1,
+            parent_hash: root.block_hash,
+            bitcoin_anchor: root_anchor.block_hash,
+        })
+    }
+
+    for block in &blocks {
+        pg_store.write_stacks_block(block).await.unwrap();
+        in_memory_store.write_stacks_block(block).await.unwrap();
+    }
+
+    assert_eq!(
+        in_memory_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        root_anchor.block_hash
+    );
+    assert_eq!(
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        root_anchor.block_hash
+    );
+
+    assert_eq!(
+        in_memory_store
+            .get_stacks_chain_tip(&root_anchor.block_hash)
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_stacks_chain_tip(&root_anchor.block_hash)
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+    );
+
+    signer::testing::storage::drop_db(pg_store).await;
 }
