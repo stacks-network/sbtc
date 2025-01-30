@@ -231,10 +231,12 @@ pub struct BitcoinPreSignAck;
 /// The identifier for a WSTS message.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WstsMessageId {
-    /// The WSTS message is related to a Bitcoin transaction.
+    /// The WSTS message is related to a Bitcoin transaction signing round.
     BitcoinTxid(bitcoin::Txid),
-    /// The WSTS message is related to a rotate key operation.
+    /// The WSTS message is related to a rotate key verification operation.
     RotateKey(PublicKey),
+    /// The WSTS message is related to a DKG round.
+    Dkg([u8; 32]),
 }
 
 impl From<bitcoin::Txid> for WstsMessageId {
@@ -271,6 +273,9 @@ impl std::fmt::Display for WstsMessageId {
             WstsMessageId::BitcoinTxid(txid) => write!(f, "bitcoin-txid({})", txid),
             WstsMessageId::RotateKey(aggregate_key) => {
                 write!(f, "rotate-key({})", aggregate_key)
+            },
+            WstsMessageId::Dkg(id) => {
+                write!(f, "dkg({})", hex::encode(id))
             }
         }
     }

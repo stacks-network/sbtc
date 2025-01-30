@@ -1098,7 +1098,8 @@ impl From<WstsMessage> for proto::WstsMessage {
             txid: match value.id {
                 WstsMessageId::BitcoinTxid(txid) => {
                     Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid)))
-                }
+                },
+                WstsMessageId::Dkg(_) => None,
                 WstsMessageId::RotateKey(_) => None,
             },
             id: Some(match value.id {
@@ -1108,6 +1109,7 @@ impl From<WstsMessage> for proto::WstsMessage {
                     })
                 }
                 WstsMessageId::RotateKey(pubkey) => wsts_message::Id::IdRotateKey(pubkey.into()),
+                WstsMessageId::Dkg(id) => wsts_message::Id::IdDkg(id.into()),
             }),
             inner: Some(inner),
         }
@@ -1160,6 +1162,9 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                     }
                     wsts_message::Id::IdRotateKey(pubkey) => {
                         WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
+                    }
+                    wsts_message::Id::IdDkg(id) => {
+                        WstsMessageId::Dkg(id.into())
                     }
                 },
                 None => WstsMessageId::BitcoinTxid(
@@ -1770,21 +1775,24 @@ mod tests {
         U: From<T>,
         E: std::fmt::Debug,
     {
-        // The type T originates from a signer. Let's create a random
-        // instance of one.
-        let original: T = Faker.fake_with_rng(&mut OsRng);
-        // The type U is a protobuf type. Before sending it to other
-        // signers, we convert our internal type into it's protobuf
-        // counterpart. We can always infallibly create U from T.
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..25 {
+            // The type T originates from a signer. Let's create a random
+            // instance of one.
+            let original: T = Faker.fake_with_rng(&mut OsRng);
+            // The type U is a protobuf type. Before sending it to other
+            // signers, we convert our internal type into it's protobuf
+            // counterpart. We can always infallibly create U from T.
+            let proto_original = U::from(original.clone());
 
-        // Some other signer receives an instance of U. This could be a
-        // malicious actor or a modified version of the signer binary
-        // where they made some mistake, so converting back to T can fail.
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        // In this case, we know U was created from T correctly, so we
-        // should be able to convert back without issues.
-        assert_eq!(original, original_from_proto);
+            // Some other signer receives an instance of U. This could be a
+            // malicious actor or a modified version of the signer binary
+            // where they made some mistake, so converting back to T can fail.
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            // In this case, we know U was created from T correctly, so we
+            // should be able to convert back without issues.
+            assert_eq!(original, original_from_proto);
+        }
     }
 
     /// This test is identical to [`convert_protobuf_types`] tests above,
@@ -1825,11 +1833,14 @@ mod tests {
         U: From<T>,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..10 {
+            let original: T = Unit.fake_with_rng(&mut OsRng);
+            let proto_original = U::from(original.clone());
 
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        assert_eq!(original, original_from_proto);
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            assert_eq!(original, original_from_proto);
+        }
     }
 
     // The following are tests for structs that do not derive eq
@@ -1875,11 +1886,14 @@ mod tests {
         U: From<T>,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..25 {
+            let original: T = Unit.fake_with_rng(&mut OsRng);
+            let proto_original = U::from(original.clone());
 
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        assert_eq!(wrapper(original), wrapper(original_from_proto));
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            assert_eq!(wrapper(original), wrapper(original_from_proto));
+        }
     }
 
     #[test]
