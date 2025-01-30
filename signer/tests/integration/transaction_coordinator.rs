@@ -916,7 +916,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
 /// Some of the preconditions for this test to run successfully includes
 /// having bootstrap public keys that align with the [`Keypair`] returned
 /// from the [`testing::wallet::regtest_bootstrap_wallet`] function.
-#[tokio::test]
+#[test(tokio::test)]
 async fn run_dkg_from_scratch() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (signer_wallet, signer_key_pairs): (_, [Keypair; 3]) =
@@ -1035,6 +1035,8 @@ async fn run_dkg_from_scratch() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         });
 
     // We only proceed with the test after all processes have started, and
@@ -1266,6 +1268,8 @@ async fn run_subsequent_dkg() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         });
 
     // We only proceed with the test after all processes have started, and
@@ -1580,6 +1584,8 @@ async fn sign_bitcoin_transaction() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2020,6 +2026,8 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2609,6 +2617,8 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -3394,6 +3404,8 @@ async fn test_conservative_initial_sbtc_limits() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {

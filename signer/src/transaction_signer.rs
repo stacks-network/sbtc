@@ -6,6 +6,7 @@
 //! For more details, see the [`TxSignerEventLoop`] documentation.
 
 use std::collections::BTreeSet;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
 use crate::bitcoin::validation::BitcoinTxContext;
@@ -39,8 +40,10 @@ use crate::storage::model;
 use crate::storage::model::SigHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
+use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::SignerStateMachine;
 use crate::wsts_state_machine::StateMachineId;
+use crate::wsts_state_machine::WstsCoordinator;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
@@ -51,6 +54,7 @@ use sha2::Digest;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
+use wsts::state_machine::OperationResult;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction signer event loop
@@ -145,6 +149,12 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// The time the signer should pause for after receiving a DKG begin message
     /// before relaying to give the other signers time to catch up.
     pub dkg_begin_pause: Option<Duration>,
+    /// WSTS FROST state machines for verifying full and correct participation
+    /// during DKG using the FROST algorithm. This is then used during the
+    /// verification of the Stacks rotate-keys transaction.
+    pub wsts_frost_state_machines: LruCache<StateMachineId, FrostCoordinator>,
+    /// Results of the FROST verification rounds.
+    pub wsts_frost_results: LruCache<StateMachineId, bool>,
 }
 
 /// This struct represents a signature hash and the public key that locks
@@ -184,6 +194,38 @@ where
     N: network::MessageTransfer,
     Rng: rand::RngCore + rand::CryptoRng,
 {
+    /// Creates a new instance of the [`TxSignerEventLoop`] using the given
+    /// [`Context`] (and its `config()`),
+    /// [`MessageTransfer`](network::MessageTransfer), and random number
+    /// generator.
+    pub fn new(context: C, network: N, rng: Rng) -> Result<Self, Error> {
+        // The _ as usize cast is fine, since we know that
+        // MAX_SIGNER_STATE_MACHINES is less than u32::MAX, and we only support
+        // running this binary on 32 or 64-bit CPUs.
+        let max_state_machines = NonZeroUsize::new(crate::MAX_SIGNER_STATE_MACHINES as usize)
+            .ok_or(Error::TypeConversion)?;
+
+        let config = context.config();
+        let signer_private_key = config.signer.private_key;
+        let context_window = config.signer.context_window;
+        let threshold = config.signer.bootstrap_signatures_required.into();
+
+        Ok(Self {
+            context,
+            network,
+            signer_private_key,
+            context_window,
+            wsts_state_machines: LruCache::new(max_state_machines),
+            threshold,
+            rng,
+            dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(
+                NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
+            ),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).ok_or(Error::TypeConversion)?),
+        })
+    }
+
     /// Run the signer event loop
     #[tracing::instrument(
         skip_all,
@@ -494,6 +536,17 @@ where
                 contract.validate(ctx, &req_ctx).await?
             }
             StacksTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
+                let aggregate_key = contract.aggregate_key.x_only_public_key().0.into();
+                let frost_result = self
+                    .wsts_frost_results
+                    .peek(&StateMachineId::RotateKey(aggregate_key, *chain_tip));
+                dbg!(&self.wsts_frost_results);
+
+                if !matches!(frost_result, Some(true)) {
+                    tracing::warn!("no successful frost signing round for the pre-rotate-keys verification signing round; refusing to sign");
+                    return Err(Error::FrostVerificationNotSuccessful);
+                }
+
                 contract.validate(ctx, &req_ctx).await?
             }
             StacksTx::SmartContract(smart_contract) => {
@@ -611,6 +664,20 @@ where
                 self.relay_message(id, msg.id, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
+            WstsNetMessage::DkgEnd(request) => {
+                span.record("dkg_id", request.dkg_id);
+                span.record("dkg_signer_id", request.signer_id);
+
+                match &request.status {
+                    DkgStatus::Success => {
+                        tracing::info!("signer reports successful dkg round");
+                    }
+                    DkgStatus::Failure(fail) => {
+                        // TODO(#414): handle DKG failure
+                        tracing::warn!(reason = ?fail, "signer reports failed dkg round");
+                    }
+                }
+            }
             WstsNetMessage::NonceRequest(request) => {
                 span.record("dkg_id", request.dkg_id);
                 span.record("dkg_sign_id", request.sign_id);
@@ -659,29 +726,28 @@ where
                     WstsMessageId::RotateKey(key) => {
                         tracing::info!(%key, "responding to nonce request for rotate-key signing");
 
-                        let mut hasher = sha2::Sha256::new();
-                        hasher.update(key.serialize());
-                        hasher.update(msg_public_key.serialize());
-                        let digest = hasher.finalize().into();
-                        let id = StateMachineId::ArbitrarySign(digest);
-
-                        let aggregate_key = db
+                        let new_key: PublicKeyXOnly = key.into();
+                        let current_key = db
                             .get_latest_encrypted_dkg_shares()
                             .await?
                             .ok_or(Error::NoDkgShares)?
                             .aggregate_key
                             .into();
 
-                        let key = PublicKeyXOnly::from(key.x_only_public_key().0);
-
-                        if aggregate_key != key {
+                        if new_key != current_key {
                             return Err(Error::AggregateKeyMismatch(
-                                Box::new(key),
-                                Box::new(aggregate_key),
+                                Box::new(current_key),
+                                Box::new(new_key),
                             ));
                         }
 
-                        (id, aggregate_key)
+                        let state_machine_id = self
+                            .ensure_rotate_key_state_machine(*bitcoin_chain_tip, new_key)
+                            .await?;
+                        self.handle_rotate_key_message(new_key, state_machine_id, &msg.inner)
+                            .await?;
+
+                        (state_machine_id, new_key)
                     }
                     WstsMessageId::Arbitrary(id) => {
                         tracing::info!("responding to nonce request for arbitrary signing");
@@ -742,12 +808,13 @@ where
                     }
                     WstsMessageId::RotateKey(key) => {
                         tracing::info!(%key, "responding to signature share request for rotate-key key signing");
-
-                        let mut hasher = sha2::Sha256::new();
-                        hasher.update(key.serialize());
-                        hasher.update(msg_public_key.serialize());
-                        let digest = hasher.finalize().into();
-                        StateMachineId::ArbitrarySign(digest)
+                        let key = key.into();
+                        let state_machine_id = self
+                            .ensure_rotate_key_state_machine(*bitcoin_chain_tip, key)
+                            .await?;
+                        self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+                            .await?;
+                        state_machine_id
                     }
                     WstsMessageId::Arbitrary(id) => {
                         tracing::info!(
@@ -769,22 +836,41 @@ where
                 self.wsts_state_machines.pop(&id);
                 response?;
             }
-            WstsNetMessage::DkgEnd(request) => {
+            WstsNetMessage::NonceResponse(request) => {
                 span.record("dkg_id", request.dkg_id);
                 span.record("dkg_signer_id", request.signer_id);
+                span.record("dkg_sign_id", request.sign_id);
+                span.record("dkg_iter_id", request.sign_iter_id);
 
-                match &request.status {
-                    DkgStatus::Success => {
-                        tracing::info!("signer reports successful dkg round");
-                    }
-                    DkgStatus::Failure(fail) => {
-                        // TODO(#414): handle DKG failure
-                        tracing::warn!(reason = ?fail, "signer reports failed dkg round");
-                    }
-                }
+                let WstsMessageId::RotateKey(key) = msg.id else {
+                    return Ok(());
+                };
+
+                let key = key.into();
+
+                let state_machine_id = self
+                    .ensure_rotate_key_state_machine(*bitcoin_chain_tip, key)
+                    .await?;
+                self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+                    .await?;
             }
-            WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {
-                tracing::trace!("ignoring message");
+            WstsNetMessage::SignatureShareResponse(request) => {
+                span.record("dkg_id", request.dkg_id);
+                span.record("dkg_signer_id", request.signer_id);
+                span.record("dkg_sign_id", request.sign_id);
+                span.record("dkg_iter_id", request.sign_iter_id);
+
+                let WstsMessageId::RotateKey(key) = msg.id else {
+                    return Ok(());
+                };
+
+                let key = key.into();
+
+                let state_machine_id = self
+                    .ensure_rotate_key_state_machine(*bitcoin_chain_tip, key)
+                    .await?;
+                self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+                    .await?;
             }
         }
 
@@ -854,6 +940,91 @@ where
         Ok(())
     }
 
+    async fn ensure_rotate_key_state_machine(
+        &mut self,
+        bitcoin_chain_tip: model::BitcoinBlockHash,
+        aggregate_key: PublicKeyXOnly,
+    ) -> Result<StateMachineId, Error> {
+        let state_machine_id = StateMachineId::RotateKey(aggregate_key, bitcoin_chain_tip);
+
+        match self.wsts_frost_state_machines.get_mut(&state_machine_id) {
+            Some(_) => {}
+            None => {
+                let storage = self.context.get_storage();
+
+                let dkg_shares = storage
+                    .get_encrypted_dkg_shares(aggregate_key)
+                    .await?
+                    .ok_or_else(|| {
+                        tracing::warn!("no DKG shares found for requested aggregate key");
+                        Error::MissingDkgShares(aggregate_key)
+                    })?;
+
+                let signing_set: BTreeSet<PublicKey> = dkg_shares
+                    .signer_set_public_keys
+                    .into_iter()
+                    .collect::<BTreeSet<_>>();
+                // This `as` cast should always be safe as our signer cap is 128.
+                let num_signers = signing_set.len() as u16;
+
+                tracing::debug!(%num_signers, "creating now frost coordinator to track pre-rotate-key validation signing round");
+                let coordinator = FrostCoordinator::load(
+                    &storage,
+                    aggregate_key,
+                    signing_set,
+                    dkg_shares.signature_share_threshold,
+                    self.signer_private_key,
+                )
+                .await?;
+
+                self.wsts_frost_state_machines
+                    .get_or_insert_mut(state_machine_id, || coordinator);
+            }
+        }
+
+        Ok(state_machine_id)
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn handle_rotate_key_message(
+        &mut self,
+        aggregate_key: PublicKeyXOnly,
+        id: StateMachineId,
+        msg: &WstsNetMessage,
+    ) -> Result<(), Error> {
+        let state_machine = self.wsts_frost_state_machines.get_mut(&id);
+        let Some(state_machine) = state_machine else {
+            tracing::warn!("missing frost coordinator for pre-rotate-key validation");
+            return Err(Error::MissingFrostStateMachine(Box::new(aggregate_key)));
+        };
+
+        tracing::info!(?msg, "processing frost coordinator message");
+
+        let (_, result) = state_machine.process_message(msg)?;
+
+        match result {
+            Some(OperationResult::SignSchnorr(_)) => {
+                tracing::info!("successfully completed pre-rotate-key validation signing round");
+                self.wsts_frost_results.put(id, true);
+                self.wsts_frost_state_machines.pop(&id);
+            }
+            Some(OperationResult::SignError(error)) => {
+                tracing::warn!(
+                    ?msg,
+                    ?error,
+                    "failed to complete pre-rotate-key validation signing round"
+                );
+                self.wsts_frost_results.put(id, false);
+            }
+            None => {}
+            result => {
+                tracing::warn!(?result, "unexpected frost coordinator result");
+            }
+        }
+
+        Ok(())
+    }
+
     #[tracing::instrument(skip_all)]
     async fn relay_message(
         &mut self,
@@ -868,6 +1039,12 @@ where
             return Err(Error::MissingStateMachine);
         };
 
+        let mut frost_coordinator = if let StateMachineId::RotateKey(_, _) = id {
+            self.wsts_frost_state_machines.get_mut(&id)
+        } else {
+            None
+        };
+
         let outbound_messages = state_machine.process(msg, &mut rng).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
@@ -875,6 +1052,11 @@ where
             state_machine
                 .process(outbound_message, &mut rng)
                 .map_err(Error::Wsts)?;
+
+            if let Some(frost_coordinator) = &mut frost_coordinator {
+                let (_, result) = frost_coordinator.process_message(outbound_message)?;
+                tracing::info!(?outbound_message, ?result, state = ?frost_coordinator.state, "\x1b[1;36mfrost coordinator\x1b[0m relay_message result")
+            }
         }
 
         for outbound in outbound_messages {
@@ -1242,6 +1424,8 @@ mod tests {
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.

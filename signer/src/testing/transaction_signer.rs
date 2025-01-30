@@ -59,6 +59,8 @@ where
                 threshold,
                 rng,
                 dkg_begin_pause: None,
+                wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+                wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
             },
             context,
         }

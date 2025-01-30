@@ -1262,11 +1262,6 @@ where
                 continue;
             };
 
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
-
             let msg_public_key = msg.signer_public_key;
 
             let sender_is_coordinator =
@@ -1275,9 +1270,11 @@ where
             let public_keys = &coordinator_state_machine.get_config().signer_public_keys;
             let public_key_point = p256k1::point::Point::from(msg_public_key);
 
+            let msg = wsts_msg.inner;
+
             // check that messages were signed by correct key
             let is_authenticated = Self::authenticate_message(
-                &packet,
+                &msg,
                 public_keys,
                 public_key_point,
                 sender_is_coordinator,
@@ -1288,10 +1285,10 @@ where
             }
 
             let (outbound_packet, operation_result) =
-                match coordinator_state_machine.process_message(&packet) {
+                match coordinator_state_machine.process_message(&msg) {
                     Ok(val) => val,
                     Err(err) => {
-                        tracing::warn!(?packet, reason = %err, "ignoring packet");
+                        tracing::warn!(?msg, reason = %err, "ignoring message");
                         continue;
                     }
                 };
@@ -1313,7 +1310,7 @@ where
     }
 
     fn authenticate_message(
-        packet: &wsts::net::Packet,
+        message: &wsts::net::Message,
         public_keys: &hashbrown::HashMap<u32, p256k1::point::Point>,
         public_key_point: p256k1::point::Point,
         sender_is_coordinator: bool,
@@ -1321,7 +1318,7 @@ where
         let check_signer_public_key = |signer_id| match public_keys.get(&signer_id) {
             Some(signer_public_key) if public_key_point != *signer_public_key => {
                 tracing::warn!(
-                    ?packet.msg,
+                    ?message,
                     reason = "message was signed by the wrong signer",
                     "ignoring packet"
                 );
@@ -1329,7 +1326,7 @@ where
             }
             None => {
                 tracing::warn!(
-                    ?packet.msg,
+                    ?message,
                     reason = "no public key for signer",
                     %signer_id,
                     "ignoring packet"
@@ -1338,7 +1335,7 @@ where
             }
             _ => true,
         };
-        match &packet.msg {
+        match message {
             wsts::net::Message::DkgBegin(_)
             | wsts::net::Message::DkgPrivateBegin(_)
             | wsts::net::Message::DkgEndBegin(_)
@@ -1346,7 +1343,7 @@ where
             | wsts::net::Message::SignatureShareRequest(_) => {
                 if !sender_is_coordinator {
                     tracing::warn!(
-                        ?packet,
+                        ?message,
                         reason = "got coordinator message from sender who is not coordinator",
                         "ignoring packet"
                     );

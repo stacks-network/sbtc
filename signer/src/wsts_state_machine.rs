@@ -19,6 +19,7 @@ use hashbrown::HashMap;
 use hashbrown::HashSet;
 use rand::rngs::OsRng;
 use wsts::common::PolyCommitment;
+use wsts::net::Message;
 use wsts::net::Packet;
 use wsts::net::SignatureType;
 use wsts::state_machine::coordinator::fire;
@@ -44,6 +45,8 @@ pub enum StateMachineId {
     Dkg(model::BitcoinBlockHash),
     /// Identifier for a Bitcoin signing state machines
     BitcoinSign(SigHash),
+    /// Identifier for a rotate key verification signing round
+    RotateKey(PublicKeyXOnly, model::BitcoinBlockHash),
     /// Identifier for arbitrary signing state machines
     ArbitrarySign([u8; 32]),
 }
@@ -63,6 +66,23 @@ impl From<SigHash> for StateMachineId {
 impl From<[u8; 32]> for StateMachineId {
     fn from(value: [u8; 32]) -> Self {
         StateMachineId::ArbitrarySign(value)
+    }
+}
+
+/// A trait for converting a message into another type.
+pub trait FromMessage {
+    /// Convert the given message into the implementing type.
+    fn from_message(message: &Message) -> Self
+    where
+        Self: Sized;
+}
+
+impl FromMessage for Packet {
+    fn from_message(message: &Message) -> Self {
+        Packet {
+            msg: message.clone(),
+            sig: Vec::new(),
+        }
     }
 }
 
@@ -139,11 +159,38 @@ where
     where
         S: storage::DbRead + Send + Sync;
 
-    /// Process the message in the given packet.
+    /// Process the given message.
     fn process_message(
+        &mut self,
+        message: &Message,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        let packet = Packet::from_message(message);
+        self.process_packet(&packet)
+    }
+
+    /// Process inbound messages
+    fn process_inbound_messages(
+        &mut self,
+        messages: &[Message],
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
+        let packets = messages
+            .iter()
+            .map(Packet::from_message)
+            .collect::<Vec<_>>();
+        self.process_inbound_packets(&packets)
+    }
+
+    /// Process the given packet.
+    fn process_packet(
         &mut self,
         packet: &Packet,
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error>;
+
+    /// Process inbound packets
+    fn process_inbound_packets(
+        &mut self,
+        packets: &[Packet],
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error>;
 
     /// Start a signing round with the given message and signature type.
     fn start_signing_round(
@@ -239,10 +286,42 @@ impl WstsCoordinator for FireCoordinator {
 
     fn process_message(
         &mut self,
+        message: &Message,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        let packet = Packet::from_message(message);
+        self.0
+            .process_message(&packet)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn process_inbound_messages(
+        &mut self,
+        messages: &[Message],
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
+        let packets = messages
+            .iter()
+            .map(Packet::from_message)
+            .collect::<Vec<_>>();
+        self.0
+            .process_inbound_messages(&packets)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn process_packet(
+        &mut self,
         packet: &Packet,
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
         self.0
             .process_message(packet)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn process_inbound_packets(
+        &mut self,
+        packets: &[Packet],
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
+        self.0
+            .process_inbound_messages(packets)
             .map_err(Error::wsts_coordinator)
     }
 
@@ -343,10 +422,42 @@ impl WstsCoordinator for FrostCoordinator {
 
     fn process_message(
         &mut self,
+        message: &Message,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        let packet = Packet::from_message(message);
+        self.0
+            .process_message(&packet)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn process_inbound_messages(
+        &mut self,
+        messages: &[Message],
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
+        let packets = messages
+            .iter()
+            .map(Packet::from_message)
+            .collect::<Vec<_>>();
+        self.0
+            .process_inbound_messages(&packets)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn process_packet(
+        &mut self,
         packet: &Packet,
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
         self.0
             .process_message(packet)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn process_inbound_packets(
+        &mut self,
+        packets: &[Packet],
+    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
+        self.0
+            .process_inbound_messages(packets)
             .map_err(Error::wsts_coordinator)
     }
 

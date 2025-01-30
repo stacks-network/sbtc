@@ -15,6 +15,17 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The pre-rotate-key frost verification signing round was not reported as
+    /// successful.
+    #[error("rotate-key frost verification signing round not reported as successful")]
+    FrostVerificationNotSuccessful,
+
+    /// No WSTS FROST state machine was found for the given aggregate key. This
+    /// state machine is used during the DKG verification signing round
+    /// following DKG.
+    #[error("no state machine found for frost signing round for the given aggregate key: {0}")]
+    MissingFrostStateMachine(Box<PublicKeyXOnly>),
+
     /// Expected two aggregate keys to match, but they did not.
     #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
     AggregateKeyMismatch(Box<PublicKeyXOnly>, Box<PublicKeyXOnly>),
