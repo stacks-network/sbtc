@@ -512,8 +512,11 @@ where
             WstsNetMessage::DkgBegin(_) => {
                 tracing::info!("handling DkgBegin");
 
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -545,8 +548,12 @@ where
             }
             WstsNetMessage::DkgPrivateBegin(_) => {
                 tracing::info!("handling DkgPrivateBegin");
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -576,18 +583,27 @@ where
             }
             WstsNetMessage::DkgEndBegin(_) => {
                 tracing::info!("handling DkgEndBegin");
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
+
                 let id = StateMachineId::from(bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
             WstsNetMessage::NonceRequest(request) => {
                 tracing::info!("handling NonceRequest");
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -628,8 +644,12 @@ where
             }
             WstsNetMessage::SignatureShareRequest(request) => {
                 tracing::info!("handling SignatureShareRequest");
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -955,8 +975,15 @@ pub struct MsgChainTipReport {
     pub chain_tip: model::BitcoinBlockHash,
 }
 
+impl MsgChainTipReport {
+    /// Checks if the message is for the canonical chain tip from the coordinator
+    pub fn is_from_canonical_coordinator(&self) -> bool {
+        self.chain_tip_status == ChainTipStatus::Canonical && self.sender_is_coordinator
+    }
+}
+
 /// The status of a chain tip relative to the known blocks in the signer database.
-#[derive(Debug, Clone, Copy, strum::Display)]
+#[derive(Debug, Clone, Copy, PartialEq, strum::Display)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
 pub enum ChainTipStatus {
     /// The chain tip is the tip of the canonical fork.
@@ -1149,5 +1176,151 @@ mod tests {
         // Assert that the DkgBegin message was not allowed to proceed and
         // that we receive the expected error.
         assert!(matches!(result, Err(Error::DkgHasAlreadyRun)));
+    }
+
+    #[tokio::test]
+    async fn test_handle_wsts_message_non_canonical_dkg_begin() {
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let storage = context.get_storage_mut();
+        let network = InMemoryNetwork::new();
+
+        // Write 1 DKG shares entry to the database, simulating that DKG has
+        // successfully run once.
+        storage
+            .write_encrypted_dkg_shares(&Faker.fake())
+            .await
+            .unwrap();
+
+        // Dummy chain tip hash which will be used to fetch the block height.
+        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+
+        // Write a bitcoin block at the given height, simulating the chain tip.
+        storage
+            .write_bitcoin_block(&model::BitcoinBlock {
+                block_height: 100,
+                parent_hash: Faker.fake(),
+                block_hash: bitcoin_chain_tip,
+            })
+            .await
+            .unwrap();
+
+        // Create our signer instance.
+        let mut signer = TxSignerEventLoop {
+            context,
+            network: network.connect(),
+            signer_private_key: PrivateKey::new(&mut rand::rngs::OsRng),
+            context_window: 1,
+            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
+            threshold: 1,
+            rng: rand::rngs::OsRng,
+            dkg_begin_pause: None,
+        };
+
+        // Create a DkgBegin message to be handled by the signer.
+        let msg = message::WstsMessage {
+            txid: Txid::all_zeros(),
+            inner: WstsNetMessage::DkgBegin(wsts::net::DkgBegin { dkg_id: 0 }),
+        };
+
+        // Create a chain tip report for the message as if it was coming from a
+        // non canonical chain tip
+        let chain_tip_report = MsgChainTipReport {
+            sender_is_coordinator: true,
+            chain_tip_status: ChainTipStatus::Known,
+            chain_tip: Faker.fake(),
+        };
+
+        // We shouldn't get an error as we stop to process the message early
+        signer
+            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .await
+            .expect("expected success");
+    }
+
+    #[test_case(
+        WstsNetMessage::DkgPrivateBegin(wsts::net::DkgPrivateBegin {
+            dkg_id: 0,
+            signer_ids: vec![],
+            key_ids: vec![],
+        }); "DkgPrivateBegin")]
+    #[test_case(
+        WstsNetMessage::DkgEndBegin(wsts::net::DkgEndBegin {
+            dkg_id: 0,
+            signer_ids: vec![],
+            key_ids: vec![],
+        }); "DkgEndBegin")]
+    #[test_case(
+        WstsNetMessage::NonceRequest(wsts::net::NonceRequest {
+            dkg_id: 0,
+            sign_id: 0,
+            sign_iter_id: 0,
+            message: vec![],
+            signature_type: wsts::net::SignatureType::Schnorr,
+        }); "NonceRequest")]
+    #[test_case(
+        WstsNetMessage::SignatureShareRequest(wsts::net::SignatureShareRequest {
+            dkg_id: 0,
+            sign_id: 0,
+            sign_iter_id: 0,
+            message: vec![],
+            signature_type: wsts::net::SignatureType::Schnorr,
+            nonce_responses: vec![],
+        }); "SignatureShareRequest")]
+    #[tokio::test]
+    async fn test_handle_wsts_message_non_canonical(wsts_message: WstsNetMessage) {
+        let context = TestContext::builder()
+            .with_in_memory_storage()
+            .with_mocked_clients()
+            .build();
+
+        let storage = context.get_storage_mut();
+        let network = InMemoryNetwork::new();
+
+        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+
+        // Write a bitcoin block at the given height, simulating the chain tip.
+        storage
+            .write_bitcoin_block(&model::BitcoinBlock {
+                block_height: 100,
+                parent_hash: Faker.fake(),
+                block_hash: bitcoin_chain_tip,
+            })
+            .await
+            .unwrap();
+
+        // Create our signer instance.
+        let mut signer = TxSignerEventLoop {
+            context,
+            network: network.connect(),
+            signer_private_key: PrivateKey::new(&mut rand::rngs::OsRng),
+            context_window: 1,
+            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
+            threshold: 1,
+            rng: rand::rngs::OsRng,
+            dkg_begin_pause: None,
+        };
+
+        let msg = message::WstsMessage {
+            txid: Txid::all_zeros(),
+            inner: wsts_message,
+        };
+
+        // Create a chain tip report for the message as if it was coming from a
+        // non canonical chain tip
+        let chain_tip_report = MsgChainTipReport {
+            sender_is_coordinator: true,
+            chain_tip_status: ChainTipStatus::Known,
+            chain_tip: Faker.fake(),
+        };
+
+        // We shouldn't get an error as we stop to process the message early
+        signer
+            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .await
+            .expect("expected success");
     }
 }
