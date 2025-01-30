@@ -1094,6 +1094,7 @@ impl From<WstsMessage> for proto::WstsMessage {
                 proto::wsts_message::Inner::SignatureShareResponse(inner.into())
             }
         };
+
         proto::WstsMessage {
             txid: match value.id {
                 WstsMessageId::BitcoinTxid(txid) => {
@@ -1117,6 +1118,7 @@ impl From<WstsMessage> for proto::WstsMessage {
 
 impl TryFrom<proto::WstsMessage> for WstsMessage {
     type Error = Error;
+
     fn try_from(value: proto::WstsMessage) -> Result<Self, Self::Error> {
         let inner = match value.inner.required()? {
             proto::wsts_message::Inner::DkgBegin(inner) => {
@@ -1150,6 +1152,8 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                 wsts::net::Message::SignatureShareResponse(inner.try_into()?)
             }
         };
+
+        #[allow(deprecated)]
         Ok(WstsMessage {
             id: match value.id {
                 Some(id) => match id {
@@ -1163,9 +1167,10 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                         WstsMessageId::Arbitrary(key.try_into().map_err(|_| Error::TypeConversion)?)
                     }
                 },
-                None => return Err(Error::TypeConversion),
+                None => WstsMessageId::BitcoinTxid(
+                    BitcoinTxId::try_from(value.txid.required()?)?.into(),
+                ),
             },
-            //BitcoinTxId::try_from(value.txid.required()?)?.into(),
             inner,
         })
     }
