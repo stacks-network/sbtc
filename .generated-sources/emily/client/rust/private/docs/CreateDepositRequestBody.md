@@ -8,6 +8,7 @@ Name | Type | Description | Notes
 **bitcoin_txid** | **String** | Bitcoin transaction id. | 
 **deposit_script** | **String** | Deposit script. | 
 **reclaim_script** | **String** | Reclaim script. | 
+**transaction_hex** | **String** | The raw transaction hex. | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

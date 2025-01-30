@@ -38,6 +38,7 @@ environment: {
     LIMIT_TABLE_NAME: limitTableName,
     IS_LOCAL: "true" | "false",
     TRUSTED_REORG_API_KEY: trustedReorgApiKey,
+    IS_MAINNET: "true" | "false",
 },
 ```
 

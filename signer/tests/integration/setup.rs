@@ -5,6 +5,7 @@ use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::OutPoint;
+use bitcoin::Transaction;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::types::chainstate::StacksAddress;
@@ -89,6 +90,8 @@ pub struct TestSweepSetup {
     /// threshold is the bitcoin signature threshold, which for v1 matches
     /// the signatures required on stacks.
     pub signatures_required: u16,
+    /// The deposit transaction
+    pub deposit_tx: Transaction,
 }
 
 impl TestSweepSetup {
@@ -205,6 +208,7 @@ impl TestSweepSetup {
             withdrawal_request: requests.withdrawals.pop().unwrap(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
+            deposit_tx,
         }
     }
 

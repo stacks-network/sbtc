@@ -26,6 +26,9 @@ pub struct CreateDepositRequestBody {
     /// Reclaim script.
     #[serde(rename = "reclaimScript")]
     pub reclaim_script: String,
+    /// The raw transaction hex.
+    #[serde(rename = "transactionHex")]
+    pub transaction_hex: String,
 }
 
 impl CreateDepositRequestBody {
@@ -35,12 +38,14 @@ impl CreateDepositRequestBody {
         bitcoin_txid: String,
         deposit_script: String,
         reclaim_script: String,
+        transaction_hex: String,
     ) -> CreateDepositRequestBody {
         CreateDepositRequestBody {
             bitcoin_tx_output_index,
             bitcoin_txid,
             deposit_script,
             reclaim_script,
+            transaction_hex,
         }
     }
 }

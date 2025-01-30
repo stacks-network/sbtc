@@ -1698,7 +1698,7 @@ async fn sign_bitcoin_transaction() {
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -2143,7 +2143,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -2269,7 +2269,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         make_deposit_request(&depositor2, amount, utxo, max_fee, signers_public_key2);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -2282,7 +2282,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         make_deposit_request(&depositor1, amount, utxo, max_fee, signers_public_key1);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
