@@ -69,7 +69,6 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
-use crate::storage::model::ToLittleEndianOrder;
 
 use super::wsts_message;
 
@@ -1100,16 +1099,15 @@ impl From<WstsMessage> for proto::WstsMessage {
                 WstsMessageId::BitcoinTxid(txid) => {
                     Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid)))
                 }
-                WstsMessageId::RotateKey(_) | WstsMessageId::Arbitrary(_) => None,
+                WstsMessageId::RotateKey(_) => None,
             },
             id: Some(match value.id {
                 WstsMessageId::BitcoinTxid(txid) => {
                     wsts_message::Id::IdBitcoinTxid(proto::BitcoinTxid {
-                        txid: Some(proto::Uint256::from(txid.to_le_bytes())),
+                        txid: Some(proto::Uint256::from(BitcoinTxId::from(txid).into_bytes())),
                     })
                 }
                 WstsMessageId::RotateKey(pubkey) => wsts_message::Id::IdRotateKey(pubkey.into()),
-                WstsMessageId::Arbitrary(key) => wsts_message::Id::IdArbitrary(key.into()),
             }),
             inner: Some(inner),
         }
@@ -1162,9 +1160,6 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                     }
                     wsts_message::Id::IdRotateKey(pubkey) => {
                         WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
-                    }
-                    wsts_message::Id::IdArbitrary(key) => {
-                        WstsMessageId::Arbitrary(key.try_into().map_err(|_| Error::TypeConversion)?)
                     }
                 },
                 None => WstsMessageId::BitcoinTxid(

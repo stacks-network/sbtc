@@ -46,8 +46,6 @@ pub enum StateMachineId {
     BitcoinSign(SigHash),
     /// Identifier for a rotate key verification signing round
     RotateKey(PublicKeyXOnly, model::BitcoinBlockHash),
-    /// Identifier for arbitrary signing state machines
-    ArbitrarySign([u8; 32]),
 }
 
 impl From<&model::BitcoinBlockHash> for StateMachineId {
@@ -59,12 +57,6 @@ impl From<&model::BitcoinBlockHash> for StateMachineId {
 impl From<SigHash> for StateMachineId {
     fn from(value: SigHash) -> Self {
         StateMachineId::BitcoinSign(value)
-    }
-}
-
-impl From<[u8; 32]> for StateMachineId {
-    fn from(value: [u8; 32]) -> Self {
-        StateMachineId::ArbitrarySign(value)
     }
 }
 

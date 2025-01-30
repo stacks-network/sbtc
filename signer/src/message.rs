@@ -235,8 +235,6 @@ pub enum WstsMessageId {
     BitcoinTxid(bitcoin::Txid),
     /// The WSTS message is related to a rotate key operation.
     RotateKey(PublicKey),
-    /// The WSTS message isn't specifically related to anything.
-    Arbitrary([u8; 32]),
 }
 
 impl From<bitcoin::Txid> for WstsMessageId {
@@ -245,12 +243,13 @@ impl From<bitcoin::Txid> for WstsMessageId {
     }
 }
 
-impl WstsMessageId {
-    /// Generate a random [`WstsMessageId::Arbitrary`] WSTS message ID
-    pub fn random_arbitrary() -> Self {
-        Self::Arbitrary(OsRng.gen())
+impl From<crate::storage::model::BitcoinTxId> for WstsMessageId {
+    fn from(txid: crate::storage::model::BitcoinTxId) -> Self {
+        Self::BitcoinTxid(txid.into())
     }
+}
 
+impl WstsMessageId {
     /// Generate a random [`WstsMessageId::BitcoinTxid`] WSTS message ID
     pub fn random_bitcoin_txid() -> Self {
         let random_bytes: [u8; 32] = OsRng.gen();
@@ -273,7 +272,6 @@ impl std::fmt::Display for WstsMessageId {
             WstsMessageId::RotateKey(aggregate_key) => {
                 write!(f, "rotate-key({})", aggregate_key)
             }
-            WstsMessageId::Arbitrary(bytes) => write!(f, "arbitrary({})", hex::encode(bytes)),
         }
     }
 }

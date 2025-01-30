@@ -916,7 +916,7 @@ where
     ) -> Result<(), Error> {
         let sighashes = transaction.construct_digests()?;
         let mut coordinator_state_machine = FireCoordinator::load(
-            &mut self.context.get_storage_mut(),
+            &self.context.get_storage_mut(),
             sighashes.signers_aggregate_key.into(),
             signer_public_keys.clone(),
             self.threshold,
@@ -959,7 +959,7 @@ where
             let msg = sighash.to_raw_hash().to_byte_array();
 
             let mut coordinator_state_machine = FireCoordinator::load(
-                &mut self.context.get_storage_mut(),
+                &self.context.get_storage_mut(),
                 deposit.signers_public_key.into(),
                 signer_public_keys.clone(),
                 self.threshold,
@@ -1046,8 +1046,7 @@ where
     where
         Coordinator: WstsCoordinator,
     {
-        let outbound = coordinator_state_machine
-            .start_signing_round(msg, signature_type)?;
+        let outbound = coordinator_state_machine.start_signing_round(msg, signature_type)?;
 
         // We create a signal stream before sending a message so that there
         // is no race condition with the steam and the getting a response.
@@ -1098,8 +1097,7 @@ where
         // never changing the signing set.
         let (_, signer_set) = self.get_signer_set_and_aggregate_key(chain_tip).await?;
 
-        let mut state_machine =
-            FireCoordinator::new(signer_set, self.threshold, self.private_key);
+        let mut state_machine = FireCoordinator::new(signer_set, self.threshold, self.private_key);
 
         // Okay let's move the coordinator state machine to the beginning
         // of the DKG phase.
