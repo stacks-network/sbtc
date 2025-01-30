@@ -512,13 +512,11 @@ where
             WstsNetMessage::DkgBegin(_) => {
                 tracing::info!("handling DkgBegin");
 
-                if chain_tip_report.chain_tip_status != ChainTipStatus::Canonical {
-                    tracing::warn!("received wsts message for a different chain tip");
-                    return Ok(());
-                }
-
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -551,13 +549,11 @@ where
             WstsNetMessage::DkgPrivateBegin(_) => {
                 tracing::info!("handling DkgPrivateBegin");
 
-                if chain_tip_report.chain_tip_status != ChainTipStatus::Canonical {
-                    tracing::warn!("received wsts message for a different chain tip");
-                    return Ok(());
-                }
-
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -588,15 +584,14 @@ where
             WstsNetMessage::DkgEndBegin(_) => {
                 tracing::info!("handling DkgEndBegin");
 
-                if chain_tip_report.chain_tip_status != ChainTipStatus::Canonical {
-                    tracing::warn!("received wsts message for a different chain tip");
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
-                    return Ok(());
-                }
                 let id = StateMachineId::from(bitcoin_chain_tip);
                 self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
                     .await?;
@@ -604,13 +599,11 @@ where
             WstsNetMessage::NonceRequest(request) => {
                 tracing::info!("handling NonceRequest");
 
-                if chain_tip_report.chain_tip_status != ChainTipStatus::Canonical {
-                    tracing::warn!("received wsts message for a different chain tip");
-                    return Ok(());
-                }
-
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -652,13 +645,11 @@ where
             WstsNetMessage::SignatureShareRequest(request) => {
                 tracing::info!("handling SignatureShareRequest");
 
-                if chain_tip_report.chain_tip_status != ChainTipStatus::Canonical {
-                    tracing::warn!("received wsts message for a different chain tip");
-                    return Ok(());
-                }
-
-                if !chain_tip_report.sender_is_coordinator {
-                    tracing::warn!("received coordinator message from non-coordinator signer");
+                if !chain_tip_report.is_from_canonical_coordinator() {
+                    tracing::warn!(
+                        ?chain_tip_report,
+                        "received coordinator message from a non canonical coordinator"
+                    );
                     return Ok(());
                 }
 
@@ -982,6 +973,13 @@ pub struct MsgChainTipReport {
     pub chain_tip_status: ChainTipStatus,
     /// The bitcoin chain tip.
     pub chain_tip: model::BitcoinBlockHash,
+}
+
+impl MsgChainTipReport {
+    /// Checks if the message is for the canonical chain tip from the coordinator
+    pub fn is_from_canonical_coordinator(&self) -> bool {
+        self.chain_tip_status == ChainTipStatus::Canonical && self.sender_is_coordinator
+    }
 }
 
 /// The status of a chain tip relative to the known blocks in the signer database.
