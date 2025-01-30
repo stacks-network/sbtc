@@ -54,6 +54,7 @@ use crate::message::SignerWithdrawalDecision;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::StacksTransactionSignature;
 use crate::message::WstsMessage;
+use crate::message::WstsMessageId;
 use crate::proto;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
@@ -68,6 +69,9 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::ToLittleEndianOrder;
+
+use super::wsts_message;
 
 /// This trait is to make it easy to handle fields of protobuf structs that
 /// are `None`, when they should be `Some(_)`.
@@ -1058,6 +1062,7 @@ impl TryFrom<proto::SignatureShareResponse> for SignatureShareResponse {
     }
 }
 impl From<WstsMessage> for proto::WstsMessage {
+    #[allow(deprecated)]
     fn from(value: WstsMessage) -> Self {
         let inner = match value.inner {
             wsts::net::Message::DkgBegin(inner) => {
@@ -1089,8 +1094,23 @@ impl From<WstsMessage> for proto::WstsMessage {
                 proto::wsts_message::Inner::SignatureShareResponse(inner.into())
             }
         };
+
         proto::WstsMessage {
-            txid: Some(BitcoinTxId::from(value.txid).into()),
+            txid: match value.id {
+                WstsMessageId::BitcoinTxid(txid) => {
+                    Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid)))
+                }
+                WstsMessageId::RotateKey(_) | WstsMessageId::Arbitrary(_) => None,
+            },
+            id: Some(match value.id {
+                WstsMessageId::BitcoinTxid(txid) => {
+                    wsts_message::Id::IdBitcoinTxid(proto::BitcoinTxid {
+                        txid: Some(proto::Uint256::from(txid.to_le_bytes())),
+                    })
+                }
+                WstsMessageId::RotateKey(pubkey) => wsts_message::Id::IdRotateKey(pubkey.into()),
+                WstsMessageId::Arbitrary(key) => wsts_message::Id::IdArbitrary(key.into()),
+            }),
             inner: Some(inner),
         }
     }
@@ -1098,6 +1118,7 @@ impl From<WstsMessage> for proto::WstsMessage {
 
 impl TryFrom<proto::WstsMessage> for WstsMessage {
     type Error = Error;
+
     fn try_from(value: proto::WstsMessage) -> Result<Self, Self::Error> {
         let inner = match value.inner.required()? {
             proto::wsts_message::Inner::DkgBegin(inner) => {
@@ -1131,8 +1152,25 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                 wsts::net::Message::SignatureShareResponse(inner.try_into()?)
             }
         };
+
+        #[allow(deprecated)]
         Ok(WstsMessage {
-            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
+            id: match value.id {
+                Some(id) => match id {
+                    wsts_message::Id::IdBitcoinTxid(txid) => {
+                        WstsMessageId::BitcoinTxid(BitcoinTxId::try_from(txid)?.into())
+                    }
+                    wsts_message::Id::IdRotateKey(pubkey) => {
+                        WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
+                    }
+                    wsts_message::Id::IdArbitrary(key) => {
+                        WstsMessageId::Arbitrary(key.try_into().map_err(|_| Error::TypeConversion)?)
+                    }
+                },
+                None => WstsMessageId::BitcoinTxid(
+                    BitcoinTxId::try_from(value.txid.required()?)?.into(),
+                ),
+            },
             inner,
         })
     }

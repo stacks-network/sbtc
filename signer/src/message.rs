@@ -1,14 +1,18 @@
 //! Signer message definition for network communication
 
+use rand::rngs::OsRng;
+use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
 
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::validation::TxRequestIds;
+use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -224,14 +228,81 @@ pub struct BitcoinPreSignRequest {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinPreSignAck;
 
+/// The identifier for a WSTS message.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WstsMessageId {
+    /// The WSTS message is related to a Bitcoin transaction.
+    BitcoinTxid(bitcoin::Txid),
+    /// The WSTS message is related to a rotate key operation.
+    RotateKey(PublicKey),
+    /// The WSTS message isn't specifically related to anything.
+    Arbitrary([u8; 32]),
+}
+
+impl From<bitcoin::Txid> for WstsMessageId {
+    fn from(txid: bitcoin::Txid) -> Self {
+        Self::BitcoinTxid(txid)
+    }
+}
+
+impl WstsMessageId {
+    /// Generate a random [`WstsMessageId::Arbitrary`] WSTS message ID
+    pub fn random_arbitrary() -> Self {
+        Self::Arbitrary(OsRng.gen())
+    }
+
+    /// Generate a random [`WstsMessageId::BitcoinTxid`] WSTS message ID
+    pub fn random_bitcoin_txid() -> Self {
+        let random_bytes: [u8; 32] = OsRng.gen();
+        let txid = BitcoinTxId::from(random_bytes).into();
+        Self::BitcoinTxid(txid)
+    }
+
+    /// Generate a random [`WstsMessageId::AggregateKey`] WSTS message ID
+    pub fn random_rotate_key() -> Self {
+        let private = PrivateKey::new(&mut OsRng);
+        let public = PublicKey::from_private_key(&private);
+        Self::RotateKey(public)
+    }
+}
+
+impl std::fmt::Display for WstsMessageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WstsMessageId::BitcoinTxid(txid) => write!(f, "bitcoin-txid({})", txid),
+            WstsMessageId::RotateKey(aggregate_key) => {
+                write!(f, "rotate-key({})", aggregate_key)
+            }
+            WstsMessageId::Arbitrary(bytes) => write!(f, "arbitrary({})", hex::encode(bytes)),
+        }
+    }
+}
+
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WstsMessage {
-    /// The transaction ID this message relates to,
-    /// will be a dummy ID for DKG messages
-    pub txid: bitcoin::Txid,
+    /// The id of the wsts message.
+    pub id: WstsMessageId,
     /// The wsts message
     pub inner: wsts::net::Message,
+}
+
+impl WstsMessage {
+    /// Returns the type of the message as a &str.
+    pub fn type_id(&self) -> &'static str {
+        match self.inner {
+            wsts::net::Message::DkgBegin(_) => "dkg-begin",
+            wsts::net::Message::DkgEndBegin(_) => "dkg-end-begin",
+            wsts::net::Message::DkgEnd(_) => "dkg-end",
+            wsts::net::Message::DkgPrivateBegin(_) => "dkg-private-begin",
+            wsts::net::Message::DkgPrivateShares(_) => "dkg-private-shares",
+            wsts::net::Message::DkgPublicShares(_) => "dkg-public-shares",
+            wsts::net::Message::NonceRequest(_) => "nonce-request",
+            wsts::net::Message::NonceResponse(_) => "nonce-response",
+            wsts::net::Message::SignatureShareRequest(_) => "signature-share-request",
+            wsts::net::Message::SignatureShareResponse(_) => "signature-share-response",
+        }
+    }
 }
 
 /// Convenient type aliases

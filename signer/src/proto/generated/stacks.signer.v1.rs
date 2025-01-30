@@ -287,11 +287,14 @@ pub mod signer_message {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WstsMessage {
     /// The transaction ID this message relates to, will be a dummy ID for DKG messages
+    #[deprecated]
     #[prost(message, optional, tag = "1")]
     pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
     /// The wsts message
     #[prost(oneof = "wsts_message::Inner", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
     pub inner: ::core::option::Option<wsts_message::Inner>,
+    #[prost(oneof = "wsts_message::Id", tags = "12, 13, 14")]
+    pub id: ::core::option::Option<wsts_message::Id>,
 }
 /// Nested message and enum types in `WstsMessage`.
 pub mod wsts_message {
@@ -334,6 +337,15 @@ pub mod wsts_message {
         SignatureShareResponse(
             super::super::super::super::crypto::wsts::SignatureShareResponse,
         ),
+    }
+    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    pub enum Id {
+        #[prost(message, tag = "12")]
+        IdBitcoinTxid(super::super::super::super::bitcoin::BitcoinTxid),
+        #[prost(message, tag = "13")]
+        IdRotateKey(super::super::super::super::crypto::PublicKey),
+        #[prost(bytes, tag = "14")]
+        IdArbitrary(::prost::alloc::vec::Vec<u8>),
     }
 }
 /// Wraps an inner type with a public key and a signature,

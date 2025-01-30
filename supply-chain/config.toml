@@ -2735,7 +2735,7 @@ version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.wsts]]
-version = "10.0.0@git:53ae23f5f35def420877ccc8c0fe3662e64e38a1"
+version = "10.0.0@git:a7bf38bd54cddf0b78c0f7c521a5ed1537a684fa"
 criteria = "safe-to-deploy"
 
 [[exemptions.wyz]]
