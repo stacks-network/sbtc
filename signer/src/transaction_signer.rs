@@ -49,7 +49,6 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
 use futures::StreamExt;
 use lru::LruCache;
-use rand::rngs::OsRng;
 use sha2::Digest;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
@@ -1033,7 +1032,6 @@ where
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let mut rng = OsRng;
         let Some(state_machine) = self.wsts_state_machines.get_mut(&id) else {
             tracing::warn!("missing signing round");
             return Err(Error::MissingStateMachine);
@@ -1045,12 +1043,12 @@ where
             None
         };
 
-        let outbound_messages = state_machine.process(msg, &mut rng).map_err(Error::Wsts)?;
+        let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
             // The WSTS state machine assume we read our own messages
             state_machine
-                .process(outbound_message, &mut rng)
+                .process(outbound_message)
                 .map_err(Error::Wsts)?;
 
             if let Some(frost_coordinator) = &mut frost_coordinator {
