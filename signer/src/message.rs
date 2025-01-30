@@ -1,18 +1,14 @@
 //! Signer message definition for network communication
 
-use rand::rngs::OsRng;
-use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
 
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::validation::TxRequestIds;
-use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -251,29 +247,13 @@ impl From<crate::storage::model::BitcoinTxId> for WstsMessageId {
     }
 }
 
-impl WstsMessageId {
-    /// Generate a random [`WstsMessageId::BitcoinTxid`] WSTS message ID
-    pub fn random_bitcoin_txid() -> Self {
-        let random_bytes: [u8; 32] = OsRng.gen();
-        let txid = BitcoinTxId::from(random_bytes).into();
-        Self::BitcoinTxid(txid)
-    }
-
-    /// Generate a random [`WstsMessageId::AggregateKey`] WSTS message ID
-    pub fn random_rotate_key() -> Self {
-        let private = PrivateKey::new(&mut OsRng);
-        let public = PublicKey::from_private_key(&private);
-        Self::RotateKey(public)
-    }
-}
-
 impl std::fmt::Display for WstsMessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             WstsMessageId::BitcoinTxid(txid) => write!(f, "bitcoin-txid({})", txid),
             WstsMessageId::RotateKey(aggregate_key) => {
                 write!(f, "rotate-key({})", aggregate_key)
-            },
+            }
             WstsMessageId::Dkg(id) => {
                 write!(f, "dkg({})", hex::encode(id))
             }

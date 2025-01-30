@@ -1109,11 +1109,10 @@ where
             .start_public_shares()
             .map_err(Error::wsts_coordinator)?;
 
-        // We identify the DKG round by a 32-byte hash which we throw
-        // around as a bitcoin transaction ID, even when it is not one. We
-        // should probably change this
+        // We identify the DKG round by a 32-byte hash based on the coordinator
+        // identity and current bitcoin chain tip.
         let identifier = self.coordinator_id(chain_tip);
-        let id = bitcoin::Txid::from_byte_array(identifier).into();
+        let id = WstsMessageId::Dkg(identifier);
         let msg = message::WstsMessage { id, inner: outbound.msg };
 
         // We create a signal stream before sending a message so that there

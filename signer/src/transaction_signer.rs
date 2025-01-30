@@ -612,11 +612,11 @@ where
 
                 match &request.status {
                     DkgStatus::Success => {
-                        tracing::info!("signer reports successful dkg round");
+                        tracing::info!(status = "success", "signer reports successful dkg round");
                     }
                     DkgStatus::Failure(fail) => {
                         // TODO(#414): handle DKG failure
-                        tracing::warn!(reason = ?fail, "signer reports failed dkg round");
+                        tracing::warn!(status = "failure", reason = ?fail, "signer reports failed dkg round");
                     }
                 }
             }
@@ -995,7 +995,6 @@ pub enum ChainTipStatus {
 mod tests {
     use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 
-    use bitcoin::Txid;
     use fake::{Fake, Faker};
     use network::InMemoryNetwork;
     use test_case::test_case;
@@ -1153,7 +1152,7 @@ mod tests {
 
         // Create a DkgBegin message to be handled by the signer.
         let msg = message::WstsMessage {
-            id: Txid::all_zeros().into(),
+            id: WstsMessageId::Dkg(Faker.fake()),
             inner: WstsNetMessage::DkgBegin(wsts::net::DkgBegin { dkg_id: 0 }),
         };
 

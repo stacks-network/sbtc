@@ -1098,7 +1098,7 @@ impl From<WstsMessage> for proto::WstsMessage {
             txid: match value.id {
                 WstsMessageId::BitcoinTxid(txid) => {
                     Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid)))
-                },
+                }
                 WstsMessageId::Dkg(_) => None,
                 WstsMessageId::RotateKey(_) => None,
             },
@@ -1163,9 +1163,7 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                     wsts_message::Id::IdRotateKey(pubkey) => {
                         WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
                     }
-                    wsts_message::Id::IdDkg(id) => {
-                        WstsMessageId::Dkg(id.into())
-                    }
+                    wsts_message::Id::IdDkg(id) => WstsMessageId::Dkg(id.into()),
                 },
                 None => WstsMessageId::BitcoinTxid(
                     BitcoinTxId::try_from(value.txid.required()?)?.into(),
