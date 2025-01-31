@@ -746,7 +746,9 @@ where
                             .into();
 
                         if new_key != current_key {
-                            tracing::warn!("aggregate key mismatch for rotate-key verification signing");
+                            tracing::warn!(
+                                "aggregate key mismatch for rotate-key verification signing"
+                            );
                             return Err(Error::AggregateKeyMismatch(
                                 Box::new(current_key),
                                 Box::new(new_key),
@@ -756,12 +758,14 @@ where
                         tracing::info!(%key, "responding to nonce-request for rotate-key signing");
 
                         if request.message.len() != 32 {
-                            tracing::warn!("data received for rotate-key verification signing is not 32 bytes");
+                            tracing::warn!(
+                                "data received for rotate-key verification signing is not 32 bytes"
+                            );
                             return Err(Error::InvalidSigningOperation);
                         }
                         if (bitcoin_chain_tip.as_ref()) != request.message.as_slice() {
                             tracing::warn!(
-                                data = %hex::encode(&request.message), 
+                                data = %hex::encode(&request.message),
                                 "data received for rotate-key verification signing does not match current bitcoin chain tip block hash"
                             );
                             return Err(Error::InvalidSigningOperation);
@@ -809,7 +813,7 @@ where
                     WstsMessageId::BitcoinTxid(txid) => {
                         span.record("txid", txid.to_string());
                         tracing::info!(
-                            signature_type = ?request.signature_type, 
+                            signature_type = ?request.signature_type,
                             "responding to signature-share-request for bitcoin transaction signing"
                         );
 
@@ -836,7 +840,9 @@ where
                             .into();
 
                         if new_key != current_key {
-                            tracing::warn!("aggregate key mismatch for rotate-key verification signing");
+                            tracing::warn!(
+                                "aggregate key mismatch for rotate-key verification signing"
+                            );
                             return Err(Error::AggregateKeyMismatch(
                                 Box::new(current_key),
                                 Box::new(new_key),
@@ -844,19 +850,21 @@ where
                         }
 
                         if request.message.len() != 32 {
-                            tracing::warn!("data received for rotate-key verification signing is not 32 bytes");
+                            tracing::warn!(
+                                "data received for rotate-key verification signing is not 32 bytes"
+                            );
                             return Err(Error::InvalidSigningOperation);
                         }
                         if (bitcoin_chain_tip.as_ref()) != request.message.as_slice() {
                             tracing::warn!(
-                                data = %hex::encode(&request.message), 
+                                data = %hex::encode(&request.message),
                                 "data received for rotate-key verification signing does not match current bitcoin chain tip block hash"
                             );
                             return Err(Error::InvalidSigningOperation);
                         }
 
                         tracing::info!(
-                            signature_type = ?request.signature_type, 
+                            signature_type = ?request.signature_type,
                             "responding to signature-share-request for rotate-key verification signing"
                         );
 
