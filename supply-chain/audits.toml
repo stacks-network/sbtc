@@ -1,4 +1,13 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.p256k1]]
+who = "cylewitruk <cyle.witruk@outlook.com>"
+criteria = "safe-to-deploy"
+version = "7.2.2"
+notes = "This change only adds wrapping to some additional bindings so that they get mangled and avoid linking errors."
+
+[[audits.wsts]]
+who = "cylewitruk <cyle.witruk@outlook.com>"
+criteria = "safe-to-deploy"
+version = "10.0.0"
