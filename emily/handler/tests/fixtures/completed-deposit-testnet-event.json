@@ -1,0 +1,288 @@
+{
+    "anchored_cost": {
+        "read_count": 28,
+        "read_length": 42790,
+        "runtime": 80123,
+        "write_count": 3,
+        "write_length": 139
+    },
+    "block_hash": "0x6bf165f5a1930cca370cf28158d6d86c9ed8103a6066de6138f5fff0c7835590",
+    "block_height": 227,
+    "burn_block_hash": "0x15e7d138f2b0b155418f588b7c193eae38f7943a83b4aa1af17aebec6f0e364f",
+    "burn_block_height": 136,
+    "burn_block_time": 1725050720,
+    "confirmed_microblocks_cost": {
+        "read_count": 0,
+        "read_length": 0,
+        "runtime": 0,
+        "write_count": 0,
+        "write_length": 0
+    },
+    "cycle_number": null,
+    "events": [
+        {
+            "committed": true,
+            "contract_event": {
+                "contract_identifier": "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry",
+                "raw_value": "0x0c0000000406616d6f756e7401000000000000000000000000075ed2850c626974636f696e2d74786964020000002000000000000000000000000000000000000000000000000000000000000000000c6f75747075742d696e64657801000000000000000000000000ffffffff05746f7069630d00000011636f6d706c657465642d6465706f736974",
+                "topic": "print",
+                "value": {
+                    "Tuple": {
+                        "data_map": {
+                            "amount": {
+                                "UInt": 1000000
+                            },
+                            "bitcoin-txid": {
+                                "Sequence": {
+                                    "Buffer": {
+                                        "data": [
+                                            88,
+                                            100,
+                                            97,
+                                            211,
+                                            237,
+                                            87,
+                                            228,
+                                            73,
+                                            185,
+                                            232,
+                                            170,
+                                            196,
+                                            209,
+                                            202,
+                                            38,
+                                            203,
+                                            139,
+                                            170,
+                                            151,
+                                            84,
+                                            79,
+                                            129,
+                                            255,
+                                            229,
+                                            255,
+                                            0,
+                                            64,
+                                            1,
+                                            98,
+                                            119,
+                                            38,
+                                            178
+                                        ]
+                                    }
+                                }
+                            },
+                            "output-index": {
+                                "UInt": 0
+                            },
+                            "burn-hash": {
+                                "Sequence": {
+                                    "Buffer": {
+                                        "data": [
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1,
+                                            1
+                                        ]
+                                    }
+                                }
+                            },
+                            "burn-height": {
+                                "UInt": 42
+                            },
+                            "sweep-txid": {
+                                "Sequence": {
+                                    "Buffer": {
+                                        "data": [
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2,
+                                            2
+                                        ]
+                                    }
+                                }
+                            },
+                            "topic": {
+                                "Sequence": {
+                                    "String": {
+                                        "ASCII": {
+                                            "data": [
+                                                99,
+                                                111,
+                                                109,
+                                                112,
+                                                108,
+                                                101,
+                                                116,
+                                                101,
+                                                100,
+                                                45,
+                                                100,
+                                                101,
+                                                112,
+                                                111,
+                                                115,
+                                                105,
+                                                116
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "type_signature": {
+                            "type_map": {
+                                "amount": "UIntType",
+                                "bitcoin-txid": {
+                                    "SequenceType": {
+                                        "BufferType": 32
+                                    }
+                                },
+                                "output-index": "UIntType",
+                                "burn-hash": {
+                                    "SequenceType": {
+                                        "BufferType": 32
+                                    }
+                                },
+                                "burn-height": "UIntType",
+                                "sweep-txid": {
+                                    "SequenceType": {
+                                        "BufferType": 32
+                                    }
+                                },
+                                "topic": {
+                                    "SequenceType": {
+                                        "StringType": {
+                                            "ASCII": 17
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "event_index": 1,
+            "txid": "0x58a9074c3299c2f627829b7e5ecf8b7136e380cbce3900461c679939925f77bc",
+            "type": "contract_event"
+        }
+    ],
+    "index_block_hash": "0xacf821a2df6700046a2e2cd8042b394bcae4d62aadd3e940597658ece9852c30",
+    "matured_miner_rewards": [],
+    "miner_signature": "0x01b2d4622b2e17c65e93c232f8009af1b143ceac0d7746a76db252db7fe8618c1d59fc3d24285aaf3360e207b498749e70d86a2df6146a3dd96a204ca7fa388a78",
+    "miner_txid": "0x5349bb3131e563b1daae3f5abadcb250d5f1a985177ebf11068d5e1dc8266629",
+    "parent_block_hash": "0x9d1dc0ff0fae7648ddaa0fdd30fcf5e4f5c587f172959a2e602d678e6f08cae0",
+    "parent_burn_block_hash": "0x15e7d138f2b0b155418f588b7c193eae38f7943a83b4aa1af17aebec6f0e364f",
+    "parent_burn_block_height": 136,
+    "parent_burn_block_timestamp": 1725050720,
+    "parent_index_block_hash": "0x1d8063dcc9061138bbcd89f5eab10dedf970526af50bedef542bba592228db74",
+    "parent_microblock": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "parent_microblock_sequence": 0,
+    "pox_v1_unlock_height": 104,
+    "pox_v2_unlock_height": 106,
+    "pox_v3_unlock_height": 109,
+    "reward_set": null,
+    "signer_bitvec": "000800000001ff",
+    "signer_signature": [
+        "0075708c545456ad085204a87ae0b22229c53aaf325e84e1e52e99bed4c74b727a540dbafecbec69179af3201a881d250bd45b67bc8ada7b008f50e811d49159d4",
+        "01d620ebcfc4a18b781369ad9f996e87ecaa617852a3b92c420c633627c88da9e97058e896290df6ddd0070f8838970c39e46d756690017fe24545252cf7078b28",
+        "002cee5b1219127b8784d2c973ffa6de044bd5636c1b3a3db08b701c17ab6875ad394e3ea55e37d46db5292fb61e52744d1420c38ac910b6b92691c0091c2adbf2"
+    ],
+    "signer_signature_hash": "0x6bf165f5a1930cca370cf28158d6d86c9ed8103a6066de6138f5fff0c7835590",
+    "transactions": [
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 28,
+                "read_length": 42790,
+                "runtime": 80123,
+                "write_count": 3,
+                "write_length": 139
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x070703",
+            "raw_tx": "0x80800000000405b67e6a475c7001d2d1f8589527f8357f0c1394440000000000000005000000000001e07800000003020005426366ae35702fbe63153afa0548b74b67ec94b8c356ed603bccc5e83a05445bd1bbb13703fad948f16443ca2a5c632ac642713f4d15d3964a230118701b38020144f48d62736cbe730394468f8f9ad1e482d5e4f091b98b581a88d1163b3ed8c02f2ae726627c5c8f090e3ac7eaa86d38df46d5891eef92449ddff22dfb2bb97b0200652613e261d9be17a6c690c53cf90a81d005eff00c46f43c07bd6806723d45ed4a258f4eab6393f5136c789d96864875f28e8dbeadf6db2446587648f1b7b0f400020301000000000215b67e6a475c7001d2d1f8589527f8357f0c1394440c736274632d6465706f73697418636f6d706c6574652d6465706f7369742d77726170706572000000040200000020000000000000000000000000000000000000000000000000000000000000000001000000000000000000000000ffffffff01000000000000000000000000075ed2850515b67e6a475c7001d2d1f8589527f8357f0c139444",
+            "status": "success",
+            "tx_index": 0,
+            "txid": "0x58a9074c3299c2f627829b7e5ecf8b7136e380cbce3900461c679939925f77bc"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 0,
+                "read_length": 0,
+                "runtime": 0,
+                "write_count": 0,
+                "write_length": 0
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x8080000000040062b0e91cc557e583c3d1f9dfe468ace76d2f03740000000000000041000000000000012c0001f85034c2bf767a4211b295c864527c380b1260741d5368baf8abbf4b4ad8c0c15433af07aa4b24adfca8525fb2ffacfa596eb380e5db4f30d36a417a984da96703020000000000051a93b082ee51d78faf5cc3d84a1c1591246c4965b000000000000003e800000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success",
+            "tx_index": 1,
+            "txid": "0xf7dea34b0473d7cbb3aebae49a93507dda58e18435e8c496e90253bf07fda3a8"
+        }
+    ]
+}

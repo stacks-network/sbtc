@@ -140,11 +140,11 @@ export class EmilyStack extends cdk.Stack {
             indexName: byStatusIndexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.STRING
+                type: dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
-                type:  dynamodb.AttributeType.NUMBER
+                type: dynamodb.AttributeType.NUMBER
             },
             projectionType: dynamodb.ProjectionType.INCLUDE,
             nonKeyAttributes: [
@@ -163,11 +163,11 @@ export class EmilyStack extends cdk.Stack {
             indexName: byRecipientIndexName,
             partitionKey: {
                 name: 'Recipient',
-                type:  dynamodb.AttributeType.STRING
+                type: dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
-                type:  dynamodb.AttributeType.NUMBER
+                type: dynamodb.AttributeType.NUMBER
             },
             projectionType: dynamodb.ProjectionType.INCLUDE,
             nonKeyAttributes: [
@@ -181,6 +181,30 @@ export class EmilyStack extends cdk.Stack {
             ]
         });
 
+        // Index to efficiently query deposits that comes from a specific address
+        const byAddressIndexName: string = "DepositInputAddressIndex";
+        table.addGlobalSecondaryIndex({
+            indexName: byAddressIndexName,
+            partitionKey: {
+                name: 'InputAddress',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "BitcoinTxid",
+                "BitcoinTxOutputIndex",
+                "Recipient",
+                "OpStatus",
+                "Amount",
+                "LastUpdateBlockHash",
+                "ReclaimScript",
+                "DepositScript",
+            ]
+        });
         // TODO(388): Add an additional GSI for querying by user; not required for MVP.
         return table;
     }
@@ -220,11 +244,11 @@ export class EmilyStack extends cdk.Stack {
             indexName: indexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.STRING
+                type: dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
-                type:  dynamodb.AttributeType.NUMBER
+                type: dynamodb.AttributeType.NUMBER
             },
             projectionType: dynamodb.ProjectionType.INCLUDE,
             nonKeyAttributes: [
@@ -316,7 +340,7 @@ export class EmilyStack extends cdk.Stack {
         chainstateTableName: string,
         limitTableName: string,
         removalPolicy: cdk.RemovalPolicy,
-        props: EmilyStackProps
+        props: EmilyStackProps,
     ): lambda.Function {
 
         const operationLambdaId: string = "OperationLambda";
@@ -343,6 +367,7 @@ export class EmilyStack extends cdk.Stack {
                 // already expected to be present in the lambda.
                 IS_LOCAL: "false",
                 TRUSTED_REORG_API_KEY: props.trustedReorgApiKey,
+                IS_MAINNET: props.stageName == Constants.PROD_STAGE_NAME ? "true" : "false",
             },
             description: `Emily Api Handler. ${EmilyStackUtils.getLambdaGitIdentifier()}`,
             currentVersionOptions: {
