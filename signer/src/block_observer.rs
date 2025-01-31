@@ -588,7 +588,9 @@ impl<C: Context, B> BlockObserver<C, B> {
         tracing::info!("Updating the signer state with the current signer set");
         let (aggregate_key, public_keys) = self.get_signer_set_and_aggregate_key(chain_tip).await?;
         if let Some(aggregate_key) = aggregate_key {
-            self.context.state().set_current_aggregate_key(aggregate_key);
+            self.context
+                .state()
+                .set_current_aggregate_key(aggregate_key);
         }
 
         self.context.state().update_current_signer_set(public_keys);
