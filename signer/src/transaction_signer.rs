@@ -1028,10 +1028,14 @@ where
                     .signer_set_public_keys
                     .into_iter()
                     .collect::<BTreeSet<_>>();
-                // This `as` cast should always be safe as our signer cap is 128.
-                let num_signers = signing_set.len() as u16;
 
-                tracing::debug!(%num_signers, "creating now frost coordinator to track pre-rotate-key validation signing round");
+                tracing::debug!(
+                    num_signers = signing_set.len(),
+                    %aggregate_key,
+                    threshold = %dkg_shares.signature_share_threshold,
+                    "creating now frost coordinator to track pre-rotate-key validation signing round"
+                );
+
                 let coordinator = FrostCoordinator::load(
                     &storage,
                     aggregate_key,

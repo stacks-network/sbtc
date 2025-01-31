@@ -1451,6 +1451,36 @@ impl bitcoin::consensus::Encodable for Hash160 {
     }
 }
 
+// /// ...
+// pub async fn construct_rotate_key_verification_transaction(
+//     aggregate_key: crate::keys::PublicKeyXOnly
+// ) -> bitcoin::Transaction {
+//     let utxo = SignerUtxo {
+//         outpoint: OutPoint {
+//             txid: bitcoin::Txid::all_zeros(),
+//             vout: 0,
+//         },
+//         amount: 1,
+//         public_key: aggregate_key.into(),
+//     };
+
+//     let input = utxo.as_tx_input(&DUMMY_SIGNATURE);
+//     let output = utxo.as_tx_output();
+
+//     let mut transaction = bitcoin::Transaction {
+//         version: Version::TWO,
+//         lock_time: LockTime::ZERO,
+//         input: vec![input],
+//         output: vec![output],
+//     };
+
+//     transaction.verify(|outpoint| {
+
+//     });
+
+//     todo!()
+// }
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -1650,6 +1680,41 @@ mod tests {
                 block_time: 0,
             }
         }
+    }
+
+    #[test]
+    fn can_verify_spendability() {
+        let private_key = crate::keys::PrivateKey::new(&mut OsRng);
+        let public_key = crate::keys::PublicKey::from_private_key(&private_key);
+        let (aggregate_key, _) = public_key.x_only_public_key();
+
+        let utxo = SignerUtxo {
+            outpoint: OutPoint {
+                txid: bitcoin::Txid::all_zeros(),
+                vout: 0,
+            },
+            amount: 1,
+            public_key: aggregate_key.into(),
+        };
+    
+        let input = utxo.as_tx_input(&DUMMY_SIGNATURE);
+        let output = utxo.as_tx_output();
+    
+        let transaction = bitcoin::Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![input],
+            output: vec![output.clone()],
+        };
+    
+        transaction.verify(|_| {
+            Some(output.clone())
+            // Some(TxOut {
+            //     value: Amount::from_sat(1),
+            //     script_pubkey: ScriptBuf::new(),
+            // })
+        })
+        .unwrap();
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
