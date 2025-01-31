@@ -667,6 +667,7 @@ mod tests {
             num_deposit_requests_per_block: 1,
             num_withdraw_requests_per_block: 1,
             num_signers_per_request: 0,
+            consecutive_blocks: false,
         };
         let db = ctx.inner_storage();
         let test_data = TestData::generate(&mut rng, &[], &test_params);
@@ -739,6 +740,7 @@ mod tests {
             num_deposit_requests_per_block: 1,
             num_withdraw_requests_per_block: 1,
             num_signers_per_request: 0,
+            consecutive_blocks: false,
         };
         let db = ctx.inner_storage();
         let test_data = TestData::generate(&mut rng, &[], &test_params);
@@ -787,6 +789,7 @@ mod tests {
             num_deposit_requests_per_block: 2,
             num_withdraw_requests_per_block: 2,
             num_signers_per_request: 0,
+            consecutive_blocks: false,
         };
 
         let db = ctx.inner_storage();
@@ -859,6 +862,7 @@ mod tests {
             num_deposit_requests_per_block: 2,
             num_withdraw_requests_per_block: 2,
             num_signers_per_request: 0,
+            consecutive_blocks: false,
         };
 
         let db = ctx.inner_storage();
@@ -920,6 +924,7 @@ mod tests {
             num_deposit_requests_per_block: 2,
             num_withdraw_requests_per_block: 2,
             num_signers_per_request: 0,
+            consecutive_blocks: false,
         };
 
         let test_data = TestData::generate(&mut rng, &[], &test_params);

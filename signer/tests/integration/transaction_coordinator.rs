@@ -818,6 +818,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
     test_data.write_to(&db).await;
@@ -926,6 +927,7 @@ async fn run_dkg_from_scratch() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
 
@@ -1143,6 +1145,7 @@ async fn run_subsequent_dkg() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
 
@@ -1588,6 +1591,7 @@ async fn sign_bitcoin_transaction() {
             network: network.spawn(),
             context: ctx.clone(),
             context_window: 10000,
+            deposit_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -2028,6 +2032,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             network: network.spawn(),
             context: ctx.clone(),
             context_window: 10000,
+            deposit_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -2617,6 +2622,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             network: network.spawn(),
             context: ctx.clone(),
             context_window: 10000,
+            deposit_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -3404,6 +3410,7 @@ async fn test_conservative_initial_sbtc_limits() {
             context_window: 10000,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
+            deposit_decisions_retry_window: 1,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {

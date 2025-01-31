@@ -133,8 +133,14 @@ bootstrap_signing_set = [
 bootstrap_signatures_required = 10
 
 # Seconds to wait before processing a new Bitcoin block.
-# Required: true Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
+# Required: true
+# Environment: SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY
 bitcoin_processing_delay = 30
+
+# Seconds to wait before processing new SBTC requests.
+# Required: true
+# Environment: SIGNER_SIGNER__REQUESTS_PROCESSING_DELAY
+requests_processing_delay = 15
 
 # The number of blocks back the block observer should look for unprocessed
 # blocks before proceeding.

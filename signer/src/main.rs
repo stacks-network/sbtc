@@ -370,6 +370,7 @@ async fn run_request_decider(ctx: impl Context) -> Result<(), Error> {
         network,
         context: ctx.clone(),
         context_window: config.signer.context_window,
+        deposit_decisions_retry_window: config.signer.deposit_decisions_retry_window,
         blocklist_checker: BlocklistClient::new(&ctx),
         signer_private_key: config.signer.private_key,
     };

@@ -100,7 +100,7 @@ pub enum Error {
 
     /// API is reorganizing.
     #[error("Api is reorganizing around new chain tip {0:?}")]
-    Reorganzing(Chainstate),
+    Reorganizing(Chainstate),
 
     /// An entry update version conflict in a resource update resulted
     /// in an update not being performed.
@@ -132,7 +132,7 @@ impl Error {
             Error::RequestTimeout => StatusCode::REQUEST_TIMEOUT,
             Error::TooManyInternalRetries => StatusCode::INTERNAL_SERVER_ERROR,
             Error::InconsistentState(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Error::Reorganzing(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Reorganizing(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::BadRequest(_) => StatusCode::BAD_REQUEST,
             Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
         }
@@ -160,7 +160,7 @@ impl Error {
             | Error::Network(_)
             | Error::ServiceUnavailable
             | Error::VersionConflict
-            | Error::Reorganzing(_)
+            | Error::Reorganizing(_)
             | Error::InternalServer => Error::InternalServer,
             err => err,
         }

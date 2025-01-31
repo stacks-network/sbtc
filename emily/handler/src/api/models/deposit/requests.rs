@@ -179,7 +179,7 @@ pub struct ValidatedCreateDepositRequestData {
     pub input_address: Address,
 }
 
-/// A singlular Deposit update that contains only the fields pertinent
+/// A singular Deposit update that contains only the fields pertinent
 /// to updating the status of a deposit. This includes the key related
 /// data in addition to status history related data.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]

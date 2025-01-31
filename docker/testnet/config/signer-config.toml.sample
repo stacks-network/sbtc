@@ -57,6 +57,8 @@ bootstrap_signatures_required = 11
 
 bitcoin_processing_delay = 30
 
+requests_processing_delay = 15
+
 [signer.event_observer]
 bind = "0.0.0.0:8801"
 
