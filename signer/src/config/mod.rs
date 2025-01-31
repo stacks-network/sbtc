@@ -225,7 +225,7 @@ pub struct BlocklistClientConfig {
 
 impl BlocklistClientConfig {
     fn retry_delay_default() -> std::time::Duration {
-        std::time::Duration::from_millis(100)
+        std::time::Duration::from_secs(1)
     }
 }
 /// Emily API configuration.
