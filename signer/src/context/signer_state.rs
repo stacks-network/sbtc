@@ -46,11 +46,13 @@ impl SignerState {
     }
 
     /// Get the current aggregate key for the signers.
+    #[allow(clippy::unwrap_in_result)]
     pub fn current_aggregate_key(&self) -> Option<PublicKey> {
         self.current_aggregate_key
             .read()
             .expect("BUG: Failed to acquire read lock")
-            .clone()
+            .as_ref()
+            .copied()
     }
 
     /// Set the current aggregate key to the given value
