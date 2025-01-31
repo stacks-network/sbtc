@@ -4,7 +4,8 @@ use std::str::FromStr;
 
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::consensus::encode;
-use bitcoin::{Amount, OutPoint, ScriptBuf, Txid};
+use bitcoin::params::Params;
+use bitcoin::{Address, Amount, OutPoint, ScriptBuf, Txid};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -85,7 +86,11 @@ impl CreateDepositRequestBody {
     /// Validates that the deposit request is valid.
     /// This includes validating the request fields, if their content matches the transaction
     /// and if the amount is within the limits.
-    pub fn validate(&self, limits: &Limits, is_mainnet: bool) -> Result<DepositInfo, Error> {
+    pub fn validate(
+        &self,
+        limits: &Limits,
+        is_mainnet: bool,
+    ) -> Result<ValidatedCreateDepositRequestData, Error> {
         let deposit_req = CreateDepositRequest {
             outpoint: OutPoint {
                 txid: parse_hex(&self.bitcoin_txid, "invalid bitcoin_txid", Txid::from_str)?,
@@ -137,10 +142,41 @@ impl CreateDepositRequestBody {
             ));
         }
 
-        deposit_req
+        let deposit_info = deposit_req
             .validate_tx(&tx, is_mainnet)
-            .map_err(|e| Error::HttpRequest(StatusCode::BAD_REQUEST, e.to_string()))
+            .map_err(|e| Error::HttpRequest(StatusCode::BAD_REQUEST, e.to_string()))?;
+
+        let txin = tx.tx_in(0).map_err(|_| {
+            Error::HttpRequest(
+                StatusCode::BAD_REQUEST,
+                "invalid transaction input".to_string(),
+            )
+        })?;
+        let input_address = {
+            let params = if is_mainnet {
+                Params::MAINNET
+            } else {
+                Params::REGTEST
+            };
+            Address::from_script(&txin.script_sig, params.clone()).map_err(|e| {
+                Error::HttpRequest(
+                    StatusCode::BAD_REQUEST,
+                    "invalid transaction input address".to_string(),
+                )
+            })?
+        };
+
+        Ok(ValidatedCreateDepositRequestData { deposit_info, input_address })
     }
+}
+
+/// Validated deposit request data.
+#[derive(Debug)]
+pub struct ValidatedCreateDepositRequestData {
+    /// Deposit information.
+    pub deposit_info: DepositInfo,
+    /// Input address of the first input in the transaction.
+    pub input_address: Address,
 }
 
 /// A singlular Deposit update that contains only the fields pertinent

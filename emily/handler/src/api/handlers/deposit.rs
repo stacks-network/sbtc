@@ -192,7 +192,7 @@ pub async fn get_deposits(
     operation_id = "getDepositsForRecipient",
     path = "/deposit/recipient/{recipient}",
     params(
-        ("recipient" = String, Path, description = "the status to search by when getting all deposits."),
+        ("recipient" = String, Path, description = "the recipient to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
     ),
@@ -211,7 +211,7 @@ pub async fn get_deposits_for_recipient(
     recipient: String,
     query: BasicPaginationQuery,
 ) -> impl warp::reply::Reply {
-    debug!("In get deposits for recipient");
+    debug!("in get deposits for recipient: {recipient}");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
@@ -234,6 +234,58 @@ pub async fn get_deposits_for_recipient(
     }
     // Handle and respond.
     handler(context, recipient, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Get deposits by recipient handler.
+#[utoipa::path(
+    get,
+    operation_id = "getDepositsForInputAddress",
+    path = "/deposit/input-address/{inputAddress}",
+    params(
+        ("inputAddress" = String, Path, description = "the address from which the deposit was made."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+    ),
+    tag = "deposit",
+    responses(
+        (status = 200, description = "Deposits retrieved successfully", body = GetDepositsResponse),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+#[instrument(skip(context))]
+pub async fn get_deposits_for_input_address(
+    context: EmilyContext,
+    input_address: String,
+    query: BasicPaginationQuery,
+) -> impl warp::reply::Reply {
+    debug!("in get deposits for input address: {input_address}");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        input_address: String,
+        query: BasicPaginationQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        let (entries, next_token) = accessors::get_deposit_entries_by_input_address(
+            &context,
+            &input_address,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into resource types.
+        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
+        // Create response.
+        let response = GetDepositsResponse { deposits, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, input_address, query)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
@@ -301,18 +353,17 @@ pub async fn create_deposit(
         }
 
         let limits = accessors::get_limits(&context).await?;
-        let deposit_info = body.validate(&limits, context.settings.is_mainnet)?;
-
+        let deposit_data = body.validate(&limits, context.settings.is_mainnet)?;
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
             key: DepositEntryKey {
                 bitcoin_txid: body.bitcoin_txid,
                 bitcoin_tx_output_index: body.bitcoin_tx_output_index,
             },
-            recipient: hex::encode(deposit_info.recipient.serialize_to_vec()),
+            recipient: hex::encode(deposit_data.deposit_info.recipient.serialize_to_vec()),
             parameters: DepositParametersEntry {
-                max_fee: deposit_info.max_fee,
-                lock_time: deposit_info.lock_time.to_consensus_u32(),
+                max_fee: deposit_data.deposit_info.max_fee,
+                lock_time: deposit_data.deposit_info.lock_time.to_consensus_u32(),
             },
             history: vec![DepositEvent {
                 status: StatusEntry::Pending,
@@ -323,9 +374,10 @@ pub async fn create_deposit(
             status: Status::Pending,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
-            amount: deposit_info.amount,
+            amount: deposit_data.deposit_info.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
+            input_address: deposit_data.input_address.to_string(),
             ..Default::default()
         };
         // Validate deposit entry.
