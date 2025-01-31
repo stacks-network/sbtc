@@ -1,18 +1,14 @@
 //! Signer message definition for network communication
 
-use rand::rngs::OsRng;
-use rand::Rng;
 use secp256k1::ecdsa::RecoverableSignature;
 
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::validation::TxRequestIds;
-use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -231,12 +227,12 @@ pub struct BitcoinPreSignAck;
 /// The identifier for a WSTS message.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WstsMessageId {
-    /// The WSTS message is related to a Bitcoin transaction.
+    /// The WSTS message is related to a Bitcoin transaction signing round.
     BitcoinTxid(bitcoin::Txid),
-    /// The WSTS message is related to a rotate key operation.
+    /// The WSTS message is related to a rotate key verification operation.
     RotateKey(PublicKey),
-    /// The WSTS message isn't specifically related to anything.
-    Arbitrary([u8; 32]),
+    /// The WSTS message is related to a DKG round.
+    Dkg([u8; 32]),
 }
 
 impl From<bitcoin::Txid> for WstsMessageId {
@@ -245,24 +241,9 @@ impl From<bitcoin::Txid> for WstsMessageId {
     }
 }
 
-impl WstsMessageId {
-    /// Generate a random [`WstsMessageId::Arbitrary`] WSTS message ID
-    pub fn random_arbitrary() -> Self {
-        Self::Arbitrary(OsRng.gen())
-    }
-
-    /// Generate a random [`WstsMessageId::BitcoinTxid`] WSTS message ID
-    pub fn random_bitcoin_txid() -> Self {
-        let random_bytes: [u8; 32] = OsRng.gen();
-        let txid = BitcoinTxId::from(random_bytes).into();
-        Self::BitcoinTxid(txid)
-    }
-
-    /// Generate a random [`WstsMessageId::AggregateKey`] WSTS message ID
-    pub fn random_rotate_key() -> Self {
-        let private = PrivateKey::new(&mut OsRng);
-        let public = PublicKey::from_private_key(&private);
-        Self::RotateKey(public)
+impl From<crate::storage::model::BitcoinTxId> for WstsMessageId {
+    fn from(txid: crate::storage::model::BitcoinTxId) -> Self {
+        Self::BitcoinTxid(txid.into())
     }
 }
 
@@ -273,7 +254,9 @@ impl std::fmt::Display for WstsMessageId {
             WstsMessageId::RotateKey(aggregate_key) => {
                 write!(f, "rotate-key({})", aggregate_key)
             }
-            WstsMessageId::Arbitrary(bytes) => write!(f, "arbitrary({})", hex::encode(bytes)),
+            WstsMessageId::Dkg(id) => {
+                write!(f, "dkg({})", hex::encode(id))
+            }
         }
     }
 }

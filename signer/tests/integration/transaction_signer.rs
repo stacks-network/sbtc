@@ -533,7 +533,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // arbitrary transaction ID.
     let dkg_id = 2;
     let dkg_begin_msg = WstsMessage {
-        id: WstsMessageId::random_arbitrary(),
+        id: bitcoin::Txid::all_zeros().into(),
         inner: wsts::net::Message::DkgBegin(DkgBegin { dkg_id }),
     };
     let msg_public_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
@@ -558,7 +558,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // machine gets created, overwriting any existing one.
     let dkg_id = 1234;
     let dkg_begin_msg = WstsMessage {
-        id: WstsMessageId::random_bitcoin_txid(),
+        id: bitcoin::Txid::from_byte_array(Faker.fake_with_rng(&mut rng)).into(),
         inner: wsts::net::Message::DkgBegin(DkgBegin { dkg_id }),
     };
 

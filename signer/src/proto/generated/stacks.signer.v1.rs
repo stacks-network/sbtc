@@ -338,14 +338,21 @@ pub mod wsts_message {
             super::super::super::super::crypto::wsts::SignatureShareResponse,
         ),
     }
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
     pub enum Id {
+        /// If this WSTS message is related to a Bitcoin signing round, this field
+        /// will be set to the related Bitcoin transaction ID.
         #[prost(message, tag = "12")]
         IdBitcoinTxid(super::super::super::super::bitcoin::BitcoinTxid),
+        /// If this WSTS message is related to a rotate-keys transaction, this field
+        /// will be set to the _new_ aggregate public key being verified.
         #[prost(message, tag = "13")]
         IdRotateKey(super::super::super::super::crypto::PublicKey),
-        #[prost(bytes, tag = "14")]
-        IdArbitrary(::prost::alloc::vec::Vec<u8>),
+        /// If this WSTS message is related to a DKG round, this field will be set
+        /// to the 32-byte id determined based on the coordinator public key and
+        /// block hash, set by the coordinator.
+        #[prost(message, tag = "14")]
+        IdDkg(super::super::super::super::crypto::Uint256),
     }
 }
 /// Wraps an inner type with a public key and a signature,
