@@ -15,6 +15,11 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// We have received a request/response which has been deemed invalid in
+    /// the current context.
+    #[error("invalid signing request")]
+    InvalidSigningOperation,
+
     /// The pre-rotate-key frost verification signing round was not reported as
     /// successful.
     #[error("rotate-key frost verification signing round not reported as successful")]

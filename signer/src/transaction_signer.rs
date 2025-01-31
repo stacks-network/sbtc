@@ -694,14 +694,14 @@ where
                 let (id, aggregate_key) = match msg.id {
                     WstsMessageId::Dkg(_) => {
                         tracing::warn!(
-                            "received nonce request for DKG round, which is not supported"
+                            "received nonce-request for DKG round, which is not supported"
                         );
                         return Ok(());
                     }
                     WstsMessageId::BitcoinTxid(txid) => {
                         span.record("txid", txid.to_string());
                         tracing::info!(
-                            "responding to nonce request for bitcoin transaction signing"
+                            "responding to nonce-request for bitcoin transaction signing"
                         );
 
                         let accepted_sighash =
@@ -729,7 +729,13 @@ where
                         (id, accepted_sighash.public_key)
                     }
                     WstsMessageId::RotateKey(key) => {
-                        tracing::info!(%key, "responding to nonce request for rotate-key signing");
+                        // This is a rotate-key verification signing round. The
+                        // data provided by the coordinator for signing is
+                        // expected to be the current bitcoin chain tip block
+                        // hash, which we validate and return an error if it
+                        // does not match our view of the current chain tip. We
+                        // also verify that the provided aggregate key matches
+                        // our latest aggregate key.
 
                         let new_key: PublicKeyXOnly = key.into();
                         let current_key = db
@@ -740,10 +746,25 @@ where
                             .into();
 
                         if new_key != current_key {
+                            tracing::warn!("aggregate key mismatch for rotate-key verification signing");
                             return Err(Error::AggregateKeyMismatch(
                                 Box::new(current_key),
                                 Box::new(new_key),
                             ));
+                        }
+
+                        tracing::info!(%key, "responding to nonce-request for rotate-key signing");
+
+                        if request.message.len() != 32 {
+                            tracing::warn!("data received for rotate-key verification signing is not 32 bytes");
+                            return Err(Error::InvalidSigningOperation);
+                        }
+                        if (bitcoin_chain_tip.as_ref()) != request.message.as_slice() {
+                            tracing::warn!(
+                                data = %hex::encode(&request.message), 
+                                "data received for rotate-key verification signing does not match current bitcoin chain tip block hash"
+                            );
+                            return Err(Error::InvalidSigningOperation);
                         }
 
                         let state_machine_id = self
@@ -778,8 +799,6 @@ where
                     return Ok(());
                 }
 
-                tracing::debug!(signature_type = ?request.signature_type, "responding to signature-share-request");
-
                 let db = self.context.get_storage();
 
                 let id = match msg.id {
@@ -790,6 +809,7 @@ where
                     WstsMessageId::BitcoinTxid(txid) => {
                         span.record("txid", txid.to_string());
                         tracing::info!(
+                            signature_type = ?request.signature_type, 
                             "responding to signature-share-request for bitcoin transaction signing"
                         );
 
@@ -799,7 +819,47 @@ where
                         accepted_sighash.sighash.into()
                     }
                     WstsMessageId::RotateKey(key) => {
-                        tracing::info!(%key, "responding to signature-share-request for rotate-key key signing");
+                        // This is a rotate-key verification signing round. The
+                        // data provided by the coordinator for signing is
+                        // expected to be the current bitcoin chain tip block
+                        // hash, which we validate and return an error if it
+                        // does not match our view of the current chain tip. We
+                        // also verify that the provided aggregate key matches
+                        // our latest aggregate key.
+
+                        let new_key: PublicKeyXOnly = key.into();
+                        let current_key = db
+                            .get_latest_encrypted_dkg_shares()
+                            .await?
+                            .ok_or(Error::NoDkgShares)?
+                            .aggregate_key
+                            .into();
+
+                        if new_key != current_key {
+                            tracing::warn!("aggregate key mismatch for rotate-key verification signing");
+                            return Err(Error::AggregateKeyMismatch(
+                                Box::new(current_key),
+                                Box::new(new_key),
+                            ));
+                        }
+
+                        if request.message.len() != 32 {
+                            tracing::warn!("data received for rotate-key verification signing is not 32 bytes");
+                            return Err(Error::InvalidSigningOperation);
+                        }
+                        if (bitcoin_chain_tip.as_ref()) != request.message.as_slice() {
+                            tracing::warn!(
+                                data = %hex::encode(&request.message), 
+                                "data received for rotate-key verification signing does not match current bitcoin chain tip block hash"
+                            );
+                            return Err(Error::InvalidSigningOperation);
+                        }
+
+                        tracing::info!(
+                            signature_type = ?request.signature_type, 
+                            "responding to signature-share-request for rotate-key verification signing"
+                        );
+
                         let key = key.into();
                         let state_machine_id = self
                             .ensure_rotate_key_state_machine(*bitcoin_chain_tip, key)

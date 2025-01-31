@@ -13,8 +13,6 @@ use blockstack_lib::chainstate::stacks::StacksTransaction;
 use futures::future::try_join_all;
 use futures::Stream;
 use futures::StreamExt as _;
-use rand::rngs::OsRng;
-use rand::Rng;
 use sha2::Digest;
 
 use crate::bitcoin::utxo;
@@ -741,9 +739,10 @@ where
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
 
-        // We run a DKG signing round on random data using the new aggregate key
-        // using the FROST coordinator, which requires 100% signing
-        // participation vs. FIRE which only uses {threshold} signers.
+        // We run a DKG signing round on the current bitcoin chain tip block
+        // hash using the new aggregate key using the FROST coordinator, which
+        // requires 100% signing participation vs. FIRE which only uses
+        // {threshold} signers.
         //
         // The idea behind this is that since the rotate-keys contract call is a
         // Stacks transaction and thus only signed using the signers' private
@@ -752,6 +751,10 @@ where
         // cryptographically assert that all signers have signed with the new
         // aggregate key, and thus have valid private shares before we proceed
         // with the actual rotate keys transaction.
+        //
+        // Note that while we specify the threshold as `signatures_required` in
+        // the coordinator below, the FROST coordinator implicitly requires all
+        // signers to participate.
         tracing::info!("running a FROST signing round on random data to assert that all signers have signed with the new aggregate key");
         let mut coordinator_state_machine = FrostCoordinator::load(
             &self.context.get_storage(),
@@ -762,12 +765,15 @@ where
         )
         .await?;
 
-        let random_bytes: [u8; 32] = OsRng.gen();
+        // We use the current bitcoin chain tip block hash as the data to sign
+        // as it is benign and can be validated by the signers. This may need
+        // to change in the future if we de-couple DKG from blocks.
+        let to_sign = bitcoin_chain_tip.as_byte_array().as_slice();
         self.coordinate_signing_round(
             bitcoin_chain_tip,
             &mut coordinator_state_machine,
             WstsMessageId::RotateKey(*rotate_key_aggregate_key),
-            &random_bytes,
+            to_sign,
             SignatureType::Schnorr
         ).await
         .inspect_err(|error| {
