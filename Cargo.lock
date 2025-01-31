@@ -4209,9 +4209,9 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p256k1"
-version = "7.2.1"
+version = "7.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8641765697df03a529cd21181fbccd1cad9f66086c24252b91c16bf38cdddd6"
+checksum = "57afd4c19b05645dcc7898653c7e63079a3f16578897685a304f14467d7c2825"
 dependencies = [
  "bindgen",
  "bitvec",
