@@ -232,12 +232,9 @@ where
             "handling message from signer"
         );
 
-        match (&msg.inner.payload, sender_is_coordinator, chain_tip_status) {
-            (
-                message::Payload::StacksTransactionSignRequest(request),
-                true,
-                ChainTipStatus::Canonical,
-            ) => {
+        let is_from_canonical_coordinator = chain_tip_report.is_from_canonical_coordinator();
+        match (&msg.inner.payload, is_from_canonical_coordinator) {
+            (message::Payload::StacksTransactionSignRequest(request), true) => {
                 self.handle_stacks_transaction_sign_request(
                     request,
                     &chain_tip,
@@ -246,12 +243,12 @@ where
                 .await?;
             }
 
-            (message::Payload::WstsMessage(wsts_msg), _, _) => {
+            (message::Payload::WstsMessage(wsts_msg), _) => {
                 self.handle_wsts_message(wsts_msg, msg.signer_public_key, &chain_tip_report)
                     .await?;
             }
 
-            (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
+            (message::Payload::BitcoinPreSignRequest(requests), true) => {
                 let instant = std::time::Instant::now();
                 let pre_validation_status = self
                     .handle_bitcoin_pre_sign_request(requests, &chain_tip)
@@ -280,9 +277,9 @@ where
                 pre_validation_status?;
             }
             // Message types ignored by the transaction signer
-            (message::Payload::StacksTransactionSignature(_), _, _)
-            | (message::Payload::SignerDepositDecision(_), _, _)
-            | (message::Payload::SignerWithdrawalDecision(_), _, _) => (),
+            (message::Payload::StacksTransactionSignature(_), _)
+            | (message::Payload::SignerDepositDecision(_), _)
+            | (message::Payload::SignerWithdrawalDecision(_), _) => (),
 
             // Any other combination should be logged
             _ => {
