@@ -286,9 +286,8 @@ where
         // we need to know the aggregate key for constructing bitcoin
         // transactions. We need to know the current signing set and the
         // current aggregate key.
-        let (maybe_aggregate_key, signer_public_keys) = self
-            .get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
-            .await?;
+        let maybe_aggregate_key = self.context.state().current_aggregate_key();
+        let signer_public_keys = self.context.state().current_signer_public_keys();
 
         // If we are not the coordinator, then we have no business
         // coordinating DKG or constructing bitcoin and stacks
@@ -310,15 +309,7 @@ where
         let should_coordinate_dkg =
             should_coordinate_dkg(&self.context, &bitcoin_chain_tip).await?;
         let aggregate_key = if should_coordinate_dkg {
-            let dkg_result = self.coordinate_dkg(&bitcoin_chain_tip).await?;
-            // TODO: in `run_dkg_from_scratch` test, `dkg_result` differs from
-            // value fetched from the db. Adding a temporary fix for the (probably)
-            // race condition, but we should address this properly.
-            self.get_signer_set_and_aggregate_key(&bitcoin_chain_tip)
-                .await
-                .ok()
-                .and_then(|res| res.0)
-                .unwrap_or(dkg_result)
+            self.coordinate_dkg(&bitcoin_chain_tip).await?
         } else {
             maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip))?
         };
@@ -1093,7 +1084,7 @@ where
         // set of the last DKG (either through the last rotate-keys
         // contract call or from the `dkg_shares` table) so we wind up
         // never changing the signing set.
-        let (_, signer_set) = self.get_signer_set_and_aggregate_key(chain_tip).await?;
+        let signer_set = self.context.state().current_signer_public_keys();
 
         let mut state_machine =
             CoordinatorStateMachine::new(signer_set, self.threshold, self.private_key);
@@ -1157,10 +1148,7 @@ where
         // this assumes that the signer set doesn't change for the duration of this call,
         // but we're already assuming that the bitcoin chain tip doesn't change
         // alternately we could hit the DB every time we get a new message
-        let (_, signer_set) = self
-            .get_signer_set_and_aggregate_key(bitcoin_chain_tip)
-            .await?;
-
+        let signer_set = self.context.state().current_signer_public_keys();
         tokio::pin!(signal_stream);
 
         coordinator_state_machine.save();
@@ -1395,50 +1383,6 @@ where
             sbtc_limits: self.context.state().get_current_limits(),
             max_deposits_per_bitcoin_tx: signer_config.max_deposits_per_bitcoin_tx.get(),
         }))
-    }
-
-    /// Return the signing set that can make sBTC related contract calls
-    /// along with the current aggregate key to use for locking UTXOs on
-    /// bitcoin.
-    ///
-    /// The aggregate key fetched here is the one confirmed on the
-    /// canonical Stacks blockchain as part of a `rotate-keys` contract
-    /// call. It will be the public key that is the result of a DKG run. If
-    /// there are no rotate-keys transactions on the canonical stacks
-    /// blockchain, then we fall back on the last known DKG shares row in
-    /// our database, and return None as the aggregate key if no DKG shares
-    /// can be found, implying that this signer has not participated in
-    /// DKG.
-    #[tracing::instrument(skip_all)]
-    pub async fn get_signer_set_and_aggregate_key(
-        &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
-        let db = self.context.get_storage();
-
-        // We are supposed to submit a rotate-keys transaction after
-        // running DKG, but that transaction may not have been submitted
-        // yet (if we have just run DKG) or it may not have been confirmed
-        // on the canonical Stacks blockchain.
-        //
-        // If the signers have already run DKG, then we know that all
-        // participating signers should have the same view of the latest
-        // aggregate key, so we can fall back on the stored DKG shares for
-        // getting the current aggregate key and associated signing set.
-        match db.get_last_key_rotation(bitcoin_chain_tip).await? {
-            Some(last_key) => {
-                let aggregate_key = last_key.aggregate_key;
-                let signer_set = last_key.signer_set.into_iter().collect();
-                Ok((Some(aggregate_key), signer_set))
-            }
-            None => match db.get_latest_encrypted_dkg_shares().await? {
-                Some(shares) => {
-                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
-                    Ok((Some(shares.aggregate_key), signer_set))
-                }
-                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
-            },
-        }
     }
 
     fn pub_key(&self) -> PublicKey {
