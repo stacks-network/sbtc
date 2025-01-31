@@ -493,11 +493,7 @@ where
         msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
-        let MsgChainTipReport {
-            sender_is_coordinator,
-            chain_tip,
-            ..
-        } = chain_tip_report;
+        let MsgChainTipReport { chain_tip, .. } = chain_tip_report;
         match &msg.inner {
             WstsNetMessage::DkgBegin(_) => {
                 tracing::info!("handling DkgBegin");
@@ -1225,7 +1221,7 @@ mod tests {
 
         // We shouldn't get an error as we stop to process the message early
         signer
-            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .handle_wsts_message(&msg, Faker.fake(), &chain_tip_report)
             .await
             .expect("expected success");
     }
@@ -1308,7 +1304,7 @@ mod tests {
 
         // We shouldn't get an error as we stop to process the message early
         signer
-            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .handle_wsts_message(&msg, Faker.fake(), &chain_tip_report)
             .await
             .expect("expected success");
     }
