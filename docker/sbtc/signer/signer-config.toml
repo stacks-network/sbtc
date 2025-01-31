@@ -11,6 +11,12 @@
 # [blocklist_client]
 # endpoint = "http://127.0.0.1:8080"
 
+# The delay, in milliseconds, for the retry after a blocklist client failure 
+#
+# Required: false
+# Environment: SIGNER_BLOCKLIST_CLIENT__RETRY_DELAY
+# retry_delay = 1000
+
 # !! ==============================================================================
 # !! Emily API Configuration
 # !! ==============================================================================
