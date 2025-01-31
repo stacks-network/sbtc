@@ -158,7 +158,7 @@ impl CreateDepositRequestBody {
             } else {
                 Params::REGTEST
             };
-            Address::from_script(&txin.script_sig, params.clone()).map_err(|e| {
+            Address::from_script(&txin.script_sig, params.clone()).map_err(|_| {
                 Error::HttpRequest(
                     StatusCode::BAD_REQUEST,
                     "invalid transaction input address".to_string(),
