@@ -402,11 +402,7 @@ impl MultisigTx {
 /// given payload.
 ///
 /// This function is very unlikely to fail in practice.
-pub fn get_full_tx_size<T>(
-    payload: &T,
-    wallet: &SignerWallet,
-    num_signatures: u16,
-) -> Result<u64, Error>
+pub fn get_full_tx_size<T>(payload: &T, wallet: &SignerWallet) -> Result<u64, Error>
 where
     T: AsTxPayload,
 {
@@ -437,7 +433,10 @@ where
     )?;
 
     let mut multisig_tx = MultisigTx::new_tx(payload, &wallet, 0);
-    for private_key in private_keys.iter().take(num_signatures as usize) {
+    for private_key in private_keys
+        .iter()
+        .take(wallet.signatures_required as usize)
+    {
         let signature = crate::signature::sign_stacks_tx(multisig_tx.tx(), private_key);
         // This won't fail, since this is a proper signature
         multisig_tx.add_signature(signature)?;
@@ -779,7 +778,7 @@ mod tests {
             + (signatures_required as u64 * SIGNATURE_SIZE)
             + ((num_keys - signatures_required) as u64 * PUBKEY_SIZE);
 
-        let size = get_full_tx_size(&payload, &wallet, signatures_required).unwrap();
+        let size = get_full_tx_size(&payload, &wallet).unwrap();
 
         assert_eq!(size, expected_size);
     }

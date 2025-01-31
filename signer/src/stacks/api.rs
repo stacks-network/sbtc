@@ -194,7 +194,6 @@ pub trait StacksInteract: Send + Sync {
         wallet: &SignerWallet,
         payload: &T,
         priority: FeePriority,
-        num_signatures: u16,
     ) -> impl Future<Output = Result<u64, Error>> + Send
     where
         T: AsTxPayload + Send + Sync;
@@ -1180,12 +1179,11 @@ impl StacksInteract for StacksClient {
         wallet: &SignerWallet,
         payload: &T,
         priority: FeePriority,
-        num_signatures: u16,
     ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
-        let transaction_size = super::wallet::get_full_tx_size(payload, wallet, num_signatures)?;
+        let transaction_size = super::wallet::get_full_tx_size(payload, wallet)?;
 
         // In Stacks core, the minimum fee is 1 mSTX per byte, so take the
         // transaction size and multiply it by the TX_FEE_TX_SIZE_MULTIPLIER
@@ -1368,15 +1366,12 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         wallet: &SignerWallet,
         payload: &T,
         priority: FeePriority,
-        num_signatures: u16,
     ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
     {
-        self.exec(|client, _| {
-            StacksClient::estimate_fees(client, wallet, payload, priority, num_signatures)
-        })
-        .await
+        self.exec(|client, _| StacksClient::estimate_fees(client, wallet, payload, priority))
+            .await
     }
 
     async fn get_pox_info(&self) -> Result<RPCPoxInfoData, Error> {
@@ -1926,17 +1921,11 @@ mod tests {
         let client =
             StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
 
-        let expected_fee =
-            get_full_tx_size(&DUMMY_STX_TRANSFER_PAYLOAD, &wallet, signatures_required).unwrap()
-                * TX_FEE_TX_SIZE_MULTIPLIER;
+        let expected_fee = get_full_tx_size(&DUMMY_STX_TRANSFER_PAYLOAD, &wallet).unwrap()
+            * TX_FEE_TX_SIZE_MULTIPLIER;
 
         let resp = client
-            .estimate_fees(
-                &wallet,
-                &DUMMY_STX_TRANSFER_PAYLOAD,
-                FeePriority::High,
-                signatures_required,
-            )
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
             .await
             .unwrap();
 
@@ -1992,34 +1981,19 @@ mod tests {
         // Now lets check that the interface function returns the requested
         // priority fees.
         let fee = client
-            .estimate_fees(
-                &wallet,
-                &DUMMY_STX_TRANSFER_PAYLOAD,
-                FeePriority::Low,
-                wallet.signatures_required(),
-            )
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Low)
             .await
             .unwrap();
         assert_eq!(fee, 7679);
 
         let fee = client
-            .estimate_fees(
-                &wallet,
-                &DUMMY_STX_TRANSFER_PAYLOAD,
-                FeePriority::Medium,
-                wallet.signatures_required(),
-            )
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::Medium)
             .await
             .unwrap();
         assert_eq!(fee, 7680);
 
         let fee = client
-            .estimate_fees(
-                &wallet,
-                &DUMMY_STX_TRANSFER_PAYLOAD,
-                FeePriority::High,
-                wallet.signatures_required(),
-            )
+            .estimate_fees(&wallet, &DUMMY_STX_TRANSFER_PAYLOAD, FeePriority::High)
             .await
             .unwrap();
         assert_eq!(fee, 25505);

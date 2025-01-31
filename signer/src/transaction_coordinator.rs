@@ -728,12 +728,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(
-                wallet,
-                &contract_call,
-                FeePriority::High,
-                wallet.num_signers(),
-            )
+            .estimate_fees(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -886,12 +881,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(
-                wallet,
-                &contract_call,
-                FeePriority::High,
-                wallet.signatures_required(),
-            )
+            .estimate_fees(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -919,23 +909,6 @@ where
     ) -> Result<StacksTransaction, Error> {
         let txid = req.txid;
 
-        // Determine the number of signatures required for the transaction. If
-        // the transaction is a rotate keys transaction, then we require all
-        // signers to sign the transaction to ensure that all signers have
-        // successfully finished DKG. Otherwise, we only need the number of
-        // signatures required by the wallet.
-        //
-        // Note: this check is naive and assumes that signers are correctly
-        // validating the new aggregate key. A malicious/faulty signer can
-        // still sign the transaction as the signer simply signs the transaction
-        // using their configured private key.
-        let signatures_required = if req.contract_tx.is_rotate_keys() {
-            tracing::info!("rotate keys transaction detected; requiring all signers to sign");
-            wallet.num_signers()
-        } else {
-            wallet.signatures_required()
-        };
-
         // We ask for the signers to sign our transaction (including
         // ourselves, via our tx signer event loop)
         self.send_message(req, chain_tip).await?;
@@ -949,7 +922,7 @@ where
         tokio::pin!(signal_stream);
 
         let future = async {
-            while multi_tx.num_signatures() < signatures_required {
+            while multi_tx.num_signatures() < wallet.signatures_required() {
                 // If signal_stream.next() returns None then one of the
                 // underlying streams has closed. That means either the
                 // network stream, the internal message stream, or the
@@ -1620,12 +1593,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(
-                wallet,
-                &contract_deploy.tx_payload(),
-                FeePriority::High,
-                wallet.signatures_required(),
-            )
+            .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
             .await?;
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();
