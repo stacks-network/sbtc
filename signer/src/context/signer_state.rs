@@ -41,8 +41,8 @@ impl SignerState {
     }
 
     /// Set the public keys of the current signer set, remove the old set.
-    pub fn update_current_signer_set(&self, new_public_keys: BTreeSet<PublicKey>) {
-        self.current_signer_set.replace_signers(new_public_keys);
+    pub fn update_current_signer_set(&self, public_keys: BTreeSet<PublicKey>) {
+        self.current_signer_set.replace_signers(public_keys);
     }
 
     /// Get the current aggregate key for the signers.
@@ -300,7 +300,7 @@ impl SignerSet {
     }
 
     /// Add a signer (public key) to the known active signer set.
-    pub fn replace_signers(&self, new_public_keys: BTreeSet<PublicKey>) {
+    pub fn replace_signers(&self, public_keys: BTreeSet<PublicKey>) {
         let inner_signer_set = self.get_signers();
 
         // Get a guard for the peer IDs.
@@ -324,7 +324,7 @@ impl SignerSet {
         }
 
         // Add the new signer set
-        for public_key in new_public_keys {
+        for public_key in public_keys {
             let signer = Signer::new(public_key);
             inner_peer_ids.insert(signer.peer_id);
             inner_public_keys.insert(signer);
