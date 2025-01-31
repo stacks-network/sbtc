@@ -11,7 +11,7 @@
 use crate::models;
 use serde::{Deserialize, Serialize};
 
-/// DepositUpdate : A singlular Deposit update that contains only the fields pertinent to updating the status of a deposit. This includes the key related data in addition to status history related data.
+/// DepositUpdate : A singular Deposit update that contains only the fields pertinent to updating the status of a deposit. This includes the key related data in addition to status history related data.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DepositUpdate {
     /// Output index on the bitcoin transaction associated with this specific deposit.
@@ -41,7 +41,7 @@ pub struct DepositUpdate {
 }
 
 impl DepositUpdate {
-    /// A singlular Deposit update that contains only the fields pertinent to updating the status of a deposit. This includes the key related data in addition to status history related data.
+    /// A singular Deposit update that contains only the fields pertinent to updating the status of a deposit. This includes the key related data in addition to status history related data.
     pub fn new(
         bitcoin_tx_output_index: u32,
         bitcoin_txid: String,

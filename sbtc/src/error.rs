@@ -42,6 +42,10 @@ pub enum Error {
     /// Could not parse the Stacks principal address.
     #[error("could not parse the stacks principal address: {0}")]
     ParseStacksAddress(#[source] stacks_common::codec::Error),
+    /// The network of the recipient address does not match the expected
+    /// network.
+    #[error("incorrect network of the recipient address: {0}")]
+    RecipientNetworkMismatch(clarity::vm::types::PrincipalData),
     /// This happens when the lock-time is given in time units instead of
     /// block units.
     #[error("lock-time given in time units, but only block units are supported: {0}")]

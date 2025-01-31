@@ -1,0 +1,239 @@
+name: On Push
+on: [push]
+
+permissions: read-all
+
+concurrency:
+  # limit concurrency of entire workflow runs for a specific branch
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22.1.0
+  BUF_VERSION: 1.42.0
+  PYTHON_VERSION: 3.13
+  NEXTEST_VERSION: 0.9.88
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_STRIP: "debuginfo"
+
+jobs:
+
+  # Runs various lints and checks for the project, including Rustfmt, Clippy,
+  # Protobuf lints, and pnpm lints.
+  lint:
+    name: Run Lints
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
+        with:
+          make-default: true
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b #v3.0.0
+        with:
+          version: "25.3"
+      - uses: bufbuild/buf-action@3fb70352251376e958c4c2c92c3818de82a71c2b #v1.0.2
+        with:
+          version: ${{ env.BUF_VERSION }}
+          setup_only: true
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
+        with:
+          components: clippy, rustfmt
+          cache-key: "rust-tests"
+      - name: Install Package Dependencies
+        run: make install
+      - name: Lint (Rustfmt)
+        run: cargo fmt --all -- --check
+      - name: Lint (Clippy)
+        run: cargo clippy -- -D warnings
+      - name: Lint (pnpm)
+        run: pnpm --recursive run lint
+      - name: Lint (Protobuf)
+        run: |
+          buf format --diff --exit-code
+          buf lint
+        working-directory: ./protobufs
+      - name: Typecheck (pnpm)
+        run: pnpm --recursive typecheck
+
+  # Builds the Rust test artifacts for the project, packages them as Nextest
+  # archives and uploads them as artifacts. This job is used as a dependency for
+  # the `unit-tests` and `integration-tests` jobs.
+  build-tests:
+    name: Build Test Artifacts
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 #v1
+        with:
+          make-default: true
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
+        with:
+          cache-key: "rust-tests"
+      - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
+        with:
+          tool: nextest@${{ env.NEXTEST_VERSION }}
+      - name: Build Tests
+        run: make test-build
+      - name: Create Nextest Archives
+        run: make nextest-archive
+      - name: Upload Nextest Archives
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 #v4.6.0
+        with:
+          name: nextest-archives
+          path: ./target/nextest/*.tar.zst
+
+  # Runs the unit tests for the project (Rust + pnpm). It depends on the
+  # `build-tests` job to build the Nextest test archives and upload them as
+  # artifacts. Note that since we are using nextest archives, we do not need
+  # Rust to be installed in this job.
+  unit-tests:
+    name: Run Unit Tests
+    runs-on: ubuntu-24.04
+    needs: build-tests
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+      - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
+        with:
+          tool: nextest@${{ env.NEXTEST_VERSION }}
+      - name: Install Package Dependencies
+        run: make install
+      - name: Download Nextest Archives
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 #v4.1.8
+        with:
+          name: nextest-archives
+          path: .
+      - name: Run Unit Tests (Node)
+        run: pnpm --recursive test
+      - name: Run Unit Tests (Rust)
+        run: cargo-nextest nextest --color always run --no-fail-fast --archive-file nextest-archive.tar.zst
+
+  # Runs the Rust integration tests for the project. It depends on the
+  # `build-tests` job to build the nextest test archives and upload them as
+  # artifacts, however we do not define an explicit dependency with `needs`.
+  # This is because in this job, we also need to get the integration environment
+  # running, which generally takes around a minute. So, we start this job
+  # immediately and once the environment is running we use the `wait-other-jobs`
+  # action to wait until the `build-tests` job is complete and the artifacts are
+  # available. This lets us start the environment while the tests are building,
+  # and then run the tests as soon as the artifacts are available.
+  integration-tests:
+    name: Run Integration Tests
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        partition: [1, 2]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
+        with:
+          cache-key: "rust-tests"
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+      - uses: arduino/setup-protoc@c65c819552d16ad3c9b72d9dfd5ba5237b9c906b #v3.0.0
+        with:
+          version: "25.3"
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b #v5.3.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install boto3
+      - uses: taiki-e/install-action@da41fb311fbbcecf899732e575aaeaa2fe65c934 #v2.47.21
+        with:
+          tool: nextest@${{ env.NEXTEST_VERSION }}
+      - name: Install Package Dependencies
+        run: make install
+      - name: Start Integration Test Environment
+        run: make integration-env-up-ci
+      - name: Wait for Test Artifacts
+        uses: kachick/wait-other-jobs@0584f1460011b97726c04abf4bbec5bfb5cdb654 #v3.6.0
+        timeout-minutes: 5
+        with:
+          retry-method: 'equal_intervals'
+          wait-seconds-before-first-polling: 1
+          min-interval-seconds: 5
+          wait-list: |
+            [
+              {
+                "workflowFile": "on-push.yaml",
+                "jobName": "Build Test Artifacts",
+                "optional": false,
+                "startupGracePeriod": {
+                  "minutes": 5
+                }
+              }
+            ]
+      - name: Download Nextest Archives
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 #v4.1.8
+        with:
+          name: nextest-archives
+          path: .
+      - name: Run Integration Tests (Rust)
+        run: cargo-nextest nextest --color always run --no-fail-fast --test-threads 1 --partition hash:${{ matrix.partition }}/2 --archive-file nextest-archive-serial.tar.zst
+      
+  # Runs checks on the generated code in the project for contracts, the
+  # blocklist client and the emily clients. This job is used to ensure that the
+  # generated code is up-to-date with the latest changes in the project. It does
+  # this by re-generating the code and then checking if the git status is clean
+  # (the generated code should exactly match the committed code). If the git
+  # status is dirty for any of the components, it fails the job and prints an
+  # error message.
+  check-generated-code:
+    name: Run Generated Code Checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4.2.2
+      - uses: actions-rust-lang/setup-rust-toolchain@11df97af8e8102fd60b60a77dfbf58d40cd843b8 #v1.10.1
+        with:
+          cache-key: "rust-tests"
+      - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 #v4.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af #v4.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "pnpm"
+      - name: Install Package Dependencies
+        run: pnpm --recursive install
+      - name: Generate Contract Docs and Types
+        run: make contracts
+      - name: Ensure Git is Clean (Contracts)
+        id: git-status-contracts
+        run: git diff --no-ext-diff --exit-code
+        continue-on-error: true
+      - name: Git is Dirty (Contracts)
+        if: steps.git-status-contracts.outcome == 'failure'
+        run: |
+          echo "::error title=Contracts are dirty:: Make sure you ran 'make contracts' before pushing."
+          exit 1
+      - name: Generate Blocklist Client
+        run: make blocklist-client-codegen
+      - name: Ensure Git is Clean (Blocklist Client)
+        id: git-status-blocklist-client
+        run: git diff --no-ext-diff --exit-code
+        continue-on-error: true
+      - name: Git is Dirty (Blocklist Client)
+        if: steps.git-status-blocklist-client.outcome == 'failure'
+        run: |
+          echo "::error title=Blocklist client is dirty:: Make sure you ran 'make blocklist-client-codegen' before pushing."
+          exit 1
+      - name: Generate Emily Clients
+        run: make emily-client-codegen
+      - name: Ensure Git is Clean (Emily Clients)
+        id: git-status-emily-clients
+        run: git diff --no-ext-diff --exit-code
+        continue-on-error: true
+      - name: Git is Dirty (Emily Clients)
+        if: steps.git-status-emily-clients.outcome == 'failure'
+        run: |
+          echo "::error title=Emily clients are dirty:: Make sure you ran 'make emily-client-codegen' before pushing."
+          exit 1

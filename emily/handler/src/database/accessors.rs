@@ -96,7 +96,7 @@ pub async fn get_deposit_entries_by_recipient(
     .await
 }
 
-/// Hacky exhasutive list of all statuses that we will iterate over in order to
+/// Hacky exhaustive list of all statuses that we will iterate over in order to
 /// get every deposit present.
 const ALL_STATUSES: &[Status] = &[
     Status::Accepted,
@@ -634,7 +634,7 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 /// Note, this function provides the direct output structure for the api call
 /// to get the limits for the full sbtc system, and therefore is breaching the
 /// typical contract for these accessor functions. We do this here because the
-/// data for this sigular entry is spread across the entire table in a way that
+/// data for this singular entry is spread across the entire table in a way that
 /// needs to be first gathered, then filtered. It does not neatly fit into a
 /// return type that is within the table as an entry.
 pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
@@ -804,14 +804,14 @@ async fn delete_entry<T: TableIndexTrait>(
 
 async fn query_with_partition_key<T: TableIndexTrait>(
     context: &EmilyContext,
-    parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
+    partition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<u16>,
 ) -> Result<(Vec<<T as TableIndexTrait>::Entry>, Option<String>), Error> {
     <T as TableIndexTrait>::query_with_partition_key(
         &context.dynamodb_client,
         &context.settings,
-        parition_key,
+        partition_key,
         maybe_next_token,
         maybe_page_size,
     )
@@ -820,7 +820,7 @@ async fn query_with_partition_key<T: TableIndexTrait>(
 
 async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
     context: &EmilyContext,
-    parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
+    partition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
     sort_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
     sort_key_operator: &str,
     maybe_page_size: Option<u16>,
@@ -835,7 +835,7 @@ async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
         (new_items, next_token) = <T as TableIndexTrait>::query_with_partition_and_sort_key(
             &context.dynamodb_client,
             &context.settings,
-            parition_key,
+            partition_key,
             sort_key,
             sort_key_operator,
             next_token,

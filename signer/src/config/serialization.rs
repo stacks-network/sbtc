@@ -46,6 +46,19 @@ where
     ))
 }
 
+/// A deserializer for the std::time::Duration type.
+/// Serde includes a default deserializer, but it expects a struct.
+pub fn duration_milliseconds_deserializer<'de, D>(
+    deserializer: D,
+) -> Result<std::time::Duration, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Ok(std::time::Duration::from_millis(
+        u64::deserialize(deserializer).map_err(serde::de::Error::custom)?,
+    ))
+}
+
 pub fn p2p_multiaddr_deserializer_vec<'de, D>(deserializer: D) -> Result<Vec<Multiaddr>, D::Error>
 where
     D: Deserializer<'de>,
@@ -135,7 +148,7 @@ pub fn try_parse_p2p_multiaddr(s: &str) -> Result<Multiaddr, SignerConfigError> 
     let host_str = url
         .host_str()
         .ok_or(P2PHostRequired)?
-        .trim_matches(&['[', ']']); // `Url` includes brackets for IPv6 addresses
+        .trim_matches(['[', ']']); // `Url` includes brackets for IPv6 addresses
 
     let mut addr = if let Ok(addr) = IpAddr::from_str(host_str) {
         Multiaddr::empty().with(Protocol::from(addr))

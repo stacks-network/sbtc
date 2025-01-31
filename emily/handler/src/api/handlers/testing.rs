@@ -15,7 +15,6 @@ use crate::database::accessors;
     path = "/testing/wipe",
     tag = "testing",
     responses(
-        // TODO(271): Add success body.
         (status = 204, description = "Successfully wiped databases."),
         (status = 400, description = "Invalid request body"),
         (status = 404, description = "Address not found"),

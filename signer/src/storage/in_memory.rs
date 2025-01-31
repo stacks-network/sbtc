@@ -226,7 +226,7 @@ impl Store {
         .filter_map(|block| self.bitcoin_anchor_to_stacks_blocks.get(&block.block_hash))
         .flatten()
         .filter_map(|stacks_block_hash| self.stacks_blocks.get(stacks_block_hash))
-        .max_by_key(|block| (block.block_height, &block.block_hash))
+        .max_by_key(|block| (block.block_height, block.block_hash.to_bytes()))
         .cloned()
     }
 
@@ -919,6 +919,43 @@ impl super::DbRead for SharedStore {
             .bitcoin_sighashes
             .get(sighash)
             .map(|s| (s.will_sign, s.aggregate_key)))
+    }
+
+    async fn get_deposit_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::DepositSigner>, Error> {
+        let store = self.lock().await;
+        let deposit_requests = store.get_deposit_requests(chain_tip, context_window);
+        let voted: HashSet<(model::BitcoinTxId, u32)> = store
+            .signer_to_deposit_request
+            .get(signer_public_key)
+            .cloned()
+            .unwrap_or(Vec::new())
+            .into_iter()
+            .collect();
+
+        let result = deposit_requests
+            .into_iter()
+            .filter_map(|request| {
+                if !voted.contains(&(request.txid, request.output_index)) {
+                    return None;
+                }
+                store
+                    .deposit_request_to_signers
+                    .get(&(request.txid, request.output_index))
+                    .and_then(|signers| {
+                        signers
+                            .iter()
+                            .find(|signer| signer.signer_pub_key == *signer_public_key)
+                            .cloned()
+                    })
+            })
+            .collect();
+
+        Ok(result)
     }
 }
 

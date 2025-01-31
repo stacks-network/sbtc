@@ -14,6 +14,7 @@ use futures::future::join_all;
 use futures::StreamExt;
 use rand::seq::IteratorRandom;
 use rand::seq::SliceRandom;
+use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
 use signer::bitcoin::MockBitcoinInteract;
@@ -34,6 +35,7 @@ use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::storage;
 use signer::storage::model;
+use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::BitcoinTxSigHash;
@@ -70,7 +72,6 @@ use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_be_able_to_query_bitcoin_blocks() {
     let mut store = testing::storage::new_test_database().await;
@@ -82,6 +83,7 @@ async fn should_be_able_to_query_bitcoin_blocks() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, 7);
@@ -140,7 +142,6 @@ impl AsContractCall for InitiateWithdrawalRequest {
 /// Test that the write_stacks_blocks function does what it is supposed to
 /// do, which is store all stacks blocks and store the transactions that we
 /// care about, which, naturally, are sBTC related transactions.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(ContractCallWrapper(InitiateWithdrawalRequest {
     deployer: *testing::wallet::WALLET.0.address(),
 }); "initiate-withdrawal")]
@@ -273,7 +274,6 @@ async fn writing_stacks_blocks_works<T: AsContractCall>(contract: ContractCallWr
 /// Here we test that the DbRead::stacks_block_exists function works, while
 /// implicitly testing the DbWrite::write_stacks_blocks function for the
 /// PgStore type
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn checking_stacks_blocks_exists_works() {
     let store = testing::storage::new_test_database().await;
@@ -314,7 +314,6 @@ async fn checking_stacks_blocks_exists_works() {
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending deposit requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -330,6 +329,7 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
@@ -376,7 +376,6 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 
 /// Test that [`DbRead::get_pending_deposit_requests`] returns deposit
 /// requests that do not have a vote on them yet.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_pending_deposit_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
@@ -429,7 +428,6 @@ async fn get_pending_deposit_requests_only_pending() {
 
 /// Test that [`DbRead::get_pending_withdrawal_requests`] returns
 /// withdrawal requests that do not have a vote on them yet.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_pending_withdrawal_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
@@ -481,7 +479,6 @@ async fn get_pending_withdrawal_requests_only_pending() {
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending withdraw requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -497,6 +494,7 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -558,7 +556,6 @@ async fn should_return_the_same_pending_withdraw_requests_as_in_memory_store() {
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted deposit requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -574,6 +571,7 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
     let threshold = 4;
 
@@ -623,7 +621,6 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
 
 /// This ensures that the postgres store and the in memory stores returns equivalent results
 /// when fetching pending accepted withdraw requests
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -643,6 +640,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
         // the threshold in order for the test to succeed with accepted
         // requests.
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
     let threshold = 4;
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -664,6 +662,19 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
             .expect("failed to get canonical chain tip")
             .expect("no chain tip"),
         chain_tip
+    );
+
+    assert_eq!(
+        in_memory_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_stacks_chain_tip(&chain_tip)
+            .await
+            .expect("failed to get stacks chain tip")
+            .expect("no chain tip"),
     );
 
     let mut pending_accepted_withdraw_requests = in_memory_store
@@ -690,7 +701,6 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
 }
 
 /// This tests that when fetching pending accepted deposits we ingore swept ones.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_not_return_swept_deposits_as_pending_accepted() {
     let db = testing::storage::new_test_database().await;
@@ -766,7 +776,6 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
 ///
 /// TODO(#751): Add a test to ensure that the locktime buffer is interpreted the same way during
 /// DepositRequestReport validation and the get pending accepted deposits database accessor function.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bounds() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -782,6 +791,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
     let threshold = 4;
 
@@ -953,7 +963,6 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
 /// This ensures that the postgres store and the in memory stores returns
 /// equivalent results when fetching pending the last key rotation.
 /// TODO(415): Make this robust to multiple key rotations.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
     let mut pg_store = testing::storage::new_test_database().await;
@@ -967,6 +976,7 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 1,
         num_signers_per_request: 7,
+        consecutive_blocks: false,
     };
     let num_signers = 7;
     let threshold = 4;
@@ -1026,7 +1036,6 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
 /// Here we test that we can store deposit request model objects. We also
 /// test that if we attempt to write another deposit request then we do not
 /// write it and that we do not error.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_deposit_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1070,7 +1079,6 @@ async fn writing_deposit_requests_postgres() {
 /// transaction model objects. We also test that if we attempt to write
 /// duplicate transactions then we do not write it and that we do not
 /// error.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_transactions_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1139,7 +1147,6 @@ async fn writing_transactions_postgres() {
 }
 
 /// Here we test that we can store completed deposit events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_completed_deposit_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1176,7 +1183,6 @@ async fn writing_completed_deposit_requests_postgres() {
 }
 
 /// Here we test that we can store withdrawal-create events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_withdrawal_create_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1224,7 +1230,6 @@ async fn writing_withdrawal_create_requests_postgres() {
 }
 
 /// Here we test that we can store withdrawal-accept events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_withdrawal_accept_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1266,7 +1271,6 @@ async fn writing_withdrawal_accept_requests_postgres() {
 }
 
 /// Here we test that we can store withdrawal-reject events.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn writing_withdrawal_reject_requests_postgres() {
     let store = testing::storage::new_test_database().await;
@@ -1305,7 +1309,6 @@ async fn writing_withdrawal_reject_requests_postgres() {
 /// for the specific aggregate key. This includes "implicit" votes where we
 /// got no response from a particular signer but so we assume that they
 /// vote to reject the transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn fetching_deposit_request_votes() {
     // So we have 7 signers, but we will only receive votes from 4 of them.
@@ -1400,12 +1403,124 @@ async fn fetching_deposit_request_votes() {
     signer::testing::storage::drop_db(store).await;
 }
 
+#[tokio::test]
+async fn fetching_deposit_signer_decisions() {
+    let pg_store = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This is just a sql test, where we use the `TestData` struct to help
+    // populate the database with test data. We set all the other
+    // unnecessary parameters to zero.
+    let num_signers = 3;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 5,
+        num_stacks_blocks_per_bitcoin_block: 0,
+        num_deposit_requests_per_block: 1,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: true,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+
+    let mut test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&pg_store).await;
+
+    let signer_pub_key = signer_set.first().unwrap();
+
+    // We'll register each block with a 2 minute interval
+    // i.e. times -> [-15, -13, -11, -9, -7]
+    let mut new_time = OffsetDateTime::now_utc() - time::Duration::minutes(15);
+    // Update Bitcoin blocks
+    for block in test_data.bitcoin_blocks.iter() {
+        let new_time_str = new_time
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.bitcoin_blocks
+            SET created_at = $1::timestamptz
+            WHERE block_hash = $2"#,
+        )
+        .bind(new_time_str) // Bind as string
+        .bind(block.block_hash)
+        .execute(pg_store.pool())
+        .await
+        .unwrap();
+
+        new_time += time::Duration::minutes(2);
+    }
+
+    // Rotate deposits to test edge case:
+    // Move first deposit to be processed last (latest timestamp)
+    // This tests that a deposit decision can still be returned
+    // even when its associated block falls outside the context window
+    test_data.deposit_requests.rotate_left(1);
+
+    // Now we'll update the deposits decisions. Each decision will be
+    // updated so that it will arrive 1 minute after its corresponding block.
+    // With the exception of the first one, which will be updated to arrive last.
+    // Block times:     [-15, -13, -11,  -9,  -7]
+    // Decision times:       [-12, -10,  -8,  -6,  -4]
+    //                         ^    ^     ^    ^    ^
+    //                         |    |     |    |    first deposit (moved to last)
+    //                         |    |     |    fifth deposit
+    //                         |    |     forth deposit
+    //                         |    third deposit
+    //                         second deposit
+    new_time = OffsetDateTime::now_utc() - time::Duration::minutes(12);
+    for deposit in test_data.deposit_requests.iter() {
+        let new_time_str = new_time
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.deposit_signers
+            SET created_at = $1::timestamptz
+            WHERE txid = $2 AND output_index = $3 AND signer_pub_key = $4"#,
+        )
+        .bind(new_time_str) // Bind as string
+        .bind(deposit.txid)
+        .bind(i32::try_from(deposit.output_index).unwrap())
+        .bind(signer_pub_key)
+        .execute(pg_store.pool())
+        .await
+        .unwrap();
+
+        new_time += time::Duration::minutes(2);
+    }
+
+    let chain_tip = pg_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let deposit_decisions = pg_store
+        .get_deposit_signer_decisions(&chain_tip, 3, signer_pub_key)
+        .await
+        .unwrap();
+
+    assert_eq!(deposit_decisions.len(), 4);
+    // Test data contains 5 deposit requests, we should get decisions for
+    // the last 4.
+    for deposit in test_data.deposit_requests[1..].iter() {
+        assert!(deposit_decisions.iter().any(|decision| {
+            decision.txid == deposit.txid
+                && decision.output_index == deposit.output_index
+                && decision.signer_pub_key == *signer_pub_key
+        }));
+    }
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
 /// For this test we check that when we get the votes for a withdrawal
 /// request for a specific aggregate key, that we get a vote for all public
 /// keys for the specific aggregate key. This includes "implicit" votes
 /// where we got no response from a particular signer but so we assume that
 /// they vote to reject the transaction.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn fetching_withdrawal_request_votes() {
     // So we have 7 signers, but we will only receive votes from 4 of them.
@@ -1514,7 +1629,6 @@ async fn fetching_withdrawal_request_votes() {
 /// For this test we check that the `block_in_canonical_bitcoin_blockchain`
 /// function returns false when the input block is not in the canonical
 /// bitcoin blockchain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     let pg_store = testing::storage::new_test_database().await;
@@ -1530,6 +1644,7 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -1588,7 +1703,6 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
 /// For this test we check that the `get_bitcoin_tx` function returns a
 /// transaction when the transaction exists in the block, and returns None
 /// otherwise.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn we_can_fetch_bitcoin_txs_from_db() {
     let pg_store = testing::storage::new_test_database().await;
@@ -1604,6 +1718,7 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
         num_deposit_requests_per_block: 2,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -1645,7 +1760,6 @@ async fn we_can_fetch_bitcoin_txs_from_db() {
 
 /// Check that `is_signer_script_pub_key` correctly returns whether a
 /// scriptPubKey value exists in the dkg_shares table.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
     let db = testing::storage::new_test_database().await;
@@ -1689,7 +1803,6 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
 /// fetch the last 365 days worth of scriptPubKeys, but if there are no new
 /// encrypted shares in the database in a year, we should still return the
 /// most recent one.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
     let db = testing::storage::new_test_database().await;
@@ -1732,7 +1845,6 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
 
 /// The [`DbRead::get_last_encrypted_dkg_shares`] function is supposed to
 /// fetch the last encrypted DKG shares stored in the database.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     let db = testing::storage::new_test_database().await;
@@ -1780,7 +1892,6 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
 
 /// The [`DbRead::deposit_request_exists`] function is return true we have
 /// a record of the deposit request and false otherwise.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_request_exists_works() {
     let db = testing::storage::new_test_database().await;
@@ -1806,7 +1917,6 @@ async fn deposit_request_exists_works() {
 
 /// Check that is_known_bitcoin_block_hash correctly reports whether a
 /// given block is in the database.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn is_known_bitcoin_block_hash_works() {
     let db = testing::storage::new_test_database().await;
@@ -1820,6 +1930,7 @@ async fn is_known_bitcoin_block_hash_works() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -1853,7 +1964,6 @@ async fn is_known_bitcoin_block_hash_works() {
 /// This tests that deposit requests where there is an associated sweep
 /// transaction will show up in the query results from
 /// [`DbRead::get_swept_deposit_requests`].
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     let db = testing::storage::new_test_database().await;
@@ -1914,7 +2024,6 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 /// This function tests that deposit requests that do not have a confirmed
 /// response (sweep) bitcoin transaction are not returned from
 /// [`DbRead::get_swept_deposit_requests`].
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     let db = testing::storage::new_test_database().await;
@@ -1965,7 +2074,6 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
 /// We use two sweep setups: we add confirming events to both but for one
 /// of them the event is not in the canonical chain, then we push another event
 /// (on the canonical chain) resulting in both being confirmed on the canonical chain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_responses() {
     let db = testing::storage::new_test_database().await;
@@ -2111,7 +2219,6 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
 /// returns Some(true) if the caller is part of the signing set,
 /// Some(false) if it isn't and None if the deposit request record cannot
 /// be found.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
     let db = testing::storage::new_test_database().await;
@@ -2172,7 +2279,6 @@ async fn can_sign_deposit_tx_rejects_not_in_signer_set() {
 /// function return requests where we have already confirmed a
 /// `complete-deposit` contract call transaction on the Stacks blockchain
 /// but that transaction has been reorged while the sweep transaction has not.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_swept_deposit_requests_response_tx_reorged() {
     let db = testing::storage::new_test_database().await;
@@ -2280,6 +2386,7 @@ async fn transaction_coordinator_test_environment(
         num_deposit_requests_per_block: 5,
         num_withdraw_requests_per_block: 5,
         num_signers_per_request: 7,
+        consecutive_blocks: false,
     };
 
     let context = TestContext::builder()
@@ -2296,7 +2403,6 @@ async fn transaction_coordinator_test_environment(
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test(tokio::test)]
 /// Tests that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
 async fn should_ignore_withdrawals() {
@@ -2310,7 +2416,6 @@ async fn should_ignore_withdrawals() {
     testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_simple() {
     let store = testing::storage::new_test_database().await;
@@ -2323,7 +2428,6 @@ async fn should_get_signer_utxo_simple() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_fork() {
     let store = testing::storage::new_test_database().await;
@@ -2336,7 +2440,6 @@ async fn should_get_signer_utxo_fork() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_unspent() {
     let store = testing::storage::new_test_database().await;
@@ -2349,7 +2452,6 @@ async fn should_get_signer_utxo_unspent() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn should_get_signer_utxo_donations() {
     let store = testing::storage::new_test_database().await;
@@ -2378,7 +2480,6 @@ async fn should_get_signer_utxo_donations() {
 /// Check the expected report if the deposit request and transaction are in
 /// the database, but this signers vote is missing and the transaction is
 /// confirmed on the wrong blockchain.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_only_deposit_request() {
     let db = testing::storage::new_test_database().await;
@@ -2392,6 +2493,7 @@ async fn deposit_report_with_only_deposit_request() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2478,7 +2580,6 @@ async fn deposit_report_with_only_deposit_request() {
 /// [`deposit_report_with_only_deposit_request`] is that we write the
 /// signer decision to the database here and check that it gets reproduced
 /// in the report.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_reorged() {
     let db = testing::storage::new_test_database().await;
@@ -2492,6 +2593,7 @@ async fn deposit_report_with_deposit_request_reorged() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2553,7 +2655,6 @@ async fn deposit_report_with_deposit_request_reorged() {
 /// Check that if the deposit has been included in a sweep transaction
 /// then the deposit report states that the deposit has been spent in the
 /// status.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_spent() {
     let db = testing::storage::new_test_database().await;
@@ -2567,6 +2668,7 @@ async fn deposit_report_with_deposit_request_spent() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2651,7 +2753,6 @@ async fn deposit_report_with_deposit_request_spent() {
 /// Check that if the deposit has been included in a sweep transaction
 /// that gets reorged, then the deposit report states that the deposit is
 /// confirmed and not spent.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     let db = testing::storage::new_test_database().await;
@@ -2665,6 +2766,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2782,7 +2884,6 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
 /// Check when we have a deposit that has been confirmed on the canonical
 /// bitcoin and hasn't been spent, that the deposit report has the
 /// appropriate "Confirmed" status.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn deposit_report_with_deposit_request_confirmed() {
     let db = testing::storage::new_test_database().await;
@@ -2796,6 +2897,7 @@ async fn deposit_report_with_deposit_request_confirmed() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
@@ -2858,7 +2960,6 @@ async fn deposit_report_with_deposit_request_confirmed() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     let db = testing::storage::new_test_database().await;
@@ -2880,7 +2981,6 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn can_write_multiple_bitcoin_withdrawal_outputs() {
     let db = testing::storage::new_test_database().await;
@@ -2894,7 +2994,6 @@ async fn can_write_multiple_bitcoin_withdrawal_outputs() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposit_request_returns_none_for_missing_deposit() {
     let db = testing::storage::new_test_database().await;
@@ -2912,7 +3011,6 @@ async fn get_deposit_request_returns_none_for_missing_deposit() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposit_request_returns_returns_inserted_deposit_request() {
     let db = testing::storage::new_test_database().await;
@@ -2980,7 +3078,6 @@ impl<const N: usize> ReorgDescription<N> {
 ///    blockchain in the database, so that it is the best chain.
 /// 5. Get the signers' UTXO and check that the transaction ID matches the
 ///    one expected.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(ReorgDescription {
     sweep_heights: [0, 3, 4, 5],
     reorg_height: 4,
@@ -3037,6 +3134,7 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: num_signers,
+        consecutive_blocks: false,
     };
 
     // Let's generate some dummy data and write it into the database.
@@ -3160,4 +3258,117 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
     };
 
     signer::testing::storage::drop_db(db).await;
+}
+
+fn hex_to_block_hash(hash: &str) -> [u8; 32] {
+    hex::decode(hash).unwrap().as_slice().try_into().unwrap()
+}
+
+#[tokio::test]
+async fn compare_in_memory_bitcoin_chain_tip() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let pg_store = testing::storage::new_test_database().await;
+    let in_memory_store = storage::in_memory::Store::new_shared();
+
+    let root: BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
+    let mut blocks = vec![root.clone()];
+    for block_hash in [
+        "FF00000000000000000000000000000000000000000000000000000000000011",
+        "11000000000000000000000000000000000000000000000000000000000000FF",
+    ] {
+        blocks.push(BitcoinBlock {
+            block_hash: hex_to_block_hash(block_hash).into(),
+            block_height: root.block_height + 1,
+            parent_hash: root.block_hash,
+        })
+    }
+
+    for block in &blocks {
+        pg_store.write_bitcoin_block(block).await.unwrap();
+        in_memory_store.write_bitcoin_block(block).await.unwrap();
+    }
+
+    assert_eq!(
+        in_memory_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+    );
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
+#[tokio::test]
+async fn compare_in_memory_stacks_chain_tip() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let pg_store = testing::storage::new_test_database().await;
+    let in_memory_store = storage::in_memory::Store::new_shared();
+
+    let root_anchor: BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
+
+    pg_store.write_bitcoin_block(&root_anchor).await.unwrap();
+    in_memory_store
+        .write_bitcoin_block(&root_anchor)
+        .await
+        .unwrap();
+
+    let root: StacksBlock = fake::Faker.fake_with_rng(&mut rng);
+
+    let mut blocks = vec![root.clone()];
+    for block_hash in [
+        "FF00000000000000000000000000000000000000000000000000000000000011",
+        "11000000000000000000000000000000000000000000000000000000000000FF",
+    ] {
+        blocks.push(StacksBlock {
+            block_hash: hex_to_block_hash(block_hash).into(),
+            block_height: root.block_height + 1,
+            parent_hash: root.block_hash,
+            bitcoin_anchor: root_anchor.block_hash,
+        })
+    }
+
+    for block in &blocks {
+        pg_store.write_stacks_block(block).await.unwrap();
+        in_memory_store.write_stacks_block(block).await.unwrap();
+    }
+
+    assert_eq!(
+        in_memory_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        root_anchor.block_hash
+    );
+    assert_eq!(
+        pg_store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        root_anchor.block_hash
+    );
+
+    assert_eq!(
+        in_memory_store
+            .get_stacks_chain_tip(&root_anchor.block_hash)
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+        pg_store
+            .get_stacks_chain_tip(&root_anchor.block_hash)
+            .await
+            .expect("failed to get canonical chain tip")
+            .expect("no chain tip"),
+    );
+
+    signer::testing::storage::drop_db(pg_store).await;
 }

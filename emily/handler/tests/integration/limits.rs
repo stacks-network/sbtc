@@ -7,7 +7,6 @@ use testing_emily_client::models::Limits;
 
 use crate::common::clean_setup;
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn empty_default_is_as_expected() {
     let configuration = clean_setup().await;
@@ -27,7 +26,6 @@ async fn empty_default_is_as_expected() {
     assert_eq!(limits, expected_empty_default);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn adding_and_then_updating_single_accout_limit_works() {
     let configuration = clean_setup().await;
@@ -152,7 +150,6 @@ async fn adding_and_then_updating_single_accout_limit_works() {
     assert_eq!(global_limits, expected_limits);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn test_updating_account_limits_via_global_limit_works() {
     let configuration = clean_setup().await;

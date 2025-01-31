@@ -80,6 +80,7 @@ where
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(rng, &signer_keys, &test_model_parameters);
     test_data.write_to(&storage).await;
@@ -558,7 +559,6 @@ async fn deposit_flow() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_deposit_request_works() {
     let max_fee: u64 = 15000;

@@ -94,7 +94,7 @@ use wsts::state_machine::StateMachine as _;
 /// coordinator proceeds by coordinating WSTS signing rounds for each of the
 /// transactions in the package. The signed transactions are then broadcast to
 /// bitcoin.
-
+///
 /// Pending deposit and withdrawal requests are used to construct a Bitcoin
 /// transaction package consisting of a set of inputs and outputs that fulfill
 /// these requests. The fulfillment of pending requests in the transaction
@@ -1840,6 +1840,7 @@ mod tests {
             num_deposit_requests_per_block: 5,
             num_withdraw_requests_per_block: 5,
             num_signers_per_request: 7,
+            consecutive_blocks: false,
         };
 
         let context = TestContext::builder()

@@ -53,7 +53,6 @@ async fn batch_create_withdrawals(
     created
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn create_and_get_withdrawal_happy_path() {
     let configuration = clean_setup().await;
@@ -103,7 +102,6 @@ async fn create_and_get_withdrawal_happy_path() {
     assert_eq!(expected, gotten);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_withdrawals() {
     let configuration = clean_setup().await;
@@ -191,7 +189,6 @@ async fn get_withdrawals() {
     assert_eq!(expected_withdrawal_infos, gotten_withdrawal_infos);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn update_withdrawals() {
     let configuration = clean_setup().await;
@@ -280,7 +277,6 @@ async fn update_withdrawals() {
     assert_eq!(expected_withdrawals, updated_withdrawals);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn update_withdrawals_updates_chainstate() {
     let configuration = clean_setup().await;

@@ -162,7 +162,6 @@ fn make_rotate_key(setup: &TestRotateKeySetup) -> (RotateKeysV1, ReqContext) {
     (rotate_key, req_ctx)
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_happy_path() {
     // Normal: preamble
@@ -175,6 +174,7 @@ async fn rotate_key_validation_happy_path() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;
@@ -212,7 +212,6 @@ async fn rotate_key_validation_happy_path() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_no_dkg() {
     // Normal: preamble
@@ -225,6 +224,7 @@ async fn rotate_key_validation_no_dkg() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;
@@ -250,7 +250,6 @@ async fn rotate_key_validation_no_dkg() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_deployer() {
     // Normal: preamble
@@ -263,6 +262,7 @@ async fn rotate_key_validation_wrong_deployer() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;
@@ -294,7 +294,6 @@ async fn rotate_key_validation_wrong_deployer() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_signing_set() {
     // Normal: preamble
@@ -307,6 +306,7 @@ async fn rotate_key_validation_wrong_signing_set() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;
@@ -344,7 +344,6 @@ async fn rotate_key_validation_wrong_signing_set() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_aggregate_key() {
     // Normal: preamble
@@ -357,6 +356,7 @@ async fn rotate_key_validation_wrong_aggregate_key() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;
@@ -394,7 +394,6 @@ async fn rotate_key_validation_wrong_aggregate_key() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_wrong_signatures_required() {
     // Normal: preamble
@@ -407,6 +406,7 @@ async fn rotate_key_validation_wrong_signatures_required() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;
@@ -449,7 +449,6 @@ async fn rotate_key_validation_wrong_signatures_required() {
     testing::storage::drop_db(db).await;
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn rotate_key_validation_replay() {
     // Normal: preamble
@@ -462,6 +461,7 @@ async fn rotate_key_validation_replay() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;
@@ -500,6 +500,7 @@ async fn rotate_key_validation_replay() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_model_params);
     test_data.write_to(&mut db).await;

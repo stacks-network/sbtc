@@ -3,6 +3,7 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
 use crate::emily_client::EmilyClientError;
 use crate::keys::PublicKey;
@@ -71,6 +72,10 @@ pub enum Error {
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
 
+    /// An error occurred while communicating with the blocklist client
+    #[error("blocklist client error: {0}")]
+    BlocklistClient(#[from] BlocklistClientError),
+
     /// Attempt to fetch a bitcoin blockhash ended in an unexpected error.
     /// This is not triggered if the block is missing.
     #[error("bitcoin-core getblock RPC error for hash {1}: {0}")]
@@ -123,6 +128,12 @@ pub enum Error {
     /// This should never happen
     #[error("observed a tenure identified by a StacksBlockId with with no blocks")]
     EmptyStacksTenure,
+
+    /// This happens when StacksClient::get_tenure_raw returns an array of blocks which starts
+    /// with a block with id {0}, while we expect it to return an array of blocks starting with
+    /// a block with id {1}
+    #[error("get_tenure_raw returned unexpected response: {0}. Expected: {1}")]
+    GetTenureRawMismatch(StacksBlockId, StacksBlockId),
 
     /// Received an error in call to estimatesmartfee RPC call
     #[error("failed to get fee estimate from bitcoin-core for target {1}. {0}")]
@@ -246,6 +257,10 @@ pub enum Error {
     /// to an invalid public key.
     #[error("invalid tweak? seriously? {0}")]
     InvalidPublicKeyTweak(#[source] secp256k1::Error),
+
+    /// This happens when a tweak produced by [`XOnlyPublicKey::add_tweak`] was computed incorrectly.
+    #[error("Tweak was computed incorrectly.")]
+    InvalidPublicKeyTweakCheck,
 
     /// This occurs when converting a byte slice to our internal public key
     /// type, which is a thin wrapper around the secp256k1::SecretKey.
@@ -465,6 +480,15 @@ pub enum Error {
     #[error("invalid configuration")]
     InvalidConfiguration,
 
+    /// We throw this when signer produced txid and coordinator produced txid differ.
+    #[error(
+        "Signer and coordinator txid mismatch. Signer produced txid {0}, but coordinator send txid {1}"
+    )]
+    SignerCoordinatorTxidMismatch(
+        blockstack_lib::burnchains::Txid,
+        blockstack_lib::burnchains::Txid,
+    ),
+
     /// Observer dropped
     #[error("observer dropped")]
     ObserverDropped,
@@ -511,7 +535,7 @@ pub enum Error {
 
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
-    #[error("bitcoin address parse error: {0}; txid {}, vout: {}", .1.txid, .1.vout)]
+    #[error("bitcoin address parse error: {0}; txid {txid}, vout: {vout}", txid = .1.txid, vout = .1.vout)]
     BitcoinAddressFromScript(
         #[source] bitcoin::address::FromScriptError,
         bitcoin::OutPoint,
@@ -574,6 +598,13 @@ pub enum Error {
         /// Maximum sBTC mintable
         max_mintable: u64,
     },
+
+    /// An error which can be used in test code instead of `unimplemented!()` or
+    /// other alternatives, so that an an actual error is returned instead of
+    /// panicking.
+    #[cfg(test)]
+    #[error("Dummy (for testing purposes)")]
+    Dummy,
 }
 
 impl From<std::convert::Infallible> for Error {

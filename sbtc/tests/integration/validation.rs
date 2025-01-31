@@ -42,7 +42,6 @@ use secp256k1::SECP256K1;
 ///
 /// We check that we can validate a transaction in the mempool using the
 /// electrum and bitcoin-core clients
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn tx_validation_from_mempool() {
     let max_fee: u64 = 15000;
@@ -77,7 +76,7 @@ fn tx_validation_from_mempool() {
     regtest::p2tr_sign_transaction(&mut setup.tx, 0, &utxos, &depositor.keypair);
     rpc.send_raw_transaction(&setup.tx).unwrap();
 
-    let parsed = request.validate_tx(&setup.tx).unwrap();
+    let parsed = request.validate_tx(&setup.tx, false).unwrap();
 
     assert_eq!(parsed.outpoint, request.outpoint);
     assert_eq!(parsed.deposit_script, request.deposit_script);
@@ -101,7 +100,6 @@ fn tx_validation_from_mempool() {
 ///
 /// We do not attempt to create an actual P2TR deposit, but an
 /// (unsupported) P2SH deposit.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn minimal_push_check() {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
@@ -213,7 +211,6 @@ fn minimal_push_check() {
 /// 4. Confirm that transaction and try to spend it immediately. The
 ///    transaction that tries to spend the transaction from (3) should be
 ///    rejected.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn op_csv_disabled() {
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
@@ -410,7 +407,6 @@ fn op_csv_disabled() {
 /// 3. Create and submit another transaction reclaiming the funds.
 /// 4. Confirm the transaction and check that the balance is what it is
 ///    supposed to be, less the bitcoin transaction fees.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn reclaiming_rejected_deposits() {
     let max_fee: u64 = 15000;
@@ -492,7 +488,7 @@ fn reclaiming_rejected_deposits() {
         deposit_script: deposit_script.clone(),
     };
 
-    let _ = request.validate_tx(&deposit_tx).unwrap();
+    let _ = request.validate_tx(&deposit_tx, false).unwrap();
 
     // Alright now we know the signers haven't moved our funds, so we
     // reclaim it. We construct a transaction spending the funds back to
