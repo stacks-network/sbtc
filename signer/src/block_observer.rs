@@ -581,12 +581,10 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
-    async fn update_signer_state(&self, chain_tip: BlockHash) -> Result<(), Error> {
-        tracing::info!("loading sbtc limits from Emily");
-        self.update_sbtc_limits().await?;
+    async fn set_signer_set_and_aggregate_key(&self, chain_tip: BlockHash) -> Result<(), Error> {
+        let (aggregate_key, public_keys) =
+            get_signer_set_and_aggregate_key(&self.context, chain_tip).await?;
 
-        tracing::info!("Updating the signer state with the current signer set");
-        let (aggregate_key, public_keys) = self.get_signer_set_and_aggregate_key(chain_tip).await?;
         if let Some(aggregate_key) = aggregate_key {
             self.context
                 .state()
@@ -597,49 +595,59 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
-    /// Return the signing set that can make sBTC related contract calls
-    /// along with the current aggregate key to use for locking UTXOs on
-    /// bitcoin.
-    ///
-    /// The aggregate key fetched here is the one confirmed on the
-    /// canonical Stacks blockchain as part of a `rotate-keys` contract
-    /// call. It will be the public key that is the result of a DKG run. If
-    /// there are no rotate-keys transactions on the canonical stacks
-    /// blockchain, then we fall back on the last known DKG shares row in
-    /// our database, and return None as the aggregate key if no DKG shares
-    /// can be found, implying that this signer has not participated in
-    /// DKG.
-    #[tracing::instrument(skip_all)]
-    pub async fn get_signer_set_and_aggregate_key(
-        &self,
-        chain_tip: BlockHash,
-    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
-        let db = self.context.get_storage();
-        let chain_tip = model::BitcoinBlockHash::from(chain_tip);
+    async fn update_signer_state(&self, chain_tip: BlockHash) -> Result<(), Error> {
+        tracing::info!("loading sbtc limits from Emily");
+        self.update_sbtc_limits().await?;
 
-        // We are supposed to submit a rotate-keys transaction after
-        // running DKG, but that transaction may not have been submitted
-        // yet (if we have just run DKG) or it may not have been confirmed
-        // on the canonical Stacks blockchain.
-        //
-        // If the signers have already run DKG, then we know that all
-        // participating signers should have the same view of the latest
-        // aggregate key, so we can fall back on the stored DKG shares for
-        // getting the current aggregate key and associated signing set.
-        match db.get_last_key_rotation(&chain_tip).await? {
-            Some(last_key) => {
-                let aggregate_key = last_key.aggregate_key;
-                let signer_set = last_key.signer_set.into_iter().collect();
-                Ok((Some(aggregate_key), signer_set))
-            }
-            None => match db.get_latest_encrypted_dkg_shares().await? {
-                Some(shares) => {
-                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
-                    Ok((Some(shares.aggregate_key), signer_set))
-                }
-                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
-            },
+        tracing::info!("Updating the signer state with the current signer set");
+        self.set_signer_set_and_aggregate_key(chain_tip).await
+    }
+}
+
+/// Return the signing set that can make sBTC related contract calls along
+/// with the current aggregate key to use for locking UTXOs on bitcoin.
+///
+/// The aggregate key fetched here is the one confirmed on the canonical
+/// Stacks blockchain as part of a `rotate-keys` contract call. It will be
+/// the public key that is the result of a DKG run. If there are no
+/// rotate-keys transactions on the canonical stacks blockchain, then we
+/// fall back on the last known DKG shares row in our database, and return
+/// None as the aggregate key if no DKG shares can be found, implying that
+/// this signer has not participated in DKG.
+#[tracing::instrument(skip_all)]
+pub async fn get_signer_set_and_aggregate_key<C, B>(
+    context: &C,
+    chain_tip: B,
+) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error>
+where
+    C: Context,
+    B: Into<model::BitcoinBlockHash>,
+{
+    let db = context.get_storage();
+    let chain_tip = chain_tip.into();
+
+    // We are supposed to submit a rotate-keys transaction after running
+    // DKG, but that transaction may not have been submitted yet (if we
+    // have just run DKG) or it may not have been confirmed on the
+    // canonical Stacks blockchain.
+    //
+    // If the signers have already run DKG, then we know that all
+    // participating signers should have the same view of the latest
+    // aggregate key, so we can fall back on the stored DKG shares for
+    // getting the current aggregate key and associated signing set.
+    match db.get_last_key_rotation(&chain_tip).await? {
+        Some(last_key) => {
+            let aggregate_key = last_key.aggregate_key;
+            let signer_set = last_key.signer_set.into_iter().collect();
+            Ok((Some(aggregate_key), signer_set))
         }
+        None => match db.get_latest_encrypted_dkg_shares().await? {
+            Some(shares) => {
+                let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                Ok((Some(shares.aggregate_key), signer_set))
+            }
+            None => Ok((None, context.config().signer.bootstrap_signing_set())),
+        },
     }
 }
 

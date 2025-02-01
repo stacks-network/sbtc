@@ -12,6 +12,7 @@ use signer::bitcoin::utxo::RequestRef;
 use signer::bitcoin::utxo::Requests;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::validation::TxRequestIds;
+use signer::block_observer::get_signer_set_and_aggregate_key;
 use signer::context::Context;
 use signer::context::SbtcLimits;
 use signer::error::Error;
@@ -161,6 +162,14 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
+    let (aggregate_key, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
+        .await
+        .unwrap();
+
+    let state = ctx.state();
+    state.set_current_aggregate_key(aggregate_key.unwrap());
+    state.update_current_signer_set(signer_set_public_keys);
+
     // Initialize the transaction signer event loop
     let network = WanNetwork::default();
 
@@ -217,9 +226,10 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
     let mut handle = network.connect(&ctx).spawn();
 
-    let result = tx_signer
+    tx_signer
         .handle_bitcoin_pre_sign_request(&sbtc_context, &chain_tip)
-        .await;
+        .await
+        .unwrap();
 
     // check if we are receving an Ack from the signer
     tokio::time::timeout(Duration::from_secs(2), async move {
@@ -227,8 +237,6 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     })
     .await
     .unwrap();
-
-    assert!(result.is_ok());
 
     // Check that the intentions to sign the requests sighashes
     // are stored in the database
@@ -396,6 +404,13 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     let (rpc, _) = sbtc::testing::regtest::initialize_blockchain();
     let chain_tip: BitcoinBlockHash = rpc.get_best_block_hash().unwrap().into();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    let (_, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
+        .await
+        .unwrap();
+
+    ctx.state()
+        .update_current_signer_set(signer_set_public_keys);
 
     // Initialize the transaction signer event loop
     let network = WanNetwork::default();

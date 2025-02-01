@@ -471,11 +471,6 @@ async fn process_complete_deposit() {
                 .expect_estimate_fees()
                 .once()
                 .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
-
-            client
-                .expect_get_sbtc_total_supply()
-                .once()
-                .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
         })
         .await;
 
@@ -491,6 +486,18 @@ async fn process_complete_deposit() {
 
     let (aggregate_key, bitcoin_chain_tip) =
         run_dkg(&context, &mut rng, &mut testing_signer_set).await;
+
+    // When the signer binary starts up in main(), it sets the current
+    // signer set public keys in the context state using the values in the
+    // bootstrap_signing_set configuration parameter. Later, the aggregate
+    // key gets set in the block observer. state gets updated in the block
+    // observer when with values from the last rotate keys transaction.
+    // We're not running a block observer in this test, nor are we going
+    // through main, so we manually update the state here.
+    let signer_set_public_keys = testing_signer_set.signer_keys().into_iter().collect();
+    let state = context.state();
+    state.update_current_signer_set(signer_set_public_keys);
+    state.set_current_aggregate_key(aggregate_key);
 
     // Ensure we have a signers UTXO (as a donation, to not mess with the current
     // temporary `get_swept_deposit_requests` implementation)
@@ -830,6 +837,11 @@ async fn run_dkg_from_scratch() {
     let network = WanNetwork::default();
     let mut signers: Vec<_> = Vec::new();
 
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
+
     for (kp, data) in iter {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
         let db = testing::storage::new_test_database().await;
@@ -837,6 +849,15 @@ async fn run_dkg_from_scratch() {
             .with_storage(db.clone())
             .with_mocked_clients()
             .build();
+
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, the
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
 
         ctx.with_stacks_client(|client| {
             client
@@ -1050,6 +1071,10 @@ async fn run_subsequent_dkg() {
 
     // The aggregate key we will use for the first DKG shares entry.
     let aggregate_key_1: PublicKey = Faker.fake_with_rng(&mut rng);
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
 
     for (kp, data) in iter {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
@@ -1063,14 +1088,20 @@ async fn run_subsequent_dkg() {
             })
             .build();
 
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, this
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the necessary state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
+
         // Write one DKG shares entry to the signer's database simulating that
         // DKG has been successfully run once.
         db.write_encrypted_dkg_shares(&EncryptedDkgShares {
             aggregate_key: aggregate_key_1,
-            signer_set_public_keys: signer_key_pairs
-                .iter()
-                .map(|kp| kp.public_key().into())
-                .collect(),
+            signer_set_public_keys: signer_set_public_keys.iter().copied().collect(),
             ..Faker.fake()
         })
         .await
@@ -3068,6 +3099,10 @@ async fn test_conservative_initial_sbtc_limits() {
     // - We load the database with a bitcoin blocks going back to some
     //   genesis block.
     // =========================================================================
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
     let mut signers = Vec::new();
     for kp in signer_key_pairs.iter() {
         let db = testing::storage::new_test_database().await;
@@ -3084,6 +3119,15 @@ async fn test_conservative_initial_sbtc_limits() {
             .with_mocked_stacks_client()
             .with_mocked_emily_client()
             .build();
+
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, this
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the necessary state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
 
         let network = network.connect(&ctx);
 
