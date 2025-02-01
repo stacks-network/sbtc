@@ -742,10 +742,6 @@ criteria = "safe-to-deploy"
 version = "0.8.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.generator]]
-version = "0.8.1"
-criteria = "safe-to-deploy"
-
 [[exemptions.generic-array]]
 version = "0.12.4"
 criteria = "safe-to-deploy"
@@ -1334,10 +1330,6 @@ criteria = "safe-to-run"
 version = "0.12.10"
 criteria = "safe-to-deploy"
 
-[[exemptions.moka]]
-version = "0.12.10"
-criteria = "safe-to-deploy"
-
 [[exemptions.more-asserts]]
 version = "0.3.1"
 criteria = "safe-to-run"
@@ -1619,7 +1611,7 @@ version = "0.5.20+deprecated"
 criteria = "safe-to-deploy"
 
 [[exemptions.proc-macro2]]
-version = "1.0.93"
+version = "1.0.83"
 criteria = "safe-to-deploy"
 
 [[exemptions.prometheus-client]]
@@ -2106,10 +2098,6 @@ criteria = "safe-to-deploy"
 version = "1.2.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.stable_deref_trait]]
-version = "1.2.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.stacker]]
 version = "0.1.15"
 criteria = "safe-to-deploy"
@@ -2167,7 +2155,7 @@ version = "1.0.109"
 criteria = "safe-to-deploy"
 
 [[exemptions.syn]]
-version = "2.0.96"
+version = "2.0.87"
 criteria = "safe-to-deploy"
 
 [[exemptions.sync_wrapper]]
@@ -2302,10 +2290,6 @@ criteria = "safe-to-deploy"
 version = "0.7.6"
 criteria = "safe-to-deploy"
 
-[[exemptions.tinystr]]
-version = "0.7.6"
-criteria = "safe-to-deploy"
-
 [[exemptions.tinyvec]]
 version = "1.6.0"
 criteria = "safe-to-deploy"
@@ -2428,10 +2412,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.uint]]
 version = "0.9.5"
-criteria = "safe-to-deploy"
-
-[[exemptions.uint]]
-version = "0.10.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.uint]]
