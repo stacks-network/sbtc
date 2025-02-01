@@ -8,16 +8,22 @@ use std::{
 };
 
 use libp2p::{
-    multiaddr::Protocol,
-    swarm::{dial_opts::DialOpts, FromSwarm, NetworkBehaviour, THandlerInEvent, ToSwarm},
+    core::{transport::PortUse, Endpoint},
+    swarm::{
+        dial_opts::DialOpts, dummy, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour,
+        THandler, THandlerInEvent, ToSwarm,
+    },
     Multiaddr, PeerId,
 };
+
+use super::MultiaddrExt;
 
 #[derive(Clone, Debug)]
 pub struct Config {
     local_peer_id: PeerId,
     seed_addresses: Vec<Multiaddr>,
     bootstrap_interval: Duration,
+    initial_delay: Duration,
 }
 
 impl Config {
@@ -27,12 +33,13 @@ impl Config {
             local_peer_id,
             seed_addresses: Default::default(),
             bootstrap_interval: Duration::from_secs(60),
+            initial_delay: Duration::from_secs(0),
         }
     }
 
     /// Adds seed addresses to the configuration.
     #[allow(dead_code)]
-    pub fn add_seed_addresses<T>(&mut self, seed_addresses: T) -> &mut Self
+    pub fn add_seed_addresses<T>(mut self, seed_addresses: T) -> Self
     where
         T: IntoIterator<Item = Multiaddr>,
     {
@@ -40,26 +47,81 @@ impl Config {
         self
     }
 
+    /// Sets the bootstrapping interval. This is the interval at which the
+    /// behavior will attempt to bootstrap the network if no connections are
+    /// established. The default is 60 seconds.
     #[allow(dead_code)]
-    pub fn with_bootstrap_interval(&mut self, interval: Duration) -> &mut Self {
+    pub fn with_bootstrap_interval(mut self, interval: Duration) -> Self {
         self.bootstrap_interval = interval;
+        self
+    }
+
+    /// Sets the initial delay before bootstrapping. This is the delay before
+    /// the behavior will attempt to bootstrap the network upon startup. The
+    /// default is 0 seconds.
+    #[allow(dead_code)]
+    pub fn with_initial_delay(mut self, delay: Duration) -> Self {
+        self.initial_delay = delay;
         self
     }
 }
 
+/// Events emitted by the bootstrapping behavior.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum BootstrapEvent {
-    Complete,
-    Needed,
-    Started { addresses: Vec<Multiaddr> },
+    /// An event which is raised when the network has been bootstrapped, i.e.
+    /// when the node has connected to at least one peer.
+    Bootstrapped {
+        connection_count: usize,
+        connected_peers: Vec<PeerId>,
+    },
+    /// An event which is raised when the node has transitioned from
+    /// [`BootstrapEvent::Bootstrapped`] to a state where no peers are connected.
+    NoConnectedPeers,
+    /// An event which is raised when the bootstrapping process has started.
+    Started { seed_addresses: Vec<Multiaddr> },
+    /// An event which is raised when the behavior is dialing a seed peer.
+    DialingSeed {
+        connection_id: ConnectionId,
+        peer_id: Option<PeerId>,
+        addresses: Vec<Multiaddr>,
+    },
+    /// An event which is raised when the behavior has connected to a seed peer.
+    SeedConnected {
+        connection_id: ConnectionId,
+        peer_id: PeerId,
+        address: Multiaddr,
+    },
+}
+
+/// Struct to hold information about a peer.
+#[derive(Debug, Clone)]
+struct PeerInfo {
+    is_seed: bool,
+    connections: HashMap<ConnectionId, Multiaddr>,
+}
+
+impl PeerInfo {
+    fn new(is_seed: bool) -> Self {
+        Self {
+            is_seed,
+            connections: Default::default(),
+        }
+    }
+
+    fn connection_count(&self) -> usize {
+        self.connections.len()
+    }
 }
 
 pub struct Behavior {
     config: Config,
     pending_events: VecDeque<ToSwarm<BootstrapEvent, THandlerInEvent<Behavior>>>,
-    connection_count: usize,
-    connected_seeds: HashMap<PeerId, HashSet<Multiaddr>>,
+    connected_peers: HashMap<PeerId, PeerInfo>,
+    pending_connections: HashSet<ConnectionId>,
     last_attempted_at: Option<Instant>,
+    first_attempt_at: Option<Instant>,
     is_bootstrapped: bool,
 }
 
@@ -68,41 +130,18 @@ impl Behavior {
     pub fn new(config: Config) -> Self {
         Self {
             config,
-            pending_events: VecDeque::new(),
-            connection_count: 0,
-            connected_seeds: HashMap::new(),
+            pending_events: Default::default(),
+            connected_peers: Default::default(),
+            pending_connections: Default::default(),
             last_attempted_at: None,
+            first_attempt_at: None,
             is_bootstrapped: false,
         }
     }
 
-    /// Determines whether or not the provided address is one of the known
-    /// seed addresses.
-    fn is_seed_address(&self, addr: &Multiaddr) -> bool {
-        let mut addr = addr.clone();
-
-        // If the address ends with a p2p protocol, we need to remove it
-        // before checking if it's a seed address.
-        if let Some(Protocol::P2p(_)) = addr.iter().last() {
-            addr.pop();
-        }
-
-        self.config.seed_addresses.iter().any(|seed| seed == &addr)
-    }
-
     /// Gets the local [`PeerId`].
-    fn local_peer_id(&self) -> PeerId {
+    pub fn local_peer_id(&self) -> PeerId {
         self.config.local_peer_id
-    }
-
-    /// Adds seed addresses to the behavior's configuration.
-    pub fn add_seed_addresses<T>(&mut self, seed_addresses: T) -> &mut Self
-    where
-        T: IntoIterator<Item = Multiaddr>,
-    {
-        self.config.add_seed_addresses(seed_addresses);
-        tracing::debug!(addresses = ?self.config.seed_addresses, "seed addresses added");
-        self
     }
 
     /// Gets the next pending event from the behavior, or [`Poll::Pending`] if
@@ -113,6 +152,103 @@ impl Behavior {
             .map(Poll::Ready)
             .unwrap_or(Poll::Pending)
     }
+
+    /// Gets the total number of connected peers.
+    pub fn connected_peer_count(&self) -> usize {
+        self.connected_peers.len()
+    }
+
+    /// Gets the [`PeerId`]s of all connected peers.
+    pub fn connected_peers(&self) -> Vec<(PeerId, Multiaddr)> {
+        self.connected_peers
+            .iter()
+            .flat_map(|(peer_id, info)| {
+                info.connections
+                    .values()
+                    .map(|addr| (*peer_id, addr.clone()))
+            })
+            .collect()
+    }
+
+    /// Gets the total number of connections across all connected peers.
+    pub fn connection_count(&self) -> usize {
+        self.connected_peers
+            .values()
+            .map(|info| info.connection_count())
+            .sum()
+    }
+
+    /// Handles a peer connection event. Returns a reference to the [`PeerInfo`]
+    /// instance for the connected peer.
+    fn peer_connected(
+        &mut self,
+        peer_id: PeerId,
+        connection_id: ConnectionId,
+        address: &Multiaddr,
+    ) -> Option<&mut PeerInfo> {
+        // If we've connected to ourselves then we don't want to count that as a
+        // real peer connection. This might happen if a node has its own address
+        // in the seed list or if listening on multiple interfaces and mDNS is
+        // enabled.
+        if peer_id == self.local_peer_id() {
+            return None;
+        }
+
+        // We want to strip the p2p protocol from the address if it exists
+        // before we use it in comparisons.
+        let addr = address.without_p2p_protocol();
+
+        // Determine if this is one of our seed addresses.
+        let is_seed_addr = self.config.seed_addresses.iter().any(|seed| seed == &addr);
+
+        // Get or create the peer info record for the connected peer.
+        let peer_info = self
+            .connected_peers
+            .entry(peer_id)
+            .or_insert_with(|| PeerInfo::new(is_seed_addr));
+
+        // It's possible that we had an incoming connection from a seed using an
+        // ephemeral port that doesn't match a known endpoint, but now we have
+        // an outgoing connection to the peer's known seed endpoint and now
+        // matched, so we update the info record to reflect that.
+        if is_seed_addr {
+            peer_info.is_seed = true;
+        }
+
+        // Update the peer info record with the connection and address.
+        peer_info.connections.insert(connection_id, addr);
+
+        Some(peer_info)
+    }
+
+    /// Handles a peer disconnection event. Returns [`Some<PeerInfo>`] if the
+    /// peer was removed due to having no remaining connections, otherwise
+    /// returns [`None`].
+    fn peer_disconnected(
+        &mut self,
+        peer_id: PeerId,
+        connection_id: ConnectionId,
+        _address: &Multiaddr,
+    ) -> Option<PeerInfo> {
+        // Get the peer info record for the disconnected peer and remove the
+        // connection and address. If the peer wasn't found, we return `None`
+        // immediately, otherwise we check if the peer has no remaining
+        // connections.
+        let remove_peer = {
+            let peer_info = self.connected_peers.get_mut(&peer_id)?;
+            peer_info.connections.remove(&connection_id);
+            peer_info.connection_count() == 0
+        };
+
+        // If the peer has no remaining connections, we remove the peer from the
+        // connected peers map and return the peer info record.
+        if remove_peer {
+            return self.connected_peers.remove(&peer_id);
+        }
+
+        // Otherwise we return `None` as the peer still has connections.
+        None
+    }
 }
 
 impl NetworkBehaviour for Behavior {
@@ -121,45 +257,59 @@ impl NetworkBehaviour for Behavior {
 
     fn handle_established_inbound_connection(
         &mut self,
-        _connection_id: libp2p::swarm::ConnectionId,
-        _peer: PeerId,
+        connection_id: ConnectionId,
+        peer_id: PeerId,
         _local_addr: &Multiaddr,
-        _remote_addr: &Multiaddr,
-    ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(libp2p::swarm::dummy::ConnectionHandler)
+        remote_addr: &Multiaddr,
+    ) -> Result<THandler<Self>, ConnectionDenied> {
+        self.peer_connected(peer_id, connection_id, remote_addr);
+
+        Ok(dummy::ConnectionHandler)
     }
 
     fn handle_established_outbound_connection(
         &mut self,
-        _connection_id: libp2p::swarm::ConnectionId,
-        _peer: PeerId,
-        _addr: &Multiaddr,
-        _role_override: libp2p::core::Endpoint,
-        _port_use: libp2p::core::transport::PortUse,
-    ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
-        Ok(libp2p::swarm::dummy::ConnectionHandler)
+        connection_id: ConnectionId,
+        peer_id: PeerId,
+        address: &Multiaddr,
+        _role_override: Endpoint,
+        _port_use: PortUse,
+    ) -> Result<THandler<Self>, ConnectionDenied> {
+        self.peer_connected(peer_id, connection_id, address);
+
+        if self.pending_connections.remove(&connection_id) {
+            tracing::debug!(%connection_id, %peer_id, %address, "successfully dialed seed peer");
+            self.pending_events
+                .push_back(ToSwarm::GenerateEvent(BootstrapEvent::SeedConnected {
+                    connection_id,
+                    peer_id,
+                    address: address.clone(),
+                }));
+        }
+
+        Ok(dummy::ConnectionHandler)
     }
 
     fn handle_pending_outbound_connection(
         &mut self,
-        _connection_id: libp2p::swarm::ConnectionId,
-        _maybe_peer: Option<PeerId>,
+        connection_id: ConnectionId,
+        maybe_peer: Option<PeerId>,
         addresses: &[Multiaddr],
-        effective_role: libp2p::core::Endpoint,
-    ) -> Result<Vec<Multiaddr>, libp2p::swarm::ConnectionDenied> {
-        tracing::debug!(?addresses, "handling pending outbound connection");
+        _effective_role: Endpoint,
+    ) -> Result<Vec<Multiaddr>, ConnectionDenied> {
         let addresses = addresses.to_vec();
 
-        // We're only interested in our outbound dialing activity. This _can_ be
-        // a listener if the swarm is attempting a hole-punch.
-        if !effective_role.is_dialer() {
-            return Ok(addresses);
-        }
-
-        for addr in &addresses {
-            if self.is_seed_address(addr) {
-                tracing::debug!(%addr, "attempting to dial seed address");
-            }
+        // If the connection ID is in the pending connections set, then we know
+        // that this is a seed peer dial that we've initiated, so we publish
+        // the `DialingSeed` event.
+        if self.pending_connections.contains(&connection_id) {
+            tracing::debug!(%connection_id, addresses = ?addresses, peer_id = ?maybe_peer, "attempting to dial seed peer");
+            self.pending_events
+                .push_back(ToSwarm::GenerateEvent(BootstrapEvent::DialingSeed {
+                    connection_id,
+                    addresses: addresses.clone(),
+                    peer_id: None,
+                }));
         }
 
         // Return the addresses as-is.
@@ -168,76 +318,20 @@ impl NetworkBehaviour for Behavior {
 
     fn on_swarm_event(&mut self, event: libp2p::swarm::FromSwarm) {
         match event {
-            FromSwarm::ConnectionEstablished(e) => {
-                // We're only interested in our outbound activity.
-                if !e.endpoint.is_dialer() {
-                    return;
-                }
-
-                // If we've connected to ourselves, we don't need to do anything.
-                // This might happen if a node has its own address in the seed list.
-                if e.peer_id == self.local_peer_id() {
-                    return;
-                }
-
-                // Increment our total connection count. We're not interested
-                // in counting connections to ourselves.
-                self.connection_count = self.connection_count.saturating_add(1);
-
-                // Get the remote address, and remove the p2p protocol if it exists.
-                let mut addr = e.endpoint.get_remote_address().clone();
-                if matches!(addr.iter().last(), Some(Protocol::P2p(_))) {
-                    addr.pop();
-                }
-
-                // Check if the address is a seed address. If it's not, then
-                // we don't need to do anything so we return early.
-                if self.is_seed_address(&addr) {
-                    tracing::debug!(peer_id = %e.peer_id, %addr, "connected to seed");
-                } else {
-                    return;
-                }
-
-                // Update our connected seeds map.
-                let entry_added = self
-                    .connected_seeds
-                    .entry(e.peer_id)
-                    .or_default()
-                    .insert(addr.clone());
-
-                if entry_added {
-                    tracing::trace!(peer_id = %e.peer_id, %addr, "added connected seed");
-                }
-            }
             FromSwarm::ConnectionClosed(e) => {
-                // If this was a connection to ourselves then we don't need to do
-                // anything.
-                if e.peer_id == self.local_peer_id() {
-                    return;
-                }
-
-                // Decrement our total connection count.
-                self.connection_count = self.connection_count.saturating_sub(1);
-
-                // Get the remote address, and remove the p2p protocol if it exists.
-                let mut addr = e.endpoint.get_remote_address().clone();
-                if matches!(addr.iter().last(), Some(Protocol::P2p(_))) {
-                    addr.pop();
-                }
-
-                // Check if the address is a seed address. If it's not, then
-                // we don't need to do anything so we return early.
-                if self.is_seed_address(&addr) {
-                    tracing::debug!(peer_id = %e.peer_id, %addr, "disconnected from seed");
-                } else {
-                    return;
-                }
-
-                // Update our connected seeds map.
-                if let Some(set) = self.connected_seeds.get_mut(&e.peer_id) {
-                    if set.remove(&addr) {
-                        tracing::trace!(peer_id = %e.peer_id, %addr, "removed connected seed");
-                    }
+                let (peer_id, connection_id, address) =
+                    (e.peer_id, e.connection_id, e.endpoint.get_remote_address());
+                self.peer_disconnected(peer_id, connection_id, address);
+            }
+            FromSwarm::DialFailure(e) => {
+                let (connection_id, error, peer_id) = (e.connection_id, e.error, e.peer_id);
+                if self.pending_connections.remove(&connection_id) {
+                    tracing::debug!(
+                        %connection_id,
+                        ?peer_id,
+                        %error,
+                        "failed to dial seed peer"
+                    );
                 }
             }
             _ => {}
@@ -266,15 +360,21 @@ impl NetworkBehaviour for Behavior {
         // If we have any connections, we consider ourselves bootstrapped.
         // Determine if there was a state change or not and return the correct
         // poll result.
-        if self.connection_count >= 1 {
+        if self.connected_peer_count() >= 1 {
             return match self.is_bootstrapped {
-                true => Poll::Pending,
+                true => self.next_pending_event(),
                 false => {
-                    // We've just bootstrapped, so we generate an event to notify the
-                    // swarm.
-                    tracing::debug!(connection_count = %self.connection_count, "bootstrapping complete");
+                    // We've just bootstrapped, so we flag our state as
+                    // bootstrapped and emit an event to the swarm.
                     self.is_bootstrapped = true;
-                    Poll::Ready(ToSwarm::GenerateEvent(BootstrapEvent::Complete))
+                    let connection_count = self.connection_count();
+                    let connected_peers = self.connected_peers().iter().map(|p| p.0).collect();
+
+                    tracing::info!(%connection_count, ?connected_peers, "network bootstrapping complete");
+                    Poll::Ready(ToSwarm::GenerateEvent(BootstrapEvent::Bootstrapped {
+                        connection_count,
+                        connected_peers,
+                    }))
                 }
             };
         }
@@ -282,27 +382,44 @@ impl NetworkBehaviour for Behavior {
         // If we're here then we're not connected to any peers. If our current
         // state is bootstrapped, we need to re-bootstrap.
         if self.is_bootstrapped {
-            tracing::debug!(
+            tracing::info!(
                 "state is bootstrapped but not connected to any peers; re-bootstrapping is needed"
             );
             self.is_bootstrapped = false;
             self.pending_events
-                .push_back(ToSwarm::GenerateEvent(BootstrapEvent::Needed));
+                .push_back(ToSwarm::GenerateEvent(BootstrapEvent::NoConnectedPeers));
         }
 
-        // If we've attempted to bootstrap recently, we wait until the interval
-        // has passed.
+        // If we've attempted to bootstrap recently, we wait until the interval has passed.
         if let Some(last_bootstrap) = self.last_attempted_at {
             if last_bootstrap.elapsed() < self.config.bootstrap_interval {
                 return self.next_pending_event();
             }
         }
 
+        // If this is the first attempt, we wait for the initial delay.
+        if let Some(first_attempt) = self.first_attempt_at {
+            // If the initial delay has not elapsed, we continue waiting and
+            // return the next pending event.
+            if first_attempt.elapsed() < self.config.initial_delay {
+                return self.next_pending_event();
+            }
+        } else if self.config.initial_delay > Duration::from_secs(0) {
+            // If we don't have a first attempt time and an initial delay is
+            // configured, we set it and return the next pending event.
+            tracing::info!(
+                initial_delay = %self.config.initial_delay.as_secs(),
+                "initial bootstrapping delay is configured; waiting before attempting to bootstrap"
+            );
+            self.first_attempt_at = Some(Instant::now());
+            return self.next_pending_event();
+        }
+
         // Queue the bootstrap started event.
-        tracing::debug!(addresses = ?self.config.seed_addresses, "initiating network bootstrapping from seed addresses");
+        tracing::info!(addresses = ?self.config.seed_addresses, "initiating network bootstrapping from seed addresses");
         self.pending_events
             .push_back(ToSwarm::GenerateEvent(BootstrapEvent::Started {
-                addresses: self.config.seed_addresses.clone(),
+                seed_addresses: self.config.seed_addresses.clone(),
             }));
 
         // Iterate over the seed addresses and queue dial events for each. Note
@@ -314,6 +431,7 @@ impl NetworkBehaviour for Behavior {
             // Construct the dialing options and `Dial` event which will be
             // sent to the swarm.
             let dial_opts = DialOpts::unknown_peer_id().address(addr.clone()).build();
+            self.pending_connections.insert(dial_opts.connection_id());
             let event = ToSwarm::Dial { opts: dial_opts };
 
             // Queue the dial event.
