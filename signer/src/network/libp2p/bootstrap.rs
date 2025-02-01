@@ -277,7 +277,9 @@ impl NetworkBehaviour for Behavior {
         // has passed.
         if let Some(last_bootstrap) = self.last_attempted_at {
             if last_bootstrap.elapsed() < self.config.bootstrap_interval {
-                return Poll::Pending;
+                return self.pending_events.pop_front()
+                    .map(Poll::Ready)
+                    .unwrap_or(Poll::Pending)
             }
         }
 
@@ -306,6 +308,8 @@ impl NetworkBehaviour for Behavior {
         // Update the last bootstrap attempt time.
         self.last_attempted_at = Some(Instant::now());
 
-        Poll::Pending
+        self.pending_events.pop_front()
+            .map(Poll::Ready)
+            .unwrap_or(Poll::Pending)
     }
 }
