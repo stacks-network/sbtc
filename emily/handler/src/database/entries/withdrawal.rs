@@ -398,7 +398,7 @@ impl From<WithdrawalInfoEntry> for WithdrawalInfo {
 /// Validated version of the update withdrawal request.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedUpdateWithdrawalRequest {
-    /// Validated withdrawal update requests where each update request is in chronoloical order
+    /// Validated withdrawal update requests where each update request is in chronological order
     /// of when the update should have occurred, but where the first value of the tuple is the
     /// index of the update in the original request.
     ///
@@ -449,7 +449,7 @@ impl ValidatedUpdateWithdrawalRequest {
             .into_iter()
             .collect::<Vec<_>>();
 
-        // Sort the chainsates in the order that they should come in.
+        // Sort the chainstates in the order that they should come in.
         inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
 
         // Return.
