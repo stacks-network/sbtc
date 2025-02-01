@@ -185,8 +185,8 @@ impl NetworkBehaviour for Behavior {
                 // Update our connected seeds map.
                 match self.connected_seeds.entry(e.peer_id) {
                     Entry::Occupied(mut entry) => {
-                        if entry.get_mut().insert(addr) {
-                            tracing::trace!("added connected seed: {:?}", e.peer_id);
+                        if entry.get_mut().insert(addr.clone()) {
+                            tracing::trace!(peer_id = %e.peer_id, %addr, "added connected seed");
                         }
                     }
                     Entry::Vacant(entry) => {
@@ -223,7 +223,7 @@ impl NetworkBehaviour for Behavior {
                 // Update our connected seeds map.
                 if let Some(set) = self.connected_seeds.get_mut(&e.peer_id) {
                     if set.remove(&addr) {
-                        tracing::trace!("removed connected seed: {:?}", e.peer_id);
+                        tracing::trace!(peer_id = %e.peer_id, %addr, "removed connected seed");
                     }
                 }
             }
