@@ -21,6 +21,7 @@ pub struct Config {
 }
 
 impl Config {
+    /// Creates a new [`Config`] instance with the provided local peer ID.
     pub fn new(local_peer_id: PeerId) -> Self {
         Self {
             local_peer_id,
@@ -29,6 +30,7 @@ impl Config {
         }
     }
 
+    /// Adds seed addresses to the configuration.
     #[allow(dead_code)]
     pub fn add_seed_addresses<T>(&mut self, seed_addresses: T) -> &mut Self
     where
@@ -62,6 +64,7 @@ pub struct Behavior {
 }
 
 impl Behavior {
+    /// Creates a new [`Behavior`] instance with the provided configuration.
     pub fn new(config: Config) -> Self {
         Self {
             config,
@@ -73,6 +76,8 @@ impl Behavior {
         }
     }
 
+    /// Determines whether or not the provided address is one of the known
+    /// seed addresses.
     fn is_seed_address(&self, addr: &Multiaddr) -> bool {
         let mut addr = addr.clone();
 
@@ -85,17 +90,28 @@ impl Behavior {
         self.config.seed_addresses.iter().any(|seed| seed == &addr)
     }
 
+    /// Gets the local [`PeerId`].
     fn local_peer_id(&self) -> PeerId {
         self.config.local_peer_id
     }
 
+    /// Adds seed addresses to the behavior's configuration.
     pub fn add_seed_addresses<T>(&mut self, seed_addresses: T) -> &mut Self
     where
         T: IntoIterator<Item = Multiaddr>,
     {
         self.config.add_seed_addresses(seed_addresses);
-        tracing::debug!(addresses = ?self.config.seed_addresses, "added seed addresses");
+        tracing::debug!(addresses = ?self.config.seed_addresses, "seed addresses added");
         self
+    }
+
+    /// Gets the next pending event from the behavior, or [`Poll::Pending`] if
+    /// there are none
+    fn next_pending_event(&mut self) -> Poll<ToSwarm<BootstrapEvent, THandlerInEvent<Self>>> {
+        self.pending_events
+            .pop_front()
+            .map(Poll::Ready)
+            .unwrap_or(Poll::Pending)
     }
 }
 
@@ -183,11 +199,12 @@ impl NetworkBehaviour for Behavior {
                 }
 
                 // Update our connected seeds map.
-                let entry_added = self.connected_seeds
+                let entry_added = self
+                    .connected_seeds
                     .entry(e.peer_id)
                     .or_default()
                     .insert(addr.clone());
-                
+
                 if entry_added {
                     tracing::trace!(peer_id = %e.peer_id, %addr, "added connected seed");
                 }
@@ -277,9 +294,7 @@ impl NetworkBehaviour for Behavior {
         // has passed.
         if let Some(last_bootstrap) = self.last_attempted_at {
             if last_bootstrap.elapsed() < self.config.bootstrap_interval {
-                return self.pending_events.pop_front()
-                    .map(Poll::Ready)
-                    .unwrap_or(Poll::Pending)
+                return self.next_pending_event();
             }
         }
 
@@ -308,8 +323,6 @@ impl NetworkBehaviour for Behavior {
         // Update the last bootstrap attempt time.
         self.last_attempted_at = Some(Instant::now());
 
-        self.pending_events.pop_front()
-            .map(Poll::Ready)
-            .unwrap_or(Poll::Pending)
+        self.next_pending_event()
     }
 }
