@@ -13,6 +13,7 @@ use libp2p::{
     Multiaddr, PeerId,
 };
 
+#[derive(Clone, Debug)]
 pub struct Config {
     local_peer_id: PeerId,
     seed_addresses: Vec<Multiaddr>,
@@ -29,7 +30,7 @@ impl Config {
     }
 
     #[allow(dead_code)]
-    pub fn add_seed_addresses<T>(mut self, seed_addresses: T) -> Self
+    pub fn add_seed_addresses<T>(&mut self, seed_addresses: T) -> &mut Self
     where
         T: IntoIterator<Item = Multiaddr>,
     {
@@ -38,7 +39,7 @@ impl Config {
     }
 
     #[allow(dead_code)]
-    pub fn with_bootstrap_interval(mut self, interval: Duration) -> Self {
+    pub fn with_bootstrap_interval(&mut self, interval: Duration) -> &mut Self {
         self.bootstrap_interval = interval;
         self
     }
@@ -92,7 +93,7 @@ impl Behavior {
     where
         T: IntoIterator<Item = Multiaddr>,
     {
-        self.config.seed_addresses.extend(seed_addresses);
+        self.config.add_seed_addresses(seed_addresses);
         tracing::debug!(addresses = ?self.config.seed_addresses, "added seed addresses");
         self
     }
