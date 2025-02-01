@@ -2,7 +2,7 @@
 //! the known seed addresses.
 
 use std::{
-    collections::{hash_map::Entry, HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     task::Poll,
     time::{Duration, Instant},
 };
@@ -183,17 +183,13 @@ impl NetworkBehaviour for Behavior {
                 }
 
                 // Update our connected seeds map.
-                match self.connected_seeds.entry(e.peer_id) {
-                    Entry::Occupied(mut entry) => {
-                        if entry.get_mut().insert(addr.clone()) {
-                            tracing::trace!(peer_id = %e.peer_id, %addr, "added connected seed");
-                        }
-                    }
-                    Entry::Vacant(entry) => {
-                        let mut set = HashSet::new();
-                        set.insert(addr);
-                        entry.insert(set);
-                    }
+                let entry_added = self.connected_seeds
+                    .entry(e.peer_id)
+                    .or_default()
+                    .insert(addr.clone());
+                
+                if entry_added {
+                    tracing::trace!(peer_id = %e.peer_id, %addr, "added connected seed");
                 }
             }
             FromSwarm::ConnectionClosed(e) => {
