@@ -169,7 +169,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Bootstrap(event)) => match event {
                         BootstrapEvent::Complete => {
-                            tracing::info!("network bootstraping complete");
+                            tracing::info!("network bootstrapping complete");
                         }
                         BootstrapEvent::Started { addresses } => {
                             tracing::info!(?addresses, "network bootstrapping started");
