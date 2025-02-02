@@ -16,6 +16,15 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An IO error was returned from the [`bitcoin`] library. This is usually an
+    /// error that occurred during encoding/decoding of bitcoin types.
+    #[error("an io error was returned from the bitcoin library: {0}")]
+    BitcoinIo(#[source] bitcoin::io::Error),
+
+    /// An error was returned from the bitcoinconsensus library.
+    #[error("error returned from libbitcoinconsensus: {0}")]
+    BitcoinConsensus(bitcoinconsensus::Error),
+
     /// We have received a request/response which has been deemed invalid in
     /// the current context.
     #[error("invalid signing request")]
@@ -638,5 +647,10 @@ impl Error {
     /// Convert a coordinator error to an `error::Error`
     pub fn wsts_coordinator(err: wsts::state_machine::coordinator::Error) -> Self {
         Error::WstsCoordinator(Box::new(err))
+    }
+
+    /// Convert a bitcoin consensus error to an `error::Error`
+    pub fn bitcoin_consensus(err: bitcoinconsensus::Error) -> Self {
+        Error::BitcoinConsensus(err)
     }
 }

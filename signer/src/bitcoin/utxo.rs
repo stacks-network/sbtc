@@ -5,6 +5,7 @@ use std::ops::Deref as _;
 use std::sync::LazyLock;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::consensus::Encodable;
 use bitcoin::hashes::sha256d;
 use bitcoin::hashes::Hash as _;
 use bitcoin::sighash::Prevouts;
@@ -39,7 +40,6 @@ use crate::bitcoin::packaging::Weighted;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::context::SbtcLimits;
 use crate::error::Error;
-use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::BitcoinTx;
@@ -717,10 +717,19 @@ impl SignerUtxo {
 /// A struct for constructing a mock transaction that can be signed. This is
 /// used as part of the verification process after a new DKG round has been
 /// completed.
+/// 
+/// The Bitcoin transaction has the following layout:
+/// 1. The first input is spending the signers' UTXO.
+/// 2. There is only one output which is an OP_RETURN with the bytes [0x01,
+///    0x02, 0x03] as the data and amount equal to the UTXO's value (i.e. the
+///    transaction has a zero-fee).
 pub struct UnsignedMockTransaction {
+    /// The amount of the transaction.
+    amount: u64,
+    /// The Bitcoin transaction that needs to be signed.
     tx: Transaction,
-    input: SignerUtxo,
-    output: SignerUtxo,
+    /// The signers' UTXO used as an input to this transaction.
+    utxo: SignerUtxo,
 }
 
 /// Given a set of requests, create a BTC transaction that can be signed.
@@ -818,70 +827,85 @@ impl UnsignedMockTransaction {
     ///
     /// This will use the provided `aggregate_key` and `amount` to
     /// construct a [`Transaction`] with a single input and output.
-    pub fn new(aggregate_key: PublicKeyXOnly, amount: u64) -> Self {
+    pub fn new(signer_public_key: XOnlyPublicKey, amount: u64) -> Self {
         let input_txid_hash =
-            sha256d::Hash::hash(format!("SBTC_MOCKED_INPUT_TXID_{}", amount).as_bytes());
-        let output_txid_hash =
-            sha256d::Hash::hash(format!("SBTC_MOCKED_OUTPUT_TXID_{}", amount).as_bytes());
+            sha256d::Hash::hash(format!("SBTC_MOCKED_UTXO_TXID_{}", amount).as_bytes());
 
-        let input = SignerUtxo {
+        let utxo = SignerUtxo {
             outpoint: OutPoint::new(input_txid_hash.into(), 0),
             amount,
-            public_key: aggregate_key.into(),
-        };
-        let output = SignerUtxo {
-            outpoint: OutPoint::new(output_txid_hash.into(), 0),
-            amount,
-            public_key: aggregate_key.into(),
+            public_key: signer_public_key,
         };
 
         let tx = Transaction {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: input.outpoint,
-                sequence: Sequence::ZERO,
-                witness: Witness::new(),
-                script_sig: ScriptBuf::new(),
+            input: vec![utxo.as_tx_input(&DUMMY_SIGNATURE)],
+            output: vec![TxOut {
+                value: Amount::from_sat(amount),
+                script_pubkey: ScriptBuf::new_op_return([0x01, 0x02, 0x03]),
             }],
-            output: vec![output.as_tx_output()],
         };
 
-        Self { tx, input, output }
+        Self { amount, tx, utxo }
     }
 
     /// Gets the sighash for the signers' input UTXO which needs to be signed
     /// before the transaction can be broadcast.
     pub fn compute_sighash(&self) -> Result<TapSighash, Error> {
-        let prevouts = [self.input.as_tx_output()];
-        let prevouts = Prevouts::All(&prevouts);
-
-        let sighash_type = TapSighashType::All;
+        let prevouts = [self.utxo.as_tx_output()];
         let mut sighasher = SighashCache::new(&self.tx);
 
-        // The signers' UTXO is always the first input in the transaction.
-        // Moreover, the signers can only spend this UTXO using the taproot
-        // key-spend path of UTXO.
         sighasher
-            .taproot_key_spend_signature_hash(0, &prevouts, sighash_type)
+            .taproot_key_spend_signature_hash(0, &Prevouts::All(&prevouts), TapSighashType::All)
             .map_err(Into::into)
     }
 
-    /// Get a reference to the inner [`Transaction`].
-    pub fn get_tx(&self) -> &Transaction {
-        &self.tx
-    }
+    /// Tests if the provided taproot [`Signature`] is valid for spending the
+    /// signers' UTXO. This function will return  [`Error::BitcoinConsensus`]
+    /// error if the signature fails verification, passing the underlying error
+    /// from [`bitcoinconsensus`].
+    pub fn verify_signature(&mut self, signature: &Signature) -> Result<(), Error> {
+        // Create a copy of the transaction so that we don't modify the
+        // transaction stored in the struct.
+        let mut tx = self.tx.clone();
 
-    /// Get a mutable reference to the inner [`Transaction`].
-    pub fn get_tx_mut(&mut self) -> &mut Transaction {
-        &mut self.tx
-    }
+        // Set the witness data on the input from the provided signature.
+        tx.input[0].witness = Witness::p2tr_key_spend(signature);
 
-    /// Set the witness data for the signers' intput UTXO to a P2TR key spend
-    /// signature and returns a copy of the finalized bitcoin [`Transaction`].
-    pub fn sign(&mut self, signature: &Signature) -> Transaction {
-        self.tx.input[0].witness = Witness::p2tr_key_spend(signature);
-        self.tx.clone()
+        // Encode the transaction to bytes (needed by the bitcoinconsensus
+        // library).
+        let mut tx_bytes: Vec<u8> = Vec::new();
+        tx.consensus_encode(&mut tx_bytes)
+            .map_err(Error::BitcoinIo)?;
+
+        // Get the prevout for the signers' UTXO.
+        let prevout = self.utxo.as_tx_output();
+        let prevout_script_bytes = prevout.script_pubkey.as_script().as_bytes();
+
+        // Create the bitcoinconsensus UTXO object.
+        let prevout_utxo = bitcoinconsensus::Utxo {
+            script_pubkey: prevout_script_bytes.as_ptr(),
+            script_pubkey_len: prevout_script_bytes.len() as u32,
+            value: self.amount as i64,
+        };
+
+        // We specify the flags to include all pre-taproot and taproot
+        // verifications explicitly.
+        // https://github.com/rust-bitcoin/rust-bitcoinconsensus/blob/master/src/lib.rs
+        let flags = bitcoinconsensus::VERIFY_ALL_PRE_TAPROOT | bitcoinconsensus::VERIFY_TAPROOT;
+
+        // Verify that the transaction updated with the provided signature can
+        // successfully spend the signers' UTXO.
+        bitcoinconsensus::verify_with_flags(
+            prevout_script_bytes,
+            self.amount,
+            &tx_bytes,
+            Some(&[prevout_utxo]),
+            0,
+            flags,
+        )
+        .map_err(Error::bitcoin_consensus)
     }
 }
 
@@ -1534,49 +1558,15 @@ impl bitcoin::consensus::Encodable for Hash160 {
     }
 }
 
-// /// ...
-// pub async fn construct_rotate_key_verification_transaction(
-//     aggregate_key: crate::keys::PublicKeyXOnly
-// ) -> bitcoin::Transaction {
-//     let utxo = SignerUtxo {
-//         outpoint: OutPoint {
-//             txid: bitcoin::Txid::all_zeros(),
-//             vout: 0,
-//         },
-//         amount: 1,
-//         public_key: aggregate_key.into(),
-//     };
-
-//     let input = utxo.as_tx_input(&DUMMY_SIGNATURE);
-//     let output = utxo.as_tx_output();
-
-//     let mut transaction = bitcoin::Transaction {
-//         version: Version::TWO,
-//         lock_time: LockTime::ZERO,
-//         input: vec![input],
-//         output: vec![output],
-//     };
-
-//     transaction.verify(|outpoint| {
-
-//     });
-
-//     todo!()
-// }
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
     use std::str::FromStr;
 
     use super::*;
-    use bitcoin::consensus::Encodable;
     use bitcoin::key::TapTweak;
-    use bitcoin::taproot::TaprootBuilder;
-    use bitcoin::Address;
     use bitcoin::BlockHash;
     use bitcoin::CompressedPublicKey;
-    use bitcoin::Script;
     use bitcoin::Txid;
     use clarity::vm::types::PrincipalData;
     use fake::Fake as _;
@@ -1771,168 +1761,59 @@ mod tests {
     }
 
     #[test]
-    fn can_verify_spendability() {
+    fn mock_transaction_signing_and_verification() {
         let secp = secp256k1::Secp256k1::new();
+
+        // Generate a key pair which will serve as the signers' aggregate key.
         let secret_key = SecretKey::new(&mut OsRng);
         let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
         let tweaked = keypair.tap_tweak(&secp, None);
-        let public_key = secret_key.public_key(&secp);
-        let (aggregate_key, _) = public_key.x_only_public_key();
+        let (aggregate_key, _) = keypair.x_only_public_key();
 
-        let signer_utxo = SignerUtxo {
-            outpoint: OutPoint::new(Txid::all_zeros(), 0),
-            amount: 1000,
-            public_key: aggregate_key,
-        };
+        let amount = 1_000;
 
-        let prevout = signer_utxo.as_tx_output();
-        let prevout_script = prevout.script_pubkey.as_script();
-        let prevout_script_bytes = prevout_script.as_bytes();
-        let prevout_utxo = bitcoinconsensus::Utxo {
-            script_pubkey: prevout_script_bytes.as_ptr(),
-            script_pubkey_len: prevout_script_bytes.len() as u32,
-            value: signer_utxo.amount as i64,
-        };
+        // Create a new transaction using the aggregate key.
+        let mut unsigned = UnsignedMockTransaction::new(aggregate_key, amount);
 
-        let mut tx = Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: signer_utxo.outpoint,
-                sequence: Sequence::ZERO,
-                witness: Witness::new(),
-                script_sig: ScriptBuf::new(),
-            }],
-            output: vec![TxOut {
-                value: Amount::from_sat(signer_utxo.amount),
-                script_pubkey: ScriptBuf::new_op_return(&[0; 40]),
-            }],
-        };
+        let tapsig = unsigned
+            .compute_sighash()
+            .expect("failed to compute taproot sighash");
 
-        // The signers' UTXO is always the first input in the transaction.
-        // Moreover, the signers can only spend this UTXO using the taproot
-        // key-spend path of UTXO.
-        let mut sighasher = SighashCache::new(&tx);
-        let prevouts = [prevout.clone()];
-        let tapsig = sighasher
-            .taproot_key_spend_signature_hash(0, &Prevouts::All(&prevouts), TapSighashType::All)
-            .expect("failed to create taproot sighash");
-
-        // Sign the transaction
+        // Sign the taproot sighash.
         let message = secp256k1::Message::from_digest_slice(tapsig.as_byte_array())
             .expect("Failed to create message");
-        let signature = secp.sign_schnorr(&message, &tweaked.to_inner());
-        let signature = bitcoin::taproot::Signature {
-            signature,
+        let schnorr_sig = secp.sign_schnorr(&message, &tweaked.to_inner());
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
             sighash_type: TapSighashType::All,
         };
 
-        // Create the witness
-        tx.input[0].witness = Witness::p2tr_key_spend(&signature);
+        // [1] Verify the correct signature, which should succeed.
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect("signature verification failed");
 
-        // Encode the transaction to bytes
-        let mut tx_bytes: Vec<u8> = Vec::new();
-        tx.consensus_encode(&mut tx_bytes).unwrap();
-
-        // Verify the transaction.
-        let flags = bitcoinconsensus::VERIFY_ALL_PRE_TAPROOT | bitcoinconsensus::VERIFY_TAPROOT;
-        bitcoinconsensus::verify_with_flags(
-            prevout_script_bytes,
-            signer_utxo.amount,
-            &tx_bytes,
-            Some(&[prevout_utxo]),
-            0,
-            flags,
-        )
-        .unwrap();
-    }
-
-    #[test]
-    fn test_simple() {
-        // Initialize secp256k1 context
-        let secp = secp256k1::Secp256k1::new();
-
-        // Generate a key pair
-        let secret_key = secp256k1::SecretKey::new(&mut OsRng);
-        let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
-        let tweaked = keypair.tap_tweak(&secp, None);
-        let x_only_pubkey = keypair.public_key().x_only_public_key().0;
-
-        let taproot_address = Address::p2tr(&secp, x_only_pubkey, None, bitcoin::Network::Regtest);
-
-        // Create a UTXO with the Taproot output
-        let utxo = TxOut {
-            value: Amount::from_sat(1000),
-            script_pubkey: taproot_address.script_pubkey(),
+        // [2] Verify the correct signature, but with a different sighash type,
+        // which should fail.
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::None,
         };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
 
-        // Create a transaction that spends the Taproot output
-        let mut tx = Transaction {
-            version: Version::TWO,
-            lock_time: LockTime::ZERO,
-            input: vec![TxIn {
-                previous_output: bitcoin::OutPoint::new(bitcoin::Txid::all_zeros(), 0),
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::ZERO,
-                witness: Witness::new(),
-            }],
-            output: vec![TxOut {
-                value: Amount::from_sat(1000),
-                script_pubkey: ScriptBuf::new_op_return(&[0; 40]),
-            }],
-        };
-
-        // Compute the sighash
-        let mut sighash_cache = SighashCache::new(&tx);
-        let sighash = sighash_cache
-            .taproot_key_spend_signature_hash(
-                0,
-                &Prevouts::All(&[utxo.clone()]),
-                TapSighashType::All,
-            )
-            .expect("Failed to compute sighash");
-
-        // Sign the transaction
-        let message = secp256k1::Message::from_digest_slice(sighash.as_byte_array())
-            .expect("Failed to create message");
-        let signature = secp.sign_schnorr(&message, &tweaked.to_inner());
-        let signature = bitcoin::taproot::Signature {
-            signature,
+        // [3] Verify an incorrect signature with the correct sighash type,
+        // which should fail. In this case we've created the signature using
+        // the untweaked keypair.
+        let schnorr_sig = secp.sign_schnorr(&message, &keypair);
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
             sighash_type: TapSighashType::All,
         };
-
-        // Add the signature to the witness
-        //tx.input[0].witness.push(signature.as_ref());
-        //tx.input[0].witness.push(&[0x01]);
-        tx.input[0].witness = Witness::p2tr_key_spend(&signature);
-
-        // Encode the transaction to bytes
-        let mut tx_bytes = Vec::new();
-        tx.consensus_encode(&mut tx_bytes)
-            .expect("Failed to encode transaction");
-
-        // Prepare the spent output
-        let spent_output = bitcoinconsensus::Utxo {
-            script_pubkey: utxo.script_pubkey.as_bytes().as_ptr(),
-            script_pubkey_len: utxo.script_pubkey.len() as u32,
-            value: utxo.value.to_sat() as i64,
-        };
-
-        // Verify the transaction using libbitcoinconsensus
-        let result = bitcoinconsensus::verify(
-            &taproot_address.script_pubkey().as_bytes(),
-            utxo.value.to_sat(),
-            tx_bytes.as_slice(),
-            Some(&[spent_output]),
-            0,
-        );
-
-        assert!(
-            result.is_ok(),
-            "Transaction verification failed: {:?}",
-            result
-        );
-        println!("Transaction verified successfully!");
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
