@@ -1266,9 +1266,12 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn revoke_dkg_shares(&self, aggregate_key: &PublicKeyXOnly) -> Result<bool, Error> {
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where 
+        X: Into<PublicKeyXOnly> + Send 
+    {
         let mut store = self.lock().await;
-        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(aggregate_key) {
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
             shares.status = DkgSharesStatus::Revoked;
             Ok(true)
         } else {
@@ -1276,13 +1279,16 @@ impl super::DbWrite for SharedStore {
         }
     }
 
-    async fn verify_dkg_shares(
+    async fn verify_dkg_shares<X>(
         &self,
-        aggregate_key: &PublicKeyXOnly,
+        aggregate_key: X,
         bitcoin_block: &model::BitcoinBlockRef,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, Error> 
+    where 
+        X: Into<PublicKeyXOnly> + Send
+    {
         let mut store = self.lock().await;
-        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(aggregate_key) {
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
             shares.status = DkgSharesStatus::Verified(*bitcoin_block);
             Ok(true)
         } else {

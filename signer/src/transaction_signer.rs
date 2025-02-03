@@ -1154,7 +1154,7 @@ where
 
                 self.context
                     .get_storage_mut()
-                    .verify_dkg_shares(&aggregate_key, &bitcoin_chain_tip_block.into())
+                    .verify_dkg_shares(aggregate_key, &bitcoin_chain_tip_block.into())
                     .await?;
                 tracing::info!(
                     "🔐 dkg shares entry has been marked as validated; it is now able to be used"

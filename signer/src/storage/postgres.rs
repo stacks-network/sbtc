@@ -2865,20 +2865,29 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn revoke_dkg_shares(&self, aggregate_key: &PublicKeyXOnly) -> Result<bool, Error> {
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error> 
+    where 
+        X: Into<PublicKeyXOnly> + Send
+    {
         let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
 
-        let updated_rows = sqlx::query_scalar::<_, i32>(
+        let result = sqlx::query(
             r#"
             UPDATE sbtc_signer.dkg_shares
-            SET dkg_shares_status_id = 2
-            WHERE aggregate_key = $1;
+            SET 
+                dkg_shares_status_id = 2
+              , verified_at_bitcoin_block_hash = NULL
+              , verified_at_bitcoin_block_height = NULL
+            WHERE 
+                substring(aggregate_key FROM 2) = $1;
             "#,
         )
-        .bind(aggregate_key)
-        .fetch_one(&mut *tx)
+        .bind(aggregate_key.into())
+        .execute(&mut *tx)
         .await
         .map_err(Error::SqlxQuery)?;
+
+        let updated_rows = result.rows_affected();
 
         if updated_rows > 1 {
             tracing::warn!(
@@ -2899,29 +2908,36 @@ impl super::DbWrite for PgStore {
         Ok(updated_rows == 1)
     }
 
-    async fn verify_dkg_shares(
+    async fn verify_dkg_shares<X>(
         &self,
-        aggregate_key: &PublicKeyXOnly,
+        aggregate_key: X,
         bitcoin_block: &model::BitcoinBlockRef,
-    ) -> Result<bool, Error> {
+    ) -> Result<bool, Error> 
+    where 
+        X: Into<PublicKeyXOnly> + Send
+    {
         let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
 
-        let updated_rows = sqlx::query_scalar::<_, i32>(
+        let result = sqlx::query(
             r#"
             UPDATE sbtc_signer.dkg_shares
             SET 
                 dkg_shares_status_id = 1
               , verified_at_bitcoin_block_hash = $2
               , verified_at_bitcoin_block_height = $3
-            WHERE aggregate_key = $1;
+            WHERE 
+                substring(aggregate_key FROM 2) = $1
+                AND dkg_shares_status_id = 0; -- only allow verifying pending entries
             "#,
         )
-        .bind(aggregate_key)
+        .bind(aggregate_key.into())
         .bind(bitcoin_block.block_hash)
         .bind(i64::try_from(bitcoin_block.block_height).map_err(Error::ConversionDatabaseInt)?)
-        .fetch_one(&mut *tx)
+        .execute(&mut *tx)
         .await
         .map_err(Error::SqlxQuery)?;
+
+        let updated_rows = result.rows_affected();
 
         if updated_rows > 1 {
             tracing::warn!(

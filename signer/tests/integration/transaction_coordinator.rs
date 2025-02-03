@@ -60,6 +60,7 @@ use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
+use signer::storage::model::DkgSharesStatus;
 use signer::storage::postgres::PgStore;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
@@ -1188,6 +1189,11 @@ async fn run_subsequent_dkg() {
             })
             .build();
 
+        // 2. Populate each database with the same data, so that they
+        //    have the same view of the canonical bitcoin blockchain.
+        //    This ensures that they participate in DKG.
+        data.write_to(&db).await;
+
         // Write one DKG shares entry to the signer's database simulating that
         // DKG has been successfully run once.
         db.write_encrypted_dkg_shares(&EncryptedDkgShares {
@@ -1196,6 +1202,7 @@ async fn run_subsequent_dkg() {
                 .iter()
                 .map(|kp| kp.public_key().into())
                 .collect(),
+            status: DkgSharesStatus::Verified(data.bitcoin_blocks[0].clone().into()),
             ..Faker.fake()
         })
         .await
@@ -1235,11 +1242,6 @@ async fn run_subsequent_dkg() {
                 });
         })
         .await;
-
-        // 2. Populate each database with the same data, so that they
-        //    have the same view of the canonical bitcoin blockchain.
-        //    This ensures that they participate in DKG.
-        data.write_to(&db).await;
 
         let network = network.connect(&ctx);
 
@@ -2812,6 +2814,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        status: DkgSharesStatus::Pending,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
@@ -2946,6 +2949,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        status: DkgSharesStatus::Pending,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();

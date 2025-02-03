@@ -843,6 +843,7 @@ impl std::fmt::Display for BitcoinBlockHash {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub block_height: u64,
     /// Bitcoin block hash. It uniquely identifies the bitcoin block.
     pub block_hash: BitcoinBlockHash,

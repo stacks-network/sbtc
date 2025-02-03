@@ -412,9 +412,9 @@ pub enum Error {
     #[error("expected {expected:?} rows to be updated, but {actual} were updated")]
     SqlxUpdatedRowsExpectation {
         /// The number of rows that were expected to be updated.
-        expected: std::ops::Range<i32>,
+        expected: std::ops::Range<u64>,
         /// The number of rows that were actually updated.
-        actual: i32,
+        actual: u64,
     },
 
     /// An error when attempting to read a migration script.
