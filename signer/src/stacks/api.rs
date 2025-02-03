@@ -5,6 +5,7 @@ use std::future::Future;
 use std::time::Duration;
 
 use bitcoin::Amount;
+use bitcoin::OutPoint;
 use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
@@ -27,6 +28,7 @@ use blockstack_lib::net::api::postfeerate::RPCFeeEstimateResponse;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::types::StacksEpochId;
+use clarity::vm::types::OptionalData;
 use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
 use reqwest::header::CONTENT_LENGTH;
@@ -39,6 +41,7 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksBlock;
+use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
@@ -140,6 +143,16 @@ pub trait StacksInteract: Send + Sync {
         &self,
         contract_principal: &StacksAddress,
     ) -> impl Future<Output = Result<Option<PublicKey>, Error>> + Send;
+
+    /// Retrieve the status of a deposit request as stored in the `sbtc-registry` contract.
+    ///
+    /// This is done by making a `POST /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`
+    /// request.
+    fn get_deposit_status(
+        &self,
+        contract_principal: &StacksAddress,
+        outpoint: &OutPoint,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Get the latest account info for the given address.
     fn get_account(
@@ -494,6 +507,7 @@ impl StacksClient {
         contract_name: &ContractName,
         fn_name: &ClarityName,
         sender: &StacksAddress,
+        arguments: &[Value],
     ) -> Result<Value, Error> {
         let path = format!(
             "/v2/contracts/call-read/{}/{}/{}?tip=latest",
@@ -505,9 +519,19 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
+        // Turns out that serializing to hex can panic. One such case
+        // happens when given too much buff-data, more than 1 MBs worth.
+        // For our uses this should never happen, just thought that I'd
+        // note it.
+        let arguments = arguments
+            .iter()
+            .map(|value| value.serialize_to_hex())
+            .collect::<Result<Vec<String>, _>>()
+            .map_err(Error::ClarityValueSerialization)?;
+
         let body = CallReadRequest {
             sender: sender.to_string(),
-            arguments: vec![], // TODO: Add when needed
+            arguments,
         };
 
         tracing::debug!(
@@ -1138,6 +1162,40 @@ impl StacksInteract for StacksClient {
         }
     }
 
+    async fn get_deposit_status(
+        &self,
+        deployer: &StacksAddress,
+        outpoint: &OutPoint,
+    ) -> Result<bool, Error> {
+        // Both ContractName::from and ClarityName::from can panic when
+        // given some strings. These particular strings do not panic, and
+        // we test this fact in our unit tests.
+        let contract_name = ContractName::from("sbtc-registry");
+        let fn_name = ClarityName::from("get-deposit-status");
+
+        // The transaction IDs are written in little endian format when
+        // making the contract call that sets the deposit status, so we
+        // need to do that here to make sure that it works as expected.
+        let txid_data = outpoint.txid.to_le_bytes().to_vec();
+        let txid = BuffData { data: txid_data };
+        let arguments = [
+            Value::Sequence(SequenceData::Buffer(txid)),
+            Value::UInt(outpoint.vout as u128),
+        ];
+        let result = self
+            .call_read(deployer, &contract_name, &fn_name, deployer, &arguments)
+            .await?;
+
+        // The `get-deposit-status` read-only function reads from a map in
+        // the smart contract using the `map-get?` clarity function. The
+        // values in that map are booleans, and they are only ever set to
+        // `true`. So a missing value is equivalent to false.
+        match result {
+            Value::Optional(OptionalData { data }) => Ok(data.is_some()),
+            _ => Err(Error::InvalidStacksResponse("did not get optional data")),
+        }
+    }
+
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         self.get_account(address).await
     }
@@ -1286,6 +1344,7 @@ impl StacksInteract for StacksClient {
                 &ContractName::from(SmartContract::SbtcToken.contract_name()),
                 &ClarityName::from("get-total-supply"),
                 deployer,
+                &[],
             )
             .await?;
 
@@ -1326,6 +1385,21 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         self.exec(|client, retry| async move {
             let result = client
                 .get_current_signers_aggregate_key(contract_principal)
+                .await;
+            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
+            result
+        })
+        .await
+    }
+
+    async fn get_deposit_status(
+        &self,
+        contract_principal: &StacksAddress,
+        outpoint: &OutPoint,
+    ) -> Result<bool, Error> {
+        self.exec(|client, retry| async move {
+            let result = client
+                .get_deposit_status(contract_principal, outpoint)
                 .await;
             retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
             result

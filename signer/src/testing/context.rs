@@ -402,6 +402,18 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
     }
 
+    async fn get_deposit_status(
+        &self,
+        contract_principal: &StacksAddress,
+        outpoint: &bitcoin::OutPoint,
+    ) -> Result<bool, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_deposit_status(contract_principal, outpoint)
+            .await
+    }
+
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         self.inner.lock().await.get_account(address).await
     }
