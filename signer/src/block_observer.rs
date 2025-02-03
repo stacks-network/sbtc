@@ -586,29 +586,29 @@ impl<C: Context, B> BlockObserver<C, B> {
     ///
     /// # Notes
     ///
-    /// The function updates the following:
-    /// * The current signer set. We get this information from the last
-    ///   successful key-rotation contract call, if that does not exist we
-    ///   use the latest DKG shares, and if that doesn't exist we use the
-    ///   bootstrap signing set from the configuration.
-    /// * The current aggregate key. We get this information from the last
-    ///   successful key-rotation contract call, if that does not exist we
-    ///   use the latest DKG shares.
+    /// The query used for fetching the cached information can take quite a
+    /// lot of some time to complete on mainnet. So this function updates
+    /// the signers state once so that the other event loops do not need to
+    /// execute them. The cached information is:
     ///
-    /// We cache this information in memory because the query that fetches
-    /// the last key rotation can take quite a lot of some time to
-    /// complete.
+    /// * The current signer set. It gets this information from the last
+    ///   successful key-rotation contract call if it exists. If such a
+    ///   contract call does not exist this function uses the latest DKG
+    ///   shares, and if that doesn't exist it uses the bootstrap signing
+    ///   set from the configuration.
+    /// * The current aggregate key. It gets this information from the last
+    ///   successful key-rotation contract call if it exists, and from the
+    ///   latest DKG shares if no such contract call can be found.
     async fn set_signer_set_and_aggregate_key(&self, chain_tip: BlockHash) -> Result<(), Error> {
         let (aggregate_key, public_keys) =
             get_signer_set_and_aggregate_key(&self.context, chain_tip).await?;
 
+        let state = self.context.state();
         if let Some(aggregate_key) = aggregate_key {
-            self.context
-                .state()
-                .set_current_aggregate_key(aggregate_key);
+            state.set_current_aggregate_key(aggregate_key);
         }
 
-        self.context.state().update_current_signer_set(public_keys);
+        state.update_current_signer_set(public_keys);
         Ok(())
     }
 

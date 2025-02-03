@@ -1019,7 +1019,10 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
 
     // In this test the signer set public keys start empty. When running
     // the signer binary the signer starts as the bootstrap signing set.
+    // Also, the sbtc limits start off as "zero" and then get updated by
+    // the block observer.
     let state = ctx.state();
+    assert_eq!(state.get_current_limits(), SbtcLimits::zero());
     assert!(state.current_signer_public_keys().is_empty());
     assert!(state.current_aggregate_key().is_none());
 
@@ -1054,22 +1057,33 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
         .expect("cannot get chain tip");
     assert_eq!(db_chain_tip, Some(chain_tip));
 
-    // There is no aggregate key since there isn't any key rotation
+    // There is no aggregate key since there aren't any key rotation
     // contract calls and no DKG shares. But the current signer set should
-    // not be the bootstrap signing set.
+    // be the bootstrap signing set now.
     let bootstrap_signing_set = ctx.config().signer.bootstrap_signing_set();
+    assert_eq!(state.get_current_limits(), SbtcLimits::unlimited());
     assert!(state.current_aggregate_key().is_none());
     assert_eq!(state.current_signer_public_keys(), bootstrap_signing_set);
 
+    // Okay now let's add in some DKG shares into the database. This should
+    // take precedence over what is configured as the bootstrap signing
+    // set.
     let mut dkg_shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
-    let public_keys = std::iter::repeat_with(|| Faker.fake_with_rng(&mut rng))
+    let mut public_keys: Vec<PublicKey> = std::iter::repeat_with(|| Faker.fake_with_rng(&mut rng))
         .take(12)
-        .collect::<Vec<PublicKey>>();
+        .collect();
+    public_keys.sort();
     dkg_shares.signer_set_public_keys = public_keys;
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
 
+    // Sanity check that the signing set in the DKG shares are different
+    // from the bootstrap signing set.
+    let dkg_public_keys = dkg_shares.signer_set_public_keys.iter().copied().collect();
+    assert_ne!(dkg_public_keys, bootstrap_signing_set);
+
     // Let's generate a new block and wait for our block observer to send a
-    // BitcoinBlockObserved signal.
+    // BitcoinBlockObserved signal. Then after we received the signal that
+    // a bitcoin block has been observed we check the signer state.
     let chain_tip = faucet.generate_blocks(1).pop().unwrap().into();
 
     ctx.wait_for_signal(Duration::from_secs(3), |signal| {
@@ -1081,6 +1095,7 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
     .await
     .unwrap();
 
+    // Check that the chain tip has been updated.
     let db_chain_tip = db
         .get_bitcoin_canonical_chain_tip()
         .await
@@ -1088,14 +1103,14 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
     assert_eq!(db_chain_tip, Some(chain_tip));
 
     let dkg_aggregate_key = Some(dkg_shares.aggregate_key);
-    let dkg_public_keys = dkg_shares.signer_set_public_keys.iter().copied().collect();
-
+assert_eq!(state.get_current_limits(), SbtcLimits::unlimited());
     assert_eq!(state.current_aggregate_key(), dkg_aggregate_key);
     assert_eq!(state.current_signer_public_keys(), dkg_public_keys);
 
     // Okay now we're going to show what happens if we have received a key
     // rotation event. Such events take priority over DKG shares, even if
-    // the DKG shares are newer.
+    // the DKG shares are newer. So let's add such an event to the
+    // database. First we need a stacks block for the join.
     let stacks_block = StacksBlock {
         bitcoin_anchor: chain_tip,
         ..Faker.fake_with_rng(&mut rng)
@@ -1145,11 +1160,15 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
         .expect("cannot get chain tip");
     assert_eq!(db_chain_tip, Some(chain_tip));
 
+    // We expect the signer state to be the same as what is in the rotate
+    // keys event in the database.
     let rotate_keys_aggregate_key = Some(rotate_keys.aggregate_key);
     let rotate_keys_public_keys = rotate_keys.signer_set.iter().copied().collect();
 
     assert_eq!(state.current_aggregate_key(), rotate_keys_aggregate_key);
     assert_eq!(state.current_signer_public_keys(), rotate_keys_public_keys);
+    assert_ne!(rotate_keys_public_keys, dkg_public_keys);
+    assert_ne!(rotate_keys_aggregate_key, dkg_aggregate_key);
 
     testing::storage::drop_db(db).await;
 }

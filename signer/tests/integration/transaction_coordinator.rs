@@ -488,10 +488,9 @@ async fn process_complete_deposit() {
     // When the signer binary starts up in main(), it sets the current
     // signer set public keys in the context state using the values in the
     // bootstrap_signing_set configuration parameter. Later, the aggregate
-    // key gets set in the block observer. state gets updated in the block
-    // observer when with values from the last rotate keys transaction.
-    // We're not running a block observer in this test, nor are we going
-    // through main, so we manually update the state here.
+    // key gets set in the block observer. We're not running a block
+    // observer in this test, nor are we going through main, so we manually
+    // update the state here.
     let signer_set_public_keys = testing_signer_set.signer_keys().into_iter().collect();
     let state = context.state();
     state.update_current_signer_set(signer_set_public_keys);
