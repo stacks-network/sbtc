@@ -1,17 +1,13 @@
 #!/bin/bash
 
-# AWS_PROFILE=sbtcDevDeployment
+# AWS_DEPLOYMENT_PROFILE=sbtcDevDeployment
 
 GIT_REPO_ROOT=$(git rev-parse --show-toplevel)
 EMILY_CDK_PATH="${GIT_REPO_ROOT}/emily/cdk"
 EMILY_HANDLER_PATH="${GIT_REPO_ROOT}/emily/handler"
 
 # Deployment variables.
-
-# DO NOT UNCOMMENT!
 ENV_FILE="${GIT_REPO_ROOT}/scripts/emily-testnet/.env"
-
-# ENV_FILE="${GIT_REPO_ROOT}/scripts/emily-dev/.env"
 
 # Export environment variables.
 if [ -f "${ENV_FILE}" ]; then
@@ -37,9 +33,9 @@ fi
     cd "${EMILY_CDK_PATH}" || exit
     echo "Ensuring that CDK is boostraped..."
     npx aws-cdk bootstrap \
-        --profile sbtcDevDeployment
+        --profile "${AWS_DEPLOYMENT_PROFILE}"
     echo "Done bootstrapping CDK."
     npx aws-cdk deploy \
         --profile "${AWS_DEPLOYMENT_PROFILE}"
-        # --require-approval never
+        --require-approval any-change
 }

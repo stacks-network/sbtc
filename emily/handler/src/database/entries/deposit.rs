@@ -528,7 +528,7 @@ impl From<DepositInfoByRecipientEntry> for DepositInfo {
 /// Validated version of the update deposit request.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedUpdateDepositsRequest {
-    /// Validated deposit update requests where each update request is in chronoloical order
+    /// Validated deposit update requests where each update request is in chronological order
     /// of when the update should have occurred, but where the first value of the tuple is the
     /// index of the update in the original request.
     ///
@@ -541,7 +541,7 @@ pub struct ValidatedUpdateDepositsRequest {
 impl TryFrom<UpdateDepositsRequestBody> for ValidatedUpdateDepositsRequest {
     type Error = Error;
     fn try_from(update_request: UpdateDepositsRequestBody) -> Result<Self, Self::Error> {
-        // Validate all the depoit updates.
+        // Validate all the deposit updates.
         let mut deposits: Vec<(usize, ValidatedDepositUpdate)> = update_request
             .deposits
             .into_iter()
@@ -579,7 +579,7 @@ impl ValidatedUpdateDepositsRequest {
             .into_iter()
             .collect::<Vec<_>>();
 
-        // Sort the chainsates in the order that they should come in.
+        // Sort the chainstates in the order that they should come in.
         inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
 
         // Return.

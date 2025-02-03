@@ -9,6 +9,7 @@ use crate::context::Context;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TxSignerEvent;
+use crate::error::Error;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::network;
@@ -116,11 +117,7 @@ where
 type EventLoop<Context, M, Rng> = transaction_signer::TxSignerEventLoop<Context, M, Rng>;
 
 impl blocklist_client::BlocklistChecker for () {
-    async fn can_accept(
-        &self,
-        _address: &str,
-    ) -> Result<bool, blocklist_api::apis::Error<blocklist_api::apis::address_api::CheckAddressError>>
-    {
+    async fn can_accept(&self, _address: &str) -> Result<bool, Error> {
         Ok(true)
     }
 }

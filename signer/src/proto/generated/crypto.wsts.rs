@@ -3,7 +3,6 @@
 /// The saved state required to reconstruct a WSTS signer object. This is
 /// the protobuf version of the state object. It is encrypted and stored in
 /// the database.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignerState {
     /// The signer ID
@@ -30,7 +29,6 @@ pub struct SignerState {
 }
 /// The saved state required to reconstruct a party
 /// <https://github.com/Trust-Machines/wsts/blob/91a37c8a097e6fa5d5a67519a72567bc82560c0d/src/traits.rs#L14-L23>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PartyState {
     #[prost(uint32, tag = "1")]
@@ -47,7 +45,6 @@ pub struct PartyState {
 }
 /// A polynomial.
 /// <https://github.com/Trust-Machines/wsts/blob/91a37c8a097e6fa5d5a67519a72567bc82560c0d/src/traits.rs#L14-L23>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Polynomial {
     /// The coefficients of a polynomial.
@@ -55,8 +52,7 @@ pub struct Polynomial {
     pub data: ::prost::alloc::vec::Vec<super::Scalar>,
 }
 /// The private key share received from another signer
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PrivateKeyShare {
     /// The identifier for the private key share. It is unique across all keys
     /// in a DKG round.
@@ -68,8 +64,7 @@ pub struct PrivateKeyShare {
 }
 /// A nonce
 /// <https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L51-L58>
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PrivateNonce {
     /// A nonce's first value
     #[prost(message, optional, tag = "1")]
@@ -80,14 +75,12 @@ pub struct PrivateNonce {
 }
 /// DKG begin message from coordinator to signers
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L123-L128>>
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct DkgBegin {
     /// DKG round ID
     #[prost(uint64, tag = "1")]
     pub dkg_id: u64,
 }
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgPublicShares {
     #[prost(btree_map = "uint32, message", tag = "1")]
@@ -95,7 +88,6 @@ pub struct DkgPublicShares {
 }
 /// DKG public shares message from a signer to all signers and coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L137-L146>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignerDkgPublicShares {
     /// DKG round ID
@@ -111,7 +103,6 @@ pub struct SignerDkgPublicShares {
 /// The public polynomial committed to by one of the party members who are
 /// participating in distributed key generation.
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L144-L145>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PartyCommitment {
     /// The specific party that submitted the public polynomial.
@@ -125,7 +116,6 @@ pub struct PartyCommitment {
 }
 /// DKG private begin message from signer to all signers and coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L162-L171>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgPrivateBegin {
     /// DKG round ID
@@ -140,7 +130,6 @@ pub struct DkgPrivateBegin {
 }
 /// DKG private shares message from signer to all signers and coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L185-L195>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgPrivateShares {
     /// DKG round ID
@@ -155,7 +144,6 @@ pub struct DkgPrivateShares {
 }
 /// This was created
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L193-L194>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PrivateShare {
     /// The ID of the signer that created the secret share.
@@ -166,7 +154,6 @@ pub struct PrivateShare {
     pub encrypted_shares: ::prost::alloc::vec::Vec<SecretShare>,
 }
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L193-L194>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SecretShare {
     /// The signer ID associated with the secret share. This is the only
@@ -181,7 +168,6 @@ pub struct SecretShare {
 }
 /// DKG end begin message from signer to all signers and coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L222-L231>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgEndBegin {
     /// DKG round ID
@@ -196,7 +182,6 @@ pub struct DkgEndBegin {
 }
 /// DKG end message from signers to coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L246-L255>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgEnd {
     /// DKG round ID
@@ -211,16 +196,14 @@ pub struct DkgEnd {
 }
 /// Signature type
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/ebd7d7775ad5e44cdbf4f5c1fb468bdf6c467265/src/net.rs#L373-L382>>
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SignatureType {
     #[prost(oneof = "signature_type::SignatureType", tags = "1, 2, 3")]
     pub signature_type: ::core::option::Option<signature_type::SignatureType>,
 }
 /// Nested message and enum types in `SignatureType`.
 pub mod signature_type {
-    #[allow(clippy::derive_partial_eq_without_eq)]
-    #[derive(Clone, PartialEq, ::prost::Oneof)]
+    #[derive(Clone, Copy, PartialEq, ::prost::Oneof)]
     pub enum SignatureType {
         /// FROST signature
         #[prost(message, tag = "1")]
@@ -233,14 +216,11 @@ pub mod signature_type {
         Taproot(super::TaprootSignatureType),
     }
 }
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct FrostSignatureType {}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SchnorrSignatureType {}
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TaprootSignatureType {
     /// Taproot merkle root. This field is optional
     #[prost(message, optional, tag = "1")]
@@ -248,7 +228,6 @@ pub struct TaprootSignatureType {
 }
 /// Nonce request message from coordinator to signers
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L265-L280>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NonceRequest {
     /// DKG round ID
@@ -269,7 +248,6 @@ pub struct NonceRequest {
 }
 /// Nonce response message from signers to coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L309-L326>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct NonceResponse {
     /// DKG round ID
@@ -296,7 +274,6 @@ pub struct NonceResponse {
 }
 /// Signature share request message from coordinator to signers
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L370-L387>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignatureShareRequest {
     /// DKG round ID
@@ -320,7 +297,6 @@ pub struct SignatureShareRequest {
 }
 /// Signature share response message from signers to coordinator
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L422-L435>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignatureShareResponse {
     /// DKG round ID
@@ -341,7 +317,6 @@ pub struct SignatureShareResponse {
 }
 /// A commitment to a polynomial, with a Schnorr proof of ownership bound to the ID
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L25-L32>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct PolyCommitment {
     /// The party ID with a Schnorr proof
@@ -354,8 +329,7 @@ pub struct PolyCommitment {
 /// This type maps to the `ID` type in WSTS, which encapsulates the ID and a
 /// Schnorr proof of ownership of the polynomial.
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/7435dec216aab547133de0dc2915e49875630c84/src/schnorr.rs#L12-L23>>
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct ProofIdentifier {
     /// The ID
     #[prost(message, optional, tag = "1")]
@@ -370,7 +344,6 @@ pub struct ProofIdentifier {
 /// Final DKG status after receiving public and private shares
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L72-L79>>
 /// combined with this type <<https://github.com/Trust-Machines/wsts/blob/2d6cb87218bb8dd9ed0519356afe57a0b9a697cb/src/net.rs#L57-L70>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct DkgStatus {
     #[prost(oneof = "dkg_status::Mode", tags = "1, 2, 3, 4, 5, 6, 7")]
@@ -378,7 +351,6 @@ pub struct DkgStatus {
 }
 /// Nested message and enum types in `DkgStatus`.
 pub mod dkg_status {
-    #[allow(clippy::derive_partial_eq_without_eq)]
     #[derive(Clone, PartialEq, ::prost::Oneof)]
     pub enum Mode {
         /// DKG completed successfully
@@ -405,15 +377,12 @@ pub mod dkg_status {
     }
 }
 /// DKG completed successfully
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Success {}
 /// Signer was in the wrong internal state to complete DKG
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct BadState {}
 /// DKG public shares were bad from these signer_ids.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MissingPublicShares {
     /// In WSTS this is a HashSet<u32>, so these should be unique, duplicates
@@ -422,7 +391,6 @@ pub struct MissingPublicShares {
     pub signer_ids: ::prost::alloc::collections::BTreeMap<u32, super::SetValueZst>,
 }
 /// DKG public shares were bad from these signer_ids.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BadPublicShares {
     /// In WSTS this is a HashSet<u32>, so these should be unique, duplicates
@@ -431,7 +399,6 @@ pub struct BadPublicShares {
     pub signer_ids: ::prost::alloc::collections::BTreeMap<u32, super::SetValueZst>,
 }
 /// DKG private shares were missing from these signer_ids.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct MissingPrivateShares {
     /// In WSTS this is a HashSet<u32>, so these should be unique, duplicates
@@ -440,15 +407,13 @@ pub struct MissingPrivateShares {
     pub signer_ids: ::prost::alloc::collections::BTreeMap<u32, super::SetValueZst>,
 }
 /// DKG private shares were bad from these signer_ids.
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BadPrivateShares {
     #[prost(btree_map = "uint32, message", tag = "1")]
     pub shares: ::prost::alloc::collections::BTreeMap<u32, BadPrivateShare>,
 }
 /// A bad private share
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct BadPrivateShare {
     /// The DH shared key between these participants
     #[prost(message, optional, tag = "1")]
@@ -460,8 +425,7 @@ pub struct BadPrivateShare {
 /// A Chaum-Pedersen proof that (G, A=a*G, B=b*G, K=(a*b)*G) is a
 /// Diffie-Hellman tuple.
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L163-L172>>
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct TupleProof {
     /// This is a commitment to both the random commitment in the Schnorr
     /// proof and the private key used for the signature. It represents r*B.
@@ -471,8 +435,7 @@ pub struct TupleProof {
     #[prost(message, optional, tag = "2")]
     pub signature: ::core::option::Option<SchnorrProof>,
 }
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct SchnorrProof {
     /// This is R, where R = r*G for a random scalar r.
     #[prost(message, optional, tag = "1")]
@@ -483,8 +446,7 @@ pub struct SchnorrProof {
 }
 /// A merkle root is a 256 bit hash
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L22-L23>>
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct MerkleRoot {
     /// The root of the merkle tree
     #[prost(message, optional, tag = "1")]
@@ -492,8 +454,7 @@ pub struct MerkleRoot {
 }
 /// A commitment to the private nonce
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L94-L102>>
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct PublicNonce {
     /// A commitment to the private nonce's first value
     #[prost(message, optional, tag = "1")]
@@ -504,7 +465,6 @@ pub struct PublicNonce {
 }
 /// A share of the party signature with related values
 /// This maps to this type <<https://github.com/Trust-Machines/wsts/blob/10760178d88c779d9377641e360656b27c05a771/src/common.rs#L120-L129>>
-#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SignatureShare {
     /// The ID of the party
@@ -518,6 +478,5 @@ pub struct SignatureShare {
     pub key_ids: ::prost::alloc::vec::Vec<u32>,
 }
 /// The DKG threshold has not been upheld by the coordinator.
-#[allow(clippy::derive_partial_eq_without_eq)]
-#[derive(Clone, PartialEq, ::prost::Message)]
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
 pub struct Threshold {}
