@@ -40,12 +40,12 @@ impl SignerState {
             .collect()
     }
 
-    /// Set the public keys of the current signer set, remove the old set.
+    /// Replace the current signer set with the given set of public keys.
     pub fn update_current_signer_set(&self, public_keys: BTreeSet<PublicKey>) {
         self.current_signer_set.replace_signers(public_keys);
     }
 
-    /// Get the current aggregate key for the signers.
+    /// Return the current aggregate key from the cache.
     #[allow(clippy::unwrap_in_result)]
     pub fn current_aggregate_key(&self) -> Option<PublicKey> {
         self.current_aggregate_key
@@ -55,7 +55,7 @@ impl SignerState {
             .copied()
     }
 
-    /// Set the current aggregate key to the given value
+    /// Set the current aggregate key to the given public key.
     pub fn set_current_aggregate_key(&self, aggregate_key: PublicKey) {
         self.current_aggregate_key
             .write()
@@ -167,11 +167,6 @@ impl SbtcLimits {
         }
     }
 
-    /// Create a new `SbtcLimits` object without any limits
-    pub fn unlimited() -> Self {
-        Self::new(None, None, None, None, None)
-    }
-
     /// Create a new `SbtcLimits` object with limits set to zero (fully constraining)
     pub fn zero() -> Self {
         Self::new(
@@ -212,9 +207,21 @@ impl SbtcLimits {
     pub fn max_mintable_cap(&self) -> Amount {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
+}
 
-    /// TODO: Document this
-    #[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
+impl SbtcLimits {
+    /// Create a new `SbtcLimits` object without any limits
+    pub fn unlimited() -> Self {
+        Self {
+            total_cap: Some(Amount::MAX_MONEY),
+            per_deposit_minimum: Some(Amount::ZERO),
+            per_deposit_cap: Some(Amount::MAX_MONEY),
+            per_withdrawal_cap: Some(Amount::MAX_MONEY),
+            max_mintable_cap: Some(Amount::MAX_MONEY),
+        }
+    }
+
     /// Create a new Self with only the given deposit minimum and maximums
     /// set.
     pub fn new_per_deposit(min: u64, max: u64) -> Self {
@@ -301,7 +308,7 @@ impl SignerSet {
             .insert(signer);
     }
 
-    /// Add a signer (public key) to the known active signer set.
+    /// Replace the current signer set with the given set of public keys.
     pub fn replace_signers(&self, public_keys: BTreeSet<PublicKey>) {
         let inner_signer_set = self.get_signers();
 
