@@ -1103,7 +1103,7 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
     assert_eq!(db_chain_tip, Some(chain_tip));
 
     let dkg_aggregate_key = Some(dkg_shares.aggregate_key);
-assert_eq!(state.get_current_limits(), SbtcLimits::unlimited());
+    assert_eq!(state.get_current_limits(), SbtcLimits::unlimited());
     assert_eq!(state.current_aggregate_key(), dkg_aggregate_key);
     assert_eq!(state.current_signer_public_keys(), dkg_public_keys);
 
