@@ -8,6 +8,7 @@ use bitcoin::params::Params;
 use bitcoin::{Address, Amount, OutPoint, ScriptBuf, Txid};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use tracing;
 use utoipa::ToSchema;
 
 use sbtc::deposits::{CreateDepositRequest, DepositInfo};
@@ -158,12 +159,14 @@ impl CreateDepositRequestBody {
             } else {
                 Params::REGTEST
             };
-            Address::from_script(&txin.script_sig, params.clone()).map_err(|_| {
-                Error::HttpRequest(
-                    StatusCode::BAD_REQUEST,
-                    "invalid transaction input address".to_string(),
-                )
-            })?
+            Address::from_script(&txin.script_sig, params.clone())
+                .inspect_err(|_| {
+                    tracing::debug!(
+                        "unrecognized ScriptBuf format for txid: {}",
+                        self.bitcoin_txid
+                    );
+                })
+                .ok()
         };
 
         Ok(ValidatedCreateDepositRequestData { deposit_info, input_address })
@@ -176,7 +179,7 @@ pub struct ValidatedCreateDepositRequestData {
     /// Deposit information.
     pub deposit_info: DepositInfo,
     /// Input address of the first input in the transaction.
-    pub input_address: Address,
+    pub input_address: Option<Address>,
 }
 
 /// A singular Deposit update that contains only the fields pertinent
@@ -217,6 +220,8 @@ pub struct UpdateDepositsRequestBody {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::{AddressType, Network};
+    use sbtc::testing;
     use test_case::test_case;
 
     const CREATE_DEPOSIT_VALID: &str =
@@ -293,6 +298,73 @@ mod tests {
             result.unwrap_err().to_string(),
             format!("HTTP request failed with status code 400 Bad Request: {expected_error}")
         );
+    }
+    #[test_case("002065f91a53cb7120057db3d378bd0f7d944167d43a7dcbff15d6afc4823f1d3ed3", "bc1qvhu3557twysq2ldn6dut6rmaj3qk04p60h9l79wk4lzgy0ca8mfsnffz65", AddressType::P2wsh; "p2wsh")]
+    #[test_case("76a914162c5ea71c0b23f5b9022ef047c4a86470a5b07088ac", "132F25rTsvBdp9JzLLBHP5mvGY66i1xdiM", AddressType::P2pkh; "p2pkh")]
+    #[test_case("a914162c5ea71c0b23f5b9022ef047c4a86470a5b07087", "33iFwdLuRpW1uK1RTRqsoi8rR4NpDzk66k", AddressType::P2sh; "p2sh")]
+    #[test_case("0014841b80d2cc75f5345c482af96294d04fdd66b2b7", "bc1qssdcp5kvwh6nghzg9tuk99xsflwkdv4hgvq58q", AddressType::P2wpkh; "p2wpkh")]
+    #[test_case("5120f3778defe5173a9bf7169575116224f961c03c725c0e98b8da8f15df29194b80", "bc1p7dmcmml9zuafhackj463zc3yl9suq0rjts8f3wx63u2a72gefwqqku46c7", AddressType::P2tr; "p2tr")]
+    #[tokio::test]
+    async fn test_deposit_validate_extracts_address(
+        scriptbuf_hex: &str,
+        address: &str,
+        address_type: AddressType,
+    ) {
+        let input_sigscript = ScriptBuf::from_hex(scriptbuf_hex).unwrap();
+        let mainnet = true;
+        let deposit = testing::deposits::tx_setup_with_input_sigscript(
+            14,
+            8000,
+            &[10000],
+            input_sigscript,
+            mainnet,
+        );
+        let deposit_request = CreateDepositRequestBody {
+            bitcoin_txid: deposit.tx.compute_txid().to_string(),
+            bitcoin_tx_output_index: 0,
+            reclaim_script: deposit.reclaims[0].reclaim_script().to_hex_string(),
+            deposit_script: deposit.deposits[0].deposit_script().to_hex_string(),
+            transaction_hex: encode::serialize_hex(&deposit.tx),
+        };
+        let limits = helpers::create_test_limits(None, None);
+        let result = deposit_request.validate(&limits, mainnet).unwrap();
+
+        assert_eq!(
+            result.input_address.unwrap().to_string(),
+            address.to_string()
+        );
+        let address = Address::from_str(address).unwrap();
+        assert!(address.is_valid_for_network(Network::Bitcoin));
+        assert_eq!(
+            address.assume_checked().address_type().unwrap(),
+            address_type
+        );
+    }
+
+    #[test_case("524104d81fd577272bbe73308c93009eec5dc9fc319fc1ee2e7066e17220a5d47a18314578be2faea34b9f1f8ca078f8621acd4bc22897b03daa422b9bf56646b342a24104ec3afff0b2b66e8152e9018fe3be3fc92b30bf886b3487a525997d00fd9da2d012dce5d5275854adc3106572a5d1e12d4211b228429f5a7b2f7ba92eb0475bb14104b49b496684b02855bc32f5daefa2e2e406db4418f3b86bca5195600951c7d918cdbe5e6d3736ec2abf2dd7610995c3086976b2c0c7b4e459d10b34a316d5a5e753ae"; "p2ms")]
+    #[test_case("160014ea940f42d06dfe7ffffd0f8270bf83f3b3d2259d"; "nested-p2wpkh")]
+    #[tokio::test]
+    async fn test_deposit_validate_for_unsupported_pubscript(scriptbuf_hex: &str) {
+        let input_sigscript = ScriptBuf::from_hex(scriptbuf_hex).unwrap();
+        let mainnet = true;
+        let deposit = testing::deposits::tx_setup_with_input_sigscript(
+            14,
+            8000,
+            &[10000],
+            input_sigscript,
+            mainnet,
+        );
+        let deposit_request = CreateDepositRequestBody {
+            bitcoin_txid: deposit.tx.compute_txid().to_string(),
+            bitcoin_tx_output_index: 0,
+            reclaim_script: deposit.reclaims[0].reclaim_script().to_hex_string(),
+            deposit_script: deposit.deposits[0].deposit_script().to_hex_string(),
+            transaction_hex: encode::serialize_hex(&deposit.tx),
+        };
+        let limits = helpers::create_test_limits(None, None);
+        let result = deposit_request.validate(&limits, mainnet).unwrap();
+
+        assert_eq!(result.input_address, None);
     }
 
     // CREATE_DEPOSIT_VALID has a deposit amount of 1_000_000 satoshis.

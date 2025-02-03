@@ -53,6 +53,7 @@ fn build_deposit_reclaim_outputs(
     max_fee: u64,
     amounts: &[u64],
     recipient: Option<StacksAddress>,
+    mainnet: bool,
 ) -> (
     Vec<TxOut>,
     Vec<DepositScriptInputs>,
@@ -64,7 +65,7 @@ fn build_deposit_reclaim_outputs(
 
     for &amount in amounts {
         let secret_key = SecretKey::new(&mut OsRng);
-        let actual_recipient = recipient.unwrap_or(StacksAddress::burn_address(false));
+        let actual_recipient = recipient.unwrap_or(StacksAddress::burn_address(mainnet));
         let deposit = DepositScriptInputs {
             signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
             recipient: PrincipalData::from(actual_recipient),
@@ -89,7 +90,7 @@ fn build_deposit_reclaim_outputs(
 /// the deposit and reclaim scripts.
 pub fn tx_setup(lock_time: u32, max_fee: u64, amounts: &[u64]) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None);
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, false);
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
@@ -108,7 +109,7 @@ pub fn tx_setup_with_recipient(
     recipient: StacksAddress,
 ) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, Some(recipient));
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, Some(recipient), false);
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
@@ -125,9 +126,10 @@ pub fn tx_setup_with_input_sigscript(
     max_fee: u64,
     amounts: &[u64],
     input_sigscript: ScriptBuf,
+    mainnet: bool,
 ) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None);
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, mainnet);
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,

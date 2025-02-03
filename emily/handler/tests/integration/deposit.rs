@@ -124,6 +124,7 @@ impl DepositTxnData {
             max_fee,
             amounts,
             input_pubscript,
+            false,
         );
         Self::from_tx_setup(tx_setup)
     }
