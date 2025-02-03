@@ -62,21 +62,28 @@ impl utxo::DepositRequest {
     }
 }
 
-impl BitcoinCoreMessageStream {
-    /// Create a new BlockHash stream for messages from bitcoin core over
-    /// the ZMQ interface.
-    ///
-    /// The returned object implements Stream + Send + Sync, which is
-    /// useful in tests.
-    pub fn as_receiver_stream(self) -> ReceiverStream<Result<BlockHash, Error>> {
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-        tokio::spawn(async move {
-            let mut stream = self.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
+/// Create a new BlockHash stream for messages from bitcoin core over the
+/// ZMQ interface.
+///
+/// The returned object implements Stream + Send + Sync, which is sometimes
+/// needed in our integration tests.
+///
+/// # Notes
+///
+/// This function panics if it cannot establish a connection the bitcoin
+/// core in 10 seconds.
+pub async fn new_zmq_block_hash_stream(endpoint: &str) -> ReceiverStream<Result<BlockHash, Error>> {
+    let zmq_stream = BitcoinCoreMessageStream::new_from_endpoint(endpoint)
+        .await
+        .unwrap();
 
-        ReceiverStream::new(receiver)
-    }
+    let (sender, receiver) = tokio::sync::mpsc::channel(100);
+    tokio::spawn(async move {
+        let mut stream = zmq_stream.to_block_hash_stream();
+        while let Some(block) = stream.next().await {
+            sender.send(block).await.unwrap();
+        }
+    });
+
+    ReceiverStream::new(receiver)
 }

@@ -45,7 +45,6 @@ use signer::storage::DbWrite;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 
-use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
 use signer::context::Context as _;
 use signer::context::SignerEvent;
@@ -150,15 +149,9 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-            .await
-            .unwrap()
-            .as_receiver_stream();
-
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: zmq_stream,
+        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
     };
 
     // We need at least one receiver
@@ -259,15 +252,9 @@ async fn link_blocks() {
     })
     .await;
 
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-            .await
-            .unwrap()
-            .as_receiver_stream();
-
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: zmq_stream,
+        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
     };
 
     let mut signal_rx = ctx.get_signal_receiver();
@@ -418,15 +405,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-            .await
-            .unwrap()
-            .as_receiver_stream();
-
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: zmq_stream,
+        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
     };
 
     tokio::spawn(async move {
@@ -726,15 +707,9 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-            .await
-            .unwrap()
-            .as_receiver_stream();
-
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: zmq_stream,
+        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
     };
 
     let mut signal_receiver = ctx.get_signal_receiver();
@@ -1037,15 +1012,9 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    let zmq_stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-            .await
-            .unwrap()
-            .as_receiver_stream();
-
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: zmq_stream,
+        bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT).await,
     };
 
     // In this test the signer set public keys start empty. When running

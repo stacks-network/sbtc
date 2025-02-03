@@ -74,7 +74,6 @@ use test_log::test;
 use tokio_stream::wrappers::BroadcastStream;
 use url::Url;
 
-use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
 use signer::context::Context;
 use signer::emily_client::EmilyClient;
@@ -1514,15 +1513,10 @@ async fn sign_bitcoin_transaction() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap()
-                .as_receiver_stream();
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: zmq_stream,
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1948,15 +1942,10 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap()
-                .as_receiver_stream();
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: zmq_stream,
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2531,15 +2520,10 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap()
-                .as_receiver_stream();
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: zmq_stream,
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -3323,15 +3307,10 @@ async fn test_conservative_initial_sbtc_limits() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap()
-                .as_receiver_stream();
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: zmq_stream,
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
