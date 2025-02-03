@@ -72,7 +72,7 @@ shall:
 The `gh` executable can quickly [verify attestations][5]:
 
 ```bash
-gh attestation verify oci://index.docker.io/blockstack/sbtc:signer-0.0.9-rc6 -R stacks-network/sbtc
+> gh attestation verify oci://index.docker.io/blockstack/sbtc:signer-0.0.9-rc6 -R stacks-network/sbtc
 Loaded digest sha256:3bba86a5c2dfdbda61209dc728ab208406a909c8b5affba45da5bb4ccb27ad0d for oci://index.docker.io/blockstack/sbtc:signer-0.0.9-rc6
 Loaded 1 attestation from GitHub API
 
