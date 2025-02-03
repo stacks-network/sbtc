@@ -63,11 +63,11 @@ communications channel including an sBTC signer (similarly to the 4-eyes process
 Once sBTC Signers receive a release announcement from the sBTC Comms team, they
 MUST:
 
-1. Ensure the communication comes from a member of the sBTC Comms team;
-1. carefully read the corresponding upgrade instructions;
-1. verify the attestation of the attached artifacts;
-1. execute the upgrade;
-1. confirm the execution.
+1. Ensure the communication comes from a member of the sBTC Comms team.
+1. Carefully read the corresponding upgrade instructions.
+1. Verify the attestation of the attached artifacts.
+1. Execute the upgrade.
+1. Confirm the execution.
 
 The `gh` executable can quickly [verify attestations][5]:
 
@@ -89,8 +89,6 @@ sha256:3bba86a5c2dfdbda61209dc728ab208406a909c8b5affba45da5bb4ccb27ad0d was atte
 REPO                 PREDICATE_TYPE                  WORKFLOW
 stacks-network/sbtc  https://slsa.dev/provenance/v1  .github/workflows/image-build.yaml@refs/tags/0.0.9-rc6
 ```
-
-## References
 
 [0]: https://semver.org
 [1]: https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets
