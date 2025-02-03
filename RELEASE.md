@@ -56,7 +56,7 @@ ensures clear separation of duties and, for instance, prevents a rogue core
 developer from "convincing" the sBTC signers of deploying a tampered release.
 
 At all times, there shall be at least two members of the sBTC Comms team in any
-channel including an sBTC signer (similarly to the 4-eyes process for releases).
+communications channel including an sBTC signer (similarly to the 4-eyes process for releases).
 
 ## [sBTC Signers] Deploying a new release
 
