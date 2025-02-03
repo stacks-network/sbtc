@@ -17,32 +17,32 @@ below).
 
 An sBTC release is a tagged commit on the `main` branch.
 
-Any commit to `main` SHALL require at least one review through a GitHub pull
-request. Before merging the pull request, all tests SHALL pass.
+Any commit to `main` MUST require at least one review through a GitHub pull
+request. Before merging the pull request, all tests MUST pass.
 
-Tags SHALL be named according to [semantic versioning][0].
+Tags MUST be named according to [semantic versioning][0].
 
 [GitHub rulesets][1] ensure that only a subset of sBTC core developers can
 create a `git tag`. Creating a tag SHOULD require 4-eyes (as of February 2025,
 this is not yet possible).
 
 Once a tag is created, a [GitHub deployment environment][2] will build and
-publish any corresponding artifacts. The deployment environment SHALL require a
+publish any corresponding artifacts. The deployment environment MUST require a
 review from a subset of sBTC core developers before executing. The use of
 deployment environment ensures that all credentials that are required to publish artifacts
 are gated behind the review process (e.g., Docker Hub credentials, until [OIDC
 identities are supported][4]).
 
-All artifacts SHALL be [attested][3] so that their build provenance can be
+All artifacts MUST be [attested][3] so that their build provenance can be
 established. This way, downstream users (e.g., sBTC signers) will be able to
 cryptographically verify that an artifact (e.g., a Docker release) has been
 built and published through GitHub actions.
 
-All artifacts SHALL be addressed through their cryptographic digest (e.g., `git
+All artifacts MUST be addressed through their cryptographic digest (e.g., `git
 commit` or Docker image digest), in addition to their label (e.g., the `git
 tag`).
 
-To improve quality of life, the release notes SHALL include breaking changes (if
+To improve quality of life, the release notes MUST include breaking changes (if
 any), upgrade migrations (if any), and a link to the relevant artefacts (e.g.,
 Docker images).
 
@@ -51,17 +51,17 @@ Docker images).
 After a new release has been created, the sBTC Comms team will inform the sBTC
 signers and provide the appropriate update instructions.
 
-The sBTC Comms team SHALL NOT intersect with the sBTC development team. This
+The sBTC Comms team MUST NOT intersect with the sBTC development team. This
 ensures clear separation of duties and, for instance, prevents a rogue core
 developer from "convincing" the sBTC signers of deploying a tampered release.
 
-At all times, there shall be at least two members of the sBTC Comms team in any
+At all times, there MUST be at least two members of the sBTC Comms team in any
 communications channel including an sBTC signer (similarly to the 4-eyes process for releases).
 
 ## [sBTC Signers] Deploying a new release
 
 Once sBTC Signers receive a release announcement from the sBTC Comms team, they
-shall:
+MUST:
 
 1. Ensure the communication comes from a member of the sBTC Comms team;
 1. carefully read the corresponding upgrade instructions;
