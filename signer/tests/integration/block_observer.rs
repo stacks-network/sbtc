@@ -19,7 +19,6 @@ use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
-use futures::StreamExt;
 use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
@@ -57,7 +56,6 @@ use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use signer::testing::storage::model::TestData;
-use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
 use crate::setup::TestSweepSetup;
@@ -152,24 +150,15 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    // We jump through all of these hoops to make sure that the block
-    // stream object is Send + Sync.
     let zmq_stream =
         BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
             .await
-            .unwrap();
-    let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-    tokio::spawn(async move {
-        let mut stream = zmq_stream.to_block_hash_stream();
-        while let Some(block) = stream.next().await {
-            sender.send(block).await.unwrap();
-        }
-    });
+            .unwrap()
+            .as_receiver_stream();
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: ReceiverStream::new(receiver),
+        bitcoin_blocks: zmq_stream,
     };
 
     // We need at least one receiver
@@ -273,19 +262,12 @@ async fn link_blocks() {
     let zmq_stream =
         BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
             .await
-            .unwrap();
-    let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-    tokio::spawn(async move {
-        let mut stream = zmq_stream.to_block_hash_stream();
-        while let Some(block) = stream.next().await {
-            sender.send(block).await.unwrap();
-        }
-    });
+            .unwrap()
+            .as_receiver_stream();
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: ReceiverStream::new(receiver),
+        bitcoin_blocks: zmq_stream,
     };
 
     let mut signal_rx = ctx.get_signal_receiver();
@@ -436,24 +418,15 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    // We jump through all of these hoops to make sure that the block
-    // stream object is Send + Sync.
     let zmq_stream =
         BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
             .await
-            .unwrap();
-    let (sender, receiver) = tokio::sync::mpsc::channel(1000);
-
-    tokio::spawn(async move {
-        let mut stream = zmq_stream.to_block_hash_stream();
-        while let Some(block) = stream.next().await {
-            sender.send(block).await.unwrap();
-        }
-    });
+            .unwrap()
+            .as_receiver_stream();
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: ReceiverStream::new(receiver),
+        bitcoin_blocks: zmq_stream,
     };
 
     tokio::spawn(async move {
@@ -753,24 +726,15 @@ async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcL
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    // We jump through all of these hoops to make sure that the block
-    // stream object is Send + Sync.
     let zmq_stream =
         BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
             .await
-            .unwrap();
-    let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-    tokio::spawn(async move {
-        let mut stream = zmq_stream.to_block_hash_stream();
-        while let Some(block) = stream.next().await {
-            sender.send(block).await.unwrap();
-        }
-    });
+            .unwrap()
+            .as_receiver_stream();
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: ReceiverStream::new(receiver),
+        bitcoin_blocks: zmq_stream,
     };
 
     let mut signal_receiver = ctx.get_signal_receiver();
@@ -1073,24 +1037,15 @@ async fn block_observer_updates_state_after_observing_bitcoin_block() {
     let start_flag = Arc::new(AtomicBool::new(false));
     let flag = start_flag.clone();
 
-    // We jump through all of these hoops to make sure that the block
-    // stream object is Send + Sync.
     let zmq_stream =
         BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
             .await
-            .unwrap();
-    let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-    tokio::spawn(async move {
-        let mut stream = zmq_stream.to_block_hash_stream();
-        while let Some(block) = stream.next().await {
-            sender.send(block).await.unwrap();
-        }
-    });
+            .unwrap()
+            .as_receiver_stream();
 
     let block_observer = BlockObserver {
         context: ctx.clone(),
-        bitcoin_blocks: ReceiverStream::new(receiver),
+        bitcoin_blocks: zmq_stream,
     };
 
     // In this test the signer set public keys start empty. When running

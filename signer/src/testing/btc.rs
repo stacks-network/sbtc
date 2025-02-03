@@ -1,6 +1,7 @@
 //! Helper functions for the bitcoin module
 //!
 use bitcoin::Amount;
+use bitcoin::BlockHash;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
@@ -10,8 +11,12 @@ use bitcoin::TxOut;
 use bitcoin::Witness;
 
 use emily_client::models::CreateDepositRequestBody;
+use futures::StreamExt as _;
+use tokio_stream::wrappers::ReceiverStream;
 
 use crate::bitcoin::utxo;
+use crate::bitcoin::zmq::BitcoinCoreMessageStream;
+use crate::error::Error;
 
 /// Return a transaction that is kinda like the signers' transaction,
 /// but it does not service any requests, and it does not have any
@@ -54,5 +59,24 @@ impl utxo::DepositRequest {
             deposit_script: self.deposit_script.to_hex_string(),
             reclaim_script: self.reclaim_script.to_hex_string(),
         }
+    }
+}
+
+impl BitcoinCoreMessageStream {
+    /// Create a new BlockHash stream for messages from bitcoin core over
+    /// the ZMQ interface.
+    ///
+    /// The returned object implements Stream + Send + Sync, which is
+    /// useful in tests.
+    pub fn as_receiver_stream(self) -> ReceiverStream<Result<BlockHash, Error>> {
+        let (sender, receiver) = tokio::sync::mpsc::channel(100);
+        tokio::spawn(async move {
+            let mut stream = self.to_block_hash_stream();
+            while let Some(block) = stream.next().await {
+                sender.send(block).await.unwrap();
+            }
+        });
+
+        ReceiverStream::new(receiver)
     }
 }

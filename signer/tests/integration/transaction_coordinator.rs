@@ -31,7 +31,7 @@ use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use fake::Fake as _;
 use fake::Faker;
-use futures::StreamExt;
+use futures::StreamExt as _;
 use lru::LruCache;
 use mockito;
 use rand::rngs::OsRng;
@@ -72,7 +72,6 @@ use stacks_common::types::chainstate::SortitionId;
 use test_case::test_case;
 use test_log::test;
 use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
@@ -1518,19 +1517,12 @@ async fn sign_bitcoin_transaction() {
         let zmq_stream =
             BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
                 .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
+                .unwrap()
+                .as_receiver_stream();
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: zmq_stream,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1959,19 +1951,12 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         let zmq_stream =
             BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
                 .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
+                .unwrap()
+                .as_receiver_stream();
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: zmq_stream,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2549,19 +2534,12 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
         let zmq_stream =
             BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
                 .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
+                .unwrap()
+                .as_receiver_stream();
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: zmq_stream,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -3348,19 +3326,12 @@ async fn test_conservative_initial_sbtc_limits() {
         let zmq_stream =
             BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
                 .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
+                .unwrap()
+                .as_receiver_stream();
 
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: zmq_stream,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
