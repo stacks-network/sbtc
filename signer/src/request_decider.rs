@@ -121,8 +121,9 @@ where
         Ok(())
     }
 
+    /// Vote on pending deposit requests
     #[tracing::instrument(skip_all, fields(chain_tip = tracing::field::Empty))]
-    async fn handle_new_requests(&mut self) -> Result<(), Error> {
+    pub async fn handle_new_requests(&mut self) -> Result<(), Error> {
         let requests_processing_delay = self.context.config().signer.requests_processing_delay;
         if requests_processing_delay > Duration::ZERO {
             tracing::debug!("sleeping before processing new requests");
@@ -374,11 +375,13 @@ where
             .then(|address| async { client.can_accept(&address.to_string()).await })
             .inspect_err(|error| tracing::error!(%error, "blocklist client issue"))
             .collect::<Vec<_>>()
-            .await;
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()?;
 
         // If all of the inputs addresses are fine then we pass the deposit
         // request.
-        let can_accept = responses.into_iter().all(|res| res.unwrap_or(false));
+        let can_accept = responses.into_iter().all(|res| res);
         Ok(can_accept)
     }
 

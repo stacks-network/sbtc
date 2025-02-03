@@ -15,6 +15,7 @@ use std::path::Path;
 use url::Url;
 
 use crate::config::error::SignerConfigError;
+use crate::config::serialization::duration_milliseconds_deserializer;
 use crate::config::serialization::duration_seconds_deserializer;
 use crate::config::serialization::p2p_multiaddr_deserializer_vec;
 use crate::config::serialization::parse_stacks_address;
@@ -212,8 +213,21 @@ pub struct BlocklistClientConfig {
     /// the url for the blocklist client
     #[serde(deserialize_with = "url_deserializer_single")]
     pub endpoint: Url,
+
+    /// The delay, in milliseconds, for the second retry after a blocklist
+    /// client failure
+    #[serde(
+        default = "BlocklistClientConfig::retry_delay_default",
+        deserialize_with = "duration_milliseconds_deserializer"
+    )]
+    pub retry_delay: std::time::Duration,
 }
 
+impl BlocklistClientConfig {
+    fn retry_delay_default() -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
+}
 /// Emily API configuration.
 #[derive(Deserialize, Clone, Debug)]
 pub struct EmilyClientConfig {
@@ -498,6 +512,8 @@ impl Settings {
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
         self.signer.validate(self)?;
+        self.stacks.validate(self)?;
+        self.emily.validate(self)?;
 
         Ok(())
     }
