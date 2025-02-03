@@ -70,7 +70,8 @@ pub struct DepositEntry {
     /// History of this deposit transaction.
     pub history: Vec<DepositEvent>,
     /// Input address from which the deposit was made.
-    pub input_address: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_address: Option<String>,
 }
 
 /// Implements versioned entry trait for the deposit entry.
@@ -813,7 +814,7 @@ mod tests {
             last_update_block_hash: "".to_string(),
             fulfillment: None,
             history: vec![pending, accepted.clone()],
-            input_address: "".to_string(),
+            input_address: None,
         };
 
         let update = ValidatedDepositUpdate {
@@ -853,7 +854,7 @@ mod tests {
             last_update_block_hash: "".to_string(),
             fulfillment: None,
             history: vec![pending.clone()],
-            input_address: "".to_string(),
+            input_address: None,
         };
 
         let update = ValidatedDepositUpdate {
@@ -911,7 +912,7 @@ mod tests {
             last_update_block_hash: "hash6".to_string(),
             fulfillment: Some(fulfillment.clone()),
             history: vec![pending.clone(), accepted.clone(), confirmed.clone()],
-            input_address: "test-input-address".to_string(),
+            input_address: Some("test-input-address".to_string()),
         };
 
         // Ensure the deposit is valid.
