@@ -51,9 +51,10 @@ Docker images).
 After a new release has been created, the sBTC Comms team will inform the sBTC
 signers and provide the appropriate update instructions.
 
-The sBTC Comms team MUST NOT intersect with the sBTC development team. This
-ensures clear separation of duties and, for instance, prevents a rogue core
-developer from "convincing" the sBTC signers of deploying a tampered release.
+All members of the sBTC Comms team MUST NOT be participating to sBTC development
+(that is, they MUST NOT be part of the Core developers team). This ensures clear
+separation of duties and, for instance, prevents a rogue core developer from
+"convincing" the sBTC signers of deploying a tampered release.
 
 At all times, there MUST be at least two members of the sBTC Comms team in any
 communications channel including an sBTC signer (similarly to the 4-eyes process for releases).
