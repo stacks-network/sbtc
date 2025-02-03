@@ -581,6 +581,23 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
+    /// Update the `SignerState` object with current signer set and
+    /// aggregate key data.
+    ///
+    /// # Notes
+    ///
+    /// The function updates the following:
+    /// * The current signer set. We get this information from the last
+    ///   successful key-rotation contract call, if that does not exist we
+    ///   use the latest DKG shares, and if that doesn't exist we use the
+    ///   bootstrap signing set from the configuration.
+    /// * The current aggregate key. We get this information from the last
+    ///   successful key-rotation contract call, if that does not exist we
+    ///   use the latest DKG shares.
+    ///
+    /// We cache this information in memory because the query that fetches
+    /// the last key rotation can take quite a lot of some time to
+    /// complete.
     async fn set_signer_set_and_aggregate_key(&self, chain_tip: BlockHash) -> Result<(), Error> {
         let (aggregate_key, public_keys) =
             get_signer_set_and_aggregate_key(&self.context, chain_tip).await?;
@@ -595,6 +612,15 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
+    /// Update the `SignerState` object with data that is unlikely to
+    /// change until the arrival of the next bitcoin block.
+    ///
+    /// # Notes
+    ///
+    /// The function updates the following:
+    /// * sBTC limits from Emily.
+    /// * The current signer set.
+    /// * The current aggregate key.
     async fn update_signer_state(&self, chain_tip: BlockHash) -> Result<(), Error> {
         tracing::info!("loading sbtc limits from Emily");
         self.update_sbtc_limits().await?;
