@@ -27,11 +27,11 @@ create a `git tag`. Creating a tag SHOULD require 4-eyes (as of February 2025,
 this is not yet possible).
 
 Once a tag is created, a [GitHub deployment environment][2] will build and
-publish any corresponding artifact. The deployment environment SHALL require a
+publish any corresponding artifacts. The deployment environment SHALL require a
 review from a subset of sBTC core developers before executing. The use of
-deployment environment ensures that any credential required to publish artifacts
-is gated behind the review process (e.g., Docker Hub credentials, until [OIDC
-identities will be supported][4]).
+deployment environment ensures that all credentials that are required to publish artifacts
+are gated behind the review process (e.g., Docker Hub credentials, until [OIDC
+identities are supported][4]).
 
 All artifacts SHALL be [attested][3] so that their build provenance can be
 established. This way, downstream users (e.g., sBTC signers) will be able to
