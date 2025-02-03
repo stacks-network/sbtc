@@ -16,6 +16,18 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Unexpected [`StateMachineId`] in the given context.
+    #[error("unexpected state machine id in the given context: {0:?}")]
+    UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
+
+    /// The DKG shares for the provided aggregate key have not been verified.
+    #[error("the dkg shares for the provided aggregate key have not been verified: {0}")]
+    DkgSharesNotVerified(Box<PublicKeyXOnly>),
+
+    /// The DKG shares for the provided aggregate key have been revoked.
+    #[error("the provided aggregate key has been revoked: {0}")]
+    DkgSharesRevoked(Box<PublicKeyXOnly>),
+
     /// An IO error was returned from the [`bitcoin`] library. This is usually an
     /// error that occurred during encoding/decoding of bitcoin types.
     #[error("an io error was returned from the bitcoin library: {0}")]
@@ -30,10 +42,20 @@ pub enum Error {
     #[error("invalid signing request")]
     InvalidSigningOperation,
 
+    /// No mock transaction was found after DKG successfully completed. Spending
+    /// a signer UTXO locked by the new aggregate key could not be verified.
+    #[error("no mock transaction found when attempting to sign")]
+    MissingMockTransaction,
+
     /// The pre-rotate-key frost verification signing round was not reported as
     /// successful.
     #[error("rotate-key frost verification signing round not reported as successful")]
-    FrostVerificationNotSuccessful,
+    DkgVerificationNotSuccessful,
+
+    /// The rotate-key frost verification signing round failed for the aggregate
+    /// key.
+    #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
+    DkgVerificationFailed(Box<PublicKeyXOnly>),
 
     /// No WSTS FROST state machine was found for the given aggregate key. This
     /// state machine is used during the DKG verification signing round
@@ -376,6 +398,24 @@ pub enum Error {
     /// An error occurred while attempting to rollback an sqlx transaction.
     #[error("encountered an error while rolling back an sqlx transaction: {0}")]
     SqlxRollbackTransaction(#[source] sqlx::Error),
+
+    /// An error occurred while attempting to deserialize a row into a struct.
+    #[error("encountered an error while attempting to convert a row to a struct: {0}")]
+    SqlxFromRow(Cow<'static, str>),
+
+    /// An error occurred while attempting to serialize a struct into a row.
+    #[error("encountered an error while attempting to convert a struct to a row: {0}")]
+    SqlxToRow(Cow<'static, str>),
+
+    /// The number of rows updated by a query did not match the expected updated
+    /// row count.
+    #[error("expected {expected:?} rows to be updated, but {actual} were updated")]
+    SqlxUpdatedRowsExpectation {
+        /// The number of rows that were expected to be updated.
+        expected: std::ops::Range<i32>,
+        /// The number of rows that were actually updated.
+        actual: i32,
+    },
 
     /// An error when attempting to read a migration script.
     #[error("failed to read migration script: {0}")]

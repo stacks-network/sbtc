@@ -717,13 +717,13 @@ impl SignerUtxo {
 /// A struct for constructing a mock transaction that can be signed. This is
 /// used as part of the verification process after a new DKG round has been
 /// completed.
-/// 
+///
 /// The Bitcoin transaction has the following layout:
 /// 1. The first input is spending the signers' UTXO.
 /// 2. There is only one output which is an OP_RETURN with the bytes [0x01,
 ///    0x02, 0x03] as the data and amount equal to the UTXO's value (i.e. the
 ///    transaction has a zero-fee).
-pub struct UnsignedMockTransaction {
+pub struct UnsignedMockTransaction<const AMOUNT: u64 = 1_000> {
     /// The amount of the transaction.
     amount: u64,
     /// The Bitcoin transaction that needs to be signed.
@@ -822,7 +822,14 @@ impl SignatureHashes<'_> {
     }
 }
 
-impl UnsignedMockTransaction {
+impl UnsignedMockTransaction<1_000> {
+    /// Construct a mock transaction with a default amount of 1,000 sats.
+    pub fn new_1000(signer_public_key: XOnlyPublicKey) -> Self {
+        UnsignedMockTransaction::<1_000>::new(signer_public_key, 1_000)
+    }
+}
+
+impl<const AMOUNT: u64> UnsignedMockTransaction<AMOUNT> {
     /// Construct an unsigned mock transaction.
     ///
     /// This will use the provided `aggregate_key` and `amount` to
@@ -847,7 +854,7 @@ impl UnsignedMockTransaction {
             }],
         };
 
-        Self { amount, tx, utxo }
+        Self { amount: AMOUNT, tx, utxo }
     }
 
     /// Gets the sighash for the signers' input UTXO which needs to be signed
@@ -865,7 +872,7 @@ impl UnsignedMockTransaction {
     /// signers' UTXO. This function will return  [`Error::BitcoinConsensus`]
     /// error if the signature fails verification, passing the underlying error
     /// from [`bitcoinconsensus`].
-    pub fn verify_signature(&mut self, signature: &Signature) -> Result<(), Error> {
+    pub fn verify_signature(&self, signature: &Signature) -> Result<(), Error> {
         // Create a copy of the transaction so that we don't modify the
         // transaction stored in the struct.
         let mut tx = self.tx.clone();
@@ -1770,10 +1777,8 @@ mod tests {
         let tweaked = keypair.tap_tweak(&secp, None);
         let (aggregate_key, _) = keypair.x_only_public_key();
 
-        let amount = 1_000;
-
         // Create a new transaction using the aggregate key.
-        let mut unsigned = UnsignedMockTransaction::new(aggregate_key, amount);
+        let unsigned = UnsignedMockTransaction::new_1000(aggregate_key);
 
         let tapsig = unsigned
             .compute_sighash()

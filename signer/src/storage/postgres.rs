@@ -1474,6 +1474,9 @@ impl super::DbRead for PgStore {
               , public_shares
               , signer_set_public_keys
               , signature_share_threshold
+              , dkg_shares_status_id
+              , verified_at_bitcoin_block_hash
+              , verified_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             WHERE substring(aggregate_key FROM 2) = $1;
             "#,
@@ -1497,6 +1500,9 @@ impl super::DbRead for PgStore {
               , public_shares
               , signer_set_public_keys
               , signature_share_threshold
+              , dkg_shares_status_id
+              , verified_at_bitcoin_block_hash
+              , verified_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             ORDER BY created_at DESC
             LIMIT 1;
@@ -2414,6 +2420,21 @@ impl super::DbWrite for PgStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Error> {
+        let mut verified_at_bitcoin_block_hash: Option<model::BitcoinBlockHash> = None;
+        let mut verified_at_bitcoin_block_height: Option<i64> = None;
+
+        let dkg_shares_status_id = match shares.status {
+            model::DkgSharesStatus::Pending => 0,
+            model::DkgSharesStatus::Verified(block) => {
+                verified_at_bitcoin_block_hash = Some(block.block_hash);
+                let block_height =
+                    i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?;
+                verified_at_bitcoin_block_height = Some(block_height);
+                1
+            }
+            model::DkgSharesStatus::Revoked => 2,
+        };
+
         sqlx::query(
             r#"
             INSERT INTO sbtc_signer.dkg_shares (
@@ -2424,8 +2445,11 @@ impl super::DbWrite for PgStore {
               , script_pubkey
               , signer_set_public_keys
               , signature_share_threshold
+              , dkg_shares_status_id
+              , verified_at_bitcoin_block_hash
+              , verified_at_bitcoin_block_height
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
@@ -2435,6 +2459,9 @@ impl super::DbWrite for PgStore {
         .bind(&shares.script_pubkey)
         .bind(&shares.signer_set_public_keys)
         .bind(i32::from(shares.signature_share_threshold))
+        .bind(dkg_shares_status_id)
+        .bind(verified_at_bitcoin_block_hash)
+        .bind(verified_at_bitcoin_block_height)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2836,6 +2863,83 @@ impl super::DbWrite for PgStore {
         .map_err(Error::SqlxQuery)?;
 
         Ok(())
+    }
+
+    async fn revoke_dkg_shares(&self, aggregate_key: &PublicKeyXOnly) -> Result<bool, Error> {
+        let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
+
+        let updated_rows = sqlx::query_scalar::<_, i32>(
+            r#"
+            UPDATE sbtc_signer.dkg_shares
+            SET dkg_shares_status_id = 2
+            WHERE aggregate_key = $1;
+            "#,
+        )
+        .bind(aggregate_key)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        if updated_rows > 1 {
+            tracing::warn!(
+                "expected to update 0..1 rows, but updated {} rows; rolling back transaction",
+                updated_rows
+            );
+            tx.rollback()
+                .await
+                .map_err(Error::SqlxRollbackTransaction)?;
+            return Err(Error::SqlxUpdatedRowsExpectation {
+                expected: 0..1,
+                actual: updated_rows,
+            });
+        }
+
+        tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
+
+        Ok(updated_rows == 1)
+    }
+
+    async fn verify_dkg_shares(
+        &self,
+        aggregate_key: &PublicKeyXOnly,
+        bitcoin_block: &model::BitcoinBlockRef,
+    ) -> Result<bool, Error> {
+        let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
+
+        let updated_rows = sqlx::query_scalar::<_, i32>(
+            r#"
+            UPDATE sbtc_signer.dkg_shares
+            SET 
+                dkg_shares_status_id = 1
+              , verified_at_bitcoin_block_hash = $2
+              , verified_at_bitcoin_block_height = $3
+            WHERE aggregate_key = $1;
+            "#,
+        )
+        .bind(aggregate_key)
+        .bind(bitcoin_block.block_hash)
+        .bind(i64::try_from(bitcoin_block.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        if updated_rows > 1 {
+            tracing::warn!(
+                "expected to update 0..1 rows, but updated {} rows; rolling back transaction",
+                updated_rows
+            );
+            tx.rollback()
+                .await
+                .map_err(Error::SqlxRollbackTransaction)?;
+            return Err(Error::SqlxUpdatedRowsExpectation {
+                expected: 0..1,
+                actual: updated_rows,
+            });
+        }
+
+        tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
+
+        Ok(updated_rows == 1)
     }
 }
 

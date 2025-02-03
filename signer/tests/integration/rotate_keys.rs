@@ -12,6 +12,7 @@ use signer::stacks::contracts::RotateKeysErrorMsg;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlock;
+use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::RotateKeysTransaction;
 use signer::storage::model::StacksPrincipal;
@@ -107,6 +108,8 @@ impl TestRotateKeySetup {
     /// Store mocked shares in dkg_shares table.
     pub async fn store_dkg_shares(&self, db: &PgStore) {
         let aggregate_key: PublicKey = self.aggregate_key();
+        let verified_at_block = self.chain_tip.clone().into();
+
         let shares = EncryptedDkgShares {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
@@ -115,6 +118,7 @@ impl TestRotateKeySetup {
             aggregate_key,
             signer_set_public_keys: self.signer_keys.clone(),
             signature_share_threshold: self.signatures_required,
+            status: DkgSharesStatus::Verified(verified_at_block),
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }

@@ -25,6 +25,7 @@ use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::model::DkgSharesStatus;
 use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -1263,5 +1264,29 @@ impl super::DbWrite for SharedStore {
                 .insert(sighash.sighash, sighash.clone());
         });
         Ok(())
+    }
+
+    async fn revoke_dkg_shares(&self, aggregate_key: &PublicKeyXOnly) -> Result<bool, Error> {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(aggregate_key) {
+            shares.status = DkgSharesStatus::Revoked;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn verify_dkg_shares(
+        &self,
+        aggregate_key: &PublicKeyXOnly,
+        bitcoin_block: &model::BitcoinBlockRef,
+    ) -> Result<bool, Error> {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(aggregate_key) {
+            shares.status = DkgSharesStatus::Verified(*bitcoin_block);
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }

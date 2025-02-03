@@ -10,6 +10,7 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
+use fake::Faker;
 use futures::future::join_all;
 use futures::StreamExt;
 use rand::seq::IteratorRandom;
@@ -1778,6 +1779,7 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
         aggregate_key,
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(&mut rng)],
         signature_share_threshold: 1,
+        status: Faker.fake_with_rng(&mut rng),
     };
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
     mem.write_encrypted_dkg_shares(&shares).await.unwrap();

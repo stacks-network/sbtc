@@ -17,6 +17,7 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::TransactionLookupHint;
 use crate::context::Context;
@@ -712,27 +713,7 @@ where
         rotate_key_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<StacksTxId, Error> {
-        // TODO: we should validate the contract call before asking others
-        // to sign it.
-        let contract_call = ContractCall::RotateKeysV1(RotateKeysV1::new(
-            wallet,
-            self.context.config().signer.deployer,
-            rotate_key_aggregate_key,
-        ));
-
-        // Rotate key transactions should be done as soon as possible, so
-        // we set the fee rate to the high priority fee. We also require
-        // signatures from all signers, so we specify the total signer count
-        // as the number of signatures to include in the estimation transaction
-        // as each signature increases the transaction size.
-        let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
-            .await?;
-
-        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
-        let tx = multi_tx.tx();
+        let (x_only_pubkey, _) = rotate_key_aggregate_key.x_only_public_key();
 
         // We run a DKG signing round on the current bitcoin chain tip block
         // hash using the new aggregate key using the FROST coordinator, which
@@ -760,16 +741,28 @@ where
         )
         .await?;
 
-        // We use the current bitcoin chain tip block hash as the data to sign
-        // as it is benign and can be validated by the signers. This may need
-        // to change in the future if we de-couple DKG from blocks.
-        let to_sign = bitcoin_chain_tip.as_byte_array().as_slice();
+        // We create an `UnsignedMockTransaction` which tries to spend an input
+        // locked by the new aggregate key in the same way that the signer
+        // UTXO's are locked. This transaction is then used to compute the
+        // sighash that the signers will sign.
+        //
+        // This transaction does not spend from a valid (existing) UTXO and is
+        // never broadcast to the Bitcoin network.
+        let tap_sighash = UnsignedMockTransaction::new_1000(x_only_pubkey).compute_sighash()?;
+
+        // Perform the signing round. We will not use the resulting signature
+        // for anything here, rather each signer will also construct an
+        // `UnsignedMockTransaction` upon completion of the signing rounds and
+        // attempt to spend the locked UTXO input with the resulting signature.
+        // If script signature validation fails for any of the signers, they
+        // will mark the DKG round as failed and will refuse to sign the rotate
+        // keys transaction.
         self.coordinate_signing_round(
             bitcoin_chain_tip,
             &mut coordinator_state_machine,
             WstsMessageId::RotateKey(*rotate_key_aggregate_key),
-            to_sign,
-            SignatureType::Schnorr
+            tap_sighash.as_byte_array(),
+            SignatureType::Taproot(None),
         ).await
         .inspect_err(|error| {
             tracing::error!(%error, "failed to assert that all signers have signed random data with the new aggregate key; aborting");
@@ -777,6 +770,28 @@ where
         tracing::info!(
             "all signers have signed random data with the new aggregate key; proceeding"
         );
+
+        // TODO: we should validate the contract call before asking others
+        // to sign it.
+        let contract_call = ContractCall::RotateKeysV1(RotateKeysV1::new(
+            wallet,
+            self.context.config().signer.deployer,
+            rotate_key_aggregate_key,
+        ));
+
+        // Rotate key transactions should be done as soon as possible, so
+        // we set the fee rate to the high priority fee. We also require
+        // signatures from all signers, so we specify the total signer count
+        // as the number of signatures to include in the estimation transaction
+        // as each signature increases the transaction size.
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .await?;
+
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        let tx = multi_tx.tx();
 
         // We can now proceed with the actual rotate key transaction.
         let sign_request = StacksTransactionSignRequest {

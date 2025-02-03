@@ -9,6 +9,7 @@ use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 use std::time::Duration;
 
+use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::validation::BitcoinTxContext;
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -30,6 +31,7 @@ use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
+use crate::signature::TaprootSignature;
 use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
@@ -152,7 +154,7 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// verification of the Stacks rotate-keys transaction.
     pub wsts_frost_state_machines: LruCache<StateMachineId, FrostCoordinator>,
     /// Results of the FROST verification rounds.
-    pub wsts_frost_results: LruCache<StateMachineId, bool>,
+    pub wsts_frost_mock_txs: LruCache<StateMachineId, UnsignedMockTransaction>,
 }
 
 /// This struct represents a signature hash and the public key that locks
@@ -220,7 +222,7 @@ where
             wsts_frost_state_machines: LruCache::new(
                 NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
             ),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).ok_or(Error::TypeConversion)?),
+            wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).ok_or(Error::TypeConversion)?),
         })
     }
 
@@ -522,6 +524,7 @@ where
             deployer: self.context.config().signer.deployer,
         };
         let ctx = &self.context;
+
         tracing::info!("running validation on stacks transaction");
         match &request.contract_tx {
             StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
@@ -534,17 +537,6 @@ where
                 contract.validate(ctx, &req_ctx).await?
             }
             StacksTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
-                let aggregate_key = contract.aggregate_key.x_only_public_key().0.into();
-                let frost_result = self
-                    .wsts_frost_results
-                    .peek(&StateMachineId::RotateKey(aggregate_key, *chain_tip));
-                dbg!(&self.wsts_frost_results);
-
-                if !matches!(frost_result, Some(true)) {
-                    tracing::warn!("no successful frost signing round for the pre-rotate-keys verification signing round; refusing to sign");
-                    return Err(Error::FrostVerificationNotSuccessful);
-                }
-
                 contract.validate(ctx, &req_ctx).await?
             }
             StacksTx::SmartContract(smart_contract) => {
@@ -706,7 +698,7 @@ where
                 let (id, aggregate_key) = match msg.id {
                     WstsMessageId::Dkg(_) => {
                         tracing::warn!(
-                            "received nonce-request for DKG round, which is not supported"
+                            "🔐 received nonce-request for DKG round, which is not supported"
                         );
                         return Ok(());
                     }
@@ -750,44 +742,50 @@ where
                         // our latest aggregate key.
 
                         let new_key: PublicKeyXOnly = key.into();
-                        let current_key = db
+                        let latest_key = db
                             .get_latest_encrypted_dkg_shares()
                             .await?
                             .ok_or(Error::NoDkgShares)?
                             .aggregate_key
                             .into();
 
-                        if new_key != current_key {
+                        if new_key != latest_key {
                             tracing::warn!(
-                                "aggregate key mismatch for rotate-key verification signing"
+                                "🔐 aggregate key mismatch for rotate-key verification signing"
                             );
                             return Err(Error::AggregateKeyMismatch(
-                                Box::new(current_key),
+                                Box::new(latest_key),
                                 Box::new(new_key),
                             ));
                         }
 
-                        tracing::info!(%key, "responding to nonce-request for rotate-key signing");
+                        tracing::info!(%key, "🔐 responding to nonce-request for rotate-key signing");
 
                         if request.message.len() != 32 {
                             tracing::warn!(
-                                "data received for rotate-key verification signing is not 32 bytes"
-                            );
-                            return Err(Error::InvalidSigningOperation);
-                        }
-                        if (bitcoin_chain_tip.as_ref()) != request.message.as_slice() {
-                            tracing::warn!(
-                                data = %hex::encode(&request.message),
-                                "data received for rotate-key verification signing does not match current bitcoin chain tip block hash"
+                                "🔐 data received for rotate-key verification signing is not 32 bytes"
                             );
                             return Err(Error::InvalidSigningOperation);
                         }
 
-                        let state_machine_id = self
-                            .ensure_rotate_key_state_machine(*bitcoin_chain_tip, new_key)
+                        let (state_machine_id, _, mock_tx) = self
+                            .ensure_rotate_key_state_machine(bitcoin_chain_tip, new_key)
                             .await?;
-                        self.handle_rotate_key_message(new_key, state_machine_id, &msg.inner)
-                            .await?;
+
+                        let tap_sighash = mock_tx.compute_sighash()?;
+                        if tap_sighash.as_byte_array() != request.message.as_slice() {
+                            tracing::warn!(
+                                "🔐 sighash mismatch for rotate-key verification signing"
+                            );
+                            return Err(Error::InvalidSigningOperation);
+                        }
+
+                        self.handle_rotate_key_message(
+                            bitcoin_chain_tip,
+                            state_machine_id,
+                            &msg.inner,
+                        )
+                        .await?;
 
                         (state_machine_id, new_key)
                     }
@@ -822,7 +820,7 @@ where
 
                 let id = match msg.id {
                     WstsMessageId::Dkg(_) => {
-                        tracing::warn!("received signature-share-request for DKG round, which is not supported");
+                        tracing::warn!("🔐 received signature-share-request for DKG round, which is not supported");
                         return Ok(());
                     }
                     WstsMessageId::BitcoinTxid(txid) => {
@@ -847,48 +845,53 @@ where
                         // our latest aggregate key.
 
                         let new_key: PublicKeyXOnly = key.into();
-                        let current_key = db
+                        let latest_key = db
                             .get_latest_encrypted_dkg_shares()
                             .await?
                             .ok_or(Error::NoDkgShares)?
                             .aggregate_key
                             .into();
 
-                        if new_key != current_key {
+                        if new_key != latest_key {
                             tracing::warn!(
-                                "aggregate key mismatch for rotate-key verification signing"
+                                "🔐 aggregate key mismatch for rotate-key verification signing"
                             );
                             return Err(Error::AggregateKeyMismatch(
-                                Box::new(current_key),
+                                Box::new(latest_key),
                                 Box::new(new_key),
                             ));
                         }
 
                         if request.message.len() != 32 {
                             tracing::warn!(
-                                "data received for rotate-key verification signing is not 32 bytes"
-                            );
-                            return Err(Error::InvalidSigningOperation);
-                        }
-                        if (bitcoin_chain_tip.as_ref()) != request.message.as_slice() {
-                            tracing::warn!(
-                                data = %hex::encode(&request.message),
-                                "data received for rotate-key verification signing does not match current bitcoin chain tip block hash"
+                                "🔐 data received for rotate-key verification signing is not 32 bytes"
                             );
                             return Err(Error::InvalidSigningOperation);
                         }
 
                         tracing::info!(
                             signature_type = ?request.signature_type,
-                            "responding to signature-share-request for rotate-key verification signing"
+                            "🔐 responding to signature-share-request for rotate-key verification signing"
                         );
 
-                        let key = key.into();
-                        let state_machine_id = self
-                            .ensure_rotate_key_state_machine(*bitcoin_chain_tip, key)
+                        let (state_machine_id, _, mock_tx) = self
+                            .ensure_rotate_key_state_machine(bitcoin_chain_tip, new_key)
                             .await?;
-                        self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
-                            .await?;
+
+                        let tap_sighash = mock_tx.compute_sighash()?;
+                        if tap_sighash.as_byte_array() != request.message.as_slice() {
+                            tracing::warn!(
+                                "🔐 sighash mismatch for rotate-key verification signing"
+                            );
+                            return Err(Error::InvalidSigningOperation);
+                        }
+
+                        self.handle_rotate_key_message(
+                            bitcoin_chain_tip,
+                            state_machine_id,
+                            &msg.inner,
+                        )
+                        .await?;
                         state_machine_id
                     }
                 };
@@ -910,12 +913,26 @@ where
                     return Ok(());
                 };
 
-                let key = key.into();
+                let new_key: PublicKeyXOnly = key.into();
 
-                let state_machine_id = self
-                    .ensure_rotate_key_state_machine(*bitcoin_chain_tip, key)
+                if request.message.len() != 32 {
+                    tracing::warn!(
+                        "🔐 data received for rotate-key verification signing is not 32 bytes"
+                    );
+                    return Err(Error::InvalidSigningOperation);
+                }
+
+                let (state_machine_id, _, mock_tx) = self
+                    .ensure_rotate_key_state_machine(bitcoin_chain_tip, new_key)
                     .await?;
-                self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+
+                let tap_sighash = mock_tx.compute_sighash()?;
+                if tap_sighash.as_byte_array() != request.message.as_slice() {
+                    tracing::warn!("🔐 sighash mismatch for rotate-key verification signing");
+                    return Err(Error::InvalidSigningOperation);
+                }
+
+                self.handle_rotate_key_message(bitcoin_chain_tip, state_machine_id, &msg.inner)
                     .await?;
             }
             WstsNetMessage::SignatureShareResponse(request) => {
@@ -928,12 +945,13 @@ where
                     return Ok(());
                 };
 
-                let key = key.into();
+                let new_key = key.into();
 
-                let state_machine_id = self
-                    .ensure_rotate_key_state_machine(*bitcoin_chain_tip, key)
+                let (state_machine_id, _, _) = self
+                    .ensure_rotate_key_state_machine(bitcoin_chain_tip, new_key)
                     .await?;
-                self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+
+                self.handle_rotate_key_message(bitcoin_chain_tip, state_machine_id, &msg.inner)
                     .await?;
             }
         }
@@ -995,7 +1013,7 @@ where
 
         let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
 
-        tracing::debug!("storing DKG shares");
+        tracing::debug!("🔐 storing DKG shares");
         self.context
             .get_storage_mut()
             .write_encrypted_dkg_shares(&encrypted_dkg_shares)
@@ -1004,89 +1022,159 @@ where
         Ok(())
     }
 
+    async fn create_frost_coordinator<S>(
+        storage: &S,
+        aggregate_key: PublicKeyXOnly,
+        signer_private_key: PrivateKey,
+    ) -> Result<FrostCoordinator, Error>
+    where
+        S: DbRead + Send + Sync,
+    {
+        let dkg_shares = storage
+            .get_encrypted_dkg_shares(aggregate_key)
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!("🔐 no DKG shares found for requested aggregate key");
+                Error::MissingDkgShares(aggregate_key)
+            })?;
+
+        let signing_set: BTreeSet<PublicKey> = dkg_shares
+            .signer_set_public_keys
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+
+        tracing::debug!(
+            num_signers = signing_set.len(),
+            %aggregate_key,
+            threshold = %dkg_shares.signature_share_threshold,
+            "🔐 creating now frost coordinator to track pre-rotate-key validation signing round"
+        );
+
+        FrostCoordinator::load(
+            storage,
+            aggregate_key,
+            signing_set,
+            dkg_shares.signature_share_threshold,
+            signer_private_key,
+        )
+        .await
+    }
+
     async fn ensure_rotate_key_state_machine(
         &mut self,
-        bitcoin_chain_tip: model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKeyXOnly,
-    ) -> Result<StateMachineId, Error> {
-        let state_machine_id = StateMachineId::RotateKey(aggregate_key, bitcoin_chain_tip);
+    ) -> Result<
+        (
+            StateMachineId,
+            &mut FrostCoordinator,
+            &UnsignedMockTransaction,
+        ),
+        Error,
+    > {
+        let state_machine_id = StateMachineId::RotateKey(aggregate_key, *bitcoin_chain_tip);
 
-        match self.wsts_frost_state_machines.get_mut(&state_machine_id) {
-            Some(_) => {}
-            None => {
-                let storage = self.context.get_storage();
-
-                let dkg_shares = storage
-                    .get_encrypted_dkg_shares(aggregate_key)
-                    .await?
-                    .ok_or_else(|| {
-                        tracing::warn!("no DKG shares found for requested aggregate key");
-                        Error::MissingDkgShares(aggregate_key)
-                    })?;
-
-                let signing_set: BTreeSet<PublicKey> = dkg_shares
-                    .signer_set_public_keys
-                    .into_iter()
-                    .collect::<BTreeSet<_>>();
-
-                tracing::debug!(
-                    num_signers = signing_set.len(),
-                    %aggregate_key,
-                    threshold = %dkg_shares.signature_share_threshold,
-                    "creating now frost coordinator to track pre-rotate-key validation signing round"
-                );
-
-                let coordinator = FrostCoordinator::load(
-                    &storage,
-                    aggregate_key,
-                    signing_set,
-                    dkg_shares.signature_share_threshold,
-                    self.signer_private_key,
-                )
-                .await?;
-
-                self.wsts_frost_state_machines
-                    .get_or_insert_mut(state_machine_id, || coordinator);
-            }
+        if !self.wsts_frost_state_machines.contains(&state_machine_id) {
+            let storage = self.context.get_storage();
+            let coordinator =
+                Self::create_frost_coordinator(&storage, aggregate_key, self.signer_private_key)
+                    .await?;
+            self.wsts_frost_state_machines
+                .put(state_machine_id, coordinator);
         }
 
-        Ok(state_machine_id)
+        let state_machine = self
+            .wsts_frost_state_machines
+            .get_mut(&state_machine_id)
+            .ok_or(Error::MissingFrostStateMachine(Box::new(aggregate_key)))?;
+
+        let mock_tx = UnsignedMockTransaction::new_1000(aggregate_key.into());
+        let mock_tx = self
+            .wsts_frost_mock_txs
+            .get_or_insert(state_machine_id, || mock_tx);
+
+        Ok((state_machine_id, state_machine, mock_tx))
     }
 
     #[tracing::instrument(skip_all)]
     async fn handle_rotate_key_message(
         &mut self,
-        aggregate_key: PublicKeyXOnly,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
         id: StateMachineId,
         msg: &WstsNetMessage,
     ) -> Result<(), Error> {
+        // We should only be handling messages for the rotate-key state machine.
+        // We'll grab the aggregate key from the id as well.
+        let aggregate_key = match id {
+            StateMachineId::RotateKey(aggregate_key, _) => aggregate_key,
+            _ => {
+                tracing::warn!(
+                    "🔐 unexpected state machine id for pre-rotate-key validation signing round"
+                );
+                return Err(Error::UnexpectedStateMachineId(Box::new(id)));
+            }
+        };
+
         let state_machine = self.wsts_frost_state_machines.get_mut(&id);
         let Some(state_machine) = state_machine else {
-            tracing::warn!("missing frost coordinator for pre-rotate-key validation");
+            tracing::warn!("🔐 missing frost coordinator for pre-rotate-key validation");
             return Err(Error::MissingFrostStateMachine(Box::new(aggregate_key)));
         };
 
-        tracing::info!(?msg, "processing frost coordinator message");
+        tracing::trace!(?msg, "🔐 processing frost coordinator message");
 
         let (_, result) = state_machine.process_message(msg)?;
 
         match result {
-            Some(OperationResult::SignSchnorr(_)) => {
-                tracing::info!("successfully completed pre-rotate-key validation signing round");
-                self.wsts_frost_results.put(id, true);
+            Some(OperationResult::SignSchnorr(sig) | OperationResult::SignTaproot(sig)) => {
+                tracing::info!("🔐 successfully completed pre-rotate-key validation signing round");
                 self.wsts_frost_state_machines.pop(&id);
+
+                let Some(mock_tx) = self.wsts_frost_mock_txs.pop(&id) else {
+                    tracing::warn!(
+                        "🔐 missing mock transaction for pre-rotate-key validation signing round"
+                    );
+                    return Err(Error::MissingMockTransaction);
+                };
+
+                // Perform verification of the signature.
+                tracing::info!("🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key");
+                let signature: TaprootSignature = sig.into();
+                mock_tx
+                    .verify_signature(&signature)
+                    .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
+                tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
+
+                let storage = self.context.get_storage_mut();
+                let bitcoin_chain_tip_block =
+                    storage
+                        .get_bitcoin_block(bitcoin_chain_tip)
+                        .await?
+                        .ok_or(Error::MissingBitcoinBlock(*bitcoin_chain_tip))?;
+
+                self.context
+                    .get_storage_mut()
+                    .verify_dkg_shares(&aggregate_key, &bitcoin_chain_tip_block.into())
+                    .await?;
+                tracing::info!(
+                    "🔐 dkg shares entry has been marked as validated; it is now able to be used"
+                );
             }
             Some(OperationResult::SignError(error)) => {
                 tracing::warn!(
                     ?msg,
                     ?error,
-                    "failed to complete pre-rotate-key validation signing round"
+                    "🔐 failed to complete pre-rotate-key validation signing round"
                 );
-                self.wsts_frost_results.put(id, false);
+                self.wsts_frost_mock_txs.pop(&id);
+                return Err(Error::DkgVerificationFailed(Box::new(aggregate_key)));
             }
             None => {}
             result => {
-                tracing::warn!(?result, "unexpected frost coordinator result");
+                tracing::warn!(
+                    ?result,
+                    "🔐 unexpected result received from the frost coordinator"
+                );
             }
         }
 
@@ -1106,6 +1194,10 @@ where
             return Err(Error::MissingStateMachine);
         };
 
+        // If this is a rotate-key verification then we need to process the
+        // message in the frost coordinator as well to be able to properly
+        // follow the signing round (which is otherwise handled by the signer
+        // state machine).
         let mut frost_coordinator = if let StateMachineId::RotateKey(_, _) = state_machine_id {
             self.wsts_frost_state_machines.get_mut(&state_machine_id)
         } else {
@@ -1120,9 +1212,12 @@ where
                 .process(outbound_message)
                 .map_err(Error::Wsts)?;
 
+            // Process the message in the frost coordinator as well, if we have
+            // one. Note that we _do not_ send any messages to the network; the
+            // frost coordinator is only following the round.
             if let Some(frost_coordinator) = &mut frost_coordinator {
                 let (_, result) = frost_coordinator.process_message(outbound_message)?;
-                tracing::info!(?outbound_message, ?result, state = ?frost_coordinator.state, "\x1b[1;36mfrost coordinator\x1b[0m relay_message result")
+                tracing::trace!(?outbound_message, ?result, state = ?frost_coordinator.state, "🔐 frost coordinator relay_message result")
             }
         }
 
@@ -1501,7 +1596,7 @@ mod tests {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1569,7 +1664,7 @@ mod tests {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1655,7 +1750,7 @@ mod tests {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         let msg = message::WstsMessage {

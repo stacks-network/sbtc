@@ -596,6 +596,7 @@ mod tests {
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
+    use crate::storage::model::DkgSharesStatus;
     use crate::testing::block_observer::TestHarness;
     use crate::testing::context::*;
 
@@ -898,6 +899,7 @@ mod tests {
             public_shares: Vec::new(),
             signer_set_public_keys: vec![aggregate_key],
             signature_share_threshold: 1,
+            status: DkgSharesStatus::Pending,
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

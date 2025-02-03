@@ -52,6 +52,7 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
@@ -1097,6 +1098,7 @@ impl AsContractCall for RotateKeysV1 {
             ClarityValue::UInt(self.signatures_required as u128),
         ]
     }
+
     /// Validates that the rotate-keys-wrapper satisfies the following
     /// criteria:
     ///
@@ -1105,9 +1107,10 @@ impl AsContractCall for RotateKeysV1 {
     ///    DKG run.
     /// 3. That the aggregate key matches the one that was output as part of
     ///    the most recent DKG.
-    /// 4. That the signature threshold matches the one that was used in the
+    /// 4. That the DKG shares are in the verified state.
+    /// 5. That the signature threshold matches the one that was used in the
     ///    most recent DKG.
-    /// 5. That there are no other rotate-keys contract calls with these same
+    /// 6. That there are no other rotate-keys contract calls with these same
     ///    details already confirmed on the canonical Stacks blockchain.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
@@ -1139,13 +1142,28 @@ impl AsContractCall for RotateKeysV1 {
             return Err(RotateKeysErrorMsg::AggregateKeyMismatch.into_error(req_ctx, self));
         }
 
-        // 4. That the signature threshold matches the one that was used in the
+        // 4. That the DKG shares are in the verified state.
+        match latest_dkg.status {
+            DkgSharesStatus::Pending => {
+                return Err(Error::DkgSharesNotVerified(Box::new(
+                    latest_dkg.aggregate_key.into(),
+                )));
+            }
+            DkgSharesStatus::Revoked => {
+                return Err(Error::DkgSharesRevoked(Box::new(
+                    latest_dkg.aggregate_key.into(),
+                )));
+            }
+            DkgSharesStatus::Verified(_) => {}
+        }
+
+        // 5. That the signature threshold matches the one that was used in the
         //    most recent DKG.
         if self.signatures_required != latest_dkg.signature_share_threshold {
             return Err(RotateKeysErrorMsg::SignaturesRequiredMismatch.into_error(req_ctx, self));
         }
 
-        // 5. That there are no other rotate-keys contract calls with these same
+        // 6. That there are no other rotate-keys contract calls with these same
         //    details already confirmed on the canonical Stacks blockchain.
         let key_rotation_exists_fut = db.key_rotation_exists(
             &req_ctx.chain_tip.block_hash,

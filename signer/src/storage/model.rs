@@ -440,7 +440,7 @@ pub struct SweptWithdrawalRequest {
 ///
 /// This struct represents the output of a successful run of distributed
 /// key generation (DKG) that was run by a set of signers.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
@@ -461,8 +461,22 @@ pub struct EncryptedDkgShares {
     /// In WSTS each signer may contribute a fixed portion of a single
     /// signature. This value specifies the total number of portions
     /// (shares) that are needed in order to construct a signature.
-    #[sqlx(try_from = "i32")]
     pub signature_share_threshold: u16,
+    /// The current status of the DKG shares.
+    pub status: DkgSharesStatus,
+}
+
+impl EncryptedDkgShares {
+    pub(super) const AGGREGATE_KEY: &str = "aggregate_key";
+    pub(super) const TWEAKED_AGGREGATE_KEY: &str = "tweaked_aggregate_key";
+    pub(super) const SCRIPT_PUBKEY: &str = "script_pubkey";
+    pub(super) const ENCRYPTED_PRIVATE_SHARES: &str = "encrypted_private_shares";
+    pub(super) const PUBLIC_SHARES: &str = "public_shares";
+    pub(super) const SIGNER_SET_PUBLIC_KEYS: &str = "signer_set_public_keys";
+    pub(super) const SIGNATURE_SHARE_THRESHOLD: &str = "signature_share_threshold";
+    pub(super) const DKG_SHARES_STATUS_ID: &str = "dkg_shares_status_id";
+    pub(super) const VERIFIED_AT_BITCOIN_BLOCK_HASH: &str = "verified_at_bitcoin_block_hash";
+    pub(super) const VERIFIED_AT_BITCOIN_BLOCK_HEIGHT: &str = "verified_at_bitcoin_block_height";
 }
 
 /// Persisted public DKG shares from other signers
@@ -541,6 +555,18 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
     fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
         Self::from(&votes)
     }
+}
+
+/// Possible states for `dkg_shares` entries.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, strum::Display)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum DkgSharesStatus {
+    /// DKG round successful, pending verification via signing round.
+    Pending,
+    /// Successfully verified via signing round.
+    Verified(BitcoinBlockRef),
+    /// The DKG key has been revoked and should not be used.
+    Revoked,
 }
 
 /// The types of transactions the signer is interested in.
@@ -814,6 +840,7 @@ impl std::fmt::Display for BitcoinBlockHash {
 /// A struct that references a specific bitcoin block is identifier and its
 /// position in the blockchain.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
     pub block_height: u64,
@@ -833,6 +860,12 @@ impl From<&BitcoinBlock> for BitcoinBlockRef {
             block_hash: value.block_hash,
             block_height: value.block_height,
         }
+    }
+}
+
+impl AsRef<BitcoinBlockHash> for BitcoinBlockRef {
+    fn as_ref(&self) -> &BitcoinBlockHash {
+        &self.block_hash
     }
 }
 

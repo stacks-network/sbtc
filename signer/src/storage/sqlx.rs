@@ -12,6 +12,9 @@ use bitcoin::hashes::Hash as _;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::postgres::PgArgumentBuffer;
+use sqlx::postgres::PgRow;
+use sqlx::FromRow;
+use sqlx::Row as _;
 
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -23,6 +26,10 @@ use crate::storage::model::SigHash;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+
+use super::model::BitcoinBlockRef;
+use super::model::DkgSharesStatus;
+use super::model::EncryptedDkgShares;
 
 // For the [`ScriptPubKey`]
 
@@ -304,5 +311,68 @@ impl<'r> sqlx::Encode<'r, sqlx::Postgres> for SigHash {
 impl sqlx::postgres::PgHasArrayType for SigHash {
     fn array_type_info() -> sqlx::postgres::PgTypeInfo {
         <[u8; 32] as sqlx::postgres::PgHasArrayType>::array_type_info()
+    }
+}
+
+impl<'r> FromRow<'r, PgRow> for EncryptedDkgShares {
+    fn from_row(row: &'r PgRow) -> Result<Self, sqlx::Error> {
+        let block_hash: Option<Vec<u8>> =
+            row.try_get(EncryptedDkgShares::VERIFIED_AT_BITCOIN_BLOCK_HASH)?;
+        let block_height: Option<i64> =
+            row.try_get(EncryptedDkgShares::VERIFIED_AT_BITCOIN_BLOCK_HEIGHT)?;
+
+        let verified_at_bitcoin_block = block_hash
+            .zip(block_height)
+            .map(|(hash, height)| {
+                let hash: [u8; 32] = hash
+                    .as_slice()
+                    .try_into()
+                    .map_err(|e| sqlx::Error::Decode(Box::new(e)))?;
+                Ok::<BitcoinBlockRef, sqlx::Error>(BitcoinBlockRef {
+                    block_hash: hash.into(),
+                    block_height: height as u64,
+                })
+            })
+            .transpose()?;
+
+        let status_id: i32 = row.try_get(EncryptedDkgShares::DKG_SHARES_STATUS_ID)?;
+        let status = match status_id {
+            0 => DkgSharesStatus::Pending,
+            1 => {
+                let verified_at_bitcoin_block = verified_at_bitcoin_block.ok_or_else(|| {
+                    let message = format!(
+                        "{} is '1' but {} or {} is NULL",
+                        EncryptedDkgShares::DKG_SHARES_STATUS_ID,
+                        EncryptedDkgShares::VERIFIED_AT_BITCOIN_BLOCK_HASH,
+                        EncryptedDkgShares::VERIFIED_AT_BITCOIN_BLOCK_HEIGHT
+                    );
+                    sqlx::Error::Decode(Box::new(crate::error::Error::SqlxFromRow(message.into())))
+                })?;
+                DkgSharesStatus::Verified(verified_at_bitcoin_block)
+            }
+            2 => DkgSharesStatus::Revoked,
+            _ => {
+                let message = format!(
+                    "{} is not in [0, 1, 2]",
+                    EncryptedDkgShares::DKG_SHARES_STATUS_ID
+                );
+                return Err(sqlx::Error::Decode(Box::new(
+                    crate::error::Error::SqlxFromRow(message.into()),
+                )));
+            }
+        };
+
+        Ok(Self {
+            aggregate_key: row.try_get(EncryptedDkgShares::AGGREGATE_KEY)?,
+            tweaked_aggregate_key: row.try_get(EncryptedDkgShares::TWEAKED_AGGREGATE_KEY)?,
+            script_pubkey: row.try_get(EncryptedDkgShares::SCRIPT_PUBKEY)?,
+            encrypted_private_shares: row.try_get(EncryptedDkgShares::ENCRYPTED_PRIVATE_SHARES)?,
+            public_shares: row.try_get(EncryptedDkgShares::PUBLIC_SHARES)?,
+            signer_set_public_keys: row.try_get(EncryptedDkgShares::SIGNER_SET_PUBLIC_KEYS)?,
+            signature_share_threshold: row
+                .try_get::<i32, _>(EncryptedDkgShares::SIGNATURE_SHARE_THRESHOLD)?
+                as u16,
+            status,
+        })
     }
 }

@@ -13,6 +13,7 @@ use crate::keys::PublicKeyXOnly;
 use crate::keys::SignerScriptPubKey as _;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::SigHash;
 
 use hashbrown::HashMap;
@@ -617,6 +618,7 @@ impl SignerStateMachine {
             public_shares,
             signer_set_public_keys,
             signature_share_threshold,
+            status: DkgSharesStatus::Pending,
         })
     }
 }
