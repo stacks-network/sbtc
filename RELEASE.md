@@ -43,7 +43,7 @@ commit` or Docker image digest), in addition to their label (e.g., the `git
 tag`).
 
 To improve quality of life, the release notes MUST include breaking changes (if
-any), upgrade migrations (if any), and a link to the relevant artefacts (e.g.,
+any), upgrade migrations (if any), and a link to the relevant artifacts (e.g.,
 Docker images).
 
 ## [sBTC Comms] Announcing a new release
