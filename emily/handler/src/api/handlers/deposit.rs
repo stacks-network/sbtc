@@ -376,7 +376,10 @@ pub async fn create_deposit(
             amount: deposit_data.deposit_info.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
-            input_address: deposit_data.input_address.map(|addr| addr.to_string()),
+            input_address: deposit_data
+                .input_address
+                .map(|addr| addr.to_string())
+                .unwrap_or_else(|| "None".to_string()),
             ..Default::default()
         };
         // Validate deposit entry.
