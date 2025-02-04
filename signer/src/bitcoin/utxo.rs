@@ -6,7 +6,6 @@ use std::sync::LazyLock;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::consensus::Encodable;
-use bitcoin::hashes::sha256d;
 use bitcoin::hashes::Hash as _;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
@@ -723,9 +722,7 @@ impl SignerUtxo {
 /// 2. There is only one output which is an OP_RETURN with the bytes [0x01,
 ///    0x02, 0x03] as the data and amount equal to the UTXO's value (i.e. the
 ///    transaction has a zero-fee).
-pub struct UnsignedMockTransaction<const AMOUNT: u64 = 1_000> {
-    /// The amount of the transaction.
-    amount: u64,
+pub struct UnsignedMockTransaction {
     /// The Bitcoin transaction that needs to be signed.
     tx: Transaction,
     /// The signers' UTXO used as an input to this transaction.
@@ -822,25 +819,17 @@ impl SignatureHashes<'_> {
     }
 }
 
-impl UnsignedMockTransaction<1_000> {
-    /// Construct a mock transaction with a default amount of 1,000 sats.
-    pub fn new_1000(signer_public_key: XOnlyPublicKey) -> Self {
-        UnsignedMockTransaction::<1_000>::new(signer_public_key, 1_000)
-    }
-}
+impl UnsignedMockTransaction {
+    const AMOUNT: u64 = 0;
 
-impl<const AMOUNT: u64> UnsignedMockTransaction<AMOUNT> {
     /// Construct an unsigned mock transaction.
     ///
     /// This will use the provided `aggregate_key` and `amount` to
     /// construct a [`Transaction`] with a single input and output.
-    pub fn new(signer_public_key: XOnlyPublicKey, amount: u64) -> Self {
-        let input_txid_hash =
-            sha256d::Hash::hash(format!("SBTC_MOCKED_UTXO_TXID_{}", amount).as_bytes());
-
+    pub fn new(signer_public_key: XOnlyPublicKey) -> Self {
         let utxo = SignerUtxo {
-            outpoint: OutPoint::new(input_txid_hash.into(), 0),
-            amount,
+            outpoint: OutPoint::new(Txid::all_zeros(), 0),
+            amount: Self::AMOUNT,
             public_key: signer_public_key,
         };
 
@@ -849,12 +838,12 @@ impl<const AMOUNT: u64> UnsignedMockTransaction<AMOUNT> {
             lock_time: LockTime::ZERO,
             input: vec![utxo.as_tx_input(&DUMMY_SIGNATURE)],
             output: vec![TxOut {
-                value: Amount::from_sat(amount),
+                value: Amount::from_sat(Self::AMOUNT),
                 script_pubkey: ScriptBuf::new_op_return([0x01, 0x02, 0x03]),
             }],
         };
 
-        Self { amount: AMOUNT, tx, utxo }
+        Self { tx, utxo }
     }
 
     /// Gets the sighash for the signers' input UTXO which needs to be signed
@@ -894,7 +883,7 @@ impl<const AMOUNT: u64> UnsignedMockTransaction<AMOUNT> {
         let prevout_utxo = bitcoinconsensus::Utxo {
             script_pubkey: prevout_script_bytes.as_ptr(),
             script_pubkey_len: prevout_script_bytes.len() as u32,
-            value: self.amount as i64,
+            value: Self::AMOUNT as i64,
         };
 
         // We specify the flags to include all pre-taproot and taproot
@@ -903,10 +892,12 @@ impl<const AMOUNT: u64> UnsignedMockTransaction<AMOUNT> {
         let flags = bitcoinconsensus::VERIFY_ALL_PRE_TAPROOT | bitcoinconsensus::VERIFY_TAPROOT;
 
         // Verify that the transaction updated with the provided signature can
-        // successfully spend the signers' UTXO.
+        // successfully spend the signers' UTXO. Note that the amount is not
+        // used in the verification process for taproot spends, only the
+        // signature.
         bitcoinconsensus::verify_with_flags(
             prevout_script_bytes,
-            self.amount,
+            Self::AMOUNT,
             &tx_bytes,
             Some(&[prevout_utxo]),
             0,
@@ -1767,8 +1758,12 @@ mod tests {
         }
     }
 
+    /// This test verifies that our implementation of Bitcoin script
+    /// verification using [`bitcoinconsensus`] works as expected. This
+    /// functionality is used in the verification of WSTS signing after a new
+    /// DKG round has completed.
     #[test]
-    fn mock_transaction_signing_and_verification() {
+    fn mock_signer_utxo_signing_and_spending_verification() {
         let secp = secp256k1::Secp256k1::new();
 
         // Generate a key pair which will serve as the signers' aggregate key.
@@ -1778,7 +1773,7 @@ mod tests {
         let (aggregate_key, _) = keypair.x_only_public_key();
 
         // Create a new transaction using the aggregate key.
-        let unsigned = UnsignedMockTransaction::new_1000(aggregate_key);
+        let unsigned = UnsignedMockTransaction::new(aggregate_key);
 
         let tapsig = unsigned
             .compute_sighash()
@@ -1811,6 +1806,19 @@ mod tests {
         // [3] Verify an incorrect signature with the correct sighash type,
         // which should fail. In this case we've created the signature using
         // the untweaked keypair.
+        let schnorr_sig = secp.sign_schnorr(&message, &keypair);
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [4] Verify an incorrect signature with the correct sighash type, which
+        // should fail. In this case we use a completely newly generated keypair.
+        let secret_key = SecretKey::new(&mut OsRng);
+        let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
         let schnorr_sig = secp.sign_schnorr(&message, &keypair);
         let taproot_sig = bitcoin::taproot::Signature {
             signature: schnorr_sig,

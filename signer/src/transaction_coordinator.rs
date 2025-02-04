@@ -748,7 +748,7 @@ where
         //
         // This transaction does not spend from a valid (existing) UTXO and is
         // never broadcast to the Bitcoin network.
-        let tap_sighash = UnsignedMockTransaction::new_1000(x_only_pubkey).compute_sighash()?;
+        let tap_sighash = UnsignedMockTransaction::new(x_only_pubkey).compute_sighash()?;
 
         // Perform the signing round. We will not use the resulting signature
         // for anything here, rather each signer will also construct an

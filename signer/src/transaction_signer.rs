@@ -1088,7 +1088,7 @@ where
             .get_mut(&state_machine_id)
             .ok_or(Error::MissingFrostStateMachine(Box::new(aggregate_key)))?;
 
-        let mock_tx = UnsignedMockTransaction::new_1000(aggregate_key.into());
+        let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
         let mock_tx = self
             .wsts_frost_mock_txs
             .get_or_insert(state_machine_id, || mock_tx);
