@@ -27,6 +27,7 @@ use signer::network::MessageTransfer;
 use signer::stacks::contracts::ContractCall;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
+use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::model::SigHash;
@@ -69,8 +70,11 @@ async fn signing_set_validation_check_for_stacks_transactions() {
     let mut setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
-    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    let chain_tip = BitcoinBlockRef {
+        block_hash: setup.sweep_block_hash.into(),
+        block_height: setup.sweep_block_height,
+    };
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip.block_hash).await;
 
     // This is all normal things that need to happen in order to pass
     // validation.
@@ -147,9 +151,12 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     // Create a test setup with a confirmed deposit transaction
     let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
     // Backfill the blockchain data into the database
-    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
-    let bitcoin_block = db.get_bitcoin_block(&chain_tip).await.unwrap();
+    let chain_tip = BitcoinBlockRef {
+        block_hash: setup.sweep_block_hash.into(),
+        block_height: setup.sweep_block_height,
+    };
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip.block_hash).await;
+    let bitcoin_block = db.get_bitcoin_block(&chain_tip.block_hash).await.unwrap();
 
     let public_aggregate_key = setup.aggregated_signer.keypair.public_key().into();
 
@@ -162,9 +169,10 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
-    let (aggregate_key, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
-        .await
-        .unwrap();
+    let (aggregate_key, signer_set_public_keys) =
+        get_signer_set_and_aggregate_key(&ctx, chain_tip.block_hash)
+            .await
+            .unwrap();
 
     let state = ctx.state();
     state.set_current_aggregate_key(aggregate_key.unwrap());
@@ -199,7 +207,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let sbtc_state = signer::bitcoin::utxo::SignerBtcState {
         utxo: ctx
             .get_storage()
-            .get_signer_utxo(&chain_tip)
+            .get_signer_utxo(&chain_tip.block_hash)
             .await
             .unwrap()
             .unwrap(),
@@ -304,7 +312,10 @@ async fn new_state_machine_per_valid_sighash() {
     let report = MsgChainTipReport {
         sender_is_coordinator: true,
         chain_tip_status: ChainTipStatus::Canonical,
-        chain_tip: BitcoinBlockHash::from([0; 32]),
+        chain_tip: BitcoinBlockRef {
+            block_hash: BitcoinBlockHash::from([0; 32]),
+            block_height: 0,
+        },
     };
 
     // The message that we will send is for the following sighash. We'll
@@ -342,12 +353,7 @@ async fn new_state_machine_per_valid_sighash() {
     assert!(tx_signer.wsts_state_machines.is_empty());
 
     tx_signer
-        .handle_wsts_message(
-            &nonce_request_msg,
-            &report.chain_tip,
-            msg_public_key,
-            &report,
-        )
+        .handle_wsts_message(&nonce_request_msg, msg_public_key, &report)
         .await
         .unwrap();
 
@@ -370,12 +376,7 @@ async fn new_state_machine_per_valid_sighash() {
     };
 
     let response = tx_signer
-        .handle_wsts_message(
-            &nonce_request_msg,
-            &report.chain_tip,
-            msg_public_key,
-            &report,
-        )
+        .handle_wsts_message(&nonce_request_msg, msg_public_key, &report)
         .await;
 
     let id2 = StateMachineId::new(random_message);
@@ -402,10 +403,14 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
 
     // Let's make sure that the database has the chain tip.
     let (rpc, _) = sbtc::testing::regtest::initialize_blockchain();
-    let chain_tip: BitcoinBlockHash = rpc.get_best_block_hash().unwrap().into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    let headers = &rpc.get_chain_tips().unwrap()[0];
+    let chain_tip = BitcoinBlockRef {
+        block_hash: headers.hash.into(),
+        block_height: headers.height,
+    };
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip.block_hash).await;
 
-    let (_, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
+    let (_, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip.block_hash)
         .await
         .unwrap();
 
@@ -429,7 +434,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // We need to convince the signer event loop that it should accept the
     // message that we are going to send it. DkgBegin messages are only
     // accepted from the coordinator on the canonical chain tip.
-    let report = MsgChainTipReport {
+    let mut report = MsgChainTipReport {
         sender_is_coordinator: true,
         chain_tip_status: ChainTipStatus::Canonical,
         chain_tip,
@@ -448,13 +453,13 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     assert!(tx_signer.wsts_state_machines.is_empty());
 
     tx_signer
-        .handle_wsts_message(&dkg_begin_msg, &chain_tip, msg_public_key, &report)
+        .handle_wsts_message(&dkg_begin_msg, msg_public_key, &report)
         .await
         .unwrap();
 
     // We should have a state machine associated with the current chain tip
     // request message that we just received.
-    let id1 = StateMachineId::from(&chain_tip);
+    let id1 = StateMachineId::from(&chain_tip.block_hash);
     let state_machine = tx_signer.wsts_state_machines.get(&id1).unwrap();
     assert_eq!(state_machine.dkg_id, dkg_id);
     assert_eq!(tx_signer.wsts_state_machines.len(), 1);
@@ -469,7 +474,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     };
 
     tx_signer
-        .handle_wsts_message(&dkg_begin_msg, &chain_tip, msg_public_key, &report)
+        .handle_wsts_message(&dkg_begin_msg, msg_public_key, &report)
         .await
         .unwrap();
 
@@ -479,16 +484,14 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
 
     // If we say the current chain tip is something else, a new state
     // machine will be created associated with that chain tip
-    let random_block: model::BitcoinBlock = Faker.fake_with_rng(&mut rng);
-    let chain_tip = random_block.block_hash;
-    db.write_bitcoin_block(&random_block).await.unwrap();
+    report.chain_tip = Faker.fake_with_rng(&mut rng);
 
     tx_signer
-        .handle_wsts_message(&dkg_begin_msg, &chain_tip, msg_public_key, &report)
+        .handle_wsts_message(&dkg_begin_msg, msg_public_key, &report)
         .await
         .unwrap();
 
-    let id2 = StateMachineId::from(&chain_tip);
+    let id2 = StateMachineId::from(&report.chain_tip.block_hash);
     let state_machine = tx_signer.wsts_state_machines.get(&id2).unwrap();
     assert_eq!(state_machine.dkg_id, dkg_id);
     assert_eq!(tx_signer.wsts_state_machines.len(), 2);

@@ -22,6 +22,7 @@ use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::message;
 use crate::message::BitcoinPreSignAck;
+use crate::message::Payload;
 use crate::message::StacksTransactionSignRequest;
 use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
@@ -222,7 +223,7 @@ where
         } = chain_tip_report;
 
         let span = tracing::Span::current();
-        span.record("chain_tip", tracing::field::display(chain_tip));
+        span.record("chain_tip", tracing::field::display(chain_tip.block_hash));
         tracing::trace!(
             %sender_is_coordinator,
             %chain_tip_status,
@@ -231,34 +232,26 @@ where
             "handling message from signer"
         );
 
-        match (&msg.inner.payload, sender_is_coordinator, chain_tip_status) {
-            (
-                message::Payload::StacksTransactionSignRequest(request),
-                true,
-                ChainTipStatus::Canonical,
-            ) => {
+        let payload = &msg.inner.payload;
+        match (payload, sender_is_coordinator, chain_tip_status) {
+            (Payload::StacksTransactionSignRequest(request), true, ChainTipStatus::Canonical) => {
                 self.handle_stacks_transaction_sign_request(
                     request,
-                    &msg.bitcoin_chain_tip,
+                    &chain_tip,
                     &msg.signer_public_key,
                 )
                 .await?;
             }
 
-            (message::Payload::WstsMessage(wsts_msg), _, _) => {
-                self.handle_wsts_message(
-                    wsts_msg,
-                    &msg.bitcoin_chain_tip,
-                    msg.signer_public_key,
-                    &chain_tip_report,
-                )
-                .await?;
+            (Payload::WstsMessage(wsts_msg), _, ChainTipStatus::Canonical) => {
+                self.handle_wsts_message(wsts_msg, msg.signer_public_key, &chain_tip_report)
+                    .await?;
             }
 
-            (message::Payload::BitcoinPreSignRequest(requests), _, _) => {
+            (Payload::BitcoinPreSignRequest(requests), true, ChainTipStatus::Canonical) => {
                 let instant = std::time::Instant::now();
                 let pre_validation_status = self
-                    .handle_bitcoin_pre_sign_request(requests, &msg.bitcoin_chain_tip)
+                    .handle_bitcoin_pre_sign_request(requests, &chain_tip)
                     .await;
 
                 let status = if pre_validation_status.is_ok() {
@@ -284,9 +277,9 @@ where
                 pre_validation_status?;
             }
             // Message types ignored by the transaction signer
-            (message::Payload::StacksTransactionSignature(_), _, _)
-            | (message::Payload::SignerDepositDecision(_), _, _)
-            | (message::Payload::SignerWithdrawalDecision(_), _, _) => (),
+            (Payload::StacksTransactionSignature(_), _, _)
+            | (Payload::SignerDepositDecision(_), _, _)
+            | (Payload::SignerWithdrawalDecision(_), _, _) => (),
 
             // Any other combination should be logged
             _ => {
@@ -307,7 +300,7 @@ where
         let storage = self.context.get_storage();
 
         let chain_tip = storage
-            .get_bitcoin_canonical_chain_tip()
+            .get_bitcoin_canonical_chain_tip_ref()
             .await?
             .ok_or(Error::NoChainTip)?;
 
@@ -315,12 +308,12 @@ where
             .get_bitcoin_block(msg_bitcoin_chain_tip)
             .await?
             .is_some();
-        let is_canonical = msg_bitcoin_chain_tip == &chain_tip;
+        let is_canonical = msg_bitcoin_chain_tip == &chain_tip.block_hash;
 
         let signer_set = self.context.state().current_signer_public_keys();
         let sender_is_coordinator = crate::transaction_coordinator::given_key_is_coordinator(
             msg_sender,
-            &chain_tip,
+            &chain_tip.block_hash,
             &signer_set,
         );
 
@@ -347,20 +340,15 @@ where
     pub async fn handle_bitcoin_pre_sign_request(
         &mut self,
         request: &message::BitcoinPreSignRequest,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        chain_tip: &model::BitcoinBlockRef,
     ) -> Result<(), Error> {
         let db = self.context.get_storage_mut();
-        let bitcoin_block = db
-            .get_bitcoin_block(bitcoin_chain_tip)
-            .await
-            .map_err(|_| Error::NoChainTip)?
-            .ok_or_else(|| Error::NoChainTip)?;
 
         let maybe_aggregate_key = self.context.state().current_aggregate_key();
 
         let btc_ctx = BitcoinTxContext {
-            chain_tip: *bitcoin_chain_tip,
-            chain_tip_height: bitcoin_block.block_height,
+            chain_tip: chain_tip.block_hash,
+            chain_tip_height: chain_tip.block_height,
             context_window: self.context_window,
             signer_public_key: self.signer_public_key(),
             aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
@@ -385,7 +373,7 @@ where
         db.write_bitcoin_withdrawals_outputs(&withdrawals_outputs)
             .await?;
 
-        self.send_message(BitcoinPreSignAck, bitcoin_chain_tip)
+        self.send_message(BitcoinPreSignAck, &chain_tip.block_hash)
             .await?;
         Ok(())
     }
@@ -394,12 +382,12 @@ where
     async fn handle_stacks_transaction_sign_request(
         &mut self,
         request: &StacksTransactionSignRequest,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        chain_tip: &model::BitcoinBlockRef,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
         let instant = std::time::Instant::now();
         let validation_status = self
-            .assert_valid_stacks_tx_sign_request(request, bitcoin_chain_tip, origin_public_key)
+            .assert_valid_stacks_tx_sign_request(request, chain_tip, origin_public_key)
             .await;
 
         metrics::histogram!(
@@ -419,7 +407,7 @@ where
 
         // We need to set the nonce in order to get the exact transaction
         // that we need to sign.
-        let wallet = SignerWallet::load(&self.context, bitcoin_chain_tip).await?;
+        let wallet = SignerWallet::load(&self.context, &chain_tip.block_hash).await?;
         wallet.set_nonce(request.nonce);
 
         let multi_sig = MultisigTx::new_tx(&request.contract_tx, &wallet, request.tx_fee);
@@ -433,7 +421,7 @@ where
 
         let msg = message::StacksTransactionSignature { txid, signature };
 
-        self.send_message(msg, bitcoin_chain_tip).await?;
+        self.send_message(msg, &chain_tip.block_hash).await?;
 
         Ok(())
     }
@@ -444,7 +432,7 @@ where
     pub async fn assert_valid_stacks_tx_sign_request(
         &self,
         request: &StacksTransactionSignRequest,
-        chain_tip: &model::BitcoinBlockHash,
+        chain_tip: &model::BitcoinBlockRef,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
         let db = self.context.get_storage();
@@ -460,12 +448,8 @@ where
             return Err(Error::ValidationSignerSet(request.aggregate_key));
         }
 
-        let Some(block) = db.get_bitcoin_block(chain_tip).await? else {
-            return Err(Error::MissingBitcoinBlock(*chain_tip));
-        };
-
         let req_ctx = ReqContext {
-            chain_tip: block.into(),
+            chain_tip: *chain_tip,
             context_window: self.context_window,
             origin: *origin_public_key,
             aggregate_key: request.aggregate_key,
@@ -501,10 +485,10 @@ where
     pub async fn handle_wsts_message(
         &mut self,
         msg: &message::WstsMessage,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
         msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
+        let MsgChainTipReport { chain_tip, .. } = chain_tip_report;
         match &msg.inner {
             WstsNetMessage::DkgBegin(_) => {
                 tracing::info!("handling DkgBegin");
@@ -519,7 +503,7 @@ where
 
                 // Assert that DKG should be allowed to proceed given the current state
                 // and configuration.
-                assert_allow_dkg_begin(&self.context, bitcoin_chain_tip).await?;
+                assert_allow_dkg_begin(&self.context, chain_tip).await?;
 
                 let signer_public_keys = self.context.state().current_signer_public_keys();
 
@@ -528,7 +512,7 @@ where
                     self.threshold,
                     self.signer_private_key,
                 )?;
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::from(&chain_tip.block_hash);
                 self.wsts_state_machines.put(id, state_machine);
 
                 if let Some(pause) = self.dkg_begin_pause {
@@ -539,8 +523,8 @@ where
                     tokio::time::sleep(pause).await;
                 }
 
-                let id = StateMachineId::from(bitcoin_chain_tip);
-                self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                let id = StateMachineId::from(&chain_tip.block_hash);
+                self.relay_message(id, msg.txid, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgPrivateBegin(_) => {
@@ -554,8 +538,8 @@ where
                     return Ok(());
                 }
 
-                let id = StateMachineId::from(bitcoin_chain_tip);
-                self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                let id = StateMachineId::from(&chain_tip.block_hash);
+                self.relay_message(id, msg.txid, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgPublicShares(dkg_public_shares) => {
@@ -563,9 +547,9 @@ where
                     signer_id = %dkg_public_shares.signer_id,
                     "handling DkgPublicShares",
                 );
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::from(&chain_tip.block_hash);
                 self.validate_sender(&id, dkg_public_shares.signer_id, &msg_public_key)?;
-                self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                self.relay_message(id, msg.txid, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgPrivateShares(dkg_private_shares) => {
@@ -573,9 +557,9 @@ where
                     signer_id = %dkg_private_shares.signer_id,
                     "handling DkgPrivateShares"
                 );
-                let id = StateMachineId::from(bitcoin_chain_tip);
+                let id = StateMachineId::from(&chain_tip.block_hash);
                 self.validate_sender(&id, dkg_private_shares.signer_id, &msg_public_key)?;
-                self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                self.relay_message(id, msg.txid, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgEndBegin(_) => {
@@ -588,9 +572,8 @@ where
                     );
                     return Ok(());
                 }
-
-                let id = StateMachineId::from(bitcoin_chain_tip);
-                self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                let id = StateMachineId::from(&chain_tip.block_hash);
+                self.relay_message(id, msg.txid, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::NonceRequest(request) => {
@@ -636,7 +619,7 @@ where
                 .await?;
 
                 self.wsts_state_machines.put(id, state_machine);
-                self.relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                self.relay_message(id, msg.txid, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::SignatureShareRequest(request) => {
@@ -656,7 +639,7 @@ where
 
                 let id = accepted_sighash.sighash.into();
                 let response = self
-                    .relay_message(id, msg.txid, &msg.inner, bitcoin_chain_tip)
+                    .relay_message(id, msg.txid, &msg.inner, &chain_tip.block_hash)
                     .await;
 
                 self.wsts_state_machines.pop(&id);
@@ -821,16 +804,10 @@ where
 /// based on the current state of the signer and the DKG configuration.
 async fn assert_allow_dkg_begin(
     context: &impl Context,
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<(), Error> {
     let storage = context.get_storage();
     let config = context.config();
-
-    // Get the bitcoin block at the chain tip so that we know the height
-    let bitcoin_chain_tip_block = storage
-        .get_bitcoin_block(bitcoin_chain_tip)
-        .await?
-        .ok_or(Error::NoChainTip)?;
 
     // Get the number of DKG shares that have been stored
     let dkg_shares_entry_count = storage.get_encrypted_dkg_shares_count().await?;
@@ -862,7 +839,7 @@ async fn assert_allow_dkg_begin(
                 );
                 return Err(Error::DkgHasAlreadyRun);
             }
-            if bitcoin_chain_tip_block.block_height < dkg_min_height.get() {
+            if bitcoin_chain_tip.block_height < dkg_min_height.get() {
                 tracing::warn!(
                     ?dkg_min_bitcoin_block_height,
                     %dkg_target_rounds,
@@ -902,7 +879,7 @@ pub struct MsgChainTipReport {
     /// The status of the chain tip relative to the signers' perspective.
     pub chain_tip_status: ChainTipStatus,
     /// The bitcoin chain tip.
-    pub chain_tip: model::BitcoinBlockHash,
+    pub chain_tip: model::BitcoinBlockRef,
 }
 
 impl MsgChainTipReport {
@@ -1020,14 +997,17 @@ mod tests {
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
-        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+        let bitcoin_chain_tip = model::BitcoinBlockRef {
+            block_hash: Faker.fake(),
+            block_height: chain_tip_height,
+        };
 
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
                 block_height: chain_tip_height,
                 parent_hash: Faker.fake(),
-                block_hash: bitcoin_chain_tip,
+                block_hash: bitcoin_chain_tip.block_hash,
             })
             .await
             .unwrap();
@@ -1060,14 +1040,17 @@ mod tests {
             .unwrap();
 
         // Dummy chain tip hash which will be used to fetch the block height.
-        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+        let bitcoin_chain_tip = model::BitcoinBlockRef {
+            block_hash: Faker.fake(),
+            block_height: 100,
+        };
 
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
                 block_height: 100,
                 parent_hash: Faker.fake(),
-                block_hash: bitcoin_chain_tip,
+                block_hash: bitcoin_chain_tip.block_hash,
             })
             .await
             .unwrap();
@@ -1100,7 +1083,7 @@ mod tests {
         // Attempt to handle the DkgBegin message. This should fail using the
         // default settings, as the default settings allow only one DKG round.
         let result = signer
-            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .handle_wsts_message(&msg, Faker.fake(), &chain_tip_report)
             .await;
 
         // Assert that the DkgBegin message was not allowed to proceed and
@@ -1166,7 +1149,7 @@ mod tests {
 
         // We shouldn't get an error as we stop to process the message early
         signer
-            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .handle_wsts_message(&msg, Faker.fake(), &chain_tip_report)
             .await
             .expect("expected success");
     }
@@ -1249,7 +1232,7 @@ mod tests {
 
         // We shouldn't get an error as we stop to process the message early
         signer
-            .handle_wsts_message(&msg, &bitcoin_chain_tip, Faker.fake(), &chain_tip_report)
+            .handle_wsts_message(&msg, Faker.fake(), &chain_tip_report)
             .await
             .expect("expected success");
     }
