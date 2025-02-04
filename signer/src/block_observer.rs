@@ -159,7 +159,7 @@ where
                         tracing::warn!(%error, "could not process stacks blocks");
                     }
 
-                    tracing::debug!("Updating the signer state");
+                    tracing::debug!("updating the signer state");
                     if let Err(error) = self.update_signer_state(block_hash).await {
                         tracing::warn!(%error, "could not update the signer state");
                         continue;
@@ -625,7 +625,7 @@ impl<C: Context, B> BlockObserver<C, B> {
         tracing::info!("loading sbtc limits from Emily");
         self.update_sbtc_limits().await?;
 
-        tracing::info!("Updating the signer state with the current signer set");
+        tracing::info!("updating the signer state with the current signer set");
         self.set_signer_set_and_aggregate_key(chain_tip).await
     }
 }

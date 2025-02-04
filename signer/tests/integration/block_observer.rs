@@ -852,12 +852,11 @@ async fn next_headers_to_process_ignores_known_headers() {
     testing::storage::drop_db(db).await;
 }
 
-/// The [`TxCoordinatorEventLoop::get_signer_set_and_aggregate_key`]
-/// function is supposed to fetch the "current" signing set and the
-/// aggregate key to use for bitcoin transactions. It attempts to get the
-/// latest rotate-keys contract call transaction confirmed on the canonical
-/// Stacks blockchain and falls back to the DKG shares table if no such
-/// transaction can be found.
+/// The [`get_signer_set_and_aggregate_key`] function is supposed to fetch
+/// the "current" signing set and the aggregate key to use for bitcoin
+/// transactions. It attempts to get the latest rotate-keys contract call
+/// transaction confirmed on the canonical Stacks blockchain and falls back
+/// to the DKG shares table if no such transaction can be found.
 ///
 /// This tests that we prefer rotate keys transactions if it's available
 /// but will use the DKG shares behavior is indeed the case.
