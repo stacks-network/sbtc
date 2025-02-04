@@ -213,7 +213,9 @@ where
             coordinator_signer_info,
             self.signing_threshold,
         );
-        let aggregate_key = coordinator.run_dkg(bitcoin_chain_tip, dummy_txid).await;
+        let aggregate_key = coordinator
+            .run_dkg(bitcoin_chain_tip, dummy_txid.into())
+            .await;
 
         for handle in event_loop_handles.into_iter() {
             assert!(handle
@@ -260,7 +262,7 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
     let bitcoin_chain_tip = *chain_tip;
     let (_, all_dkg_shares) = testing_signer_set
-        .run_dkg(bitcoin_chain_tip, dkg_txid, rng)
+        .run_dkg(bitcoin_chain_tip, dkg_txid.into(), rng)
         .await;
 
     for (storage, encrypted_dkg_shares) in stores.into_iter().zip(all_dkg_shares) {
