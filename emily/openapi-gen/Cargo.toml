@@ -3,12 +3,15 @@ name = "emily-openapi-spec"
 version = "0.1.0"
 edition = "2021"
 
+[package.metadata.cargo-machete]
+ignored = ["emily-handler", "utoipa", "serde_json"]
+
 [dependencies]
 emily-handler.workspace = true
 serde_json.workspace = true
-utoipa = "4.2.3"
+utoipa.workspace = true
 
 [build-dependencies]
 emily-handler.workspace = true
 serde_json.workspace = true
-utoipa = "4.2.3"
+utoipa.workspace = true

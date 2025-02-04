@@ -83,6 +83,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(&mut rng, &[], &test_params);
     test_data.write_to(&db).await;
