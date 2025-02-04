@@ -562,7 +562,6 @@ where
             WstsNetMessage::DkgPrivateBegin(request) => {
                 span.record("dkg_id", request.dkg_id);
 
-
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
                         ?chain_tip_report,
@@ -602,7 +601,6 @@ where
             WstsNetMessage::DkgEndBegin(request) => {
                 span.record("dkg_id", request.dkg_id);
 
-
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
                         ?chain_tip_report,
@@ -612,7 +610,6 @@ where
                 }
 
                 tracing::debug!("responding to dkg-end-begin");
-
 
                 let id = StateMachineId::from(bitcoin_chain_tip);
                 self.relay_message(id, msg.id, &msg.inner, bitcoin_chain_tip)
@@ -636,7 +633,6 @@ where
                 span.record("dkg_id", request.dkg_id);
                 span.record("dkg_sign_id", request.sign_id);
                 span.record("dkg_iter_id", request.sign_iter_id);
-
 
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
@@ -687,7 +683,6 @@ where
                 span.record("dkg_id", request.dkg_id);
                 span.record("dkg_sign_id", request.sign_id);
                 span.record("dkg_iter_id", request.sign_iter_id);
-
 
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
@@ -1022,6 +1017,7 @@ pub enum ChainTipStatus {
 mod tests {
     use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 
+    use bitcoin::Txid;
     use fake::{Fake, Faker};
     use network::InMemoryNetwork;
     use test_case::test_case;
@@ -1245,7 +1241,7 @@ mod tests {
 
         // Create a DkgBegin message to be handled by the signer.
         let msg = message::WstsMessage {
-            txid: Txid::all_zeros(),
+            id: Txid::all_zeros().into(),
             inner: WstsNetMessage::DkgBegin(wsts::net::DkgBegin { dkg_id: 0 }),
         };
 
@@ -1328,7 +1324,7 @@ mod tests {
         };
 
         let msg = message::WstsMessage {
-            txid: Txid::all_zeros(),
+            id: Txid::all_zeros().into(),
             inner: wsts_message,
         };
 
