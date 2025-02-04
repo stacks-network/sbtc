@@ -235,10 +235,21 @@ pub struct EmilyClientConfig {
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<Url>,
     /// Pagination timeout in seconds.
-    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    #[serde(
+        default = "EmilyClientConfig::pagination_timeout_default",
+        deserialize_with = "duration_seconds_deserializer"
+    )]
     pub pagination_timeout: std::time::Duration,
-    /// Maximum items returned per page. If `None`, the response can include up to 1 MB of items.
+    /// Maximum items returned per page. When set, responses will be limited to this many items.
+    /// Regardless of the page_size setting, responses are always capped at 1 MB total size.
+    /// If None, only the 1 MB cap applies.
     pub page_size: Option<NonZeroU16>,
+}
+
+impl EmilyClientConfig {
+    fn pagination_timeout_default() -> std::time::Duration {
+        std::time::Duration::from_secs(30)
+    }
 }
 
 impl Validatable for EmilyClientConfig {
