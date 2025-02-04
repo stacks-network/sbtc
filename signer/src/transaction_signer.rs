@@ -550,13 +550,12 @@ where
 
     /// Process WSTS messages
     #[tracing::instrument(skip_all, fields(
-        msg_id = %msg.id,
-        msg_type = %msg.type_id(),
-        dkg_signer_id = tracing::field::Empty,
-        dkg_id = tracing::field::Empty,
-        dkg_sign_id = tracing::field::Empty,
-        dkg_iter_id = tracing::field::Empty,
-        dkg_txid = tracing::field::Empty,
+        wsts_msg_id = %msg.id,
+        wsts_msg_type = %msg.type_id(),
+        wsts_signer_id = tracing::field::Empty,
+        wsts_dkg_id = tracing::field::Empty,
+        wsts_sign_id = tracing::field::Empty,
+        wsts_sign_iter_id = tracing::field::Empty,
         sender_public_key = %msg_public_key,
     ))]
     pub async fn handle_wsts_message(
@@ -566,11 +565,17 @@ where
         msg_public_key: PublicKey,
         chain_tip_report: &MsgChainTipReport,
     ) -> Result<(), Error> {
+        // Constants for tracing.
+        const WSTS_DKG_ID: &str = "wsts_dkg_id";
+        const WSTS_SIGNER_ID: &str = "wsts_signer_id";
+        const WSTS_SIGN_ID: &str = "wsts_sign_id";
+        const WSTS_SIGN_ITER_ID: &str = "wsts_sign_iter_id";
+        // Get the current tracing span.
         let span = tracing::Span::current();
 
         match &msg.inner {
             WstsNetMessage::DkgBegin(request) => {
-                span.record("dkg_id", request.dkg_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
 
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
@@ -609,7 +614,7 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPrivateBegin(request) => {
-                span.record("dkg_id", request.dkg_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
 
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
@@ -626,8 +631,8 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPublicShares(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_signer_id", request.signer_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
 
                 tracing::debug!("responding to dkg-public-shares");
 
@@ -637,8 +642,8 @@ where
                     .await?;
             }
             WstsNetMessage::DkgPrivateShares(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_signer_id", request.signer_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
 
                 tracing::debug!("responding to dkg-private-shares");
 
@@ -648,7 +653,7 @@ where
                     .await?;
             }
             WstsNetMessage::DkgEndBegin(request) => {
-                span.record("dkg_id", request.dkg_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
 
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
@@ -660,28 +665,31 @@ where
 
                 tracing::debug!("responding to dkg-end-begin");
 
-                let id = StateMachineId::Dkg(*bitcoin_chain_tip);
+                let id = StateMachineId::from(bitcoin_chain_tip);
                 self.relay_message(id, msg.id, &msg.inner, bitcoin_chain_tip)
                     .await?;
             }
             WstsNetMessage::DkgEnd(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_signer_id", request.signer_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
 
                 match &request.status {
                     DkgStatus::Success => {
-                        tracing::info!(status = "success", "signer reports successful dkg round");
+                        tracing::info!(
+                            wsts_dkg_status = "success",
+                            "signer reports successful dkg round"
+                        );
                     }
                     DkgStatus::Failure(fail) => {
                         // TODO(#414): handle DKG failure
-                        tracing::warn!(status = "failure", reason = ?fail, "signer reports failed dkg round");
+                        tracing::warn!(wsts_dkg_status = "failure", reason = ?fail, "signer reports failed dkg round");
                     }
                 }
             }
             WstsNetMessage::NonceRequest(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_sign_id", request.sign_id);
-                span.record("dkg_iter_id", request.sign_iter_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
 
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
@@ -804,9 +812,9 @@ where
                     .await?;
             }
             WstsNetMessage::SignatureShareRequest(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_sign_id", request.sign_id);
-                span.record("dkg_iter_id", request.sign_iter_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
 
                 if !chain_tip_report.is_from_canonical_coordinator() {
                     tracing::warn!(
