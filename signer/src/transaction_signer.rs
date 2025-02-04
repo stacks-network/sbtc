@@ -5,7 +5,6 @@
 //!
 //! For more details, see the [`TxSignerEventLoop`] documentation.
 
-use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::bitcoin::validation::BitcoinTxContext;
@@ -311,7 +310,7 @@ where
             .is_some();
         let is_canonical = msg_bitcoin_chain_tip == &chain_tip.block_hash;
 
-        let signer_set = self.get_signer_public_keys(&chain_tip.block_hash).await?;
+        let signer_set = self.context.state().current_signer_public_keys();
         let sender_is_coordinator = crate::transaction_coordinator::given_key_is_coordinator(
             msg_sender,
             &chain_tip.block_hash,
@@ -345,9 +344,7 @@ where
     ) -> Result<(), Error> {
         let db = self.context.get_storage_mut();
 
-        let (maybe_aggregate_key, _signer_set) = self
-            .get_signer_set_and_aggregate_key(&chain_tip.block_hash)
-            .await?;
+        let maybe_aggregate_key = self.context.state().current_aggregate_key();
 
         let btc_ctx = BitcoinTxContext {
             chain_tip: chain_tip.block_hash,
@@ -508,7 +505,7 @@ where
                 // and configuration.
                 assert_allow_dkg_begin(&self.context, chain_tip).await?;
 
-                let signer_public_keys = self.get_signer_public_keys(&chain_tip.block_hash).await?;
+                let signer_public_keys = self.context.state().current_signer_public_keys();
 
                 let state_machine = SignerStateMachine::new(
                     signer_public_keys,
@@ -796,73 +793,6 @@ where
             .signal(TxSignerEvent::MessageGenerated(msg).into())?;
 
         Ok(())
-    }
-
-    /// Return the signing set that can make sBTC related contract calls
-    /// along with the current aggregate key to use for locking UTXOs on
-    /// bitcoin.
-    ///
-    /// The aggregate key fetched here is the one confirmed on the
-    /// canonical Stacks blockchain as part of a `rotate-keys` contract
-    /// call. It will be the public key that is the result of a DKG run. If
-    /// there are no rotate-keys transactions on the canonical stacks
-    /// blockchain, then we fall back on the last known DKG shares row in
-    /// our database, and return None as the aggregate key if no DKG shares
-    /// can be found, implying that this signer has not participated in
-    /// DKG.
-    #[tracing::instrument(skip_all)]
-    pub async fn get_signer_set_and_aggregate_key(
-        &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error> {
-        let db = self.context.get_storage();
-
-        // We are supposed to submit a rotate-keys transaction after
-        // running DKG, but that transaction may not have been submitted
-        // yet (if we have just run DKG) or it may not have been confirmed
-        // on the canonical Stacks blockchain.
-        //
-        // If the signers have already run DKG, then we know that all
-        // participating signers should have the same view of the latest
-        // aggregate key, so we can fall back on the stored DKG shares for
-        // getting the current aggregate key and associated signing set.
-        match db.get_last_key_rotation(bitcoin_chain_tip).await? {
-            Some(last_key) => {
-                let aggregate_key = last_key.aggregate_key;
-                let signer_set = last_key.signer_set.into_iter().collect();
-                Ok((Some(aggregate_key), signer_set))
-            }
-            None => match db.get_latest_encrypted_dkg_shares().await? {
-                Some(shares) => {
-                    let signer_set = shares.signer_set_public_keys.into_iter().collect();
-                    Ok((Some(shares.aggregate_key), signer_set))
-                }
-                None => Ok((None, self.context.config().signer.bootstrap_signing_set())),
-            },
-        }
-    }
-
-    /// Get the set of public keys for the current signing set.
-    ///
-    /// If there is a successful `rotate-keys` transaction in the database
-    /// then we should use that as the source of truth for the current
-    /// signing set, otherwise we fall back to the bootstrap keys in our
-    /// config.
-    #[tracing::instrument(skip_all)]
-    pub async fn get_signer_public_keys(
-        &self,
-        chain_tip: &model::BitcoinBlockHash,
-    ) -> Result<BTreeSet<PublicKey>, Error> {
-        let db = self.context.get_storage();
-
-        // Get the last rotate-keys transaction from the database on the
-        // canonical Stacks blockchain (which we identify using the
-        // canonical bitcoin blockchain). If we don't have such a
-        // transaction then get the bootstrap keys from our config.
-        match db.get_last_key_rotation(chain_tip).await? {
-            Some(last_key) => Ok(last_key.signer_set.into_iter().collect()),
-            None => Ok(self.context.config().signer.bootstrap_signing_set()),
-        }
     }
 
     fn signer_public_key(&self) -> PublicKey {

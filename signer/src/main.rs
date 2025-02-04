@@ -299,12 +299,10 @@ async fn run_block_observer(ctx: impl Context) -> Result<(), Error> {
 
     // TODO: Need to handle multiple endpoints, so some sort of
     // failover-stream-wrapper.
-    let stream = BitcoinCoreMessageStream::new_from_endpoint(
-        config.bitcoin.block_hash_stream_endpoints[0].as_str(),
-        &["hashblock"],
-    )
-    .await
-    .unwrap();
+    let endpoint = config.bitcoin.block_hash_stream_endpoints[0].as_str();
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(endpoint)
+        .await
+        .unwrap();
 
     // TODO: We should have a new() method that builds from the context
     let block_observer = block_observer::BlockObserver {

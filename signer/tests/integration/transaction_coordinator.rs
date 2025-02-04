@@ -31,7 +31,7 @@ use emily_client::apis::deposit_api;
 use emily_client::apis::testing_api;
 use fake::Fake as _;
 use fake::Faker;
-use futures::StreamExt;
+use futures::StreamExt as _;
 use lru::LruCache;
 use mockito;
 use rand::rngs::OsRng;
@@ -72,10 +72,8 @@ use stacks_common::types::chainstate::SortitionId;
 use test_case::test_case;
 use test_log::test;
 use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
-use signer::bitcoin::zmq::BitcoinCoreMessageStream;
 use signer::block_observer::BlockObserver;
 use signer::context::Context;
 use signer::emily_client::EmilyClient;
@@ -92,7 +90,6 @@ use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::SMART_CONTRACTS;
 use signer::storage::model;
 use signer::storage::model::EncryptedDkgShares;
-use signer::storage::model::RotateKeysTransaction;
 use signer::storage::DbRead as _;
 use signer::storage::DbWrite as _;
 use signer::testing;
@@ -472,11 +469,6 @@ async fn process_complete_deposit() {
                 .expect_estimate_fees()
                 .once()
                 .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
-
-            client
-                .expect_get_sbtc_total_supply()
-                .once()
-                .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
         })
         .await;
 
@@ -492,6 +484,17 @@ async fn process_complete_deposit() {
 
     let (aggregate_key, bitcoin_chain_tip) =
         run_dkg(&context, &mut rng, &mut testing_signer_set).await;
+
+    // When the signer binary starts up in main(), it sets the current
+    // signer set public keys in the context state using the values in the
+    // bootstrap_signing_set configuration parameter. Later, the aggregate
+    // key gets set in the block observer. We're not running a block
+    // observer in this test, nor are we going through main, so we manually
+    // update the state here.
+    let signer_set_public_keys = testing_signer_set.signer_keys().into_iter().collect();
+    let state = context.state();
+    state.update_current_signer_set(signer_set_public_keys);
+    state.set_current_aggregate_key(aggregate_key);
 
     // Ensure we have a signers UTXO (as a donation, to not mess with the current
     // temporary `get_swept_deposit_requests` implementation)
@@ -776,122 +779,6 @@ async fn deploy_smart_contracts_coordinator<F>(
     testing::storage::drop_db(db).await;
 }
 
-/// The [`TxCoordinatorEventLoop::get_signer_set_and_aggregate_key`]
-/// function is supposed to fetch the "current" signing set and the
-/// aggregate key to use for bitcoin transactions. It attempts to get the
-/// latest rotate-keys contract call transaction confirmed on the canonical
-/// Stacks blockchain and falls back to the DKG shares table if no such
-/// transaction can be found.
-///
-/// This tests that we prefer rotate keys transactions if it's available
-/// but will use the DKG shares behavior is indeed the case.
-#[tokio::test]
-async fn get_signer_public_keys_and_aggregate_key_falls_back() {
-    let db = testing::storage::new_test_database().await;
-
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-
-    let ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_mocked_clients()
-        .build();
-
-    let network = InMemoryNetwork::new();
-
-    ctx.state().set_sbtc_contracts_deployed(); // Skip contract deployment
-    let coord = TxCoordinatorEventLoop {
-        network: network.connect(),
-        context: ctx.clone(),
-        context_window: 10000,
-        private_key: ctx.config().signer.private_key,
-        signing_round_max_duration: Duration::from_secs(10),
-        bitcoin_presign_request_max_duration: Duration::from_secs(10),
-        threshold: 2,
-        dkg_max_duration: Duration::from_secs(10),
-        is_epoch3: true,
-    };
-
-    // We need stacks blocks for the rotate-keys transactions.
-    let test_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
-        num_stacks_blocks_per_bitcoin_block: 1,
-        num_deposit_requests_per_block: 0,
-        num_withdraw_requests_per_block: 0,
-        num_signers_per_request: 0,
-        consecutive_blocks: false,
-    };
-    let test_data = TestData::generate(&mut rng, &[], &test_params);
-    test_data.write_to(&db).await;
-
-    // We always need the chain tip.
-    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-
-    // We have no rows in the DKG shares table and no rotate-keys
-    // transactions, so there should be no aggregate key, since that only
-    // happens after DKG, but we should always know the current signer set.
-    let (maybe_aggregate_key, signer_set) = coord
-        .get_signer_set_and_aggregate_key(&chain_tip)
-        .await
-        .unwrap();
-    assert!(maybe_aggregate_key.is_none());
-    assert!(!signer_set.is_empty());
-
-    // Alright, lets write some DKG shares into the database. When we do
-    // that the signer set should be considered whatever the signer set is
-    // from our DKG shares.
-    let shares: EncryptedDkgShares = Faker.fake_with_rng(&mut rng);
-    db.write_encrypted_dkg_shares(&shares).await.unwrap();
-
-    let (aggregate_key, signer_set) = coord
-        .get_signer_set_and_aggregate_key(&chain_tip)
-        .await
-        .unwrap();
-
-    let shares_signer_set: BTreeSet<PublicKey> =
-        shares.signer_set_public_keys.iter().copied().collect();
-
-    assert_eq!(shares.aggregate_key, aggregate_key.unwrap());
-    assert_eq!(shares_signer_set, signer_set);
-
-    // Okay not we write a rotate-keys transaction into the database. To do
-    // that we need the stacks chain tip, and a something in 3 different
-    // tables...
-    let stacks_chain_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();
-
-    let rotate_keys: RotateKeysTransaction = Faker.fake_with_rng(&mut rng);
-    let transaction = model::Transaction {
-        txid: rotate_keys.txid.into_bytes(),
-        tx: Vec::new(),
-        tx_type: model::TransactionType::RotateKeys,
-        block_hash: stacks_chain_tip.block_hash.into_bytes(),
-    };
-    let tx = model::StacksTransaction {
-        txid: rotate_keys.txid,
-        block_hash: stacks_chain_tip.block_hash,
-    };
-
-    db.write_transaction(&transaction).await.unwrap();
-    db.write_stacks_transaction(&tx).await.unwrap();
-    db.write_rotate_keys_transaction(&rotate_keys)
-        .await
-        .unwrap();
-
-    // Alright, now that we have a rotate-keys transaction, we can check if
-    // it is preferred over the DKG shares table.
-    let (aggregate_key, signer_set) = coord
-        .get_signer_set_and_aggregate_key(&chain_tip)
-        .await
-        .unwrap();
-
-    let rotate_keys_signer_set: BTreeSet<PublicKey> =
-        rotate_keys.signer_set.iter().copied().collect();
-
-    assert_eq!(rotate_keys.aggregate_key, aggregate_key.unwrap());
-    assert_eq!(rotate_keys_signer_set, signer_set);
-
-    testing::storage::drop_db(db).await;
-}
-
 /// Test that we run DKG if the coordinator notices that DKG has not been
 /// run yet.
 ///
@@ -947,6 +834,11 @@ async fn run_dkg_from_scratch() {
     let network = WanNetwork::default();
     let mut signers: Vec<_> = Vec::new();
 
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
+
     for (kp, data) in iter {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
         let db = testing::storage::new_test_database().await;
@@ -954,6 +846,15 @@ async fn run_dkg_from_scratch() {
             .with_storage(db.clone())
             .with_mocked_clients()
             .build();
+
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, the
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
 
         ctx.with_stacks_client(|client| {
             client
@@ -1167,6 +1068,10 @@ async fn run_subsequent_dkg() {
 
     // The aggregate key we will use for the first DKG shares entry.
     let aggregate_key_1: PublicKey = Faker.fake_with_rng(&mut rng);
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
 
     for (kp, data) in iter {
         let broadcast_stacks_tx = broadcast_stacks_tx.clone();
@@ -1180,14 +1085,20 @@ async fn run_subsequent_dkg() {
             })
             .build();
 
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, this
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the necessary state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
+
         // Write one DKG shares entry to the signer's database simulating that
         // DKG has been successfully run once.
         db.write_encrypted_dkg_shares(&EncryptedDkgShares {
             aggregate_key: aggregate_key_1,
-            signer_set_public_keys: signer_key_pairs
-                .iter()
-                .map(|kp| kp.public_key().into())
-                .collect(),
+            signer_set_public_keys: signer_set_public_keys.iter().copied().collect(),
             ..Faker.fake()
         })
         .await
@@ -1601,22 +1512,10 @@ async fn sign_bitcoin_transaction() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2042,22 +1941,10 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2632,22 +2519,10 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -3185,6 +3060,10 @@ async fn test_conservative_initial_sbtc_limits() {
     // - We load the database with a bitcoin blocks going back to some
     //   genesis block.
     // =========================================================================
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
     let mut signers = Vec::new();
     for kp in signer_key_pairs.iter() {
         let db = testing::storage::new_test_database().await;
@@ -3201,6 +3080,15 @@ async fn test_conservative_initial_sbtc_limits() {
             .with_mocked_stacks_client()
             .with_mocked_emily_client()
             .build();
+
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, this
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the necessary state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
 
         let network = network.connect(&ctx);
 
@@ -3418,22 +3306,10 @@ async fn test_conservative_initial_sbtc_limits() {
             ev.run().await
         });
 
-        let zmq_stream =
-            BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-                .await
-                .unwrap();
-        let (sender, receiver) = tokio::sync::mpsc::channel(100);
-
-        tokio::spawn(async move {
-            let mut stream = zmq_stream.to_block_hash_stream();
-            while let Some(block) = stream.next().await {
-                sender.send(block).await.unwrap();
-            }
-        });
-
         let block_observer = BlockObserver {
             context: ctx.clone(),
-            bitcoin_blocks: ReceiverStream::new(receiver),
+            bitcoin_blocks: testing::btc::new_zmq_block_hash_stream(BITCOIN_CORE_ZMQ_ENDPOINT)
+                .await,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
