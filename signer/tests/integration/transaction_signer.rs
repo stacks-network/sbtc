@@ -169,9 +169,10 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
-    let (aggregate_key, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
-        .await
-        .unwrap();
+    let (aggregate_key, signer_set_public_keys) =
+        get_signer_set_and_aggregate_key(&ctx, chain_tip.block_hash)
+            .await
+            .unwrap();
 
     let state = ctx.state();
     state.set_current_aggregate_key(aggregate_key.unwrap());
@@ -409,7 +410,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     };
     backfill_bitcoin_blocks(&db, rpc, &chain_tip.block_hash).await;
 
-    let (_, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
+    let (_, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip.block_hash)
         .await
         .unwrap();
 
