@@ -61,7 +61,6 @@ pub fn compile_protos() {
         .btree_map(["."])
         .out_dir(workingdir.join("signer/src/proto/generated/"))
         .include_file("mod.rs")
-        .type_attribute("crypto.Uint256", "#[derive(Copy)]")
         .compile_protos(&protos, &[workingdir.join("protobufs")])
         .expect("Unable to compile protocol buffers");
 }

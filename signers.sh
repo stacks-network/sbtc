@@ -27,8 +27,6 @@ LOG_SETTINGS="$LOG_SETTINGS,netlink_proto=info,libp2p_autonat=info,libp2p_gossip
 
 # Run the specified number of signers
 exec_run() {
-  echo "here!"
-
   if [ "$1" -eq 1 ]; then
     printf "${RED}ERROR:${NC} At least 2 signers are required\n"
     exit 1

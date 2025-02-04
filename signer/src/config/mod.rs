@@ -15,6 +15,7 @@ use std::path::Path;
 use url::Url;
 
 use crate::config::error::SignerConfigError;
+use crate::config::serialization::duration_milliseconds_deserializer;
 use crate::config::serialization::duration_seconds_deserializer;
 use crate::config::serialization::p2p_multiaddr_deserializer_vec;
 use crate::config::serialization::parse_stacks_address;
@@ -212,8 +213,21 @@ pub struct BlocklistClientConfig {
     /// the url for the blocklist client
     #[serde(deserialize_with = "url_deserializer_single")]
     pub endpoint: Url,
+
+    /// The delay, in milliseconds, for the second retry after a blocklist
+    /// client failure
+    #[serde(
+        default = "BlocklistClientConfig::retry_delay_default",
+        deserialize_with = "duration_milliseconds_deserializer"
+    )]
+    pub retry_delay: std::time::Duration,
 }
 
+impl BlocklistClientConfig {
+    fn retry_delay_default() -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
+}
 /// Emily API configuration.
 #[derive(Deserialize, Clone, Debug)]
 pub struct EmilyClientConfig {
@@ -289,6 +303,9 @@ pub struct SignerConfig {
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
     pub context_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for deposit decisions to retry to propagate.
+    pub deposit_decisions_retry_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
@@ -468,6 +485,7 @@ impl Settings {
         // after https://github.com/stacks-network/sbtc/issues/1004 gets
         // done.
         cfg_builder = cfg_builder.set_default("signer.context_window", 1000)?;
+        cfg_builder = cfg_builder.set_default("signer.deposit_decisions_retry_window", 3)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
@@ -494,6 +512,8 @@ impl Settings {
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
         self.signer.validate(self)?;
+        self.stacks.validate(self)?;
+        self.emily.validate(self)?;
 
         Ok(())
     }
@@ -596,6 +616,7 @@ mod tests {
         assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
         assert!(settings.signer.prometheus_exporter_endpoint.is_none());
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
@@ -914,6 +935,7 @@ mod tests {
                 .remove(parameter);
         };
         remove_parameter("context_window");
+        remove_parameter("deposit_decisions_retry_window");
         remove_parameter("signer_round_max_duration");
         remove_parameter("bitcoin_presign_request_max_duration");
         remove_parameter("dkg_max_duration");
@@ -926,6 +948,7 @@ mod tests {
         let settings = Settings::new(Some(&new_config.path())).unwrap();
 
         assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
             Duration::from_secs(30)
