@@ -86,7 +86,7 @@ pub async fn get_deposit(
     params(
         ("txid" = String, Path, description = "txid associated with the Deposit."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
@@ -143,7 +143,7 @@ pub async fn get_deposits_for_transaction(
     params(
         ("status" = Status, Query, description = "the status to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
@@ -194,7 +194,7 @@ pub async fn get_deposits(
     params(
         ("recipient" = String, Path, description = "the status to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(

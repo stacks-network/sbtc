@@ -335,7 +335,7 @@ async fn get_deposits() {
             &configuration,
             status,
             next_token.as_ref().and_then(|o| o.as_deref()),
-            Some(chunksize as i32),
+            Some(chunksize as u32),
         )
         .await
         .expect("Received an error after making a valid get deposits api call.");
@@ -456,7 +456,7 @@ async fn get_deposits_for_recipient() {
                 &configuration,
                 recipient,
                 next_token.as_ref().and_then(|o| o.as_deref()),
-                Some(chunksize as i32),
+                Some(chunksize as u32),
             )
             .await
             .expect("Received an error after making a valid get deposits for recipient api call.");
