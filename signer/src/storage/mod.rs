@@ -503,7 +503,7 @@ pub trait DbWrite {
         &self,
         aggregate_key: X,
     ) -> impl Future<Output = Result<bool, Error>> + Send
-    where 
+    where
         X: Into<PublicKeyXOnly> + Send;
 
     /// Marks the stored DKG shares as verified, meaning that the shares have
@@ -513,6 +513,6 @@ pub trait DbWrite {
         aggregate_key: X,
         bitcoin_block: &model::BitcoinBlockRef,
     ) -> impl Future<Output = Result<bool, Error>> + Send
-    where 
+    where
         X: Into<PublicKeyXOnly> + Send;
 }

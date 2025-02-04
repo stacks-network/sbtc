@@ -2865,9 +2865,9 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error> 
-    where 
-        X: Into<PublicKeyXOnly> + Send
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
     {
         let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
 
@@ -2912,9 +2912,9 @@ impl super::DbWrite for PgStore {
         &self,
         aggregate_key: X,
         bitcoin_block: &model::BitcoinBlockRef,
-    ) -> Result<bool, Error> 
-    where 
-        X: Into<PublicKeyXOnly> + Send
+    ) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
     {
         let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
 

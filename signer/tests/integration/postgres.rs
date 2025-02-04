@@ -3400,7 +3400,8 @@ async fn write_and_get_dkg_shares_is_pending() {
 
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
-    let select = db.get_encrypted_dkg_shares(insert.aggregate_key)
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
         .expect("database error")
         .expect("no shares found");
@@ -3431,14 +3432,16 @@ async fn verify_dkg_shares_succeeds() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to verify.
-    let result = db.verify_dkg_shares(insert.aggregate_key, &block.clone().into())
+    let result = db
+        .verify_dkg_shares(insert.aggregate_key, &block.clone().into())
         .await
         .expect("failed to mark shares as verified");
 
     assert!(result, "verify_dkg_shares returned false");
 
     // Get the dkg_shares entry.
-    let select = db.get_encrypted_dkg_shares(insert.aggregate_key)
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
         .expect("database error")
         .expect("no shares found");
@@ -3475,7 +3478,8 @@ async fn revoke_dkg_shares_succeeds() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to revoke.
-    let result = db.revoke_dkg_shares(insert.aggregate_key)
+    let result = db
+        .revoke_dkg_shares(insert.aggregate_key)
         .await
         .expect("failed to mark shares as revoked");
 
@@ -3483,7 +3487,8 @@ async fn revoke_dkg_shares_succeeds() {
     assert!(result, "revoke_dkg_shares returned false");
 
     // Get the dkg_shares entry we just inserted.
-    let select = db.get_encrypted_dkg_shares(insert.aggregate_key)
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
         .expect("database error")
         .expect("no shares found");
@@ -3520,7 +3525,8 @@ async fn revoke_verified_dkg_shares_succeeds() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to verify.
-    let result = db.verify_dkg_shares(insert.aggregate_key, &block.clone().into())
+    let result = db
+        .verify_dkg_shares(insert.aggregate_key, &block.clone().into())
         .await
         .expect("failed to mark shares as verified");
 
@@ -3530,7 +3536,8 @@ async fn revoke_verified_dkg_shares_succeeds() {
     assert!(result, "verify_dkg_shares returned false");
 
     // Now try to revoke.
-    let result = db.revoke_dkg_shares(insert.aggregate_key)
+    let result = db
+        .revoke_dkg_shares(insert.aggregate_key)
         .await
         .expect("failed to mark shares as revoked");
 
@@ -3540,7 +3547,8 @@ async fn revoke_verified_dkg_shares_succeeds() {
     assert!(result, "revoke_dkg_shares returned false");
 
     // Get the dkg_shares entry we just inserted.
-    let select = db.get_encrypted_dkg_shares(insert.aggregate_key)
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
         .expect("database error")
         .expect("no shares found");
@@ -3556,18 +3564,17 @@ async fn revoke_verified_dkg_shares_succeeds() {
     // Now we'll check the database directly that the verified_at* fields have
     // been nulled.
     let aggregate_key: PublicKeyXOnly = insert.aggregate_key.into();
-    let (block_hash, block_height): (Option<Vec<u8>>, Option<i64>) = 
-        sqlx::query_as(
-            r#"
+    let (block_hash, block_height): (Option<Vec<u8>>, Option<i64>) = sqlx::query_as(
+        r#"
             SELECT verified_at_bitcoin_block_hash, verified_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             WHERE substring(aggregate_key FROM 2) = $1
             "#,
-        )
-        .bind(aggregate_key)
-        .fetch_one(db.pool())
-        .await
-        .expect("failed to query database");
+    )
+    .bind(aggregate_key)
+    .fetch_one(db.pool())
+    .await
+    .expect("failed to query database");
 
     assert!(block_hash.is_none());
     assert!(block_height.is_none());
@@ -3596,7 +3603,8 @@ async fn verify_revoked_dkg_shares_fails() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to revoke.
-    let result = db.revoke_dkg_shares(insert.aggregate_key)
+    let result = db
+        .revoke_dkg_shares(insert.aggregate_key)
         .await
         .expect("failed to mark shares as revoked");
 
@@ -3606,7 +3614,8 @@ async fn verify_revoked_dkg_shares_fails() {
     assert!(result, "revoke_dkg_shares returned false");
 
     // Now try to verify. This should fail.
-    let result = db.verify_dkg_shares(insert.aggregate_key, &block.clone().into())
+    let result = db
+        .verify_dkg_shares(insert.aggregate_key, &block.clone().into())
         .await
         .expect("failed to mark shares as verified");
 
@@ -3615,7 +3624,8 @@ async fn verify_revoked_dkg_shares_fails() {
     assert!(!result, "verify_dkg_shares returned true");
 
     // Get the dkg_shares entry. It should be revoked.
-    let select = db.get_encrypted_dkg_shares(insert.aggregate_key)
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
         .expect("database error")
         .expect("no shares found");

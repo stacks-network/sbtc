@@ -241,6 +241,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
     group_key: PublicKey,
+    status: DkgSharesStatus,
 ) -> model::EncryptedDkgShares {
     let party_state = wsts::traits::PartyState {
         polynomial: None,
@@ -273,7 +274,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         script_pubkey: group_key.signers_script_pubkey().into(),
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(rng)],
         signature_share_threshold: 1,
-        status: DkgSharesStatus::Verified(Faker.fake_with_rng(rng)),
+        status,
     }
 }
 
