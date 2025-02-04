@@ -18,7 +18,6 @@ permissions:
 
 ## Define which docker arch to build for
 env:
-  environment: "Push to Docker"
   docker_platforms: "linux/amd64"
   docker-org: blockstack
   latest_release: $(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
@@ -46,7 +45,7 @@ jobs:
           - blocklist-client
 
     runs-on: ubuntu-latest
-    environment: ${{ env.environment }}
+    environment: "Push to Docker"
     steps:
       ## Setup Docker for the builds
       - name: Docker setup
