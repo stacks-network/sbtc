@@ -74,7 +74,7 @@ pub struct CreateDepositRequestBody {
 /// smart contract.
 pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 
-fn parse_hex<T, F, E>(input: &str, error_msg: &str, parser: F) -> Result<T, Error>
+fn parse_with_custom_error<T, F, E>(input: &str, parser: F, error_msg: &str) -> Result<T, Error>
 where
     F: Fn(&str) -> Result<T, E>,
 {
@@ -88,25 +88,29 @@ impl CreateDepositRequestBody {
     pub fn validate(&self, limits: &Limits, is_mainnet: bool) -> Result<DepositInfo, Error> {
         let deposit_req = CreateDepositRequest {
             outpoint: OutPoint {
-                txid: parse_hex(&self.bitcoin_txid, "invalid bitcoin_txid", Txid::from_str)?,
+                txid: parse_with_custom_error(
+                    &self.bitcoin_txid,
+                    Txid::from_str,
+                    "invalid bitcoin txid",
+                )?,
                 vout: self.bitcoin_tx_output_index,
             },
-            reclaim_script: parse_hex(
+            reclaim_script: parse_with_custom_error(
                 &self.reclaim_script,
-                "invalid reclaim_script",
                 ScriptBuf::from_hex,
+                "invalid reclaim script",
             )?,
-            deposit_script: parse_hex(
+            deposit_script: parse_with_custom_error(
                 &self.deposit_script,
-                "invalid deposit_script",
                 ScriptBuf::from_hex,
+                "invalid deposit script",
             )?,
         };
 
-        let tx: Transaction = parse_hex(
+        let tx: Transaction = parse_with_custom_error(
             &self.transaction_hex,
-            "invalid transaction_hex",
             encode::deserialize_hex,
+            "invalid transaction hex",
         )?;
 
         let amount = tx
@@ -114,7 +118,7 @@ impl CreateDepositRequestBody {
             .map_err(|_| {
                 Error::HttpRequest(
                     StatusCode::BAD_REQUEST,
-                    "invalid bitcoin_output_index".to_string(),
+                    "invalid bitcoin output index".to_string(),
                 )
             })?
             .value
@@ -210,34 +214,30 @@ mod tests {
     const CREATE_DEPOSIT_MISMATCH_DEPOSIT_SCRIPT: &str =
         include_str!("../../../../tests/fixtures/create-deposit-mismatch-deposit-script.json");
 
-    mod helpers {
-        use super::*;
-
-        pub fn create_test_limits(min: Option<u64>, max: Option<u64>) -> Limits {
-            Limits {
-                per_deposit_minimum: min,
-                per_deposit_cap: max,
-                ..Default::default()
-            }
+    pub fn create_test_limits(min: Option<u64>, max: Option<u64>) -> Limits {
+        Limits {
+            per_deposit_minimum: min,
+            per_deposit_cap: max,
+            ..Default::default()
         }
+    }
 
-        pub fn parse_request(json: &str) -> CreateDepositRequestBody {
-            serde_json::from_str(json).expect("failed to parse request")
-        }
+    pub fn parse_request(json: &str) -> CreateDepositRequestBody {
+        serde_json::from_str(json).expect("failed to parse request")
     }
 
     #[tokio::test]
     async fn test_deposit_validate_happy_path() {
-        let deposit_request = helpers::parse_request(CREATE_DEPOSIT_VALID);
-        let limits = helpers::create_test_limits(None, None);
+        let deposit_request = parse_request(CREATE_DEPOSIT_VALID);
+        let limits = create_test_limits(None, None);
         assert!(deposit_request.validate(&limits, true).is_ok());
     }
 
-    #[test_case(CREATE_DEPOSIT_INVALID_TXID, "invalid bitcoin_txid"; "invalid_txid")]
-    #[test_case(CREATE_DEPOSIT_INVALID_RECLAIM_SCRIPT, "invalid reclaim_script"; "invalid_reclaim_script")]
-    #[test_case(CREATE_DEPOSIT_INVALID_DEPOSIT_SCRIPT, "invalid deposit_script"; "invalid_deposit_script")]
-    #[test_case(CREATE_DEPOSIT_INVALID_TRANSACTION_HEX, "invalid transaction_hex"; "invalid_transaction_hex")]
-    #[test_case(CREATE_DEPOSIT_INVALID_OUTPUT_INDEX, "invalid bitcoin_output_index"; "invalid_output_index")]
+    #[test_case(CREATE_DEPOSIT_INVALID_TXID, "invalid bitcoin txid"; "invalid_txid")]
+    #[test_case(CREATE_DEPOSIT_INVALID_RECLAIM_SCRIPT, "invalid reclaim script"; "invalid_reclaim_script")]
+    #[test_case(CREATE_DEPOSIT_INVALID_DEPOSIT_SCRIPT, "invalid deposit script"; "invalid_deposit_script")]
+    #[test_case(CREATE_DEPOSIT_INVALID_TRANSACTION_HEX, "invalid transaction hex"; "invalid_transaction_hex")]
+    #[test_case(CREATE_DEPOSIT_INVALID_OUTPUT_INDEX, "invalid bitcoin output index"; "invalid_output_index")]
     #[test_case(CREATE_DEPOSIT_MISMATCH_TXID, "The txid of the transaction did not match the given txid"; "mismatch_txid")]
     #[test_case(
         CREATE_DEPOSIT_MISMATCH_RECLAIM_SCRIPT,
@@ -249,8 +249,8 @@ mod tests {
         "mismatch_deposit_script")]
     #[tokio::test]
     async fn test_deposit_validate_errors(input: &str, expected_error: &str) {
-        let deposit_request = helpers::parse_request(input);
-        let limits = helpers::create_test_limits(Some(DEPOSIT_DUST_LIMIT), None);
+        let deposit_request = parse_request(input);
+        let limits = create_test_limits(Some(DEPOSIT_DUST_LIMIT), None);
 
         let result = deposit_request.validate(&limits, true);
         assert_eq!(
@@ -266,8 +266,8 @@ mod tests {
     #[test_case(CREATE_DEPOSIT_VALID, Some(DEPOSIT_DUST_LIMIT), Some(1_000_000_000); "min_max_limit")]
     #[tokio::test]
     async fn test_deposit_validate_limits(input: &str, min: Option<u64>, max: Option<u64>) {
-        let deposit_request = helpers::parse_request(input);
-        let limits = helpers::create_test_limits(min, max);
+        let deposit_request = parse_request(input);
+        let limits = create_test_limits(min, max);
         assert!(deposit_request.validate(&limits, true).is_ok());
     }
 
@@ -280,8 +280,8 @@ mod tests {
         max: Option<u64>,
         expected_error: &str,
     ) {
-        let deposit_request = helpers::parse_request(input);
-        let limits = helpers::create_test_limits(min, max);
+        let deposit_request = parse_request(input);
+        let limits = create_test_limits(min, max);
 
         let result = deposit_request.validate(&limits, true);
 
