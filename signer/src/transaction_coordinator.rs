@@ -386,13 +386,23 @@ where
             return Ok(());
         }
 
-        let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
+        tracing::info!("our aggregate key differs from the one in the registry contract; a key rotation may be necessary");
 
+        // Load the Stacks wallet.
+        tracing::debug!("loading the signer stacks wallet");
+        let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
         // current_aggregate_key define which wallet can sign stacks tx interacting
         // with the registry smart contract; fallbacks to `aggregate_key` if it's
         // the first rotate key tx.
         let signing_key = &current_aggregate_key.unwrap_or(*aggregate_key);
 
+        // Perform DKG verification before submitting the rotate key transaction.
+        tracing::info!("🔐 beginning DKG verification before submitting rotate-key transaction");
+        self.perform_dkg_verification(bitcoin_chain_tip, &last_dkg.aggregate_key, &wallet)
+            .await?;
+        tracing::info!("🔐 DKG verification successful");
+
+        // Construct, sign and submit the rotate key transaction.
         tracing::info!("preparing to submit a rotate-key transaction");
         let txid = self
             .construct_and_sign_rotate_key_transaction(
@@ -704,37 +714,40 @@ where
         Ok(())
     }
 
-    /// Construct and coordinate signing round for a `rotate-keys-wrapper` transaction.
+    /// Performs verification of of the DKG process by running a FROST signing
+    /// round using the new key. This is done to assert that all signers have
+    /// successfully signed with the new aggregate key before proceeding with
+    /// the actual rotate keys transaction.
+    ///
+    /// The idea behind this is that since the rotate-keys contract call is a
+    /// Stacks transaction and thus only signed using the signers' private keys,
+    /// we have no guarantees at this point that there wasn't a fault in the DKG
+    /// process. By running a FROST signing round, we can cryptographically
+    /// assert that all signers have signed with the new aggregate key, and thus
+    /// have valid private shares before we proceed with the actual rotate keys
+    /// transaction. This is guaranteed by the FROST coordinator, which requires
+    /// 100% signing participation vs. FIRE which only uses `threshold` signers.
+    ///
+    /// The signing round is run on the [`bitcoin::TapSigHash`] of an
+    /// [`UnsignedMockTransaction`] using the new aggregate key using the FROST
+    /// coordinator, which requires 100% signing participation vs. FIRE which
+    /// only uses {threshold} signers.
     #[tracing::instrument(skip_all)]
-    async fn construct_and_sign_rotate_key_transaction(
+    async fn perform_dkg_verification(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: &PublicKey,
-        rotate_key_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
-    ) -> Result<StacksTxId, Error> {
-        let (x_only_pubkey, _) = rotate_key_aggregate_key.x_only_public_key();
+    ) -> Result<(), Error> {
+        let (x_only_pubkey, _) = aggregate_key.x_only_public_key();
 
-        // We run a DKG signing round on the current bitcoin chain tip block
-        // hash using the new aggregate key using the FROST coordinator, which
-        // requires 100% signing participation vs. FIRE which only uses
-        // {threshold} signers.
-        //
-        // The idea behind this is that since the rotate-keys contract call is a
-        // Stacks transaction and thus only signed using the signers' private
-        // keys, we have no guarantees at this point that there wasn't a fault
-        // in the DKG process. By running a FROST signing round, we can
-        // cryptographically assert that all signers have signed with the new
-        // aggregate key, and thus have valid private shares before we proceed
-        // with the actual rotate keys transaction.
-        //
         // Note that while we specify the threshold as `signatures_required` in
         // the coordinator below, the FROST coordinator implicitly requires all
         // signers to participate.
-        tracing::info!("running a FROST signing round on random data to assert that all signers have signed with the new aggregate key");
+        tracing::info!(%aggregate_key, "🔐 preparing to coordinate a FROST signing round to verify the aggregate key");
         let mut coordinator_state_machine = FrostCoordinator::load(
             &self.context.get_storage(),
-            rotate_key_aggregate_key.into(),
+            aggregate_key.into(),
             wallet.public_keys().iter().cloned(),
             wallet.signatures_required(),
             self.private_key,
@@ -757,20 +770,31 @@ where
         // If script signature validation fails for any of the signers, they
         // will mark the DKG round as failed and will refuse to sign the rotate
         // keys transaction.
+        tracing::info!("🔐 beginning verification signing round");
         self.coordinate_signing_round(
             bitcoin_chain_tip,
             &mut coordinator_state_machine,
-            WstsMessageId::RotateKey(*rotate_key_aggregate_key),
+            WstsMessageId::RotateKey(*aggregate_key),
             tap_sighash.as_byte_array(),
             SignatureType::Taproot(None),
         ).await
         .inspect_err(|error| {
-            tracing::error!(%error, "failed to assert that all signers have signed random data with the new aggregate key; aborting");
+            tracing::warn!(%error, "🔐 failed to assert that all signers have signed with the new aggregate key; aborting");
         })?;
-        tracing::info!(
-            "all signers have signed random data with the new aggregate key; proceeding"
-        );
+        tracing::info!("🔐 all signers have signed with the new aggregate key; proceeding");
 
+        Ok(())
+    }
+
+    /// Construct and coordinate signing round for a `rotate-keys-wrapper` transaction.
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_sign_rotate_key_transaction(
+        &mut self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        aggregate_key: &PublicKey,
+        rotate_key_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<StacksTxId, Error> {
         // TODO: we should validate the contract call before asking others
         // to sign it.
         let contract_call = ContractCall::RotateKeysV1(RotateKeysV1::new(
