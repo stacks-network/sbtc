@@ -12,6 +12,7 @@ use signer::bitcoin::utxo::RequestRef;
 use signer::bitcoin::utxo::Requests;
 use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::validation::TxRequestIds;
+use signer::block_observer::get_signer_set_and_aggregate_key;
 use signer::context::Context;
 use signer::context::SbtcLimits;
 use signer::error::Error;
@@ -28,14 +29,12 @@ use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::BitcoinTxSigHash;
-use signer::storage::model::RotateKeysTransaction;
 use signer::storage::model::SigHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::DbRead as _;
 use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::*;
-use signer::testing::storage::model::TestData;
 use signer::transaction_signer::ChainTipStatus;
 use signer::transaction_signer::MsgChainTipReport;
 use signer::transaction_signer::TxSignerEventLoop;
@@ -48,100 +47,6 @@ use crate::setup::fill_signers_utxo;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
-
-/// Test that [`TxSignerEventLoop::get_signer_public_keys`] falls back to
-/// the bootstrap config if there is no rotate-keys transaction in the
-/// database.
-#[tokio::test]
-async fn get_signer_public_keys_and_aggregate_key_falls_back() {
-    let db = testing::storage::new_test_database().await;
-
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-
-    let ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_mocked_clients()
-        .build();
-
-    let network = InMemoryNetwork::new();
-
-    let coord = TxSignerEventLoop {
-        network: network.connect(),
-        context: ctx.clone(),
-        context_window: 10000,
-        wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
-        signer_private_key: ctx.config().signer.private_key,
-        threshold: 2,
-        rng: rand::rngs::StdRng::seed_from_u64(51),
-        dkg_begin_pause: None,
-    };
-
-    // We need stacks blocks for the rotate-keys transactions.
-    let test_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
-        num_stacks_blocks_per_bitcoin_block: 1,
-        num_deposit_requests_per_block: 0,
-        num_withdraw_requests_per_block: 0,
-        num_signers_per_request: 0,
-        consecutive_blocks: false,
-    };
-    let test_data = TestData::generate(&mut rng, &[], &test_params);
-    test_data.write_to(&db).await;
-
-    // We always need the chain tip.
-    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-
-    // We have no transactions in the database, just blocks header hashes
-    // and block heights. The `get_signer_public_keys` function falls back
-    // to the config for keys if no rotate-keys transaction can be found.
-    // So this function almost never errors.
-    let bootstrap_signer_set = coord.get_signer_public_keys(&chain_tip).await.unwrap();
-    // We check that the signer set can form a valid wallet when we load
-    // the config. In particular, the signing set should not be empty.
-    assert!(!bootstrap_signer_set.is_empty());
-
-    let config_signer_set = ctx.config().signer.bootstrap_signing_set();
-    assert_eq!(bootstrap_signer_set, config_signer_set);
-
-    // Okay now we write a rotate-keys transaction into the database. To do
-    // that we need the stacks chain tip, and a something in 3 different
-    // tables...
-    let stacks_chain_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();
-
-    let rotate_keys: RotateKeysTransaction = Faker.fake_with_rng(&mut rng);
-    let transaction = model::Transaction {
-        txid: rotate_keys.txid.into_bytes(),
-        tx: Vec::new(),
-        tx_type: model::TransactionType::RotateKeys,
-        block_hash: stacks_chain_tip.block_hash.into_bytes(),
-    };
-    let tx = model::StacksTransaction {
-        txid: rotate_keys.txid,
-        block_hash: stacks_chain_tip.block_hash,
-    };
-
-    db.write_transaction(&transaction).await.unwrap();
-    db.write_stacks_transaction(&tx).await.unwrap();
-    db.write_rotate_keys_transaction(&rotate_keys)
-        .await
-        .unwrap();
-
-    // Alright, now that we have a rotate-keys transaction, we can check if
-    // it is preferred over the config.
-    let signer_set: Vec<PublicKey> = coord
-        .get_signer_public_keys(&chain_tip)
-        .await
-        .unwrap()
-        .into_iter()
-        .collect();
-
-    let mut rotate_keys_signer_set = rotate_keys.signer_set.clone();
-    rotate_keys_signer_set.sort();
-
-    assert_eq!(rotate_keys_signer_set, signer_set);
-
-    testing::storage::drop_db(db).await;
-}
 
 /// Test that [`TxSignerEventLoop::assert_valid_stacks_tx_sign_request`]
 /// errors when the signer is not in the signer set.
@@ -257,6 +162,14 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
+    let (aggregate_key, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
+        .await
+        .unwrap();
+
+    let state = ctx.state();
+    state.set_current_aggregate_key(aggregate_key.unwrap());
+    state.update_current_signer_set(signer_set_public_keys);
+
     // Initialize the transaction signer event loop
     let network = WanNetwork::default();
 
@@ -313,9 +226,10 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
     let mut handle = network.connect(&ctx).spawn();
 
-    let result = tx_signer
+    tx_signer
         .handle_bitcoin_pre_sign_request(&sbtc_context, &chain_tip)
-        .await;
+        .await
+        .unwrap();
 
     // check if we are receving an Ack from the signer
     tokio::time::timeout(Duration::from_secs(2), async move {
@@ -323,8 +237,6 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     })
     .await
     .unwrap();
-
-    assert!(result.is_ok());
 
     // Check that the intentions to sign the requests sighashes
     // are stored in the database
@@ -492,6 +404,13 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     let (rpc, _) = sbtc::testing::regtest::initialize_blockchain();
     let chain_tip: BitcoinBlockHash = rpc.get_best_block_hash().unwrap().into();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    let (_, signer_set_public_keys) = get_signer_set_and_aggregate_key(&ctx, chain_tip)
+        .await
+        .unwrap();
+
+    ctx.state()
+        .update_current_signer_set(signer_set_public_keys);
 
     // Initialize the transaction signer event loop
     let network = WanNetwork::default();
