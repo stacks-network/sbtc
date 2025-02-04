@@ -916,7 +916,7 @@ where
     ) -> Result<(), Error> {
         let sighashes = transaction.construct_digests()?;
         let mut coordinator_state_machine = FireCoordinator::load(
-            &self.context.get_storage_mut(),
+            &self.context.get_storage(),
             sighashes.signers_aggregate_key.into(),
             signer_public_keys.clone(),
             self.threshold,
@@ -959,7 +959,7 @@ where
             let msg = sighash.to_raw_hash().to_byte_array();
 
             let mut coordinator_state_machine = FireCoordinator::load(
-                &self.context.get_storage_mut(),
+                &self.context.get_storage(),
                 deposit.signers_public_key.into(),
                 signer_public_keys.clone(),
                 self.threshold,
