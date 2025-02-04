@@ -912,7 +912,7 @@ async fn get_signer_public_keys_and_aggregate_key_falls_back() {
     assert_eq!(shares.aggregate_key, aggregate_key.unwrap());
     assert_eq!(shares_signer_set, signer_set);
 
-    // Okay not we write a rotate-keys transaction into the database. To do
+    // Okay now we write a rotate-keys transaction into the database. To do
     // that we need the stacks chain tip, and a something in 3 different
     // tables...
     let stacks_chain_tip = db.get_stacks_chain_tip(&chain_tip).await.unwrap().unwrap();
