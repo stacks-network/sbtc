@@ -47,6 +47,11 @@ pub trait DbRead {
         &self,
     ) -> impl Future<Output = Result<Option<model::BitcoinBlockHash>, Error>> + Send;
 
+    /// Get the bitcoin canonical chain tip.
+    fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::BitcoinBlockRef>, Error>> + Send;
+
     /// Get the stacks chain tip, defined as the highest stacks block
     /// confirmed by the bitcoin chain tip.
     fn get_stacks_chain_tip(

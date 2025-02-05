@@ -137,7 +137,7 @@ impl Coordinator {
     pub async fn run_dkg(
         &mut self,
         bitcoin_chain_tip: model::BitcoinBlockHash,
-        txid: bitcoin::Txid,
+        id: WstsMessageId,
     ) -> PublicKey {
         self.wsts_coordinator
             .move_to(coordinator::State::DkgPublicDistribute)
@@ -148,10 +148,9 @@ impl Coordinator {
             .start_public_shares()
             .expect("failed to start public shares");
 
-        self.send_packet(bitcoin_chain_tip, txid.into(), outbound)
-            .await;
+        self.send_packet(bitcoin_chain_tip, id, outbound).await;
 
-        match self.loop_until_result(bitcoin_chain_tip, txid.into()).await {
+        match self.loop_until_result(bitcoin_chain_tip, id).await {
             wsts::state_machine::OperationResult::Dkg(aggregate_key) => {
                 PublicKey::try_from(&aggregate_key).expect("Got the point at infinity")
             }
@@ -405,7 +404,7 @@ impl SignerSet {
     pub async fn run_dkg<Rng: rand::RngCore + rand::CryptoRng>(
         &mut self,
         bitcoin_chain_tip: model::BitcoinBlockHash,
-        txid: bitcoin::Txid,
+        id: WstsMessageId,
         rng: &mut Rng,
     ) -> (PublicKey, Vec<model::EncryptedDkgShares>) {
         let mut signer_handles = Vec::new();
@@ -414,7 +413,7 @@ impl SignerSet {
             signer_handles.push(handle);
         }
 
-        let aggregate_key = self.coordinator.run_dkg(bitcoin_chain_tip, txid).await;
+        let aggregate_key = self.coordinator.run_dkg(bitcoin_chain_tip, id).await;
 
         for handle in signer_handles {
             let signer = handle.await.expect("signer crashed");
@@ -554,7 +553,9 @@ mod tests {
         let signer_info = generate_signer_info(&mut rng, num_signers);
         let mut signer_set = SignerSet::new(&signer_info, threshold, || network.connect());
 
-        let (_, dkg_shares) = signer_set.run_dkg(bitcoin_chain_tip, txid, &mut rng).await;
+        let (_, dkg_shares) = signer_set
+            .run_dkg(bitcoin_chain_tip, txid.into(), &mut rng)
+            .await;
 
         assert_eq!(dkg_shares.len(), num_signers as usize);
     }

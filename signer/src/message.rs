@@ -228,31 +228,31 @@ pub struct BitcoinPreSignAck;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum WstsMessageId {
     /// The WSTS message is related to a Bitcoin transaction signing round.
-    BitcoinTxid(bitcoin::Txid),
+    Sweep(bitcoin::Txid),
     /// The WSTS message is related to a rotate key verification operation.
-    RotateKey(PublicKey),
+    DkgVerification(PublicKey),
     /// The WSTS message is related to a DKG round.
     Dkg([u8; 32]),
 }
 
 impl From<bitcoin::Txid> for WstsMessageId {
     fn from(txid: bitcoin::Txid) -> Self {
-        Self::BitcoinTxid(txid)
+        Self::Sweep(txid)
     }
 }
 
 impl From<crate::storage::model::BitcoinTxId> for WstsMessageId {
     fn from(txid: crate::storage::model::BitcoinTxId) -> Self {
-        Self::BitcoinTxid(txid.into())
+        Self::Sweep(txid.into())
     }
 }
 
 impl std::fmt::Display for WstsMessageId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            WstsMessageId::BitcoinTxid(txid) => write!(f, "bitcoin-txid({})", txid),
-            WstsMessageId::RotateKey(aggregate_key) => {
-                write!(f, "rotate-key({})", aggregate_key)
+            WstsMessageId::Sweep(txid) => write!(f, "sweep({})", txid),
+            WstsMessageId::DkgVerification(aggregate_key) => {
+                write!(f, "dkg-verification({})", aggregate_key)
             }
             WstsMessageId::Dkg(id) => {
                 write!(f, "dkg({})", hex::encode(id))

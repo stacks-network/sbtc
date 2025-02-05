@@ -286,10 +286,6 @@ pub mod signer_message {
 /// A wsts message.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WstsMessage {
-    /// The transaction ID this message relates to, will be a dummy ID for DKG messages
-    #[deprecated]
-    #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
     /// The wsts message
     #[prost(oneof = "wsts_message::Inner", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
     pub inner: ::core::option::Option<wsts_message::Inner>,
@@ -343,16 +339,16 @@ pub mod wsts_message {
         /// If this WSTS message is related to a Bitcoin signing round, this field
         /// will be set to the related Bitcoin transaction ID.
         #[prost(message, tag = "12")]
-        IdBitcoinTxid(super::super::super::super::bitcoin::BitcoinTxid),
+        Sweep(super::super::super::super::bitcoin::BitcoinTxid),
         /// If this WSTS message is related to a rotate-keys transaction, this field
         /// will be set to the _new_ aggregate public key being verified.
         #[prost(message, tag = "13")]
-        IdRotateKey(super::super::super::super::crypto::PublicKey),
+        DkgVerification(super::super::super::super::crypto::PublicKey),
         /// If this WSTS message is related to a DKG round, this field will be set
         /// to the 32-byte id determined based on the coordinator public key and
         /// block hash, set by the coordinator.
         #[prost(message, tag = "14")]
-        IdDkg(super::super::super::super::crypto::Uint256),
+        Dkg(super::super::super::super::crypto::Uint256),
     }
 }
 /// Wraps an inner type with a public key and a signature,

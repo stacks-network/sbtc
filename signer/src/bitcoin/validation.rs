@@ -322,7 +322,6 @@ impl BitcoinPreSignRequest {
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
-            // If the cap is None, then we assume that it is unlimited.
             sbtc_limits: ctx.state().get_current_limits(),
         };
 
