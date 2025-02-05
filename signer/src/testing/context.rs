@@ -402,7 +402,7 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
     }
 
-    async fn get_deposit_status(
+    async fn is_deposit_completed(
         &self,
         contract_principal: &StacksAddress,
         outpoint: &bitcoin::OutPoint,
@@ -410,7 +410,7 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
         self.inner
             .lock()
             .await
-            .get_deposit_status(contract_principal, outpoint)
+            .is_deposit_completed(contract_principal, outpoint)
             .await
     }
 

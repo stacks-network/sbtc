@@ -323,7 +323,7 @@ impl StacksInteract for TestHarness {
         // issue #118
         todo!()
     }
-    async fn get_deposit_status(
+    async fn is_deposit_completed(
         &self,
         _: &StacksAddress,
         _: &bitcoin::OutPoint,

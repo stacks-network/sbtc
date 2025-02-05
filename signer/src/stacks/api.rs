@@ -144,11 +144,12 @@ pub trait StacksInteract: Send + Sync {
         contract_principal: &StacksAddress,
     ) -> impl Future<Output = Result<Option<PublicKey>, Error>> + Send;
 
-    /// Retrieve the status of a deposit request as stored in the `sbtc-registry` contract.
+    /// Retrieve a boolean value indicating whether sBTC has been minted
+    /// for the deposit request.
     ///
     /// This is done by making a `POST /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`
     /// request.
-    fn get_deposit_status(
+    fn is_deposit_completed(
         &self,
         contract_principal: &StacksAddress,
         outpoint: &OutPoint,
@@ -1162,14 +1163,14 @@ impl StacksInteract for StacksClient {
         }
     }
 
-    async fn get_deposit_status(
+    async fn is_deposit_completed(
         &self,
         deployer: &StacksAddress,
         outpoint: &OutPoint,
     ) -> Result<bool, Error> {
         // Both ContractName::from and ClarityName::from can panic when
-        // given some strings. These particular strings do not panic, and
-        // we test this fact in our unit tests.
+        // given the "wrong" strings. These particular strings do not
+        // panic, and we test this fact in our unit tests.
         let contract_name = ContractName::from("sbtc-registry");
         let fn_name = ClarityName::from("get-deposit-status");
 
@@ -1392,14 +1393,14 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         .await
     }
 
-    async fn get_deposit_status(
+    async fn is_deposit_completed(
         &self,
         contract_principal: &StacksAddress,
         outpoint: &OutPoint,
     ) -> Result<bool, Error> {
         self.exec(|client, retry| async move {
             let result = client
-                .get_deposit_status(contract_principal, outpoint)
+                .is_deposit_completed(contract_principal, outpoint)
                 .await;
             retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
             result
@@ -1970,6 +1971,49 @@ mod tests {
         // Assert that the response is what we expect
         let expected: DataVarResponse = serde_json::from_str(&raw_json_response).unwrap();
         assert_eq!(&resp, &expected.data);
+        mock.assert();
+    }
+
+    #[test_case(Some(true); "complete-deposit")]
+    #[test_case(None; "incomplete-deposit")]
+    #[tokio::test]
+    async fn is_deposit_completed_works(response: Option<bool>) {
+        // Create our simulated response JSON.
+        let data = response.map(|x| Box::new(Value::Bool(x)));
+        let clarity_value = Value::Optional(OptionalData { data });
+        let json_response = serde_json::json!({
+            "okay": true,
+            "result": format!("0x{}", clarity_value.serialize_to_hex().unwrap()),
+        });
+        let raw_json_response = serde_json::to_string(&json_response).unwrap();
+
+        // Setup our mock server
+        // POST /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("POST", "/v2/contracts/call-read/ST000000000000000000002AMW42H/sbtc-registry/get-deposit-status?tip=latest")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client. We use a regular client here because we're
+        // testing the `get_data_var` method.
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
+
+        // Make the request to the mock server
+        let resp = client
+            .is_deposit_completed(
+                &StacksAddress::burn_address(false),
+                &bitcoin::OutPoint::null(),
+            )
+            .await
+            .unwrap();
+
+        // Assert that the response is what we expect
+        assert_eq!(resp, response.unwrap_or(false));
         mock.assert();
     }
 
