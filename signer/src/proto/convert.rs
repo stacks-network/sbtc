@@ -1061,7 +1061,6 @@ impl TryFrom<proto::SignatureShareResponse> for SignatureShareResponse {
     }
 }
 impl From<WstsMessage> for proto::WstsMessage {
-    #[allow(deprecated)]
     fn from(value: WstsMessage) -> Self {
         let inner = match value.inner {
             wsts::net::Message::DkgBegin(inner) => {
@@ -1146,7 +1145,6 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
             }
         };
 
-        #[allow(deprecated)]
         Ok(WstsMessage {
             id: match value.id.required()? {
                 wsts_message::Id::Sweep(txid) => {
