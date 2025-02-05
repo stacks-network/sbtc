@@ -199,6 +199,7 @@ where
         let signer_private_key = config.signer.private_key;
         let context_window = config.signer.context_window;
         let threshold = config.signer.bootstrap_signatures_required.into();
+        let dkg_begin_pause = config.signer.dkg_begin_pause.map(Duration::from_secs);
 
         Ok(Self {
             context,
@@ -208,7 +209,7 @@ where
             wsts_state_machines: LruCache::new(max_state_machines),
             threshold,
             rng,
-            dkg_begin_pause: None,
+            dkg_begin_pause,
             wsts_frost_state_machines: LruCache::new(
                 NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
             ),
