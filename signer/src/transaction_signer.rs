@@ -200,7 +200,7 @@ where
                     SignerEvent::TxCoordinator(TxCoordinatorEvent::MessageGenerated(msg))
                     | SignerEvent::P2P(P2PEvent::MessageReceived(msg)) => {
                         if let Err(error) = self.handle_signer_message(&msg).await {
-                            tracing::error!(%error, "error handling signer message");
+                            tracing::error!(%error, "error processing signer message");
                         }
                     }
                     _ => {}
@@ -519,7 +519,7 @@ where
                     return Ok(());
                 }
 
-                tracing::debug!("responding to dkg-begin");
+                tracing::debug!("processing message");
 
                 // Assert that DKG should be allowed to proceed given the current state
                 // and configuration.
@@ -557,7 +557,7 @@ where
                     return Ok(());
                 }
 
-                tracing::debug!("responding to dkg-private-begin");
+                tracing::debug!("processing message");
 
                 let id = StateMachineId::from(&chain_tip.block_hash);
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
@@ -567,7 +567,7 @@ where
                 span.record(WSTS_DKG_ID, request.dkg_id);
                 span.record(WSTS_SIGNER_ID, request.signer_id);
 
-                tracing::debug!("responding to dkg-public-shares");
+                tracing::debug!("processing message");
 
                 let id = StateMachineId::from(&chain_tip.block_hash);
                 self.validate_sender(&id, request.signer_id, &msg_public_key)?;
@@ -578,7 +578,7 @@ where
                 span.record(WSTS_DKG_ID, request.dkg_id);
                 span.record(WSTS_SIGNER_ID, request.signer_id);
 
-                tracing::debug!("responding to dkg-private-shares");
+                tracing::debug!("processing message");
 
                 let id = StateMachineId::from(&chain_tip.block_hash);
                 self.validate_sender(&id, request.signer_id, &msg_public_key)?;
@@ -596,7 +596,7 @@ where
                     return Ok(());
                 }
 
-                tracing::debug!("responding to dkg-end-begin");
+                tracing::debug!("processing message");
                 let id = StateMachineId::from(&chain_tip.block_hash);
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
@@ -631,7 +631,7 @@ where
                     return Ok(());
                 }
 
-                tracing::debug!(signature_type = ?request.signature_type, "responding to nonce-request");
+                tracing::debug!(signature_type = ?request.signature_type, "processing message");
 
                 let db = self.context.get_storage();
                 let accepted_sighash =
@@ -681,7 +681,7 @@ where
                     return Ok(());
                 }
 
-                tracing::debug!(signature_type = ?request.signature_type, "responding to signature-share-request");
+                tracing::debug!(signature_type = ?request.signature_type, "processing message");
 
                 let db = self.context.get_storage();
                 let accepted_sighash =
