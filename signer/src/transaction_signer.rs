@@ -130,16 +130,7 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub network: Network,
     /// Private key of the signer for network communication.
     pub signer_private_key: PrivateKey,
-    /// WSTS state machines for active signing rounds and DKG rounds
-    ///
-    /// - For signing rounds, the TxID is the ID of the transaction to be
-    ///   signed.
-    ///
-    /// - For DKG rounds, TxID should be the ID of the transaction that
-    ///   defined the signer set.
-    ///
-    /// - For signing arbitrary data, the TxID is all zeroes.
-    ///
+    /// WSTS state machines for active signing and DKG rounds.
     pub wsts_state_machines: LruCache<StateMachineId, SignerStateMachine>,
     /// The threshold for the signer
     pub threshold: u32,
@@ -664,9 +655,12 @@ where
                             "signer reports successful DKG round"
                         );
                     }
-                    DkgStatus::Failure(fail) => {
-                        // TODO(#414): handle DKG failure
-                        tracing::warn!(wsts_dkg_status = "failure", reason = ?fail, "signer reports failed DKG round");
+                    DkgStatus::Failure(reason) => {
+                        tracing::warn!(
+                            wsts_dkg_status = "failure",
+                            ?reason,
+                            "signer reports failed DKG round"
+                        );
                     }
                 }
             }
@@ -694,7 +688,6 @@ where
                     }
                     WstsMessageId::Sweep(txid) => {
                         span.record("txid", txid.to_string());
-                        tracing::debug!("processing message");
 
                         let accepted_sighash =
                             Self::validate_bitcoin_sign_request(&db, &request.message).await;
@@ -792,7 +785,7 @@ where
                     }
                     WstsMessageId::Sweep(txid) => {
                         span.record("txid", txid.to_string());
-                        tracing::info!(
+                        tracing::debug!(
                             signature_type = ?request.signature_type,
                             "processing message"
                         );
@@ -1049,6 +1042,13 @@ where
         .await
     }
 
+    /// Ensures that a DKG verification state machine exists for the given
+    /// aggregate key and bitcoin chain tip block hash. If the state machine
+    /// exists already then the id is simply returned back; otherwise, a new
+    /// state machine is created and stored in this instance.
+    ///
+    /// The `aggregate_key` provided here should be the _new_ aggregate key
+    /// which is being verified.
     async fn ensure_dkg_verification_state_machine(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
@@ -1111,7 +1111,7 @@ where
             return Err(Error::MissingFrostStateMachine(Box::new(aggregate_key)));
         };
 
-        tracing::trace!(?msg, "🔐 processing frost coordinator message");
+        tracing::trace!(?msg, "🔐 processing FROST coordinator message");
 
         let (_, result) = state_machine.process_message(msg)?;
 
