@@ -725,8 +725,12 @@ where
                         let new_key: PublicKeyXOnly = key.into();
 
                         // Validate the received message.
-                        Self::validate_dkg_verification_message(&db, &new_key, &request.message)
-                            .await?;
+                        Self::validate_dkg_verification_message(
+                            &db,
+                            &new_key,
+                            Some(&request.message),
+                        )
+                        .await?;
 
                         let (state_machine_id, _, mock_tx) = self
                             .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
@@ -807,8 +811,12 @@ where
                         let new_key: PublicKeyXOnly = key.into();
 
                         // Validate the received message.
-                        Self::validate_dkg_verification_message(&db, &new_key, &request.message)
-                            .await?;
+                        Self::validate_dkg_verification_message(
+                            &db,
+                            &new_key,
+                            Some(&request.message),
+                        )
+                        .await?;
 
                         tracing::info!(
                             signature_type = ?request.signature_type,
@@ -854,6 +862,13 @@ where
 
                 let new_key: PublicKeyXOnly = key.into();
 
+                Self::validate_dkg_verification_message(
+                    &self.context.get_storage(),
+                    &new_key,
+                    Some(&request.message),
+                )
+                .await?;
+
                 if request.message.len() != 32 {
                     tracing::warn!("🔐 data received for DKG verification signing is not 32 bytes");
                     return Err(Error::InvalidSigningOperation);
@@ -888,6 +903,13 @@ where
 
                 let new_key = key.into();
 
+                Self::validate_dkg_verification_message(
+                    &self.context.get_storage(),
+                    &new_key,
+                    None,
+                )
+                .await?;
+
                 let (state_machine_id, _, _) = self
                     .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                     .await?;
@@ -913,26 +935,35 @@ where
     async fn validate_dkg_verification_message<DB>(
         storage: &DB,
         new_key: &PublicKeyXOnly,
-        message: &[u8],
+        message: Option<&[u8]>,
     ) -> Result<(), Error>
     where
         DB: DbRead,
     {
-        let current_key = storage
+        let latest_key = storage
             .get_latest_encrypted_dkg_shares()
             .await?
             .ok_or(Error::NoDkgShares)?
             .aggregate_key
             .into();
 
-        if *new_key != current_key {
+        // Ensure that the new key matches the current aggregate key.
+        if *new_key != latest_key {
             tracing::warn!("🔐 aggregate key mismatch for DKG verification signing");
             return Err(Error::AggregateKeyMismatch(
-                Box::new(current_key),
+                Box::new(latest_key),
                 Box::new(*new_key),
             ));
         }
 
+        // If we don't have a message (i.e. from `SignatureShareResponse`) then
+        // we can exit early.
+        let Some(message) = message else {
+            return Ok(());
+        };
+
+        // Ensure that the received message is 32 bytes long (the length of the
+        // sighash we'll be signing).
         if message.len() != 32 {
             tracing::warn!("🔐 data received for DKG verification signing is not 32 bytes");
             return Err(Error::InvalidSigningOperation);
