@@ -828,7 +828,7 @@ impl UnsignedMockTransaction {
     /// construct a [`Transaction`] with a single input and output.
     pub fn new(signer_public_key: XOnlyPublicKey) -> Self {
         let utxo = SignerUtxo {
-            outpoint: OutPoint::new(Txid::all_zeros(), 0),
+            outpoint: OutPoint::null(),
             amount: Self::AMOUNT,
             public_key: signer_public_key,
         };
@@ -839,7 +839,7 @@ impl UnsignedMockTransaction {
             input: vec![utxo.as_tx_input(&DUMMY_SIGNATURE)],
             output: vec![TxOut {
                 value: Amount::from_sat(Self::AMOUNT),
-                script_pubkey: ScriptBuf::new_op_return([0x01, 0x02, 0x03]),
+                script_pubkey: ScriptBuf::new_op_return([]),
             }],
         };
 
@@ -1782,13 +1782,13 @@ mod tests {
         // Sign the taproot sighash.
         let message = secp256k1::Message::from_digest_slice(tapsig.as_byte_array())
             .expect("Failed to create message");
+
+        // [1] Verify the correct signature, which should succeed.
         let schnorr_sig = secp.sign_schnorr(&message, &tweaked.to_inner());
         let taproot_sig = bitcoin::taproot::Signature {
             signature: schnorr_sig,
             sighash_type: TapSighashType::All,
         };
-
-        // [1] Verify the correct signature, which should succeed.
         unsigned
             .verify_signature(&taproot_sig)
             .expect("signature verification failed");
@@ -1820,6 +1820,17 @@ mod tests {
         let secret_key = SecretKey::new(&mut OsRng);
         let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
         let schnorr_sig = secp.sign_schnorr(&message, &keypair);
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [5] Same as [4], but using its tweaked key.
+        let tweaked = keypair.tap_tweak(&secp, None);
+        let schnorr_sig = secp.sign_schnorr(&message, &tweaked.to_inner());
         let taproot_sig = bitcoin::taproot::Signature {
             signature: schnorr_sig,
             sighash_type: TapSighashType::All,
