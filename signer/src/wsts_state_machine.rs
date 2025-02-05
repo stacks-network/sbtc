@@ -155,29 +155,11 @@ where
         self.process_packet(&packet)
     }
 
-    /// Process inbound messages
-    fn process_inbound_messages(
-        &mut self,
-        messages: &[Message],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
-        let packets = messages
-            .iter()
-            .map(Packet::from_message)
-            .collect::<Vec<_>>();
-        self.process_inbound_packets(&packets)
-    }
-
     /// Process the given packet.
     fn process_packet(
         &mut self,
         packet: &Packet,
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error>;
-
-    /// Process inbound packets
-    fn process_inbound_packets(
-        &mut self,
-        packets: &[Packet],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error>;
 
     /// Start a signing round with the given message and signature type.
     fn start_signing_round(
@@ -273,15 +255,6 @@ impl WstsCoordinator for FireCoordinator {
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
         self.0
             .process_message(packet)
-            .map_err(Error::wsts_coordinator)
-    }
-
-    fn process_inbound_packets(
-        &mut self,
-        packets: &[Packet],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
-        self.0
-            .process_inbound_messages(packets)
             .map_err(Error::wsts_coordinator)
     }
 
@@ -382,15 +355,6 @@ impl WstsCoordinator for FrostCoordinator {
     ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
         self.0
             .process_message(packet)
-            .map_err(Error::wsts_coordinator)
-    }
-
-    fn process_inbound_packets(
-        &mut self,
-        packets: &[Packet],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
-        self.0
-            .process_inbound_messages(packets)
             .map_err(Error::wsts_coordinator)
     }
 
