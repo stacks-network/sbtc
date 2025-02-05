@@ -94,8 +94,8 @@ async fn signing_set_validation_check_for_stacks_transactions() {
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
-        wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-        wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
     };
 
     // Let's create a proper sign request.
@@ -194,8 +194,8 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
-        wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-        wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
     };
 
     let sbtc_requests: TxRequestIds = TxRequestIds {
@@ -315,8 +315,8 @@ async fn new_state_machine_per_valid_sighash() {
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
-        wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-        wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
     };
 
     // We need to convince the signer event loop that it should accept the
@@ -443,8 +443,8 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
-        wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-        wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
     };
 
     // We need to convince the signer event loop that it should accept the
