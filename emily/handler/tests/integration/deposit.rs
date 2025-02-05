@@ -1,7 +1,6 @@
 use bitcoin::consensus::encode::serialize_hex;
-use bitcoin::hashes::Hash as _;
-use bitcoin::params::Params;
-use bitcoin::{Address, PubkeyHash, ScriptBuf, WPubkeyHash, WScriptHash};
+use bitcoin::opcodes::all as opcodes;
+use bitcoin::ScriptBuf;
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
 use stacks_common::codec::StacksMessageCodec as _;
@@ -113,22 +112,20 @@ impl DepositTxnData {
         Self::from_tx_setup(tx_setup)
     }
 
-    pub fn new_with_input_sigscript(
+    pub fn new_with_reclaim_user_script(
         lock_time: u32,
         max_fee: u64,
         amounts: &[u64],
-        input_pubscript: ScriptBuf,
+        reclaim_user_script: &ScriptBuf,
     ) -> Self {
-        let tx_setup = testing::deposits::tx_setup_with_input_sigscript(
+        let tx_setup = testing::deposits::tx_setup_with_reclaim_user_script(
             lock_time,
             max_fee,
             amounts,
-            input_pubscript,
-            false,
+            reclaim_user_script,
         );
         Self::from_tx_setup(tx_setup)
     }
-
     pub fn new(lock_time: u32, max_fee: u64, amounts: &[u64]) -> Self {
         let tx_setup = testing::deposits::tx_setup(lock_time, max_fee, amounts);
         Self::from_tx_setup(tx_setup)
@@ -552,7 +549,7 @@ async fn get_deposits_for_recipient() {
 }
 
 #[tokio::test]
-async fn get_deposits_for_input_address() {
+async fn get_deposits_for_reclaim_pubkey() {
     let configuration = clean_setup().await;
 
     // Arrange.
@@ -560,23 +557,17 @@ async fn get_deposits_for_input_address() {
 
     // Setup the test information that we'll use to arrange the test.
     let deposits_per_transaction = vec![3, 4, 0];
-    let script_bufs = vec![
-        ScriptBuf::new_p2pkh(&PubkeyHash::from_byte_array([0u8; 20])),
-        ScriptBuf::new_p2wpkh(&WPubkeyHash::from_byte_array([1u8; 20])),
-        ScriptBuf::new_p2wsh(&WScriptHash::from_byte_array([2u8; 32])),
-    ];
-    let addresses = script_bufs
-        .iter()
-        .map(|script| {
-            Address::from_script(&script, Params::REGTEST)
-                .unwrap()
-                .to_string()
-        })
-        .collect::<Vec<_>>();
+    let reclaim_pubkeys = vec![[1u8; 32], [2u8; 32], [3u8; 32]];
 
-    let mut expected_address_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    let mut expected_pubkey_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
     let mut create_requests: Vec<CreateDepositRequestBody> = Vec::new();
-    for (address, input_pubscript) in addresses.iter().zip(script_bufs.iter()) {
+    for pubkey in reclaim_pubkeys.iter() {
+        let reclaim_user_script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice(pubkey)
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script();
+
         // Make create requests.
         let mut expected_deposit_infos: Vec<DepositInfo> = Vec::new();
         for num_deposits in deposits_per_transaction.iter() {
@@ -588,11 +579,11 @@ async fn get_deposits_for_input_address() {
                 deposit_scripts,
                 bitcoin_txid,
                 transaction_hex,
-            } = DepositTxnData::new_with_input_sigscript(
+            } = DepositTxnData::new_with_reclaim_user_script(
                 DEPOSIT_LOCK_TIME,
                 DEPOSIT_MAX_FEE,
                 &amounts,
-                input_pubscript.clone(),
+                &reclaim_user_script,
             );
 
             for bitcoin_tx_output_index in 0..*num_deposits {
@@ -624,9 +615,9 @@ async fn get_deposits_for_input_address() {
                 expected_deposit_infos.push(expected_deposit_info);
             }
         }
-        // Add the address data to the address data hashmap that stores what
-        // we expect to see from the address.
-        expected_address_data.insert(address.clone(), expected_deposit_infos.clone());
+        // Add the pubkey data to the pubkey data hashmap that stores what
+        // we expect to see from the pubkey.
+        expected_pubkey_data.insert(serialize_hex(pubkey), expected_deposit_infos.clone());
     }
 
     // The size of the chunks to grab from the api.
@@ -636,20 +627,20 @@ async fn get_deposits_for_input_address() {
     // ----
     batch_create_deposits(&configuration, create_requests).await;
 
-    let mut actual_address_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
-    for address in expected_address_data.keys() {
-        // Loop over the api calls to get all the deposits for the address.
+    let mut actual_pubkey_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    for pubkey in expected_pubkey_data.keys() {
+        // Loop over the api calls to get all the deposits for the pubkey.
         let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
         let mut next_token: Option<Option<String>> = None;
         loop {
-            let response = apis::deposit_api::get_deposits_for_input_address(
+            let response = apis::deposit_api::get_deposits_for_reclaim_pubkey(
                 &configuration,
-                address,
+                pubkey,
                 next_token.as_ref().and_then(|o| o.as_deref()),
                 Some(chunksize as i32),
             )
             .await
-            .expect("Received an error after making a valid get deposits for address api call.");
+            .expect("Received an error after making a valid get deposits for pubkey api call.");
             gotten_deposit_info_chunks.push(response.deposits);
             next_token = response.next_token;
             if !next_token.as_ref().is_some_and(|inner| inner.is_some()) {
@@ -657,8 +648,8 @@ async fn get_deposits_for_input_address() {
             }
         }
         // Store the actual data received from the api.
-        actual_address_data.insert(
-            address.clone(),
+        actual_pubkey_data.insert(
+            pubkey.clone(),
             gotten_deposit_info_chunks
                 .into_iter()
                 .flatten()
@@ -668,10 +659,10 @@ async fn get_deposits_for_input_address() {
 
     // Assert.
     // -------
-    for address in expected_address_data.keys() {
-        let mut expected_deposit_infos = expected_address_data.get(address).unwrap().clone();
+    for pubkey in expected_pubkey_data.keys() {
+        let mut expected_deposit_infos = expected_pubkey_data.get(pubkey).unwrap().clone();
         expected_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
-        let mut actual_deposit_infos = actual_address_data.get(address).unwrap().clone();
+        let mut actual_deposit_infos = actual_pubkey_data.get(pubkey).unwrap().clone();
         actual_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
         // Assert that the expected and actual deposit infos are the same.
         assert_eq!(expected_deposit_infos.len(), actual_deposit_infos.len());

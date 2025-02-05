@@ -2,21 +2,13 @@
 //!
 
 use bitcoin::absolute::LockTime;
-use bitcoin::hashes::Hash as _;
 use bitcoin::transaction::Version;
 use bitcoin::Amount;
-use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
-use bitcoin::Sequence;
 use bitcoin::Transaction;
-use bitcoin::TxIn;
 use bitcoin::TxOut;
-use bitcoin::WPubkeyHash;
-use bitcoin::Witness;
 use clarity::vm::types::PrincipalData;
 use rand::rngs::OsRng;
-use rand::thread_rng;
-use rand::RngCore as _;
 use secp256k1::SecretKey;
 use secp256k1::SECP256K1;
 use stacks_common::types::chainstate::StacksAddress;
@@ -35,25 +27,13 @@ pub struct TxSetup {
     /// The reclaim scripts and their variable inputs
     pub reclaims: Vec<ReclaimScriptInputs>,
 }
-fn build_txin(script_sig: Option<ScriptBuf>) -> TxIn {
-    TxIn {
-        previous_output: OutPoint::null(),
-        sequence: Sequence::ZERO,
-        script_sig: script_sig.unwrap_or_else(|| {
-            let mut bytes = [0u8; 20];
-            thread_rng().fill_bytes(&mut bytes);
-            ScriptBuf::new_p2wpkh(&WPubkeyHash::from_byte_array(bytes))
-        }),
-        witness: Witness::new(),
-    }
-}
 
 fn build_deposit_reclaim_outputs(
     lock_time: u32,
     max_fee: u64,
     amounts: &[u64],
     recipient: Option<StacksAddress>,
-    mainnet: bool,
+    reclaim_user_script: Option<&ScriptBuf>,
 ) -> (
     Vec<TxOut>,
     Vec<DepositScriptInputs>,
@@ -65,13 +45,17 @@ fn build_deposit_reclaim_outputs(
 
     for &amount in amounts {
         let secret_key = SecretKey::new(&mut OsRng);
-        let actual_recipient = recipient.unwrap_or(StacksAddress::burn_address(mainnet));
+        let actual_recipient = recipient.unwrap_or(StacksAddress::burn_address(false));
         let deposit = DepositScriptInputs {
             signers_public_key: secret_key.x_only_public_key(SECP256K1).0,
             recipient: PrincipalData::from(actual_recipient),
             max_fee,
         };
-        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap();
+        let reclaim = ReclaimScriptInputs::try_new(
+            lock_time,
+            reclaim_user_script.map_or_else(ScriptBuf::new, |s| s.clone()),
+        )
+        .unwrap();
         let deposit_script = deposit.deposit_script();
         let reclaim_script = reclaim.reclaim_script();
 
@@ -90,11 +74,11 @@ fn build_deposit_reclaim_outputs(
 /// the deposit and reclaim scripts.
 pub fn tx_setup(lock_time: u32, max_fee: u64, amounts: &[u64]) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, false);
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, None);
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
-        input: vec![build_txin(None)],
+        input: Vec::new(),
         output: tx_outs,
     };
     TxSetup { tx, reclaims, deposits }
@@ -109,31 +93,30 @@ pub fn tx_setup_with_recipient(
     recipient: StacksAddress,
 ) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, Some(recipient), false);
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, Some(recipient), None);
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
-        input: vec![build_txin(None)],
+        input: Vec::new(),
         output: tx_outs,
     };
     TxSetup { tx, reclaims, deposits }
 }
 
 /// The BTC transaction that is in this TxSetup is consistent with the deposit and
-/// reclaim scripts with a specific input sigscript.
-pub fn tx_setup_with_input_sigscript(
+/// reclaim scripts with a specific user script.
+pub fn tx_setup_with_reclaim_user_script(
     lock_time: u32,
     max_fee: u64,
     amounts: &[u64],
-    input_sigscript: ScriptBuf,
-    mainnet: bool,
+    reclaim_user_script: &ScriptBuf,
 ) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, mainnet);
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, Some(reclaim_user_script));
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
-        input: vec![build_txin(Some(input_sigscript))],
+        input: Vec::new(),
         output: tx_outs,
     };
     TxSetup { tx, reclaims, deposits }

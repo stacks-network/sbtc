@@ -5,6 +5,9 @@ use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
 use crate::database::entries::StatusEntry;
+use bitcoin::opcodes::all as opcodes;
+use bitcoin::ScriptBuf;
+use sbtc::deposits::ReclaimScriptInputs;
 use tracing::{debug, instrument};
 use warp::reply::{json, with_status, Reply};
 
@@ -240,10 +243,10 @@ pub async fn get_deposits_for_recipient(
 /// Get deposits by recipient handler.
 #[utoipa::path(
     get,
-    operation_id = "getDepositsForInputAddress",
-    path = "/deposit/input-address/{inputAddress}",
+    operation_id = "getDepositsForReclaimPubkey",
+    path = "/deposit/reclaim-pubkey/{reclaimPubkey}",
     params(
-        ("inputAddress" = String, Path, description = "the address from which the deposit was made."),
+        ("reclaimPubkey" = String, Path, description = "the reclaim schnorr public key to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
     ),
@@ -257,21 +260,21 @@ pub async fn get_deposits_for_recipient(
     )
 )]
 #[instrument(skip(context))]
-pub async fn get_deposits_for_input_address(
+pub async fn get_deposits_for_reclaim_pubkey(
     context: EmilyContext,
-    input_address: String,
+    reclaim_pubkey: String,
     query: BasicPaginationQuery,
 ) -> impl warp::reply::Reply {
-    debug!("in get deposits for input address: {input_address}");
+    debug!("in get deposits for reclaim pubkey: {reclaim_pubkey}");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        input_address: String,
+        reclaim_pubkey: String,
         query: BasicPaginationQuery,
     ) -> Result<impl warp::reply::Reply, Error> {
-        let (entries, next_token) = accessors::get_deposit_entries_by_input_address(
+        let (entries, next_token) = accessors::get_deposit_entries_by_reclaim_pubkey(
             &context,
-            &input_address,
+            &reclaim_pubkey,
             query.next_token,
             query.page_size,
         )
@@ -284,7 +287,7 @@ pub async fn get_deposits_for_input_address(
         Ok(with_status(json(&response), StatusCode::OK))
     }
     // Handle and respond.
-    handler(context, input_address, query)
+    handler(context, reclaim_pubkey, query)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
@@ -352,17 +355,18 @@ pub async fn create_deposit(
         }
 
         let limits = accessors::get_limits(&context).await?;
-        let deposit_data = body.validate(&limits, context.settings.is_mainnet)?;
+        let deposit_info = body.validate(&limits, context.settings.is_mainnet)?;
+
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
             key: DepositEntryKey {
                 bitcoin_txid: body.bitcoin_txid,
                 bitcoin_tx_output_index: body.bitcoin_tx_output_index,
             },
-            recipient: hex::encode(deposit_data.deposit_info.recipient.serialize_to_vec()),
+            recipient: hex::encode(deposit_info.recipient.serialize_to_vec()),
             parameters: DepositParametersEntry {
-                max_fee: deposit_data.deposit_info.max_fee,
-                lock_time: deposit_data.deposit_info.lock_time.to_consensus_u32(),
+                max_fee: deposit_info.max_fee,
+                lock_time: deposit_info.lock_time.to_consensus_u32(),
             },
             history: vec![DepositEvent {
                 status: StatusEntry::Pending,
@@ -373,10 +377,10 @@ pub async fn create_deposit(
             status: Status::Pending,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
-            amount: deposit_data.deposit_info.amount,
+            amount: deposit_info.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
-            input_address: deposit_data.input_address.map(|addr| addr.to_string()),
+            reclaim_pubkey: parse_reclaim_pubkey(&deposit_info.reclaim_script),
             ..Default::default()
         };
         // Validate deposit entry.
@@ -470,6 +474,45 @@ pub async fn update_deposits(
     handler(context, api_key, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
+const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
+
+/// Parse the reclaim script to extract the pubkey.
+/// Currently only supports the sBTC Bridge and Leather Wallet reclaim scripts.
+fn parse_reclaim_pubkey(reclaim_script: &ScriptBuf) -> Option<String> {
+    let reclaim = ReclaimScriptInputs::parse(reclaim_script).ok()?;
+
+    match reclaim.user_script().as_bytes() {
+        [OP_DROP, _key_len, pubkey @ .., OP_CHECKSIG] => Some(hex::encode(pubkey)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::{
+        key::rand::rngs::OsRng,
+        secp256k1::{SecretKey, SECP256K1},
+    };
+
+    #[tokio::test]
+    async fn test_parse_reclaim_pubkey_two_ways() {
+        let secret_key = SecretKey::new(&mut OsRng);
+        let pubkey = secret_key.x_only_public_key(SECP256K1).0.serialize();
+        let user_script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice(pubkey)
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script();
+        let reclaim_script = ReclaimScriptInputs::try_new(14, user_script)
+            .unwrap()
+            .reclaim_script();
+        let pubkey_from_script = parse_reclaim_pubkey(&reclaim_script).unwrap();
+        assert_eq!(pubkey_from_script, hex::encode(pubkey));
+    }
 }
 
 // TODO(393): Add handler unit tests.
