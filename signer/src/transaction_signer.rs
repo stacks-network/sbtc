@@ -1042,7 +1042,7 @@ where
         let state_machine = self.wsts_frost_state_machines.get_mut(&id);
         let Some(state_machine) = state_machine else {
             tracing::warn!("missing frost coordinator for pre-rotate-key validation");
-            return Err(Error::MissingFrostStateMachine(Box::new(aggregate_key)));
+            return Err(Error::MissingFrostStateMachine(aggregate_key));
         };
 
         tracing::info!(?msg, "processing frost coordinator message");
