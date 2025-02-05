@@ -992,6 +992,46 @@ where
         Ok(())
     }
 
+    // Backported from the feat/mock-signing due to confused merge tool
+    #[allow(dead_code)]
+    async fn create_frost_coordinator<S>(
+        storage: &S,
+        aggregate_key: PublicKeyXOnly,
+        signer_private_key: PrivateKey,
+    ) -> Result<FrostCoordinator, Error>
+    where
+        S: DbRead + Send + Sync,
+    {
+        let dkg_shares = storage
+            .get_encrypted_dkg_shares(aggregate_key)
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!("🔐 no DKG shares found for requested aggregate key");
+                Error::MissingDkgShares(aggregate_key)
+            })?;
+
+        let signing_set: BTreeSet<PublicKey> = dkg_shares
+            .signer_set_public_keys
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+
+        tracing::debug!(
+            num_signers = signing_set.len(),
+            %aggregate_key,
+            threshold = %dkg_shares.signature_share_threshold,
+            "🔐 creating now frost coordinator to track pre-rotate-key validation signing round"
+        );
+
+        FrostCoordinator::load(
+            storage,
+            aggregate_key,
+            signing_set,
+            dkg_shares.signature_share_threshold,
+            signer_private_key,
+        )
+        .await
+    }
+
     /// Ensures that a DKG verification state machine exists for the given
     /// aggregate key and bitcoin chain tip block hash. If the state machine
     /// exists already then the id is simply returned back; otherwise, a new
