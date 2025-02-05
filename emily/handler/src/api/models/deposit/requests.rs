@@ -82,8 +82,7 @@ where
 
 impl CreateDepositRequestBody {
     /// Validates that the deposit request is valid.
-    /// This includes validating the request fields, if their content matches the transaction
-    /// and if the amount is higher than the dust limit.
+    /// This includes validating the request fields and if their content matches the transaction
     pub fn validate(&self, is_mainnet: bool) -> Result<DepositInfo, Error> {
         let deposit_req = CreateDepositRequest {
             outpoint: OutPoint {
@@ -112,23 +111,13 @@ impl CreateDepositRequestBody {
             "invalid transaction hex",
         )?;
 
-        let amount = tx
-            .tx_out(self.bitcoin_tx_output_index as usize)
+        tx.tx_out(self.bitcoin_tx_output_index as usize)
             .map_err(|_| {
                 Error::HttpRequest(
                     StatusCode::BAD_REQUEST,
                     "invalid bitcoin output index".to_string(),
                 )
-            })?
-            .value
-            .to_sat();
-
-        if amount < DEPOSIT_DUST_LIMIT {
-            return Err(Error::HttpRequest(
-                StatusCode::BAD_REQUEST,
-                format!("deposit amount below dust limit ({})", DEPOSIT_DUST_LIMIT),
-            ));
-        }
+            })?;
 
         deposit_req
             .validate_tx(&tx, is_mainnet)
@@ -174,8 +163,6 @@ pub struct UpdateDepositsRequestBody {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bitcoin::consensus::encode::serialize_hex;
-    use sbtc::testing::deposits::tx_setup;
     use test_case::test_case;
 
     const CREATE_DEPOSIT_VALID: &str =
@@ -237,34 +224,6 @@ mod tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             format!("HTTP request failed with status code 400 Bad Request: {expected_error}")
-        );
-    }
-
-    #[tokio::test]
-    async fn test_deposit_validate_limits_errors() {
-        let deposit = tx_setup(14, DEPOSIT_DUST_LIMIT - 1, &[DEPOSIT_DUST_LIMIT - 1]);
-        let deposit_request = CreateDepositRequestBody {
-            bitcoin_txid: deposit.tx.compute_txid().to_string(),
-            bitcoin_tx_output_index: 0,
-            reclaim_script: deposit
-                .reclaims
-                .first()
-                .unwrap()
-                .reclaim_script()
-                .to_hex_string(),
-            deposit_script: deposit
-                .deposits
-                .first()
-                .unwrap()
-                .deposit_script()
-                .to_hex_string(),
-            transaction_hex: serialize_hex(&deposit.tx),
-        };
-        let result = deposit_request.validate(true);
-
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            format!("HTTP request failed with status code 400 Bad Request: deposit amount below dust limit ({DEPOSIT_DUST_LIMIT})")
         );
     }
 }
