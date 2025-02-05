@@ -893,10 +893,10 @@ where
                 response?;
             }
             WstsNetMessage::NonceResponse(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_signer_id", request.signer_id);
-                span.record("dkg_sign_id", request.sign_id);
-                span.record("dkg_iter_id", request.sign_iter_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
 
                 let WstsMessageId::DkgVerification(key) = msg.id else {
                     return Ok(());
@@ -911,10 +911,10 @@ where
                     .await?;
             }
             WstsNetMessage::SignatureShareResponse(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_signer_id", request.signer_id);
-                span.record("dkg_sign_id", request.sign_id);
-                span.record("dkg_iter_id", request.sign_iter_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
 
                 let WstsMessageId::DkgVerification(key) = msg.id else {
                     return Ok(());
