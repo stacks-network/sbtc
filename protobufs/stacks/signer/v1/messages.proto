@@ -35,8 +35,7 @@ message SignerMessage {
 
 // A wsts message.
 message WstsMessage {
-  // The transaction ID this message relates to, will be a dummy ID for DKG messages
-  bitcoin.BitcoinTxid txid = 1 [deprecated = true];
+  reserved 1;
   // The wsts message
   oneof inner {
     // Tell signers to begin DKG by sending DKG public shares

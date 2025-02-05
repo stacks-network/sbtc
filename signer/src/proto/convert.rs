@@ -1095,13 +1095,6 @@ impl From<WstsMessage> for proto::WstsMessage {
         };
 
         proto::WstsMessage {
-            txid: match value.id {
-                WstsMessageId::BitcoinTxid(txid) => {
-                    Some(proto::BitcoinTxid::from(BitcoinTxId::from(txid)))
-                }
-                WstsMessageId::Dkg(_) => None,
-                WstsMessageId::RotateKey(_) => None,
-            },
             id: Some(match value.id {
                 WstsMessageId::BitcoinTxid(txid) => {
                     wsts_message::Id::IdBitcoinTxid(proto::BitcoinTxid {
@@ -1155,19 +1148,14 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
 
         #[allow(deprecated)]
         Ok(WstsMessage {
-            id: match value.id {
-                Some(id) => match id {
-                    wsts_message::Id::IdBitcoinTxid(txid) => {
-                        WstsMessageId::BitcoinTxid(BitcoinTxId::try_from(txid)?.into())
-                    }
-                    wsts_message::Id::IdRotateKey(pubkey) => {
-                        WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
-                    }
-                    wsts_message::Id::IdDkg(id) => WstsMessageId::Dkg(id.into()),
-                },
-                None => WstsMessageId::BitcoinTxid(
-                    BitcoinTxId::try_from(value.txid.required()?)?.into(),
-                ),
+            id: match value.id.required()? {
+                wsts_message::Id::IdBitcoinTxid(txid) => {
+                    WstsMessageId::BitcoinTxid(BitcoinTxId::try_from(txid)?.into())
+                }
+                wsts_message::Id::IdRotateKey(pubkey) => {
+                    WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
+                }
+                wsts_message::Id::IdDkg(id) => WstsMessageId::Dkg(id.into()),
             },
             inner,
         })

@@ -286,10 +286,6 @@ pub mod signer_message {
 /// A wsts message.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct WstsMessage {
-    /// The transaction ID this message relates to, will be a dummy ID for DKG messages
-    #[deprecated]
-    #[prost(message, optional, tag = "1")]
-    pub txid: ::core::option::Option<super::super::super::bitcoin::BitcoinTxid>,
     /// The wsts message
     #[prost(oneof = "wsts_message::Inner", tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11")]
     pub inner: ::core::option::Option<wsts_message::Inner>,
