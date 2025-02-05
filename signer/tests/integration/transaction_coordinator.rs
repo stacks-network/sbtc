@@ -929,23 +929,10 @@ async fn run_dkg_from_scratch() {
         }
     });
 
-    let tx_signer_processes = signers.iter().map(
-        |(context, _, _, net)| {
-            TxSignerEventLoop::new(context.clone(), net.spawn(), OsRng)
-                .expect("failed to create TxSignerEventLoop")
-        }, /*TxSignerEventLoop {
-               network: net.spawn(),
-               threshold: context.config().signer.bootstrap_signatures_required as u32,
-               context: context.clone(),
-               context_window: 10000,
-               wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
-               signer_private_key: kp.secret_key().into(),
-               rng: rand::rngs::OsRng,
-               dkg_begin_pause: None,
-               wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-               wsts_frost_mock_txs: LruCache::new(NonZeroUsize::new(5).unwrap()),
-           }*/
-    );
+    let tx_signer_processes = signers.iter().map(|(context, _, _, net)| {
+        TxSignerEventLoop::new(context.clone(), net.spawn(), OsRng)
+            .expect("failed to create TxSignerEventLoop")
+    });
 
     // We only proceed with the test after all processes have started, and
     // we use this counter to notify us when that happens.

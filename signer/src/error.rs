@@ -61,7 +61,7 @@ pub enum Error {
     /// state machine is used during the DKG verification signing round
     /// following DKG.
     #[error("no state machine found for frost signing round for the given aggregate key: {0}")]
-    MissingFrostStateMachine(Box<PublicKeyXOnly>),
+    MissingFrostStateMachine(PublicKeyXOnly),
 
     /// Expected two aggregate keys to match, but they did not.
     #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]

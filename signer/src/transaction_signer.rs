@@ -201,6 +201,7 @@ where
         let signer_private_key = config.signer.private_key;
         let context_window = config.signer.context_window;
         let threshold = config.signer.bootstrap_signatures_required.into();
+        let dkg_begin_pause = config.signer.dkg_begin_pause.map(Duration::from_secs);
 
         Ok(Self {
             context,
@@ -210,7 +211,7 @@ where
             wsts_state_machines: LruCache::new(max_state_machines),
             threshold,
             rng,
-            dkg_begin_pause: None,
+            dkg_begin_pause,
             dkg_verification_state_machines: LruCache::new(
                 NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
             ),
@@ -585,7 +586,6 @@ where
                     tokio::time::sleep(pause).await;
                 }
 
-                let id = StateMachineId::Dkg(chain_tip.block_hash);
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
@@ -640,7 +640,7 @@ where
                 }
 
                 tracing::debug!("processing message");
-                let id = StateMachineId::from(&chain_tip.block_hash);
+                let id = StateMachineId::Dkg(chain_tip.block_hash);
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
@@ -1029,7 +1029,7 @@ where
             num_signers = signing_set.len(),
             %aggregate_key,
             threshold = %dkg_shares.signature_share_threshold,
-            "🔐 creating now frost coordinator to track pre-rotate-key validation signing round"
+            "🔐 creating now FROST coordinator to track DKG verification signing round"
         );
 
         FrostCoordinator::load(
@@ -1078,7 +1078,7 @@ where
         let state_machine = self
             .dkg_verification_state_machines
             .get_mut(&state_machine_id)
-            .ok_or(Error::MissingFrostStateMachine(Box::new(aggregate_key)))?;
+            .ok_or(Error::MissingFrostStateMachine(aggregate_key))?;
 
         let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
         let mock_tx = self
@@ -1095,8 +1095,8 @@ where
         id: StateMachineId,
         msg: &WstsNetMessage,
     ) -> Result<(), Error> {
-        // We should only be handling messages for the rotate-key state machine.
-        // We'll grab the aggregate key from the id as well.
+        // We should only be handling messages for the DKG verification state
+        // machine. We'll grab the aggregate key from the id as well.
         let aggregate_key = match id {
             StateMachineId::RotateKey(aggregate_key, _) => aggregate_key,
             _ => {
@@ -1108,7 +1108,7 @@ where
         let state_machine = self.dkg_verification_state_machines.get_mut(&id);
         let Some(state_machine) = state_machine else {
             tracing::warn!("🔐 missing FROST coordinator for DKG verification");
-            return Err(Error::MissingFrostStateMachine(Box::new(aggregate_key)));
+            return Err(Error::MissingFrostStateMachine(aggregate_key));
         };
 
         tracing::trace!(?msg, "🔐 processing FROST coordinator message");
@@ -1184,10 +1184,10 @@ where
             return Err(Error::MissingStateMachine);
         };
 
-        // If this is a rotate-key verification then we need to process the
-        // message in the frost coordinator as well to be able to properly
-        // follow the signing round (which is otherwise handled by the signer
-        // state machine).
+        // If this is a DKG verification then we need to process the message in
+        // the frost coordinator as well to be able to properly follow the
+        // signing round (which is otherwise handled by the signer state
+        // machine).
         let mut frost_coordinator = if let StateMachineId::RotateKey(_, _) = state_machine_id {
             self.dkg_verification_state_machines
                 .get_mut(&state_machine_id)
@@ -1198,7 +1198,7 @@ where
         let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
-            // The WSTS state machine assume we read our own messages
+            // The WSTS state machine assumes we read our own messages
             state_machine
                 .process(outbound_message)
                 .map_err(Error::Wsts)?;
@@ -1206,9 +1206,8 @@ where
             // Process the message in the frost coordinator as well, if we have
             // one. Note that we _do not_ send any messages to the network; the
             // frost coordinator is only following the round.
-            if let Some(frost_coordinator) = &mut frost_coordinator {
-                let (_, result) = frost_coordinator.process_message(outbound_message)?;
-                tracing::trace!(?outbound_message, ?result, state = ?frost_coordinator.state, "🔐 frost coordinator relay_message result")
+            if let Some(ref mut frost_coordinator) = frost_coordinator {
+                frost_coordinator.process_message(outbound_message)?;
             }
         }
 
