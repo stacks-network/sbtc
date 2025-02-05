@@ -340,7 +340,7 @@ async fn new_state_machine_per_valid_sighash() {
 
     // Now for the nonce request message
     let mut nonce_request_msg = WstsMessage {
-        id: WstsMessageId::BitcoinTxid(*txid),
+        id: WstsMessageId::Sweep(*txid),
         inner: wsts::net::Message::NonceRequest(NonceRequest {
             dkg_id: 1,
             sign_id: 1,

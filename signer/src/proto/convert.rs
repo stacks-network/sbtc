@@ -1096,13 +1096,13 @@ impl From<WstsMessage> for proto::WstsMessage {
 
         proto::WstsMessage {
             id: Some(match value.id {
-                WstsMessageId::BitcoinTxid(txid) => {
-                    wsts_message::Id::IdBitcoinTxid(proto::BitcoinTxid {
-                        txid: Some(proto::Uint256::from(BitcoinTxId::from(txid).into_bytes())),
-                    })
+                WstsMessageId::Sweep(txid) => wsts_message::Id::Sweep(proto::BitcoinTxid {
+                    txid: Some(proto::Uint256::from(BitcoinTxId::from(txid).into_bytes())),
+                }),
+                WstsMessageId::DkgVerification(pubkey) => {
+                    wsts_message::Id::DkgVerification(pubkey.into())
                 }
-                WstsMessageId::RotateKey(pubkey) => wsts_message::Id::IdRotateKey(pubkey.into()),
-                WstsMessageId::Dkg(id) => wsts_message::Id::IdDkg(id.into()),
+                WstsMessageId::Dkg(id) => wsts_message::Id::Dkg(id.into()),
             }),
             inner: Some(inner),
         }
@@ -1149,13 +1149,13 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
         #[allow(deprecated)]
         Ok(WstsMessage {
             id: match value.id.required()? {
-                wsts_message::Id::IdBitcoinTxid(txid) => {
-                    WstsMessageId::BitcoinTxid(BitcoinTxId::try_from(txid)?.into())
+                wsts_message::Id::Sweep(txid) => {
+                    WstsMessageId::Sweep(BitcoinTxId::try_from(txid)?.into())
                 }
-                wsts_message::Id::IdRotateKey(pubkey) => {
-                    WstsMessageId::RotateKey(PublicKey::try_from(pubkey)?)
+                wsts_message::Id::DkgVerification(pubkey) => {
+                    WstsMessageId::DkgVerification(PublicKey::try_from(pubkey)?)
                 }
-                wsts_message::Id::IdDkg(id) => WstsMessageId::Dkg(id.into()),
+                wsts_message::Id::Dkg(id) => WstsMessageId::Dkg(id.into()),
             },
             inner,
         })
