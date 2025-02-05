@@ -665,9 +665,12 @@ where
                             "signer reports successful dkg round"
                         );
                     }
-                    DkgStatus::Failure(fail) => {
-                        // TODO(#414): handle DKG failure
-                        tracing::warn!(wsts_dkg_status = "failure", reason = ?fail, "signer reports failed dkg round");
+                    DkgStatus::Failure(reason) => {
+                        tracing::warn!(
+                            wsts_dkg_status = "failure",
+                            ?reason,
+                            "signer reports failed DKG round"
+                        );
                     }
                 }
             }
@@ -907,7 +910,7 @@ where
             .into();
 
         if *new_key != current_key {
-            tracing::warn!("aggregate key mismatch for rotate-key verification signing");
+            tracing::warn!("aggregate key mismatch for DKG verification signing");
             return Err(Error::AggregateKeyMismatch(
                 Box::new(current_key),
                 Box::new(*new_key),
@@ -918,7 +921,7 @@ where
             tracing::warn!(
                 data = %hex::encode(message),
                 data_len = message.len(),
-                "data received for rotate-key verification signing does not match current bitcoin chain tip block hash"
+                "data received for DKG verification signing does not match current bitcoin chain tip block hash"
             );
             return Err(Error::InvalidSigningOperation);
         }
