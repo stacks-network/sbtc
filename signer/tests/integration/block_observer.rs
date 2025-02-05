@@ -70,7 +70,7 @@ pub const GET_POX_INFO_JSON: &str =
 /// that pass validation, regardless of when they were confirmed.
 #[test_case::test_case(1; "one block ago")]
 #[test_case::test_case(5; "five blocks ago")]
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u64) {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our

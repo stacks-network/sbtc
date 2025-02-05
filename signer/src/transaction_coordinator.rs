@@ -38,6 +38,7 @@ use crate::message::BitcoinPreSignRequest;
 use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
+use crate::message::WstsMessageId;
 use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::metrics::STACKS_BLOCKCHAIN;
@@ -58,11 +59,11 @@ use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
-use crate::wsts_state_machine::CoordinatorStateMachine;
+use crate::wsts_state_machine::FireCoordinator;
+use crate::wsts_state_machine::WstsCoordinator;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
-use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 use wsts::state_machine::OperationResult as WstsOperationResult;
 use wsts::state_machine::StateMachine as _;
@@ -905,9 +906,9 @@ where
         transaction: &mut utxo::UnsignedTransaction<'_>,
     ) -> Result<(), Error> {
         let sighashes = transaction.construct_digests()?;
-        let mut coordinator_state_machine = CoordinatorStateMachine::load(
-            &mut self.context.get_storage_mut(),
-            sighashes.signers_aggregate_key,
+        let mut coordinator_state_machine = FireCoordinator::load(
+            &self.context.get_storage(),
+            sighashes.signers_aggregate_key.into(),
             signer_public_keys.clone(),
             self.threshold,
             self.private_key,
@@ -921,7 +922,7 @@ where
             .coordinate_signing_round(
                 bitcoin_chain_tip,
                 &mut coordinator_state_machine,
-                txid,
+                txid.into(),
                 &msg,
                 SignatureType::Taproot(None),
             )
@@ -948,9 +949,9 @@ where
         for (deposit, sighash) in sighashes.deposits.into_iter() {
             let msg = sighash.to_raw_hash().to_byte_array();
 
-            let mut coordinator_state_machine = CoordinatorStateMachine::load(
-                &mut self.context.get_storage_mut(),
-                deposit.signers_public_key,
+            let mut coordinator_state_machine = FireCoordinator::load(
+                &self.context.get_storage(),
+                deposit.signers_public_key.into(),
                 signer_public_keys.clone(),
                 self.threshold,
                 self.private_key,
@@ -962,7 +963,7 @@ where
                 .coordinate_signing_round(
                     bitcoin_chain_tip,
                     &mut coordinator_state_machine,
-                    txid,
+                    txid.into(),
                     &msg,
                     SignatureType::Schnorr,
                 )
@@ -1025,17 +1026,18 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn coordinate_signing_round(
+    async fn coordinate_signing_round<Coordinator>(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut CoordinatorStateMachine,
-        txid: bitcoin::Txid,
+        coordinator_state_machine: &mut Coordinator,
+        id: WstsMessageId,
         msg: &[u8],
         signature_type: SignatureType,
-    ) -> Result<TaprootSignature, Error> {
-        let outbound = coordinator_state_machine
-            .start_signing_round(msg, signature_type)
-            .map_err(Error::wsts_coordinator)?;
+    ) -> Result<TaprootSignature, Error>
+    where
+        Coordinator: WstsCoordinator,
+    {
+        let outbound = coordinator_state_machine.start_signing_round(msg, signature_type)?;
 
         // We create a signal stream before sending a message so that there
         // is no race condition with the steam and the getting a response.
@@ -1044,7 +1046,7 @@ where
             .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
-        let msg = message::WstsMessage { txid, inner: outbound.msg };
+        let msg = message::WstsMessage { id, inner: outbound.msg };
         self.send_message(msg, bitcoin_chain_tip).await?;
 
         let max_duration = self.signing_round_max_duration;
@@ -1052,7 +1054,7 @@ where
             signal_stream,
             bitcoin_chain_tip,
             coordinator_state_machine,
-            txid,
+            id,
         );
 
         let operation_result = tokio::time::timeout(max_duration, run_signing_round)
@@ -1086,8 +1088,7 @@ where
         // never changing the signing set.
         let signer_set = self.context.state().current_signer_public_keys();
 
-        let mut state_machine =
-            CoordinatorStateMachine::new(signer_set, self.threshold, self.private_key);
+        let mut state_machine = FireCoordinator::new(signer_set, self.threshold, self.private_key);
 
         // Okay let's move the coordinator state machine to the beginning
         // of the DKG phase.
@@ -1099,12 +1100,11 @@ where
             .start_public_shares()
             .map_err(Error::wsts_coordinator)?;
 
-        // We identify the DKG round by a 32-byte hash which we throw
-        // around as a bitcoin transaction ID, even when it is not one. We
-        // should probably change this
+        // We identify the DKG round by a 32-byte hash based on the coordinator
+        // identity and current bitcoin chain tip.
         let identifier = self.coordinator_id(chain_tip);
-        let txid = bitcoin::Txid::from_byte_array(identifier);
-        let msg = message::WstsMessage { txid, inner: outbound.msg };
+        let id = WstsMessageId::Dkg(identifier);
+        let msg = message::WstsMessage { id, inner: outbound.msg };
 
         // We create a signal stream before sending a message so that there
         // is no race condition with the steam and the getting a response.
@@ -1122,7 +1122,7 @@ where
         // Now that DKG has "begun" we need to drive it to completion.
         let max_duration = self.dkg_max_duration;
         let dkg_fut =
-            self.drive_wsts_state_machine(signal_stream, chain_tip, &mut state_machine, txid);
+            self.drive_wsts_state_machine(signal_stream, chain_tip, &mut state_machine, id);
 
         let operation_result = tokio::time::timeout(max_duration, dkg_fut)
             .await
@@ -1135,15 +1135,16 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn drive_wsts_state_machine<S>(
+    async fn drive_wsts_state_machine<S, Coordinator>(
         &mut self,
         signal_stream: S,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
-        coordinator_state_machine: &mut CoordinatorStateMachine,
-        txid: bitcoin::Txid,
+        coordinator_state_machine: &mut Coordinator,
+        id: WstsMessageId,
     ) -> Result<WstsOperationResult, Error>
     where
         S: Stream<Item = Signed<SignerMessage>>,
+        Coordinator: WstsCoordinator,
     {
         // this assumes that the signer set doesn't change for the duration of this call,
         // but we're already assuming that the bitcoin chain tip doesn't change
@@ -1151,7 +1152,6 @@ where
         let signer_set = self.context.state().current_signer_public_keys();
         tokio::pin!(signal_stream);
 
-        coordinator_state_machine.save();
         // Let's get the next message from the network or the
         // TxSignerEventLoop.
         //
@@ -1169,11 +1169,6 @@ where
                 continue;
             };
 
-            let packet = wsts::net::Packet {
-                msg: wsts_msg.inner,
-                sig: Vec::new(),
-            };
-
             let msg_public_key = msg.signer_public_key;
 
             let sender_is_coordinator =
@@ -1182,9 +1177,11 @@ where
             let public_keys = &coordinator_state_machine.get_config().signer_public_keys;
             let public_key_point = p256k1::point::Point::from(msg_public_key);
 
+            let msg = wsts_msg.inner;
+
             // check that messages were signed by correct key
             let is_authenticated = Self::authenticate_message(
-                &packet,
+                &msg,
                 public_keys,
                 public_key_point,
                 sender_is_coordinator,
@@ -1195,16 +1192,16 @@ where
             }
 
             let (outbound_packet, operation_result) =
-                match coordinator_state_machine.process_message(&packet) {
+                match coordinator_state_machine.process_message(&msg) {
                     Ok(val) => val,
                     Err(err) => {
-                        tracing::warn!(?packet, reason = %err, "ignoring packet");
+                        tracing::warn!(?msg, reason = %err, "ignoring packet");
                         continue;
                     }
                 };
 
             if let Some(packet) = outbound_packet {
-                let msg = message::WstsMessage { txid, inner: packet.msg };
+                let msg = message::WstsMessage { id, inner: packet.msg };
                 self.send_message(msg, bitcoin_chain_tip).await?;
             }
 
@@ -1220,7 +1217,7 @@ where
     }
 
     fn authenticate_message(
-        packet: &wsts::net::Packet,
+        msg: &wsts::net::Message,
         public_keys: &hashbrown::HashMap<u32, p256k1::point::Point>,
         public_key_point: p256k1::point::Point,
         sender_is_coordinator: bool,
@@ -1228,7 +1225,7 @@ where
         let check_signer_public_key = |signer_id| match public_keys.get(&signer_id) {
             Some(signer_public_key) if public_key_point != *signer_public_key => {
                 tracing::warn!(
-                    ?packet.msg,
+                    ?msg,
                     reason = "message was signed by the wrong signer",
                     "ignoring packet"
                 );
@@ -1236,7 +1233,7 @@ where
             }
             None => {
                 tracing::warn!(
-                    ?packet.msg,
+                    ?msg,
                     reason = "no public key for signer",
                     %signer_id,
                     "ignoring packet"
@@ -1245,7 +1242,7 @@ where
             }
             _ => true,
         };
-        match &packet.msg {
+        match msg {
             wsts::net::Message::DkgBegin(_)
             | wsts::net::Message::DkgPrivateBegin(_)
             | wsts::net::Message::DkgEndBegin(_)
@@ -1253,7 +1250,7 @@ where
             | wsts::net::Message::SignatureShareRequest(_) => {
                 if !sender_is_coordinator {
                     tracing::warn!(
-                        ?packet,
+                        ?msg,
                         reason = "got coordinator message from sender who is not coordinator",
                         "ignoring packet"
                     );

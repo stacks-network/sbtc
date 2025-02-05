@@ -1,6 +1,7 @@
 //! Utilities for constructing and loading WSTS state machines
 
 use std::collections::BTreeMap;
+use std::future::Future;
 
 use crate::codec::Decode as _;
 use crate::codec::Encode as _;
@@ -14,14 +15,21 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::model::SigHash;
 
-use bitcoin::hashes::Hash as _;
 use hashbrown::HashMap;
 use hashbrown::HashSet;
 use wsts::common::PolyCommitment;
+use wsts::net::Message;
+use wsts::net::Packet;
+use wsts::net::SignatureType;
+use wsts::state_machine::coordinator::fire;
+use wsts::state_machine::coordinator::frost;
+use wsts::state_machine::coordinator::Config;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
+use wsts::state_machine::OperationResult;
 use wsts::state_machine::StateMachine as _;
 use wsts::traits::Signer as _;
+use wsts::v2::Aggregator;
 
 /// An identifier for signer state machines.
 ///
@@ -30,25 +38,334 @@ use wsts::traits::Signer as _;
 /// hash bytes while for the signing rounds we identify the state machine
 /// by the sighash bytes.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StateMachineId([u8; 32]);
+pub enum StateMachineId {
+    /// Identifier for a DKG state machines
+    Dkg(model::BitcoinBlockHash),
+    /// Identifier for a Bitcoin signing state machines
+    BitcoinSign(SigHash),
+    /// Identifier for a rotate key verification signing round
+    RotateKey(PublicKeyXOnly, model::BitcoinBlockHash),
+}
 
 impl From<&model::BitcoinBlockHash> for StateMachineId {
     fn from(value: &model::BitcoinBlockHash) -> Self {
-        StateMachineId(value.to_byte_array())
+        StateMachineId::Dkg(*value)
     }
 }
 
 impl From<SigHash> for StateMachineId {
     fn from(value: SigHash) -> Self {
-        StateMachineId(value.to_byte_array())
+        StateMachineId::BitcoinSign(value)
     }
 }
 
-#[cfg(any(test, feature = "testing"))]
-impl StateMachineId {
-    /// Create a new identifier
-    pub fn new(value: [u8; 32]) -> Self {
-        StateMachineId(value)
+/// A trait for converting a message into another type.
+pub trait FromMessage {
+    /// Convert the given message into the implementing type.
+    fn from_message(message: &Message) -> Self
+    where
+        Self: Sized;
+}
+
+impl FromMessage for Packet {
+    fn from_message(message: &Message) -> Self {
+        Packet {
+            msg: message.clone(),
+            sig: Vec::new(),
+        }
+    }
+}
+
+/// Wrapper for a WSTS FIRE coordinator state machine.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FireCoordinator(fire::Coordinator<Aggregator>);
+
+impl std::ops::Deref for FireCoordinator {
+    type Target = fire::Coordinator<Aggregator>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for FireCoordinator {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// Wrapper for a WSTS FROST coordinator state machine.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FrostCoordinator(frost::Coordinator<Aggregator>);
+
+impl std::ops::Deref for FrostCoordinator {
+    type Target = frost::Coordinator<Aggregator>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for FrostCoordinator {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// A trait for WSTS state machines.
+pub trait WstsCoordinator
+where
+    Self: Sized,
+{
+    /// Creates a new coordinator state machine.
+    fn new<I>(signers: I, threshold: u16, message_private_key: PrivateKey) -> Self
+    where
+        I: IntoIterator<Item = PublicKey>;
+
+    /// Gets the coordinator configuration.
+    fn get_config(&self) -> Config;
+
+    /// Create a new coordinator state machine from the given aggregate
+    /// key.
+    ///
+    /// # Notes
+    ///
+    /// The `WstsCoordinator` is a state machine that is responsible for
+    /// DKG and for facilitating signing rounds. When created the
+    /// `WstsCoordinator` state machine starts off in the `IDLE` state,
+    /// where you can either start a signing round or start DKG. This
+    /// function is for loading the state with the assumption that DKG has
+    /// already been successfully completed.
+    fn load<S>(
+        storage: &S,
+        aggregate_key: PublicKeyXOnly,
+        signer_public_keys: impl IntoIterator<Item = PublicKey> + Send,
+        threshold: u16,
+        signer_private_key: PrivateKey,
+    ) -> impl Future<Output = Result<Self, error::Error>> + Send
+    where
+        S: storage::DbRead + Send + Sync;
+
+    /// Process the given message.
+    fn process_message(
+        &mut self,
+        message: &Message,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        let packet = Packet::from_message(message);
+        self.process_packet(&packet)
+    }
+
+    /// Process the given packet.
+    fn process_packet(
+        &mut self,
+        packet: &Packet,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error>;
+
+    /// Start a signing round with the given message and signature type.
+    fn start_signing_round(
+        &mut self,
+        message: &[u8],
+        signature_type: SignatureType,
+    ) -> Result<Packet, Error>;
+}
+
+impl WstsCoordinator for FireCoordinator {
+    fn new<I>(signers: I, threshold: u16, message_private_key: PrivateKey) -> Self
+    where
+        I: IntoIterator<Item = PublicKey>,
+    {
+        let signer_public_keys: hashbrown::HashMap<u32, _> = signers
+            .into_iter()
+            .enumerate()
+            .map(|(idx, key)| (idx as u32, key.into()))
+            .collect();
+
+        // The number of possible signers is capped at a number well below
+        // u32::MAX, so this conversion should always work.
+        let num_signers: u32 = signer_public_keys
+            .len()
+            .try_into()
+            .expect("the number of signers is greater than u32::MAX?");
+        let signer_key_ids = (0..num_signers)
+            .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
+            .collect();
+        let config = wsts::state_machine::coordinator::Config {
+            num_signers,
+            num_keys: num_signers,
+            threshold: threshold as u32,
+            dkg_threshold: num_signers,
+            message_private_key: message_private_key.into(),
+            dkg_public_timeout: None,
+            dkg_private_timeout: None,
+            dkg_end_timeout: None,
+            nonce_timeout: None,
+            sign_timeout: None,
+            signer_key_ids,
+            signer_public_keys,
+        };
+
+        let wsts_coordinator = fire::Coordinator::new(config);
+        Self(wsts_coordinator)
+    }
+
+    fn get_config(&self) -> Config {
+        self.0.get_config()
+    }
+
+    async fn load<S>(
+        storage: &S,
+        aggregate_key: PublicKeyXOnly,
+        signer_public_keys: impl IntoIterator<Item = PublicKey> + Send,
+        threshold: u16,
+        signer_private_key: PrivateKey,
+    ) -> Result<Self, error::Error>
+    where
+        S: storage::DbRead + Send + Sync,
+    {
+        let encrypted_shares = storage
+            .get_encrypted_dkg_shares(aggregate_key)
+            .await?
+            .ok_or(Error::MissingDkgShares(aggregate_key))?;
+
+        let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
+            BTreeMap::decode(encrypted_shares.public_shares.as_slice())?;
+        let party_polynomials = public_dkg_shares
+            .iter()
+            .flat_map(|(_, share)| share.comms.clone())
+            .collect::<Vec<(u32, PolyCommitment)>>();
+
+        let mut coordinator = Self::new(signer_public_keys, threshold, signer_private_key);
+
+        let aggregate_key = encrypted_shares.aggregate_key.into();
+        coordinator
+            .set_key_and_party_polynomials(aggregate_key, party_polynomials)
+            .map_err(Error::wsts_coordinator)?;
+        coordinator.current_dkg_id = 1;
+
+        coordinator
+            .move_to(WstsState::Idle)
+            .map_err(Error::wsts_coordinator)?;
+
+        Ok(coordinator)
+    }
+
+    fn process_packet(
+        &mut self,
+        packet: &Packet,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        self.0
+            .process_message(packet)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn start_signing_round(
+        &mut self,
+        message: &[u8],
+        signature_type: SignatureType,
+    ) -> Result<Packet, Error> {
+        self.0
+            .start_signing_round(message, signature_type)
+            .map_err(Error::wsts_coordinator)
+    }
+}
+
+impl WstsCoordinator for FrostCoordinator {
+    fn new<I>(signers: I, threshold: u16, message_private_key: PrivateKey) -> Self
+    where
+        I: IntoIterator<Item = PublicKey>,
+    {
+        let signer_public_keys: hashbrown::HashMap<u32, _> = signers
+            .into_iter()
+            .enumerate()
+            .map(|(idx, key)| (idx as u32, key.into()))
+            .collect();
+
+        // The number of possible signers is capped at a number well below
+        // u32::MAX, so this conversion should always work.
+        let num_signers: u32 = signer_public_keys
+            .len()
+            .try_into()
+            .expect("the number of signers is greater than u32::MAX?");
+        let signer_key_ids = (0..num_signers)
+            .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
+            .collect();
+        let config = wsts::state_machine::coordinator::Config {
+            num_signers,
+            num_keys: num_signers,
+            threshold: threshold as u32,
+            dkg_threshold: num_signers,
+            message_private_key: message_private_key.into(),
+            dkg_public_timeout: None,
+            dkg_private_timeout: None,
+            dkg_end_timeout: None,
+            nonce_timeout: None,
+            sign_timeout: None,
+            signer_key_ids,
+            signer_public_keys,
+        };
+
+        let wsts_coordinator = frost::Coordinator::new(config);
+        Self(wsts_coordinator)
+    }
+
+    fn get_config(&self) -> Config {
+        self.0.get_config()
+    }
+
+    async fn load<S>(
+        storage: &S,
+        aggregate_key: PublicKeyXOnly,
+        signer_public_keys: impl IntoIterator<Item = PublicKey> + Send,
+        threshold: u16,
+        signer_private_key: PrivateKey,
+    ) -> Result<Self, error::Error>
+    where
+        S: storage::DbRead + Send + Sync,
+    {
+        let encrypted_shares = storage
+            .get_encrypted_dkg_shares(aggregate_key)
+            .await?
+            .ok_or(Error::MissingDkgShares(aggregate_key))?;
+
+        let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
+            BTreeMap::decode(encrypted_shares.public_shares.as_slice())?;
+        let party_polynomials = public_dkg_shares
+            .iter()
+            .flat_map(|(_, share)| share.comms.clone())
+            .collect::<Vec<(u32, PolyCommitment)>>();
+
+        let mut coordinator = Self::new(signer_public_keys, threshold, signer_private_key);
+
+        let aggregate_key = encrypted_shares.aggregate_key.into();
+        coordinator
+            .set_key_and_party_polynomials(aggregate_key, party_polynomials)
+            .map_err(Error::wsts_coordinator)?;
+        coordinator.current_dkg_id = 1;
+
+        coordinator
+            .move_to(WstsState::Idle)
+            .map_err(Error::wsts_coordinator)?;
+
+        Ok(coordinator)
+    }
+
+    fn process_packet(
+        &mut self,
+        packet: &Packet,
+    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
+        self.0
+            .process_message(packet)
+            .map_err(Error::wsts_coordinator)
+    }
+
+    fn start_signing_round(
+        &mut self,
+        message: &[u8],
+        signature_type: SignatureType,
+    ) -> Result<Packet, Error> {
+        self.0
+            .start_signing_round(message, signature_type)
+            .map_err(Error::wsts_coordinator)
     }
 }
 
@@ -56,7 +373,7 @@ impl StateMachineId {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SignerStateMachine(wsts::state_machine::signer::Signer<wsts::v2::Party>);
 
-type WstsStateMachine = wsts::state_machine::signer::Signer<wsts::v2::Party>;
+type WstsSigner = wsts::state_machine::signer::Signer<wsts::v2::Party>;
 
 impl SignerStateMachine {
     /// Create a new state machine
@@ -112,7 +429,7 @@ impl SignerStateMachine {
             return Err(error::Error::InvalidConfiguration);
         };
 
-        let state_machine = WstsStateMachine::new(
+        let state_machine = WstsSigner::new(
             threshold,
             dkg_threshold,
             num_parties,
@@ -211,7 +528,7 @@ impl SignerStateMachine {
 }
 
 impl std::ops::Deref for SignerStateMachine {
-    type Target = WstsStateMachine;
+    type Target = WstsSigner;
 
     fn deref(&self) -> &Self::Target {
         &self.0
@@ -219,118 +536,6 @@ impl std::ops::Deref for SignerStateMachine {
 }
 
 impl std::ops::DerefMut for SignerStateMachine {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
-    }
-}
-
-/// Wrapper around a WSTS coordinator state machine
-#[derive(Debug, Clone, PartialEq)]
-pub struct CoordinatorStateMachine(WstsCoordinator);
-
-type WstsCoordinator = wsts::state_machine::coordinator::fire::Coordinator<wsts::v2::Aggregator>;
-
-impl CoordinatorStateMachine {
-    /// Create a new state machine
-    pub fn new<I>(signers: I, threshold: u16, message_private_key: PrivateKey) -> Self
-    where
-        I: IntoIterator<Item = PublicKey>,
-    {
-        let signer_public_keys: hashbrown::HashMap<u32, _> = signers
-            .into_iter()
-            .enumerate()
-            .map(|(idx, key)| (idx as u32, key.into()))
-            .collect();
-
-        // The number of possible signers is capped at a number well below
-        // u32::MAX, so this conversion should always work.
-        let num_signers: u32 = signer_public_keys
-            .len()
-            .try_into()
-            .expect("the number of signers is greater than u32::MAX?");
-        let signer_key_ids = (0..num_signers)
-            .map(|signer_id| (signer_id, std::iter::once(signer_id + 1).collect()))
-            .collect();
-        let config = wsts::state_machine::coordinator::Config {
-            num_signers,
-            num_keys: num_signers,
-            threshold: threshold as u32,
-            dkg_threshold: num_signers,
-            message_private_key: message_private_key.into(),
-            dkg_public_timeout: None,
-            dkg_private_timeout: None,
-            dkg_end_timeout: None,
-            nonce_timeout: None,
-            sign_timeout: None,
-            signer_key_ids,
-            signer_public_keys,
-        };
-
-        let wsts_coordinator = WstsCoordinator::new(config);
-        Self(wsts_coordinator)
-    }
-
-    /// Create a new coordinator state machine from the given aggregate
-    /// key.
-    ///
-    /// # Notes
-    ///
-    /// The `WstsCoordinator` is a state machine that is responsible for
-    /// DKG and for facilitating signing rounds. When created the
-    /// `WstsCoordinator` state machine starts off in the `IDLE` state,
-    /// where you can either start a signing round or start DKG. This
-    /// function is for loading the state with the assumption that DKG has
-    /// already been successfully completed.
-    pub async fn load<I, S, X>(
-        storage: &mut S,
-        aggregate_key: X,
-        signers: I,
-        threshold: u16,
-        message_private_key: PrivateKey,
-    ) -> Result<Self, Error>
-    where
-        I: IntoIterator<Item = PublicKey>,
-        S: storage::DbRead + storage::DbWrite,
-        X: Into<PublicKeyXOnly>,
-    {
-        let x_only_aggregate_key: PublicKeyXOnly = aggregate_key.into();
-        let encrypted_shares = storage
-            .get_encrypted_dkg_shares(x_only_aggregate_key)
-            .await?
-            .ok_or(Error::MissingDkgShares(x_only_aggregate_key))?;
-
-        let public_dkg_shares: BTreeMap<u32, wsts::net::DkgPublicShares> =
-            BTreeMap::decode(encrypted_shares.public_shares.as_slice())?;
-        let party_polynomials = public_dkg_shares
-            .iter()
-            .flat_map(|(_, share)| share.comms.clone())
-            .collect::<Vec<(u32, PolyCommitment)>>();
-
-        let mut coordinator = Self::new(signers, threshold, message_private_key);
-
-        let aggregate_key = encrypted_shares.aggregate_key.into();
-        coordinator
-            .set_key_and_party_polynomials(aggregate_key, party_polynomials)
-            .map_err(Error::wsts_coordinator)?;
-        coordinator.current_dkg_id = 1;
-
-        coordinator
-            .move_to(WstsState::Idle)
-            .map_err(Error::wsts_coordinator)?;
-
-        Ok(coordinator)
-    }
-}
-
-impl std::ops::Deref for CoordinatorStateMachine {
-    type Target = WstsCoordinator;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::ops::DerefMut for CoordinatorStateMachine {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
     }

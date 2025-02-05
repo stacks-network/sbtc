@@ -21,6 +21,7 @@ use signer::keys::PublicKey;
 use signer::message::BitcoinPreSignRequest;
 use signer::message::StacksTransactionSignRequest;
 use signer::message::WstsMessage;
+use signer::message::WstsMessageId;
 use signer::network::in_memory2::WanNetwork;
 use signer::network::InMemoryNetwork;
 use signer::network::MessageTransfer;
@@ -320,13 +321,14 @@ async fn new_state_machine_per_valid_sighash() {
 
     // The message that we will send is for the following sighash. We'll
     // need to make sure that it is in our database first
-    let sighash_message = [1; 32];
+    let txid: BitcoinTxId = Faker.fake_with_rng(&mut rng);
+    let sighash: SigHash = Faker.fake_with_rng(&mut rng);
     let row = BitcoinTxSigHash {
-        txid: BitcoinTxId::from([0; 32]),
+        txid: txid.clone(),
         chain_tip: BitcoinBlockHash::from([0; 32]),
         prevout_txid: BitcoinTxId::from([0; 32]),
         prevout_output_index: 0,
-        sighash: SigHash::from(bitcoin::TapSighash::from_byte_array(sighash_message)),
+        sighash,
         prevout_type: model::TxPrevoutType::Deposit,
         validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
         is_valid_tx: true,
@@ -338,12 +340,12 @@ async fn new_state_machine_per_valid_sighash() {
 
     // Now for the nonce request message
     let mut nonce_request_msg = WstsMessage {
-        txid: bitcoin::Txid::all_zeros(),
+        id: WstsMessageId::Sweep(*txid),
         inner: wsts::net::Message::NonceRequest(NonceRequest {
             dkg_id: 1,
             sign_id: 1,
             sign_iter_id: 1,
-            message: sighash_message.to_vec(),
+            message: sighash.to_byte_array().to_vec(),
             signature_type: wsts::net::SignatureType::Schnorr,
         }),
     };
@@ -359,7 +361,7 @@ async fn new_state_machine_per_valid_sighash() {
 
     // We should have a state machine associated with the sighash nonce
     // request message that we just received.
-    let id1 = StateMachineId::new(sighash_message);
+    let id1 = StateMachineId::BitcoinSign(sighash);
     assert!(tx_signer.wsts_state_machines.contains(&id1));
     assert_eq!(tx_signer.wsts_state_machines.len(), 1);
 
@@ -367,10 +369,10 @@ async fn new_state_machine_per_valid_sighash() {
     // for a sighash that we do not know about. Since the nonce request is
     // not in the database we should return an error, and the state machine
     // should not be in the local cache.
-    let random_message: [u8; 32] = Faker.fake_with_rng(&mut rng);
+    let random_sighash: SigHash = Faker.fake_with_rng(&mut rng);
     match &mut nonce_request_msg.inner {
         wsts::net::Message::NonceRequest(NonceRequest { message, .. }) => {
-            *message = random_message.to_vec();
+            *message = random_sighash.as_byte_array().to_vec();
         }
         _ => panic!("You forgot to update the variant"),
     };
@@ -379,7 +381,7 @@ async fn new_state_machine_per_valid_sighash() {
         .handle_wsts_message(&nonce_request_msg, msg_public_key, &report)
         .await;
 
-    let id2 = StateMachineId::new(random_message);
+    let id2 = StateMachineId::BitcoinSign(Faker.fake());
     assert!(response.is_err());
     assert!(tx_signer.wsts_state_machines.contains(&id1));
     assert!(!tx_signer.wsts_state_machines.contains(&id2));
@@ -444,7 +446,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // arbitrary transaction ID.
     let dkg_id = 2;
     let dkg_begin_msg = WstsMessage {
-        txid: bitcoin::Txid::all_zeros(),
+        id: bitcoin::Txid::all_zeros().into(),
         inner: wsts::net::Message::DkgBegin(DkgBegin { dkg_id }),
     };
     let msg_public_key = PublicKey::from_private_key(&PrivateKey::new(&mut rng));
@@ -469,7 +471,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     // machine gets created, overwriting any existing one.
     let dkg_id = 1234;
     let dkg_begin_msg = WstsMessage {
-        txid: bitcoin::Txid::from_byte_array(Faker.fake_with_rng(&mut rng)),
+        id: bitcoin::Txid::from_byte_array(Faker.fake_with_rng(&mut rng)).into(),
         inner: wsts::net::Message::DkgBegin(DkgBegin { dkg_id }),
     };
 
