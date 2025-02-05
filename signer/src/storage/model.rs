@@ -839,11 +839,12 @@ impl std::fmt::Display for BitcoinBlockHash {
 
 /// A struct that references a specific bitcoin block is identifier and its
 /// position in the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    #[sqlx(try_from = "i64")]
     pub block_height: u64,
     /// Bitcoin block hash. It uniquely identifies the bitcoin block.
     pub block_hash: BitcoinBlockHash,

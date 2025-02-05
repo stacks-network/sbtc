@@ -1019,8 +1019,9 @@ where
             .into();
 
         let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-        let (aggregate_key, all_dkg_shares) =
-            signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
+        let (aggregate_key, all_dkg_shares) = signer_set
+            .run_dkg(bitcoin_chain_tip, dkg_txid.into(), rng)
+            .await;
 
         let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
 
