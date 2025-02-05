@@ -659,12 +659,12 @@ where
                     DkgStatus::Success => {
                         tracing::info!(
                             wsts_dkg_status = "success",
-                            "signer reports successful dkg round"
+                            "signer reports successful DKG round"
                         );
                     }
                     DkgStatus::Failure(fail) => {
                         // TODO(#414): handle DKG failure
-                        tracing::warn!(wsts_dkg_status = "failure", reason = ?fail, "signer reports failed dkg round");
+                        tracing::warn!(wsts_dkg_status = "failure", reason = ?fail, "signer reports failed DKG round");
                     }
                 }
             }
@@ -694,9 +694,7 @@ where
                     }
                     WstsMessageId::Sweep(txid) => {
                         span.record("txid", txid.to_string());
-                        tracing::info!(
-                            "responding to nonce-request for bitcoin transaction signing"
-                        );
+                        tracing::debug!("processing message");
 
                         let accepted_sighash =
                             Self::validate_bitcoin_sign_request(&db, &request.message).await;
@@ -732,34 +730,13 @@ where
                         // our latest aggregate key.
 
                         let new_key: PublicKeyXOnly = key.into();
-                        let latest_key = db
-                            .get_latest_encrypted_dkg_shares()
-                            .await?
-                            .ok_or(Error::NoDkgShares)?
-                            .aggregate_key
-                            .into();
 
-                        if new_key != latest_key {
-                            tracing::warn!(
-                                "🔐 aggregate key mismatch for rotate-key verification signing"
-                            );
-                            return Err(Error::AggregateKeyMismatch(
-                                Box::new(latest_key),
-                                Box::new(new_key),
-                            ));
-                        }
-
-                        tracing::info!(%key, "🔐 responding to nonce-request for rotate-key signing");
-
-                        if request.message.len() != 32 {
-                            tracing::warn!(
-                                "🔐 data received for rotate-key verification signing is not 32 bytes"
-                            );
-                            return Err(Error::InvalidSigningOperation);
-                        }
+                        // Validate the received message.
+                        Self::validate_dkg_verification_message(&db, &new_key, &request.message)
+                            .await?;
 
                         let (state_machine_id, _, mock_tx) = self
-                            .ensure_rotate_key_state_machine(&chain_tip.block_hash, new_key)
+                            .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                             .await?;
 
                         let tap_sighash = mock_tx.compute_sighash()?;
@@ -770,7 +747,7 @@ where
                             return Err(Error::InvalidSigningOperation);
                         }
 
-                        self.handle_rotate_key_message(
+                        self.handle_dkg_verification_message(
                             &chain_tip.block_hash,
                             state_machine_id,
                             &msg.inner,
@@ -819,7 +796,7 @@ where
                         span.record("txid", txid.to_string());
                         tracing::info!(
                             signature_type = ?request.signature_type,
-                            "responding to signature-share-request for bitcoin transaction signing"
+                            "processing message"
                         );
 
                         let accepted_sighash =
@@ -837,48 +814,27 @@ where
                         // our latest aggregate key.
 
                         let new_key: PublicKeyXOnly = key.into();
-                        let latest_key = db
-                            .get_latest_encrypted_dkg_shares()
-                            .await?
-                            .ok_or(Error::NoDkgShares)?
-                            .aggregate_key
-                            .into();
 
-                        if new_key != latest_key {
-                            tracing::warn!(
-                                "🔐 aggregate key mismatch for rotate-key verification signing"
-                            );
-                            return Err(Error::AggregateKeyMismatch(
-                                Box::new(latest_key),
-                                Box::new(new_key),
-                            ));
-                        }
-
-                        if request.message.len() != 32 {
-                            tracing::warn!(
-                                "🔐 data received for rotate-key verification signing is not 32 bytes"
-                            );
-                            return Err(Error::InvalidSigningOperation);
-                        }
+                        // Validate the received message.
+                        Self::validate_dkg_verification_message(&db, &new_key, &request.message)
+                            .await?;
 
                         tracing::info!(
                             signature_type = ?request.signature_type,
-                            "🔐 responding to signature-share-request for rotate-key verification signing"
+                            "🔐 responding to signature-share-request for DKG verification signing"
                         );
 
                         let (state_machine_id, _, mock_tx) = self
-                            .ensure_rotate_key_state_machine(&chain_tip.block_hash, new_key)
+                            .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                             .await?;
 
                         let tap_sighash = mock_tx.compute_sighash()?;
                         if tap_sighash.as_byte_array() != request.message.as_slice() {
-                            tracing::warn!(
-                                "🔐 sighash mismatch for rotate-key verification signing"
-                            );
+                            tracing::warn!("🔐 sighash mismatch for DKG verification signing");
                             return Err(Error::InvalidSigningOperation);
                         }
 
-                        self.handle_rotate_key_message(
+                        self.handle_dkg_verification_message(
                             &chain_tip.block_hash,
                             state_machine_id,
                             &msg.inner,
@@ -896,10 +852,10 @@ where
                 response?;
             }
             WstsNetMessage::NonceResponse(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_signer_id", request.signer_id);
-                span.record("dkg_sign_id", request.sign_id);
-                span.record("dkg_iter_id", request.sign_iter_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
 
                 let WstsMessageId::DkgVerification(key) = msg.id else {
                     return Ok(());
@@ -915,7 +871,7 @@ where
                 }
 
                 let (state_machine_id, _, mock_tx) = self
-                    .ensure_rotate_key_state_machine(&chain_tip.block_hash, new_key)
+                    .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                     .await?;
 
                 let tap_sighash = mock_tx.compute_sighash()?;
@@ -924,14 +880,18 @@ where
                     return Err(Error::InvalidSigningOperation);
                 }
 
-                self.handle_rotate_key_message(&chain_tip.block_hash, state_machine_id, &msg.inner)
-                    .await?;
+                self.handle_dkg_verification_message(
+                    &chain_tip.block_hash,
+                    state_machine_id,
+                    &msg.inner,
+                )
+                .await?;
             }
             WstsNetMessage::SignatureShareResponse(request) => {
-                span.record("dkg_id", request.dkg_id);
-                span.record("dkg_signer_id", request.signer_id);
-                span.record("dkg_sign_id", request.sign_id);
-                span.record("dkg_iter_id", request.sign_iter_id);
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
 
                 let WstsMessageId::DkgVerification(key) = msg.id else {
                     return Ok(());
@@ -940,12 +900,53 @@ where
                 let new_key = key.into();
 
                 let (state_machine_id, _, _) = self
-                    .ensure_rotate_key_state_machine(&chain_tip.block_hash, new_key)
+                    .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                     .await?;
 
-                self.handle_rotate_key_message(&chain_tip.block_hash, state_machine_id, &msg.inner)
-                    .await?;
+                self.handle_dkg_verification_message(
+                    &chain_tip.block_hash,
+                    state_machine_id,
+                    &msg.inner,
+                )
+                .await?;
             }
+        }
+
+        Ok(())
+    }
+
+    /// Validate a DKG verification message, asserting that:
+    /// - The new key provided by the peer matches our view of the latest
+    ///   aggregate key (not the _current_ key, but the key which we intend to
+    ///   rotate to).
+    /// - That the message data can be converted into a bitcoin block hash which
+    ///   matches the current bitcoin chain tip block hash.
+    async fn validate_dkg_verification_message<DB>(
+        storage: &DB,
+        new_key: &PublicKeyXOnly,
+        message: &[u8],
+    ) -> Result<(), Error>
+    where
+        DB: DbRead,
+    {
+        let current_key = storage
+            .get_latest_encrypted_dkg_shares()
+            .await?
+            .ok_or(Error::NoDkgShares)?
+            .aggregate_key
+            .into();
+
+        if *new_key != current_key {
+            tracing::warn!("🔐 aggregate key mismatch for DKG verification signing");
+            return Err(Error::AggregateKeyMismatch(
+                Box::new(current_key),
+                Box::new(*new_key),
+            ));
+        }
+
+        if message.len() != 32 {
+            tracing::warn!("🔐 data received for DKG verification signing is not 32 bytes");
+            return Err(Error::InvalidSigningOperation);
         }
 
         Ok(())
@@ -1052,7 +1053,7 @@ where
         .await
     }
 
-    async fn ensure_rotate_key_state_machine(
+    async fn ensure_dkg_verification_state_machine(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKeyXOnly,
@@ -1089,7 +1090,7 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn handle_rotate_key_message(
+    async fn handle_dkg_verification_message(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         id: StateMachineId,
