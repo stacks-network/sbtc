@@ -1,5 +1,6 @@
 //! Module for signer state
 
+use std::collections::BTreeSet;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     RwLock,
@@ -18,6 +19,7 @@ use crate::keys::PublicKey;
 pub struct SignerState {
     current_signer_set: SignerSet,
     current_limits: RwLock<SbtcLimits>,
+    current_aggregate_key: RwLock<Option<PublicKey>>,
     sbtc_contracts_deployed: AtomicBool,
     sbtc_bitcoin_start_height: AtomicU64,
     is_sbtc_bitcoin_start_height_set: AtomicBool,
@@ -27,6 +29,38 @@ impl SignerState {
     /// Get the current signer set.
     pub fn current_signer_set(&self) -> &SignerSet {
         &self.current_signer_set
+    }
+
+    /// Return the public keys of the current signer set.
+    pub fn current_signer_public_keys(&self) -> BTreeSet<PublicKey> {
+        self.current_signer_set
+            .get_signers()
+            .into_iter()
+            .map(|signer| signer.public_key)
+            .collect()
+    }
+
+    /// Replace the current signer set with the given set of public keys.
+    pub fn update_current_signer_set(&self, public_keys: BTreeSet<PublicKey>) {
+        self.current_signer_set.replace_signers(public_keys);
+    }
+
+    /// Return the current aggregate key from the cache.
+    #[allow(clippy::unwrap_in_result)]
+    pub fn current_aggregate_key(&self) -> Option<PublicKey> {
+        self.current_aggregate_key
+            .read()
+            .expect("BUG: Failed to acquire read lock")
+            .as_ref()
+            .copied()
+    }
+
+    /// Set the current aggregate key to the given public key.
+    pub fn set_current_aggregate_key(&self, aggregate_key: PublicKey) {
+        self.current_aggregate_key
+            .write()
+            .expect("BUG: Failed to acquire write lock")
+            .replace(aggregate_key);
     }
 
     /// Get the current sBTC limits.
@@ -82,6 +116,7 @@ impl Default for SignerState {
         Self {
             current_signer_set: Default::default(),
             current_limits: RwLock::new(SbtcLimits::zero()),
+            current_aggregate_key: RwLock::new(None),
             sbtc_contracts_deployed: Default::default(),
             sbtc_bitcoin_start_height: Default::default(),
             is_sbtc_bitcoin_start_height_set: Default::default(),
@@ -132,11 +167,6 @@ impl SbtcLimits {
         }
     }
 
-    /// Create a new `SbtcLimits` object without any limits
-    pub fn unlimited() -> Self {
-        Self::new(None, None, None, None, None)
-    }
-
     /// Create a new `SbtcLimits` object with limits set to zero (fully constraining)
     pub fn zero() -> Self {
         Self::new(
@@ -177,9 +207,21 @@ impl SbtcLimits {
     pub fn max_mintable_cap(&self) -> Amount {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
+}
 
-    /// TODO: Document this
-    #[cfg(test)]
+#[cfg(any(test, feature = "testing"))]
+impl SbtcLimits {
+    /// Create a new `SbtcLimits` object without any limits
+    pub fn unlimited() -> Self {
+        Self {
+            total_cap: Some(Amount::MAX_MONEY),
+            per_deposit_minimum: Some(Amount::ZERO),
+            per_deposit_cap: Some(Amount::MAX_MONEY),
+            per_withdrawal_cap: Some(Amount::MAX_MONEY),
+            max_mintable_cap: Some(Amount::MAX_MONEY),
+        }
+    }
+
     /// Create a new Self with only the given deposit minimum and maximums
     /// set.
     pub fn new_per_deposit(min: u64, max: u64) -> Self {
@@ -264,6 +306,38 @@ impl SignerSet {
             .write()
             .expect("BUG: Failed to acquire write lock")
             .insert(signer);
+    }
+
+    /// Replace the current signer set with the given set of public keys.
+    pub fn replace_signers(&self, public_keys: BTreeSet<PublicKey>) {
+        let inner_signer_set = self.get_signers();
+
+        // Get a guard for the peer IDs.
+        #[allow(clippy::expect_used)]
+        let mut inner_peer_ids = self
+            .peer_ids
+            .write()
+            .expect("BUG: Failed to acquire write lock");
+
+        // Get a guard for the Signer objects the signer into the set.
+        #[allow(clippy::expect_used)]
+        let mut inner_public_keys = self
+            .signers
+            .write()
+            .expect("BUG: Failed to acquire write lock");
+
+        // Remove the old signer set
+        for signer in inner_signer_set {
+            inner_peer_ids.remove(signer.peer_id());
+            inner_public_keys.remove(signer.public_key());
+        }
+
+        // Add the new signer set
+        for public_key in public_keys {
+            let signer = Signer::new(public_key);
+            inner_peer_ids.insert(signer.peer_id);
+            inner_public_keys.insert(signer);
+        }
     }
 
     /// Remove a signer (public key) from the known active signer set.
