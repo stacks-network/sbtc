@@ -27,13 +27,6 @@ pub enum ChainstateOptionsError {
     UnknownValue(serde_json::Value),
 }
 
-/// struct for typed errors of method [`deposit_input_address_input_address_options`]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum DepositInputAddressInputAddressOptionsError {
-    UnknownValue(serde_json::Value),
-}
-
 /// struct for typed errors of method [`deposit_options`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -45,6 +38,13 @@ pub enum DepositOptionsError {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum DepositRecipientRecipientOptionsError {
+    UnknownValue(serde_json::Value),
+}
+
+/// struct for typed errors of method [`deposit_reclaim_pubkey_reclaim_pubkey_options`]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum DepositReclaimPubkeyReclaimPubkeyOptionsError {
     UnknownValue(serde_json::Value),
 }
 
@@ -184,48 +184,6 @@ pub async fn chainstate_options(
 }
 
 /// Handles CORS preflight requests
-pub async fn deposit_input_address_input_address_options(
-    configuration: &configuration::Configuration,
-    input_address: &str,
-) -> Result<(), Error<DepositInputAddressInputAddressOptionsError>> {
-    let local_var_configuration = configuration;
-
-    let local_var_client = &local_var_configuration.client;
-
-    let local_var_uri_str = format!(
-        "{}/deposit/input-address/{inputAddress}",
-        local_var_configuration.base_path,
-        inputAddress = crate::apis::urlencode(input_address)
-    );
-    let mut local_var_req_builder =
-        local_var_client.request(reqwest::Method::OPTIONS, local_var_uri_str.as_str());
-
-    if let Some(ref local_var_user_agent) = local_var_configuration.user_agent {
-        local_var_req_builder =
-            local_var_req_builder.header(reqwest::header::USER_AGENT, local_var_user_agent.clone());
-    }
-
-    let local_var_req = local_var_req_builder.build()?;
-    let local_var_resp = local_var_client.execute(local_var_req).await?;
-
-    let local_var_status = local_var_resp.status();
-    let local_var_content = local_var_resp.text().await?;
-
-    if !local_var_status.is_client_error() && !local_var_status.is_server_error() {
-        Ok(())
-    } else {
-        let local_var_entity: Option<DepositInputAddressInputAddressOptionsError> =
-            serde_json::from_str(&local_var_content).ok();
-        let local_var_error = ResponseContent {
-            status: local_var_status,
-            content: local_var_content,
-            entity: local_var_entity,
-        };
-        Err(Error::ResponseError(local_var_error))
-    }
-}
-
-/// Handles CORS preflight requests
 pub async fn deposit_options(
     configuration: &configuration::Configuration,
 ) -> Result<(), Error<DepositOptionsError>> {
@@ -294,6 +252,48 @@ pub async fn deposit_recipient_recipient_options(
         Ok(())
     } else {
         let local_var_entity: Option<DepositRecipientRecipientOptionsError> =
+            serde_json::from_str(&local_var_content).ok();
+        let local_var_error = ResponseContent {
+            status: local_var_status,
+            content: local_var_content,
+            entity: local_var_entity,
+        };
+        Err(Error::ResponseError(local_var_error))
+    }
+}
+
+/// Handles CORS preflight requests
+pub async fn deposit_reclaim_pubkey_reclaim_pubkey_options(
+    configuration: &configuration::Configuration,
+    reclaim_pubkey: &str,
+) -> Result<(), Error<DepositReclaimPubkeyReclaimPubkeyOptionsError>> {
+    let local_var_configuration = configuration;
+
+    let local_var_client = &local_var_configuration.client;
+
+    let local_var_uri_str = format!(
+        "{}/deposit/reclaim-pubkey/{reclaimPubkey}",
+        local_var_configuration.base_path,
+        reclaimPubkey = crate::apis::urlencode(reclaim_pubkey)
+    );
+    let mut local_var_req_builder =
+        local_var_client.request(reqwest::Method::OPTIONS, local_var_uri_str.as_str());
+
+    if let Some(ref local_var_user_agent) = local_var_configuration.user_agent {
+        local_var_req_builder =
+            local_var_req_builder.header(reqwest::header::USER_AGENT, local_var_user_agent.clone());
+    }
+
+    let local_var_req = local_var_req_builder.build()?;
+    let local_var_resp = local_var_client.execute(local_var_req).await?;
+
+    let local_var_status = local_var_resp.status();
+    let local_var_content = local_var_resp.text().await?;
+
+    if !local_var_status.is_client_error() && !local_var_status.is_server_error() {
+        Ok(())
+    } else {
+        let local_var_entity: Option<DepositReclaimPubkeyReclaimPubkeyOptionsError> =
             serde_json::from_str(&local_var_content).ok();
         let local_var_error = ResponseContent {
             status: local_var_status,

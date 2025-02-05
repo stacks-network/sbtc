@@ -47,10 +47,10 @@ pub enum GetDepositsError {
     UnknownValue(serde_json::Value),
 }
 
-/// struct for typed errors of method [`get_deposits_for_input_address`]
+/// struct for typed errors of method [`get_deposits_for_recipient`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum GetDepositsForInputAddressError {
+pub enum GetDepositsForRecipientError {
     Status400(models::ErrorResponse),
     Status404(models::ErrorResponse),
     Status405(models::ErrorResponse),
@@ -58,10 +58,10 @@ pub enum GetDepositsForInputAddressError {
     UnknownValue(serde_json::Value),
 }
 
-/// struct for typed errors of method [`get_deposits_for_recipient`]
+/// struct for typed errors of method [`get_deposits_for_reclaim_pubkey`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum GetDepositsForRecipientError {
+pub enum GetDepositsForReclaimPubkeyError {
     Status400(models::ErrorResponse),
     Status404(models::ErrorResponse),
     Status405(models::ErrorResponse),
@@ -220,57 +220,6 @@ pub async fn get_deposits(
     }
 }
 
-pub async fn get_deposits_for_input_address(
-    configuration: &configuration::Configuration,
-    input_address: &str,
-    next_token: Option<&str>,
-    page_size: Option<i32>,
-) -> Result<models::GetDepositsResponse, Error<GetDepositsForInputAddressError>> {
-    let local_var_configuration = configuration;
-
-    let local_var_client = &local_var_configuration.client;
-
-    let local_var_uri_str = format!(
-        "{}/deposit/input-address/{inputAddress}",
-        local_var_configuration.base_path,
-        inputAddress = crate::apis::urlencode(input_address)
-    );
-    let mut local_var_req_builder =
-        local_var_client.request(reqwest::Method::GET, local_var_uri_str.as_str());
-
-    if let Some(ref local_var_str) = next_token {
-        local_var_req_builder =
-            local_var_req_builder.query(&[("nextToken", &local_var_str.to_string())]);
-    }
-    if let Some(ref local_var_str) = page_size {
-        local_var_req_builder =
-            local_var_req_builder.query(&[("pageSize", &local_var_str.to_string())]);
-    }
-    if let Some(ref local_var_user_agent) = local_var_configuration.user_agent {
-        local_var_req_builder =
-            local_var_req_builder.header(reqwest::header::USER_AGENT, local_var_user_agent.clone());
-    }
-
-    let local_var_req = local_var_req_builder.build()?;
-    let local_var_resp = local_var_client.execute(local_var_req).await?;
-
-    let local_var_status = local_var_resp.status();
-    let local_var_content = local_var_resp.text().await?;
-
-    if !local_var_status.is_client_error() && !local_var_status.is_server_error() {
-        serde_json::from_str(&local_var_content).map_err(Error::from)
-    } else {
-        let local_var_entity: Option<GetDepositsForInputAddressError> =
-            serde_json::from_str(&local_var_content).ok();
-        let local_var_error = ResponseContent {
-            status: local_var_status,
-            content: local_var_content,
-            entity: local_var_entity,
-        };
-        Err(Error::ResponseError(local_var_error))
-    }
-}
-
 pub async fn get_deposits_for_recipient(
     configuration: &configuration::Configuration,
     recipient: &str,
@@ -312,6 +261,57 @@ pub async fn get_deposits_for_recipient(
         serde_json::from_str(&local_var_content).map_err(Error::from)
     } else {
         let local_var_entity: Option<GetDepositsForRecipientError> =
+            serde_json::from_str(&local_var_content).ok();
+        let local_var_error = ResponseContent {
+            status: local_var_status,
+            content: local_var_content,
+            entity: local_var_entity,
+        };
+        Err(Error::ResponseError(local_var_error))
+    }
+}
+
+pub async fn get_deposits_for_reclaim_pubkey(
+    configuration: &configuration::Configuration,
+    reclaim_pubkey: &str,
+    next_token: Option<&str>,
+    page_size: Option<i32>,
+) -> Result<models::GetDepositsResponse, Error<GetDepositsForReclaimPubkeyError>> {
+    let local_var_configuration = configuration;
+
+    let local_var_client = &local_var_configuration.client;
+
+    let local_var_uri_str = format!(
+        "{}/deposit/reclaim-pubkey/{reclaimPubkey}",
+        local_var_configuration.base_path,
+        reclaimPubkey = crate::apis::urlencode(reclaim_pubkey)
+    );
+    let mut local_var_req_builder =
+        local_var_client.request(reqwest::Method::GET, local_var_uri_str.as_str());
+
+    if let Some(ref local_var_str) = next_token {
+        local_var_req_builder =
+            local_var_req_builder.query(&[("nextToken", &local_var_str.to_string())]);
+    }
+    if let Some(ref local_var_str) = page_size {
+        local_var_req_builder =
+            local_var_req_builder.query(&[("pageSize", &local_var_str.to_string())]);
+    }
+    if let Some(ref local_var_user_agent) = local_var_configuration.user_agent {
+        local_var_req_builder =
+            local_var_req_builder.header(reqwest::header::USER_AGENT, local_var_user_agent.clone());
+    }
+
+    let local_var_req = local_var_req_builder.build()?;
+    let local_var_resp = local_var_client.execute(local_var_req).await?;
+
+    let local_var_status = local_var_resp.status();
+    let local_var_content = local_var_resp.text().await?;
+
+    if !local_var_status.is_client_error() && !local_var_status.is_server_error() {
+        serde_json::from_str(&local_var_content).map_err(Error::from)
+    } else {
+        let local_var_entity: Option<GetDepositsForReclaimPubkeyError> =
             serde_json::from_str(&local_var_content).ok();
         let local_var_error = ResponseContent {
             status: local_var_status,

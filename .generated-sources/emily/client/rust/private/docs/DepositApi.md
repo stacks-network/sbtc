@@ -7,8 +7,8 @@ Method | HTTP request | Description
 [**create_deposit**](DepositApi.md#create_deposit) | **POST** /deposit | Create deposit handler.
 [**get_deposit**](DepositApi.md#get_deposit) | **GET** /deposit/{txid}/{index} | Get deposit handler.
 [**get_deposits**](DepositApi.md#get_deposits) | **GET** /deposit | Get deposits handler.
-[**get_deposits_for_input_address**](DepositApi.md#get_deposits_for_input_address) | **GET** /deposit/input-address/{inputAddress} | Get deposits by recipient handler.
 [**get_deposits_for_recipient**](DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits by recipient handler.
+[**get_deposits_for_reclaim_pubkey**](DepositApi.md#get_deposits_for_reclaim_pubkey) | **GET** /deposit/reclaim-pubkey/{reclaimPubkey} | Get deposits by recipient handler.
 [**get_deposits_for_transaction**](DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
 [**update_deposits**](DepositApi.md#update_deposits) | **PUT** /deposit | Update deposits handler.
 
@@ -101,9 +101,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 
-## get_deposits_for_input_address
+## get_deposits_for_recipient
 
-> models::GetDepositsResponse get_deposits_for_input_address(input_address, next_token, page_size)
+> models::GetDepositsResponse get_deposits_for_recipient(recipient, next_token, page_size)
 Get deposits by recipient handler.
 
 ### Parameters
@@ -111,7 +111,7 @@ Get deposits by recipient handler.
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**input_address** | **String** | the address from which the deposit was made. | [required] |
+**recipient** | **String** | the recipient to search by when getting all deposits. | [required] |
 **next_token** | Option<**String**> | the next token value from the previous return of this api call. |  |
 **page_size** | Option<**i32**> | the maximum number of items in the response list. |  |
 
@@ -131,9 +131,9 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 
-## get_deposits_for_recipient
+## get_deposits_for_reclaim_pubkey
 
-> models::GetDepositsResponse get_deposits_for_recipient(recipient, next_token, page_size)
+> models::GetDepositsResponse get_deposits_for_reclaim_pubkey(reclaim_pubkey, next_token, page_size)
 Get deposits by recipient handler.
 
 ### Parameters
@@ -141,7 +141,7 @@ Get deposits by recipient handler.
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**recipient** | **String** | the recipient to search by when getting all deposits. | [required] |
+**reclaim_pubkey** | **String** | the reclaim schnorr public key to search by when getting all deposits. | [required] |
 **next_token** | Option<**String**> | the next token value from the previous return of this api call. |  |
 **page_size** | Option<**i32**> | the maximum number of items in the response list. |  |
 
