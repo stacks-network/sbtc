@@ -142,9 +142,9 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// WSTS FROST state machines for verifying full and correct participation
     /// during DKG using the FROST algorithm. This is then used during the
     /// verification of the Stacks rotate-keys transaction.
-    pub wsts_frost_state_machines: LruCache<StateMachineId, FrostCoordinator>,
-    /// Results of the FROST verification rounds.
-    pub wsts_frost_results: LruCache<StateMachineId, bool>,
+    pub dkg_verification_state_machines: LruCache<StateMachineId, FrostCoordinator>,
+    /// Results of DKG verification rounds.
+    pub dkg_verification_results: LruCache<StateMachineId, bool>,
 }
 
 /// This struct represents a signature hash and the public key that locks
@@ -210,10 +210,12 @@ where
             threshold,
             rng,
             dkg_begin_pause,
-            wsts_frost_state_machines: LruCache::new(
+            dkg_verification_state_machines: LruCache::new(
                 NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
             ),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).ok_or(Error::TypeConversion)?),
+            dkg_verification_results: LruCache::new(
+                NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
+            ),
         })
     }
 
@@ -509,10 +511,12 @@ where
             }
             StacksTx::ContractCall(ContractCall::RotateKeysV1(contract)) => {
                 let aggregate_key = contract.aggregate_key.x_only_public_key().0.into();
-                let frost_result = self.wsts_frost_results.peek(&StateMachineId::RotateKey(
-                    aggregate_key,
-                    chain_tip.block_hash,
-                ));
+                let frost_result = self
+                    .dkg_verification_results
+                    .peek(&StateMachineId::RotateKey(
+                        aggregate_key,
+                        chain_tip.block_hash,
+                    ));
 
                 if !matches!(frost_result, Some(true)) {
                     tracing::warn!("no successful frost signing round for the pre-rotate-keys verification signing round; refusing to sign");
@@ -738,10 +742,14 @@ where
                         .await?;
 
                         let state_machine_id = self
-                            .ensure_rotate_key_state_machine(chain_tip.block_hash, new_key)
+                            .ensure_dkg_verification_state_machine(chain_tip.block_hash, new_key)
                             .await?;
-                        self.handle_rotate_key_message(new_key, state_machine_id, &msg.inner)
-                            .await?;
+                        self.process_dkg_verification_message(
+                            new_key,
+                            state_machine_id,
+                            &msg.inner,
+                        )
+                        .await?;
 
                         (state_machine_id, new_key)
                     }
@@ -820,9 +828,9 @@ where
 
                         let key = key.into();
                         let state_machine_id = self
-                            .ensure_rotate_key_state_machine(chain_tip.block_hash, key)
+                            .ensure_dkg_verification_state_machine(chain_tip.block_hash, key)
                             .await?;
-                        self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+                        self.process_dkg_verification_message(key, state_machine_id, &msg.inner)
                             .await?;
                         state_machine_id
                     }
@@ -848,9 +856,9 @@ where
                 let key = key.into();
 
                 let state_machine_id = self
-                    .ensure_rotate_key_state_machine(chain_tip.block_hash, key)
+                    .ensure_dkg_verification_state_machine(chain_tip.block_hash, key)
                     .await?;
-                self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+                self.process_dkg_verification_message(key, state_machine_id, &msg.inner)
                     .await?;
             }
             WstsNetMessage::SignatureShareResponse(request) => {
@@ -866,9 +874,9 @@ where
                 let key = key.into();
 
                 let state_machine_id = self
-                    .ensure_rotate_key_state_machine(chain_tip.block_hash, key)
+                    .ensure_dkg_verification_state_machine(chain_tip.block_hash, key)
                     .await?;
-                self.handle_rotate_key_message(key, state_machine_id, &msg.inner)
+                self.process_dkg_verification_message(key, state_machine_id, &msg.inner)
                     .await?;
             }
         }
@@ -981,85 +989,98 @@ where
         Ok(())
     }
 
-    async fn ensure_rotate_key_state_machine(
+    /// Ensures that a DKG verification state machine exists for the given
+    /// aggregate key and bitcoin chain tip block hash. If the state machine
+    /// exists already then the id is simply returned back; otherwise, a new
+    /// state machine is created and stored in this instance.
+    ///
+    /// The `aggregate_key` provided here should be the _new_ aggregate key
+    /// which is being verified.
+    async fn ensure_dkg_verification_state_machine(
         &mut self,
         bitcoin_chain_tip: model::BitcoinBlockHash,
         aggregate_key: PublicKeyXOnly,
     ) -> Result<StateMachineId, Error> {
         let state_machine_id = StateMachineId::RotateKey(aggregate_key, bitcoin_chain_tip);
 
-        match self.wsts_frost_state_machines.get_mut(&state_machine_id) {
-            Some(_) => {}
-            None => {
-                let storage = self.context.get_storage();
+        if !self
+            .dkg_verification_state_machines
+            .contains(&state_machine_id)
+        {
+            let storage = self.context.get_storage();
 
-                let dkg_shares = storage
-                    .get_encrypted_dkg_shares(aggregate_key)
-                    .await?
-                    .ok_or_else(|| {
-                        tracing::warn!("no DKG shares found for requested aggregate key");
-                        Error::MissingDkgShares(aggregate_key)
-                    })?;
+            // Load the DKG shares for the given aggregate key.
+            let dkg_shares = storage
+                .get_encrypted_dkg_shares(aggregate_key)
+                .await?
+                .ok_or_else(|| {
+                    tracing::warn!("no DKG shares found for requested aggregate key");
+                    Error::MissingDkgShares(aggregate_key)
+                })?;
 
-                let signing_set: BTreeSet<PublicKey> = dkg_shares
-                    .signer_set_public_keys
-                    .into_iter()
-                    .collect::<BTreeSet<_>>();
-                // This `as` cast should always be safe as our signer cap is 128.
-                let num_signers = signing_set.len() as u16;
+            // Get the signing set's public keys in a BTreeSet to deduplicate
+            // and sort them for the coordinator.
+            let signing_set: BTreeSet<PublicKey> = dkg_shares
+                .signer_set_public_keys
+                .into_iter()
+                .collect::<BTreeSet<_>>();
 
-                tracing::debug!(%num_signers, "creating now frost coordinator to track pre-rotate-key validation signing round");
-                let coordinator = FrostCoordinator::load(
-                    &storage,
-                    aggregate_key,
-                    signing_set,
-                    dkg_shares.signature_share_threshold,
-                    self.signer_private_key,
-                )
-                .await?;
+            // This `as` cast should always be safe as our signer cap is 128.
+            let num_signers = signing_set.len() as u16;
 
-                self.wsts_frost_state_machines
-                    .get_or_insert_mut(state_machine_id, || coordinator);
-            }
+            // Create the WSTS FROST coordinator.
+            tracing::debug!(%num_signers, "creating new FROST coordinator to track DKG verification signing round");
+            let coordinator = FrostCoordinator::load(
+                &storage,
+                aggregate_key,
+                signing_set,
+                dkg_shares.signature_share_threshold,
+                self.signer_private_key,
+            )
+            .await?;
+
+            // Insert the state machine into the cache if not existing.
+            self.dkg_verification_state_machines
+                .put(state_machine_id, coordinator);
         }
 
         Ok(state_machine_id)
     }
 
     #[tracing::instrument(skip_all)]
-    async fn handle_rotate_key_message(
+    async fn process_dkg_verification_message(
         &mut self,
         aggregate_key: PublicKeyXOnly,
         id: StateMachineId,
         msg: &WstsNetMessage,
     ) -> Result<(), Error> {
-        let state_machine = self.wsts_frost_state_machines.get_mut(&id);
+        let state_machine = self.dkg_verification_state_machines.get_mut(&id);
         let Some(state_machine) = state_machine else {
-            tracing::warn!("missing frost coordinator for pre-rotate-key validation");
+            tracing::warn!("missing FROST coordinator for dkg verification message");
             return Err(Error::MissingFrostStateMachine(aggregate_key));
         };
 
-        tracing::info!(?msg, "processing frost coordinator message");
+        tracing::trace!(?msg, "processing FROST coordinator message");
 
         let (_, result) = state_machine.process_message(msg)?;
 
         match result {
             Some(OperationResult::SignSchnorr(_)) => {
-                tracing::info!("successfully completed pre-rotate-key validation signing round");
-                self.wsts_frost_results.put(id, true);
-                self.wsts_frost_state_machines.pop(&id);
+                tracing::info!("successfully completed DKG verification signing round");
+                self.dkg_verification_results.put(id, true);
+                self.dkg_verification_state_machines.pop(&id);
             }
             Some(OperationResult::SignError(error)) => {
                 tracing::warn!(
                     ?msg,
                     ?error,
-                    "failed to complete pre-rotate-key validation signing round"
+                    "failed to complete DKG verification signing round"
                 );
-                self.wsts_frost_results.put(id, false);
+                self.dkg_verification_results.put(id, false);
             }
             None => {}
             result => {
-                tracing::warn!(?result, "unexpected frost coordinator result");
+                tracing::warn!(?result, "unexpected FROST coordinator result");
             }
         }
 
@@ -1080,7 +1101,8 @@ where
         };
 
         let mut frost_coordinator = if let StateMachineId::RotateKey(_, _) = state_machine_id {
-            self.wsts_frost_state_machines.get_mut(&state_machine_id)
+            self.dkg_verification_state_machines
+                .get_mut(&state_machine_id)
         } else {
             None
         };
@@ -1088,14 +1110,13 @@ where
         let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
 
         for outbound_message in outbound_messages.iter() {
-            // The WSTS state machine assume we read our own messages
+            // The WSTS state machine assumes we read our own messages
             state_machine
                 .process(outbound_message)
                 .map_err(Error::Wsts)?;
 
             if let Some(frost_coordinator) = &mut frost_coordinator {
-                let (_, result) = frost_coordinator.process_message(outbound_message)?;
-                tracing::info!(?outbound_message, ?result, state = ?frost_coordinator.state, "\x1b[1;36mfrost coordinator\x1b[0m relay_message result")
+                frost_coordinator.process_message(outbound_message)?;
             }
         }
 
@@ -1406,8 +1427,8 @@ mod tests {
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
-            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1474,8 +1495,8 @@ mod tests {
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
-            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1560,8 +1581,8 @@ mod tests {
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
-            wsts_frost_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            wsts_frost_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         let msg = message::WstsMessage {
