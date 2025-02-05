@@ -4,7 +4,7 @@ use std::str::FromStr;
 
 use bitcoin::blockdata::transaction::Transaction;
 use bitcoin::consensus::encode;
-use bitcoin::{Amount, OutPoint, ScriptBuf, Txid};
+use bitcoin::{OutPoint, ScriptBuf, Txid};
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -12,7 +12,6 @@ use utoipa::ToSchema;
 use sbtc::deposits::{CreateDepositRequest, DepositInfo};
 
 use crate::api::models::common::{Fulfillment, Status};
-use crate::api::models::limits::Limits;
 use crate::common::error::Error;
 
 /// Query structure for the GetDepositsQuery struct.
@@ -84,8 +83,8 @@ where
 impl CreateDepositRequestBody {
     /// Validates that the deposit request is valid.
     /// This includes validating the request fields, if their content matches the transaction
-    /// and if the amount is within the limits.
-    pub fn validate(&self, limits: &Limits, is_mainnet: bool) -> Result<DepositInfo, Error> {
+    /// and if the amount is higher than the dust limit.
+    pub fn validate(&self, is_mainnet: bool) -> Result<DepositInfo, Error> {
         let deposit_req = CreateDepositRequest {
             outpoint: OutPoint {
                 txid: parse_with_custom_error(
@@ -124,20 +123,10 @@ impl CreateDepositRequestBody {
             .value
             .to_sat();
 
-        // Even if no limits are set, the deposit amount should be higher than the dust limit.
-        let min = limits.per_deposit_minimum.unwrap_or(DEPOSIT_DUST_LIMIT);
-        if amount < min {
+        if amount < DEPOSIT_DUST_LIMIT {
             return Err(Error::HttpRequest(
                 StatusCode::BAD_REQUEST,
-                format!("deposit amount below minimum ({})", min),
-            ));
-        }
-
-        let cap = limits.per_deposit_cap.unwrap_or(Amount::MAX_MONEY.to_sat());
-        if amount > cap {
-            return Err(Error::HttpRequest(
-                StatusCode::BAD_REQUEST,
-                format!("deposit amount exceeds cap ({})", cap),
+                format!("deposit amount below dust limit ({})", DEPOSIT_DUST_LIMIT),
             ));
         }
 
@@ -185,6 +174,8 @@ pub struct UpdateDepositsRequestBody {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bitcoin::consensus::encode::serialize_hex;
+    use sbtc::testing::deposits::tx_setup;
     use test_case::test_case;
 
     const CREATE_DEPOSIT_VALID: &str =
@@ -214,14 +205,6 @@ mod tests {
     const CREATE_DEPOSIT_MISMATCH_DEPOSIT_SCRIPT: &str =
         include_str!("../../../../tests/fixtures/create-deposit-mismatch-deposit-script.json");
 
-    pub fn create_test_limits(min: Option<u64>, max: Option<u64>) -> Limits {
-        Limits {
-            per_deposit_minimum: min,
-            per_deposit_cap: max,
-            ..Default::default()
-        }
-    }
-
     pub fn parse_request(json: &str) -> CreateDepositRequestBody {
         serde_json::from_str(json).expect("failed to parse request")
     }
@@ -229,8 +212,7 @@ mod tests {
     #[tokio::test]
     async fn test_deposit_validate_happy_path() {
         let deposit_request = parse_request(CREATE_DEPOSIT_VALID);
-        let limits = create_test_limits(None, None);
-        assert!(deposit_request.validate(&limits, true).is_ok());
+        assert!(deposit_request.validate(true).is_ok());
     }
 
     #[test_case(CREATE_DEPOSIT_INVALID_TXID, "invalid bitcoin txid"; "invalid_txid")]
@@ -250,44 +232,39 @@ mod tests {
     #[tokio::test]
     async fn test_deposit_validate_errors(input: &str, expected_error: &str) {
         let deposit_request = parse_request(input);
-        let limits = create_test_limits(Some(DEPOSIT_DUST_LIMIT), None);
 
-        let result = deposit_request.validate(&limits, true);
+        let result = deposit_request.validate(true);
         assert_eq!(
             result.unwrap_err().to_string(),
             format!("HTTP request failed with status code 400 Bad Request: {expected_error}")
         );
     }
 
-    // CREATE_DEPOSIT_VALID has a deposit amount of 1_000_000 satoshis.
-    #[test_case(CREATE_DEPOSIT_VALID, None, None; "no_limits")]
-    #[test_case(CREATE_DEPOSIT_VALID, Some(DEPOSIT_DUST_LIMIT), None; "min_limit")]
-    #[test_case(CREATE_DEPOSIT_VALID, None, Some(1_000_000_000); "max_limit")]
-    #[test_case(CREATE_DEPOSIT_VALID, Some(DEPOSIT_DUST_LIMIT), Some(1_000_000_000); "min_max_limit")]
     #[tokio::test]
-    async fn test_deposit_validate_limits(input: &str, min: Option<u64>, max: Option<u64>) {
-        let deposit_request = parse_request(input);
-        let limits = create_test_limits(min, max);
-        assert!(deposit_request.validate(&limits, true).is_ok());
-    }
-
-    #[test_case(CREATE_DEPOSIT_VALID, Some(1_000_000 + 1), None, "deposit amount below minimum (1000001)"; "below_min_limit")]
-    #[test_case(CREATE_DEPOSIT_VALID, None, Some(999_999), "deposit amount exceeds cap (999999)"; "above_max_limit")]
-    #[tokio::test]
-    async fn test_deposit_validate_limits_errors(
-        input: &str,
-        min: Option<u64>,
-        max: Option<u64>,
-        expected_error: &str,
-    ) {
-        let deposit_request = parse_request(input);
-        let limits = create_test_limits(min, max);
-
-        let result = deposit_request.validate(&limits, true);
+    async fn test_deposit_validate_limits_errors() {
+        let deposit = tx_setup(14, DEPOSIT_DUST_LIMIT - 1, &[DEPOSIT_DUST_LIMIT - 1]);
+        let deposit_request = CreateDepositRequestBody {
+            bitcoin_txid: deposit.tx.compute_txid().to_string(),
+            bitcoin_tx_output_index: 0,
+            reclaim_script: deposit
+                .reclaims
+                .first()
+                .unwrap()
+                .reclaim_script()
+                .to_hex_string(),
+            deposit_script: deposit
+                .deposits
+                .first()
+                .unwrap()
+                .deposit_script()
+                .to_hex_string(),
+            transaction_hex: serialize_hex(&deposit.tx),
+        };
+        let result = deposit_request.validate(true);
 
         assert_eq!(
             result.unwrap_err().to_string(),
-            format!("HTTP request failed with status code 400 Bad Request: {expected_error}")
+            format!("HTTP request failed with status code 400 Bad Request: deposit amount below dust limit ({DEPOSIT_DUST_LIMIT})")
         );
     }
 }
