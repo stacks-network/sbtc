@@ -25,7 +25,6 @@ use wsts::state_machine::coordinator::fire;
 use wsts::state_machine::coordinator::frost;
 use wsts::state_machine::coordinator::Config;
 use wsts::state_machine::coordinator::Coordinator as _;
-use wsts::state_machine::coordinator::SavedState;
 use wsts::state_machine::coordinator::State as WstsState;
 use wsts::state_machine::OperationResult;
 use wsts::state_machine::StateMachine as _;
@@ -125,9 +124,6 @@ where
 
     /// Gets the coordinator configuration.
     fn get_config(&self) -> Config;
-
-    /// Save the state required to reconstruct the state machine.
-    fn save(&self) -> SavedState;
 
     /// Create a new coordinator state machine from the given aggregate
     /// key.
@@ -234,10 +230,6 @@ impl WstsCoordinator for FireCoordinator {
         self.0.get_config()
     }
 
-    fn save(&self) -> SavedState {
-        self.0.save()
-    }
-
     async fn load<S>(
         storage: &S,
         aggregate_key: PublicKeyXOnly,
@@ -273,29 +265,6 @@ impl WstsCoordinator for FireCoordinator {
             .map_err(Error::wsts_coordinator)?;
 
         Ok(coordinator)
-    }
-
-    fn process_message(
-        &mut self,
-        message: &Message,
-    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
-        let packet = Packet::from_message(message);
-        self.0
-            .process_message(&packet)
-            .map_err(Error::wsts_coordinator)
-    }
-
-    fn process_inbound_messages(
-        &mut self,
-        messages: &[Message],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
-        let packets = messages
-            .iter()
-            .map(Packet::from_message)
-            .collect::<Vec<_>>();
-        self.0
-            .process_inbound_messages(&packets)
-            .map_err(Error::wsts_coordinator)
     }
 
     fn process_packet(
@@ -370,10 +339,6 @@ impl WstsCoordinator for FrostCoordinator {
         self.0.get_config()
     }
 
-    fn save(&self) -> SavedState {
-        self.0.save()
-    }
-
     async fn load<S>(
         storage: &S,
         aggregate_key: PublicKeyXOnly,
@@ -409,29 +374,6 @@ impl WstsCoordinator for FrostCoordinator {
             .map_err(Error::wsts_coordinator)?;
 
         Ok(coordinator)
-    }
-
-    fn process_message(
-        &mut self,
-        message: &Message,
-    ) -> Result<(Option<Packet>, Option<OperationResult>), Error> {
-        let packet = Packet::from_message(message);
-        self.0
-            .process_message(&packet)
-            .map_err(Error::wsts_coordinator)
-    }
-
-    fn process_inbound_messages(
-        &mut self,
-        messages: &[Message],
-    ) -> Result<(Vec<Packet>, Vec<OperationResult>), Error> {
-        let packets = messages
-            .iter()
-            .map(Packet::from_message)
-            .collect::<Vec<_>>();
-        self.0
-            .process_inbound_messages(&packets)
-            .map_err(Error::wsts_coordinator)
     }
 
     fn process_packet(

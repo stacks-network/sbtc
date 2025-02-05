@@ -1152,7 +1152,6 @@ where
         let signer_set = self.context.state().current_signer_public_keys();
         tokio::pin!(signal_stream);
 
-        coordinator_state_machine.save();
         // Let's get the next message from the network or the
         // TxSignerEventLoop.
         //
