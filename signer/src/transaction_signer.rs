@@ -513,7 +513,6 @@ where
                     aggregate_key,
                     chain_tip.block_hash,
                 ));
-                dbg!(&self.wsts_frost_results);
 
                 if !matches!(frost_result, Some(true)) {
                     tracing::warn!("no successful frost signing round for the pre-rotate-keys verification signing round; refusing to sign");
