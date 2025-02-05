@@ -128,16 +128,7 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub network: Network,
     /// Private key of the signer for network communication.
     pub signer_private_key: PrivateKey,
-    /// WSTS state machines for active signing rounds and DKG rounds
-    ///
-    /// - For signing rounds, the TxID is the ID of the transaction to be
-    ///   signed.
-    ///
-    /// - For DKG rounds, TxID should be the ID of the transaction that
-    ///   defined the signer set.
-    ///
-    /// - For signing arbitrary data, the TxID is all zeroes.
-    ///
+    /// WSTS state machines for active signing and DKG rounds.
     pub wsts_state_machines: LruCache<StateMachineId, SignerStateMachine>,
     /// The threshold for the signer
     pub threshold: u32,
