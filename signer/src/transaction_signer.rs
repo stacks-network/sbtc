@@ -1115,7 +1115,7 @@ where
                 .process(outbound_message)
                 .map_err(Error::Wsts)?;
 
-            if let Some(frost_coordinator) = &mut frost_coordinator {
+            if let Some(ref mut frost_coordinator) = frost_coordinator {
                 frost_coordinator.process_message(outbound_message)?;
             }
         }
