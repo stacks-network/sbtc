@@ -519,3 +519,78 @@ async fn rotate_key_validation_replay() {
 
     testing::storage::drop_db(db).await;
 }
+
+async fn set_verification_status(db: &PgStore, aggregate_key: PublicKey, status: DkgSharesStatus) {
+    sqlx::query(
+        r#"
+        UPDATE sbtc_signer.dkg_shares
+        SET dkg_shares_status = $1
+        WHERE aggregate_key = $2
+        "#,
+    )
+    .bind(status)
+    .bind(aggregate_key)
+    .execute(db.pool())
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn rotate_key_validation_not_verfied() {
+    // Normal: preamble
+    let mut db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 20,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: 0,
+        consecutive_blocks: false,
+    };
+    let test_data = TestData::generate(&mut rng, &[], &test_model_params);
+    test_data.write_to(&mut db).await;
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+
+    let setup = TestRotateKeySetup::new(&db, 2, 3, &mut rng).await;
+
+    // Normal: we store setup dkg shares
+    setup.store_dkg_shares(&db).await;
+
+    // Different: mark the shares as failed.
+    set_verification_status(&db, setup.aggregate_key(), DkgSharesStatus::Failed).await;
+
+    // Normal: we get the rotate key from the setup
+    let (rotate_key_tx, req_ctx) = make_rotate_key(&setup);
+
+    let validate_future = rotate_key_tx.validate(&ctx, &req_ctx);
+    match validate_future.await.unwrap_err() {
+        Error::RotateKeysValidation(ref err) => {
+            assert_eq!(err.error, RotateKeysErrorMsg::SecretSharesNotVerified)
+        }
+        err => panic!("unexpected error during validation {err}"),
+    }
+
+    // Different: mark the shares as unverified.
+    set_verification_status(&db, setup.aggregate_key(), DkgSharesStatus::Unverified).await;
+
+    let validate_future = rotate_key_tx.validate(&ctx, &req_ctx);
+    match validate_future.await.unwrap_err() {
+        Error::RotateKeysValidation(ref err) => {
+            assert_eq!(err.error, RotateKeysErrorMsg::SecretSharesNotVerified)
+        }
+        err => panic!("unexpected error during validation {err}"),
+    }
+
+    // Well this is the regular happy path. Everything should validate now.
+    set_verification_status(&db, setup.aggregate_key(), DkgSharesStatus::Verified).await;
+
+    rotate_key_tx.validate(&ctx, &req_ctx).await.unwrap();
+
+    testing::storage::drop_db(db).await;
+}

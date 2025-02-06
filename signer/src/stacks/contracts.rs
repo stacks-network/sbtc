@@ -1143,14 +1143,8 @@ impl AsContractCall for RotateKeysV1 {
         }
 
         // 4. That the DKG shares are in the verified state.
-        match latest_dkg.dkg_shares_status {
-            DkgSharesStatus::Unverified => {
-                return Err(Error::DkgSharesNotVerified(latest_dkg.aggregate_key));
-            }
-            DkgSharesStatus::Failed => {
-                return Err(Error::DkgSharesRevoked(latest_dkg.aggregate_key));
-            }
-            DkgSharesStatus::Verified => {}
+        if !matches!(latest_dkg.dkg_shares_status, DkgSharesStatus::Verified) {
+            return Err(RotateKeysErrorMsg::SecretSharesNotVerified.into_error(req_ctx, self));
         }
 
         // 5. That the signature threshold matches the one that was used in the
@@ -1221,6 +1215,10 @@ pub enum RotateKeysErrorMsg {
     /// There is already a key rotation with the same details.
     #[error("there is already a key rotation with the same details")]
     KeyRotationExists,
+    /// The aggregate key is known but the associated secret shares have
+    /// not passed verification.
+    #[error("the shares associated with the aggregate key have not passes verification")]
+    SecretSharesNotVerified,
 }
 
 impl RotateKeysErrorMsg {
