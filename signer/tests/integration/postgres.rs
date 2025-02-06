@@ -1325,7 +1325,7 @@ async fn fetching_deposit_request_votes() {
         signatures_required: 4,
     };
     let shares = EncryptedDkgShares {
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..signer_set_config.fake_with_rng(&mut rng)
     };
 
@@ -1540,7 +1540,7 @@ async fn fetching_withdrawal_request_votes() {
         signatures_required: 4,
     };
     let shares = EncryptedDkgShares {
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..signer_set_config.fake_with_rng(&mut rng)
     };
 
@@ -1788,6 +1788,8 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(&mut rng)],
         signature_share_threshold: 1,
         status: Faker.fake_with_rng(&mut rng),
+        started_at_bitcoin_block_hash: fake::Faker.fake_with_rng(&mut rng),
+        started_at_bitcoin_block_height: fake::Faker.fake_with_rng::<u32, _>(&mut rng) as u64,
     };
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
     mem.write_encrypted_dkg_shares(&shares).await.unwrap();
@@ -3395,7 +3397,8 @@ async fn write_and_get_dkg_shares_is_pending() {
         public_shares: vec![],
         signer_set_public_keys: vec![],
         signature_share_threshold: 1,
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
+        ..fake::Faker.fake()
     };
 
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
@@ -3417,7 +3420,7 @@ async fn verify_dkg_shares_succeeds() {
 
     // We start with a pending entry.
     let insert = EncryptedDkgShares {
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..Faker.fake()
     };
 
@@ -3449,7 +3452,7 @@ async fn verify_dkg_shares_succeeds() {
     // Assert that the status is now verified and that the block hash and height
     // are correct, and that the rest of the fields remain the same.
     let compare = EncryptedDkgShares {
-        status: DkgSharesStatus::Verified(block.into()),
+        status: DkgSharesStatus::Verified,
         ..insert.clone()
     };
     assert_eq!(select, compare);
@@ -3463,7 +3466,7 @@ async fn revoke_dkg_shares_succeeds() {
 
     // We start with a pending entry.
     let insert = EncryptedDkgShares {
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..Faker.fake()
     };
 
@@ -3496,7 +3499,7 @@ async fn revoke_dkg_shares_succeeds() {
     // Assert that the status is now revoked and that the rest of the fields
     // remain the same.
     let compare = EncryptedDkgShares {
-        status: DkgSharesStatus::Revoked,
+        status: DkgSharesStatus::Failed,
         ..insert.clone()
     };
     assert_eq!(select, compare);
@@ -3510,7 +3513,7 @@ async fn revoke_verified_dkg_shares_succeeds() {
 
     // We start with a pending entry.
     let insert = EncryptedDkgShares {
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..Faker.fake()
     };
 
@@ -3556,7 +3559,7 @@ async fn revoke_verified_dkg_shares_succeeds() {
     // Assert that the status is now revoked and that the rest of the fields
     // remain the same.
     let compare = EncryptedDkgShares {
-        status: DkgSharesStatus::Revoked,
+        status: DkgSharesStatus::Failed,
         ..insert.clone()
     };
     assert_eq!(select, compare);
@@ -3588,7 +3591,7 @@ async fn verify_revoked_dkg_shares_fails() {
 
     // We start with a pending entry.
     let insert = EncryptedDkgShares {
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..Faker.fake()
     };
 
@@ -3633,7 +3636,7 @@ async fn verify_revoked_dkg_shares_fails() {
     // Assert that the status is still revoked and that the rest of the fields
     // remain the same.
     let compare = EncryptedDkgShares {
-        status: DkgSharesStatus::Revoked,
+        status: DkgSharesStatus::Failed,
         ..insert.clone()
     };
     assert_eq!(select, compare);

@@ -997,7 +997,9 @@ mod tests {
             public_shares: Vec::new(),
             signer_set_public_keys: vec![aggregate_key],
             signature_share_threshold: 1,
-            status: DkgSharesStatus::Pending,
+            status: DkgSharesStatus::Unverified,
+            started_at_bitcoin_block_hash: block_hash.into(),
+            started_at_bitcoin_block_height: 1,
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

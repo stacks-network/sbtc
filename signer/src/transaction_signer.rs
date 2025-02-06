@@ -575,7 +575,7 @@ where
                     self.threshold,
                     self.signer_private_key,
                 )?;
-                let id = StateMachineId::Dkg(chain_tip.block_hash);
+                let id = StateMachineId::Dkg(*chain_tip);
                 self.wsts_state_machines.put(id, state_machine);
 
                 if let Some(pause) = self.dkg_begin_pause {
@@ -602,7 +602,7 @@ where
 
                 tracing::debug!("processing message");
 
-                let id = StateMachineId::Dkg(chain_tip.block_hash);
+                let id = StateMachineId::Dkg(*chain_tip);
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
@@ -612,7 +612,7 @@ where
 
                 tracing::debug!("processing message");
 
-                let id = StateMachineId::Dkg(chain_tip.block_hash);
+                let id = StateMachineId::Dkg(*chain_tip);
                 self.validate_sender(&id, request.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
@@ -623,7 +623,7 @@ where
 
                 tracing::debug!("processing message");
 
-                let id = StateMachineId::Dkg(chain_tip.block_hash);
+                let id = StateMachineId::Dkg(*chain_tip);
                 self.validate_sender(&id, request.signer_id, &msg_public_key)?;
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
@@ -640,7 +640,7 @@ where
                 }
 
                 tracing::debug!("processing message");
-                let id = StateMachineId::Dkg(chain_tip.block_hash);
+                let id = StateMachineId::Dkg(*chain_tip);
                 self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
@@ -1024,7 +1024,12 @@ where
             .get(id)
             .ok_or(Error::MissingStateMachine)?;
 
-        let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
+        let StateMachineId::Dkg(started_at) = id else {
+            return Err(Error::TypeConversion);
+        };
+
+        let encrypted_dkg_shares =
+            state_machine.get_encrypted_dkg_shares(&mut self.rng, started_at)?;
 
         tracing::debug!("🔐 storing DKG shares");
         self.context

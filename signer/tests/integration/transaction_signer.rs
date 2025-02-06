@@ -475,7 +475,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
 
     // We should have a state machine associated with the current chain tip
     // request message that we just received.
-    let id1 = StateMachineId::from(&chain_tip.block_hash);
+    let id1 = StateMachineId::from(&chain_tip);
     let state_machine = tx_signer.wsts_state_machines.get(&id1).unwrap();
     assert_eq!(state_machine.dkg_id, dkg_id);
     assert_eq!(tx_signer.wsts_state_machines.len(), 1);
@@ -507,7 +507,7 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
         .await
         .unwrap();
 
-    let id2 = StateMachineId::from(&report.chain_tip.block_hash);
+    let id2 = StateMachineId::from(&report.chain_tip);
     let state_machine = tx_signer.wsts_state_machines.get(&id2).unwrap();
     assert_eq!(state_machine.dkg_id, dkg_id);
     assert_eq!(tx_signer.wsts_state_machines.len(), 2);

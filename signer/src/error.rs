@@ -22,11 +22,11 @@ pub enum Error {
 
     /// The DKG shares for the provided aggregate key have not been verified.
     #[error("the dkg shares for the provided aggregate key have not been verified: {0}")]
-    DkgSharesNotVerified(Box<PublicKeyXOnly>),
+    DkgSharesNotVerified(PublicKey),
 
     /// The DKG shares for the provided aggregate key have been revoked.
     #[error("the provided aggregate key has been revoked: {0}")]
-    DkgSharesRevoked(Box<PublicKeyXOnly>),
+    DkgSharesRevoked(PublicKey),
 
     /// An IO error was returned from the [`bitcoin`] library. This is usually an
     /// error that occurred during encoding/decoding of bitcoin types.

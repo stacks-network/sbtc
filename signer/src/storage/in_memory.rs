@@ -1284,7 +1284,7 @@ impl super::DbWrite for SharedStore {
     {
         let mut store = self.lock().await;
         if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
-            shares.status = DkgSharesStatus::Revoked;
+            shares.status = DkgSharesStatus::Failed;
             Ok(true)
         } else {
             Ok(false)
@@ -1301,7 +1301,7 @@ impl super::DbWrite for SharedStore {
     {
         let mut store = self.lock().await;
         if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
-            shares.status = DkgSharesStatus::Verified(*bitcoin_block);
+            shares.status = DkgSharesStatus::Verified;
             Ok(true)
         } else {
             Ok(false)

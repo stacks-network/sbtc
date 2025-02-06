@@ -44,6 +44,7 @@ struct TestRotateKeySetup {
     /// Bitcoin chain tip used when generating current setup
     pub chain_tip: BitcoinBlock,
 }
+
 impl TestRotateKeySetup {
     pub async fn new<R>(
         db: &PgStore,
@@ -108,7 +109,6 @@ impl TestRotateKeySetup {
     /// Store mocked shares in dkg_shares table.
     pub async fn store_dkg_shares(&self, db: &PgStore) {
         let aggregate_key: PublicKey = self.aggregate_key();
-        let verified_at_block = self.chain_tip.clone().into();
 
         let shares = EncryptedDkgShares {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
@@ -118,7 +118,9 @@ impl TestRotateKeySetup {
             aggregate_key,
             signer_set_public_keys: self.signer_keys.clone(),
             signature_share_threshold: self.signatures_required,
-            status: DkgSharesStatus::Verified(verified_at_block),
+            status: DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: self.chain_tip.block_hash,
+            started_at_bitcoin_block_height: self.chain_tip.block_height,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }

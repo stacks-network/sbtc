@@ -440,7 +440,7 @@ pub struct SweptWithdrawalRequest {
 ///
 /// This struct represents the output of a successful run of distributed
 /// key generation (DKG) that was run by a set of signers.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct EncryptedDkgShares {
     /// The aggregate key for these shares
@@ -461,22 +461,18 @@ pub struct EncryptedDkgShares {
     /// In WSTS each signer may contribute a fixed portion of a single
     /// signature. This value specifies the total number of portions
     /// (shares) that are needed in order to construct a signature.
+    #[sqlx(try_from = "i32")]
     pub signature_share_threshold: u16,
     /// The current status of the DKG shares.
     pub status: DkgSharesStatus,
-}
-
-impl EncryptedDkgShares {
-    pub(super) const AGGREGATE_KEY: &str = "aggregate_key";
-    pub(super) const TWEAKED_AGGREGATE_KEY: &str = "tweaked_aggregate_key";
-    pub(super) const SCRIPT_PUBKEY: &str = "script_pubkey";
-    pub(super) const ENCRYPTED_PRIVATE_SHARES: &str = "encrypted_private_shares";
-    pub(super) const PUBLIC_SHARES: &str = "public_shares";
-    pub(super) const SIGNER_SET_PUBLIC_KEYS: &str = "signer_set_public_keys";
-    pub(super) const SIGNATURE_SHARE_THRESHOLD: &str = "signature_share_threshold";
-    pub(super) const DKG_SHARES_STATUS_ID: &str = "dkg_shares_status_id";
-    pub(super) const VERIFIED_AT_BITCOIN_BLOCK_HASH: &str = "verified_at_bitcoin_block_hash";
-    pub(super) const VERIFIED_AT_BITCOIN_BLOCK_HEIGHT: &str = "verified_at_bitcoin_block_height";
+    /// The block hash of the chain tip of the canonical bitcoin blockchain
+    /// when the DKG round associated with these shares started.
+    pub started_at_bitcoin_block_hash: BitcoinBlockHash,
+    /// The block height of the chain tip of the canonical bitcoin blockchain
+    /// when the DKG round associated with these shares started.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
+    pub started_at_bitcoin_block_height: u64,
 }
 
 /// Persisted public DKG shares from other signers
@@ -557,16 +553,19 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
     }
 }
 
-/// Possible states for `dkg_shares` entries.
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, strum::Display)]
+/// The possible states for DKG shares.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
+#[sqlx(type_name = "dkg_shares_status", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
+// #[strum(serialize_all = "snake_case")]
 pub enum DkgSharesStatus {
-    /// DKG round successful, pending verification via signing round.
-    Pending,
-    /// Successfully verified via signing round.
-    Verified(BitcoinBlockRef),
-    /// The DKG key has been revoked and should not be used.
-    Revoked,
+    /// The DKG shares have not passed or failed verification.
+    Unverified,
+    /// The DKG shares have passed or verification.
+    Verified,
+    /// The DKG shares have failed verification or the shares have not
+    /// passed verification within our configured window.
+    Failed,
 }
 
 /// The types of transactions the signer is interested in.
