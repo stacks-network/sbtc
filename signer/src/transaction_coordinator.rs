@@ -930,9 +930,9 @@ where
         tokio::pin!(signal_stream);
 
         let future = async {
-            let mut pending_signer = wallet.public_keys().clone();
+            let mut pending_signers = wallet.public_keys().clone();
 
-            while pending_signer.len() < signatures_required {
+            while wallet.public_keys().len() - pending_signers.len() < signatures_required {
                 // If signal_stream.next() returns None then one of the
                 // underlying streams has closed. That means either the
                 // network stream, the internal message stream, or the
@@ -961,7 +961,7 @@ where
                 let recovered_key = sig.signature.recover_ecdsa(multi_tx.digest());
 
                 if let Ok(key) = recovered_key {
-                    pending_signer.remove(&key);
+                    pending_signers.remove(&key);
                 }
 
                 // Stop collecting signatures once we have enough, but keep tracking responses
