@@ -2463,7 +2463,7 @@ impl super::DbWrite for PgStore {
         .bind(&shares.script_pubkey)
         .bind(&shares.signer_set_public_keys)
         .bind(i32::from(shares.signature_share_threshold))
-        .bind(shares.status)
+        .bind(shares.dkg_shares_status)
         .bind(shares.started_at_bitcoin_block_hash)
         .bind(started_at_bitcoin_block_height)
         .execute(&self.0)

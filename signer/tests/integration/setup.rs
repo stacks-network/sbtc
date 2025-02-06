@@ -380,7 +380,7 @@ impl TestSweepSetup {
             aggregate_key,
             signer_set_public_keys: self.signer_keys.clone(),
             signature_share_threshold: self.signatures_required,
-            status: model::DkgSharesStatus::Verified,
+            dkg_shares_status: model::DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
             started_at_bitcoin_block_height: 0,
         };
@@ -981,7 +981,7 @@ impl TestSweepSetup2 {
             aggregate_key,
             signer_set_public_keys: self.signers.keys.clone(),
             signature_share_threshold: self.signatures_required,
-            status: model::DkgSharesStatus::Verified,
+            dkg_shares_status: model::DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
             started_at_bitcoin_block_height: 0,
         };
