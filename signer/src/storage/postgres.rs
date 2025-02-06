@@ -1516,7 +1516,7 @@ impl super::DbRead for PgStore {
               , public_shares
               , signer_set_public_keys
               , signature_share_threshold
-              , dkg_shares_status_id
+              , dkg_shares_status
               , verified_at_bitcoin_block_hash
               , verified_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
@@ -2873,93 +2873,41 @@ impl super::DbWrite for PgStore {
     where
         X: Into<PublicKeyXOnly> + Send,
     {
-        let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
-
         let result = sqlx::query(
             r#"
             UPDATE sbtc_signer.dkg_shares
-            SET 
-                dkg_shares_status_id = 2
-              , verified_at_bitcoin_block_hash = NULL
-              , verified_at_bitcoin_block_height = NULL
-            WHERE 
-                substring(aggregate_key FROM 2) = $1;
+            SET dkg_shares_status = 'failed'
+            WHERE substring(aggregate_key FROM 2) = $1
+              AND dkg_shares_status = 'unverified'; -- only allow failing pending entries
             "#,
         )
         .bind(aggregate_key.into())
-        .execute(&mut *tx)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
-        let updated_rows = result.rows_affected();
-
-        if updated_rows > 1 {
-            tracing::warn!(
-                "expected to update 0..1 rows, but updated {} rows; rolling back transaction",
-                updated_rows
-            );
-            tx.rollback()
-                .await
-                .map_err(Error::SqlxRollbackTransaction)?;
-            return Err(Error::SqlxUpdatedRowsExpectation {
-                expected: 0..1,
-                actual: updated_rows,
-            });
-        }
-
-        tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
-
-        Ok(updated_rows == 1)
+        Ok(result.rows_affected() > 0)
     }
 
-    async fn verify_dkg_shares<X>(
-        &self,
-        aggregate_key: X,
-        bitcoin_block: &model::BitcoinBlockRef,
-    ) -> Result<bool, Error>
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {
-        let mut tx = self.0.begin().await.map_err(Error::SqlxBeginTransaction)?;
-
         let result = sqlx::query(
             r#"
             UPDATE sbtc_signer.dkg_shares
-            SET 
-                dkg_shares_status_id = 1
-              , verified_at_bitcoin_block_hash = $2
-              , verified_at_bitcoin_block_height = $3
-            WHERE 
-                substring(aggregate_key FROM 2) = $1
-                AND dkg_shares_status_id = 0; -- only allow verifying pending entries
+            SET dkg_shares_status = 'verified'
+            WHERE substring(aggregate_key FROM 2) = $1
+              AND dkg_shares_status = 'unverified'; -- only allow verifying pending entries
             "#,
         )
         .bind(aggregate_key.into())
-        .bind(bitcoin_block.block_hash)
-        .bind(i64::try_from(bitcoin_block.block_height).map_err(Error::ConversionDatabaseInt)?)
-        .execute(&mut *tx)
+        .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
 
-        let updated_rows = result.rows_affected();
-
-        if updated_rows > 1 {
-            tracing::warn!(
-                "expected to update 0..1 rows, but updated {} rows; rolling back transaction",
-                updated_rows
-            );
-            tx.rollback()
-                .await
-                .map_err(Error::SqlxRollbackTransaction)?;
-            return Err(Error::SqlxUpdatedRowsExpectation {
-                expected: 0..1,
-                actual: updated_rows,
-            });
-        }
-
-        tx.commit().await.map_err(Error::SqlxCommitTransaction)?;
-
-        Ok(updated_rows == 1)
+        //
+        Ok(result.rows_affected() > 0)
     }
 }
 

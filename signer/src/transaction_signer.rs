@@ -742,12 +742,8 @@ where
                             return Err(Error::InvalidSigningOperation);
                         }
 
-                        self.handle_dkg_verification_message(
-                            &chain_tip.block_hash,
-                            state_machine_id,
-                            &msg.inner,
-                        )
-                        .await?;
+                        self.handle_dkg_verification_message(state_machine_id, &msg.inner)
+                            .await?;
 
                         (state_machine_id, new_key)
                     }
@@ -833,12 +829,8 @@ where
                             return Err(Error::InvalidSigningOperation);
                         }
 
-                        self.handle_dkg_verification_message(
-                            &chain_tip.block_hash,
-                            state_machine_id,
-                            &msg.inner,
-                        )
-                        .await?;
+                        self.handle_dkg_verification_message(state_machine_id, &msg.inner)
+                            .await?;
                         state_machine_id
                     }
                 };
@@ -884,12 +876,8 @@ where
                     return Err(Error::InvalidSigningOperation);
                 }
 
-                self.handle_dkg_verification_message(
-                    &chain_tip.block_hash,
-                    state_machine_id,
-                    &msg.inner,
-                )
-                .await?;
+                self.handle_dkg_verification_message(state_machine_id, &msg.inner)
+                    .await?;
             }
             WstsNetMessage::SignatureShareResponse(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
@@ -914,12 +902,8 @@ where
                     .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                     .await?;
 
-                self.handle_dkg_verification_message(
-                    &chain_tip.block_hash,
-                    state_machine_id,
-                    &msg.inner,
-                )
-                .await?;
+                self.handle_dkg_verification_message(state_machine_id, &msg.inner)
+                    .await?;
             }
         }
 
@@ -1127,7 +1111,6 @@ where
     #[tracing::instrument(skip_all)]
     async fn handle_dkg_verification_message(
         &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
         id: StateMachineId,
         msg: &WstsNetMessage,
     ) -> Result<(), Error> {
@@ -1171,16 +1154,9 @@ where
                     .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
                 tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
 
-                let storage = self.context.get_storage_mut();
-                let bitcoin_chain_tip_block =
-                    storage
-                        .get_bitcoin_block(bitcoin_chain_tip)
-                        .await?
-                        .ok_or(Error::MissingBitcoinBlock(*bitcoin_chain_tip))?;
-
                 self.context
                     .get_storage_mut()
-                    .verify_dkg_shares(aggregate_key, &bitcoin_chain_tip_block.into())
+                    .verify_dkg_shares(aggregate_key)
                     .await?;
                 tracing::info!(
                     "🔐 DKG shares entry has been marked as verified; it is now able to be used"

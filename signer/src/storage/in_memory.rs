@@ -1291,11 +1291,7 @@ impl super::DbWrite for SharedStore {
         }
     }
 
-    async fn verify_dkg_shares<X>(
-        &self,
-        aggregate_key: X,
-        bitcoin_block: &model::BitcoinBlockRef,
-    ) -> Result<bool, Error>
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {

@@ -516,7 +516,6 @@ pub trait DbWrite {
     fn verify_dkg_shares<X>(
         &self,
         aggregate_key: X,
-        bitcoin_block: &model::BitcoinBlockRef,
     ) -> impl Future<Output = Result<bool, Error>> + Send
     where
         X: Into<PublicKeyXOnly> + Send;
