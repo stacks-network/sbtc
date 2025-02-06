@@ -407,7 +407,13 @@ impl StacksInteract for TestHarness {
         })
     }
 
-    async fn estimate_fees<T>(&self, _: &SignerWallet, _: &T, _: FeePriority) -> Result<u64, Error>
+    async fn estimate_fees<T>(
+        &self,
+        _: &SignerWallet,
+        _: &T,
+        _: FeePriority,
+        _: bool,
+    ) -> Result<u64, Error>
     where
         T: crate::stacks::contracts::AsTxPayload,
     {

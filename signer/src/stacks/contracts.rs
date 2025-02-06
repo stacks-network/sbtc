@@ -203,6 +203,14 @@ pub enum StacksTx {
     SmartContract(SmartContract),
 }
 
+impl StacksTx {
+    /// Returns true if the transaction is a rotate keys transaction, regardless
+    /// of the version.
+    pub fn is_rotate_keys(&self) -> bool {
+        matches!(self, StacksTx::ContractCall(ContractCall::RotateKeysV1(_)))
+    }
+}
+
 impl AsTxPayload for StacksTx {
     fn tx_payload(&self) -> TransactionPayload {
         match self {
