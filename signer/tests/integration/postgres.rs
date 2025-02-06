@@ -3429,23 +3429,11 @@ async fn verify_dkg_shares_succeeds() {
         ..Faker.fake()
     };
 
-    // We first need to write a bitcoin block to the database due to the FK
-    // when marking dkg shares as verified.
-    let block: BitcoinBlock = fake::Faker.fake();
-    db.write_bitcoin_block(&block)
-        .await
-        .expect("failed to write block");
-
     // Write the dkg_shares entry.
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
-    // Now try to verify.
-    let result = db
-        .verify_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as verified");
-
-    assert!(result, "verify_dkg_shares returned false");
+    // Now to verify the shares.
+    db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
 
     // Get the dkg_shares entry.
     let select = db
@@ -3475,24 +3463,11 @@ async fn revoke_dkg_shares_succeeds() {
         ..Faker.fake()
     };
 
-    // We first need to write a bitcoin block to the database due to the FK
-    // when marking dkg shares as verified.
-    let block: BitcoinBlock = fake::Faker.fake();
-    db.write_bitcoin_block(&block)
-        .await
-        .expect("failed to write block");
-
     // Write the dkg_shares entry.
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
-    // Now try to revoke.
-    let result = db
-        .revoke_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as revoked");
-
-    // This would only return false if the status was not pending.
-    assert!(result, "revoke_dkg_shares returned false");
+    // Now try to fail the keys.
+    db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
 
     // Get the dkg_shares entry we just inserted.
     let select = db
@@ -3512,48 +3487,7 @@ async fn revoke_dkg_shares_succeeds() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[tokio::test]
-async fn revoke_unverified_dkg_shares_succeeds() {
-    let db = testing::storage::new_test_database().await;
-
-    // We start with a pending entry.
-    let insert = EncryptedDkgShares {
-        dkg_shares_status: DkgSharesStatus::Unverified,
-        ..Faker.fake()
-    };
-
-    // Write the dkg_shares entry.
-    db.write_encrypted_dkg_shares(&insert).await.unwrap();
-
-    // Now try to revoke.
-    let result = db
-        .revoke_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as revoked");
-
-    // This would only return false if the dkg_shares entry wasn't found. We
-    // don't do any further checks here because that's handled in
-    // `test_write_and_revoke_encrypted_dkg_shares`.
-    assert!(result, "revoke_dkg_shares returned false");
-
-    // Get the dkg_shares entry we just inserted.
-    let select = db
-        .get_encrypted_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("database error")
-        .expect("no shares found");
-
-    // Assert that the status is now revoked and that the rest of the fields
-    // remain the same.
-    let compare = EncryptedDkgShares {
-        dkg_shares_status: DkgSharesStatus::Failed,
-        ..insert.clone()
-    };
-    assert_eq!(select, compare);
-
-    signer::testing::storage::drop_db(db).await;
-}
-
+/// This tests checks that calling
 #[tokio::test]
 async fn verification_status_one_way_street() {
     let db = testing::storage::new_test_database().await;
@@ -3568,29 +3502,22 @@ async fn verification_status_one_way_street() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to verify.
-    let result = db
-        .verify_dkg_shares(insert.aggregate_key)
+    db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+
+    let select1 = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
-        .expect("failed to mark shares as verified");
+        .expect("database error")
+        .expect("no shares found");
 
-    // This would only return false if the status was not pending. We don't do
-    // any further checks here because that's handled in
-    // `test_write_and_verify_encrypted_dkg_shares`.
-    assert!(result, "verify_dkg_shares returned false");
+    assert_eq!(select1.dkg_shares_status, DkgSharesStatus::Verified);
 
-    // Now try to revoke.
-    let result = db
-        .revoke_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as revoked");
-
-    // This would only return false if the dkg_shares entry wasn't found. We
-    // don't do any further checks here because that's handled in
-    // `test_write_and_revoke_encrypted_dkg_shares`.
-    assert!(!result, "revoke_dkg_shares returned true");
+    // Now try to revoke. This shouldn't have any effect because we have
+    // verified the shares already.
+    db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
 
     // Get the dkg_shares entry we just inserted.
-    let select = db
+    let select2 = db
         .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
         .expect("database error")
@@ -3601,7 +3528,8 @@ async fn verification_status_one_way_street() {
         ..insert
     };
 
-    assert_eq!(select, compare);
+    assert_eq!(select1, select2);
+    assert_eq!(select1, compare);
 
     // We start with a pending entry.
     let insert = EncryptedDkgShares {
@@ -3612,30 +3540,23 @@ async fn verification_status_one_way_street() {
     // Write the dkg_shares entry.
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
-    // Now try to verify.
-    let result = db
-        .revoke_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as verified");
-
-    // This would only return false if the status was not pending. We don't do
-    // any further checks here because that's handled in
-    // `test_write_and_verify_encrypted_dkg_shares`.
-    assert!(result, "revoke_dkg_shares returned false");
-
     // Now try to revoke.
-    let result = db
-        .verify_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as revoked");
+    db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
 
-    // This would only return false if the dkg_shares entry wasn't found. We
-    // don't do any further checks here because that's handled in
-    // `test_write_and_revoke_encrypted_dkg_shares`.
-    assert!(!result, "verify_dkg_shares returned true");
+    let select1 = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    assert_eq!(select1.dkg_shares_status, DkgSharesStatus::Failed);
+
+    // Now try to verify them. This should be a no-op, since the keys have
+    // already been marked as failed.
+    db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
 
     // Get the dkg_shares entry we just inserted.
-    let select = db
+    let select2 = db
         .get_encrypted_dkg_shares(insert.aggregate_key)
         .await
         .expect("database error")
@@ -3646,64 +3567,8 @@ async fn verification_status_one_way_street() {
         ..insert
     };
 
-    assert_eq!(select, compare);
+    assert_eq!(select1, select2);
+    assert_eq!(select1, compare);
 
     signer::testing::storage::drop_db(db).await;
-}
-
-#[tokio::test]
-async fn verify_revoked_dkg_shares_fails() {
-    let db = testing::storage::new_test_database().await;
-
-    // We start with a pending entry.
-    let insert = EncryptedDkgShares {
-        dkg_shares_status: DkgSharesStatus::Unverified,
-        ..Faker.fake()
-    };
-
-    // We first need to write a bitcoin block to the database due to the FK
-    // when marking dkg shares as verified.
-    let block: BitcoinBlock = fake::Faker.fake();
-    db.write_bitcoin_block(&block)
-        .await
-        .expect("failed to write block");
-
-    // Write the dkg_shares entry.
-    db.write_encrypted_dkg_shares(&insert).await.unwrap();
-
-    // Now try to revoke.
-    let result = db
-        .revoke_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as revoked");
-
-    // This would only return false if the dkg_shares entry wasn't found. We
-    // don't do any further checks here because that's handled in
-    // `test_write_and_revoke_encrypted_dkg_shares`.
-    assert!(result, "revoke_dkg_shares returned false");
-
-    // Now try to verify. This should fail.
-    let result = db
-        .verify_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("failed to mark shares as verified");
-
-    // This should only return true if the status is pending, which it is now
-    // revoked.
-    assert!(!result, "verify_dkg_shares returned true");
-
-    // Get the dkg_shares entry. It should be revoked.
-    let select = db
-        .get_encrypted_dkg_shares(insert.aggregate_key)
-        .await
-        .expect("database error")
-        .expect("no shares found");
-
-    // Assert that the status is still revoked and that the rest of the fields
-    // remain the same.
-    let compare = EncryptedDkgShares {
-        dkg_shares_status: DkgSharesStatus::Failed,
-        ..insert.clone()
-    };
-    assert_eq!(select, compare);
 }

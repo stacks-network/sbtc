@@ -2869,11 +2869,11 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<(), Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {
-        let result = sqlx::query(
+        sqlx::query(
             r#"
             UPDATE sbtc_signer.dkg_shares
             SET dkg_shares_status = 'failed'
@@ -2884,16 +2884,15 @@ impl super::DbWrite for PgStore {
         .bind(aggregate_key.into())
         .execute(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(result.rows_affected() > 0)
+        .map(|_| ())
+        .map_err(Error::SqlxQuery)
     }
 
-    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<(), Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {
-        let result = sqlx::query(
+        sqlx::query(
             r#"
             UPDATE sbtc_signer.dkg_shares
             SET dkg_shares_status = 'verified'
@@ -2904,10 +2903,8 @@ impl super::DbWrite for PgStore {
         .bind(aggregate_key.into())
         .execute(&self.0)
         .await
-        .map_err(Error::SqlxQuery)?;
-
-        //
-        Ok(result.rows_affected() > 0)
+        .map(|_| ())
+        .map_err(Error::SqlxQuery)
     }
 }
 
