@@ -60,6 +60,7 @@ use crate::storage::model;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
+use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
 
 use bitcoin::hashes::Hash as _;
@@ -376,19 +377,27 @@ where
         }
 
         let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
+
         // current_aggregate_key define which wallet can sign stacks tx interacting
         // with the registry smart contract; fallbacks to `aggregate_key` if it's
         // the first rotate key tx.
         let signing_key = &current_aggregate_key.unwrap_or(*aggregate_key);
 
-        self.construct_and_sign_rotate_key_transaction(
-            bitcoin_chain_tip,
-            signing_key,
-            &last_dkg.aggregate_key,
-            &wallet,
-        )
-        .await
-        .map(|_| ())
+        tracing::info!("preparing to submit a rotate-key transaction");
+        let txid = self
+            .construct_and_sign_rotate_key_transaction(
+                bitcoin_chain_tip,
+                signing_key,
+                &last_dkg.aggregate_key,
+                &wallet,
+            )
+            .await
+            .inspect_err(
+                |error| tracing::error!(%error, "failed to sign or submit rotate-key transaction"),
+            )?;
+
+        tracing::info!(%txid, "rotate-key transaction submitted successfully");
+        Ok(())
     }
 
     /// Constructs a BitcoinPreSignRequest from the given transaction package and
@@ -703,7 +712,10 @@ where
         ));
 
         // Rotate key transactions should be done as soon as possible, so
-        // we set the fee rate to the high priority fee.
+        // we set the fee rate to the high priority fee. We also require
+        // signatures from all signers, so we specify the total signer count
+        // as the number of signatures to include in the estimation transaction
+        // as each signature increases the transaction size.
         let tx_fee = self
             .context
             .get_stacks_client()
@@ -713,6 +725,51 @@ where
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
 
+        // We run a DKG signing round on the current bitcoin chain tip block
+        // hash using the new aggregate key using the FROST coordinator, which
+        // requires 100% signing participation vs. FIRE which only uses
+        // {threshold} signers.
+        //
+        // The idea behind this is that since the rotate-keys contract call is a
+        // Stacks transaction and thus only signed using the signers' private
+        // keys, we have no guarantees at this point that there wasn't a fault
+        // in the DKG process. By running a FROST signing round, we can
+        // cryptographically assert that all signers have signed with the new
+        // aggregate key, and thus have valid private shares before we proceed
+        // with the actual rotate keys transaction.
+        //
+        // Note that while we specify the threshold as `signatures_required` in
+        // the coordinator below, the FROST coordinator implicitly requires all
+        // signers to participate.
+        tracing::info!("running a FROST signing round on random data to assert that all signers have signed with the new aggregate key");
+        let mut coordinator_state_machine = FrostCoordinator::load(
+            &self.context.get_storage(),
+            rotate_key_aggregate_key.into(),
+            wallet.public_keys().iter().cloned(),
+            wallet.signatures_required(),
+            self.private_key,
+        )
+        .await?;
+
+        // We use the current bitcoin chain tip block hash as the data to sign
+        // as it is benign and can be validated by the signers. This may need
+        // to change in the future if we de-couple DKG from blocks.
+        let to_sign = bitcoin_chain_tip.as_byte_array().as_slice();
+        self.coordinate_signing_round(
+            bitcoin_chain_tip,
+            &mut coordinator_state_machine,
+            WstsMessageId::DkgVerification(*rotate_key_aggregate_key),
+            to_sign,
+            SignatureType::Schnorr
+        ).await
+        .inspect_err(|error| {
+            tracing::error!(%error, "failed to assert that all signers have signed random data with the new aggregate key; aborting");
+        })?;
+        tracing::info!(
+            "all signers have signed random data with the new aggregate key; proceeding"
+        );
+
+        // We can now proceed with the actual rotate key transaction.
         let sign_request = StacksTransactionSignRequest {
             aggregate_key: *aggregate_key,
             contract_tx: contract_call.into(),
@@ -758,7 +815,10 @@ where
         )
         .increment(1);
 
-        match self.context.get_stacks_client().submit_tx(&tx?).await {
+        // Submit the transaction to the Stacks node
+        let submit_tx_result = self.context.get_stacks_client().submit_tx(&tx?).await;
+
+        match submit_tx_result {
             Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
             Ok(SubmitTxResponse::Rejection(err)) => Err(err.into()),
             Err(err) => Err(err),
@@ -917,12 +977,13 @@ where
         let msg = sighashes.signers.to_raw_hash().to_byte_array();
 
         let txid = transaction.tx.compute_txid();
+        let message_id = txid.into();
         let instant = std::time::Instant::now();
         let signature = self
             .coordinate_signing_round(
                 bitcoin_chain_tip,
                 &mut coordinator_state_machine,
-                txid.into(),
+                message_id,
                 &msg,
                 SignatureType::Taproot(None),
             )
@@ -963,7 +1024,7 @@ where
                 .coordinate_signing_round(
                     bitcoin_chain_tip,
                     &mut coordinator_state_machine,
-                    txid.into(),
+                    message_id,
                     &msg,
                     SignatureType::Schnorr,
                 )
@@ -1195,7 +1256,7 @@ where
                 match coordinator_state_machine.process_message(&msg) {
                     Ok(val) => val,
                     Err(err) => {
-                        tracing::warn!(?msg, reason = %err, "ignoring packet");
+                        tracing::warn!(?msg, reason = %err, "ignoring message");
                         continue;
                     }
                 };

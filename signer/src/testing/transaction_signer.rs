@@ -60,6 +60,8 @@ where
                 threshold,
                 rng,
                 dkg_begin_pause: None,
+                dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+                dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
             },
             context,
         }
