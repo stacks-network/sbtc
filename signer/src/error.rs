@@ -688,9 +688,4 @@ impl Error {
     pub fn wsts_coordinator(err: wsts::state_machine::coordinator::Error) -> Self {
         Error::WstsCoordinator(Box::new(err))
     }
-
-    /// Convert a bitcoin consensus error to an `error::Error`
-    pub fn bitcoin_consensus(err: bitcoinconsensus::Error) -> Self {
-        Error::BitcoinConsensus(err)
-    }
 }
