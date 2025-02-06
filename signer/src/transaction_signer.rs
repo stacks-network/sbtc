@@ -575,8 +575,9 @@ where
                     self.threshold,
                     self.signer_private_key,
                 )?;
-                let id = StateMachineId::Dkg(*chain_tip);
-                self.wsts_state_machines.put(id, state_machine);
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.wsts_state_machines
+                    .put(state_machine_id, state_machine);
 
                 if let Some(pause) = self.dkg_begin_pause {
                     // Let's give the others some slack
@@ -586,7 +587,7 @@ where
                     tokio::time::sleep(pause).await;
                 }
 
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                self.relay_message(&state_machine_id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgPrivateBegin(request) => {
@@ -602,8 +603,8 @@ where
 
                 tracing::debug!("processing message");
 
-                let id = StateMachineId::Dkg(*chain_tip);
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.relay_message(&state_machine_id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgPublicShares(request) => {
@@ -612,9 +613,9 @@ where
 
                 tracing::debug!("processing message");
 
-                let id = StateMachineId::Dkg(*chain_tip);
-                self.validate_sender(&id, request.signer_id, &msg_public_key)?;
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.validate_sender(&state_machine_id, request.signer_id, &msg_public_key)?;
+                self.relay_message(&state_machine_id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgPrivateShares(request) => {
@@ -623,9 +624,9 @@ where
 
                 tracing::debug!("processing message");
 
-                let id = StateMachineId::Dkg(*chain_tip);
-                self.validate_sender(&id, request.signer_id, &msg_public_key)?;
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.validate_sender(&state_machine_id, request.signer_id, &msg_public_key)?;
+                self.relay_message(&state_machine_id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgEndBegin(request) => {
@@ -640,8 +641,8 @@ where
                 }
 
                 tracing::debug!("processing message");
-                let id = StateMachineId::Dkg(*chain_tip);
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.relay_message(&state_machine_id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::DkgEnd(request) => {
@@ -681,7 +682,7 @@ where
 
                 let db = self.context.get_storage();
 
-                let (id, aggregate_key) = match msg.id {
+                let (state_machine_id, aggregate_key) = match msg.id {
                     WstsMessageId::Dkg(_) => {
                         tracing::warn!("received message is not allowed in the current context");
                         return Ok(());
@@ -732,9 +733,8 @@ where
                         )
                         .await?;
 
-                        let (state_machine_id, _, mock_tx) = self
-                            .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
-                            .await?;
+                        let (state_machine_id, _, mock_tx) =
+                            self.ensure_dkg_verification_state_machine(new_key).await?;
 
                         let tap_sighash = mock_tx.compute_sighash()?;
                         if tap_sighash.as_byte_array() != request.message.as_slice() {
@@ -757,8 +757,9 @@ where
                 )
                 .await?;
 
-                self.wsts_state_machines.put(id, state_machine);
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                self.wsts_state_machines
+                    .put(state_machine_id, state_machine);
+                self.relay_message(&state_machine_id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await?;
             }
             WstsNetMessage::SignatureShareRequest(request) => {
@@ -778,7 +779,7 @@ where
 
                 let db = self.context.get_storage();
 
-                let id = match msg.id {
+                let state_machine_id = match msg.id {
                     WstsMessageId::Dkg(_) => {
                         tracing::warn!("received message is not allowed in the current context");
                         return Ok(());
@@ -819,9 +820,8 @@ where
                             "🔐 responding to signature-share-request for DKG verification signing"
                         );
 
-                        let (state_machine_id, _, mock_tx) = self
-                            .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
-                            .await?;
+                        let (state_machine_id, _, mock_tx) =
+                            self.ensure_dkg_verification_state_machine(new_key).await?;
 
                         let tap_sighash = mock_tx.compute_sighash()?;
                         if tap_sighash.as_byte_array() != request.message.as_slice() {
@@ -836,10 +836,10 @@ where
                 };
 
                 let response = self
-                    .relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                    .relay_message(&state_machine_id, msg.id, &msg.inner, &chain_tip.block_hash)
                     .await;
 
-                self.wsts_state_machines.pop(&id);
+                self.wsts_state_machines.pop(&state_machine_id);
                 response?;
             }
             WstsNetMessage::NonceResponse(request) => {
@@ -866,9 +866,8 @@ where
                     return Err(Error::InvalidSigningOperation);
                 }
 
-                let (state_machine_id, _, mock_tx) = self
-                    .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
-                    .await?;
+                let (state_machine_id, _, mock_tx) =
+                    self.ensure_dkg_verification_state_machine(new_key).await?;
 
                 let tap_sighash = mock_tx.compute_sighash()?;
                 if tap_sighash.as_byte_array() != request.message.as_slice() {
@@ -898,9 +897,8 @@ where
                 )
                 .await?;
 
-                let (state_machine_id, _, _) = self
-                    .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
-                    .await?;
+                let (state_machine_id, _, _) =
+                    self.ensure_dkg_verification_state_machine(new_key).await?;
 
                 self.handle_dkg_verification_message(state_machine_id, &msg.inner)
                     .await?;
@@ -960,13 +958,13 @@ where
     /// matches the signer in the corresponding state machine.
     fn validate_sender(
         &mut self,
-        id: &StateMachineId,
+        state_machine_id: &StateMachineId,
         signer_id: u32,
         sender_public_key: &PublicKey,
     ) -> Result<(), Error> {
-        let public_keys = match self.wsts_state_machines.get(id) {
+        let public_keys = match self.wsts_state_machines.get(state_machine_id) {
             Some(state_machine) => &state_machine.public_keys,
-            None => return Err(Error::MissingStateMachine),
+            None => return Err(Error::MissingStateMachine(*state_machine_id)),
         };
 
         let wsts_public_key = public_keys
@@ -1002,14 +1000,14 @@ where
     }
 
     #[tracing::instrument(skip(self))]
-    async fn store_dkg_shares(&mut self, id: &StateMachineId) -> Result<(), Error> {
+    async fn store_dkg_shares(&mut self, state_machine_id: &StateMachineId) -> Result<(), Error> {
         let state_machine = self
             .wsts_state_machines
-            .get(id)
-            .ok_or(Error::MissingStateMachine)?;
+            .get(state_machine_id)
+            .ok_or(Error::MissingStateMachine(*state_machine_id))?;
 
-        let StateMachineId::Dkg(started_at) = id else {
-            return Err(Error::UnexpectedStateMachineId(Box::new(*id)));
+        let StateMachineId::Dkg(started_at) = state_machine_id else {
+            return Err(Error::UnexpectedStateMachineId(Box::new(*state_machine_id)));
         };
 
         let encrypted_dkg_shares =
@@ -1071,7 +1069,6 @@ where
     /// which is being verified.
     async fn ensure_dkg_verification_state_machine(
         &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
         aggregate_key: PublicKeyXOnly,
     ) -> Result<
         (
@@ -1081,7 +1078,7 @@ where
         ),
         Error,
     > {
-        let state_machine_id = StateMachineId::RotateKey(aggregate_key, *bitcoin_chain_tip);
+        let state_machine_id = StateMachineId::RotateKey(aggregate_key);
 
         if !self
             .dkg_verification_state_machines
@@ -1098,7 +1095,7 @@ where
         let state_machine = self
             .dkg_verification_state_machines
             .get_mut(&state_machine_id)
-            .ok_or(Error::MissingFrostStateMachine(aggregate_key))?;
+            .ok_or(Error::MissingStateMachine(state_machine_id))?;
 
         let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
         let mock_tx = self
@@ -1111,23 +1108,25 @@ where
     #[tracing::instrument(skip_all)]
     async fn handle_dkg_verification_message(
         &mut self,
-        id: StateMachineId,
+        state_machine_id: StateMachineId,
         msg: &WstsNetMessage,
     ) -> Result<(), Error> {
         // We should only be handling messages for the DKG verification state
         // machine. We'll grab the aggregate key from the id as well.
-        let aggregate_key = match id {
-            StateMachineId::RotateKey(aggregate_key, _) => aggregate_key,
+        let aggregate_key = match state_machine_id {
+            StateMachineId::RotateKey(aggregate_key) => aggregate_key,
             _ => {
                 tracing::warn!("🔐 unexpected state machine id for DKG verification signing round");
-                return Err(Error::UnexpectedStateMachineId(Box::new(id)));
+                return Err(Error::UnexpectedStateMachineId(state_machine_id.into()));
             }
         };
 
-        let state_machine = self.dkg_verification_state_machines.get_mut(&id);
+        let state_machine = self
+            .dkg_verification_state_machines
+            .get_mut(&state_machine_id);
         let Some(state_machine) = state_machine else {
             tracing::warn!("🔐 missing FROST coordinator for DKG verification");
-            return Err(Error::MissingFrostStateMachine(aggregate_key));
+            return Err(Error::MissingStateMachine(state_machine_id));
         };
 
         tracing::trace!(?msg, "🔐 processing FROST coordinator message");
@@ -1137,9 +1136,9 @@ where
         match result {
             Some(OperationResult::SignTaproot(sig)) => {
                 tracing::info!("🔐 successfully completed DKG verification signing round");
-                self.dkg_verification_state_machines.pop(&id);
+                self.dkg_verification_state_machines.pop(&state_machine_id);
 
-                let Some(mock_tx) = self.dkg_verification_results.pop(&id) else {
+                let Some(mock_tx) = self.dkg_verification_results.pop(&state_machine_id) else {
                     tracing::warn!(
                         "🔐 missing mock transaction for DKG verification signing round"
                     );
@@ -1168,8 +1167,8 @@ where
                     ?error,
                     "🔐 failed to complete DKG verification signing round"
                 );
-                self.dkg_verification_results.pop(&id);
-                return Err(Error::DkgVerificationFailed(Box::new(aggregate_key)));
+                self.dkg_verification_results.pop(&state_machine_id);
+                return Err(Error::DkgVerificationFailed(aggregate_key));
             }
             None => {}
             result => {
@@ -1186,23 +1185,23 @@ where
     #[tracing::instrument(skip_all)]
     async fn relay_message(
         &mut self,
-        state_machine_id: StateMachineId,
+        state_machine_id: &StateMachineId,
         wsts_id: WstsMessageId,
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let Some(state_machine) = self.wsts_state_machines.get_mut(&state_machine_id) else {
+        let Some(state_machine) = self.wsts_state_machines.get_mut(state_machine_id) else {
             tracing::warn!("missing signing round");
-            return Err(Error::MissingStateMachine);
+            return Err(Error::MissingStateMachine(*state_machine_id));
         };
 
         // If this is a DKG verification then we need to process the message in
         // the frost coordinator as well to be able to properly follow the
         // signing round (which is otherwise handled by the signer state
         // machine).
-        let mut frost_coordinator = if let StateMachineId::RotateKey(_, _) = state_machine_id {
+        let mut frost_coordinator = if let StateMachineId::RotateKey(_) = state_machine_id {
             self.dkg_verification_state_machines
-                .get_mut(&state_machine_id)
+                .get_mut(state_machine_id)
         } else {
             None
         };
@@ -1229,8 +1228,8 @@ where
             // whether it has truly received all relevant messages from its
             // peers.
             if let WstsNetMessage::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) = outbound {
-                self.store_dkg_shares(&state_machine_id).await?;
-                self.wsts_state_machines.pop(&state_machine_id);
+                self.store_dkg_shares(state_machine_id).await?;
+                self.wsts_state_machines.pop(state_machine_id);
             }
             let msg = message::WstsMessage { id: wsts_id, inner: outbound };
 

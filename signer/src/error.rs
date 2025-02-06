@@ -12,10 +12,26 @@ use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
 use crate::storage::model::SigHash;
+use crate::wsts_state_machine::StateMachineId;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The DKG verification state machine raised an error.
+    #[error("the dkg verification state machine '{0}' raised an error: {1}")]
+    DkgVerificationStateMachine(
+        StateMachineId,
+        #[source] crate::dkg::DkgVerificationStateMachineError,
+    ),
+
+    /// The state machine with the given [`StateMachineId`] has expired.
+    #[error("the state machine with the given id has expired: {0}")]
+    StateMachineExpired(StateMachineId),
+
+    /// A state machine with the given [`StateMachineId`] already exists.
+    #[error("a state machine with the given id already exists: {0}")]
+    DuplicateStateMachine(StateMachineId),
+
     /// Unexpected [`StateMachineId`] in the given context.
     #[error("unexpected state machine id in the given context: {0:?}")]
     UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
@@ -47,13 +63,7 @@ pub enum Error {
     /// The rotate-key frost verification signing round failed for the aggregate
     /// key.
     #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
-    DkgVerificationFailed(Box<PublicKeyXOnly>),
-
-    /// No WSTS FROST state machine was found for the given aggregate key. This
-    /// state machine is used during the DKG verification signing round
-    /// following DKG.
-    #[error("no state machine found for frost signing round for the given aggregate key: {0}")]
-    MissingFrostStateMachine(PublicKeyXOnly),
+    DkgVerificationFailed(PublicKeyXOnly),
 
     /// Expected two aggregate keys to match, but they did not.
     #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
@@ -463,8 +473,8 @@ pub enum Error {
     MissingPublicKey,
 
     /// Missing state machine
-    #[error("missing state machine")]
-    MissingStateMachine,
+    #[error("missing state machine: {0}")]
+    MissingStateMachine(StateMachineId),
 
     /// Missing key rotation
     #[error("missing key rotation")]
@@ -568,6 +578,10 @@ pub enum Error {
     /// WSTS coordinator error.
     #[error("WSTS coordinator error: {0}")]
     WstsCoordinator(#[source] Box<wsts::state_machine::coordinator::Error>),
+
+    /// WSTS signing error.
+    #[error("WSTS signing error: {0:?}")]
+    WstsUnexpectedResult(Box<wsts::state_machine::OperationResult>),
 
     /// No chain tip found.
     #[error("no bitcoin chain tip")]
