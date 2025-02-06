@@ -1491,8 +1491,8 @@ impl super::DbRead for PgStore {
               , signer_set_public_keys
               , signature_share_threshold
               , dkg_shares_status
-              , verified_at_bitcoin_block_hash
-              , verified_at_bitcoin_block_height
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             WHERE substring(aggregate_key FROM 2) = $1;
             "#,
@@ -1517,8 +1517,8 @@ impl super::DbRead for PgStore {
               , signer_set_public_keys
               , signature_share_threshold
               , dkg_shares_status
-              , verified_at_bitcoin_block_hash
-              , verified_at_bitcoin_block_height
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             ORDER BY created_at DESC
             LIMIT 1;
@@ -2450,8 +2450,8 @@ impl super::DbWrite for PgStore {
               , signer_set_public_keys
               , signature_share_threshold
               , dkg_shares_status
-              , verified_at_bitcoin_block_hash
-              , verified_at_bitcoin_block_height
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING"#,

@@ -3569,7 +3569,7 @@ async fn revoke_verified_dkg_shares_succeeds() {
     let aggregate_key: PublicKeyXOnly = insert.aggregate_key.into();
     let (block_hash, block_height): (Option<Vec<u8>>, Option<i64>) = sqlx::query_as(
         r#"
-            SELECT verified_at_bitcoin_block_hash, verified_at_bitcoin_block_height
+            SELECT started_at_bitcoin_block_hash, started_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             WHERE substring(aggregate_key FROM 2) = $1
             "#,
