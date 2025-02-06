@@ -15,7 +15,7 @@ ALTER TABLE sbtc_signer.dkg_shares
 
 
 UPDATE sbtc_signer.dkg_shares
-SET dkg_shares_status_id = 'unverified';
+SET dkg_shares_status = 'unverified';
 
 -- These are all DKG shares associated scriptPubKeys that have been successfully spent
 UPDATE sbtc_signer.dkg_shares
