@@ -912,9 +912,9 @@ where
         // still sign the transaction as the signer simply signs the transaction
         // using their configured private key.
         let signatures_required = if req.contract_tx.is_rotate_keys() {
-            wallet.signatures_required()
-        } else {
             wallet.num_signers()
+        } else {
+            wallet.signatures_required()
         } as usize;
 
         // We ask for the signers to sign our transaction (including
@@ -932,6 +932,12 @@ where
         let future = async {
             let mut pending_signers = wallet.public_keys().clone();
 
+            // This serves as a "super-condition" relative to `multi_tx.num_signatures() < wallet.signatures_required()`:
+            // - We start with a full set of expected signers `pending_signers`.
+            // - Each valid signature is verified using `recover_ecdsa(multi_tx.digest())`, ensuring that only the
+            //   actual signers of the expected transaction digest can remove themselves from `pending_signers`.
+            // - We stop collecting signatures once we have enough, but keep tracking responses from remaining signers
+            //   for key rotation transactions.
             while wallet.public_keys().len() - pending_signers.len() < signatures_required {
                 // If signal_stream.next() returns None then one of the
                 // underlying streams has closed. That means either the
