@@ -78,7 +78,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Load the configuration file and/or environment variables.
-    let settings = Settings::new(args.config)?;
+    let settings = Settings::new(args.config).unwrap_or_else(|error| {
+        tracing::error!(%error, "failed to load the configuration file");
+        std::process::exit(1);
+    });
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
