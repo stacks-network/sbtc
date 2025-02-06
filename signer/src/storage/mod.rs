@@ -507,7 +507,7 @@ pub trait DbWrite {
     fn revoke_dkg_shares<X>(
         &self,
         aggregate_key: X,
-    ) -> impl Future<Output = Result<(), Error>> + Send
+    ) -> impl Future<Output = Result<bool, Error>> + Send
     where
         X: Into<PublicKeyXOnly> + Send;
 
@@ -516,7 +516,7 @@ pub trait DbWrite {
     fn verify_dkg_shares<X>(
         &self,
         aggregate_key: X,
-    ) -> impl Future<Output = Result<(), Error>> + Send
+    ) -> impl Future<Output = Result<bool, Error>> + Send
     where
         X: Into<PublicKeyXOnly> + Send;
 }
