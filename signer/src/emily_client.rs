@@ -136,6 +136,9 @@ pub trait EmilyInteract: Sync + Send {
 pub struct EmilyClient {
     config: EmilyApiConfig,
     pagination_timeout: Duration,
+    /// Maximum items returned per page. When set, responses will be limited to this many items.
+    /// Regardless of the page_size setting, responses are always capped at 1 MB total size.
+    /// If None, only the 1 MB cap applies.
     page_size: Option<u32>,
 }
 
@@ -477,13 +480,7 @@ impl TryFrom<&EmilyClientConfig> for ApiFallbackClient<EmilyClient> {
         let clients = config
             .endpoints
             .iter()
-            .map(|url| {
-                EmilyClient::try_new(
-                    url,
-                    config.pagination_timeout,
-                    config.page_size.map(|size| size.get()),
-                )
-            })
+            .map(|url| EmilyClient::try_new(url, config.pagination_timeout, None))
             .collect::<Result<Vec<_>, _>>()?;
 
         Self::new(clients).map_err(Into::into)

@@ -38,14 +38,6 @@ endpoints = [
     "http://testApiKey@localhost:3031",
 ]
 
-# Maximum deposits returned per page. Responses will be limited to this
-# many items. Regardless of the page_size setting, responses are always
-# capped at 1 MB total size. If not set, only the 1 MB cap applies.
-#
-# Required: false
-# Environment: SIGNER_EMILY__PAGE_SIZE
-# page_size = 100
-
 # The pagination timeout, in seconds, used to fetch deposits requests from Emily.
 # Required: true
 # Environment: SIGNER_EMILY__PAGINATION_TIMEOUT

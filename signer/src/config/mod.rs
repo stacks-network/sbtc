@@ -237,10 +237,6 @@ pub struct EmilyClientConfig {
     /// Pagination timeout in seconds.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub pagination_timeout: std::time::Duration,
-    /// Maximum items returned per page. When set, responses will be limited to this many items.
-    /// Regardless of the page_size setting, responses are always capped at 1 MB total size.
-    /// If None, only the 1 MB cap applies.
-    pub page_size: Option<NonZeroU16>,
 }
 
 impl Validatable for EmilyClientConfig {
@@ -640,7 +636,6 @@ mod tests {
             NonZeroU32::new(1).unwrap()
         );
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
-        assert_eq!(settings.emily.page_size, None);
         assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
     }
 
