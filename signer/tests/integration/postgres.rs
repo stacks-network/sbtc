@@ -3433,7 +3433,8 @@ async fn verify_dkg_shares_succeeds() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now to verify the shares.
-    db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    let result = db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "verify failed, when it should succeed");
 
     // Get the dkg_shares entry.
     let select = db
@@ -3467,7 +3468,8 @@ async fn revoke_dkg_shares_succeeds() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to fail the keys.
-    db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    let result = db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "revoke failed, when it should succeed");
 
     // Get the dkg_shares entry we just inserted.
     let select = db
@@ -3502,7 +3504,8 @@ async fn verification_status_one_way_street() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to verify.
-    db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    let result = db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "verify failed, when it should succeed");
 
     let select1 = db
         .get_encrypted_dkg_shares(insert.aggregate_key)
@@ -3514,7 +3517,8 @@ async fn verification_status_one_way_street() {
 
     // Now try to revoke. This shouldn't have any effect because we have
     // verified the shares already.
-    db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    let result = db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(!result, "revoking succeeded, when it should fail");
 
     // Get the dkg_shares entry we just inserted.
     let select2 = db
@@ -3541,7 +3545,8 @@ async fn verification_status_one_way_street() {
     db.write_encrypted_dkg_shares(&insert).await.unwrap();
 
     // Now try to revoke.
-    db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    let result = db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "revoke failed, when it should succeed");
 
     let select1 = db
         .get_encrypted_dkg_shares(insert.aggregate_key)
@@ -3553,7 +3558,8 @@ async fn verification_status_one_way_street() {
 
     // Now try to verify them. This should be a no-op, since the keys have
     // already been marked as failed.
-    db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    let result = db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(!result, "verify succeeded, when it should fail");
 
     // Get the dkg_shares entry we just inserted.
     let select2 = db
