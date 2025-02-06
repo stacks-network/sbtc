@@ -43,6 +43,7 @@ use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
+use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::GetNakamotoStartHeight;
@@ -719,7 +720,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High, true)
+            .estimate_fees(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -872,7 +873,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High, false)
+            .estimate_fees(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -914,7 +915,7 @@ where
             wallet.signatures_required()
         } else {
             wallet.num_signers()
-        };
+        } as usize;
 
         // We ask for the signers to sign our transaction (including
         // ourselves, via our tx signer event loop)
@@ -929,7 +930,9 @@ where
         tokio::pin!(signal_stream);
 
         let future = async {
-            while multi_tx.num_signatures() < signatures_required {
+            let mut pending_signer = wallet.public_keys().clone();
+
+            while pending_signer.len() < signatures_required {
                 // If signal_stream.next() returns None then one of the
                 // underlying streams has closed. That means either the
                 // network stream, the internal message stream, or the
@@ -953,6 +956,19 @@ where
                     Payload::StacksTransactionSignature(sig) if sig.txid == txid => sig,
                     _ => continue,
                 };
+
+                let enough_signatures = multi_tx.num_signatures() >= wallet.signatures_required();
+                let recovered_key = sig.signature.recover_ecdsa(multi_tx.digest());
+
+                if let Ok(key) = recovered_key {
+                    pending_signer.remove(&key);
+                }
+
+                // Stop collecting signatures once we have enough, but keep tracking responses
+                // from remaining signers for key rotation transactions
+                if enough_signatures {
+                    continue;
+                }
 
                 if let Err(error) = multi_tx.add_signature(sig.signature) {
                     tracing::warn!(
@@ -1552,12 +1568,7 @@ where
         let tx_fee = self
             .context
             .get_stacks_client()
-            .estimate_fees(
-                wallet,
-                &contract_deploy.tx_payload(),
-                FeePriority::High,
-                false,
-            )
+            .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
             .await?;
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();
