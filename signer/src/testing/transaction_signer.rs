@@ -264,7 +264,12 @@ async fn run_dkg_and_store_results_for_signers<'s: 'r, 'r, S, Rng>(
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
     let bitcoin_chain_tip = *chain_tip;
     let (_, all_dkg_shares) = testing_signer_set
-        .run_dkg(bitcoin_chain_tip, dkg_txid.into(), rng)
+        .run_dkg(
+            bitcoin_chain_tip,
+            dkg_txid.into(),
+            rng,
+            model::DkgSharesStatus::Verified,
+        )
         .await;
 
     for (storage, encrypted_dkg_shares) in stores.into_iter().zip(all_dkg_shares) {

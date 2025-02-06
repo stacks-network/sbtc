@@ -231,6 +231,14 @@ sbtc_bitcoin_start_height = 101
 # Environment: SIGNER_SIGNER__DKG_TARGET_ROUNDS
 # dkg_target_rounds = 1
 
+# The number of bitcoin blocks after a DKG start where we attempt to verify the
+# shares. After this many blocks, we mark the shares as failed. Please only use
+# this parameter when instructed to by the sBTC team.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__DKG_VERIFICATION_WINDOW
+# dkg_verification_window = 10
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
