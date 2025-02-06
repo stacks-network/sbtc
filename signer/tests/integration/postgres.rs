@@ -3436,7 +3436,7 @@ async fn verify_dkg_shares_succeeds() {
 
     // Now try to verify.
     let result = db
-        .verify_dkg_shares(insert.aggregate_key, &block.clone().into())
+        .verify_dkg_shares(insert.aggregate_key)
         .await
         .expect("failed to mark shares as verified");
 
@@ -3529,7 +3529,7 @@ async fn revoke_verified_dkg_shares_succeeds() {
 
     // Now try to verify.
     let result = db
-        .verify_dkg_shares(insert.aggregate_key, &block.clone().into())
+        .verify_dkg_shares(insert.aggregate_key)
         .await
         .expect("failed to mark shares as verified");
 
@@ -3618,7 +3618,7 @@ async fn verify_revoked_dkg_shares_fails() {
 
     // Now try to verify. This should fail.
     let result = db
-        .verify_dkg_shares(insert.aggregate_key, &block.clone().into())
+        .verify_dkg_shares(insert.aggregate_key)
         .await
         .expect("failed to mark shares as verified");
 
