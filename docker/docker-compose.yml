@@ -58,10 +58,7 @@ x-sbtc-signer: &sbtc-signer
     - sbtc-signer
 
 x-stacks-signer: &stacks-signer
-  build:
-    context: stacks
-    args:
-      GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
+  image: blockstack/stacks-core:3.1.0.0.5
   depends_on:
     - stacks-node
   volumes:
@@ -73,6 +70,8 @@ x-stacks-signer: &stacks-signer
     - /bin/bash
     - -c
     - |
+      apt-get update && apt-get install -y gettext-base
+      cd /data/
       set -e
       envsubst < config.toml.in > config.toml
       exec stacks-signer run --config config.toml
@@ -245,7 +244,7 @@ services:
   # Bitcoin / Burnchain.
   # --------------------
   bitcoin:
-    build: bitcoin
+    image: bitcoin/bitcoin:25.2
     ports:
       - "18443:18443"
       - "28332:28332"
@@ -324,10 +323,7 @@ services:
   # Stacks Blockchain.
   # ------------------
   stacks-node:
-    build:
-      context: stacks
-      args:
-        GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
+    image: blockstack/stacks-core:3.1.0.0.5
     depends_on:
       - bitcoin
     ports:
@@ -362,11 +358,13 @@ services:
       - /bin/bash
       - -c
       - |
+        apt-get update && apt-get install -y gettext-base
+        cd /data/
         set -e
         envsubst < config.toml.in > config.toml
-        bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
         exec stacks-node start --config config.toml
     profiles:
+        # bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
       - default
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -471,14 +469,9 @@ services:
       - default
 
   stacks-api:
-    image: stacks-api:latest
+    image: blockstack/stacks-blockchain-api:8.5.0
     container_name: stacks-api
     stop_grace_period: 5s
-    build:
-      context: stacks-api
-      args:
-        GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
-        GIT_BRANCH: "v8.0.3"
     ports:
       - 3999:3999
       - 3700:3700
@@ -506,14 +499,9 @@ services:
       - default
 
   stacks-explorer:
-    image: stacks-explorer
+    image: hirosystems/explorer:1.245.0
     container_name: stacks-explorer
     stop_grace_period: 5s
-    build:
-      context: stacks-explorer
-      args:
-        GIT_URI: "https://github.com/hirosystems/explorer.git"
-        GIT_BRANCH: "v1.211.2"
     ports:
       - 3020:3000
     depends_on:
