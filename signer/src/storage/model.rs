@@ -464,7 +464,7 @@ pub struct EncryptedDkgShares {
     #[sqlx(try_from = "i32")]
     pub signature_share_threshold: u16,
     /// The current status of the DKG shares.
-    pub status: DkgSharesStatus,
+    pub dkg_shares_status: DkgSharesStatus,
     /// The block hash of the chain tip of the canonical bitcoin blockchain
     /// when the DKG round associated with these shares started.
     pub started_at_bitcoin_block_hash: BitcoinBlockHash,

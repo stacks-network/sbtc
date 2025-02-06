@@ -1143,7 +1143,7 @@ impl AsContractCall for RotateKeysV1 {
         }
 
         // 4. That the DKG shares are in the verified state.
-        match latest_dkg.status {
+        match latest_dkg.dkg_shares_status {
             DkgSharesStatus::Unverified => {
                 return Err(Error::DkgSharesNotVerified(latest_dkg.aggregate_key));
             }

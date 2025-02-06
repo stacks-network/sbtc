@@ -525,7 +525,7 @@ impl SignerStateMachine {
             public_shares,
             signer_set_public_keys,
             signature_share_threshold,
-            status: DkgSharesStatus::Unverified,
+            dkg_shares_status: DkgSharesStatus::Unverified,
             started_at_bitcoin_block_hash: started_at.block_hash,
             started_at_bitcoin_block_height: started_at.block_height,
         })
