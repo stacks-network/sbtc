@@ -83,8 +83,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::new(args.config)?;
 
     tracing::info!(
-        signer_public_key = %PublicKey::from_private_key(&settings.signer.private_key),
-        "constructed signer settings",
+        signer_public_key = %&settings.signer.public_key(),
+        "signer public key",
     );
 
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
