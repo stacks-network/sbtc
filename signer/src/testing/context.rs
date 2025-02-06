@@ -438,6 +438,7 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
         wallet: &SignerWallet,
         payload: &T,
         priority: FeePriority,
+        require_all_signatures: bool,
     ) -> Result<u64, Error>
     where
         T: AsTxPayload + Send + Sync,
@@ -445,7 +446,7 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
         self.inner
             .lock()
             .await
-            .estimate_fees(wallet, payload, priority)
+            .estimate_fees(wallet, payload, priority, require_all_signatures)
             .await
     }
 

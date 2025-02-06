@@ -235,7 +235,7 @@ fn mock_deploy_all_contracts(
         // deployed and 1 for the deposit tx
         client
             .expect_estimate_fees()
-            .returning(|_, _, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _, _| Box::pin(async { Ok(100) }));
 
         client.expect_get_account().returning(move |_| {
             Box::pin(async move {
@@ -302,7 +302,7 @@ fn mock_deploy_remaining_contracts_when_some_already_deployed(
         client
             .expect_estimate_fees()
             .times(3)
-            .returning(|_, _, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _, _| Box::pin(async { Ok(100) }));
 
         client.expect_get_account().times(3).returning(move |_| {
             Box::pin(async move {
@@ -350,18 +350,21 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
         client
             .expect_estimate_fees()
             .once()
-            .returning(|_, _, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _, _| Box::pin(async { Ok(100) }));
 
         // In the process of deploying the second contract, the coordinator
         // will fail to estimate fees and it will abort the deployment It
         // will try again from scratch when It'll receive a second signal.
-        client.expect_estimate_fees().times(1).returning(|_, _, _| {
-            Box::pin(async {
-                Err(Error::UnexpectedStacksResponse(
-                    mock_reqwests_status_code_error(500).await,
-                ))
-            })
-        });
+        client
+            .expect_estimate_fees()
+            .times(1)
+            .returning(|_, _, _, _| {
+                Box::pin(async {
+                    Err(Error::UnexpectedStacksResponse(
+                        mock_reqwests_status_code_error(500).await,
+                    ))
+                })
+            });
 
         // The coordinator should try again from scratch. For the first
         // contract we will return the contract source as if it was already
@@ -396,7 +399,7 @@ fn mock_recover_and_deploy_all_contracts_after_failure(
         client
             .expect_estimate_fees()
             .times(4)
-            .returning(|_, _, _| Box::pin(async { Ok(100) }));
+            .returning(|_, _, _, _| Box::pin(async { Ok(100) }));
 
         // `get_account` will be called 6 times, 2 for the first try to
         // deploy the contracts, 4 for the second try
@@ -475,7 +478,7 @@ async fn process_complete_deposit() {
             client
                 .expect_estimate_fees()
                 .once()
-                .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
+                .returning(move |_, _, _, _| Box::pin(async move { Ok(25505) }));
         })
         .await;
 
@@ -869,7 +872,7 @@ async fn run_dkg_from_scratch() {
         ctx.with_stacks_client(|client| {
             client
                 .expect_estimate_fees()
-                .returning(|_, _, _| Box::pin(async { Ok(123000) }));
+                .returning(|_, _, _, _| Box::pin(async { Ok(123000) }));
 
             client.expect_get_account().returning(|_| {
                 Box::pin(async {
@@ -1115,7 +1118,7 @@ async fn run_subsequent_dkg() {
         ctx.with_stacks_client(|client| {
             client
                 .expect_estimate_fees()
-                .returning(|_, _, _| Box::pin(async { Ok(123000) }));
+                .returning(|_, _, _, _| Box::pin(async { Ok(123000) }));
 
             client.expect_get_account().returning(|_| {
                 Box::pin(async {
@@ -1397,7 +1400,7 @@ async fn sign_bitcoin_transaction() {
 
             client
                 .expect_estimate_fees()
-                .returning(|_, _, _| Box::pin(std::future::ready(Ok(25))));
+                .returning(|_, _, _, _| Box::pin(std::future::ready(Ok(25))));
 
             // The coordinator will try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
@@ -1828,7 +1831,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
 
             client
                 .expect_estimate_fees()
-                .returning(|_, _, _| Box::pin(std::future::ready(Ok(25))));
+                .returning(|_, _, _, _| Box::pin(std::future::ready(Ok(25))));
 
             // The coordinator will try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
@@ -2418,7 +2421,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
 
             client
                 .expect_estimate_fees()
-                .returning(|_, _, _| Box::pin(std::future::ready(Ok(25))));
+                .returning(|_, _, _, _| Box::pin(std::future::ready(Ok(25))));
 
             // The coordinator will try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
@@ -3202,7 +3205,7 @@ async fn test_conservative_initial_sbtc_limits() {
 
             client
                 .expect_estimate_fees()
-                .returning(|_, _, _| Box::pin(std::future::ready(Ok(25))));
+                .returning(|_, _, _, _| Box::pin(std::future::ready(Ok(25))));
 
             // The coordinator will try to further process the deposit to submit
             // the stacks tx, but we are not interested (for the current test iteration).
