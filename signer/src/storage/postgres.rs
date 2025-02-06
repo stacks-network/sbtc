@@ -2869,7 +2869,7 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
-    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<(), Error>
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {
@@ -2884,11 +2884,11 @@ impl super::DbWrite for PgStore {
         .bind(aggregate_key.into())
         .execute(&self.0)
         .await
-        .map(|_| ())
+        .map(|res| res.rows_affected() > 0)
         .map_err(Error::SqlxQuery)
     }
 
-    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<(), Error>
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {
@@ -2903,7 +2903,7 @@ impl super::DbWrite for PgStore {
         .bind(aggregate_key.into())
         .execute(&self.0)
         .await
-        .map(|_| ())
+        .map(|res| res.rows_affected() > 0)
         .map_err(Error::SqlxQuery)
     }
 }

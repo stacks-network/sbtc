@@ -1278,25 +1278,29 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<(), Error>
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {
         let mut store = self.lock().await;
         if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
             shares.dkg_shares_status = DkgSharesStatus::Failed;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 
-    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<(), Error>
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
     where
         X: Into<PublicKeyXOnly> + Send,
     {
         let mut store = self.lock().await;
         if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
             shares.dkg_shares_status = DkgSharesStatus::Verified;
+            Ok(true)
+        } else {
+            Ok(false)
         }
-        Ok(())
     }
 }
