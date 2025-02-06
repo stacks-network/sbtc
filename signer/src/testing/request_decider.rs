@@ -178,7 +178,7 @@ where
             &handle.context.get_storage_mut(),
             group_key,
             signer_set.clone(),
-            DkgSharesStatus::Verified(test_data.bitcoin_blocks[0].clone().into()),
+            DkgSharesStatus::Verified,
         )
         .await;
 
@@ -344,7 +344,7 @@ where
                 &handle.context.get_storage_mut(),
                 group_key,
                 signer_set.clone(),
-                DkgSharesStatus::Verified(test_data.bitcoin_blocks[0].clone().into()),
+                DkgSharesStatus::Verified,
             )
             .await;
         }

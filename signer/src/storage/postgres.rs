@@ -1490,7 +1490,7 @@ impl super::DbRead for PgStore {
               , public_shares
               , signer_set_public_keys
               , signature_share_threshold
-              , dkg_shares_status_id
+              , dkg_shares_status
               , verified_at_bitcoin_block_hash
               , verified_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
@@ -2436,20 +2436,8 @@ impl super::DbWrite for PgStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Error> {
-        let mut verified_at_bitcoin_block_hash: Option<model::BitcoinBlockHash> = None;
-        let mut verified_at_bitcoin_block_height: Option<i64> = None;
-
-        let dkg_shares_status_id = match shares.status {
-            model::DkgSharesStatus::Pending => 0,
-            model::DkgSharesStatus::Verified(block) => {
-                verified_at_bitcoin_block_hash = Some(block.block_hash);
-                let block_height =
-                    i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?;
-                verified_at_bitcoin_block_height = Some(block_height);
-                1
-            }
-            model::DkgSharesStatus::Revoked => 2,
-        };
+        let started_at_bitcoin_block_height = i64::try_from(shares.started_at_bitcoin_block_height)
+            .map_err(Error::ConversionDatabaseInt)?;
 
         sqlx::query(
             r#"
@@ -2461,7 +2449,7 @@ impl super::DbWrite for PgStore {
               , script_pubkey
               , signer_set_public_keys
               , signature_share_threshold
-              , dkg_shares_status_id
+              , dkg_shares_status
               , verified_at_bitcoin_block_hash
               , verified_at_bitcoin_block_height
             )
@@ -2475,9 +2463,9 @@ impl super::DbWrite for PgStore {
         .bind(&shares.script_pubkey)
         .bind(&shares.signer_set_public_keys)
         .bind(i32::from(shares.signature_share_threshold))
-        .bind(dkg_shares_status_id)
-        .bind(verified_at_bitcoin_block_hash)
-        .bind(verified_at_bitcoin_block_height)
+        .bind(shares.status)
+        .bind(shares.started_at_bitcoin_block_hash)
+        .bind(started_at_bitcoin_block_height)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

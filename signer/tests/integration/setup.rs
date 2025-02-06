@@ -36,7 +36,6 @@ use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
-use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
@@ -373,10 +372,6 @@ impl TestSweepSetup {
     /// associated with the signers aggregate key.
     pub async fn store_dkg_shares(&self, db: &PgStore) {
         let aggregate_key: PublicKey = self.aggregated_signer.keypair.public_key().into();
-        let verified_at = BitcoinBlockRef {
-            block_hash: self.deposit_block_hash.into(),
-            block_height: 0,
-        };
         let shares = EncryptedDkgShares {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
@@ -385,7 +380,9 @@ impl TestSweepSetup {
             aggregate_key,
             signer_set_public_keys: self.signer_keys.clone(),
             signature_share_threshold: self.signatures_required,
-            status: model::DkgSharesStatus::Verified(verified_at),
+            status: model::DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
+            started_at_bitcoin_block_height: 0,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }
@@ -976,11 +973,6 @@ impl TestSweepSetup2 {
                 .expect("failed to encrypt");
         let public_shares: BTreeMap<u32, wsts::net::DkgPublicShares> = BTreeMap::new();
 
-        let verified_at = BitcoinBlockRef {
-            block_hash: self.deposit_block_hash.into(),
-            block_height: 0,
-        };
-
         let shares = EncryptedDkgShares {
             script_pubkey: aggregate_key.signers_script_pubkey().into(),
             tweaked_aggregate_key: aggregate_key.signers_tweaked_pubkey().unwrap(),
@@ -989,7 +981,9 @@ impl TestSweepSetup2 {
             aggregate_key,
             signer_set_public_keys: self.signers.keys.clone(),
             signature_share_threshold: self.signatures_required,
-            status: model::DkgSharesStatus::Verified(verified_at),
+            status: model::DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
+            started_at_bitcoin_block_height: 0,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }

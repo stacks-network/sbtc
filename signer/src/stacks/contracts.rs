@@ -1144,17 +1144,13 @@ impl AsContractCall for RotateKeysV1 {
 
         // 4. That the DKG shares are in the verified state.
         match latest_dkg.status {
-            DkgSharesStatus::Pending => {
-                return Err(Error::DkgSharesNotVerified(Box::new(
-                    latest_dkg.aggregate_key.into(),
-                )));
+            DkgSharesStatus::Unverified => {
+                return Err(Error::DkgSharesNotVerified(latest_dkg.aggregate_key));
             }
-            DkgSharesStatus::Revoked => {
-                return Err(Error::DkgSharesRevoked(Box::new(
-                    latest_dkg.aggregate_key.into(),
-                )));
+            DkgSharesStatus::Failed => {
+                return Err(Error::DkgSharesRevoked(latest_dkg.aggregate_key));
             }
-            DkgSharesStatus::Verified(_) => {}
+            DkgSharesStatus::Verified => {}
         }
 
         // 5. That the signature threshold matches the one that was used in the

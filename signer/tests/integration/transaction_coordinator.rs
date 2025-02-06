@@ -1101,7 +1101,7 @@ async fn run_subsequent_dkg() {
         db.write_encrypted_dkg_shares(&EncryptedDkgShares {
             aggregate_key: aggregate_key_1,
             signer_set_public_keys: signer_set_public_keys.iter().copied().collect(),
-            status: DkgSharesStatus::Verified(data.bitcoin_blocks[0].clone().into()),
+            status: DkgSharesStatus::Verified,
             ..Faker.fake()
         })
         .await
@@ -2677,7 +2677,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
@@ -2812,7 +2812,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
-        status: DkgSharesStatus::Pending,
+        status: DkgSharesStatus::Unverified,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
