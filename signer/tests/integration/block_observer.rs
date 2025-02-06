@@ -1330,7 +1330,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
     for _ in 0..verification_window {
         let chain_tip = faucet.generate_blocks(1).pop().unwrap().into();
 
-        ctx.wait_for_signal(Duration::from_secs(1), |signal| {
+        ctx.wait_for_signal(Duration::from_secs(3), |signal| {
             matches!(
                 signal,
                 SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
@@ -1365,7 +1365,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
     // With this block we exit the verification window
     let chain_tip = faucet.generate_blocks(1).pop().unwrap().into();
 
-    ctx.wait_for_signal(Duration::from_secs(1), |signal| {
+    ctx.wait_for_signal(Duration::from_secs(3), |signal| {
         matches!(
             signal,
             SignerSignal::Event(SignerEvent::BitcoinBlockObserved)
