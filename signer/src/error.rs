@@ -193,10 +193,10 @@ pub enum Error {
     #[error("receive error: {0}")]
     ChannelReceive(#[source] tokio::sync::broadcast::error::RecvError),
 
-    /// Could not serialize the clarity value to bytes. For some reason,
+    /// Could not serialize the clarity value to bytes.
     ///
-    /// InterpreterError does not implement std::error::Error, hence the
-    /// debug log.
+    /// For some reason, InterpreterError does not implement
+    /// std::fmt::Display or std::error::Error, hence the debug log.
     #[error("receive error: {0:?}")]
     ClarityValueSerialization(clarity::vm::errors::InterpreterError),
 

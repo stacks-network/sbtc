@@ -144,11 +144,10 @@ pub trait StacksInteract: Send + Sync {
         contract_principal: &StacksAddress,
     ) -> impl Future<Output = Result<Option<PublicKey>, Error>> + Send;
 
-    /// Retrieve a boolean value indicating whether sBTC has been minted
-    /// for the deposit request.
+    /// Retrieve a boolean value from the stacks node indicating whether
+    /// sBTC has been minted for the deposit request.
     ///
-    /// This is done by making a `POST /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`
-    /// request.
+    /// The request is made to `POST /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`.
     fn is_deposit_completed(
         &self,
         contract_principal: &StacksAddress,
@@ -520,10 +519,9 @@ impl StacksClient {
             .join(&path)
             .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
 
-        // Turns out that serializing to hex can panic. One such case
-        // happens when given too much buff-data, more than 1 MBs worth.
-        // For our uses this should never happen, just thought that I'd
-        // note it.
+        // Turns out that serializing clarity values to hex can panic. One
+        // such case happens when the buff-data is too large, more than one
+        // MBs worth. For our uses this should never happen.
         let arguments = arguments
             .iter()
             .map(|value| value.serialize_to_hex())
@@ -1187,10 +1185,11 @@ impl StacksInteract for StacksClient {
             .call_read(deployer, &contract_name, &fn_name, deployer, &arguments)
             .await?;
 
-        // The `get-deposit-status` read-only function reads from a map in
-        // the smart contract using the `map-get?` clarity function. The
-        // values in that map are booleans, and they are only ever set to
-        // `true`. So a missing value is equivalent to false.
+        // The `get-deposit-status` read-only function retrieves values
+        // from a map in the smart contract using the `map-get?` Clarity
+        // function. This map stores boolean values, setting them to `true`
+        // when a deposit is completed and not setting them otherwise.
+        // Therefore, a missing value implicitly means `false`.
         match result {
             Value::Optional(OptionalData { data }) => Ok(data.is_some()),
             _ => Err(Error::InvalidStacksResponse("did not get optional data")),
@@ -1977,9 +1976,9 @@ mod tests {
     #[test_case(Some(true); "complete-deposit")]
     #[test_case(None; "incomplete-deposit")]
     #[tokio::test]
-    async fn is_deposit_completed_works(response: Option<bool>) {
+    async fn is_deposit_completed_works(expected_response: Option<bool>) {
         // Create our simulated response JSON.
-        let data = response.map(|x| Box::new(Value::Bool(x)));
+        let data = expected_response.map(|x| Box::new(Value::Bool(x)));
         let clarity_value = Value::Optional(OptionalData { data });
         let json_response = serde_json::json!({
             "okay": true,
@@ -1998,13 +1997,11 @@ mod tests {
             .expect(1)
             .create();
 
-        // Setup our Stacks client. We use a regular client here because we're
-        // testing the `get_data_var` method.
         let client =
             StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
 
         // Make the request to the mock server
-        let resp = client
+        let response = client
             .is_deposit_completed(
                 &StacksAddress::burn_address(false),
                 &bitcoin::OutPoint::null(),
@@ -2012,8 +2009,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Assert that the response is what we expect
-        assert_eq!(resp, response.unwrap_or(false));
+        assert_eq!(response, expected_response.unwrap_or(false));
         mock.assert();
     }
 
