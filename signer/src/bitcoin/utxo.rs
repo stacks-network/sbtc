@@ -903,7 +903,7 @@ impl UnsignedMockTransaction {
             0,
             flags,
         )
-        .map_err(Error::bitcoin_consensus)
+        .map_err(Error::BitcoinConsensus)
     }
 }
 
