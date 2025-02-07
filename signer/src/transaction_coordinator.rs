@@ -2061,36 +2061,93 @@ mod tests {
         assert_eq!(result, should_allow);
     }
 
-    fn test_pubkey(seed: u64) -> PublicKey {
+    fn public_key_from_seed(seed: u64) -> PublicKey {
         let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
         PublicKey::from_private_key(&PrivateKey::new(&mut rng))
     }
 
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Unverified, ..Faker.fake()}, None, true, true; "unverified, no key")]
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Verified, ..Faker.fake()}, None, true, true; "verified, no key")]
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Unverified, aggregate_key: test_pubkey(1), ..Faker.fake()}, Some(test_pubkey(1)), true, false; "unverified, key up to date")]
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Verified, aggregate_key: test_pubkey(1), ..Faker.fake()}, Some(test_pubkey(1)), false, false; "verified, key up to date")]
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Unverified, aggregate_key: test_pubkey(2), ..Faker.fake()}, Some(test_pubkey(1)), true, true; "unverified, new key")]
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Verified, aggregate_key: test_pubkey(2), ..Faker.fake()}, Some(test_pubkey(1)), true, true; "verified, new key")]
-    fn test_assert_rotate_key_action(
-        last_dkg: model::EncryptedDkgShares,
-        current_aggregate_key: Option<PublicKey>,
-        expected_need_verification: bool,
-        expected_need_rotate_key: bool,
-    ) {
-        let (need_verification, need_rotate_key) =
-            assert_rotate_key_action(&last_dkg, current_aggregate_key).unwrap();
-        assert_eq!(need_verification, expected_need_verification);
-        assert_eq!(need_rotate_key, expected_need_rotate_key);
+    struct RotateKeyActionTest {
+        shares_status: model::DkgSharesStatus,
+        shares_key_seed: u64,
+        current_aggregate_key_seed: Option<u64>,
+        need_verification: bool,
+        need_rotate_key: bool,
     }
 
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Failed, ..Faker.fake()}, None; "no key")]
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Failed, aggregate_key: test_pubkey(1), ..Faker.fake()}, Some(test_pubkey(1)); "key up to date")]
-    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Failed, aggregate_key: test_pubkey(2), ..Faker.fake()}, Some(test_pubkey(1)); "new key")]
-    fn test_assert_rotate_key_action_failure(
-        last_dkg: model::EncryptedDkgShares,
-        current_aggregate_key: Option<PublicKey>,
-    ) {
+    #[test_case(
+        RotateKeyActionTest {
+            shares_status: model::DkgSharesStatus::Unverified,
+            shares_key_seed: 1,
+            current_aggregate_key_seed: None,
+            need_verification: true,
+            need_rotate_key: true,
+        }; "unverified, no key")]
+    #[test_case(
+        RotateKeyActionTest {
+            shares_status: model::DkgSharesStatus::Verified,
+            shares_key_seed: 1,
+            current_aggregate_key_seed: None,
+            need_verification: true,
+            need_rotate_key: true,
+        }; "verified, no key")]
+    #[test_case(
+        RotateKeyActionTest {
+            shares_status: model::DkgSharesStatus::Unverified,
+            shares_key_seed: 1,
+            current_aggregate_key_seed: Some(1),
+            need_verification: true,
+            need_rotate_key: false,
+        }; "unverified, key up to date")]
+    #[test_case(
+        RotateKeyActionTest {
+            shares_status: model::DkgSharesStatus::Verified,
+            shares_key_seed: 1,
+            current_aggregate_key_seed: Some(1),
+            need_verification: false,
+            need_rotate_key: false,
+        }; "verified, key up to date")]
+    #[test_case(
+        RotateKeyActionTest {
+            shares_status: model::DkgSharesStatus::Unverified,
+            shares_key_seed: 2,
+            current_aggregate_key_seed: Some(1),
+            need_verification: true,
+            need_rotate_key: true,
+        }; "unverified, new key")]
+    #[test_case(
+        RotateKeyActionTest {
+            shares_status: model::DkgSharesStatus::Verified,
+            shares_key_seed: 2,
+            current_aggregate_key_seed: Some(1),
+            need_verification: true,
+            need_rotate_key: true,
+        }; "verified, new key")]
+    fn test_assert_rotate_key_action(scenario: RotateKeyActionTest) {
+        let last_dkg = model::EncryptedDkgShares {
+            dkg_shares_status: scenario.shares_status,
+            aggregate_key: public_key_from_seed(scenario.shares_key_seed),
+            ..Faker.fake()
+        };
+        let current_aggregate_key = scenario
+            .current_aggregate_key_seed
+            .map(public_key_from_seed);
+
+        let (need_verification, need_rotate_key) =
+            assert_rotate_key_action(&last_dkg, current_aggregate_key).unwrap();
+        assert_eq!(need_verification, scenario.need_verification);
+        assert_eq!(need_rotate_key, scenario.need_rotate_key);
+    }
+
+    #[test_case(None; "no key")]
+    #[test_case(Some(public_key_from_seed(1)); "key up to date")]
+    #[test_case(Some(public_key_from_seed(2)); "new key")]
+    fn test_assert_rotate_key_action_failure(current_aggregate_key: Option<PublicKey>) {
+        let last_dkg = model::EncryptedDkgShares {
+            dkg_shares_status: model::DkgSharesStatus::Failed,
+            aggregate_key: public_key_from_seed(1),
+            ..Faker.fake()
+        };
+
         let result = assert_rotate_key_action(&last_dkg, current_aggregate_key);
         match result {
             Err(Error::DkgVerificationFailed(key)) => {
