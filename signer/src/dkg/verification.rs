@@ -13,7 +13,6 @@ use secp256k1::XOnlyPublicKey;
 use wsts::state_machine::{OperationResult, SignError};
 
 use crate::{
-    bitcoin::utxo::UnsignedMockTransaction,
     keys::PublicKey,
     signature::TaprootSignature,
     wsts_state_machine::{FrostCoordinator, WstsCoordinator},
@@ -21,7 +20,7 @@ use crate::{
 
 use super::wsts::WstsNetMessageType;
 
-/// Errors that can occur when using a [`DkgVerificationStateMachine`].
+/// Errors that can occur when using a [`StateMachine`].
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The state machine has expired and can no longer be used.
@@ -118,16 +117,14 @@ pub struct StateMachine<TError> {
     aggregate_key: secp256k1::XOnlyPublicKey,
     /// The state machine that is being used to verify the signer.
     coordinator: FrostCoordinator,
-    /// The mock transaction that is being used to verify the signer.
-    mock_tx: UnsignedMockTransaction,
     /// WSTS messages that have been received from other signers. We keep them
-    /// in a [`VecDeque`] so that we can pop the oldest messages first if we
-    /// find that we need to drop messages due to size constraints (we know how
-    /// many of each message type we should be receiving).
-    /// TODO: Update this comment
+    /// in a [`HashMap`] where the keys are message types and the values are
+    /// another [`HashMap`] mapping sender public keys to queued messages.
+    /// This allows us to manage messages by type and sender, ensuring that we
+    /// can handle out-of-order messages and process them correctly.
     wsts_messages: HashMap<WstsNetMessageType, HashMap<PublicKey, QueuedMessage>>,
     /// The [`Instant`] at which this state was created. This is used to limit
-    /// the time that a [`DkgVerificationState`] can be used, according to the
+    /// the time that a [`State`] can be used, according to the
     /// specified timeout, which allows the verification to span multiple
     /// Bitcoin blocks, being limited by wall-clock time instead of Bitcoin
     /// block cadence.
@@ -146,7 +143,7 @@ impl<TError> StateMachine<TError>
 where
     TError: From<Error> + std::error::Error + 'static + Send + Sync,
 {
-    /// Creates a new [`DkgVerificationStateMachine`] with the given [`FrostCoordinator`],
+    /// Creates a new [`StateMachine`] with the given [`FrostCoordinator`],
     /// aggregate key, and timeout.
     pub fn new<X>(coordinator: FrostCoordinator, aggregate_key: X, timeout: Duration) -> Self
     where
@@ -157,7 +154,6 @@ where
         Self {
             aggregate_key,
             coordinator,
-            mock_tx: UnsignedMockTransaction::new(aggregate_key),
             wsts_messages: HashMap::new(),
             created_at: Instant::now(),
             timeout,
@@ -169,20 +165,34 @@ where
     /// Processes a WSTS message, updating the internal state of the
     /// [`FrostCoordinator`]. Upon successful completion of the DKG
     /// verification, the signature both stored on this instance for later use as well as returned.
-    fn process_message<M>(&mut self, sender: PublicKey, msg: M) -> Result<State, TError>
+    pub fn process_message<M>(&mut self, sender: PublicKey, msg: M) -> Result<(), TError>
     where
         M: Into<wsts::net::Message> + std::fmt::Debug,
     {
+        // Set our state to expired if we've passed the timeout.
         if self.is_expired() {
             self.state = State::Expired;
         }
 
+        // Assert that we're in a valid state to process messages.
         self.assert_valid_state()?;
 
+        // Enqueue the message to be processed. If the constraints for
+        // enqueueing the message are not met, an error will be returned and we
+        // don't make any further updates or process anything.
         self.enqueue_message(sender, msg.into())?;
 
+        // We've enqueued at least 1 message, so just make sure we're in the
+        // `Signing` state.
         self.state = State::Signing;
 
+        // Iterate through all of the queued messages and process the relevant
+        // ones. This loop will first process all messages applicable for the
+        // current state, and then continue to process messages until there are
+        // no more state changes. This is necessary because the state machine
+        // can receive out-of-order messages, and we need to ensure that we
+        // process all messages that we can before returning, including handling
+        // state transitions.
         loop {
             let current_processable_message_type = self.current_processable_message_type();
             self.process_queued_messages()?;
@@ -191,7 +201,17 @@ where
             }
         }
 
-        Ok(self.state.clone())
+        Ok(())
+    }
+
+    /// Gets the current state of the [`StateMachine`].
+    pub fn state(&self) -> &State {
+        &self.state
+    }
+
+    /// Gets the aggregate key that is being verified.
+    pub fn aggregate_key(&self) -> XOnlyPublicKey {
+        self.aggregate_key
     }
 
     /// Gets whether or not this [`StateMachine`] has expired.
@@ -250,12 +270,12 @@ where
         }
     }
 
-    /// Gets the [`WstsNetMessageType`] of messages that can be processed given
-    /// the current state of the [`FrostCoordinator`].
+    /// Determines the [`WstsNetMessageType`] of messages that can be processed
+    /// given the current state of the [`FrostCoordinator`].
     ///
     /// The allowed message types per state are as follows:
-    /// 1. If the coordinator is in the `Idle` state, the only message which it
-    ///    can process is a `NonceRequest`.
+    /// 1. If the coordinator is in the `Idle` state, it can only process
+    ///    `NonceRequest` messages.
     /// 2. Upon receiving a `NonceRequest`, the coordinator transitions to the
     ///    `NonceGather` state. In this state, the coordinator can process
     ///    `NonceResponse` messages until it has received a number of nonces
@@ -302,9 +322,8 @@ where
 
     /// Processes all queued messages that can be processed given the current
     /// state of the [`FrostCoordinator`].
-    fn process_queued_messages(&mut self) -> Result<State, Error> {
+    fn process_queued_messages(&mut self) -> Result<(), Error> {
         let message_type_to_process = self.current_processable_message_type();
-        dbg!(&message_type_to_process);
 
         // Gets references to all pending messages of the given type that are
         // currently stored. The returned messages are in arbitrary order, but
@@ -313,7 +332,7 @@ where
         // state.
         let messages = self.wsts_messages.get_mut(&message_type_to_process);
         let Some(messages) = messages else {
-            return Ok(self.state.clone());
+            return Ok(());
         };
 
         // We want to filter out processed messages.
@@ -321,7 +340,7 @@ where
 
         // Process all of the messages that we determined could be processed.
         for (sender, msg) in messages {
-            tracing::debug!(
+            tracing::trace!(
                 "processing {:?} message from sender: {:?}",
                 &message_type_to_process,
                 &sender.to_string()[..10]
@@ -356,7 +375,7 @@ where
             }
         }
 
-        Ok(self.state.clone())
+        Ok(())
     }
 }
 
@@ -617,14 +636,14 @@ mod tests {
         assert!(matches!(nonce_response2, Message::NonceResponse(_)));
 
         // The state machine should be able to process the nonce request.
-        let result = state_machine
+        state_machine
             .process_message(sender1, nonce_request)
             .expect("should be able to process message");
 
         state_machine
             .assert_message_counts(WstsNetMessageType::NonceRequest, 0, 0)
             .unwrap();
-        assert!(matches!(result, State::Signing));
+        assert!(matches!(state_machine.state(), &State::Signing));
         assert!(matches!(
             state_machine.coordinator.state,
             wsts::state_machine::coordinator::State::NonceGather(_)
@@ -668,13 +687,13 @@ mod tests {
         let nonce_response2 = signer2.process(&nonce_request).unwrap().unwrap_one();
 
         // Process the nonce request in the state machine and assert.
-        let result = state_machine
+        state_machine
             .process_message(sender1, nonce_request)
             .unwrap();
         state_machine
             .assert_message_counts(WstsNetMessageType::NonceRequest, 0, 0)
             .unwrap();
-        assert!(matches!(result, State::Signing));
+        assert!(matches!(state_machine.state(), &State::Signing));
         assert!(matches!(
             state_machine.coordinator.state,
             wsts::state_machine::coordinator::State::NonceGather(_)
@@ -692,7 +711,6 @@ mod tests {
             .process_message(sender2, nonce_response2.clone())
             .expect("should be able to process message");
         assert!(matches!(state_machine.state, State::Signing));
-        dbg!(&state_machine.coordinator.state);
         assert_eq!(
             state_machine.current_processable_message_type(),
             WstsNetMessageType::SignatureShareResponse
@@ -740,15 +758,21 @@ mod tests {
             .process(&sig_share_response2)
             .expect("should be able to process message");
 
-        let result = state_machine
+        // Process the first signature share response -- this should succeed.
+        state_machine
             .process_message(sender1, sig_share_response1)
             .expect("should be able to process message");
-        dbg!(result);
+
+
+        // Process the second signature share response -- this should result
+        // in the FROST coordinator transitioning into an end-state and thus
+        // also the state machine.
         let result = state_machine.process_message(sender2, sig_share_response2);
 
-        // TODO: This currently fails with a `BadPartySigs` error, so something's
-        // probably off with the setup of the signers. But what we're really testing
-        // is the state machine and that we have an end state here.
+        // TODO: This currently fails with a `BadPartySigs` error, so
+        // something's probably off with the setup of the signers. But what
+        // we're really testing is the state machine and that we have an end
+        // state here (either success or failure).
         assert!(matches!(
             result,
             Err(crate::error::Error::DkgVerification(Error::SigningFailure(

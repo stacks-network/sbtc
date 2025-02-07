@@ -32,7 +32,7 @@ pub enum Error {
 
     /// Unexpected [`StateMachineId`] in the given context.
     #[error("unexpected state machine id in the given context: {0:?}")]
-    UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
+    UnexpectedStateMachineId(crate::wsts_state_machine::StateMachineId),
 
     /// An IO error was returned from the [`bitcoin`] library. This is usually an
     /// error that occurred during encoding/decoding of bitcoin types.
