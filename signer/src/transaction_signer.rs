@@ -387,6 +387,10 @@ where
     ) -> Result<(), Error> {
         let db = self.context.get_storage_mut();
 
+        // TODO: This is either the aggregate key from lastest confirmed
+        // rotate-keys transaction or the latest dkg shares of any status.
+        // The TODO is to make sure that this aggregate key is always
+        // verified.
         let maybe_aggregate_key = self.context.state().current_aggregate_key();
 
         let btc_ctx = BitcoinTxContext {
@@ -1147,24 +1151,25 @@ where
 
                 // Perform verification of the signature.
                 tracing::info!("🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key");
+                let db = self.context.get_storage_mut();
                 let signature: TaprootSignature = sig.into();
-                mock_tx
-                    .verify_signature(&signature)
-                    .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
-                tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
-
-                self.context
-                    .get_storage_mut()
-                    .verify_dkg_shares(aggregate_key)
-                    .await?;
-                tracing::info!(
-                    "🔐 DKG shares entry has been marked as verified; it is now able to be used"
-                );
+                match mock_tx.verify_signature(&signature) {
+                    Ok(()) => {
+                        tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
+                        db.verify_dkg_shares(aggregate_key).await?;
+                        tracing::info!("🔐 DKG shares entry has been marked as verified");
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "🔐 signature verification failed");
+                        db.revoke_dkg_shares(aggregate_key).await?;
+                        tracing::info!("🔐 DKG shares entry has been marked as failed");
+                    }
+                }
             }
             Some(OperationResult::SignError(error)) => {
                 tracing::warn!(
                     ?msg,
-                    ?error,
+                    %error,
                     "🔐 failed to complete DKG verification signing round"
                 );
                 self.dkg_verification_results.pop(&id);
