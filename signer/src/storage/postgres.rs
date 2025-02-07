@@ -1508,26 +1508,6 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_dkg_shares_status<X>(
-        &self,
-        aggregate_key: X,
-    ) -> Result<Option<model::DkgSharesStatus>, Error>
-    where
-        X: Into<PublicKeyXOnly> + Send,
-    {
-        sqlx::query_scalar::<_, model::DkgSharesStatus>(
-            "
-            SELECT dkg_shares_status
-            FROM dkg_shares AS ds
-            WHERE substring(ds.aggregate_key FROM 2) = $1
-            ",
-        )
-        .bind(aggregate_key.into())
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn get_latest_encrypted_dkg_shares(
         &self,
     ) -> Result<Option<model::EncryptedDkgShares>, Error> {

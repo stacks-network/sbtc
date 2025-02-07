@@ -232,7 +232,15 @@ pub trait DbRead {
         aggregate_key: X,
     ) -> impl Future<Output = Result<Option<model::DkgSharesStatus>, Error>> + Send
     where
-        X: Into<PublicKeyXOnly> + Send;
+        X: Into<PublicKeyXOnly> + Send,
+        Self: Sync,
+    {
+        async {
+            self.get_encrypted_dkg_shares(aggregate_key)
+                .await
+                .map(|shares| shares.map(|x| x.dkg_shares_status))
+        }
+    }
 
     /// Return the most recent DKG shares, and return None if the table is
     /// empty.

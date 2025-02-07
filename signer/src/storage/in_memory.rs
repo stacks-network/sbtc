@@ -602,18 +602,6 @@ impl super::DbRead for SharedStore {
             .map(|(_, shares)| shares.clone()))
     }
 
-    async fn get_dkg_shares_status<X>(
-        &self,
-        aggregate_key: X,
-    ) -> Result<Option<model::DkgSharesStatus>, Error>
-    where
-        X: Into<PublicKeyXOnly> + Send,
-    {
-        self.get_encrypted_dkg_shares(aggregate_key)
-            .await
-            .map(|shares| shares.map(|x| x.dkg_shares_status))
-    }
-
     async fn get_latest_encrypted_dkg_shares(
         &self,
     ) -> Result<Option<model::EncryptedDkgShares>, Error> {
