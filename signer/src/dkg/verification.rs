@@ -160,8 +160,18 @@ where
     }
 
     /// Processes a WSTS message, updating the internal state of the
-    /// [`FrostCoordinator`]. Upon successful completion of the DKG
-    /// verification, the signature both stored on this instance for later use as well as returned.
+    /// [`FrostCoordinator`].
+    ///
+    /// - Will return an error if an invalid operation is attempted given the
+    ///   current state of the [`StateMachine`].
+    /// - Poll [`Self::state`] after a successfull call to this function to get
+    ///   the current state of the [`StateMachine`], which will be updated as
+    ///   messages are processed.
+    /// - If the instance is in an end-state, an error will be returned.
+    /// - Upon success, the resulting signature can be retrieved via
+    ///   [`Self::state`].
+    /// - Will process all eligible pending messages given the current state of
+    ///   the [`FrostCoordinator`].
     pub fn process_message<M>(&mut self, sender: PublicKey, msg: M) -> Result<(), TError>
     where
         M: Into<wsts::net::Message> + std::fmt::Debug,
