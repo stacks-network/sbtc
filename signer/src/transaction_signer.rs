@@ -145,8 +145,6 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// verification of the Stacks rotate-keys transaction.
     pub dkg_verification_state_machines:
         LruCache<StateMachineId, dkg::verification::StateMachine<Error>>,
-    /// Results of DKG verification rounds.
-    pub dkg_verification_results: LruCache<StateMachineId, UnsignedMockTransaction>,
 }
 
 /// This struct represents a signature hash and the public key that locks
@@ -213,9 +211,6 @@ where
             rng,
             dkg_begin_pause,
             dkg_verification_state_machines: LruCache::new(
-                NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
-            ),
-            dkg_verification_results: LruCache::new(
                 NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
             ),
         })
@@ -763,10 +758,11 @@ where
                         )
                         .await?;
 
-                        let (state_machine_id, _, mock_tx) =
+                        let (state_machine_id, _) =
                             self.ensure_dkg_verification_state_machine(new_key).await?;
 
-                        let tap_sighash = mock_tx.compute_sighash()?;
+                        let tap_sighash =
+                            UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
                         if tap_sighash.as_byte_array() != request.message.as_slice() {
                             tracing::warn!("🔐 sighash mismatch for DKG verification signing");
                             return Err(Error::InvalidSigningOperation);
@@ -860,10 +856,11 @@ where
                             "🔐 responding to signature-share-request for DKG verification signing"
                         );
 
-                        let (state_machine_id, _, mock_tx) =
+                        let (state_machine_id, _) =
                             self.ensure_dkg_verification_state_machine(new_key).await?;
 
-                        let tap_sighash = mock_tx.compute_sighash()?;
+                        let tap_sighash =
+                            UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
                         if tap_sighash.as_byte_array() != request.message.as_slice() {
                             tracing::warn!("🔐 sighash mismatch for DKG verification signing");
                             return Err(Error::InvalidSigningOperation);
@@ -916,10 +913,10 @@ where
                     return Err(Error::InvalidSigningOperation);
                 }
 
-                let (state_machine_id, _, mock_tx) =
+                let (state_machine_id, _) =
                     self.ensure_dkg_verification_state_machine(new_key).await?;
 
-                let tap_sighash = mock_tx.compute_sighash()?;
+                let tap_sighash = UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
                 if tap_sighash.as_byte_array() != request.message.as_slice() {
                     tracing::warn!("🔐 sighash mismatch for DKG verification signing");
                     return Err(Error::InvalidSigningOperation);
@@ -947,7 +944,7 @@ where
                 )
                 .await?;
 
-                let (state_machine_id, _, _) =
+                let (state_machine_id, _) =
                     self.ensure_dkg_verification_state_machine(new_key).await?;
 
                 self.handle_dkg_verification_message(state_machine_id, msg_public_key, &msg.inner)
@@ -1128,14 +1125,7 @@ where
     async fn ensure_dkg_verification_state_machine(
         &mut self,
         aggregate_key: PublicKeyXOnly,
-    ) -> Result<
-        (
-            StateMachineId,
-            &mut dkg::verification::StateMachine<Error>,
-            &UnsignedMockTransaction,
-        ),
-        Error,
-    > {
+    ) -> Result<(StateMachineId, &mut dkg::verification::StateMachine<Error>), Error> {
         let state_machine_id = StateMachineId::RotateKey(aggregate_key);
 
         if !self
@@ -1158,12 +1148,7 @@ where
             .get_mut(&state_machine_id)
             .ok_or(Error::MissingStateMachine(state_machine_id))?;
 
-        let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
-        let mock_tx = self
-            .dkg_verification_results
-            .get_or_insert(state_machine_id, || mock_tx);
-
-        Ok((state_machine_id, state_machine, mock_tx))
+        Ok((state_machine_id, state_machine))
     }
 
     #[tracing::instrument(skip_all)]
@@ -1219,7 +1204,6 @@ where
             }
             dkg::verification::State::Error | dkg::verification::State::Expired => {
                 tracing::warn!("🔐 failed to complete DKG verification signing round");
-                self.dkg_verification_results.pop(&state_machine_id);
                 return Err(Error::DkgVerificationFailed(aggregate_key));
             }
             dkg::verification::State::Idle | dkg::verification::State::Signing => {}
@@ -1624,7 +1608,6 @@ mod tests {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1692,7 +1675,6 @@ mod tests {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1778,7 +1760,6 @@ mod tests {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         let msg = message::WstsMessage {
