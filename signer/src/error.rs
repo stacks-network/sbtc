@@ -20,14 +20,6 @@ pub enum Error {
     #[error("unexpected state machine id in the given context: {0:?}")]
     UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
 
-    /// The DKG shares for the provided aggregate key have not been verified.
-    #[error("the dkg shares for the provided aggregate key have not been verified: {0}")]
-    DkgSharesNotVerified(PublicKey),
-
-    /// The DKG shares for the provided aggregate key have been revoked.
-    #[error("the provided aggregate key has been revoked: {0}")]
-    DkgSharesRevoked(PublicKey),
-
     /// An IO error was returned from the [`bitcoin`] library. This is usually an
     /// error that occurred during encoding/decoding of bitcoin types.
     #[error("an io error was returned from the bitcoin library: {0}")]
@@ -398,24 +390,6 @@ pub enum Error {
     /// An error occurred while attempting to rollback an sqlx transaction.
     #[error("encountered an error while rolling back an sqlx transaction: {0}")]
     SqlxRollbackTransaction(#[source] sqlx::Error),
-
-    /// An error occurred while attempting to deserialize a row into a struct.
-    #[error("encountered an error while attempting to convert a row to a struct: {0}")]
-    SqlxFromRow(Cow<'static, str>),
-
-    /// An error occurred while attempting to serialize a struct into a row.
-    #[error("encountered an error while attempting to convert a struct to a row: {0}")]
-    SqlxToRow(Cow<'static, str>),
-
-    /// The number of rows updated by a query did not match the expected updated
-    /// row count.
-    #[error("expected {expected:?} rows to be updated, but {actual} were updated")]
-    SqlxUpdatedRowsExpectation {
-        /// The number of rows that were expected to be updated.
-        expected: std::ops::Range<u64>,
-        /// The number of rows that were actually updated.
-        actual: u64,
-    },
 
     /// An error when attempting to read a migration script.
     #[error("failed to read migration script: {0}")]
