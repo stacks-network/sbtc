@@ -217,6 +217,10 @@ where
         self.inner.config()
     }
 
+    fn config_mut(&mut self) -> &mut Settings {
+        self.inner.config_mut()
+    }
+
     fn state(&self) -> &SignerState {
         self.inner.state()
     }

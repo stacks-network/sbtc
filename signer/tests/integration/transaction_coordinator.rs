@@ -1032,6 +1032,241 @@ async fn run_dkg_from_scratch() {
     }
 }
 
+#[test(tokio::test)]
+async fn run_dkg_from_scratch_rotate_keys_requires_all_signers() {
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
+
+    // We need to populate our databases, so let's generate some data.
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: 0,
+        consecutive_blocks: false,
+    };
+    let test_data = TestData::generate(&mut rng, &[], &test_params);
+
+    let (broadcast_stacks_tx, _rx) = tokio::sync::broadcast::channel(1);
+
+    let mut stacks_tx_receiver = broadcast_stacks_tx.subscribe();
+    let stacks_tx_receiver_task = tokio::spawn(async move { stacks_tx_receiver.recv().await });
+
+    let iter: Vec<(Keypair, TestData)> = signer_key_pairs
+        .iter()
+        .copied()
+        .zip(std::iter::repeat_with(|| test_data.clone()))
+        .collect();
+
+    // 1. Create a database, an associated context, and a Keypair for each of
+    //    the signers in the signing set.
+    let network = WanNetwork::default();
+    let mut signers: Vec<_> = Vec::new();
+
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
+
+    for (kp, data) in iter {
+        let broadcast_stacks_tx = broadcast_stacks_tx.clone();
+        let db = testing::storage::new_test_database().await;
+        let mut ctx = TestContext::builder()
+            .with_storage(db.clone())
+            .with_mocked_clients()
+            .build();
+
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, the
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
+
+        ctx.with_stacks_client(|client| {
+            client
+                .expect_estimate_fees()
+                .returning(|_, _, _| Box::pin(async { Ok(123000) }));
+
+            client.expect_get_account().returning(|_| {
+                Box::pin(async {
+                    Ok(AccountInfo {
+                        balance: 1_000_000,
+                        locked: 0,
+                        unlock_height: 0,
+                        nonce: 1,
+                    })
+                })
+            });
+
+            client.expect_submit_tx().returning(move |tx| {
+                let tx = tx.clone();
+                let txid = tx.txid();
+                let broadcast_stacks_tx = broadcast_stacks_tx.clone();
+                Box::pin(async move {
+                    broadcast_stacks_tx.send(tx).expect("Failed to send result");
+                    Ok(SubmitTxResponse::Acceptance(txid))
+                })
+            });
+
+            client
+                .expect_get_current_signers_aggregate_key()
+                .returning(move |_| {
+                    // We want to test the tx submission
+                    Box::pin(std::future::ready(Ok(None)))
+                });
+        })
+        .await;
+
+        // 2. Populate each database with the same data, so that they
+        //    have the same view of the canonical bitcoin blockchain.
+        //    This ensures that they participate in DKG.
+        data.write_to(&db).await;
+
+        let network = network.connect(&ctx);
+
+        signers.push((ctx, db, kp, network));
+    }
+
+    // 3. Check that there are no DKG shares in the database.
+    for (_, db, _, _) in signers.iter() {
+        let some_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+        assert!(some_shares.is_none());
+    }
+
+    // 4. Start the [`TxCoordinatorEventLoop`] and [`TxSignerEventLoop`]
+    //    processes for each signer.
+    let tx_coordinator_processes = signers.iter().map(|(ctx, _, kp, net)| {
+        ctx.state().set_sbtc_contracts_deployed(); // Skip contract deployment
+        TxCoordinatorEventLoop {
+            network: net.spawn(),
+            context: ctx.clone(),
+            context_window: 10000,
+            private_key: kp.secret_key().into(),
+            signing_round_max_duration: Duration::from_secs(10),
+            bitcoin_presign_request_max_duration: Duration::from_secs(10),
+            threshold: ctx.config().signer.bootstrap_signatures_required,
+            dkg_max_duration: Duration::from_secs(10),
+            is_epoch3: true,
+        }
+    });
+
+    let tx_signer_processes = signers
+        .iter()
+        .enumerate()
+        .map(|(i, (context, _, kp, net))| {
+            let mut context = context.clone();
+            if i == 0 {
+                // Set a different deployer for the first signer so that the rotate keys tx validation fails
+                context.config_mut().signer.deployer = StacksAddress::burn_address(false);
+            }
+            TxSignerEventLoop {
+                network: net.spawn(),
+                threshold: context.config().signer.bootstrap_signatures_required as u32,
+                context: context.clone(),
+                context_window: 10000,
+                wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
+                signer_private_key: kp.secret_key().into(),
+                rng: rand::rngs::OsRng,
+                dkg_begin_pause: None,
+                dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+                dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+            }
+        });
+
+    // We only proceed with the test after all processes have started, and
+    // we use this counter to notify us when that happens.
+    let start_count = Arc::new(AtomicU8::new(0));
+
+    let bitcion_chaintip = signers
+        .first()
+        .unwrap()
+        .0
+        .get_storage()
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .unwrap();
+
+    tx_coordinator_processes.for_each(|ev| {
+        let counter = start_count.clone();
+        tokio::spawn(async move {
+            counter.fetch_add(1, Ordering::Relaxed);
+            ev.run().await
+        });
+    });
+
+    tx_signer_processes.for_each(|ev| {
+        let counter = start_count.clone();
+        tokio::spawn(async move {
+            counter.fetch_add(1, Ordering::Relaxed);
+            ev.run().await
+        });
+    });
+
+    while start_count.load(Ordering::SeqCst) < 6 {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    // 5. Once they are all running, signal the coordinator that DKG should be run.
+    let coordinator = signers
+        .iter()
+        .find(|(_, _, kp, _)| {
+            given_key_is_coordinator(
+                kp.public_key().into(),
+                &bitcion_chaintip,
+                &signer_set_public_keys,
+            )
+        })
+        .expect("coordinator not found");
+
+    coordinator
+        .0
+        .get_signal_sender()
+        .send(RequestDeciderEvent::NewRequestsHandled.into())
+        .unwrap();
+
+    // Await the `stacks_tx_receiver_task` to check that no transaction was broadcasted.
+    assert!(
+        tokio::time::timeout(Duration::from_secs(10), stacks_tx_receiver_task)
+            .await
+            .is_err(),
+        "Expected no transaction to be broadcast, but received one"
+    );
+
+    let mut aggregate_keys: BTreeSet<PublicKey> = BTreeSet::new();
+
+    for (_, db, _, _) in signers.iter() {
+        let mut aggregate_key =
+            sqlx::query_as::<_, (PublicKey,)>("SELECT aggregate_key FROM sbtc_signer.dkg_shares")
+                .fetch_all(db.pool())
+                .await
+                .unwrap();
+
+        // 6. Check that we have exactly one row in the `dkg_shares` table.
+        assert_eq!(aggregate_key.len(), 1);
+
+        // An additional sanity check that the query in
+        // get_last_encrypted_dkg_shares gets the right thing (which is the
+        // only thing in this case.)
+        let key = aggregate_key.pop().unwrap().0;
+        let shares = db.get_latest_encrypted_dkg_shares().await.unwrap().unwrap();
+        assert_eq!(shares.aggregate_key, key);
+        aggregate_keys.insert(key);
+    }
+
+    // 7. Check that they all have the same aggregate key in the
+    //    `dkg_shares` table.
+    assert_eq!(aggregate_keys.len(), 1);
+
+    for (_ctx, db, _, _) in signers {
+        testing::storage::drop_db(db).await;
+    }
+}
+
 /// Test that we can run multiple DKG rounds.
 /// This test is very similar to the `run_dkg_from_scratch` test, but it
 /// simulates that DKG has been run once before and uses a signer configuration

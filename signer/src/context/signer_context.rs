@@ -115,6 +115,10 @@ where
         &self.config
     }
 
+    fn config_mut(&mut self) -> &mut Settings {
+        &mut self.config
+    }
+
     fn state(&self) -> &SignerState {
         &self.state
     }
