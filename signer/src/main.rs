@@ -85,10 +85,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
-    let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await.unwrap_or_else(|err| {
-        tracing::error!(%err, "failed to connect to the database");
-        std::process::exit(1);
-    });
+    let db = PgStore::connect(settings.signer.db_endpoint.as_str())
+        .await
+        .unwrap_or_else(|err| {
+            tracing::error!(%err, "failed to connect to the database");
+            std::process::exit(1);
+        });
 
     // Apply any pending migrations if automatic migrations are enabled.
     if args.migrate_db {
@@ -104,7 +106,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ApiFallbackClient<BitcoinCoreClient>,
         ApiFallbackClient<StacksClient>,
         ApiFallbackClient<EmilyClient>,
-    >::init(settings, db).unwrap_or_else(|err| {
+    >::init(settings, db)
+    .unwrap_or_else(|err| {
         tracing::error!(%err, "failed to initialize the signer context");
         std::process::exit(1);
     });
