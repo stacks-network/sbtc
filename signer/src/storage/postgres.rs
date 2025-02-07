@@ -1157,8 +1157,8 @@ impl super::DbRead for PgStore {
             Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
         };
 
-        let dkg_shares_status = self
-            .get_dkg_shares_status(summary.signers_public_key)
+        let dkg_shares = self
+            .get_encrypted_dkg_shares(summary.signers_public_key)
             .await?;
 
         Ok(Some(DepositRequestReport {
@@ -1173,7 +1173,7 @@ impl super::DbRead for PgStore {
             deposit_script: summary.deposit_script.into(),
             reclaim_script: summary.reclaim_script.into(),
             signers_public_key: summary.signers_public_key.into(),
-            dkg_shares_status,
+            dkg_shares_status: dkg_shares.map(|shares| shares.dkg_shares_status),
         }))
     }
 

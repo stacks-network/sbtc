@@ -394,7 +394,8 @@ where
             .current_aggregate_key()
             .ok_or(Error::NoDkgShares)?;
 
-        let aggregate_key = match db.get_dkg_shares_status(aggregate_key).await? {
+        let dkg_shares = db.get_encrypted_dkg_shares(aggregate_key).await?;
+        let aggregate_key = match dkg_shares.map(|shares| shares.dkg_shares_status) {
             Some(DkgSharesStatus::Verified) => aggregate_key,
             None | Some(DkgSharesStatus::Unverified) | Some(DkgSharesStatus::Failed) => {
                 db.get_latest_verified_dkg_shares()
