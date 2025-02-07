@@ -656,11 +656,11 @@ impl<C: Context, B> BlockObserver<C, B> {
             .ok_or(Error::NoChainTip)?;
         let verification_window = self.context.config().signer.dkg_verification_window;
 
-        if last_dkg
+        let max_verification_height = last_dkg
             .started_at_bitcoin_block_height
-            .saturating_add(verification_window as u64)
-            < chain_tip.block_height
-        {
+            .saturating_add(verification_window as u64);
+
+        if max_verification_height < chain_tip.block_height {
             db.revoke_dkg_shares(last_dkg.aggregate_key).await?;
         }
 
