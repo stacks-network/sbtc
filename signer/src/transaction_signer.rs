@@ -1106,12 +1106,13 @@ where
         let state_machine = self
             .dkg_verification_state_machines
             .get_mut(&state_machine_id)
-            .ok_or(Error::MissingFrostStateMachine(aggregate_key))?;
+            .ok_or_else(|| Error::MissingFrostStateMachine(aggregate_key))?;
 
-        let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
         let mock_tx = self
             .dkg_verification_results
-            .get_or_insert(state_machine_id, || mock_tx);
+            .get_or_insert(state_machine_id, || {
+                UnsignedMockTransaction::new(aggregate_key.into())
+            });
 
         Ok((state_machine_id, state_machine, mock_tx))
     }
