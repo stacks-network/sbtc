@@ -721,6 +721,7 @@ mod tests {
             wsts::state_machine::coordinator::State::NonceGather(_)
         ));
 
+        // Process both nonce responses in the state machine and assert.
         state_machine
             .process_message(sender1, nonce_response1.clone())
             .expect("should be able to process message");
@@ -738,6 +739,7 @@ mod tests {
             WstsNetMessageType::SignatureShareResponse
         );
 
+        // Unwrap our nonce responses.
         let Message::NonceResponse(nonce_response1) = nonce_response1 else {
             panic!("expected nonce response, got {:?}", nonce_response1);
         };
@@ -745,34 +747,34 @@ mod tests {
             panic!("expected nonce response, got {:?}", nonce_response2);
         };
 
-        let sig_share_request1 = signature_share_request(
-            1,
-            1,
-            1,
-            vec![nonce_response1.clone(), nonce_response2.clone()],
-        );
-        let sig_share_request2 = signature_share_request(
+        // Create signature share requests, populated with the nonce responses
+        // from the signers.
+        let sig_share_request = signature_share_request(
             1,
             1,
             1,
             vec![nonce_response1.clone(), nonce_response2.clone()],
         );
 
+        // Process the signature share request
         let sig_share_response1 = signer1
-            .process(&sig_share_request1)
+            .process(&sig_share_request)
             .expect("should be able to process message")
             .unwrap_one();
         let sig_share_response2 = signer2
-            .process(&sig_share_request2)
+            .process(&sig_share_request)
             .expect("should be able to process message")
             .unwrap_one();
 
+        // Process signer 1's signature share response with both signers.
         signer1
             .process(&sig_share_response1)
             .expect("should be able to process message");
         signer2
             .process(&sig_share_response1)
             .expect("should be able to process message");
+
+        // Process signer 2's signature share response with both signers.
         signer1
             .process(&sig_share_response2)
             .expect("should be able to process message");
@@ -780,7 +782,8 @@ mod tests {
             .process(&sig_share_response2)
             .expect("should be able to process message");
 
-        // Process the first signature share response -- this should succeed.
+        // Process the first signature share response in the state machine --
+        // this should succeed.
         state_machine
             .process_message(sender1, sig_share_response1)
             .expect("should be able to process message");
