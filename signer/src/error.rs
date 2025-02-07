@@ -391,24 +391,6 @@ pub enum Error {
     #[error("encountered an error while rolling back an sqlx transaction: {0}")]
     SqlxRollbackTransaction(#[source] sqlx::Error),
 
-    /// An error occurred while attempting to deserialize a row into a struct.
-    #[error("encountered an error while attempting to convert a row to a struct: {0}")]
-    SqlxFromRow(Cow<'static, str>),
-
-    /// An error occurred while attempting to serialize a struct into a row.
-    #[error("encountered an error while attempting to convert a struct to a row: {0}")]
-    SqlxToRow(Cow<'static, str>),
-
-    /// The number of rows updated by a query did not match the expected updated
-    /// row count.
-    #[error("expected {expected:?} rows to be updated, but {actual} were updated")]
-    SqlxUpdatedRowsExpectation {
-        /// The number of rows that were expected to be updated.
-        expected: std::ops::Range<u64>,
-        /// The number of rows that were actually updated.
-        actual: u64,
-    },
-
     /// An error when attempting to read a migration script.
     #[error("failed to read migration script: {0}")]
     ReadSqlMigration(Cow<'static, str>),
