@@ -22,14 +22,6 @@ pub enum Error {
     #[error("the dkg verification state machine raised an error: {0}")]
     DkgVerification(#[from] dkg::verification::Error),
 
-    /// The state machine with the given [`StateMachineId`] has expired.
-    #[error("the state machine with the given id has expired: {0}")]
-    StateMachineExpired(StateMachineId),
-
-    /// A state machine with the given [`StateMachineId`] already exists.
-    #[error("a state machine with the given id already exists: {0}")]
-    DuplicateStateMachine(StateMachineId),
-
     /// Unexpected [`StateMachineId`] in the given context.
     #[error("unexpected state machine id in the given context: {0:?}")]
     UnexpectedStateMachineId(crate::wsts_state_machine::StateMachineId),
