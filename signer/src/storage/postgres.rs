@@ -1529,12 +1529,14 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    /// Returns the number of rows in the `dkg_shares` table.
+    /// Returns the number of non-failed rows in the `dkg_shares` table.
     async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sbtc_signer.dkg_shares;")
-            .fetch_one(&self.0)
-            .await
-            .map_err(Error::SqlxQuery)?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sbtc_signer.dkg_shares WHERE dkg_shares_status != 'failed';",
+        )
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
 
         u32::try_from(count).map_err(Error::ConversionDatabaseInt)
     }

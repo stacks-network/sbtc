@@ -343,6 +343,9 @@ pub struct SignerConfig {
     /// assuming the conditions for `dkg_min_bitcoin_block_height` are also met.
     /// If DKG has never been run, this configuration has no effect.
     pub dkg_target_rounds: NonZeroU32,
+    /// The number of bitcoin blocks after a DKG start where we attempt to
+    /// verify the shares. After this many blocks, we mark the shares as failed.
+    pub dkg_verification_window: u16,
 }
 
 impl Validatable for SignerConfig {
@@ -494,6 +497,7 @@ impl Settings {
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         )?;
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -631,6 +635,7 @@ mod tests {
             settings.signer.dkg_target_rounds,
             NonZeroU32::new(1).unwrap()
         );
+        assert_eq!(settings.signer.dkg_verification_window, 10);
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
     }
 
@@ -788,6 +793,18 @@ mod tests {
             settings.signer.dkg_target_rounds,
             NonZeroU32::new(42).unwrap()
         );
+    }
+
+    #[test]
+    fn default_config_toml_loads_dkg_verification_window() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_verification_window, 10);
+
+        std::env::set_var("SIGNER_SIGNER__DKG_VERIFICATION_WINDOW", "42");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_verification_window, 42);
     }
 
     #[test]

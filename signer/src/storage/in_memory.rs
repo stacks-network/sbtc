@@ -615,7 +615,13 @@ impl super::DbRead for SharedStore {
     }
 
     async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
-        Ok(self.lock().await.encrypted_dkg_shares.len() as u32)
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.dkg_shares_status != DkgSharesStatus::Failed)
+            .count() as u32)
     }
 
     async fn get_last_key_rotation(

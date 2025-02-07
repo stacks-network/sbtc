@@ -1001,7 +1001,12 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
     let (_, all_shares) = testing_signer_set
-        .run_dkg(chain_tip, dkg_txid.into(), &mut rng)
+        .run_dkg(
+            chain_tip,
+            dkg_txid.into(),
+            &mut rng,
+            model::DkgSharesStatus::Verified,
+        )
         .await;
 
     let shares = all_shares.first().unwrap();

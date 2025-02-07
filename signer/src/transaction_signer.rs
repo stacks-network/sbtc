@@ -1263,7 +1263,7 @@ where
 
 /// Asserts whether a `DkgBegin` WSTS message should be allowed to proceed
 /// based on the current state of the signer and the DKG configuration.
-async fn assert_allow_dkg_begin(
+pub async fn assert_allow_dkg_begin(
     context: &impl Context,
     bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<(), Error> {
@@ -1451,10 +1451,10 @@ mod tests {
         // Write `dkg_shares` entries for the `current` number of rounds, simulating
         // the signer having participated in that many successful DKG rounds.
         for _ in 0..dkg_rounds_current {
-            storage
-                .write_encrypted_dkg_shares(&Faker.fake())
-                .await
-                .unwrap();
+            let mut shares: model::EncryptedDkgShares = Faker.fake();
+            shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+            storage.write_encrypted_dkg_shares(&shares).await.unwrap();
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
@@ -1495,10 +1495,10 @@ mod tests {
 
         // Write 1 DKG shares entry to the database, simulating that DKG has
         // successfully run once.
-        storage
-            .write_encrypted_dkg_shares(&Faker.fake())
-            .await
-            .unwrap();
+        let mut shares: model::EncryptedDkgShares = Faker.fake();
+        shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+        storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
         // Dummy chain tip hash which will be used to fetch the block height.
         let bitcoin_chain_tip = model::BitcoinBlockRef {
@@ -1566,10 +1566,10 @@ mod tests {
 
         // Write 1 DKG shares entry to the database, simulating that DKG has
         // successfully run once.
-        storage
-            .write_encrypted_dkg_shares(&Faker.fake())
-            .await
-            .unwrap();
+        let mut shares: model::EncryptedDkgShares = Faker.fake();
+        shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+        storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
         // Dummy chain tip hash which will be used to fetch the block height.
         let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
