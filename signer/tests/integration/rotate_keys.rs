@@ -571,7 +571,7 @@ async fn rotate_key_validation_not_verfied() {
     let validate_future = rotate_key_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::RotateKeysValidation(ref err) => {
-            assert_eq!(err.error, RotateKeysErrorMsg::SecretSharesNotVerified)
+            assert_eq!(err.error, RotateKeysErrorMsg::DkgSharesNotVerified)
         }
         err => panic!("unexpected error during validation {err}"),
     }
@@ -582,7 +582,7 @@ async fn rotate_key_validation_not_verfied() {
     let validate_future = rotate_key_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
         Error::RotateKeysValidation(ref err) => {
-            assert_eq!(err.error, RotateKeysErrorMsg::SecretSharesNotVerified)
+            assert_eq!(err.error, RotateKeysErrorMsg::DkgSharesNotVerified)
         }
         err => panic!("unexpected error during validation {err}"),
     }

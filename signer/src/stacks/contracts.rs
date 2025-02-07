@@ -1144,7 +1144,7 @@ impl AsContractCall for RotateKeysV1 {
 
         // 4. That the DKG shares are in the verified state.
         if !matches!(latest_dkg.dkg_shares_status, DkgSharesStatus::Verified) {
-            return Err(RotateKeysErrorMsg::SecretSharesNotVerified.into_error(req_ctx, self));
+            return Err(RotateKeysErrorMsg::DkgSharesNotVerified.into_error(req_ctx, self));
         }
 
         // 5. That the signature threshold matches the one that was used in the
@@ -1218,7 +1218,7 @@ pub enum RotateKeysErrorMsg {
     /// The aggregate key is known but the associated secret shares have
     /// not passed verification.
     #[error("the shares associated with the aggregate key have not passes verification")]
-    SecretSharesNotVerified,
+    DkgSharesNotVerified,
 }
 
 impl RotateKeysErrorMsg {
