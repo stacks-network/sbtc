@@ -5,6 +5,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
+use crate::dkg;
 use crate::emily_client::EmilyClientError;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -18,11 +19,8 @@ use crate::wsts_state_machine::StateMachineId;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The DKG verification state machine raised an error.
-    #[error("the dkg verification state machine '{0}' raised an error: {1}")]
-    DkgVerificationStateMachine(
-        StateMachineId,
-        #[source] crate::dkg::DkgVerificationStateMachineError,
-    ),
+    #[error("the dkg verification state machine raised an error: {0}")]
+    DkgVerification(#[from] dkg::verification::Error),
 
     /// The state machine with the given [`StateMachineId`] has expired.
     #[error("the state machine with the given id has expired: {0}")]

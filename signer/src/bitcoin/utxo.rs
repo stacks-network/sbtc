@@ -722,6 +722,7 @@ impl SignerUtxo {
 /// 2. There is only one output which is an OP_RETURN with the bytes [0x01,
 ///    0x02, 0x03] as the data and amount equal to the UTXO's value (i.e. the
 ///    transaction has a zero-fee).
+#[derive(Debug)]
 pub struct UnsignedMockTransaction {
     /// The Bitcoin transaction that needs to be signed.
     tx: Transaction,
