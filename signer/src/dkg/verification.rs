@@ -307,7 +307,11 @@ where
         // type, we don't enqueue it and return an error. Note: This may be
         // unnecessary after changing to deduplicate messages by sender, but at
         // least helps to cap the number of messages that we can enqueue if
-        // somehow there's messages from unknown pubkeys being dumped heere.
+        // somehow there's messages from unknown pubkeys being dumped here.
+        //
+        // Note that this check is also our implicit check to ensure that only
+        // the allowed message types for signing can be enqueued, as the
+        // remaining WSTS message types have a limit of 0.
         if current_count >= limit {
             return Err(Error::MessageLimitExceeded {
                 message_type: msg_type,
