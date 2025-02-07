@@ -1871,9 +1871,7 @@ pub fn assert_rotate_key_action(
         model::DkgSharesStatus::Unverified => true,
         model::DkgSharesStatus::Verified => need_rotate_key,
         model::DkgSharesStatus::Failed => {
-            return Err(Error::DkgVerificationFailed(Box::new(
-                last_dkg.aggregate_key.into(),
-            )))
+            return Err(Error::DkgVerificationFailed(last_dkg.aggregate_key.into()))
         }
     };
 
@@ -2151,7 +2149,7 @@ mod tests {
         let result = assert_rotate_key_action(&last_dkg, current_aggregate_key);
         match result {
             Err(Error::DkgVerificationFailed(key)) => {
-                assert_eq!(*key, last_dkg.aggregate_key.into());
+                assert_eq!(key, last_dkg.aggregate_key.into());
             }
             _ => {
                 panic!("unexpected result")
