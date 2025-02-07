@@ -22,7 +22,6 @@ use signer::context::Context;
 use signer::context::SignerContext;
 use signer::emily_client::EmilyClient;
 use signer::error::Error;
-use signer::keys::PublicKey;
 use signer::network::libp2p::SignerSwarmBuilder;
 use signer::network::P2PNetwork;
 use signer::request_decider::RequestDeciderEventLoop;
