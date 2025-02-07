@@ -296,7 +296,7 @@ where
     }
 
     /// Enqueues a message to be processed by the [`FrostCoordinator`] when
-    /// in the correct state by [`Self::process_queued_messages`].
+    /// in the correct state.
     fn enqueue_message(&mut self, sender: PublicKey, msg: wsts::net::Message) -> Result<(), Error> {
         let msg_type: WstsNetMessageType = (&msg).into();
 
@@ -304,7 +304,10 @@ where
         let limit = self.message_type_limit(msg_type);
 
         // If we've already received the maximum number of messages of this
-        // type, we don't enqueue it and return an error.
+        // type, we don't enqueue it and return an error. Note: This may be
+        // unnecessary after changing to deduplicate messages by sender, but at
+        // least helps to cap the number of messages that we can enqueue if
+        // somehow there's messages from unknown pubkeys being dumped heere.
         if current_count >= limit {
             return Err(Error::MessageLimitExceeded {
                 message_type: msg_type,
