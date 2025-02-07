@@ -40,11 +40,6 @@ pub enum Error {
     #[error("invalid signing request")]
     InvalidSigningOperation,
 
-    /// No mock transaction was found after DKG successfully completed. Spending
-    /// a signer UTXO locked by the new aggregate key could not be verified.
-    #[error("no mock transaction found when attempting to sign")]
-    MissingMockTransaction,
-
     /// The pre-rotate-key frost verification signing round was not reported as
     /// successful.
     #[error("rotate-key frost verification signing round not reported as successful")]
