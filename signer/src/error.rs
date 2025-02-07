@@ -39,15 +39,10 @@ pub enum Error {
     #[error("no mock transaction found when attempting to sign")]
     MissingMockTransaction,
 
-    /// The pre-rotate-key frost verification signing round was not reported as
-    /// successful.
-    #[error("rotate-key frost verification signing round not reported as successful")]
-    DkgVerificationNotSuccessful,
-
     /// The rotate-key frost verification signing round failed for the aggregate
     /// key.
     #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
-    DkgVerificationFailed(Box<PublicKeyXOnly>),
+    DkgVerificationFailed(PublicKeyXOnly),
 
     /// Cannot verify the aggregate key outside the verification window
     #[error("cannot verify the aggregate key outside the verification window: {0}")]
