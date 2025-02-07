@@ -292,12 +292,6 @@ async fn new_state_machine_per_valid_sighash() {
     // creates two bitcoin block.
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[]);
 
-    // Store the necessary data for passing validation
-    let dummy_block = model::BitcoinBlock {
-        block_hash: setup.deposit_block_hash.into(),
-        ..Faker.fake_with_rng(&mut rng)
-    };
-    db.write_bitcoin_block(&dummy_block).await.unwrap();
     setup.store_dkg_shares(&db).await;
 
     // Initialize the transaction signer event loop

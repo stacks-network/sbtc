@@ -861,11 +861,6 @@ where
                 )
                 .await?;
 
-                if request.message.len() != 32 {
-                    tracing::warn!("🔐 data received for DKG verification signing is not 32 bytes");
-                    return Err(Error::InvalidSigningOperation);
-                }
-
                 let (state_machine_id, _, mock_tx) = self
                     .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                     .await?;
@@ -1100,10 +1095,11 @@ where
             .get_mut(&state_machine_id)
             .ok_or(Error::MissingFrostStateMachine(aggregate_key))?;
 
-        let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
         let mock_tx = self
             .dkg_verification_results
-            .get_or_insert(state_machine_id, || mock_tx);
+            .get_or_insert(state_machine_id, || {
+                UnsignedMockTransaction::new(aggregate_key.into())
+            });
 
         Ok((state_machine_id, state_machine, mock_tx))
     }
@@ -1152,7 +1148,7 @@ where
                 mock_tx
                     .verify_signature(&signature)
                     .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
-                tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
+                tracing::info!("🔐 signature verification successful");
 
                 self.context
                     .get_storage_mut()
@@ -1169,7 +1165,7 @@ where
                     "🔐 failed to complete DKG verification signing round"
                 );
                 self.dkg_verification_results.pop(&id);
-                return Err(Error::DkgVerificationFailed(Box::new(aggregate_key)));
+                return Err(Error::DkgVerificationFailed(aggregate_key));
             }
             None => {}
             result => {

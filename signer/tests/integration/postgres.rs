@@ -3489,7 +3489,14 @@ async fn revoke_dkg_shares_succeeds() {
     signer::testing::storage::drop_db(db).await;
 }
 
-/// This tests checks that calling
+/// This test checks that DKG shares verification status follows a one-way state transition:
+///
+/// 1. Unverified -> Verified: Once shares are verified, they cannot be revoked
+/// 2. Unverified -> Failed: Once shares are marked as failed, they cannot be verified
+///
+/// The test verifies both transition paths:
+/// - Unverified -> Verified -> (attempt revoke, stays Verified)
+/// - Unverified -> Failed -> (attempt verify, stays Failed)
 #[tokio::test]
 async fn verification_status_one_way_street() {
     let db = testing::storage::new_test_database().await;

@@ -719,9 +719,7 @@ impl SignerUtxo {
 ///
 /// The Bitcoin transaction has the following layout:
 /// 1. The first input is spending the signers' UTXO.
-/// 2. There is only one output which is an OP_RETURN with the bytes [0x01,
-///    0x02, 0x03] as the data and amount equal to the UTXO's value (i.e. the
-///    transaction has a zero-fee).
+/// 2. There is only one output which is an OP_RETURN and an amount equal to 0.
 pub struct UnsignedMockTransaction {
     /// The Bitcoin transaction that needs to be signed.
     tx: Transaction,
@@ -824,8 +822,8 @@ impl UnsignedMockTransaction {
 
     /// Construct an unsigned mock transaction.
     ///
-    /// This will use the provided `aggregate_key` and `amount` to
-    /// construct a [`Transaction`] with a single input and output.
+    /// This will use the provided `aggregate_key` to construct
+    /// a [`Transaction`] with a single input and output with value 0.
     pub fn new(signer_public_key: XOnlyPublicKey) -> Self {
         let utxo = SignerUtxo {
             outpoint: OutPoint::null(),
