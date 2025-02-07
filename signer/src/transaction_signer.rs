@@ -1009,7 +1009,7 @@ where
             .ok_or(Error::MissingStateMachine)?;
 
         let StateMachineId::Dkg(started_at) = id else {
-            return Err(Error::TypeConversion);
+            return Err(Error::UnexpectedStateMachineId(Box::new(*id)));
         };
 
         let encrypted_dkg_shares =
