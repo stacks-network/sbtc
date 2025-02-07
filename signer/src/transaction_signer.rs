@@ -1046,6 +1046,8 @@ where
         }
     }
 
+    /// Persists the encrypted DKG shares stored in the state machine identified
+    /// by the given state machine id.
     #[tracing::instrument(skip(self))]
     async fn store_dkg_shares(&mut self, state_machine_id: &StateMachineId) -> Result<(), Error> {
         let state_machine = self
@@ -1069,6 +1071,8 @@ where
         Ok(())
     }
 
+    /// Creates a new DKG verification state machine for the given aggregate
+    /// key.
     async fn create_dkg_verification_state_machine<S>(
         storage: &S,
         aggregate_key: PublicKeyXOnly,
@@ -1109,7 +1113,7 @@ where
         let state_machine = dkg::verification::StateMachine::new(
             coordinator,
             aggregate_key,
-            Duration::from_secs(60), // TODO: Config
+            Duration::from_secs(30), // TODO: Config?
         );
 
         Ok(state_machine)
@@ -1200,60 +1204,19 @@ where
                     "🔐 DKG shares entry has been marked as verified; it is now able to be used"
                 );
 
+                // We're done, so remove the state machine entry.
                 self.dkg_verification_state_machines.pop(&state_machine_id);
             }
             dkg::verification::State::Error | dkg::verification::State::Expired => {
                 tracing::warn!("🔐 failed to complete DKG verification signing round");
+
+                // The state machine is now invalidated, so remove it and return
+                // an error.
+                self.dkg_verification_state_machines.pop(&state_machine_id);
                 return Err(Error::DkgVerificationFailed(aggregate_key));
             }
             dkg::verification::State::Idle | dkg::verification::State::Signing => {}
         }
-
-        // match result {
-        //     Some(OperationResult::SignTaproot(sig)) => {
-        //         tracing::info!("🔐 successfully completed DKG verification signing round");
-        //         self.dkg_verification_state_machines.pop(&state_machine_id);
-
-        //         let Some(mock_tx) = self.dkg_verification_results.pop(&state_machine_id) else {
-        //             tracing::warn!(
-        //                 "🔐 missing mock transaction for DKG verification signing round"
-        //             );
-        //             return Err(Error::MissingMockTransaction);
-        //         };
-
-        //         // Perform verification of the signature.
-        //         tracing::info!("🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key");
-        //         let signature: TaprootSignature = sig.into();
-        //         mock_tx
-        //             .verify_signature(&signature)
-        //             .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
-        //         tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
-
-        //         self.context
-        //             .get_storage_mut()
-        //             .verify_dkg_shares(aggregate_key)
-        //             .await?;
-        //         tracing::info!(
-        //             "🔐 DKG shares entry has been marked as verified; it is now able to be used"
-        //         );
-        //     }
-        //     Some(OperationResult::SignError(error)) => {
-        //         tracing::warn!(
-        //             ?msg,
-        //             ?error,
-        //             "🔐 failed to complete DKG verification signing round"
-        //         );
-        //         self.dkg_verification_results.pop(&state_machine_id);
-        //         return Err(Error::DkgVerificationFailed(aggregate_key));
-        //     }
-        //     None => {}
-        //     result => {
-        //         tracing::warn!(
-        //             ?result,
-        //             "🔐 unexpected result received from the FROST coordinator"
-        //         );
-        //     }
-        // }
 
         Ok(())
     }
