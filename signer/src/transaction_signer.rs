@@ -908,11 +908,6 @@ where
                 )
                 .await?;
 
-                if request.message.len() != 32 {
-                    tracing::warn!("🔐 data received for DKG verification signing is not 32 bytes");
-                    return Err(Error::InvalidSigningOperation);
-                }
-
                 let (state_machine_id, _) =
                     self.ensure_dkg_verification_state_machine(new_key).await?;
 
@@ -1192,8 +1187,7 @@ where
                 mock_tx
                     .verify_signature(signature)
                     .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
-
-                tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
+                tracing::info!("🔐 signature verification successful");
 
                 self.context
                     .get_storage_mut()
