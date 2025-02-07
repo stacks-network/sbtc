@@ -297,13 +297,12 @@ pub async fn presign_requests_with_dkg_shares_status(status: DkgSharesStatus, is
     // Create a test setup object so that we can simply create proper DKG
     // shares in the database. Note that calling TestSweepSetup2::new_setup
     // creates two bitcoin block.
-    let amounts = DepositAmounts {
-        amount: 100000,
-        max_fee: 10000,
-    };
+    let amounts = DepositAmounts { amount: 100000, max_fee: 10000 };
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
-    
-    let block_header = rpc.get_block_header_info(&setup.deposit_block_hash).unwrap();
+
+    let block_header = rpc
+        .get_block_header_info(&setup.deposit_block_hash)
+        .unwrap();
     let chain_tip = BitcoinBlockRef {
         block_hash: block_header.hash.into(),
         block_height: block_header.height as u64,
