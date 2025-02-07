@@ -1185,7 +1185,7 @@ where
                     "🔐 failed to complete DKG verification signing round"
                 );
                 self.dkg_verification_results.pop(&id);
-                return Err(Error::DkgVerificationFailed(Box::new(aggregate_key)));
+                return Err(Error::DkgVerificationFailed(aggregate_key));
             }
             None => {}
             result => {

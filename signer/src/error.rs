@@ -47,7 +47,7 @@ pub enum Error {
     /// The rotate-key frost verification signing round failed for the aggregate
     /// key.
     #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
-    DkgVerificationFailed(Box<PublicKeyXOnly>),
+    DkgVerificationFailed(PublicKeyXOnly),
 
     /// No WSTS FROST state machine was found for the given aggregate key. This
     /// state machine is used during the DKG verification signing round
