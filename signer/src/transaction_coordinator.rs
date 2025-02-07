@@ -382,6 +382,7 @@ where
         // Load the Stacks wallet.
         tracing::debug!("loading the signer stacks wallet");
         let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
+
         // current_aggregate_key define which wallet can sign stacks tx interacting
         // with the registry smart contract; fallbacks to `aggregate_key` if it's
         // the first rotate key tx.
