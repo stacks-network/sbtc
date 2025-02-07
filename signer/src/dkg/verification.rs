@@ -763,7 +763,6 @@ mod tests {
             .process_message(sender1, sig_share_response1)
             .expect("should be able to process message");
 
-
         // Process the second signature share response -- this should result
         // in the FROST coordinator transitioning into an end-state and thus
         // also the state machine.
