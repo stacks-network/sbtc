@@ -52,9 +52,6 @@ pub struct BitcoinTxContext {
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
-    /// How many bitcoin blocks back from the chain tip the signer will
-    /// look for the signer UTXO.
-    pub context_window: u16,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
     /// The current aggregate key that was the output of DKG.

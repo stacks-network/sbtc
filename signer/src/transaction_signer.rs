@@ -392,7 +392,6 @@ where
         let btc_ctx = BitcoinTxContext {
             chain_tip: chain_tip.block_hash,
             chain_tip_height: chain_tip.block_height,
-            context_window: self.context_window,
             signer_public_key: self.signer_public_key(),
             aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
         };
