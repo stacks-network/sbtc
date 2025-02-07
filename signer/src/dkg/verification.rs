@@ -118,11 +118,12 @@ pub struct StateMachine<TError> {
     /// The state machine that is being used to verify the signer.
     coordinator: FrostCoordinator,
     /// WSTS messages that have been received from other signers. We keep them
-    /// in a [`HashMap`] where the keys are message types and the values are
-    /// another [`HashMap`] mapping sender public keys to queued messages.
-    /// This allows us to manage messages by type and sender, ensuring that we
-    /// can handle out-of-order messages and process them correctly.
-    wsts_messages: HashMap<WstsNetMessageType, HashMap<PublicKey, QueuedMessage>>,
+    /// in a [`HashMap`] where the keys are tuples of message types and sender
+    /// public keys, and the values are queued messages. This allows us to
+    /// manage messages by type and sender, ensuring that we can handle
+    /// out-of-order messages and process them correctly, while also
+    /// constraining each signer to one message per message type.
+    wsts_messages: HashMap<(WstsNetMessageType, PublicKey), QueuedMessage>,
     /// The [`Instant`] at which this state was created. This is used to limit
     /// the time that a [`State`] can be used, according to the
     /// specified timeout, which allows the verification to span multiple
@@ -237,21 +238,18 @@ where
         // by the sender's public key, which is also validated to be a valid
         // member of the signer set.
         self.wsts_messages
-            .get(&message_type)
-            .map(|messages| messages.len() as u32)
-            .unwrap_or(0)
+            .keys()
+            .filter(|(msg_type, _)| *msg_type == message_type)
+            .count() as u32
     }
 
     /// Gets the number of pending messages of the given type that are currently
     /// stored in this [`StateMachine`].
     fn pending_message_count(&self, message_type: WstsNetMessageType) -> u32 {
-        let messages = self.wsts_messages.get(&message_type);
-
-        let Some(messages) = messages else {
-            return 0;
-        };
-
-        messages.values().filter(|msg| !msg.processed).count() as u32
+        self.wsts_messages
+            .iter()
+            .filter(|((msg_type, _), msg)| *msg_type == message_type && !msg.processed)
+            .count() as u32
     }
 
     /// Gets the number of signers that are expected to participate in the DKG
@@ -279,11 +277,15 @@ where
     /// 2. Upon receiving a `NonceRequest`, the coordinator transitions to the
     ///    `NonceGather` state. In this state, the coordinator can process
     ///    `NonceResponse` messages until it has received a number of nonces
-    ///    equal to the number of signers. Once this condition is met, the
-    ///    coordinator transitions to the `SignatureShareRequest` state.
+    ///    equal to the number of signers.
+    /// 3. Once this condition is met, the coordinator transitions to the
+    ///    `SignatureShareRequest` state, after which it can process
+    ///    `SignatureShareResponse` messages until it has received a number of
+    ///    signature shares equal to the number of signers.
+    /// 4. Once this condition is met, the coordinator will transition to either
+    ///    the `Success` or `Error` state, depending on the result of the
+    ///    signing operation.
     fn current_processable_message_type(&self) -> WstsNetMessageType {
-        eprintln!("frost coordinator state: {:?}", self.coordinator.state);
-
         match self.coordinator.state {
             wsts::state_machine::coordinator::State::Idle => WstsNetMessageType::NonceRequest,
             wsts::state_machine::coordinator::State::NonceGather(_) => {
@@ -298,11 +300,11 @@ where
     fn enqueue_message(&mut self, sender: PublicKey, msg: wsts::net::Message) -> Result<(), Error> {
         let msg_type: WstsNetMessageType = (&msg).into();
 
-        // If we've already received the maximum number of messages of this
-        // type, we should drop the message.
         let current_count = self.total_message_count(msg_type);
         let limit = self.message_type_limit(msg_type);
 
+        // If we've already received the maximum number of messages of this
+        // type, we don't enqueue it and return an error.
         if current_count >= limit {
             return Err(Error::MessageLimitExceeded {
                 message_type: msg_type,
@@ -311,10 +313,12 @@ where
             });
         }
 
+        // Enqueue the message under its message type and sender. We use the
+        // sender's public key to deduplicate messages from the same sender and
+        // message type; `insert_entry` will overwrite an existing message from the same
+        // sender, which we shouldn't have within the same round.
         self.wsts_messages
-            .entry(msg_type)
-            .or_default()
-            .entry(sender)
+            .entry((msg_type, sender))
             .insert_entry(QueuedMessage::new(msg));
 
         Ok(())
@@ -330,13 +334,18 @@ where
         // this doesn't matter here since we're only processing the messages
         // that the coordinator state machine can handle given its current
         // state.
-        let messages = self.wsts_messages.get_mut(&message_type_to_process);
-        let Some(messages) = messages else {
-            return Ok(());
-        };
 
         // We want to filter out processed messages.
-        let messages = messages.iter_mut().filter(|entry| !entry.1.processed);
+        let messages = self
+            .wsts_messages
+            .iter_mut()
+            .filter_map(|((msg_type, sender), msg)| {
+                if *msg_type == message_type_to_process && !msg.processed {
+                    Some((sender, msg))
+                } else {
+                    None
+                }
+            });
 
         // Process all of the messages that we determined could be processed.
         for (sender, msg) in messages {
