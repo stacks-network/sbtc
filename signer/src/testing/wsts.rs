@@ -420,6 +420,11 @@ impl SignerSet {
             self.signers.push(signer)
         }
 
+        let started_at = model::BitcoinBlockRef {
+            block_hash: bitcoin_chain_tip,
+            block_height: 0,
+        };
+
         (
             aggregate_key,
             self.signers
@@ -427,7 +432,7 @@ impl SignerSet {
                 .map(|signer| {
                     signer
                         .wsts_signer
-                        .get_encrypted_dkg_shares(rng)
+                        .get_encrypted_dkg_shares(rng, &started_at)
                         .expect("failed to get encrypted shares")
                 })
                 .collect(),

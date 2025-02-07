@@ -821,6 +821,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitcoinconsensus"
+version = "0.106.0+26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e12cba9cce5043cdda968e07b9df6d05ec6b0b38aa27a9a40bb575cf3e521ae9"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "bitcoincore-rpc"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5728,6 +5737,7 @@ dependencies = [
  "aquamarine",
  "axum",
  "bitcoin",
+ "bitcoinconsensus",
  "bitcoincore-rpc",
  "bitcoincore-rpc-json",
  "bitcoincore-zmq",

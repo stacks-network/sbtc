@@ -60,6 +60,7 @@ use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
+use signer::storage::model::DkgSharesStatus;
 use signer::storage::postgres::PgStore;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
@@ -846,6 +847,9 @@ async fn run_dkg_from_scratch() {
         let mut ctx = TestContext::builder()
             .with_storage(db.clone())
             .with_mocked_clients()
+            .modify_settings(|config| {
+                config.signer.private_key = kp.secret_key().into();
+            })
             .build();
 
         // When the signer binary starts up in main(), it sets the current
@@ -925,20 +929,10 @@ async fn run_dkg_from_scratch() {
         }
     });
 
-    let tx_signer_processes = signers
-        .iter()
-        .map(|(context, _, kp, net)| TxSignerEventLoop {
-            network: net.spawn(),
-            threshold: context.config().signer.bootstrap_signatures_required as u32,
-            context: context.clone(),
-            context_window: 10000,
-            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
-            signer_private_key: kp.secret_key().into(),
-            rng: rand::rngs::OsRng,
-            dkg_begin_pause: None,
-            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
-        });
+    let tx_signer_processes = signers.iter().map(|(context, _, _, net)| {
+        TxSignerEventLoop::new(context.clone(), net.spawn(), OsRng)
+            .expect("failed to create TxSignerEventLoop")
+    });
 
     // We only proceed with the test after all processes have started, and
     // we use this counter to notify us when that happens.
@@ -1088,6 +1082,11 @@ async fn run_subsequent_dkg() {
             })
             .build();
 
+        // 2. Populate each database with the same data, so that they
+        //    have the same view of the canonical bitcoin blockchain.
+        //    This ensures that they participate in DKG.
+        data.write_to(&db).await;
+
         // When the signer binary starts up in main(), it sets the current
         // signer set public keys in the context state using the values in
         // the bootstrap_signing_set configuration parameter. Later, this
@@ -1102,6 +1101,7 @@ async fn run_subsequent_dkg() {
         db.write_encrypted_dkg_shares(&EncryptedDkgShares {
             aggregate_key: aggregate_key_1,
             signer_set_public_keys: signer_set_public_keys.iter().copied().collect(),
+            dkg_shares_status: DkgSharesStatus::Verified,
             ..Faker.fake()
         })
         .await
@@ -1141,11 +1141,6 @@ async fn run_subsequent_dkg() {
                 });
         })
         .await;
-
-        // 2. Populate each database with the same data, so that they
-        //    have the same view of the canonical bitcoin blockchain.
-        //    This ensures that they participate in DKG.
-        data.write_to(&db).await;
 
         let network = network.connect(&ctx);
 
@@ -2682,6 +2677,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        dkg_shares_status: DkgSharesStatus::Unverified,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
@@ -2816,6 +2812,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        dkg_shares_status: DkgSharesStatus::Unverified,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();

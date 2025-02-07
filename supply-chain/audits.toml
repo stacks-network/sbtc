@@ -1,6 +1,17 @@
 
 # cargo-vet audits file
 
+[[audits.bitcoinconsensus]]
+who = "cylewitruk <cyle.witruk@outlook.com>"
+criteria = "safe-to-deploy"
+version = "0.106.0+26.0"
+notes = """
+I have reviewed both bitcoinconsensus and sys-libbitcoinconsensus which it uses to build the relevant bitcoin-core sources.
+The bitcoin-core sources are indeed from bitcoin-core v26.
+Note that this library does use C bindings and thus FFI and unsafe. There are panic-able code paths if used incorrectly.
+This library is provided by the rust-bitcoin GH organization which also maintains the bitcoin and secp256k1 crates which we use extensively.
+"""
+
 [[audits.p256k1]]
 who = "cylewitruk <cyle.witruk@outlook.com>"
 criteria = "safe-to-deploy"

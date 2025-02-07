@@ -39,6 +39,7 @@ backoff = { version = "0.4.0", default-features = false, features = ["tokio"] }
 base64 = { version = "0.22.1", default-features = false, features = ["alloc"] }
 bincode = { version = "1.3.3", default-features = false }
 bitcoin = { version = "0.32.5", default-features = false, features = ["serde", "rand-std"] }
+bitcoinconsensus = { version = "0.106.0", default-features = false }
 bitcoincore-rpc = { version = "0.19.0", default-features = false }
 bitcoincore-rpc-json = { version = "0.19.0", default-features = false }
 bitcoincore-zmq = { version = "1.5.2", default-features = false, features = ["async"] }

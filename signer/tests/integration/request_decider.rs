@@ -77,7 +77,7 @@ async fn create_signer_database() -> PgStore {
     signer::testing::storage::new_test_database().await
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn should_store_decisions_for_pending_deposit_requests() {
     let num_signers = 3;
     let signing_threshold = 2;

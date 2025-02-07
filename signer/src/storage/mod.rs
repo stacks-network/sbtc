@@ -497,4 +497,26 @@ pub trait DbWrite {
         &self,
         withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Marks the stored DKG shares for the provided aggregate key as revoked
+    /// and thus should no longer be used.
+    ///
+    /// This can be due to a failed DKG process, the key having been
+    /// compromised, or any other reason that would require the shares for the
+    /// provided aggregate key to not be used in the signing of transactions.
+    fn revoke_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
+
+    /// Marks the stored DKG shares as verified, meaning that the shares have
+    /// been used to sign a transaction input spending a UTXO locked by itself.
+    fn verify_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
 }

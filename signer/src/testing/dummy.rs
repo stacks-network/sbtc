@@ -71,6 +71,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::RotateKeysTransaction;
@@ -240,6 +241,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
     group_key: PublicKey,
+    status: DkgSharesStatus,
 ) -> model::EncryptedDkgShares {
     let party_state = wsts::traits::PartyState {
         polynomial: None,
@@ -272,6 +274,9 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         script_pubkey: group_key.signers_script_pubkey().into(),
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(rng)],
         signature_share_threshold: 1,
+        dkg_shares_status: status,
+        started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
+        started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
     }
 }
 
@@ -441,6 +446,9 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
             public_shares: Vec::new(),
             signer_set_public_keys,
             signature_share_threshold: config.signatures_required,
+            dkg_shares_status: DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
+            started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
         }
     }
 }

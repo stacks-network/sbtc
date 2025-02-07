@@ -25,6 +25,7 @@ use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::model::DkgSharesStatus;
 use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -1275,5 +1276,33 @@ impl super::DbWrite for SharedStore {
                 .insert(sighash.sighash, sighash.clone());
         });
         Ok(())
+    }
+
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Failed;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Verified;
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }

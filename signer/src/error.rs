@@ -16,15 +16,33 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Unexpected [`StateMachineId`] in the given context.
+    #[error("unexpected state machine id in the given context: {0:?}")]
+    UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
+
+    /// An IO error was returned from the [`bitcoin`] library. This is usually an
+    /// error that occurred during encoding/decoding of bitcoin types.
+    #[error("an io error was returned from the bitcoin library: {0}")]
+    BitcoinIo(#[source] bitcoin::io::Error),
+
+    /// An error was returned from the bitcoinconsensus library.
+    #[error("error returned from libbitcoinconsensus: {0}")]
+    BitcoinConsensus(bitcoinconsensus::Error),
+
     /// We have received a request/response which has been deemed invalid in
     /// the current context.
     #[error("invalid signing request")]
     InvalidSigningOperation,
 
-    /// The pre-rotate-key frost verification signing round was not reported as
-    /// successful.
-    #[error("rotate-key frost verification signing round not reported as successful")]
-    FrostVerificationNotSuccessful,
+    /// No mock transaction was found after DKG successfully completed. Spending
+    /// a signer UTXO locked by the new aggregate key could not be verified.
+    #[error("no mock transaction found when attempting to sign")]
+    MissingMockTransaction,
+
+    /// The rotate-key frost verification signing round failed for the aggregate
+    /// key.
+    #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
+    DkgVerificationFailed(PublicKeyXOnly),
 
     /// No WSTS FROST state machine was found for the given aggregate key. This
     /// state machine is used during the DKG verification signing round

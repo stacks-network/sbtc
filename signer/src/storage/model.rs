@@ -463,6 +463,16 @@ pub struct EncryptedDkgShares {
     /// (shares) that are needed in order to construct a signature.
     #[sqlx(try_from = "i32")]
     pub signature_share_threshold: u16,
+    /// The current status of the DKG shares.
+    pub dkg_shares_status: DkgSharesStatus,
+    /// The block hash of the chain tip of the canonical bitcoin blockchain
+    /// when the DKG round associated with these shares started.
+    pub started_at_bitcoin_block_hash: BitcoinBlockHash,
+    /// The block height of the chain tip of the canonical bitcoin blockchain
+    /// when the DKG round associated with these shares started.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
+    pub started_at_bitcoin_block_height: u64,
 }
 
 /// Persisted public DKG shares from other signers
@@ -541,6 +551,20 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
     fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
         Self::from(&votes)
     }
+}
+
+/// The possible states for DKG shares.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
+#[sqlx(type_name = "dkg_shares_status", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum DkgSharesStatus {
+    /// The DKG shares have not passed or failed verification.
+    Unverified,
+    /// The DKG shares have passed verification.
+    Verified,
+    /// The DKG shares have failed verification or the shares have not
+    /// passed verification within our configured window.
+    Failed,
 }
 
 /// The types of transactions the signer is interested in.
@@ -817,6 +841,7 @@ impl std::fmt::Display for BitcoinBlockHash {
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     #[sqlx(try_from = "i64")]
     pub block_height: u64,
     /// Bitcoin block hash. It uniquely identifies the bitcoin block.
@@ -835,6 +860,12 @@ impl From<&BitcoinBlock> for BitcoinBlockRef {
             block_hash: value.block_hash,
             block_height: value.block_height,
         }
+    }
+}
+
+impl AsRef<BitcoinBlockHash> for BitcoinBlockRef {
+    fn as_ref(&self) -> &BitcoinBlockHash {
+        &self.block_hash
     }
 }
 
