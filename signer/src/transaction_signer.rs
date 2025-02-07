@@ -876,11 +876,6 @@ where
                 )
                 .await?;
 
-                if request.message.len() != 32 {
-                    tracing::warn!("🔐 data received for DKG verification signing is not 32 bytes");
-                    return Err(Error::InvalidSigningOperation);
-                }
-
                 let (state_machine_id, _, mock_tx) = self
                     .ensure_dkg_verification_state_machine(&chain_tip.block_hash, new_key)
                     .await?;
@@ -929,8 +924,6 @@ where
     /// - The new key provided by the peer matches our view of the latest
     ///   aggregate key (not the _current_ key, but the key which we intend to
     ///   rotate to).
-    /// - That the message data can be converted into a bitcoin block hash which
-    ///   matches the current bitcoin chain tip block hash.
     async fn validate_dkg_verification_message<DB>(
         storage: &DB,
         new_key: &PublicKeyXOnly,
