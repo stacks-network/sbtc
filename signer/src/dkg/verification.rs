@@ -121,7 +121,7 @@ pub struct StateMachine<TError> {
     /// constraining each signer to one message per message type.
     wsts_messages: HashMap<(WstsNetMessageType, PublicKey), QueuedMessage>,
     /// The [`Instant`] at which this state was created. This is used to limit
-    /// the time that a [`State`] can be used, according to the
+    /// the time that a [`StateMachine`] can be used, according to the
     /// specified timeout, which allows the verification to span multiple
     /// Bitcoin blocks, being limited by wall-clock time instead of Bitcoin
     /// block cadence.
