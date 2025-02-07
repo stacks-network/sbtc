@@ -1284,11 +1284,12 @@ impl super::DbWrite for SharedStore {
     {
         let mut store = self.lock().await;
         if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
-            shares.dkg_shares_status = DkgSharesStatus::Failed;
-            Ok(true)
-        } else {
-            Ok(false)
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Failed;
+                return Ok(true);
+            }
         }
+        Ok(false)
     }
 
     async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
@@ -1297,10 +1298,11 @@ impl super::DbWrite for SharedStore {
     {
         let mut store = self.lock().await;
         if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
-            shares.dkg_shares_status = DkgSharesStatus::Verified;
-            Ok(true)
-        } else {
-            Ok(false)
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Verified;
+                return Ok(true);
+            }
         }
+        Ok(false)
     }
 }
