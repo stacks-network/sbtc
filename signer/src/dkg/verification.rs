@@ -1,8 +1,4 @@
-//! This module contains logic specific to the distributed key generation (DKG)
-//! protocol.
-
-// TODO: Remove once non-test code uses this stuff.
-#![allow(dead_code)]
+//! This module contains logic specific to the verification of DKG shares.
 
 use std::{
     collections::HashMap,
@@ -243,15 +239,6 @@ where
             .count() as u32
     }
 
-    /// Gets the number of pending messages of the given type that are currently
-    /// stored in this [`StateMachine`].
-    fn pending_message_count(&self, message_type: WstsNetMessageType) -> u32 {
-        self.wsts_messages
-            .iter()
-            .filter(|((msg_type, _), msg)| *msg_type == message_type && !msg.processed)
-            .count() as u32
-    }
-
     /// Gets the number of signers that are expected to participate in the DKG
     /// verification.
     fn signer_count(&self) -> u32 {
@@ -411,6 +398,15 @@ mod tests {
     where
         TError: From<Error> + std::error::Error + 'static + Send + Sync,
     {
+        /// Gets the number of pending messages of the given type that are currently
+        /// stored in this [`StateMachine`].
+        fn pending_message_count(&self, message_type: WstsNetMessageType) -> u32 {
+            self.wsts_messages
+                .iter()
+                .filter(|((msg_type, _), msg)| *msg_type == message_type && !msg.processed)
+                .count() as u32
+        }
+
         fn assert_message_counts(
             &self,
             message_type: WstsNetMessageType,
