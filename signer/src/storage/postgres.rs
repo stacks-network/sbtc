@@ -1157,6 +1157,10 @@ impl super::DbRead for PgStore {
             Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
         };
 
+        let dkg_shares_status = self
+            .get_dkg_shares_status(summary.signers_public_key)
+            .await?;
+
         Ok(Some(DepositRequestReport {
             status,
             can_sign: summary.can_sign,
@@ -1169,6 +1173,7 @@ impl super::DbRead for PgStore {
             deposit_script: summary.deposit_script.into(),
             reclaim_script: summary.reclaim_script.into(),
             signers_public_key: summary.signers_public_key.into(),
+            dkg_shares_status,
         }))
     }
 
@@ -1498,6 +1503,26 @@ impl super::DbRead for PgStore {
             "#,
         )
         .bind(key)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_dkg_shares_status<X>(
+        &self,
+        aggregate_key: X,
+    ) -> Result<Option<model::DkgSharesStatus>, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        sqlx::query_scalar::<_, model::DkgSharesStatus>(
+            "
+            SELECT dkg_shares_status
+            FROM dkg_shares AS ds
+            WHERE substring(ds.aggregate_key FROM 2) = $1
+            ",
+        )
+        .bind(aggregate_key.into())
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
