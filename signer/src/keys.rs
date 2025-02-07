@@ -254,12 +254,6 @@ impl std::fmt::Display for PublicKey {
 #[serde(transparent)]
 pub struct PublicKeyXOnly(secp256k1::XOnlyPublicKey);
 
-impl AsRef<secp256k1::XOnlyPublicKey> for PublicKeyXOnly {
-    fn as_ref(&self) -> &secp256k1::XOnlyPublicKey {
-        &self.0
-    }
-}
-
 impl From<&PublicKeyXOnly> for secp256k1::XOnlyPublicKey {
     fn from(value: &PublicKeyXOnly) -> Self {
         value.0
