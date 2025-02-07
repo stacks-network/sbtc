@@ -796,11 +796,14 @@ impl DepositRequestReport {
             None => return InputValidationResult::NoVote,
         }
 
+        // We do not sign for inputs where we have not verified the
+        // aggregate key locking the UTXO. If our shares have not been
+        // verified then sending signature shares could be harmful overall.
         match self.dkg_shares_status {
-            None => return InputValidationResult::CannotSignUtxo,
             Some(DkgSharesStatus::Verified) => {}
             Some(DkgSharesStatus::Unverified) => return InputValidationResult::DkgSharesUnverified,
             Some(DkgSharesStatus::Failed) => return InputValidationResult::DkgSharesVerifyFailed,
+            None => return InputValidationResult::CannotSignUtxo,
         }
 
         InputValidationResult::Ok
