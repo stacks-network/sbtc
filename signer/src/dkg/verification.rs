@@ -59,7 +59,7 @@ pub enum State {
     /// The DKG verification has been created but not yet been used to process
     /// any messages.
     Idle,
-    /// The DKG verification is currently gathering nonces. This is the initi
+    /// The DKG verification signing round has begun but has not yet finalized.
     Signing,
     /// The DKG verification has completed successfully, and the resulting
     /// signature is stored.
