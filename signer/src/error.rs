@@ -39,15 +39,10 @@ pub enum Error {
     #[error("no mock transaction found when attempting to sign")]
     MissingMockTransaction,
 
-    /// The pre-rotate-key frost verification signing round was not reported as
-    /// successful.
-    #[error("rotate-key frost verification signing round not reported as successful")]
-    DkgVerificationNotSuccessful,
-
     /// The rotate-key frost verification signing round failed for the aggregate
     /// key.
     #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
-    DkgVerificationFailed(Box<PublicKeyXOnly>),
+    DkgVerificationFailed(PublicKeyXOnly),
 
     /// No WSTS FROST state machine was found for the given aggregate key. This
     /// state machine is used during the DKG verification signing round
