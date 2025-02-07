@@ -85,11 +85,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
-    let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await?;
+    let db = PgStore::connect(settings.signer.db_endpoint.as_str()).await.unwrap_or_else(|err| {
+        tracing::error!(%err, "failed to connect to the database");
+        std::process::exit(1);
+    });
 
     // Apply any pending migrations if automatic migrations are enabled.
     if args.migrate_db {
-        db.apply_migrations().await?;
+        db.apply_migrations().await.unwrap_or_else(|err| {
+            tracing::error!(%err, "failed to apply database migrations");
+            std::process::exit(1);
+        });
     }
 
     // Initialize the signer context.
@@ -98,7 +104,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ApiFallbackClient<BitcoinCoreClient>,
         ApiFallbackClient<StacksClient>,
         ApiFallbackClient<EmilyClient>,
-    >::init(settings, db)?;
+    >::init(settings, db).unwrap_or_else(|err| {
+        tracing::error!(%err, "failed to initialize the signer context");
+        std::process::exit(1);
+    });
 
     // TODO: We should first check "another source of truth" for the current
     // signing set, and only assume we are bootstrapping if that source is
