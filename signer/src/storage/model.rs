@@ -557,11 +557,10 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
 #[sqlx(type_name = "dkg_shares_status", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
-// #[strum(serialize_all = "snake_case")]
 pub enum DkgSharesStatus {
     /// The DKG shares have not passed or failed verification.
     Unverified,
-    /// The DKG shares have passed or verification.
+    /// The DKG shares have passed verification.
     Verified,
     /// The DKG shares have failed verification or the shares have not
     /// passed verification within our configured window.
