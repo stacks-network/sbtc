@@ -26,6 +26,8 @@ pub use termination::*;
 pub trait Context: Clone + Sync + Send {
     /// Get the current configuration for the signer.
     fn config(&self) -> &Settings;
+    /// Get a mutable reference to the current configuration for the signer.
+    fn config_mut(&mut self) -> &mut Settings;
     /// Get the current state for the signer.
     fn state(&self) -> &SignerState;
     /// Subscribe to the application signalling channel, returning a receiver
