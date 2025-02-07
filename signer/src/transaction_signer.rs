@@ -789,6 +789,7 @@ where
 
                 self.wsts_state_machines
                     .put(state_machine_id, state_machine);
+
                 self.relay_message(
                     &state_machine_id,
                     msg.id,
@@ -1048,7 +1049,7 @@ where
         let state_machine = self
             .wsts_state_machines
             .get(state_machine_id)
-            .ok_or(Error::MissingStateMachine(*state_machine_id))?;
+            .ok_or_else(|| Error::MissingStateMachine(*state_machine_id))?;
 
         let StateMachineId::Dkg(started_at) = state_machine_id else {
             return Err(Error::UnexpectedStateMachineId(*state_machine_id));
@@ -1177,15 +1178,21 @@ where
 
         tracing::trace!(?msg, "🔐 processing FROST coordinator message");
 
-        state_machine.process_message(sender, msg.clone())?;
+        state_machine.process_message(sender, msg.clone())
+            .inspect_err(|error| tracing::warn!(?error, %sender, "🔐 failed to process FROST coordinator message"))?;
 
         match state_machine.state() {
             dkg::verification::State::Success(signature) => {
                 tracing::info!("🔐 successfully completed DKG verification signing round");
+                let signature = *signature;
+
+                // We're at an end-state, so remove the state machine.
+                self.dkg_verification_state_machines.pop(&state_machine_id);
+
                 tracing::info!("🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key");
                 let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
                 mock_tx
-                    .verify_signature(signature)
+                    .verify_signature(&signature)
                     .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
                 tracing::info!("🔐 signature verification successful");
 
@@ -1197,9 +1204,6 @@ where
                 tracing::info!(
                     "🔐 DKG shares entry has been marked as verified; it is now able to be used"
                 );
-
-                // We're done, so remove the state machine entry.
-                self.dkg_verification_state_machines.pop(&state_machine_id);
             }
             dkg::verification::State::Error | dkg::verification::State::Expired => {
                 tracing::warn!("🔐 failed to complete DKG verification signing round");
