@@ -371,44 +371,53 @@ where
             .get_current_signers_aggregate_key(&self.context.config().signer.deployer)
             .await?;
 
-        // If the latest DKG aggregate key matches on-chain data, nothing to do here
-        if Some(last_dkg.aggregate_key) == current_aggregate_key {
-            tracing::debug!("stacks node is up to date with the current aggregate key");
+        let (need_verification, need_rotate_key) =
+            assert_rotate_key_action(&last_dkg, current_aggregate_key)?;
+        if !(need_verification || need_rotate_key) {
+            tracing::debug!("stacks node is up to date with the current aggregate key and no DKG verification required");
             return Ok(());
         }
-
-        tracing::info!("our aggregate key differs from the one in the registry contract; a key rotation may be necessary");
+        tracing::info!(%need_verification, %need_rotate_key, "we need to do something DKG related");
 
         // Load the Stacks wallet.
         tracing::debug!("loading the signer stacks wallet");
         let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
 
-        // current_aggregate_key define which wallet can sign stacks tx interacting
-        // with the registry smart contract; fallbacks to `aggregate_key` if it's
-        // the first rotate key tx.
-        let signing_key = &current_aggregate_key.unwrap_or(*aggregate_key);
+        if need_verification {
+            // Perform DKG verification before submitting the rotate key transaction.
+            tracing::info!(
+                "🔐 beginning DKG verification before submitting rotate-key transaction"
+            );
+            self.perform_dkg_verification(bitcoin_chain_tip, &last_dkg.aggregate_key, &wallet)
+                .await?;
+            tracing::info!("🔐 DKG verification successful");
+        }
 
-        // Perform DKG verification before submitting the rotate key transaction.
-        tracing::info!("🔐 beginning DKG verification before submitting rotate-key transaction");
-        self.perform_dkg_verification(bitcoin_chain_tip, &last_dkg.aggregate_key, &wallet)
-            .await?;
-        tracing::info!("🔐 DKG verification successful");
+        if need_rotate_key {
+            tracing::info!("our aggregate key differs from the one in the registry contract; a key rotation may be necessary");
 
-        // Construct, sign and submit the rotate key transaction.
-        tracing::info!("preparing to submit a rotate-key transaction");
-        let txid = self
-            .construct_and_sign_rotate_key_transaction(
-                bitcoin_chain_tip,
-                signing_key,
-                &last_dkg.aggregate_key,
-                &wallet,
-            )
-            .await
-            .inspect_err(
-                |error| tracing::error!(%error, "failed to sign or submit rotate-key transaction"),
-            )?;
+            // current_aggregate_key define which wallet can sign stacks tx interacting
+            // with the registry smart contract; fallbacks to `aggregate_key` if it's
+            // the first rotate key tx.
+            let signing_key = &current_aggregate_key.unwrap_or(*aggregate_key);
 
-        tracing::info!(%txid, "rotate-key transaction submitted successfully");
+            // Construct, sign and submit the rotate key transaction.
+            tracing::info!("preparing to submit a rotate-key transaction");
+            let txid = self
+                .construct_and_sign_rotate_key_transaction(
+                    bitcoin_chain_tip,
+                    signing_key,
+                    &last_dkg.aggregate_key,
+                    &wallet,
+                )
+                .await
+                .inspect_err(
+                    |error| tracing::error!(%error, "failed to sign or submit rotate-key transaction"),
+                )?;
+
+            tracing::info!(%txid, "rotate-key transaction submitted successfully");
+        }
+
         Ok(())
     }
 
@@ -1850,6 +1859,27 @@ pub async fn should_coordinate_dkg(
     }
 }
 
+/// Assert, given the last dkg and smart contract current aggregate key, if we
+/// need to verify the shares and/or issue a rotate key call.
+pub fn assert_rotate_key_action(
+    last_dkg: &model::EncryptedDkgShares,
+    current_aggregate_key: Option<PublicKey>,
+) -> Result<(bool, bool), Error> {
+    let need_rotate_key = Some(last_dkg.aggregate_key) != current_aggregate_key;
+
+    let need_verification = match last_dkg.dkg_shares_status {
+        model::DkgSharesStatus::Unverified => true,
+        model::DkgSharesStatus::Verified => need_rotate_key,
+        model::DkgSharesStatus::Failed => {
+            return Err(Error::DkgVerificationFailed(Box::new(
+                last_dkg.aggregate_key.into(),
+            )))
+        }
+    };
+
+    Ok((need_verification, need_rotate_key))
+}
+
 #[cfg(test)]
 mod tests {
     use std::num::{NonZeroU32, NonZeroU64};
@@ -1857,6 +1887,8 @@ mod tests {
     use crate::bitcoin::MockBitcoinInteract;
     use crate::context::Context;
     use crate::emily_client::MockEmilyInteract;
+    use crate::error::Error;
+    use crate::keys::{PrivateKey, PublicKey};
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
     use crate::storage::{model, DbWrite};
@@ -1865,9 +1897,10 @@ mod tests {
     use crate::testing::transaction_coordinator::TestEnvironment;
 
     use fake::{Fake, Faker};
+    use rand::SeedableRng as _;
     use test_case::test_case;
-    use test_log::test;
 
+    use super::assert_rotate_key_action;
     use super::should_coordinate_dkg;
 
     fn test_environment() -> TestEnvironment<
@@ -1903,7 +1936,7 @@ mod tests {
     }
 
     #[ignore = "we have a test for this"]
-    #[test(tokio::test)]
+    #[test_log::test(tokio::test)]
     async fn should_be_able_to_coordinate_signing_rounds() {
         test_environment()
             .assert_should_be_able_to_coordinate_signing_rounds(std::time::Duration::ZERO)
@@ -2026,5 +2059,46 @@ mod tests {
 
         // Assert the result
         assert_eq!(result, should_allow);
+    }
+
+    fn test_pubkey(seed: u64) -> PublicKey {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+        PublicKey::from_private_key(&PrivateKey::new(&mut rng))
+    }
+
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Unverified, ..Faker.fake()}, None, true, true; "unverified, no key")]
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Verified, ..Faker.fake()}, None, true, true; "verified, no key")]
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Unverified, aggregate_key: test_pubkey(1), ..Faker.fake()}, Some(test_pubkey(1)), true, false; "unverified, key up to date")]
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Verified, aggregate_key: test_pubkey(1), ..Faker.fake()}, Some(test_pubkey(1)), false, false; "verified, key up to date")]
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Unverified, aggregate_key: test_pubkey(2), ..Faker.fake()}, Some(test_pubkey(1)), true, true; "unverified, new key")]
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Verified, aggregate_key: test_pubkey(2), ..Faker.fake()}, Some(test_pubkey(1)), true, true; "verified, new key")]
+    fn test_assert_rotate_key_action(
+        last_dkg: model::EncryptedDkgShares,
+        current_aggregate_key: Option<PublicKey>,
+        expected_need_verification: bool,
+        expected_need_rotate_key: bool,
+    ) {
+        let (need_verification, need_rotate_key) =
+            assert_rotate_key_action(&last_dkg, current_aggregate_key).unwrap();
+        assert_eq!(need_verification, expected_need_verification);
+        assert_eq!(need_rotate_key, expected_need_rotate_key);
+    }
+
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Failed, ..Faker.fake()}, None; "no key")]
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Failed, aggregate_key: test_pubkey(1), ..Faker.fake()}, Some(test_pubkey(1)); "key up to date")]
+    #[test_case(model::EncryptedDkgShares{dkg_shares_status: model::DkgSharesStatus::Failed, aggregate_key: test_pubkey(2), ..Faker.fake()}, Some(test_pubkey(1)); "new key")]
+    fn test_assert_rotate_key_action_failure(
+        last_dkg: model::EncryptedDkgShares,
+        current_aggregate_key: Option<PublicKey>,
+    ) {
+        let result = assert_rotate_key_action(&last_dkg, current_aggregate_key);
+        match result {
+            Err(Error::DkgVerificationFailed(key)) => {
+                assert_eq!(*key, last_dkg.aggregate_key.into());
+            }
+            _ => {
+                panic!("unexpected result")
+            }
+        }
     }
 }
