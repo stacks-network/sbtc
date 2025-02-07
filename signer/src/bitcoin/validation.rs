@@ -55,7 +55,9 @@ pub struct BitcoinTxContext {
     pub chain_tip_height: u64,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
-    /// The current aggregate key that was the output of DKG.
+    /// The current aggregate key that was the output of DKG. The DKG
+    /// shares associated with this aggregate key must have passed
+    /// verification.
     pub aggregate_key: PublicKey,
 }
 

@@ -40,6 +40,7 @@ use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::SigHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
@@ -387,17 +388,27 @@ where
     ) -> Result<(), Error> {
         let db = self.context.get_storage_mut();
 
-        // TODO: This is either the aggregate key from lastest confirmed
-        // rotate-keys transaction or the latest dkg shares of any status.
-        // The TODO is to make sure that this aggregate key is always
-        // verified.
-        let maybe_aggregate_key = self.context.state().current_aggregate_key();
+        let aggregate_key = self
+            .context
+            .state()
+            .current_aggregate_key()
+            .ok_or(Error::NoDkgShares)?;
+
+        let aggregate_key = match db.get_dkg_shares_status(aggregate_key).await? {
+            Some(DkgSharesStatus::Verified) => aggregate_key,
+            None | Some(DkgSharesStatus::Unverified) | Some(DkgSharesStatus::Failed) => {
+                db.get_latest_verified_dkg_shares()
+                    .await?
+                    .ok_or(Error::NoVerifiedDkgShares)?
+                    .aggregate_key
+            }
+        };
 
         let btc_ctx = BitcoinTxContext {
             chain_tip: chain_tip.block_hash,
             chain_tip_height: chain_tip.block_height,
             signer_public_key: self.signer_public_key(),
-            aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+            aggregate_key,
         };
 
         tracing::debug!("validating bitcoin transaction pre-sign");
