@@ -3054,15 +3054,6 @@ async fn test_conservative_initial_sbtc_limits() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let mut rng = rand::rngs::StdRng::seed_from_u64(56);
 
-    // Just so that bitcoin core can estimate fees
-    {
-        let recipient = Recipient::new(AddressType::P2tr);
-        faucet.send_to(1234567, &recipient.address);
-        faucet.send_to(8901234, &recipient.address);
-        faucet.send_to(5678901, &recipient.address);
-        faucet.send_to(2345678, &recipient.address);
-    }
-
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
     let signatures_required: u16 = 2;
 
@@ -3350,6 +3341,13 @@ async fn test_conservative_initial_sbtc_limits() {
     // =========================================================================
     let signers_key = setup.signers.signer_keys().iter().cloned().collect();
     loop {
+        // Just so that bitcoin core can estimate fees
+        let recipient = Recipient::new(AddressType::P2tr);
+        faucet.send_to(1234567, &recipient.address);
+        faucet.send_to(8901234, &recipient.address);
+        faucet.send_to(5678901, &recipient.address);
+        faucet.send_to(2345678, &recipient.address);
+
         let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
 
         if given_key_is_coordinator(signers[0].2.public_key().into(), &chain_tip, &signers_key) {
