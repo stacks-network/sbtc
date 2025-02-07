@@ -1166,7 +1166,7 @@ where
                 let signature: TaprootSignature = sig.into();
                 match mock_tx.verify_signature(&signature) {
                     Ok(()) => {
-                        tracing::info!("🔐 \x1b[1;32msignature verification successful\x1b[0m");
+                        tracing::info!("🔐 signature verification successful");
                         db.verify_dkg_shares(aggregate_key).await?;
                         tracing::info!("🔐 DKG shares entry has been marked as verified");
                     }
