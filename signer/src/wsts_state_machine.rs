@@ -54,7 +54,7 @@ impl std::fmt::Display for StateMachineId {
             StateMachineId::Dkg(block_hash) => write!(f, "dkg({:?})", block_hash),
             StateMachineId::BitcoinSign(sighash) => write!(f, "bitcoin-sign({})", sighash),
             StateMachineId::RotateKey(pubkey) => {
-                write!(f, "dkg-verification({})", pubkey)
+                write!(f, "rotate-key({})", pubkey)
             }
         }
     }
