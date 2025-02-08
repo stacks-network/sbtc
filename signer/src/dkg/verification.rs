@@ -128,8 +128,8 @@ pub struct StateMachine {
     /// Specifies the amount of time elapsed since `created_at` that this
     /// verification should be valid.
     timeout: Duration,
-    /// The signature that has been produced by the DKG verification. This is
-    /// only set if/once the DKG verification has completed successfully.
+    /// The current state of this state machine. If the state is
+    /// [`State::Success`] then the signature will be stored in the variant.
     state: State,
 }
 
@@ -362,7 +362,7 @@ impl StateMachine {
                 .process_message(&msg.message)
                 .map_err(|error| Error::Coordinator(Box::new(error)))?;
 
-            // Check the result of the operation. If the operation is one of
+            // Check the result of the operation and handle accordingly.
             match result {
                 Some(OperationResult::SignTaproot(sig)) => {
                     self.state = State::Success(sig.into());
