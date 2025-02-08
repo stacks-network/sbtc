@@ -382,14 +382,28 @@ where
     ) -> Result<(), Error> {
         let db = self.context.get_storage_mut();
 
-        let maybe_aggregate_key = self.context.state().current_aggregate_key();
+        let aggregate_key = self
+            .context
+            .state()
+            .current_aggregate_key()
+            .ok_or(Error::NoDkgShares)?;
+
+        let dkg_shares = db.get_encrypted_dkg_shares(aggregate_key).await?;
+        let aggregate_key = match dkg_shares.map(|shares| shares.dkg_shares_status) {
+            Some(DkgSharesStatus::Verified) => aggregate_key,
+            None | Some(DkgSharesStatus::Unverified) | Some(DkgSharesStatus::Failed) => {
+                db.get_latest_verified_dkg_shares()
+                    .await?
+                    .ok_or(Error::NoVerifiedDkgShares)?
+                    .aggregate_key
+            }
+        };
 
         let btc_ctx = BitcoinTxContext {
             chain_tip: chain_tip.block_hash,
             chain_tip_height: chain_tip.block_height,
-            context_window: self.context_window,
             signer_public_key: self.signer_public_key(),
-            aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+            aggregate_key,
         };
 
         tracing::debug!("validating bitcoin transaction pre-sign");
@@ -755,6 +769,8 @@ where
                             &db,
                             &new_key,
                             Some(&request.message),
+                            self.context.config().signer.dkg_verification_window,
+                            &chain_tip_report.chain_tip,
                         )
                         .await?;
 
@@ -843,6 +859,8 @@ where
                             &db,
                             &new_key,
                             Some(&request.message),
+                            self.context.config().signer.dkg_verification_window,
+                            &chain_tip_report.chain_tip,
                         )
                         .await?;
 
@@ -898,6 +916,8 @@ where
                     &self.context.get_storage(),
                     &new_key,
                     Some(&request.message),
+                    self.context.config().signer.dkg_verification_window,
+                    &chain_tip_report.chain_tip,
                 )
                 .await?;
 
@@ -931,6 +951,8 @@ where
                     &self.context.get_storage(),
                     &new_key,
                     None,
+                    self.context.config().signer.dkg_verification_window,
+                    &chain_tip_report.chain_tip,
                 )
                 .await?;
 
@@ -951,12 +973,12 @@ where
     /// - The new key provided by the peer matches our view of the latest
     ///   aggregate key (not the _current_ key, but the key which we intend to
     ///   rotate to).
-    /// - That the message data can be converted into a bitcoin block hash which
-    ///   matches the current bitcoin chain tip block hash.
     async fn validate_dkg_verification_message<DB>(
         storage: &DB,
         new_key: &PublicKeyXOnly,
         message: Option<&[u8]>,
+        dkg_verification_window: u16,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
     ) -> Result<(), Error>
     where
         DB: DbRead,
@@ -982,6 +1004,18 @@ where
         if latest_shares.dkg_shares_status == DkgSharesStatus::Failed {
             tracing::warn!("🔐 DKG shares are in a failed state and may not be re-validated");
             return Err(Error::DkgVerificationFailed(latest_key));
+        }
+
+        // Ensure we are within the verification window
+        let max_verification_height = latest_shares
+            .started_at_bitcoin_block_height
+            .saturating_add(dkg_verification_window as u64);
+
+        if max_verification_height < bitcoin_chain_tip.block_height {
+            tracing::warn!("🔐 DKG verification outside the allowed window");
+            return Err(Error::DkgVerificationWindowElapsed(
+                latest_shares.aggregate_key,
+            ));
         }
 
         // If we don't have a message (i.e. from `SignatureShareResponse`) then
@@ -1351,7 +1385,7 @@ where
 
 /// Asserts whether a `DkgBegin` WSTS message should be allowed to proceed
 /// based on the current state of the signer and the DKG configuration.
-async fn assert_allow_dkg_begin(
+pub async fn assert_allow_dkg_begin(
     context: &impl Context,
     bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<(), Error> {
@@ -1539,10 +1573,10 @@ mod tests {
         // Write `dkg_shares` entries for the `current` number of rounds, simulating
         // the signer having participated in that many successful DKG rounds.
         for _ in 0..dkg_rounds_current {
-            storage
-                .write_encrypted_dkg_shares(&Faker.fake())
-                .await
-                .unwrap();
+            let mut shares: model::EncryptedDkgShares = Faker.fake();
+            shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+            storage.write_encrypted_dkg_shares(&shares).await.unwrap();
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
@@ -1583,10 +1617,10 @@ mod tests {
 
         // Write 1 DKG shares entry to the database, simulating that DKG has
         // successfully run once.
-        storage
-            .write_encrypted_dkg_shares(&Faker.fake())
-            .await
-            .unwrap();
+        let mut shares: model::EncryptedDkgShares = Faker.fake();
+        shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+        storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
         // Dummy chain tip hash which will be used to fetch the block height.
         let bitcoin_chain_tip = model::BitcoinBlockRef {
@@ -1653,10 +1687,10 @@ mod tests {
 
         // Write 1 DKG shares entry to the database, simulating that DKG has
         // successfully run once.
-        storage
-            .write_encrypted_dkg_shares(&Faker.fake())
-            .await
-            .unwrap();
+        let mut shares: model::EncryptedDkgShares = Faker.fake();
+        shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+        storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
         // Dummy chain tip hash which will be used to fetch the block height.
         let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();

@@ -45,6 +45,10 @@ pub enum Error {
     #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
     DkgVerificationFailed(PublicKeyXOnly),
 
+    /// Cannot verify the aggregate key outside the verification window
+    #[error("cannot verify the aggregate key outside the verification window: {0}")]
+    DkgVerificationWindowElapsed(PublicKey),
+
     /// Expected two aggregate keys to match, but they did not.
     #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
     AggregateKeyMismatch(Box<PublicKeyXOnly>, Box<PublicKeyXOnly>),
@@ -480,6 +484,12 @@ pub enum Error {
     /// been.
     #[error("DKG has not been run")]
     NoDkgShares,
+
+    /// This arises when a signer gets a message that requires DKG to have
+    /// been run with output shares that have passed verification, but no
+    /// such shares exist.
+    #[error("no DKG shares exist that have passed verification")]
+    NoVerifiedDkgShares,
 
     /// TODO: We don't want to be able to run DKG more than once. Soon this
     /// restriction will be lifted.
