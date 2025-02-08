@@ -193,13 +193,7 @@ impl StateMachine {
         // can receive out-of-order messages, and we need to ensure that we
         // process all messages that we can before returning, including handling
         // state transitions.
-        loop {
-            let current_processable_message_type = self.current_processable_message_type();
-            self.process_queued_messages()?;
-            if current_processable_message_type == self.current_processable_message_type() {
-                break;
-            }
-        }
+        while self.process_queued_messages()? {}
 
         Ok(())
     }
@@ -323,7 +317,7 @@ impl StateMachine {
 
     /// Processes all queued messages that can be processed given the current
     /// state of the [`FrostCoordinator`].
-    fn process_queued_messages(&mut self) -> Result<(), Error> {
+    fn process_queued_messages(&mut self) -> Result<bool, Error> {
         let message_type_to_process = self.current_processable_message_type();
 
         // Gets references to all pending messages of the given type that are
@@ -344,6 +338,8 @@ impl StateMachine {
                 }
             });
 
+        let mut processed_any = false;
+
         // Process all of the messages that we determined could be processed.
         for (sender, msg) in messages {
             tracing::trace!(
@@ -361,6 +357,8 @@ impl StateMachine {
                 .coordinator
                 .process_message(&msg.message)
                 .map_err(|error| Error::Coordinator(Box::new(error)))?;
+
+            processed_any = true;
 
             // Check the result of the operation and handle accordingly.
             match result {
@@ -383,7 +381,7 @@ impl StateMachine {
             }
         }
 
-        Ok(())
+        Ok(processed_any)
     }
 }
 
