@@ -2000,10 +2000,10 @@ mod tests {
         // Write `dkg_shares` entries for the `current` number of rounds, simulating
         // the signer having participated in that many successful DKG rounds.
         for _ in 0..dkg_rounds_current {
-            storage
-                .write_encrypted_dkg_shares(&Faker.fake())
-                .await
-                .unwrap();
+            let mut shares: model::EncryptedDkgShares = Faker.fake();
+            shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+            storage.write_encrypted_dkg_shares(&shares).await.unwrap();
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
