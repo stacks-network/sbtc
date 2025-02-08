@@ -559,10 +559,6 @@ pub enum Error {
     #[error("WSTS coordinator error: {0}")]
     WstsCoordinator(#[source] Box<wsts::state_machine::coordinator::Error>),
 
-    /// WSTS signing error.
-    #[error("WSTS signing error: {0:?}")]
-    WstsUnexpectedResult(Box<wsts::state_machine::OperationResult>),
-
     /// No chain tip found.
     #[error("no bitcoin chain tip")]
     NoChainTip,
