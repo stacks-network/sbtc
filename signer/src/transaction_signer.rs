@@ -600,6 +600,7 @@ where
                     &state_machine_id,
                     msg.id,
                     msg_public_key,
+                    None,
                     &msg.inner,
                     &chain_tip.block_hash,
                 )
@@ -623,6 +624,7 @@ where
                     &state_machine_id,
                     msg.id,
                     msg_public_key,
+                    None,
                     &msg.inner,
                     &chain_tip.block_hash,
                 )
@@ -635,11 +637,11 @@ where
                 tracing::debug!("processing message");
 
                 let state_machine_id = StateMachineId::Dkg(*chain_tip);
-                self.validate_sender(&state_machine_id, request.signer_id, &msg_public_key)?;
                 self.relay_message(
                     &state_machine_id,
                     msg.id,
                     msg_public_key,
+                    Some(request.signer_id),
                     &msg.inner,
                     &chain_tip.block_hash,
                 )
@@ -652,11 +654,11 @@ where
                 tracing::debug!("processing message");
 
                 let state_machine_id = StateMachineId::Dkg(*chain_tip);
-                self.validate_sender(&state_machine_id, request.signer_id, &msg_public_key)?;
                 self.relay_message(
                     &state_machine_id,
                     msg.id,
                     msg_public_key,
+                    Some(request.signer_id),
                     &msg.inner,
                     &chain_tip.block_hash,
                 )
@@ -679,6 +681,7 @@ where
                     &state_machine_id,
                     msg.id,
                     msg_public_key,
+                    None,
                     &msg.inner,
                     &chain_tip.block_hash,
                 )
@@ -774,7 +777,7 @@ where
                         )
                         .await?;
 
-                        let (state_machine_id, _) =
+                        let state_machine_id =
                             self.ensure_dkg_verification_state_machine(new_key).await?;
 
                         let tap_sighash =
@@ -803,6 +806,7 @@ where
                     &state_machine_id,
                     msg.id,
                     msg_public_key,
+                    None,
                     &msg.inner,
                     &chain_tip.block_hash,
                 )
@@ -869,7 +873,7 @@ where
                             "🔐 responding to signature-share-request for DKG verification signing"
                         );
 
-                        let (state_machine_id, _) =
+                        let state_machine_id =
                             self.ensure_dkg_verification_state_machine(new_key).await?;
 
                         let tap_sighash =
@@ -889,6 +893,7 @@ where
                         &state_machine_id,
                         msg.id,
                         msg_public_key,
+                        None,
                         &msg.inner,
                         &chain_tip.block_hash,
                     )
@@ -921,10 +926,7 @@ where
                 )
                 .await?;
 
-                let (state_machine_id, _) =
-                    self.ensure_dkg_verification_state_machine(new_key).await?;
-
-                self.validate_sender(&state_machine_id, request.signer_id, &msg_public_key)?;
+                let state_machine_id = self.ensure_dkg_verification_state_machine(new_key).await?;
 
                 let tap_sighash = UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
                 if tap_sighash.as_byte_array() != request.message.as_slice() {
@@ -932,8 +934,13 @@ where
                     return Err(Error::InvalidSigningOperation);
                 }
 
-                self.handle_dkg_verification_message(state_machine_id, msg_public_key, &msg.inner)
-                    .await?;
+                self.handle_dkg_verification_message(
+                    state_machine_id,
+                    msg_public_key,
+                    Some(request.signer_id),
+                    &msg.inner,
+                )
+                .await?;
             }
             WstsNetMessage::SignatureShareResponse(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
@@ -956,13 +963,15 @@ where
                 )
                 .await?;
 
-                let (state_machine_id, _) =
-                    self.ensure_dkg_verification_state_machine(new_key).await?;
+                let state_machine_id = self.ensure_dkg_verification_state_machine(new_key).await?;
 
-                self.validate_sender(&state_machine_id, request.signer_id, &msg_public_key)?;
-
-                self.handle_dkg_verification_message(state_machine_id, msg_public_key, &msg.inner)
-                    .await?;
+                self.handle_dkg_verification_message(
+                    state_machine_id,
+                    msg_public_key,
+                    Some(request.signer_id),
+                    &msg.inner,
+                )
+                .await?;
             }
         }
 
@@ -1145,7 +1154,8 @@ where
         .await?;
 
         let state_machine =
-            dkg::verification::StateMachine::new(coordinator, aggregate_key, timeout);
+            dkg::verification::StateMachine::new(coordinator, aggregate_key, timeout)
+                .map_err(Error::DkgVerification)?;
 
         Ok(state_machine)
     }
@@ -1160,7 +1170,7 @@ where
     async fn ensure_dkg_verification_state_machine(
         &mut self,
         aggregate_key: PublicKeyXOnly,
-    ) -> Result<(StateMachineId, &mut dkg::verification::StateMachine), Error> {
+    ) -> Result<StateMachineId, Error> {
         let state_machine_id = StateMachineId::RotateKey(aggregate_key);
 
         if !self
@@ -1210,7 +1220,7 @@ where
             dkg::verification::State::Idle | dkg::verification::State::Signing => {}
         }
 
-        Ok((state_machine_id, state_machine))
+        Ok(state_machine_id)
     }
 
     #[tracing::instrument(skip_all)]
@@ -1218,6 +1228,7 @@ where
         &mut self,
         state_machine_id: StateMachineId,
         sender: PublicKey,
+        signer_id: Option<u32>,
         msg: &WstsNetMessage,
     ) -> Result<(), Error> {
         // We should only be handling messages for the DKG verification state
@@ -1237,6 +1248,14 @@ where
             tracing::warn!("🔐 missing FROST coordinator for DKG verification");
             return Err(Error::MissingStateMachine(state_machine_id));
         };
+
+        // Validate that the sender is a valid member of the signing set and
+        // has the correct id according to the state machine/coordinator.
+        if let Some(signer_id) = signer_id {
+            state_machine
+                .validate_sender(signer_id, sender)
+                .map_err(Error::DkgVerification)?;
+        }
 
         tracing::trace!(?msg, "🔐 processing FROST coordinator message");
 
@@ -1294,6 +1313,7 @@ where
         state_machine_id: &StateMachineId,
         wsts_id: WstsMessageId,
         sender: PublicKey,
+        signer_id: Option<u32>,
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
@@ -1306,15 +1326,22 @@ where
             }
         };
 
+        // Validate that the sender is a valid member of the signing set and
+        // has the correct id according to the signer state machine.
+        if let Some(signer_id) = signer_id {
+            self.validate_sender(state_machine_id, signer_id, &sender)?;
+        }
+
         // Check and store if this is a DKG verification-related message.
         let is_dkg_verification = matches!(state_machine_id, StateMachineId::RotateKey(_));
 
         // If this is a DKG verification then we need to process the message in
         // the frost coordinator as well to be able to properly follow the
         // signing round (which is otherwise handled by the signer state
-        // machine).
+        // machine). We pass `None` as the `signer_id` because we have just
+        // validated the sender above.
         if is_dkg_verification {
-            self.handle_dkg_verification_message(*state_machine_id, sender, msg)
+            self.handle_dkg_verification_message(*state_machine_id, sender, None, msg)
                 .await?;
         }
 
@@ -1333,8 +1360,13 @@ where
             // in the FROST state machine as well for it to properly follow
             // the signing round.
             if is_dkg_verification {
-                self.handle_dkg_verification_message(*state_machine_id, sender, outbound_message)
-                    .await?;
+                self.handle_dkg_verification_message(
+                    *state_machine_id,
+                    sender,
+                    signer_id,
+                    outbound_message,
+                )
+                .await?;
             }
         }
 

@@ -56,6 +56,27 @@ pub enum Error {
     /// to be in a specific subset of WSTS coordinator states.
     #[error("the FROST coordinator is in an invalid state: {0:?}")]
     InvalidCoordinatorState(wsts::state_machine::coordinator::State),
+
+    /// The sender is not part of the signing set.
+    #[error("the sender is not part of the signing set: {0}")]
+    UnknownSender(PublicKey),
+
+    /// One or more of the public keys in the signing set are invalid. This error
+    /// can be returned when converting the public keys from the coordinator's
+    /// [`p256k1::point::Point`] types to [`PublicKey`] types.
+    #[error("one or more of the public keys in the signing set are invalid")]
+    InvalidPublicKeys,
+
+    /// The public key of the signer does not match the public key of the sender.
+    #[error("signer public key mismatch: signer_id: {signer_id}, wsts: {wsts}, sender: {sender}")]
+    SignerPublicKeyMismatch {
+        /// The signer ID according to the FROST coordinator.
+        signer_id: u32,
+        /// The public key expected by the FROST coordinator.
+        wsts: Box<PublicKey>,
+        /// The public key of the sender.
+        sender: Box<PublicKey>,
+    },
 }
 
 /// Represents the state of a DKG verification.
@@ -150,20 +171,24 @@ pub struct StateMachine {
 impl StateMachine {
     /// Creates a new [`StateMachine`] with the given [`FrostCoordinator`],
     /// aggregate key, and timeout.
-    pub fn new<X>(coordinator: FrostCoordinator, aggregate_key: X, timeout: Duration) -> Self
+    pub fn new<X>(
+        coordinator: FrostCoordinator,
+        aggregate_key: X,
+        timeout: Duration,
+    ) -> Result<Self, Error>
     where
         X: Into<XOnlyPublicKey>,
     {
         let aggregate_key = aggregate_key.into();
 
-        Self {
+        Ok(Self {
             aggregate_key,
             coordinator,
             wsts_messages: HashMap::new(),
             created_at: Instant::now(),
             timeout,
             state: State::Idle,
-        }
+        })
     }
 
     /// Processes a WSTS message, updating the internal state of the
@@ -191,6 +216,9 @@ impl StateMachine {
         // Assert that we're in a valid state to process messages.
         self.assert_valid_state()?;
 
+        // Validate that the sender is a valid signer in the signing set.
+        self.assert_is_known_sender(sender)?;
+
         // Enqueue the message to be processed. If the constraints for
         // enqueueing the message are not met, an error will be returned and we
         // don't make any further updates or process anything.
@@ -208,6 +236,50 @@ impl StateMachine {
         // process all messages that we can before returning, including handling
         // state transitions.
         while self.process_queued_messages()? {}
+
+        Ok(())
+    }
+
+    /// Validates that the sender of a message is a valid signer in the signing
+    /// set.
+    pub fn validate_sender(&self, signer_id: u32, sender: PublicKey) -> Result<(), Error> {
+        let config = self.coordinator.get_config();
+        let wsts: PublicKey = config
+            .signer_public_keys
+            .get(&signer_id)
+            .ok_or(Error::UnknownSender(sender))?
+            .try_into()
+            .map_err(|_| Error::InvalidPublicKeys)?;
+
+        if wsts != sender {
+            return Err(Error::SignerPublicKeyMismatch {
+                signer_id,
+                wsts: wsts.into(),
+                sender: sender.into(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Checks whether or not the given public key is a known sender in the
+    /// signing set. Returns `true` if the sender is known, `false` otherwise.
+    /// Returns an error if the public key is invalid.
+    fn assert_is_known_sender(&self, sender: PublicKey) -> Result<(), Error> {
+        let is_known = self
+            .coordinator
+            .get_config()
+            .signer_public_keys
+            .values()
+            .any(|key| {
+                PublicKey::try_from(key)
+                    .map(|pub_key| pub_key == sender)
+                    .unwrap_or(false)
+            });
+
+        if !is_known {
+            return Err(Error::UnknownSender(sender));
+        }
 
         Ok(())
     }
@@ -361,18 +433,12 @@ impl StateMachine {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use wsts::net::Message;
 
-    use crate::{
-        dkg::testing::*,
-        testing::IterTestExt,
-        wsts_state_machine::{FrostCoordinator, WstsCoordinator},
-    };
+    use crate::{dkg::testing::*, testing::IterTestExt};
 
     use super::{
-        Error, State, StateMachine, WstsNetMessageType, WstsNetMessageType::NonceRequest,
+        State, WstsNetMessageType, WstsNetMessageType::NonceRequest,
         WstsNetMessageType::NonceResponse, WstsNetMessageType::SignatureShareResponse,
     };
 
@@ -400,10 +466,11 @@ mod tests {
     #[test]
     fn test_reset() {
         let signers = TestSetup::setup(5);
+        let sender1 = signers.sender(0);
         let mut state_machine = signers.state_machine;
 
         state_machine
-            .process_message(pubkey(), nonce_request(1, 1, 1))
+            .process_message(sender1, nonce_request(1, 1, 1))
             .expect("should be able to enqueue message");
 
         assert_message_counts!(state_machine,
@@ -442,18 +509,10 @@ mod tests {
 
     #[test]
     fn test_enqueue_message() {
-        let (signer_privkey, signer_pubkey) = keypair();
-        let sender1 = pubkey();
-        let sender2 = pubkey();
-        assert_ne!(&sender1, &sender2);
-
-        let aggregate_key = pubkey_xonly();
-
-        let mut state_machine = StateMachine::new(
-            FrostCoordinator::new([sender1, signer_pubkey], 1, signer_privkey),
-            aggregate_key,
-            Duration::from_secs(60),
-        );
+        let setup = TestSetup::setup(2);
+        let sender1 = setup.sender(0);
+        let sender2 = setup.sender(1);
+        let mut state_machine = setup.state_machine;
 
         let dkg_id = 0;
         let sign_id = 0;
@@ -490,11 +549,11 @@ mod tests {
     #[test]
     fn test_out_of_order_messages() {
         let mut setup = TestSetup::setup(2);
+        let sender1 = setup.sender(0);
+        let sender2 = setup.sender(1);
         let mut state_machine = setup.state_machine;
         let mut signer1 = setup.signers.pop().unwrap();
         let mut signer2 = setup.signers.pop().unwrap();
-        let sender1 = setup.senders[0];
-        let sender2 = setup.senders[1];
 
         let nonce_request = nonce_request(1, 1, 1);
         let nonce_response1 = signer1.process(&nonce_request).unwrap().single();
@@ -542,11 +601,11 @@ mod tests {
     #[test]
     fn test_nonce_phase_with_in_order_messages() {
         let mut setup = TestSetup::setup(2);
+        let sender1 = setup.sender(0);
+        let sender2 = setup.sender(1);
         let mut state_machine = setup.state_machine;
         let mut signer1 = setup.signers.pop().unwrap();
         let mut signer2 = setup.signers.pop().unwrap();
-        let sender1 = setup.senders[0];
-        let sender2 = setup.senders[1];
 
         assert_eq!(state_machine.signer_count(), 2);
 
@@ -596,11 +655,11 @@ mod tests {
     #[test]
     fn test_dkg_verification_state_machine() {
         let mut setup = TestSetup::setup(2);
+        let sender1 = setup.sender(0);
+        let sender2 = setup.sender(1);
         let mut state_machine = setup.state_machine;
         let mut signer1 = setup.signers.pop().unwrap();
         let mut signer2 = setup.signers.pop().unwrap();
-        let sender1 = setup.senders[0];
-        let sender2 = setup.senders[1];
 
         let nonce_request = nonce_request(1, 1, 1);
 
@@ -645,7 +704,7 @@ mod tests {
             1,
             1,
             1,
-            vec![nonce_response1.clone(), nonce_response2.clone()],
+            vec![nonce_response2.clone(), nonce_response1.clone()],
         );
 
         // Process the signature share request
@@ -683,12 +742,11 @@ mod tests {
         // Process the second signature share response -- this should result
         // in the FROST coordinator transitioning into an end-state and thus
         // also the state machine.
-        let result = state_machine.process_message(sender2, sig_share_response2);
+        state_machine
+            .process_message(sender2, sig_share_response2)
+            .expect("should be able to process message");
 
-        // TODO: This currently fails with a `BadPartySigs` error, so
-        // something's probably off with the setup of the signers. But what
-        // we're really testing is the state machine and that we have an end
-        // state here (either success or failure).
-        assert!(matches!(result, Err(Error::SigningFailure(_))));
+        // ... which should be SUCCESS!
+        assert_state!(state_machine, State::Success(_));
     }
 }

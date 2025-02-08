@@ -14,7 +14,7 @@ use wsts::{
 };
 
 use crate::{
-    keys::{PrivateKey, PublicKey},
+    keys::PublicKey,
     wsts_state_machine::{FrostCoordinator, WstsCoordinator as _},
 };
 
@@ -23,7 +23,6 @@ use super::{verification::StateMachine, wsts::WstsNetMessageType};
 pub struct TestSetup {
     pub state_machine: StateMachine,
     pub signers: Vec<Signer<v2::Party>>,
-    pub senders: Vec<PublicKey>,
     #[allow(dead_code)]
     pub aggregate_key: XOnlyPublicKey,
 }
@@ -39,32 +38,31 @@ impl TestSetup {
 
         let aggregate_key = pubkey_xonly();
         let coordinator: FrostCoordinator = coordinators.into_iter().next().unwrap().into();
-        let state_machine = StateMachine::new(coordinator, aggregate_key, Duration::from_secs(60));
+        let state_machine = StateMachine::new(coordinator, aggregate_key, Duration::from_secs(60))
+            .expect("failed to create new dkg verification state machine");
 
         Self {
             state_machine,
             signers,
-            senders: (0..num_parties).map(|_| pubkey()).collect(),
             aggregate_key,
         }
     }
-}
 
-pub fn pubkey() -> PublicKey {
-    let keypair = secp256k1::Keypair::new_global(&mut OsRng);
-    PublicKey::from_private_key(&PrivateKey::from(keypair.secret_key()))
+    pub fn sender(&self, index: usize) -> PublicKey {
+        self.state_machine
+            .coordinator
+            .get_config()
+            .signer_public_keys
+            .iter()
+            .map(|(_, point)| crate::keys::PublicKey::try_from(point))
+            .collect::<Result<Vec<_>, _>>()
+            .expect("failed to convert public keys")[index]
+    }
 }
 
 pub fn pubkey_xonly() -> secp256k1::XOnlyPublicKey {
     let keypair = secp256k1::Keypair::new_global(&mut OsRng);
     keypair.x_only_public_key().0
-}
-
-pub fn keypair() -> (PrivateKey, PublicKey) {
-    let keypair = secp256k1::Keypair::new_global(&mut OsRng);
-    let private_key = PrivateKey::from(keypair.secret_key());
-    let public_key = PublicKey::from_private_key(&private_key);
-    (private_key, public_key)
 }
 
 pub fn nonce_request(dkg_id: u64, sign_id: u64, sign_iter_id: u64) -> Message {
@@ -99,7 +97,7 @@ pub fn signature_share_request(
         dkg_id,
         sign_id,
         sign_iter_id,
-        message: vec![],
+        message: vec![0; 5],
         signature_type: SignatureType::Taproot(None),
         nonce_responses,
     })
