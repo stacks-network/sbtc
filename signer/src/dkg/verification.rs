@@ -6,7 +6,7 @@ use std::{
 };
 
 use secp256k1::XOnlyPublicKey;
-use wsts::state_machine::{OperationResult, SignError};
+use wsts::state_machine::{coordinator::Coordinator, OperationResult, SignError};
 
 use crate::{
     keys::PublicKey,
@@ -51,6 +51,11 @@ pub enum Error {
     /// An error occurred in the WSTS coordinator.
     #[error("WSTS coordinator error: {0}")]
     Coordinator(Box<dyn std::error::Error + 'static + Send + Sync>),
+
+    /// The FROST coordinator is in an invalid state. Signing rounds are allowed
+    /// to be in a specific subset of WSTS coordinator states.
+    #[error("the FROST coordinator is in an invalid state: {0:?}")]
+    InvalidCoordinatorState(wsts::state_machine::coordinator::State),
 }
 
 /// Represents the state of a DKG verification.
@@ -84,14 +89,23 @@ impl std::fmt::Display for State {
 }
 
 #[derive(Debug)]
-struct QueuedMessage {
-    processed: bool,
+pub(super) struct QueuedMessage {
+    // NOTE: Used in tests, not sure if we want this for verification and/or
+    // deduplication or not so leaving it for now.
+    #[allow(dead_code)]
+    pub sender: PublicKey,
+
+    pub(super) processed: bool,
     message: wsts::net::Message,
 }
 
 impl QueuedMessage {
-    fn new(message: wsts::net::Message) -> Self {
-        Self { processed: false, message }
+    fn new(sender: PublicKey, message: wsts::net::Message) -> Self {
+        Self {
+            sender,
+            processed: false,
+            message,
+        }
     }
 
     fn mark_processed(&mut self) {
@@ -103,7 +117,7 @@ impl QueuedMessage {
 /// to be able to span across multiple Bitcoin blocks, being limited by
 /// wall-clock time instead of Bitcoin block cadence.
 ///
-/// TODO: The signer currently stops messages from being processed if the
+/// NOTE: The signer currently stops messages from being processed if the
 /// received message doesn't match the current chain tip, so that needs to be
 /// changed for cross-block functionality to work.
 #[derive(Debug)]
@@ -111,14 +125,14 @@ pub struct StateMachine {
     /// The aggregate key that is being verified.
     aggregate_key: secp256k1::XOnlyPublicKey,
     /// The state machine that is being used to verify the signer.
-    coordinator: FrostCoordinator,
+    pub(super) coordinator: FrostCoordinator,
     /// WSTS messages that have been received from other signers. We keep them
     /// in a [`HashMap`] where the keys are tuples of message types and sender
     /// public keys, and the values are queued messages. This allows us to
     /// manage messages by type and sender, ensuring that we can handle
     /// out-of-order messages and process them correctly, while also
     /// constraining each signer to one message per message type.
-    wsts_messages: HashMap<(WstsNetMessageType, PublicKey), QueuedMessage>,
+    pub(super) wsts_messages: HashMap<WstsNetMessageType, Vec<QueuedMessage>>,
     /// The [`Instant`] at which this state was created. This is used to limit
     /// the time that a [`StateMachine`] can be used, according to the
     /// specified timeout, which allows the verification to span multiple
@@ -198,6 +212,17 @@ impl StateMachine {
         Ok(())
     }
 
+    /// Resets the [`StateMachine`] to its initial state, clearing all messages,
+    /// setting its creation time to the current time, its state to
+    /// [`State::Idle`] and also calling [`Coordinator::reset`] on the
+    /// [`FrostCoordinator`].
+    pub fn reset(&mut self) {
+        self.wsts_messages.clear();
+        self.created_at = Instant::now();
+        self.state = State::Idle;
+        self.coordinator.reset();
+    }
+
     /// Gets the current state of the [`StateMachine`].
     pub fn state(&self) -> &State {
         &self.state
@@ -213,35 +238,6 @@ impl StateMachine {
         self.created_at.elapsed() > self.timeout
     }
 
-    fn message_type_limit(&self, message_type: WstsNetMessageType) -> u32 {
-        match message_type {
-            WstsNetMessageType::NonceRequest => 1,
-            WstsNetMessageType::NonceResponse => self.signer_count(),
-            WstsNetMessageType::SignatureShareRequest => 1,
-            WstsNetMessageType::SignatureShareResponse => self.signer_count(),
-            _ => 0,
-        }
-    }
-
-    /// Gets the number of buffered messages of the given type that are
-    /// currently stored in this [`StateMachine`].
-    fn total_message_count(&self, message_type: WstsNetMessageType) -> u32 {
-        // The `_ as u32` should be safe here since we know that the number of
-        // signers is far less than `u32::MAX`, and each message is deduplicated
-        // by the sender's public key, which is also validated to be a valid
-        // member of the signer set.
-        self.wsts_messages
-            .keys()
-            .filter(|(msg_type, _)| *msg_type == message_type)
-            .count() as u32
-    }
-
-    /// Gets the number of signers that are expected to participate in the DKG
-    /// verification.
-    fn signer_count(&self) -> u32 {
-        self.coordinator.get_config().num_signers
-    }
-
     /// Asserts that the [`StateMachine`] is in a state where it
     /// can process messages.
     fn assert_valid_state(&self) -> Result<(), Error> {
@@ -255,7 +251,7 @@ impl StateMachine {
     /// Determines the [`WstsNetMessageType`] of messages that can be processed
     /// given the current state of the [`FrostCoordinator`].
     ///
-    /// The allowed message types per state are as follows:
+    /// The allowed message types per [`FrostCoordinator`] state are as follows:
     /// 1. If the coordinator is in the `Idle` state, it can only process
     ///    `NonceRequest` messages.
     /// 2. Upon receiving a `NonceRequest`, the coordinator transitions to the
@@ -269,14 +265,19 @@ impl StateMachine {
     /// 4. Once this condition is met, the coordinator will transition to either
     ///    the `Success` or `Error` state, depending on the result of the
     ///    signing operation.
-    fn current_processable_message_type(&self) -> WstsNetMessageType {
-        match self.coordinator.state {
+    pub(super) fn current_processable_message_type(&self) -> Result<WstsNetMessageType, Error> {
+        let msg_type = match self.coordinator.state {
             wsts::state_machine::coordinator::State::Idle => WstsNetMessageType::NonceRequest,
             wsts::state_machine::coordinator::State::NonceGather(_) => {
                 WstsNetMessageType::NonceResponse
             }
-            _ => WstsNetMessageType::SignatureShareResponse,
-        }
+            wsts::state_machine::coordinator::State::SigShareGather(_) => {
+                WstsNetMessageType::SignatureShareResponse
+            }
+            ref invalid => return Err(Error::InvalidCoordinatorState(invalid.clone())),
+        };
+
+        Ok(msg_type)
     }
 
     /// Enqueues a message to be processed by the [`FrostCoordinator`] when
@@ -284,33 +285,16 @@ impl StateMachine {
     fn enqueue_message(&mut self, sender: PublicKey, msg: wsts::net::Message) -> Result<(), Error> {
         let msg_type: WstsNetMessageType = (&msg).into();
 
-        let current_count = self.total_message_count(msg_type);
-        let limit = self.message_type_limit(msg_type);
+        // TODO: Removed message-count limit checks which were here before. We
+        // may want them again, but left it out for now since in tests we have
+        // an issue with multiple of the same type of messages being received
+        // by the same sender.
 
-        // If we've already received the maximum number of messages of this
-        // type, we don't enqueue it and return an error. Note: This may be
-        // unnecessary after changing to deduplicate messages by sender, but at
-        // least helps to cap the number of messages that we can enqueue if
-        // somehow there's messages from unknown pubkeys being dumped here.
-        //
-        // Note that this check is also our implicit check to ensure that only
-        // the allowed message types for signing can be enqueued, as the
-        // remaining WSTS message types have a limit of 0.
-        if current_count >= limit {
-            return Err(Error::MessageLimitExceeded {
-                message_type: msg_type,
-                expected: limit,
-                actual: current_count + 1,
-            });
-        }
-
-        // Enqueue the message under its message type and sender. We use the
-        // sender's public key to deduplicate messages from the same sender and
-        // message type; `insert_entry` will overwrite an existing message from the same
-        // sender, which we shouldn't have within the same round.
+        // Enqueue the message under its message type.
         self.wsts_messages
-            .entry((msg_type, sender))
-            .insert_entry(QueuedMessage::new(msg));
+            .entry(msg_type)
+            .or_default()
+            .push(QueuedMessage::new(sender, msg));
 
         Ok(())
     }
@@ -318,7 +302,7 @@ impl StateMachine {
     /// Processes all queued messages that can be processed given the current
     /// state of the [`FrostCoordinator`].
     fn process_queued_messages(&mut self) -> Result<bool, Error> {
-        let message_type_to_process = self.current_processable_message_type();
+        let message_type_to_process = self.current_processable_message_type()?;
 
         // Gets references to all pending messages of the given type that are
         // currently stored. The returned messages are in arbitrary order, but
@@ -329,25 +313,15 @@ impl StateMachine {
         // We want to filter out processed messages.
         let messages = self
             .wsts_messages
+            .entry(message_type_to_process)
+            .or_default()
             .iter_mut()
-            .filter_map(|((msg_type, sender), msg)| {
-                if *msg_type == message_type_to_process && !msg.processed {
-                    Some((sender, msg))
-                } else {
-                    None
-                }
-            });
+            .filter(|msg| !msg.processed);
 
         let mut processed_any = false;
 
         // Process all of the messages that we determined could be processed.
-        for (sender, msg) in messages {
-            tracing::trace!(
-                "processing {:?} message from sender: {:?}",
-                &message_type_to_process,
-                &sender.to_string()[..10]
-            );
-
+        for msg in messages {
             // Mark the message as processed so that even if it fails we don't
             // try to process it again.
             msg.mark_processed();
@@ -387,6 +361,8 @@ impl StateMachine {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use wsts::net::Message;
 
     use crate::{
@@ -395,45 +371,10 @@ mod tests {
         wsts_state_machine::{FrostCoordinator, WstsCoordinator},
     };
 
-    use super::*;
-
-    impl StateMachine {
-        /// Gets the number of pending messages of the given type that are currently
-        /// stored in this [`StateMachine`].
-        fn pending_message_count(&self, message_type: WstsNetMessageType) -> u32 {
-            self.wsts_messages
-                .iter()
-                .filter(|((msg_type, _), msg)| *msg_type == message_type && !msg.processed)
-                .count() as u32
-        }
-
-        fn assert_message_counts(
-            &self,
-            message_type: WstsNetMessageType,
-            expected_total: u32,
-            expected_pending: u32,
-        ) -> Result<(), String> {
-            if !self.total_message_count(message_type) == expected_total {
-                return Err(format!(
-                    "expected {} total messages of type {:?}, got {}",
-                    expected_total,
-                    message_type,
-                    self.total_message_count(message_type)
-                ));
-            }
-
-            if !self.pending_message_count(message_type) == expected_pending {
-                return Err(format!(
-                    "expected {} pending messages of type {:?}, got {}",
-                    expected_pending,
-                    message_type,
-                    self.pending_message_count(message_type)
-                ));
-            }
-
-            Ok(())
-        }
-    }
+    use super::{
+        Error, State, StateMachine, WstsNetMessageType, WstsNetMessageType::NonceRequest,
+        WstsNetMessageType::NonceResponse, WstsNetMessageType::SignatureShareResponse,
+    };
 
     #[test]
     fn test_initial_state() {
@@ -447,43 +388,56 @@ mod tests {
             .assert_valid_state()
             .expect("should be able to process");
 
-        assert_eq!(
-            state_machine.total_message_count(WstsNetMessageType::NonceRequest),
-            0
+        assert_message_counts!(state_machine,
+            NonceRequest => all: 0;
+            NonceResponse => all: 0;
+            SignatureShareRequest => all: 0;
+            SignatureShareResponse => all: 0;
         );
-        assert_eq!(
-            state_machine.pending_message_count(WstsNetMessageType::NonceRequest),
-            0
-        );
-        assert_eq!(
-            state_machine.total_message_count(WstsNetMessageType::NonceResponse),
-            0
-        );
-        assert_eq!(
-            state_machine.pending_message_count(WstsNetMessageType::NonceResponse),
-            0
-        );
-        assert_eq!(
-            state_machine.total_message_count(WstsNetMessageType::SignatureShareRequest),
-            0
-        );
-        assert_eq!(
-            state_machine.pending_message_count(WstsNetMessageType::SignatureShareRequest),
-            0
-        );
-        assert_eq!(
-            state_machine.total_message_count(WstsNetMessageType::SignatureShareResponse),
-            0
-        );
-        assert_eq!(
-            state_machine.pending_message_count(WstsNetMessageType::SignatureShareResponse),
-            0
-        );
+        assert_allowed_msg_type!(state_machine, NonceRequest);
+    }
 
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::NonceRequest
+    #[test]
+    fn test_reset() {
+        let signers = TestSetup::setup(5);
+        let mut state_machine = signers.state_machine;
+
+        state_machine
+            .process_message(pubkey(), nonce_request(1, 1, 1))
+            .expect("should be able to enqueue message");
+
+        assert_message_counts!(state_machine,
+            NonceRequest => total: 1, pending: 0;
+            NonceResponse => all: 0;
+            SignatureShareRequest => all: 0;
+            SignatureShareResponse => all: 0;
         );
+        assert_state!(state_machine, State::Signing);
+        assert!(matches!(
+            state_machine.coordinator.state,
+            wsts::state_machine::coordinator::State::NonceGather(_)
+        ));
+
+        state_machine.reset();
+
+        assert_message_counts!(state_machine,
+            NonceRequest => all: 0;
+            NonceResponse => all: 0;
+            SignatureShareRequest => all: 0;
+            SignatureShareResponse => all: 0;
+        );
+        assert_state!(state_machine, State::Idle);
+        assert!(matches!(
+            state_machine.coordinator.state,
+            wsts::state_machine::coordinator::State::Idle
+        ));
+
+        // We asserted above that the reset gives us the values we expect, but
+        // let's also try running some of the other tests that are a little more
+        // complex to ensure that the state machine is in a good state.
+        test_nonce_phase_with_in_order_messages();
+        state_machine.reset();
+        test_out_of_order_messages();
     }
 
     #[test]
@@ -510,48 +464,27 @@ mod tests {
         let response2 = nonce_response(dkg_id, sign_id, sign_iter_id, 2);
 
         // Insert a couple of messages with the same sender.
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 0, 0)
-            .unwrap();
+        assert!(state_machine.message_counts(NonceRequest, 0, 0));
+
         state_machine
             .enqueue_message(sender1, request.clone())
             .unwrap();
         state_machine
             .enqueue_message(sender1, response1.clone())
             .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 1, 1)
-            .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceResponse, 1, 1)
-            .unwrap();
-
-        // Ensure that the message is deduplicated by the sender's public key.
-        state_machine.enqueue_message(sender1, response1).unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 1, 1)
-            .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceResponse, 1, 1)
-            .unwrap();
+        assert_message_counts!(state_machine,
+            NonceRequest => all: 1;
+            NonceResponse => all: 1;
+        );
 
         // Insert a message with a different sender.
         state_machine
             .enqueue_message(sender2, response2.clone())
             .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 1, 1)
-            .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceResponse, 2, 2)
-            .unwrap();
-
-        state_machine
-            .enqueue_message(sender1, request)
-            .expect_err("should be too many nonce requests");
-        state_machine
-            .enqueue_message(sender2, response2)
-            .expect_err("should be too many nonce responses");
+        assert_message_counts!(state_machine,
+            NonceRequest => all: 1;
+            NonceResponse => all: 2;
+        );
     }
 
     #[test]
@@ -567,39 +500,29 @@ mod tests {
         let nonce_response1 = signer1.process(&nonce_request).unwrap().single();
         let nonce_response2 = signer2.process(&nonce_request).unwrap().single();
 
-        assert!(matches!(state_machine.state, State::Idle));
+        assert_state!(state_machine, State::Idle);
 
         // Enqueue a single nonce response.
         state_machine
             .process_message(sender1, nonce_response1)
             .unwrap();
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::NonceRequest
+        assert_allowed_msg_type!(state_machine, NonceRequest);
+        assert_state!(state_machine, State::Signing);
+        assert_message_counts!(state_machine,
+            NonceRequest => all: 0;
+            NonceResponse => all: 1;
         );
-        assert!(matches!(state_machine.state, State::Signing));
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 0, 0)
-            .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceResponse, 1, 1)
-            .unwrap();
 
         // Enqueue a second nonce response.
         state_machine
             .process_message(sender2, nonce_response2)
             .unwrap();
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::NonceRequest
+        assert_allowed_msg_type!(state_machine, NonceRequest);
+        assert_state!(state_machine, State::Signing);
+        assert_message_counts!(state_machine,
+            NonceRequest => all: 0;
+            NonceResponse => all: 2;
         );
-        assert!(matches!(state_machine.state, State::Signing));
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 0, 0)
-            .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceResponse, 2, 2)
-            .unwrap();
 
         // The first two messages were out of order, since we haven't received
         // a nonce request yet. But this should trigger the transition to
@@ -608,17 +531,12 @@ mod tests {
         state_machine
             .process_message(sender1, nonce_request)
             .unwrap();
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::SignatureShareResponse
+        assert_allowed_msg_type!(state_machine, SignatureShareResponse);
+        assert_state!(state_machine, State::Signing);
+        assert_message_counts!(state_machine,
+            NonceRequest => total: 1, pending: 0;
+            NonceResponse => total: 2, pending: 0;
         );
-        assert!(matches!(state_machine.state, State::Signing));
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 1, 0)
-            .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceResponse, 2, 0)
-            .unwrap();
     }
 
     #[test]
@@ -652,10 +570,8 @@ mod tests {
             .process_message(sender1, nonce_request)
             .expect("should be able to process message");
 
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 0, 0)
-            .unwrap();
-        assert!(matches!(state_machine.state(), &State::Signing));
+        assert!(state_machine.message_counts(NonceRequest, 1, 0));
+        assert_state!(state_machine, State::Signing);
         assert!(matches!(
             state_machine.coordinator.state,
             wsts::state_machine::coordinator::State::NonceGather(_)
@@ -665,22 +581,16 @@ mod tests {
         state_machine
             .process_message(sender1, nonce_response1.clone())
             .expect("should be able to process message");
-        assert!(matches!(state_machine.state, State::Signing));
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::NonceResponse
-        );
+        assert_state!(state_machine, State::Signing);
+        assert_allowed_msg_type!(state_machine, NonceResponse);
         state_machine
             .process_message(sender2, nonce_response2.clone())
             .expect("should be able to process message");
-        assert!(matches!(state_machine.state, State::Signing));
+        assert_state!(state_machine, State::Signing);
 
         // We should have processed all the nonce responses, so we should now be
         // able to process signature share requests.
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::SignatureShareResponse
-        );
+        assert_allowed_msg_type!(state_machine, SignatureShareResponse);
     }
 
     #[test]
@@ -702,9 +612,7 @@ mod tests {
         state_machine
             .process_message(sender1, nonce_request)
             .unwrap();
-        state_machine
-            .assert_message_counts(WstsNetMessageType::NonceRequest, 0, 0)
-            .unwrap();
+        assert!(state_machine.message_counts(NonceRequest, 1, 0));
         assert!(matches!(state_machine.state(), &State::Signing));
         assert!(matches!(
             state_machine.coordinator.state,
@@ -715,19 +623,13 @@ mod tests {
         state_machine
             .process_message(sender1, nonce_response1.clone())
             .expect("should be able to process message");
-        assert!(matches!(state_machine.state, State::Signing));
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::NonceResponse
-        );
+        assert_state!(state_machine, State::Signing);
+        assert_allowed_msg_type!(state_machine, NonceResponse);
         state_machine
             .process_message(sender2, nonce_response2.clone())
             .expect("should be able to process message");
-        assert!(matches!(state_machine.state, State::Signing));
-        assert_eq!(
-            state_machine.current_processable_message_type(),
-            WstsNetMessageType::SignatureShareResponse
-        );
+        assert_state!(state_machine, State::Signing);
+        assert_allowed_msg_type!(state_machine, SignatureShareResponse);
 
         // Unwrap our nonce responses.
         let Message::NonceResponse(nonce_response1) = nonce_response1 else {
