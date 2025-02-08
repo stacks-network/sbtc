@@ -1,4 +1,4 @@
-//! Containers WSTS helper types and impls for use within the DKG module.
+//! Contains WSTS helper types and impls for use within the DKG module.
 
 /// A helper enum to represent the different types of WSTS messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
