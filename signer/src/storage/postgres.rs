@@ -1157,6 +1157,10 @@ impl super::DbRead for PgStore {
             Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
         };
 
+        let dkg_shares = self
+            .get_encrypted_dkg_shares(summary.signers_public_key)
+            .await?;
+
         Ok(Some(DepositRequestReport {
             status,
             can_sign: summary.can_sign,
@@ -1169,6 +1173,7 @@ impl super::DbRead for PgStore {
             deposit_script: summary.deposit_script.into(),
             reclaim_script: summary.reclaim_script.into(),
             signers_public_key: summary.signers_public_key.into(),
+            dkg_shares_status: dkg_shares.map(|shares| shares.dkg_shares_status),
         }))
     }
 
@@ -1520,6 +1525,33 @@ impl super::DbRead for PgStore {
               , started_at_bitcoin_block_hash
               , started_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
+            ORDER BY created_at DESC
+            LIMIT 1;
+            "#,
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        sqlx::query_as::<_, model::EncryptedDkgShares>(
+            r#"
+            SELECT
+                aggregate_key
+              , tweaked_aggregate_key
+              , script_pubkey
+              , encrypted_private_shares
+              , public_shares
+              , signer_set_public_keys
+              , signature_share_threshold
+              , dkg_shares_status
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
+            FROM sbtc_signer.dkg_shares
+            WHERE dkg_shares_status = 'verified'
             ORDER BY created_at DESC
             LIMIT 1;
             "#,

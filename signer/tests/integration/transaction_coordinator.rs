@@ -3112,20 +3112,17 @@ async fn test_conservative_initial_sbtc_limits() {
     // Compute DKG and store it into db
     // =========================================================================
     let mut signer_set = create_signer_set(&signer_key_pairs, signatures_required as u32).0;
-    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
+    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng).into();
+    let chain_tip = chain_tip_info.hash.into();
 
-    let (aggregate_key, encrypted_shares) = signer_set
-        .run_dkg(
-            chain_tip_info.hash.into(),
-            dkg_txid.into(),
-            &mut rng,
-            model::DkgSharesStatus::Verified,
-        )
+    let (aggregate_key, mut encrypted_shares) = signer_set
+        .run_dkg(chain_tip, dkg_txid, &mut rng, DkgSharesStatus::Verified)
         .await;
 
-    for ((_, db, _, _), dkg_shares) in signers.iter_mut().zip(&encrypted_shares) {
+    for ((_, db, _, _), dkg_shares) in signers.iter_mut().zip(encrypted_shares.iter_mut()) {
+        dkg_shares.dkg_shares_status = DkgSharesStatus::Verified;
         signer_set
-            .write_as_rotate_keys_tx(db, &chain_tip_info.hash.into(), dkg_shares, &mut rng)
+            .write_as_rotate_keys_tx(db, &chain_tip, dkg_shares, &mut rng)
             .await;
 
         db.write_encrypted_dkg_shares(&dkg_shares)

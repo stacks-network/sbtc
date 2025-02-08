@@ -37,6 +37,7 @@ use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxRef;
+use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::postgres::PgStore;
@@ -547,6 +548,27 @@ impl TestSignerSet {
     pub fn aggregate_key(&self) -> PublicKey {
         self.signer.keypair.public_key().into()
     }
+}
+
+/// Set the dkg_shares_status of the shares associated with the given
+/// aggregate key to the given status.
+pub async fn set_verification_status(
+    db: &PgStore,
+    aggregate_key: PublicKey,
+    status: DkgSharesStatus,
+) {
+    sqlx::query(
+        r#"
+        UPDATE sbtc_signer.dkg_shares
+        SET dkg_shares_status = $1
+        WHERE aggregate_key = $2
+        "#,
+    )
+    .bind(status)
+    .bind(aggregate_key)
+    .execute(db.pool())
+    .await
+    .unwrap();
 }
 
 /// The information about a sweep transaction that has been confirmed.

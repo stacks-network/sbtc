@@ -1912,6 +1912,84 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// The [`DbRead::get_latest_verified_dkg_shares`] function is supposed to
+/// fetch the last encrypted DKG shares with status 'verified' from in the
+/// database.
+#[tokio::test]
+async fn get_last_verfied_dkg_shares_does_whats_advertised() {
+    let db = testing::storage::new_test_database().await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // We have an empty database, so we don't have any DKG shares there.
+    let no_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    let no_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    // Let's create some random DKG shares and store them in the database.
+    // When we fetch the last one, there is only one to get, so nothing
+    // surprising yet.
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.dkg_shares_status = model::DkgSharesStatus::Failed;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let stored_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(stored_shares.as_ref(), Some(&shares));
+
+    // But these shares are not verified so nothing still
+    let no_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.dkg_shares_status = model::DkgSharesStatus::Unverified;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let stored_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(stored_shares.as_ref(), Some(&shares));
+
+    // None of these shares are verified so nothing still
+    let no_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let stored_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(stored_shares.as_ref(), Some(&shares));
+
+    // Finally some verified shares.
+    let verified_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert_eq!(verified_shares.as_ref(), Some(&shares));
+
+    // Now let's add in some more verified shares to make sure that we get
+    // the latest ones.
+    let mut shares0: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares0.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares0).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let mut shares1: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares1.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares1).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let mut shares2: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares2.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares2).await.unwrap();
+
+    // So when we try to get the last verified DKG shares this time, we'll
+    // get the most recent ones.
+    let some_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert_eq!(some_shares.as_ref(), Some(&shares2));
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// The [`DbRead::deposit_request_exists`] function is return true we have
 /// a record of the deposit request and false otherwise.
 #[tokio::test]

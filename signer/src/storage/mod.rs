@@ -232,6 +232,12 @@ pub trait DbRead {
         &self,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
 
+    /// Return the most recent DKG shares that have passed verification,
+    /// and return None if no such shares exist.
+    fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
+
     /// Returns the number of non-failed DKG shares entries in the database.
     fn get_encrypted_dkg_shares_count(&self) -> impl Future<Output = Result<u32, Error>> + Send;
 

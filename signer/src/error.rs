@@ -486,6 +486,12 @@ pub enum Error {
     #[error("DKG has not been run")]
     NoDkgShares,
 
+    /// This arises when a signer gets a message that requires DKG to have
+    /// been run with output shares that have passed verification, but no
+    /// such shares exist.
+    #[error("no DKG shares exist that have passed verification")]
+    NoVerifiedDkgShares,
+
     /// TODO: We don't want to be able to run DKG more than once. Soon this
     /// restriction will be lifted.
     #[error("DKG has already been run, can only run once")]

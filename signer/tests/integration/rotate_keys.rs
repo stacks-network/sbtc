@@ -27,6 +27,8 @@ use signer::testing::context::*;
 use fake::Fake;
 use signer::testing::storage::model::TestData;
 
+use crate::setup::set_verification_status;
+
 struct TestRotateKeySetup {
     /// The signer object. It's public key represents the group of signers'
     /// public keys, allowing us to abstract away the fact that there are
@@ -518,21 +520,6 @@ async fn rotate_key_validation_replay() {
     rotate_key_tx.validate(&ctx, &req_ctx_fork).await.unwrap();
 
     testing::storage::drop_db(db).await;
-}
-
-async fn set_verification_status(db: &PgStore, aggregate_key: PublicKey, status: DkgSharesStatus) {
-    sqlx::query(
-        r#"
-        UPDATE sbtc_signer.dkg_shares
-        SET dkg_shares_status = $1
-        WHERE aggregate_key = $2
-        "#,
-    )
-    .bind(status)
-    .bind(aggregate_key)
-    .execute(db.pool())
-    .await
-    .unwrap();
 }
 
 #[tokio::test]
