@@ -107,7 +107,7 @@ impl QueuedMessage {
 /// received message doesn't match the current chain tip, so that needs to be
 /// changed for cross-block functionality to work.
 #[derive(Debug)]
-pub struct StateMachine<TError> {
+pub struct StateMachine {
     /// The aggregate key that is being verified.
     aggregate_key: secp256k1::XOnlyPublicKey,
     /// The state machine that is being used to verify the signer.
@@ -131,14 +131,9 @@ pub struct StateMachine<TError> {
     /// The signature that has been produced by the DKG verification. This is
     /// only set if/once the DKG verification has completed successfully.
     state: State,
-    /// The error type that is used by this state machine.
-    _error: std::marker::PhantomData<TError>,
 }
 
-impl<TError> StateMachine<TError>
-where
-    TError: From<Error> + std::error::Error + 'static + Send + Sync,
-{
+impl StateMachine {
     /// Creates a new [`StateMachine`] with the given [`FrostCoordinator`],
     /// aggregate key, and timeout.
     pub fn new<X>(coordinator: FrostCoordinator, aggregate_key: X, timeout: Duration) -> Self
@@ -154,7 +149,6 @@ where
             created_at: Instant::now(),
             timeout,
             state: State::Idle,
-            _error: std::marker::PhantomData,
         }
     }
 
@@ -171,7 +165,7 @@ where
     ///   [`Self::state`].
     /// - Will process all eligible pending messages given the current state of
     ///   the [`FrostCoordinator`].
-    pub fn process_message<M>(&mut self, sender: PublicKey, msg: M) -> Result<(), TError>
+    pub fn process_message<M>(&mut self, sender: PublicKey, msg: M) -> Result<(), Error>
     where
         M: Into<wsts::net::Message> + std::fmt::Debug,
     {
@@ -405,10 +399,7 @@ mod tests {
 
     use super::*;
 
-    impl<TError> StateMachine<TError>
-    where
-        TError: From<Error> + std::error::Error + 'static + Send + Sync,
-    {
+    impl StateMachine {
         /// Gets the number of pending messages of the given type that are currently
         /// stored in this [`StateMachine`].
         fn pending_message_count(&self, message_type: WstsNetMessageType) -> u32 {
@@ -506,7 +497,7 @@ mod tests {
 
         let aggregate_key = pubkey_xonly();
 
-        let mut state_machine = StateMachine::<crate::error::Error>::new(
+        let mut state_machine = StateMachine::new(
             FrostCoordinator::new([sender1, signer_pubkey], 1, signer_privkey),
             aggregate_key,
             Duration::from_secs(60),
@@ -798,11 +789,6 @@ mod tests {
         // something's probably off with the setup of the signers. But what
         // we're really testing is the state machine and that we have an end
         // state here (either success or failure).
-        assert!(matches!(
-            result,
-            Err(crate::error::Error::DkgVerification(Error::SigningFailure(
-                _
-            )))
-        ));
+        assert!(matches!(result, Err(Error::SigningFailure(_))));
     }
 }

@@ -21,7 +21,7 @@ use crate::{
 use super::verification::StateMachine;
 
 pub struct TestSetup {
-    pub state_machine: StateMachine<crate::error::Error>,
+    pub state_machine: StateMachine,
     pub signers: Vec<Signer<v2::Party>>,
     pub senders: Vec<PublicKey>,
     #[allow(dead_code)]
@@ -39,11 +39,7 @@ impl TestSetup {
 
         let aggregate_key = pubkey_xonly();
         let coordinator: FrostCoordinator = coordinators.into_iter().next().unwrap().into();
-        let state_machine = StateMachine::<crate::error::Error>::new(
-            coordinator,
-            aggregate_key,
-            Duration::from_secs(60),
-        );
+        let state_machine = StateMachine::new(coordinator, aggregate_key, Duration::from_secs(60));
 
         Self {
             state_machine,

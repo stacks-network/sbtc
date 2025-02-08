@@ -143,8 +143,7 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// WSTS FROST state machines for verifying full and correct participation
     /// during DKG using the FROST algorithm. This is then used during the
     /// verification of the Stacks rotate-keys transaction.
-    pub dkg_verification_state_machines:
-        LruCache<StateMachineId, dkg::verification::StateMachine<Error>>,
+    pub dkg_verification_state_machines: LruCache<StateMachineId, dkg::verification::StateMachine>,
 }
 
 /// This struct represents a signature hash and the public key that locks
@@ -1073,7 +1072,7 @@ where
         storage: &S,
         aggregate_key: PublicKeyXOnly,
         signer_private_key: PrivateKey,
-    ) -> Result<dkg::verification::StateMachine<Error>, Error>
+    ) -> Result<dkg::verification::StateMachine, Error>
     where
         S: DbRead + Send + Sync,
     {
@@ -1125,7 +1124,7 @@ where
     async fn ensure_dkg_verification_state_machine(
         &mut self,
         aggregate_key: PublicKeyXOnly,
-    ) -> Result<(StateMachineId, &mut dkg::verification::StateMachine<Error>), Error> {
+    ) -> Result<(StateMachineId, &mut dkg::verification::StateMachine), Error> {
         let state_machine_id = StateMachineId::RotateKey(aggregate_key);
 
         if !self
@@ -1179,7 +1178,8 @@ where
         tracing::trace!(?msg, "🔐 processing FROST coordinator message");
 
         state_machine.process_message(sender, msg.clone())
-            .inspect_err(|error| tracing::warn!(?error, %sender, "🔐 failed to process FROST coordinator message"))?;
+            .inspect_err(|error| tracing::warn!(?error, %sender, "🔐 failed to process FROST coordinator message"))
+            .map_err(Error::DkgVerification)?;
 
         match state_machine.state() {
             dkg::verification::State::Success(signature) => {
@@ -1257,7 +1257,9 @@ where
             // one. Note that we _do not_ send any messages to the network; the
             // frost coordinator is only following the round.
             if let Some(ref mut dkg_verify) = dkg_verification_state_machine {
-                dkg_verify.process_message(sender, outbound_message.clone())?;
+                dkg_verify
+                    .process_message(sender, outbound_message.clone())
+                    .map_err(Error::DkgVerification)?;
             }
         }
 

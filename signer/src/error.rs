@@ -20,7 +20,7 @@ use crate::wsts_state_machine::StateMachineId;
 pub enum Error {
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
-    DkgVerification(#[from] dkg::verification::Error),
+    DkgVerification(#[source] dkg::verification::Error),
 
     /// Unexpected [`StateMachineId`] in the given context.
     #[error("unexpected state machine id in the given context: {0:?}")]
