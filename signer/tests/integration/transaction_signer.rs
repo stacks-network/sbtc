@@ -7,6 +7,7 @@ use fake::Fake as _;
 use fake::Faker;
 use lru::LruCache;
 use rand::SeedableRng as _;
+use test_case::test_case;
 
 use signer::bitcoin::utxo::RequestRef;
 use signer::bitcoin::utxo::Requests;
@@ -31,6 +32,7 @@ use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::BitcoinTxId;
 use signer::storage::model::BitcoinTxSigHash;
+use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SigHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::DbRead as _;
@@ -46,6 +48,8 @@ use wsts::net::NonceRequest;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::fill_signers_utxo;
+use crate::setup::set_verification_status;
+use crate::setup::DepositAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -267,6 +271,98 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         .expect("deposit sighash not stored");
 
     assert!(will_sign);
+
+    testing::storage::drop_db(db).await;
+}
+
+#[test_case(DkgSharesStatus::Verified, true ; "verified-shares-okay")]
+#[test_case(DkgSharesStatus::Unverified, false ; "unverified-shares-not-okay")]
+#[test_case(DkgSharesStatus::Failed, false ; "failed-shares-not-okay")]
+#[tokio::test]
+pub async fn presign_requests_with_dkg_shares_status(status: DkgSharesStatus, is_ok: bool) {
+    let db = testing::storage::new_test_database().await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    // Build the test context with mocked clients
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_bitcoin_client()
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
+        .build();
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    let signers = TestSignerSet::new(&mut rng);
+    // Create a test setup object so that we can simply create proper DKG
+    // shares in the database. Note that calling TestSweepSetup2::new_setup
+    // creates two bitcoin block.
+    let amounts = DepositAmounts { amount: 100000, max_fee: 10000 };
+    let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+
+    let block_header = rpc
+        .get_block_header_info(&setup.deposit_block_hash)
+        .unwrap();
+    let chain_tip = BitcoinBlockRef {
+        block_hash: block_header.hash.into(),
+        block_height: block_header.height as u64,
+    };
+
+    // Store the necessary data for passing validation
+    let aggregate_key = setup.signers.aggregate_key();
+
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+
+    setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
+    setup.store_deposit_txs(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_deposit_decisions(&db).await;
+
+    set_verification_status(&db, aggregate_key, status).await;
+
+    ctx.state().set_current_aggregate_key(aggregate_key);
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
+
+    // Initialize the transaction signer event loop
+    let network = WanNetwork::default();
+
+    let net = network.connect(&ctx);
+    let mut tx_signer = TxSignerEventLoop {
+        network: net.spawn(),
+        context: ctx.clone(),
+        context_window: 10000,
+        wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
+        // We use this private key because it needs to be associated with
+        // one of the public keys that we stored in the DKG shares table.
+        signer_private_key: setup.signers.signer.keypair.secret_key().into(),
+        threshold: 2,
+        rng: rand::rngs::StdRng::seed_from_u64(51),
+        dkg_begin_pause: None,
+        dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
+        dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
+    };
+
+    let sbtc_requests: TxRequestIds = TxRequestIds {
+        deposits: setup.deposit_outpoints(),
+        withdrawals: vec![],
+    };
+
+    let sbtc_context = BitcoinPreSignRequest {
+        request_package: vec![sbtc_requests],
+        fee_rate: 2.0,
+        last_fees: None,
+    };
+
+    let result = tx_signer
+        .handle_bitcoin_pre_sign_request(&sbtc_context, &chain_tip)
+        .await;
+
+    match result {
+        Ok(()) => assert!(is_ok),
+        Err(Error::NoVerifiedDkgShares) => assert!(!is_ok),
+        Err(error) => panic!("{error}, got an unexpected result"),
+    }
 
     testing::storage::drop_db(db).await;
 }
