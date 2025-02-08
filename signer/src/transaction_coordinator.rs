@@ -371,19 +371,19 @@ where
             .get_current_signers_aggregate_key(&self.context.config().signer.deployer)
             .await?;
 
-        let (need_verification, need_rotate_key) =
+        let (needs_verification, needs_rotate_key) =
             assert_rotate_key_action(&last_dkg, current_aggregate_key)?;
-        if !(need_verification || need_rotate_key) {
+        if !needs_verification && !needs_rotate_key {
             tracing::debug!("stacks node is up to date with the current aggregate key and no DKG verification required");
             return Ok(());
         }
-        tracing::info!(%need_verification, %need_rotate_key, "we need to do something DKG related");
+        tracing::info!(%needs_verification, %needs_rotate_key, "DKG verification and/or key rotation needed");
 
         // Load the Stacks wallet.
         tracing::debug!("loading the signer stacks wallet");
         let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
 
-        if need_verification {
+        if needs_verification {
             // Perform DKG verification before submitting the rotate key transaction.
             tracing::info!(
                 "🔐 beginning DKG verification before submitting rotate-key transaction"
@@ -393,7 +393,7 @@ where
             tracing::info!("🔐 DKG verification successful");
         }
 
-        if need_rotate_key {
+        if needs_rotate_key {
             tracing::info!("our aggregate key differs from the one in the registry contract; a key rotation may be necessary");
 
             // current_aggregate_key define which wallet can sign stacks tx interacting
@@ -1865,17 +1865,17 @@ pub fn assert_rotate_key_action(
     last_dkg: &model::EncryptedDkgShares,
     current_aggregate_key: Option<PublicKey>,
 ) -> Result<(bool, bool), Error> {
-    let need_rotate_key = Some(last_dkg.aggregate_key) != current_aggregate_key;
+    let needs_rotate_key = Some(last_dkg.aggregate_key) != current_aggregate_key;
 
-    let need_verification = match last_dkg.dkg_shares_status {
+    let needs_verification = match last_dkg.dkg_shares_status {
         model::DkgSharesStatus::Unverified => true,
-        model::DkgSharesStatus::Verified => need_rotate_key,
+        model::DkgSharesStatus::Verified => needs_rotate_key,
         model::DkgSharesStatus::Failed => {
             return Err(Error::DkgVerificationFailed(last_dkg.aggregate_key.into()))
         }
     };
 
-    Ok((need_verification, need_rotate_key))
+    Ok((needs_verification, needs_rotate_key))
 }
 
 #[cfg(test)]
@@ -2068,8 +2068,8 @@ mod tests {
         shares_status: model::DkgSharesStatus,
         shares_key_seed: u64,
         current_aggregate_key_seed: Option<u64>,
-        need_verification: bool,
-        need_rotate_key: bool,
+        needs_verification: bool,
+        needs_rotate_key: bool,
     }
 
     #[test_case(
@@ -2077,48 +2077,48 @@ mod tests {
             shares_status: model::DkgSharesStatus::Unverified,
             shares_key_seed: 1,
             current_aggregate_key_seed: None,
-            need_verification: true,
-            need_rotate_key: true,
+            needs_verification: true,
+            needs_rotate_key: true,
         }; "unverified, no key")]
     #[test_case(
         RotateKeyActionTest {
             shares_status: model::DkgSharesStatus::Verified,
             shares_key_seed: 1,
             current_aggregate_key_seed: None,
-            need_verification: true,
-            need_rotate_key: true,
+            needs_verification: true,
+            needs_rotate_key: true,
         }; "verified, no key")]
     #[test_case(
         RotateKeyActionTest {
             shares_status: model::DkgSharesStatus::Unverified,
             shares_key_seed: 1,
             current_aggregate_key_seed: Some(1),
-            need_verification: true,
-            need_rotate_key: false,
+            needs_verification: true,
+            needs_rotate_key: false,
         }; "unverified, key up to date")]
     #[test_case(
         RotateKeyActionTest {
             shares_status: model::DkgSharesStatus::Verified,
             shares_key_seed: 1,
             current_aggregate_key_seed: Some(1),
-            need_verification: false,
-            need_rotate_key: false,
+            needs_verification: false,
+            needs_rotate_key: false,
         }; "verified, key up to date")]
     #[test_case(
         RotateKeyActionTest {
             shares_status: model::DkgSharesStatus::Unverified,
             shares_key_seed: 2,
             current_aggregate_key_seed: Some(1),
-            need_verification: true,
-            need_rotate_key: true,
+            needs_verification: true,
+            needs_rotate_key: true,
         }; "unverified, new key")]
     #[test_case(
         RotateKeyActionTest {
             shares_status: model::DkgSharesStatus::Verified,
             shares_key_seed: 2,
             current_aggregate_key_seed: Some(1),
-            need_verification: true,
-            need_rotate_key: true,
+            needs_verification: true,
+            needs_rotate_key: true,
         }; "verified, new key")]
     fn test_assert_rotate_key_action(scenario: RotateKeyActionTest) {
         let last_dkg = model::EncryptedDkgShares {
@@ -2130,10 +2130,10 @@ mod tests {
             .current_aggregate_key_seed
             .map(public_key_from_seed);
 
-        let (need_verification, need_rotate_key) =
+        let (needs_verification, needs_rotate_key) =
             assert_rotate_key_action(&last_dkg, current_aggregate_key).unwrap();
-        assert_eq!(need_verification, scenario.need_verification);
-        assert_eq!(need_rotate_key, scenario.need_rotate_key);
+        assert_eq!(needs_verification, scenario.needs_verification);
+        assert_eq!(needs_rotate_key, scenario.needs_rotate_key);
     }
 
     #[test_case(None; "no key")]

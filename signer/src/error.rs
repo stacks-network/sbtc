@@ -46,7 +46,7 @@ pub enum Error {
 
     /// Cannot verify the aggregate key outside the verification window
     #[error("cannot verify the aggregate key outside the verification window: {0}")]
-    DkgVerificationTooLate(PublicKey),
+    DkgVerificationWindowElapsed(PublicKey),
 
     /// No WSTS FROST state machine was found for the given aggregate key. This
     /// state machine is used during the DKG verification signing round

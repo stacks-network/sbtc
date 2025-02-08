@@ -965,7 +965,9 @@ where
 
         if max_verification_height < bitcoin_chain_tip.block_height {
             tracing::warn!("🔐 DKG verification outside the allowed window");
-            return Err(Error::DkgVerificationTooLate(latest_shares.aggregate_key));
+            return Err(Error::DkgVerificationWindowElapsed(
+                latest_shares.aggregate_key,
+            ));
         }
 
         // If we don't have a message (i.e. from `SignatureShareResponse`) then
