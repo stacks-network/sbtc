@@ -87,8 +87,9 @@ pub trait IterTestExt<T>
 where
     Self: IntoIterator<Item = T> + Sized,
 {
-    /// Asserts that the vec
-    fn unwrap_one(self) -> T {
+    /// Asserts that the iterator contains exactly one element and returns it. Panics if
+    /// the iterator is empty or contains more than one element.
+    fn single(self) -> T {
         let mut iter = self.into_iter();
         let item = iter
             .next()

@@ -368,8 +368,6 @@ where
                 .process_message(&msg.message)
                 .map_err(|error| Error::Coordinator(Box::new(error)))?;
 
-            
-
             // Check the result of the operation. If the operation is one of
             match result {
                 Some(OperationResult::SignTaproot(sig)) => {
@@ -577,8 +575,8 @@ mod tests {
         let sender2 = setup.senders[1];
 
         let nonce_request = nonce_request(1, 1, 1);
-        let nonce_response1 = signer1.process(&nonce_request).unwrap().unwrap_one();
-        let nonce_response2 = signer2.process(&nonce_request).unwrap().unwrap_one();
+        let nonce_response1 = signer1.process(&nonce_request).unwrap().single();
+        let nonce_response2 = signer2.process(&nonce_request).unwrap().single();
 
         assert!(matches!(state_machine.state, State::Idle));
 
@@ -652,12 +650,12 @@ mod tests {
         let nonce_response1 = signer1
             .process(&nonce_request)
             .expect("signer1 should be able to process message")
-            .unwrap_one();
+            .single();
         assert!(matches!(nonce_response1, Message::NonceResponse(_)));
         let nonce_response2 = signer2
             .process(&nonce_request)
             .expect("signer2 should be able to process message")
-            .unwrap_one();
+            .single();
         assert!(matches!(nonce_response2, Message::NonceResponse(_)));
 
         // The state machine should be able to process the nonce request.
@@ -708,8 +706,8 @@ mod tests {
         let nonce_request = nonce_request(1, 1, 1);
 
         // Process the nonce request with signer 1 and 2 to get their responses.
-        let nonce_response1 = signer1.process(&nonce_request).unwrap().unwrap_one();
-        let nonce_response2 = signer2.process(&nonce_request).unwrap().unwrap_one();
+        let nonce_response1 = signer1.process(&nonce_request).unwrap().single();
+        let nonce_response2 = signer2.process(&nonce_request).unwrap().single();
 
         // Process the nonce request in the state machine and assert.
         state_machine
@@ -763,11 +761,11 @@ mod tests {
         let sig_share_response1 = signer1
             .process(&sig_share_request)
             .expect("should be able to process message")
-            .unwrap_one();
+            .single();
         let sig_share_response2 = signer2
             .process(&sig_share_request)
             .expect("should be able to process message")
-            .unwrap_one();
+            .single();
 
         // Process signer 1's signature share response with both signers.
         signer1
