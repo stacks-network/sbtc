@@ -106,7 +106,6 @@ impl QueuedMessage {
 /// TODO: The signer currently stops messages from being processed if the
 /// received message doesn't match the current chain tip, so that needs to be
 /// changed for cross-block functionality to work.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub struct StateMachine<TError> {
     /// The aggregate key that is being verified.
@@ -359,13 +358,17 @@ where
                 &sender.to_string()[..10]
             );
 
+            // Mark the message as processed so that even if it fails we don't
+            // try to process it again.
+            msg.mark_processed();
+
             // Pass the message to the coordinator.
             let (_, result) = self
                 .coordinator
                 .process_message(&msg.message)
                 .map_err(|error| Error::Coordinator(Box::new(error)))?;
 
-            msg.mark_processed();
+            
 
             // Check the result of the operation. If the operation is one of
             match result {
