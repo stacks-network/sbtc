@@ -744,6 +744,8 @@ where
                             &db,
                             &new_key,
                             Some(&request.message),
+                            self.context.config().signer.dkg_verification_window,
+                            &chain_tip_report.chain_tip,
                         )
                         .await?;
 
@@ -826,6 +828,8 @@ where
                             &db,
                             &new_key,
                             Some(&request.message),
+                            self.context.config().signer.dkg_verification_window,
+                            &chain_tip_report.chain_tip,
                         )
                         .await?;
 
@@ -873,6 +877,8 @@ where
                     &self.context.get_storage(),
                     &new_key,
                     Some(&request.message),
+                    self.context.config().signer.dkg_verification_window,
+                    &chain_tip_report.chain_tip,
                 )
                 .await?;
 
@@ -905,6 +911,8 @@ where
                     &self.context.get_storage(),
                     &new_key,
                     None,
+                    self.context.config().signer.dkg_verification_window,
+                    &chain_tip_report.chain_tip,
                 )
                 .await?;
 
@@ -928,16 +936,18 @@ where
         storage: &DB,
         new_key: &PublicKeyXOnly,
         message: Option<&[u8]>,
+        dkg_verification_window: u16,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
     ) -> Result<(), Error>
     where
         DB: DbRead,
     {
-        let latest_key = storage
+        let latest_shares = storage
             .get_latest_encrypted_dkg_shares()
             .await?
-            .ok_or(Error::NoDkgShares)?
-            .aggregate_key
-            .into();
+            .ok_or(Error::NoDkgShares)?;
+
+        let latest_key = latest_shares.aggregate_key.into();
 
         // Ensure that the new key matches the current aggregate key.
         if *new_key != latest_key {
@@ -945,6 +955,18 @@ where
             return Err(Error::AggregateKeyMismatch(
                 Box::new(latest_key),
                 Box::new(*new_key),
+            ));
+        }
+
+        // Ensure we are within the verification window
+        let max_verification_height = latest_shares
+            .started_at_bitcoin_block_height
+            .saturating_add(dkg_verification_window as u64);
+
+        if max_verification_height < bitcoin_chain_tip.block_height {
+            tracing::warn!("🔐 DKG verification outside the allowed window");
+            return Err(Error::DkgVerificationWindowElapsed(
+                latest_shares.aggregate_key,
             ));
         }
 
