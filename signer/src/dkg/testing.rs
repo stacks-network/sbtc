@@ -1,6 +1,6 @@
 //! Helper types and functions for testing.
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
 use rand::rngs::OsRng;
 use secp256k1::XOnlyPublicKey;
@@ -38,7 +38,7 @@ impl TestSetup {
 
         let aggregate_key = pubkey_xonly();
         let coordinator: FrostCoordinator = coordinators.into_iter().next().unwrap().into();
-        let state_machine = StateMachine::new(coordinator, aggregate_key, Duration::from_secs(60))
+        let state_machine = StateMachine::new(coordinator, aggregate_key, None)
             .expect("failed to create new dkg verification state machine");
 
         Self {

@@ -1125,7 +1125,6 @@ where
         storage: &S,
         aggregate_key: PublicKeyXOnly,
         signer_private_key: PrivateKey,
-        timeout: Duration,
     ) -> Result<dkg::verification::StateMachine, Error>
     where
         S: DbRead + Send + Sync,
@@ -1159,9 +1158,8 @@ where
         )
         .await?;
 
-        let state_machine =
-            dkg::verification::StateMachine::new(coordinator, aggregate_key, timeout)
-                .map_err(Error::DkgVerification)?;
+        let state_machine = dkg::verification::StateMachine::new(coordinator, aggregate_key, None)
+            .map_err(Error::DkgVerification)?;
 
         Ok(state_machine)
     }
@@ -1185,12 +1183,10 @@ where
             .contains(&state_machine_id)
         {
             let storage = self.context.get_storage();
-            let signing_round_timeout = self.context.config().signer.signer_round_max_duration;
             let coordinator = Self::create_dkg_verification_state_machine(
                 &storage,
                 aggregate_key,
                 self.signer_private_key,
-                signing_round_timeout,
             )
             .await?;
             self.dkg_verification_state_machines

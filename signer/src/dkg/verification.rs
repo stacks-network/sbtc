@@ -162,7 +162,7 @@ pub struct StateMachine {
     created_at: Instant,
     /// Specifies the amount of time elapsed since `created_at` that this
     /// verification should be valid.
-    timeout: Duration,
+    timeout: Option<Duration>,
     /// The current state of this state machine. If the state is
     /// [`State::Success`] then the signature will be stored in the variant.
     state: State,
@@ -174,7 +174,7 @@ impl StateMachine {
     pub fn new<X>(
         coordinator: FrostCoordinator,
         aggregate_key: X,
-        timeout: Duration,
+        timeout: Option<Duration>,
     ) -> Result<Self, Error>
     where
         X: Into<XOnlyPublicKey>,
@@ -307,7 +307,10 @@ impl StateMachine {
 
     /// Gets whether or not this [`StateMachine`] has expired.
     fn is_expired(&self) -> bool {
-        self.created_at.elapsed() > self.timeout
+        match self.timeout {
+            None => false,
+            Some(timeout) => self.created_at.elapsed() > timeout,
+        }
     }
 
     /// Asserts that the [`StateMachine`] is in a state where it
