@@ -84,7 +84,7 @@ impl DepositRequestValidator for CreateDepositRequest {
         };
 
         // If the transaction has not been confirmed yet, then the block
-        // hash will be None. The trasnaction has not failed validation,
+        // hash will be None. The transaction has not failed validation,
         // let's try again when it gets confirmed.
         let Some(block_hash) = response.block_hash else {
             return Ok(None);

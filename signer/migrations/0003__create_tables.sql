@@ -116,7 +116,7 @@ CREATE TABLE sbtc_signer.bitcoin_transactions (
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash) ON DELETE CASCADE
 );
--- Index to serve queries which filter transactions soley on `block_hash`. The
+-- Index to serve queries which filter transactions solely on `block_hash`. The
 -- PK won't help here as it is a compound key where `block_hash` is a 2nd level.
 CREATE INDEX ix_bitcoin_transactions_block_hash ON sbtc_signer.bitcoin_transactions(block_hash);
 
