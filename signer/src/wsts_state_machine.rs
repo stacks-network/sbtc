@@ -45,7 +45,7 @@ pub enum StateMachineId {
     /// Identifier for a Bitcoin signing state machines
     BitcoinSign(SigHash),
     /// Identifier for a rotate key verification signing round
-    RotateKey(PublicKeyXOnly),
+    DkgVerification(PublicKeyXOnly, model::BitcoinBlockRef),
 }
 
 impl std::fmt::Display for StateMachineId {
@@ -53,8 +53,12 @@ impl std::fmt::Display for StateMachineId {
         match self {
             StateMachineId::Dkg(block_hash) => write!(f, "dkg({:?})", block_hash),
             StateMachineId::BitcoinSign(sighash) => write!(f, "bitcoin-sign({})", sighash),
-            StateMachineId::RotateKey(pubkey) => {
-                write!(f, "rotate-key({})", pubkey)
+            StateMachineId::DkgVerification(pubkey, block_hash) => {
+                write!(
+                    f,
+                    "dkg-verification(key={}, block_hash={}, block_height={})",
+                    pubkey, block_hash.block_hash, block_hash.block_height
+                )
             }
         }
     }

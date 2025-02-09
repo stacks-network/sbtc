@@ -777,8 +777,9 @@ where
                         )
                         .await?;
 
-                        let state_machine_id =
-                            self.ensure_dkg_verification_state_machine(new_key).await?;
+                        let state_machine_id = self
+                            .ensure_dkg_verification_state_machine(new_key, chain_tip)
+                            .await?;
 
                         let tap_sighash =
                             UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
@@ -873,8 +874,9 @@ where
                             "🔐 responding to signature-share-request for DKG verification signing"
                         );
 
-                        let state_machine_id =
-                            self.ensure_dkg_verification_state_machine(new_key).await?;
+                        let state_machine_id = self
+                            .ensure_dkg_verification_state_machine(new_key, chain_tip)
+                            .await?;
 
                         let tap_sighash =
                             UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
@@ -926,7 +928,9 @@ where
                 )
                 .await?;
 
-                let state_machine_id = self.ensure_dkg_verification_state_machine(new_key).await?;
+                let state_machine_id = self
+                    .ensure_dkg_verification_state_machine(new_key, chain_tip)
+                    .await?;
 
                 let tap_sighash = UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
                 if tap_sighash.as_byte_array() != request.message.as_slice() {
@@ -963,7 +967,9 @@ where
                 )
                 .await?;
 
-                let state_machine_id = self.ensure_dkg_verification_state_machine(new_key).await?;
+                let state_machine_id = self
+                    .ensure_dkg_verification_state_machine(new_key, chain_tip)
+                    .await?;
 
                 self.handle_dkg_verification_message(
                     state_machine_id,
@@ -1170,8 +1176,9 @@ where
     async fn ensure_dkg_verification_state_machine(
         &mut self,
         aggregate_key: PublicKeyXOnly,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
     ) -> Result<StateMachineId, Error> {
-        let state_machine_id = StateMachineId::RotateKey(aggregate_key);
+        let state_machine_id = StateMachineId::DkgVerification(aggregate_key, *bitcoin_chain_tip);
 
         if !self
             .dkg_verification_state_machines
@@ -1234,7 +1241,7 @@ where
         // We should only be handling messages for the DKG verification state
         // machine. We'll grab the aggregate key from the id as well.
         let aggregate_key = match state_machine_id {
-            StateMachineId::RotateKey(aggregate_key) => aggregate_key,
+            StateMachineId::DkgVerification(aggregate_key, _) => aggregate_key,
             _ => {
                 tracing::warn!("🔐 unexpected state machine id for DKG verification signing round");
                 return Err(Error::UnexpectedStateMachineId(state_machine_id));
@@ -1335,7 +1342,10 @@ where
         };
 
         // Check and store if this is a DKG verification-related message.
-        let is_dkg_verification = matches!(state_machine_id, StateMachineId::RotateKey(_));
+        let is_dkg_verification = matches!(
+            state_machine_id,
+            StateMachineId::DkgVerification(_, chain_tip) if chain_tip.block_hash == *bitcoin_chain_tip
+        );
 
         // If this is a DKG verification then we need to process the message in
         // the frost coordinator as well to be able to properly follow the
