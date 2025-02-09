@@ -398,6 +398,11 @@ impl StateMachine {
             // try to process it again.
             msg.mark_processed();
 
+            // Record the current state of the coordinator before processing the
+            // message. This is used below to determine if the coordinator has
+            // transitioned to a new state after processing the message.
+            let coordinator_state_pre_processing = self.coordinator.state.clone();
+
             // Pass the message to the coordinator.
             let (_, result) = self
                 .coordinator
@@ -423,7 +428,13 @@ impl StateMachine {
                     self.state = State::Error;
                     return Err(Error::UnexpectedWstsResult(result.into()));
                 }
-                None => {}
+                None => {
+                    // If the coordinator state has changed, then it will ignore
+                    // any further messages of this type, so we break early.
+                    if self.coordinator.state != coordinator_state_pre_processing {
+                        break;
+                    }
+                }
             }
         }
 
