@@ -125,21 +125,31 @@ pub enum FeePriority {
 pub trait StacksInteract: Send + Sync {
     /// Retrieve the current signer set from the `sbtc-registry` contract.
     ///
-    /// This is done by making a `GET /v2/data_var/<contract-principal>/sbtc-registry/current-signer-set`
+    /// This is done by making a `GET
+    /// /v2/data_var/<contract-principal>/sbtc-registry/current-signer-set`
     /// request.
     fn get_current_signer_set(
         &self,
         contract_principal: &StacksAddress,
-    ) -> impl Future<Output = Result<Vec<PublicKey>, Error>> + Send;
+    ) -> impl Future<Output = Result<Option<Vec<PublicKey>>, Error>> + Send;
 
-    /// Retrieve the current signers' aggregate key from the `sbtc-registry` contract.
+    /// Retrieve the current signers' aggregate key from the `sbtc-registry`
+    /// contract.
     ///
-    /// This is done by making a `GET /v2/data_var/<contract-principal>/sbtc-registry/current-aggregate-pubkey`
+    /// This is done by making a `GET
+    /// /v2/data_var/<contract-principal>/sbtc-registry/current-aggregate-pubkey`
     /// request.
     fn get_current_signers_aggregate_key(
         &self,
         contract_principal: &StacksAddress,
     ) -> impl Future<Output = Result<Option<PublicKey>, Error>> + Send;
+
+    /// Gets the current signature threshold (`current-signature-threshold`)
+    /// from the `sbtc-registry` contract.
+    fn get_current_signature_threshold(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> impl Future<Output = Result<Option<u128>, Error>> + Send;
 
     /// Get the latest account info for the given address.
     fn get_account(
@@ -572,6 +582,14 @@ impl StacksClient {
             .send()
             .await
             .map_err(Error::StacksNodeRequest)?;
+
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(Error::StacksNodeDataVarNotFound {
+                principal: *contract_principal,
+                contract: contract_name.clone(),
+                data_var: var_name.clone(),
+            });
+        }
 
         response
             .error_for_status()
@@ -1071,7 +1089,7 @@ impl StacksInteract for StacksClient {
     async fn get_current_signer_set(
         &self,
         contract_principal: &StacksAddress,
-    ) -> Result<Vec<PublicKey>, Error> {
+    ) -> Result<Option<Vec<PublicKey>>, Error> {
         // Make a request to the sbtc-registry contract to get the current
         // signer set.
         let result = self
@@ -1100,7 +1118,8 @@ impl StacksInteract for StacksClient {
                             "expected a buffer but got something else",
                         )),
                     })
-                    .collect()
+                    .collect::<Result<Vec<_>, _>>()
+                    .map(Some)
             }
             // We expected the top-level value to be a list of buffers,
             // but we got something else.
@@ -1135,6 +1154,32 @@ impl StacksInteract for StacksClient {
             _ => Err(Error::InvalidStacksResponse(
                 "expected a buffer but got something else",
             )),
+        }
+    }
+
+    async fn get_current_signature_threshold(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Option<u128>, Error> {
+        let result = self
+            .get_data_var(
+                contract_principal,
+                &ContractName::from("sbtc-registry"),
+                &ClarityName::from("current-signature-threshold"),
+            )
+            .await;
+
+        // Check the result and return the signature threshold.
+        match result {
+            Ok(Value::UInt(threshold)) => Ok(Some(threshold)),
+            Err(Error::StacksNodeDataVarNotFound { principal, contract, data_var }) => {
+                tracing::warn!(%principal, %contract, %data_var, "stacks contract data var not found");
+                Ok(None)
+            }
+            Ok(_) => Err(Error::InvalidStacksResponse(
+                "expected a uint but got something else",
+            )),
+            Err(e) => Err(e),
         }
     }
 
@@ -1310,10 +1355,16 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
     async fn get_current_signer_set(
         &self,
         contract_principal: &StacksAddress,
-    ) -> Result<Vec<PublicKey>, Error> {
+    ) -> Result<Option<Vec<PublicKey>>, Error> {
         self.exec(|client, retry| async move {
             let result = client.get_current_signer_set(contract_principal).await;
-            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
+            retry.abort_if(|| {
+                matches!(
+                    result,
+                    Err(Error::InvalidStacksResponse(_))
+                        | Err(Error::StacksNodeDataVarNotFound { .. })
+                )
+            });
             result
         })
         .await
@@ -1327,7 +1378,33 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
             let result = client
                 .get_current_signers_aggregate_key(contract_principal)
                 .await;
-            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
+            retry.abort_if(|| {
+                matches!(
+                    result,
+                    Err(Error::InvalidStacksResponse(_))
+                        | Err(Error::StacksNodeDataVarNotFound { .. })
+                )
+            });
+            result
+        })
+        .await
+    }
+
+    async fn get_current_signature_threshold(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Option<u128>, Error> {
+        self.exec(|client, retry| async move {
+            let result = client
+                .get_current_signature_threshold(contract_principal)
+                .await;
+            retry.abort_if(|| {
+                matches!(
+                    result,
+                    Err(Error::InvalidStacksResponse(_))
+                        | Err(Error::StacksNodeDataVarNotFound { .. })
+                )
+            });
             result
         })
         .await
@@ -1781,7 +1858,7 @@ mod tests {
             .unwrap();
 
         // Assert that the response is what we expect
-        assert_eq!(&resp, &public_keys);
+        assert_eq!(resp, Some(public_keys));
         mock.assert();
     }
 

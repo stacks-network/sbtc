@@ -312,7 +312,7 @@ impl StacksInteract for TestHarness {
     async fn get_current_signer_set(
         &self,
         _contract_principal: &StacksAddress,
-    ) -> Result<Vec<PublicKey>, Error> {
+    ) -> Result<Option<Vec<PublicKey>>, Error> {
         // issue #118
         todo!()
     }
@@ -323,6 +323,15 @@ impl StacksInteract for TestHarness {
         // issue #118
         todo!()
     }
+
+    async fn get_current_signature_threshold(
+        &self,
+        _contract_principal: &StacksAddress,
+    ) -> Result<Option<u128>, Error> {
+        // issue #118
+        todo!()
+    }
+
     async fn get_account(&self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
         // issue #118
         todo!()

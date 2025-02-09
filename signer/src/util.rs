@@ -178,7 +178,7 @@ impl<T> InnerApiFallbackClient<T> {
             let result = f(&self.inner_clients[client_index], retry_ctx.clone()).await;
 
             if let Err(error) = result {
-                tracing::warn!(%error, retry_num=i, max_retries=retry_count, "failover client call failed");
+                tracing::debug!(%error, retry_num=i, max_retries=retry_count, "failover client call failed");
 
                 if retry_ctx.is_aborted() {
                     return Err(error.into());
