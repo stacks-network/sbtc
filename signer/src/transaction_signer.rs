@@ -1270,26 +1270,28 @@ where
             dkg::verification::State::Success(signature) => {
                 tracing::info!("🔐 successfully completed DKG verification signing round");
                 let signature = *signature;
+                let db = self.context.get_storage_mut();
 
                 // We're at an end-state, so remove the state machines.
                 self.wsts_state_machines.pop(&state_machine_id);
                 self.dkg_verification_state_machines.pop(&state_machine_id);
 
+                // Perform verification of the signature.
                 tracing::info!("🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key");
                 let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
-                mock_tx
-                    .verify_signature(&signature)
-                    .inspect_err(|e| tracing::warn!(?e, "🔐 signature verification failed"))?;
-                tracing::info!("🔐 signature verification successful");
 
-                self.context
-                    .get_storage_mut()
-                    .verify_dkg_shares(aggregate_key)
-                    .await?;
-
-                tracing::info!(
-                    "🔐 DKG shares entry has been marked as verified; it is now able to be used"
-                );
+                match mock_tx.verify_signature(&signature) {
+                    Ok(()) => {
+                        tracing::info!("🔐 signature verification successful");
+                        db.verify_dkg_shares(aggregate_key).await?;
+                        tracing::info!("🔐 DKG shares entry has been marked as verified");
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "🔐 signature verification failed");
+                        db.revoke_dkg_shares(aggregate_key).await?;
+                        tracing::info!("🔐 DKG shares entry has been marked as failed");
+                    }
+                }
             }
             dkg::verification::State::Error | dkg::verification::State::Expired => {
                 tracing::warn!("🔐 failed to complete DKG verification signing round");
