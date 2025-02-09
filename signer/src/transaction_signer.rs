@@ -1317,6 +1317,12 @@ where
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        // Validate that the sender is a valid member of the signing set and
+        // has the correct id according to the signer state machine.
+        if let Some(signer_id) = signer_id {
+            self.validate_sender(state_machine_id, signer_id, &sender)?;
+        }
+
         // Process the message in the WSTS signer state machine.
         let outbound_messages = match self.wsts_state_machines.get_mut(state_machine_id) {
             Some(state_machine) => state_machine.process(msg).map_err(Error::Wsts)?,
@@ -1325,12 +1331,6 @@ where
                 return Err(Error::MissingStateMachine(*state_machine_id));
             }
         };
-
-        // Validate that the sender is a valid member of the signing set and
-        // has the correct id according to the signer state machine.
-        if let Some(signer_id) = signer_id {
-            self.validate_sender(state_machine_id, signer_id, &sender)?;
-        }
 
         // Check and store if this is a DKG verification-related message.
         let is_dkg_verification = matches!(state_machine_id, StateMachineId::RotateKey(_));
