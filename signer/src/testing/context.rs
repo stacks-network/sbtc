@@ -217,6 +217,10 @@ where
         self.inner.config()
     }
 
+    fn config_mut(&mut self) -> &mut Settings {
+        self.inner.config_mut()
+    }
+
     fn state(&self) -> &SignerState {
         self.inner.state()
     }
@@ -383,7 +387,7 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
     async fn get_current_signer_set(
         &self,
         contract_principal: &StacksAddress,
-    ) -> Result<Vec<PublicKey>, Error> {
+    ) -> Result<Option<Vec<PublicKey>>, Error> {
         self.inner
             .lock()
             .await
@@ -399,6 +403,17 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .lock()
             .await
             .get_current_signers_aggregate_key(contract_principal)
+            .await
+    }
+
+    async fn get_current_signature_threshold(
+        &self,
+        contract_principal: &StacksAddress,
+    ) -> Result<Option<u128>, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_current_signature_threshold(contract_principal)
             .await
     }
 

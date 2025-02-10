@@ -345,6 +345,11 @@ impl MultisigTx {
         &self.tx
     }
 
+    /// Return the message digest associated with the transaction
+    pub fn digest(&self) -> &Message {
+        &self.digest
+    }
+
     /// Return the total number of signatures that have been received so
     /// far for this transaction.
     pub fn num_signatures(&self) -> u16 {

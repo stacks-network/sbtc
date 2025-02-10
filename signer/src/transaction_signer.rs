@@ -33,6 +33,7 @@ use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
 use crate::signature::TaprootSignature;
+use crate::stacks::api::StacksInteract;
 use crate::stacks::contracts::AsContractCall as _;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::ReqContext;
@@ -484,6 +485,99 @@ where
         Ok(())
     }
 
+    /// Gets the current signer set public keys and signing threshold.
+    ///
+    /// This method will attempt to retrieve this information from three
+    /// sources:
+    /// 1. First, we attempt to retrieve the information from the database.
+    /// 2. If the database does not contain the information, or we receive an
+    ///    error from the database, we fall-back to the contract.
+    /// 3. If we couldn't get the information from the contract, but the
+    ///    contract calls returned valid "not found" responses (i.e. `None`
+    ///    here), then we're likely bootstrapping and fall-back to the
+    ///    bootstrapping configuration.
+    pub async fn get_current_signer_set_public_keys_and_threshold(
+        context: &C,
+        aggregate_key: &PublicKey,
+    ) -> Result<(Vec<PublicKey>, u16), Error> {
+        let db = context.get_storage();
+        let stacks_client = context.get_stacks_client();
+        let contract_principal = context.config().signer.deployer;
+
+        // We first attempt to retrieve the the current signer set public keys
+        // and signing threshold from the database. If the database does not
+        // contain the information, or we receive an error from the database,
+        // we fall-back to the contract (which our database should be reflecting,
+        // but we may have missed an update).
+        let mut shares = match db.get_encrypted_dkg_shares(aggregate_key).await {
+            Ok(Some(shares)) if shares.dkg_shares_status == DkgSharesStatus::Verified => Some((
+                shares.signer_set_public_keys,
+                shares.signature_share_threshold,
+            )),
+            Ok(Some(_)) => {
+                tracing::warn!("DKG shares are not verified; falling back to contract");
+                None
+            }
+            Ok(None) => {
+                tracing::debug!("no DKG shares found in database; falling back to contract");
+                None
+            }
+            Err(error) => {
+                tracing::warn!(%error, "error retrieving DKG shares from database; falling back to contract");
+                None
+            }
+        };
+
+        // If we couldn't get the information from the database, attempt to
+        // fall-back to the contract. This is our "one true" source of truth
+        // with regards to the signer set and threshold; attempting to retrieve
+        // it from the database first is only an optimization.
+        //
+        // Note that here we will bail upon error communicating with the Stacks
+        // node. This is because it's possible that the information is available
+        // in the contract, but we can't retrieve it due to a network error. In
+        // that case, we don't want to fall-back to our bootstrapping
+        // configuration as it may differ.
+        if shares.is_none() {
+            // Try to get both contract values concurrently.
+            let (contract_signer_set, contract_signature_threshold) = tokio::join!(
+                stacks_client.get_current_signer_set(&contract_principal),
+                stacks_client.get_current_signature_threshold(&contract_principal)
+            );
+
+            // Try-unwrap results from the concurrent calls. Be sure to bail
+            // according to the error handling strategy described above.
+            let contract_signer_set = contract_signer_set?;
+            let contract_signature_threshold = contract_signature_threshold?;
+
+            // If we have both the signer set and the threshold, we can proceed.
+            if let (Some(signer_set), Some(threshold)) =
+                (contract_signer_set, contract_signature_threshold)
+            {
+                let threshold: u16 = threshold.try_into()
+                    .inspect_err(|error| tracing::warn!(%error, "error converting signature threshold from u128 to u16"))
+                    .map_err(|_| Error::TypeConversion)?;
+                shares = Some((signer_set, threshold));
+            } else {
+                tracing::debug!("contract calls returned 'not found' responses; falling back to bootstrapping configuration");
+            }
+        }
+
+        // If we couldn't get the information from the contract, but the
+        // contract calls returned valid "not found" responses (i.e. `None`
+        // here), then it's likely that we're bootstrapping and this information
+        // simply doesn't exist yet. In this case, we fall-back to the
+        // bootstrapping configuration.
+        if let Some((signer_set_public_keys, threshold)) = shares {
+            Ok((signer_set_public_keys, threshold))
+        } else {
+            let config = context.config();
+            let bootstrap_signer_set = config.signer.bootstrap_signing_set.clone();
+            let bootstrap_signature_threshold = config.signer.bootstrap_signatures_required;
+            Ok((bootstrap_signer_set, bootstrap_signature_threshold))
+        }
+    }
+
     /// Check that the transaction is indeed valid. We specific checks that
     /// are run depend on the transaction being signed.
     #[tracing::instrument(skip_all, fields(sender = %origin_public_key, txid = %request.txid), err)]
@@ -493,16 +587,24 @@ where
         chain_tip: &model::BitcoinBlockRef,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
-        let db = self.context.get_storage();
         let public_key = self.signer_public_key();
 
-        let Some(shares) = db.get_encrypted_dkg_shares(&request.aggregate_key).await? else {
-            return Err(Error::MissingDkgShares(request.aggregate_key.into()));
-        };
+        // Retrieve the current signer set public keys and signature threshold.
+        let (signer_set_public_keys, signature_share_threshold) =
+            Self::get_current_signer_set_public_keys_and_threshold(
+                &self.context,
+                &request.aggregate_key,
+            )
+            .await
+            .inspect_err(
+                |error| tracing::warn!(%error, "error retrieving current signer set and threshold"),
+            )
+            .map_err(|_| Error::ValidationSignerSet(request.aggregate_key))?;
+
         // There is one check that applies to all Stacks transactions, and
         // that check is that the current signer is in the signing set
         // associated with the given aggregate key. We do this check here.
-        if !shares.signer_set_public_keys.contains(&public_key) {
+        if !signer_set_public_keys.contains(&public_key) {
             return Err(Error::ValidationSignerSet(request.aggregate_key));
         }
 
@@ -511,7 +613,7 @@ where
             context_window: self.context_window,
             origin: *origin_public_key,
             aggregate_key: request.aggregate_key,
-            signatures_required: shares.signature_share_threshold,
+            signatures_required: signature_share_threshold,
             deployer: self.context.config().signer.deployer,
         };
         let ctx = &self.context;

@@ -44,6 +44,7 @@ use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
+use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::TaprootSignature;
 use crate::stacks::api::FeePriority;
 use crate::stacks::api::GetNakamotoStartHeight;
@@ -956,6 +957,22 @@ where
     ) -> Result<StacksTransaction, Error> {
         let txid = req.txid;
 
+        // Determine the number of signatures required for the transaction. If
+        // the transaction is a rotate keys transaction, then we require all
+        // signers to sign the transaction to ensure that all signers have
+        // successfully finished DKG. Otherwise, we only need the number of
+        // signatures required by the wallet.
+        //
+        // Note: this check is naive and assumes that signers are correctly
+        // validating the new aggregate key. A malicious/faulty signer can
+        // still sign the transaction as the signer simply signs the transaction
+        // using their configured private key.
+        let signatures_required = if req.contract_tx.is_rotate_keys() {
+            wallet.num_signers()
+        } else {
+            wallet.signatures_required()
+        } as usize;
+
         // We ask for the signers to sign our transaction (including
         // ourselves, via our tx signer event loop)
         self.send_message(req, chain_tip).await?;
@@ -969,7 +986,15 @@ where
         tokio::pin!(signal_stream);
 
         let future = async {
-            while multi_tx.num_signatures() < wallet.signatures_required() {
+            let mut pending_signers = wallet.public_keys().clone();
+
+            // This serves as a "super-condition" relative to `multi_tx.num_signatures() < wallet.signatures_required()`:
+            // - We start with a full set of expected signers `pending_signers`.
+            // - Each valid signature is verified using `recover_ecdsa(multi_tx.digest())`, ensuring that only the
+            //   actual signers of the expected transaction digest can remove themselves from `pending_signers`.
+            // - We stop collecting signatures once we have enough, but keep tracking responses from remaining signers
+            //   for key rotation transactions.
+            while wallet.public_keys().len() - pending_signers.len() < signatures_required {
                 // If signal_stream.next() returns None then one of the
                 // underlying streams has closed. That means either the
                 // network stream, the internal message stream, or the
@@ -993,6 +1018,19 @@ where
                     Payload::StacksTransactionSignature(sig) if sig.txid == txid => sig,
                     _ => continue,
                 };
+
+                let enough_signatures = multi_tx.num_signatures() >= wallet.signatures_required();
+                let recovered_key = sig.signature.recover_ecdsa(multi_tx.digest());
+
+                if let Ok(key) = recovered_key {
+                    pending_signers.remove(&key);
+                }
+
+                // Stop collecting signatures once we have enough, but keep tracking responses
+                // from remaining signers for key rotation transactions
+                if enough_signatures {
+                    continue;
+                }
 
                 if let Err(error) = multi_tx.add_signature(sig.signature) {
                     tracing::warn!(

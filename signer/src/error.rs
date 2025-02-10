@@ -2,6 +2,9 @@
 use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
+use clarity::types::chainstate::StacksAddress;
+use clarity::vm::ClarityName;
+use clarity::vm::ContractName;
 
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
@@ -420,6 +423,18 @@ pub enum Error {
     /// Could not make a successful request to the Stacks node.
     #[error("failed to make a request to the stacks Node: {0}")]
     StacksNodeRequest(#[source] reqwest::Error),
+
+    /// The stacks node returned a '404 Not Found' response when requesting a
+    /// contract variable value.
+    #[error("the stacks node returned not-found for the provided contract data-var")]
+    StacksNodeDataVarNotFound {
+        /// The Stacks principal of the attempted contract.
+        principal: StacksAddress,
+        /// The name of the attempted contract.
+        contract: ContractName,
+        /// The name of the data variable within the attempted contract.
+        data_var: ClarityName,
+    },
 
     /// We failed to submit the transaction to the mempool.
     #[error("stacks transaction rejected: {0}")]
