@@ -1365,7 +1365,10 @@ where
                 }
             }
             dkg::verification::State::Error | dkg::verification::State::Expired => {
-                tracing::warn!("🔐 failed to complete DKG verification signing round");
+                tracing::warn!(
+                    state = ?state_machine.state(),
+                    "🔐 failed to complete DKG verification signing round"
+                );
 
                 // The state machine is now invalidated, so remove both of our
                 // state machines and return an error.
