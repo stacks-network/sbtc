@@ -5,6 +5,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
+use crate::dkg;
 use crate::emily_client::EmilyClientError;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -12,13 +13,18 @@ use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
 use crate::storage::model::SigHash;
+use crate::wsts_state_machine::StateMachineId;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The DKG verification state machine raised an error.
+    #[error("the dkg verification state machine raised an error: {0}")]
+    DkgVerification(#[source] dkg::verification::Error),
+
     /// Unexpected [`StateMachineId`] in the given context.
     #[error("unexpected state machine id in the given context: {0:?}")]
-    UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
+    UnexpectedStateMachineId(crate::wsts_state_machine::StateMachineId),
 
     /// An IO error was returned from the [`bitcoin`] library. This is usually an
     /// error that occurred during encoding/decoding of bitcoin types.
@@ -34,25 +40,19 @@ pub enum Error {
     #[error("invalid signing request")]
     InvalidSigningOperation,
 
-    /// No mock transaction was found after DKG successfully completed. Spending
-    /// a signer UTXO locked by the new aggregate key could not be verified.
-    #[error("no mock transaction found when attempting to sign")]
-    MissingMockTransaction,
+    /// The DKG verification state machine is in an end-state and can't be used
+    /// for the requested operation.
+    #[error("DKG verification state machine is in an end-state and cannot be used for the requested operation: {0}")]
+    DkgVerificationEnded(PublicKeyXOnly, Box<dkg::verification::State>),
 
     /// The rotate-key frost verification signing round failed for the aggregate
     /// key.
-    #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
+    #[error("DKG verification signing failed for aggregate key: {0}")]
     DkgVerificationFailed(PublicKeyXOnly),
 
     /// Cannot verify the aggregate key outside the verification window
     #[error("cannot verify the aggregate key outside the verification window: {0}")]
     DkgVerificationWindowElapsed(PublicKey),
-
-    /// No WSTS FROST state machine was found for the given aggregate key. This
-    /// state machine is used during the DKG verification signing round
-    /// following DKG.
-    #[error("no state machine found for frost signing round for the given aggregate key: {0}")]
-    MissingFrostStateMachine(PublicKeyXOnly),
 
     /// Expected two aggregate keys to match, but they did not.
     #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
@@ -462,8 +462,8 @@ pub enum Error {
     MissingPublicKey,
 
     /// Missing state machine
-    #[error("missing state machine")]
-    MissingStateMachine,
+    #[error("missing state machine: {0}")]
+    MissingStateMachine(StateMachineId),
 
     /// Missing key rotation
     #[error("missing key rotation")]

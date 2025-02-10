@@ -720,6 +720,7 @@ impl SignerUtxo {
 /// The Bitcoin transaction has the following layout:
 /// 1. The first input is spending the signers' UTXO.
 /// 2. There is only one output which is an OP_RETURN and an amount equal to 0.
+#[derive(Debug)]
 pub struct UnsignedMockTransaction {
     /// The Bitcoin transaction that needs to be signed.
     tx: Transaction,

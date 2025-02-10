@@ -81,3 +81,25 @@ pub fn set_witness_data(unsigned: &mut UnsignedTransaction, keypair: secp256k1::
             tx_in.witness = witness;
         });
 }
+
+/// Testing helpers for [`Vec`].
+pub trait IterTestExt<T>
+where
+    Self: IntoIterator<Item = T> + Sized,
+{
+    /// Asserts that the iterator contains exactly one element and returns it. Panics if
+    /// the iterator is empty or contains more than one element.
+    fn single(self) -> T {
+        let mut iter = self.into_iter();
+        let item = iter
+            .next()
+            .expect("expected exactly one element, but got none");
+        assert!(
+            iter.next().is_none(),
+            "expected exactly one element, but got more"
+        );
+        item
+    }
+}
+
+impl<I, T> IterTestExt<T> for I where I: IntoIterator<Item = T> + Sized {}
