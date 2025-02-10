@@ -82,7 +82,7 @@ impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
         let private_key = PrivateKey::new(rng);
         Self {
             contract_tx: ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
-                request_id: 1,
+                id: config.fake_with_rng(rng),
                 signer_bitmap: BitArray::ZERO,
                 deployer: StacksAddress::burn_address(false),
             })
