@@ -27,19 +27,6 @@ pub enum Error {
     #[error("the state machine is in an end-state and can no longer be used: {0}")]
     EndState(Box<State>),
 
-    /// The state machine has reached the message limit for the given message
-    /// type.
-    #[error("the state machine has reached the message limit for message type {message_type:?} (expected: {expected}, actual: {actual})")]
-    MessageLimitExceeded {
-        /// The type of message that has reached the limit.
-        message_type: WstsNetMessageType,
-        /// The expected number of messages of this type that should be
-        /// received.
-        expected: u32,
-        /// The actual number of messages of this type that have been received.
-        actual: u32,
-    },
-
     /// The FROST coordinator returned an error.
     #[error("a signing error occurred: {0}")]
     SigningFailure(Box<SignError>),
