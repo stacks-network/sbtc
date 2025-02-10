@@ -12,6 +12,7 @@ use crate::keys::PublicKeyXOnly;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
+use crate::stacks::contracts::WithdrawalRejectValidationError;
 use crate::storage::model::SigHash;
 use crate::wsts_state_machine::StateMachineId;
 
@@ -581,6 +582,11 @@ pub enum Error {
     /// transaction fails at the validation step.
     #[error("withdrawal accept validation error: {0}")]
     WithdrawalAcceptValidation(#[source] Box<WithdrawalAcceptValidationError>),
+
+    /// The error for when the request to sign a withdrawal-reject
+    /// transaction fails at the validation step.
+    #[error("withdrawal reject validation error: {0}")]
+    WithdrawalRejectValidation(#[source] Box<WithdrawalRejectValidationError>),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]
