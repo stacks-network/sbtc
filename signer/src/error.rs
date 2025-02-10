@@ -40,9 +40,13 @@ pub enum Error {
     #[error("invalid signing request")]
     InvalidSigningOperation,
 
+    /// The DKG verification state machine is in an end-state.
+    #[error("DKG verification state machine is in an end-state and cannot be used for the requested operation: {0}")]
+    DkgVerificationEnded(PublicKeyXOnly, Box<dkg::verification::State>),
+
     /// The rotate-key frost verification signing round failed for the aggregate
     /// key.
-    #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
+    #[error("DKG verification signing failed for aggregate key: {0}")]
     DkgVerificationFailed(PublicKeyXOnly),
 
     /// Cannot verify the aggregate key outside the verification window
