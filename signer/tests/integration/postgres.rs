@@ -2503,14 +2503,14 @@ async fn transaction_coordinator_test_environment(
     }
 }
 
-#[test(tokio::test)]
-/// Tests that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
-async fn should_ignore_withdrawals() {
+/// Tests that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
+#[tokio::test]
+async fn should_process_withdrawals() {
     let store = testing::storage::new_test_database().await;
 
     transaction_coordinator_test_environment(store.clone())
         .await
-        .assert_ignore_withdrawals()
+        .assert_processes_withdrawals()
         .await;
 
     testing::storage::drop_db(store).await;

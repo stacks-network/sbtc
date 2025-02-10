@@ -1459,6 +1459,12 @@ where
             .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
+        let pending_withdraw_requests = self
+            .context
+            .get_storage()
+            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
+            .await?;
+
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
@@ -1472,7 +1478,18 @@ where
             deposits.push(deposit);
         }
 
-        let withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
+        let mut withdrawals = Vec::new();
+
+        for req in pending_withdraw_requests {
+            let votes = self
+                .context
+                .get_storage()
+                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
+                .await?;
+
+            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
+            withdrawals.push(withdrawal);
+        }
 
         let num_signers = signer_public_keys
             .len()
@@ -1998,8 +2015,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_ignore_withdrawals() {
-        test_environment().assert_ignore_withdrawals().await;
+    async fn should_process_withdrawals() {
+        test_environment().assert_processes_withdrawals().await;
     }
 
     #[test_case(0, None, 1, 100, true; "first DKG allowed without min height")]
