@@ -78,26 +78,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     // Load the configuration file and/or environment variables.
-    let settings = Settings::new(args.config).unwrap_or_else(|error| {
+    let settings = Settings::new(args.config).inspect_err(|error| {
         tracing::error!(%error, "failed to construct the configuration");
-        std::process::exit(1);
-    });
+    })?;
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
     let db = PgStore::connect(settings.signer.db_endpoint.as_str())
         .await
-        .unwrap_or_else(|err| {
+        .inspect_err(|err| {
             tracing::error!(%err, "failed to connect to the database");
-            std::process::exit(1);
-        });
+        })?;
 
     // Apply any pending migrations if automatic migrations are enabled.
     if args.migrate_db {
-        db.apply_migrations().await.unwrap_or_else(|err| {
+        db.apply_migrations().await.inspect_err(|err| {
             tracing::error!(%err, "failed to apply database migrations");
-            std::process::exit(1);
-        });
+        })?;
     }
 
     // Initialize the signer context.
@@ -107,10 +104,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ApiFallbackClient<StacksClient>,
         ApiFallbackClient<EmilyClient>,
     >::init(settings, db)
-    .unwrap_or_else(|err| {
+    .inspect_err(|err| {
         tracing::error!(%err, "failed to initialize the signer context");
-        std::process::exit(1);
-    });
+    })?;
 
     // TODO: We should first check "another source of truth" for the current
     // signing set, and only assume we are bootstrapping if that source is
