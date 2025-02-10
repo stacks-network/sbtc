@@ -80,10 +80,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load the configuration file and/or environment variables.
     let settings = Settings::new(args.config)?;
 
-    tracing::info!(
-        signer_public_key = %settings.signer.public_key(),
-        "config loaded successfully",
-    );
+    let signer_public_key = settings.signer.public_key();
+    tracing::info!(%signer_public_key, "config loaded successfully");
 
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
