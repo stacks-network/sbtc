@@ -79,6 +79,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::new(args.config).inspect_err(|error| {
         tracing::error!(%error, "failed to construct the configuration");
     })?;
+
+    let signer_public_key = settings.signer.public_key();
+    tracing::info!(%signer_public_key, "config loaded successfully");
+
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
 
     // Open a connection to the signer db.
