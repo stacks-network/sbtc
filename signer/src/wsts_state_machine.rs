@@ -51,15 +51,17 @@ pub enum StateMachineId {
 impl std::fmt::Display for StateMachineId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StateMachineId::Dkg(block_hash) => write!(f, "dkg({:?})", block_hash),
+            StateMachineId::Dkg(block) => write!(
+                f,
+                "dkg(block_hash={}, block_height={})",
+                block.block_hash, block.block_height
+            ),
             StateMachineId::BitcoinSign(sighash) => write!(f, "bitcoin-sign({})", sighash),
-            StateMachineId::DkgVerification(pubkey, block_hash) => {
-                write!(
-                    f,
-                    "dkg-verification(key={}, block_hash={}, block_height={})",
-                    pubkey, block_hash.block_hash, block_hash.block_height
-                )
-            }
+            StateMachineId::DkgVerification(pubkey, block) => write!(
+                f,
+                "dkg-verification(key={pubkey}, block_hash={}, block_height={})",
+                block.block_hash, block.block_height
+            ),
         }
     }
 }
