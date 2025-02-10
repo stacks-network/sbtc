@@ -170,10 +170,6 @@ impl StateMachine {
     /// Gets the number of buffered messages of the given type that are
     /// currently stored in this [`StateMachine`].
     pub fn total_message_count(&self, message_type: WstsNetMessageType) -> usize {
-        // The `_ as u32` should be safe here since we know that the number of
-        // signers is far less than `u32::MAX`, and each message is deduplicated
-        // by the sender's public key, which is also validated to be a valid
-        // member of the signer set.
         self.wsts_messages
             .get(&message_type)
             .unwrap_or(&vec![])
