@@ -545,7 +545,8 @@ where
                 stacks_client.get_current_signature_threshold(&contract_principal)
             );
 
-            // Try-unwrap results from the concurrent calls.
+            // Try-unwrap results from the concurrent calls. Be sure to bail
+            // according to the error handling strategy described above.
             let contract_signer_set = contract_signer_set?;
             let contract_signature_threshold = contract_signature_threshold?;
 
@@ -557,6 +558,8 @@ where
                     .inspect_err(|error| tracing::warn!(%error, "error converting signature threshold from u128 to u16"))
                     .map_err(|_| Error::TypeConversion)?;
                 shares = Some((signer_set, threshold));
+            } else {
+                tracing::debug!("contract calls returned 'not found' responses; falling back to bootstrapping configuration");
             }
         }
 

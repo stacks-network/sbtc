@@ -1098,12 +1098,12 @@ impl StacksInteract for StacksClient {
                 &ContractName::from("sbtc-registry"),
                 &ClarityName::from("current-signer-set"),
             )
-            .await?;
+            .await;
 
         // Check the result and return the signer set. We're expecting a
         // list of buffers, where each buffer is a public key.
         match result {
-            Value::Sequence(SequenceData::List(ListData { data, .. })) => {
+            Ok(Value::Sequence(SequenceData::List(ListData { data, .. }))) => {
                 // Iterate through each record in the list and verify that it's a buffer.
                 // If it is a buffer, then convert it to a public key.
                 // Otherwise, return an error.
@@ -1120,6 +1120,10 @@ impl StacksInteract for StacksClient {
                     })
                     .collect::<Result<Vec<_>, _>>()
                     .map(Some)
+            }
+            Err(Error::StacksNodeDataVarNotFound { principal, contract, data_var }) => {
+                tracing::debug!(%principal, %contract, %data_var, "stacks contract data var not found");
+                Ok(None)
             }
             // We expected the top-level value to be a list of buffers,
             // but we got something else.
@@ -1173,7 +1177,7 @@ impl StacksInteract for StacksClient {
         match result {
             Ok(Value::UInt(threshold)) => Ok(Some(threshold)),
             Err(Error::StacksNodeDataVarNotFound { principal, contract, data_var }) => {
-                tracing::warn!(%principal, %contract, %data_var, "stacks contract data var not found");
+                tracing::debug!(%principal, %contract, %data_var, "stacks contract data var not found");
                 Ok(None)
             }
             Ok(_) => Err(Error::InvalidStacksResponse(
@@ -1358,13 +1362,7 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
     ) -> Result<Option<Vec<PublicKey>>, Error> {
         self.exec(|client, retry| async move {
             let result = client.get_current_signer_set(contract_principal).await;
-            retry.abort_if(|| {
-                matches!(
-                    result,
-                    Err(Error::InvalidStacksResponse(_))
-                        | Err(Error::StacksNodeDataVarNotFound { .. })
-                )
-            });
+            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
             result
         })
         .await
@@ -1398,13 +1396,7 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
             let result = client
                 .get_current_signature_threshold(contract_principal)
                 .await;
-            retry.abort_if(|| {
-                matches!(
-                    result,
-                    Err(Error::InvalidStacksResponse(_))
-                        | Err(Error::StacksNodeDataVarNotFound { .. })
-                )
-            });
+            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
             result
         })
         .await
@@ -1859,6 +1851,121 @@ mod tests {
 
         // Assert that the response is what we expect
         assert_eq!(resp, Some(public_keys));
+        mock.assert();
+    }
+
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
+    #[tokio::test]
+    async fn get_current_signer_set_returns_none_on_404<F, C>(client: F)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
+        // Setup our mock server
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/data_var/ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM/sbtc-registry/current-signer-set?proof=0")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            //.with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
+
+        // Make the request to the mock server
+        let resp = client
+            .get_current_signer_set(
+                &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
+                    .expect("failed to parse stacks address"),
+            )
+            .await
+            .unwrap();
+
+        // Assert that the response is what we expect
+        assert_eq!(resp, None);
+        mock.assert();
+    }
+
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
+    #[tokio::test]
+    async fn get_current_signature_threshold_works<F, C>(client: F)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
+        // Create our simulated response JSON. This uses the same method to generate
+        // the serialized list of public keys as the actual Stacks node does.
+        let expected_threshold = 11;
+        let threshold = Value::UInt(expected_threshold);
+        // The format of the response JSON is `{"data": "0x<serialized-value>"}` (excluding the proof).
+        let raw_json_response = format!(
+            r#"{{"data":"0x{}"}}"#,
+            Value::serialize_to_hex(&threshold).expect("failed to serialize value")
+        );
+
+        // Setup our mock server
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/data_var/ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM/sbtc-registry/current-signature-threshold?proof=0")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
+
+        // Make the request to the mock server
+        let resp = client
+            .get_current_signature_threshold(
+                &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
+                    .expect("failed to parse stacks address"),
+            )
+            .await
+            .unwrap();
+
+        // Assert that the response is what we expect
+        assert_eq!(resp, Some(expected_threshold));
+        mock.assert();
+    }
+
+    #[test_case(|url| StacksClient::new(url).unwrap(); "stacks-client")]
+    #[test_case(|url| ApiFallbackClient::new(vec![StacksClient::new(url).unwrap()]).unwrap(); "fallback-client")]
+    #[tokio::test]
+    async fn get_current_signature_threshold_returns_none_on_404<F, C>(client: F)
+    where
+        C: StacksInteract,
+        F: Fn(Url) -> C,
+    {
+        // Setup our mock server
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("GET", "/v2/data_var/ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM/sbtc-registry/current-signature-threshold?proof=0")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            //.with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        // Setup our Stacks client
+        let client = client(url::Url::parse(stacks_node_server.url().as_str()).unwrap());
+
+        // Make the request to the mock server
+        let resp = client
+            .get_current_signature_threshold(
+                &StacksAddress::from_string("ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM")
+                    .expect("failed to parse stacks address"),
+            )
+            .await
+            .unwrap();
+
+        // Assert that the response is what we expect
+        assert_eq!(resp, None);
         mock.assert();
     }
 
