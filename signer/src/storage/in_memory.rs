@@ -25,6 +25,7 @@ use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::model::DkgSharesStatus;
 use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -226,7 +227,7 @@ impl Store {
         .filter_map(|block| self.bitcoin_anchor_to_stacks_blocks.get(&block.block_hash))
         .flatten()
         .filter_map(|stacks_block_hash| self.stacks_blocks.get(stacks_block_hash))
-        .max_by_key(|block| (block.block_height, &block.block_hash))
+        .max_by_key(|block| (block.block_height, block.block_hash.to_bytes()))
         .cloned()
     }
 
@@ -298,6 +299,18 @@ impl super::DbRead for SharedStore {
             .values()
             .max_by_key(|block| (block.block_height, block.block_hash))
             .map(|block| block.block_hash))
+    }
+
+    async fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .bitcoin_blocks
+            .values()
+            .max_by_key(|block| (block.block_height, block.block_hash))
+            .map(model::BitcoinBlockRef::from))
     }
 
     async fn get_stacks_chain_tip(
@@ -601,8 +614,27 @@ impl super::DbRead for SharedStore {
             .map(|(_, shares)| shares.clone()))
     }
 
+    async fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.dkg_shares_status == DkgSharesStatus::Verified)
+            .max_by_key(|(time, _)| time)
+            .map(|(_, shares)| shares.clone()))
+    }
+
     async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
-        Ok(self.lock().await.encrypted_dkg_shares.len() as u32)
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.dkg_shares_status != DkgSharesStatus::Failed)
+            .count() as u32)
     }
 
     async fn get_last_key_rotation(
@@ -907,6 +939,43 @@ impl super::DbRead for SharedStore {
             .bitcoin_sighashes
             .get(sighash)
             .map(|s| (s.will_sign, s.aggregate_key)))
+    }
+
+    async fn get_deposit_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::DepositSigner>, Error> {
+        let store = self.lock().await;
+        let deposit_requests = store.get_deposit_requests(chain_tip, context_window);
+        let voted: HashSet<(model::BitcoinTxId, u32)> = store
+            .signer_to_deposit_request
+            .get(signer_public_key)
+            .cloned()
+            .unwrap_or(Vec::new())
+            .into_iter()
+            .collect();
+
+        let result = deposit_requests
+            .into_iter()
+            .filter_map(|request| {
+                if !voted.contains(&(request.txid, request.output_index)) {
+                    return None;
+                }
+                store
+                    .deposit_request_to_signers
+                    .get(&(request.txid, request.output_index))
+                    .and_then(|signers| {
+                        signers
+                            .iter()
+                            .find(|signer| signer.signer_pub_key == *signer_public_key)
+                            .cloned()
+                    })
+            })
+            .collect();
+
+        Ok(result)
     }
 }
 
@@ -1226,5 +1295,33 @@ impl super::DbWrite for SharedStore {
                 .insert(sighash.sighash, sighash.clone());
         });
         Ok(())
+    }
+
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Failed;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Verified;
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }

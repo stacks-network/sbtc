@@ -7,6 +7,7 @@ use crate::bitcoin::validation::TxRequestIds;
 use crate::keys::PublicKey;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
+use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksTxId;
 
@@ -139,6 +140,17 @@ pub struct SignerDepositDecision {
     pub can_sign: bool,
 }
 
+impl From<model::DepositSigner> for SignerDepositDecision {
+    fn from(signer: model::DepositSigner) -> Self {
+        Self {
+            txid: signer.txid.into(),
+            output_index: signer.output_index,
+            can_accept: signer.can_accept,
+            can_sign: signer.can_sign,
+        }
+    }
+}
+
 /// Represents a decision related to signer withdrawal.
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
@@ -212,14 +224,68 @@ pub struct BitcoinPreSignRequest {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BitcoinPreSignAck;
 
+/// The identifier for a WSTS message.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum WstsMessageId {
+    /// The WSTS message is related to a Bitcoin transaction signing round.
+    Sweep(bitcoin::Txid),
+    /// The WSTS message is related to a rotate key verification operation.
+    DkgVerification(PublicKey),
+    /// The WSTS message is related to a DKG round.
+    Dkg([u8; 32]),
+}
+
+impl From<bitcoin::Txid> for WstsMessageId {
+    fn from(txid: bitcoin::Txid) -> Self {
+        Self::Sweep(txid)
+    }
+}
+
+impl From<crate::storage::model::BitcoinTxId> for WstsMessageId {
+    fn from(txid: crate::storage::model::BitcoinTxId) -> Self {
+        Self::Sweep(txid.into())
+    }
+}
+
+impl std::fmt::Display for WstsMessageId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WstsMessageId::Sweep(txid) => write!(f, "sweep({})", txid),
+            WstsMessageId::DkgVerification(aggregate_key) => {
+                write!(f, "dkg-verification({})", aggregate_key)
+            }
+            WstsMessageId::Dkg(id) => {
+                write!(f, "dkg({})", hex::encode(id))
+            }
+        }
+    }
+}
+
 /// A wsts message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct WstsMessage {
-    /// The transaction ID this message relates to,
-    /// will be a dummy ID for DKG messages
-    pub txid: bitcoin::Txid,
+    /// The id of the wsts message.
+    pub id: WstsMessageId,
     /// The wsts message
     pub inner: wsts::net::Message,
+}
+
+impl WstsMessage {
+    /// Returns the type of the message as a &str.
+    pub fn type_id(&self) -> &'static str {
+        match self.inner {
+            wsts::net::Message::DkgBegin(_) => "dkg-begin",
+            wsts::net::Message::DkgEndBegin(_) => "dkg-end-begin",
+            wsts::net::Message::DkgEnd(_) => "dkg-end",
+            wsts::net::Message::DkgPrivateBegin(_) => "dkg-private-begin",
+            wsts::net::Message::DkgPrivateShares(_) => "dkg-private-shares",
+            wsts::net::Message::DkgPublicShares(_) => "dkg-public-shares",
+            wsts::net::Message::NonceRequest(_) => "nonce-request",
+            wsts::net::Message::NonceResponse(_) => "nonce-response",
+            wsts::net::Message::SignatureShareRequest(_) => "signature-share-request",
+            wsts::net::Message::SignatureShareResponse(_) => "signature-share-response",
+        }
+    }
 }
 
 /// Convenient type aliases

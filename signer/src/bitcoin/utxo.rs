@@ -5,6 +5,7 @@ use std::ops::Deref as _;
 use std::sync::LazyLock;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::consensus::Encodable;
 use bitcoin::hashes::Hash as _;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
@@ -712,6 +713,20 @@ impl SignerUtxo {
     }
 }
 
+/// A struct for constructing a mock transaction that can be signed. This is
+/// used as part of the verification process after a new DKG round has been
+/// completed.
+///
+/// The Bitcoin transaction has the following layout:
+/// 1. The first input is spending the signers' UTXO.
+/// 2. There is only one output which is an OP_RETURN and an amount equal to 0.
+pub struct UnsignedMockTransaction {
+    /// The Bitcoin transaction that needs to be signed.
+    tx: Transaction,
+    /// The signers' UTXO used as an input to this transaction.
+    utxo: SignerUtxo,
+}
+
 /// Given a set of requests, create a BTC transaction that can be signed.
 ///
 /// This BTC transaction in this struct has correct amounts but no witness
@@ -799,6 +814,94 @@ impl SignatureHashes<'_> {
             prevout_type: TxPrevoutType::SignersInput,
             aggregate_key: self.signers_aggregate_key,
         }
+    }
+}
+
+impl UnsignedMockTransaction {
+    const AMOUNT: u64 = 0;
+
+    /// Construct an unsigned mock transaction.
+    ///
+    /// This will use the provided `aggregate_key` to construct
+    /// a [`Transaction`] with a single input and output with value 0.
+    pub fn new(signer_public_key: XOnlyPublicKey) -> Self {
+        let utxo = SignerUtxo {
+            outpoint: OutPoint::null(),
+            amount: Self::AMOUNT,
+            public_key: signer_public_key,
+        };
+
+        let tx = Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![utxo.as_tx_input(&DUMMY_SIGNATURE)],
+            output: vec![TxOut {
+                value: Amount::from_sat(Self::AMOUNT),
+                script_pubkey: ScriptBuf::new_op_return([]),
+            }],
+        };
+
+        Self { tx, utxo }
+    }
+
+    /// Gets the sighash for the signers' input UTXO which needs to be signed
+    /// before the transaction can be broadcast.
+    pub fn compute_sighash(&self) -> Result<TapSighash, Error> {
+        let prevouts = [self.utxo.as_tx_output()];
+        let mut sighasher = SighashCache::new(&self.tx);
+
+        sighasher
+            .taproot_key_spend_signature_hash(0, &Prevouts::All(&prevouts), TapSighashType::All)
+            .map_err(Into::into)
+    }
+
+    /// Tests if the provided taproot [`Signature`] is valid for spending the
+    /// signers' UTXO. This function will return  [`Error::BitcoinConsensus`]
+    /// error if the signature fails verification, passing the underlying error
+    /// from [`bitcoinconsensus`].
+    pub fn verify_signature(&self, signature: &Signature) -> Result<(), Error> {
+        // Create a copy of the transaction so that we don't modify the
+        // transaction stored in the struct.
+        let mut tx = self.tx.clone();
+
+        // Set the witness data on the input from the provided signature.
+        tx.input[0].witness = Witness::p2tr_key_spend(signature);
+
+        // Encode the transaction to bytes (needed by the bitcoinconsensus
+        // library).
+        let mut tx_bytes: Vec<u8> = Vec::new();
+        tx.consensus_encode(&mut tx_bytes)
+            .map_err(Error::BitcoinIo)?;
+
+        // Get the prevout for the signers' UTXO.
+        let prevout = self.utxo.as_tx_output();
+        let prevout_script_bytes = prevout.script_pubkey.as_script().as_bytes();
+
+        // Create the bitcoinconsensus UTXO object.
+        let prevout_utxo = bitcoinconsensus::Utxo {
+            script_pubkey: prevout_script_bytes.as_ptr(),
+            script_pubkey_len: prevout_script_bytes.len() as u32,
+            value: Self::AMOUNT as i64,
+        };
+
+        // We specify the flags to include all pre-taproot and taproot
+        // verifications explicitly.
+        // https://github.com/rust-bitcoin/rust-bitcoinconsensus/blob/master/src/lib.rs
+        let flags = bitcoinconsensus::VERIFY_ALL_PRE_TAPROOT | bitcoinconsensus::VERIFY_TAPROOT;
+
+        // Verify that the transaction updated with the provided signature can
+        // successfully spend the signers' UTXO. Note that the amount is not
+        // used in the verification process for taproot spends, only the
+        // signature.
+        bitcoinconsensus::verify_with_flags(
+            prevout_script_bytes,
+            Self::AMOUNT,
+            &tx_bytes,
+            Some(&[prevout_utxo]),
+            0,
+            flags,
+        )
+        .map_err(Error::BitcoinConsensus)
     }
 }
 
@@ -1457,6 +1560,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use bitcoin::key::TapTweak;
     use bitcoin::BlockHash;
     use bitcoin::CompressedPublicKey;
     use bitcoin::Txid;
@@ -1650,6 +1754,88 @@ mod tests {
                 block_time: 0,
             }
         }
+    }
+
+    /// This test verifies that our implementation of Bitcoin script
+    /// verification using [`bitcoinconsensus`] works as expected. This
+    /// functionality is used in the verification of WSTS signing after a new
+    /// DKG round has completed.
+    #[test]
+    fn mock_signer_utxo_signing_and_spending_verification() {
+        let secp = secp256k1::Secp256k1::new();
+
+        // Generate a key pair which will serve as the signers' aggregate key.
+        let secret_key = SecretKey::new(&mut OsRng);
+        let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
+        let tweaked = keypair.tap_tweak(&secp, None);
+        let (aggregate_key, _) = keypair.x_only_public_key();
+
+        // Create a new transaction using the aggregate key.
+        let unsigned = UnsignedMockTransaction::new(aggregate_key);
+
+        let tapsig = unsigned
+            .compute_sighash()
+            .expect("failed to compute taproot sighash");
+
+        // Sign the taproot sighash.
+        let message = secp256k1::Message::from_digest_slice(tapsig.as_byte_array())
+            .expect("Failed to create message");
+
+        // [1] Verify the correct signature, which should succeed.
+        let schnorr_sig = secp.sign_schnorr(&message, &tweaked.to_inner());
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect("signature verification failed");
+
+        // [2] Verify the correct signature, but with a different sighash type,
+        // which should fail.
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::None,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [3] Verify an incorrect signature with the correct sighash type,
+        // which should fail. In this case we've created the signature using
+        // the untweaked keypair.
+        let schnorr_sig = secp.sign_schnorr(&message, &keypair);
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [4] Verify an incorrect signature with the correct sighash type, which
+        // should fail. In this case we use a completely newly generated keypair.
+        let secret_key = SecretKey::new(&mut OsRng);
+        let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
+        let schnorr_sig = secp.sign_schnorr(&message, &keypair);
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [5] Same as [4], but using its tweaked key.
+        let tweaked = keypair.tap_tweak(&secp, None);
+        let schnorr_sig = secp.sign_schnorr(&message, &tweaked.to_inner());
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
     }
 
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]

@@ -18,6 +18,7 @@ use crate::network::MessageTransfer as _;
 use crate::request_decider::RequestDeciderEventLoop;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
@@ -42,6 +43,7 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
         context: C,
         network: SignerNetwork,
         context_window: u16,
+        deposit_decisions_retry_window: u16,
         signer_private_key: PrivateKey,
     ) -> Self {
         Self {
@@ -51,6 +53,7 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
                 blocklist_checker: Some(()),
                 signer_private_key,
                 context_window,
+                deposit_decisions_retry_window,
             },
             context,
         }
@@ -122,6 +125,8 @@ pub struct TestEnvironment<C> {
     pub context: C,
     /// Bitcoin context window
     pub context_window: u16,
+    /// Deposit decisions retry window
+    pub deposit_decisions_retry_window: u16,
     /// Num signers
     pub num_signers: usize,
     /// Signing threshold
@@ -156,6 +161,7 @@ where
             self.context.clone(),
             signer_network,
             self.context_window,
+            self.deposit_decisions_retry_window,
             coordinator_signer_info.signer_private_key,
         );
 
@@ -172,6 +178,7 @@ where
             &handle.context.get_storage_mut(),
             group_key,
             signer_set.clone(),
+            DkgSharesStatus::Verified,
         )
         .await;
 
@@ -238,6 +245,7 @@ where
             self.context.clone(),
             signer_network,
             self.context_window,
+            self.deposit_decisions_retry_window,
             coordinator_signer_info.signer_private_key,
         );
 
@@ -315,6 +323,7 @@ where
                     ctx,
                     net,
                     self.context_window,
+                    self.deposit_decisions_retry_window,
                     signer_info.signer_private_key,
                 );
 
@@ -335,6 +344,7 @@ where
                 &handle.context.get_storage_mut(),
                 group_key,
                 signer_set.clone(),
+                DkgSharesStatus::Verified,
             )
             .await;
         }
@@ -532,12 +542,18 @@ async fn store_dummy_dkg_shares<R, S>(
     storage: &S,
     group_key: PublicKey,
     signer_set: BTreeSet<PublicKey>,
+    status: DkgSharesStatus,
 ) where
     R: rand::CryptoRng + rand::RngCore,
     S: storage::DbWrite,
 {
-    let mut shares =
-        testing::dummy::encrypted_dkg_shares(&fake::Faker, rng, signer_private_key, group_key);
+    let mut shares = testing::dummy::encrypted_dkg_shares(
+        &fake::Faker,
+        rng,
+        signer_private_key,
+        group_key,
+        status,
+    );
     shares.signer_set_public_keys = signer_set.into_iter().collect();
 
     storage

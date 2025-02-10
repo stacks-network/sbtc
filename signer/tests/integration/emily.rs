@@ -80,6 +80,7 @@ where
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(rng, &signer_keys, &test_model_parameters);
     test_data.write_to(&storage).await;
@@ -98,8 +99,14 @@ where
         .into();
 
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-    let (aggregate_key, all_dkg_shares) =
-        signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
+    let (aggregate_key, all_dkg_shares) = signer_set
+        .run_dkg(
+            bitcoin_chain_tip,
+            dkg_txid.into(),
+            rng,
+            model::DkgSharesStatus::Verified,
+        )
+        .await;
 
     let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
     signer_set

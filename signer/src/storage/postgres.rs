@@ -488,7 +488,7 @@ impl PgStore {
                 JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
                 WHERE prevout_type = 'signers_input'
             )
-            SELECT 
+            SELECT
                 bo.txid
               , bb.block_height
             FROM sbtc_signer.bitcoin_tx_outputs AS bo
@@ -796,6 +796,22 @@ impl super::DbRead for PgStore {
         .fetch_optional(&self.0)
         .await
         .map(|maybe_block| maybe_block.map(|block| block.block_hash))
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        sqlx::query_as::<_, model::BitcoinBlockRef>(
+            "SELECT
+                block_hash
+              , block_height
+             FROM sbtc_signer.bitcoin_blocks
+             ORDER BY block_height DESC, block_hash DESC
+             LIMIT 1",
+        )
+        .fetch_optional(&self.0)
+        .await
         .map_err(Error::SqlxQuery)
     }
 
@@ -1141,6 +1157,10 @@ impl super::DbRead for PgStore {
             Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
         };
 
+        let dkg_shares = self
+            .get_encrypted_dkg_shares(summary.signers_public_key)
+            .await?;
+
         Ok(Some(DepositRequestReport {
             status,
             can_sign: summary.can_sign,
@@ -1153,6 +1173,7 @@ impl super::DbRead for PgStore {
             deposit_script: summary.deposit_script.into(),
             reclaim_script: summary.reclaim_script.into(),
             signers_public_key: summary.signers_public_key.into(),
+            dkg_shares_status: dkg_shares.map(|shares| shares.dkg_shares_status),
         }))
     }
 
@@ -1474,6 +1495,9 @@ impl super::DbRead for PgStore {
               , public_shares
               , signer_set_public_keys
               , signature_share_threshold
+              , dkg_shares_status
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             WHERE substring(aggregate_key FROM 2) = $1;
             "#,
@@ -1497,6 +1521,9 @@ impl super::DbRead for PgStore {
               , public_shares
               , signer_set_public_keys
               , signature_share_threshold
+              , dkg_shares_status
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
             FROM sbtc_signer.dkg_shares
             ORDER BY created_at DESC
             LIMIT 1;
@@ -1507,12 +1534,41 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    /// Returns the number of rows in the `dkg_shares` table.
+    async fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        sqlx::query_as::<_, model::EncryptedDkgShares>(
+            r#"
+            SELECT
+                aggregate_key
+              , tweaked_aggregate_key
+              , script_pubkey
+              , encrypted_private_shares
+              , public_shares
+              , signer_set_public_keys
+              , signature_share_threshold
+              , dkg_shares_status
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
+            FROM sbtc_signer.dkg_shares
+            WHERE dkg_shares_status = 'verified'
+            ORDER BY created_at DESC
+            LIMIT 1;
+            "#,
+        )
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    /// Returns the number of non-failed rows in the `dkg_shares` table.
     async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
-        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sbtc_signer.dkg_shares;")
-            .fetch_one(&self.0)
-            .await
-            .map_err(Error::SqlxQuery)?;
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM sbtc_signer.dkg_shares WHERE dkg_shares_status != 'failed';",
+        )
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
 
         u32::try_from(count).map_err(Error::ConversionDatabaseInt)
     }
@@ -1796,7 +1852,7 @@ impl super::DbRead for PgStore {
         sqlx::query_as::<_, model::SweptDepositRequest>(
             "
             WITH RECURSIVE bitcoin_blockchain AS (
-                SELECT 
+                SELECT
                     block_hash
                   , block_height
                 FROM bitcoin_blockchain_of($1, $2)
@@ -1810,9 +1866,9 @@ impl super::DbRead for PgStore {
                 JOIN bitcoin_blockchain as bb
                     ON bb.block_hash = stacks_blocks.bitcoin_anchor
                 WHERE stacks_blocks.block_hash = $3
-        
+
                 UNION ALL
-        
+
                 SELECT
                     parent.block_hash
                   , parent.block_height
@@ -1841,7 +1897,7 @@ impl super::DbRead for PgStore {
             LEFT JOIN completed_deposit_events AS cde
               ON cde.bitcoin_txid = deposit_req.txid
              AND cde.output_index = deposit_req.output_index
-            LEFT JOIN stacks_blockchain AS sb 
+            LEFT JOIN stacks_blockchain AS sb
               ON sb.block_hash = cde.block_hash
             GROUP BY
                 bc_trx.txid
@@ -1918,6 +1974,40 @@ impl super::DbRead for PgStore {
         )
         .bind(sighash)
         .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_deposit_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::DepositSigner>, Error> {
+        sqlx::query_as::<_, model::DepositSigner>(
+            r#"
+            WITH target_block AS (
+                SELECT blocks.block_hash, blocks.created_at
+                FROM sbtc_signer.bitcoin_blockchain_of($1, $2) chain
+                JOIN sbtc_signer.bitcoin_blocks blocks USING (block_hash)
+                ORDER BY chain.block_height ASC
+                LIMIT 1
+            )
+            SELECT
+                ds.txid,
+                ds.output_index,
+                ds.signer_pub_key,
+                ds.can_sign,
+                ds.can_accept
+            FROM sbtc_signer.deposit_signers ds
+            WHERE ds.signer_pub_key = $3
+              AND ds.created_at >= (SELECT created_at FROM target_block)
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(signer_public_key)
+        .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
     }
@@ -2380,6 +2470,9 @@ impl super::DbWrite for PgStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Error> {
+        let started_at_bitcoin_block_height = i64::try_from(shares.started_at_bitcoin_block_height)
+            .map_err(Error::ConversionDatabaseInt)?;
+
         sqlx::query(
             r#"
             INSERT INTO sbtc_signer.dkg_shares (
@@ -2390,8 +2483,11 @@ impl super::DbWrite for PgStore {
               , script_pubkey
               , signer_set_public_keys
               , signature_share_threshold
+              , dkg_shares_status
+              , started_at_bitcoin_block_hash
+              , started_at_bitcoin_block_height
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(shares.aggregate_key)
@@ -2401,6 +2497,9 @@ impl super::DbWrite for PgStore {
         .bind(&shares.script_pubkey)
         .bind(&shares.signer_set_public_keys)
         .bind(i32::from(shares.signature_share_threshold))
+        .bind(shares.dkg_shares_status)
+        .bind(shares.started_at_bitcoin_block_hash)
+        .bind(started_at_bitcoin_block_height)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2802,6 +2901,44 @@ impl super::DbWrite for PgStore {
         .map_err(Error::SqlxQuery)?;
 
         Ok(())
+    }
+
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.dkg_shares
+            SET dkg_shares_status = 'failed'
+            WHERE substring(aggregate_key FROM 2) = $1
+              AND dkg_shares_status = 'unverified'; -- only allow failing pending entries
+            "#,
+        )
+        .bind(aggregate_key.into())
+        .execute(&self.0)
+        .await
+        .map(|res| res.rows_affected() > 0)
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.dkg_shares
+            SET dkg_shares_status = 'verified'
+            WHERE substring(aggregate_key FROM 2) = $1
+              AND dkg_shares_status = 'unverified'; -- only allow verifying pending entries
+            "#,
+        )
+        .bind(aggregate_key.into())
+        .execute(&self.0)
+        .await
+        .map(|res| res.rows_affected() > 0)
+        .map_err(Error::SqlxQuery)
     }
 }
 

@@ -3,9 +3,11 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
 use crate::emily_client::EmilyClientError;
 use crate::keys::PublicKey;
+use crate::keys::PublicKeyXOnly;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
@@ -14,6 +16,48 @@ use crate::storage::model::SigHash;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// Unexpected [`StateMachineId`] in the given context.
+    #[error("unexpected state machine id in the given context: {0:?}")]
+    UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
+
+    /// An IO error was returned from the [`bitcoin`] library. This is usually an
+    /// error that occurred during encoding/decoding of bitcoin types.
+    #[error("an io error was returned from the bitcoin library: {0}")]
+    BitcoinIo(#[source] bitcoin::io::Error),
+
+    /// An error was returned from the bitcoinconsensus library.
+    #[error("error returned from libbitcoinconsensus: {0}")]
+    BitcoinConsensus(bitcoinconsensus::Error),
+
+    /// We have received a request/response which has been deemed invalid in
+    /// the current context.
+    #[error("invalid signing request")]
+    InvalidSigningOperation,
+
+    /// No mock transaction was found after DKG successfully completed. Spending
+    /// a signer UTXO locked by the new aggregate key could not be verified.
+    #[error("no mock transaction found when attempting to sign")]
+    MissingMockTransaction,
+
+    /// The rotate-key frost verification signing round failed for the aggregate
+    /// key.
+    #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
+    DkgVerificationFailed(PublicKeyXOnly),
+
+    /// Cannot verify the aggregate key outside the verification window
+    #[error("cannot verify the aggregate key outside the verification window: {0}")]
+    DkgVerificationWindowElapsed(PublicKey),
+
+    /// No WSTS FROST state machine was found for the given aggregate key. This
+    /// state machine is used during the DKG verification signing round
+    /// following DKG.
+    #[error("no state machine found for frost signing round for the given aggregate key: {0}")]
+    MissingFrostStateMachine(PublicKeyXOnly),
+
+    /// Expected two aggregate keys to match, but they did not.
+    #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
+    AggregateKeyMismatch(Box<PublicKeyXOnly>, Box<PublicKeyXOnly>),
+
     /// The aggregate key for the given block hash could not be determined.
     #[error("the signer set aggregate key could not be determined for bitcoin block {0}")]
     MissingAggregateKey(bitcoin::BlockHash),
@@ -70,6 +114,10 @@ pub enum Error {
     /// An error occurred while communicating with the Emily API
     #[error("emily API error: {0}")]
     EmilyApi(#[from] EmilyClientError),
+
+    /// An error occurred while communicating with the blocklist client
+    #[error("blocklist client error: {0}")]
+    BlocklistClient(#[from] BlocklistClientError),
 
     /// Attempt to fetch a bitcoin blockhash ended in an unexpected error.
     /// This is not triggered if the block is missing.
@@ -442,6 +490,12 @@ pub enum Error {
     #[error("DKG has not been run")]
     NoDkgShares,
 
+    /// This arises when a signer gets a message that requires DKG to have
+    /// been run with output shares that have passed verification, but no
+    /// such shares exist.
+    #[error("no DKG shares exist that have passed verification")]
+    NoVerifiedDkgShares,
+
     /// TODO: We don't want to be able to run DKG more than once. Soon this
     /// restriction will be lifted.
     #[error("DKG has already been run, can only run once")]
@@ -530,7 +584,7 @@ pub enum Error {
 
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
-    #[error("bitcoin address parse error: {0}; txid {}, vout: {}", .1.txid, .1.vout)]
+    #[error("bitcoin address parse error: {0}; txid {txid}, vout: {vout}", txid = .1.txid, vout = .1.vout)]
     BitcoinAddressFromScript(
         #[source] bitcoin::address::FromScriptError,
         bitcoin::OutPoint,

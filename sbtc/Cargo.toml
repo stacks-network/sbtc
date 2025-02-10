@@ -3,7 +3,8 @@ name = "sbtc"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[package.metadata.cargo-machete]
+ignored = ["bitcoincore-rpc-json", "stackslib"]
 
 [features]
 default = []
@@ -12,22 +13,21 @@ webhooks = ["dep:stackslib", "dep:hex"]
 
 [dependencies]
 bitcoin.workspace = true
-bitcoincore-rpc = { workspace = true, optional = true }
-bitcoincore-rpc-json = { workspace = true, optional = true }
-stackslib = { workspace = true, optional = true }
-hex = { workspace = true, optional = true }
 clarity.workspace = true
 rand.workspace = true
+secp256k1.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 stacks-common.workspace = true
 thiserror.workspace = true
 
-[dependencies.secp256k1]
-version = "0.29.0"
-features = ["rand-std", "global-context"]
+# Optional Dependencies
+bitcoincore-rpc = { workspace = true, optional = true }
+bitcoincore-rpc-json = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+stackslib = { workspace = true, optional = true }
 
 [dev-dependencies]
-bitcoincore-rpc = { workspace = true }
-bitcoincore-rpc-json = { workspace = true }
-test-case = "3.1"
+bitcoincore-rpc.workspace = true
+bitcoincore-rpc-json.workspace = true
+test-case.workspace = true
