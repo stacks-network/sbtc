@@ -159,7 +159,7 @@ impl<Storage>
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
 {
-    /// Asserts that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
+    /// Asserts that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
     pub async fn assert_processes_withdrawals(mut self) {
         // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
