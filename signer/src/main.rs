@@ -74,7 +74,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         revision = signer::GIT_COMMIT,
         arch = signer::TARGET_ARCH,
         env_abi = signer::TARGET_ENV_ABI,
-        signer_version = signer::VERSION,
         "starting the sBTC signer",
     );
 
@@ -82,8 +81,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let settings = Settings::new(args.config)?;
 
     tracing::info!(
-        signer_public_key = %&settings.signer.public_key(),
-        "signer public key",
+        signer_public_key = %settings.signer.public_key(),
+        "config loaded successfully",
     );
 
     signer::metrics::setup_metrics(settings.signer.prometheus_exporter_endpoint);
