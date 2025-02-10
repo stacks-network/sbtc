@@ -111,22 +111,13 @@ impl std::fmt::Display for State {
 
 #[derive(Debug)]
 pub(super) struct QueuedMessage {
-    // NOTE: Used in tests, not sure if we want this for verification and/or
-    // deduplication or not so leaving it for now.
-    #[allow(dead_code)]
-    pub sender: PublicKey,
-
     pub(super) processed: bool,
     message: wsts::net::Message,
 }
 
 impl QueuedMessage {
-    fn new(sender: PublicKey, message: wsts::net::Message) -> Self {
-        Self {
-            sender,
-            processed: false,
-            message,
-        }
+    fn new(message: wsts::net::Message) -> Self {
+        Self { processed: false, message }
     }
 
     fn mark_processed(&mut self) {
@@ -145,14 +136,10 @@ impl QueuedMessage {
 pub struct StateMachine {
     /// The aggregate key that is being verified.
     aggregate_key: secp256k1::XOnlyPublicKey,
-    /// The state machine that is being used to verify the signer.
+    /// The state machine that is being used to verify the aggregate key.
     pub(super) coordinator: FrostCoordinator,
     /// WSTS messages that have been received from other signers. We keep them
-    /// in a [`HashMap`] where the keys are tuples of message types and sender
-    /// public keys, and the values are queued messages. This allows us to
-    /// manage messages by type and sender, ensuring that we can handle
-    /// out-of-order messages and process them correctly, while also
-    /// constraining each signer to one message per message type.
+    /// in a [`HashMap`] where messages are organized by their type.
     pub(super) wsts_messages: HashMap<WstsNetMessageType, Vec<QueuedMessage>>,
     /// The [`Instant`] at which this state was created. This is used to limit
     /// the time that a [`StateMachine`] can be used, according to the
@@ -191,19 +178,19 @@ impl StateMachine {
         })
     }
 
-    /// Processes a WSTS message, updating the internal state of the
-    /// [`FrostCoordinator`].
+    /// Enqueues a message to be processed by the [`StateMachine`]'s internal
+    /// [`FrostCoordinator`] when in the correct state. If the message can be
+    /// processed now, it will be.
     ///
+    /// - This will also process all eligible pending messages given the current
+    ///   state of the [`FrostCoordinator`].
     /// - Will return an error if an invalid operation is attempted given the
-    ///   current state of the [`StateMachine`].
-    /// - Poll [`Self::state`] after a successfull call to this function to get
-    ///   the current state of the [`StateMachine`], which will be updated as
-    ///   messages are processed.
-    /// - If the instance is in an end-state, an error will be returned.
-    /// - Upon success, the resulting signature can be retrieved via
-    ///   [`Self::state`].
-    /// - Will process all eligible pending messages given the current state of
-    ///   the [`FrostCoordinator`].
+    ///   current state of the [`StateMachine`]. For example, if the state
+    ///   machine is in an end-state.
+    /// - You can poll [`Self::state`] after calling this function to get the
+    ///   current state of the [`StateMachine`], which will be updated as
+    ///   messages are processed. Upon success, the resulting signature will be
+    ///   stored in the [`State::Success`] variant.
     pub fn process_message<M>(&mut self, sender: PublicKey, msg: M) -> Result<(), Error>
     where
         M: Into<wsts::net::Message> + std::fmt::Debug,
@@ -214,7 +201,7 @@ impl StateMachine {
         }
 
         // Assert that we're in a valid state to process messages.
-        self.assert_valid_state()?;
+        self.assert_valid_state_for_processing()?;
 
         // Validate that the sender is a valid signer in the signing set.
         self.assert_is_known_sender(sender)?;
@@ -222,7 +209,7 @@ impl StateMachine {
         // Enqueue the message to be processed. If the constraints for
         // enqueueing the message are not met, an error will be returned and we
         // don't make any further updates or process anything.
-        self.enqueue_message(sender, msg.into())?;
+        self.enqueue_message(msg.into())?;
 
         // We've enqueued at least 1 message, so just make sure we're in the
         // `Signing` state.
@@ -263,8 +250,8 @@ impl StateMachine {
     }
 
     /// Checks whether or not the given public key is a known sender in the
-    /// signing set. Returns `true` if the sender is known, `false` otherwise.
-    /// Returns an error if the public key is invalid.
+    /// signing set. Returns an error if the public key is invalid or the
+    /// sender is not known to the underlying [`FrostCoordinator`].
     fn assert_is_known_sender(&self, sender: PublicKey) -> Result<(), Error> {
         let is_known = self
             .coordinator
@@ -315,7 +302,7 @@ impl StateMachine {
 
     /// Asserts that the [`StateMachine`] is in a state where it
     /// can process messages.
-    fn assert_valid_state(&self) -> Result<(), Error> {
+    fn assert_valid_state_for_processing(&self) -> Result<(), Error> {
         match self.state {
             State::Expired => Err(Error::Expired),
             State::Success(_) | State::Error => Err(Error::EndState(self.state.clone().into())),
@@ -357,19 +344,14 @@ impl StateMachine {
 
     /// Enqueues a message to be processed by the [`FrostCoordinator`] when
     /// in the correct state.
-    fn enqueue_message(&mut self, sender: PublicKey, msg: wsts::net::Message) -> Result<(), Error> {
+    fn enqueue_message(&mut self, msg: wsts::net::Message) -> Result<(), Error> {
         let msg_type: WstsNetMessageType = (&msg).into();
-
-        // TODO: Removed message-count limit checks which were here before. We
-        // may want them again, but left it out for now since in tests we have
-        // an issue with multiple of the same type of messages being received
-        // by the same sender.
 
         // Enqueue the message under its message type.
         self.wsts_messages
             .entry(msg_type)
             .or_default()
-            .push(QueuedMessage::new(sender, msg));
+            .push(QueuedMessage::new(msg));
 
         Ok(())
     }
@@ -379,13 +361,7 @@ impl StateMachine {
     fn process_queued_messages(&mut self) -> Result<bool, Error> {
         let message_type_to_process = self.current_processable_message_type()?;
 
-        // Gets references to all pending messages of the given type that are
-        // currently stored. The returned messages are in arbitrary order, but
-        // this doesn't matter here since we're only processing the messages
-        // that the coordinator state machine can handle given its current
-        // state.
-
-        // We want to filter out processed messages.
+        // Get references to all pending (unprocessed) messages of the given type.
         let messages = self
             .wsts_messages
             .entry(message_type_to_process)
@@ -393,6 +369,12 @@ impl StateMachine {
             .iter_mut()
             .filter(|msg| !msg.processed);
 
+        // Record the current state of the coordinator before processing the
+        // message. This is used below to determine if the coordinator has
+        // transitioned to a new state after processing the message.
+        let coordinator_state_pre_processing = self.coordinator.state.clone();
+
+        // For keeping track of if we processed any messages for the return value.
         let mut processed_any = false;
 
         // Process all of the messages that we determined could be processed.
@@ -400,11 +382,6 @@ impl StateMachine {
             // Mark the message as processed so that even if it fails we don't
             // try to process it again.
             msg.mark_processed();
-
-            // Record the current state of the coordinator before processing the
-            // message. This is used below to determine if the coordinator has
-            // transitioned to a new state after processing the message.
-            let coordinator_state_pre_processing = self.coordinator.state.clone();
 
             // Pass the message to the coordinator.
             let (_, result) = self
@@ -462,10 +439,10 @@ mod tests {
         let state_machine = signers.state_machine;
 
         assert_eq!(state_machine.signer_count(), 5);
-        assert!(matches!(state_machine.state, State::Idle));
+        assert_state!(state_machine, State::Idle);
 
         state_machine
-            .assert_valid_state()
+            .assert_valid_state_for_processing()
             .expect("should be able to process");
 
         assert_message_counts!(state_machine,
@@ -479,9 +456,9 @@ mod tests {
 
     #[test]
     fn test_reset() {
-        let signers = TestSetup::setup(5);
-        let sender1 = signers.sender(0);
-        let mut state_machine = signers.state_machine;
+        let mut setup = TestSetup::setup(5);
+        let sender1 = setup.next_signer().as_public_key();
+        let mut state_machine = setup.state_machine;
 
         state_machine
             .process_message(sender1, nonce_request(1, 1, 1))
@@ -524,8 +501,6 @@ mod tests {
     #[test]
     fn test_enqueue_message() {
         let setup = TestSetup::setup(2);
-        let sender1 = setup.sender(0);
-        let sender2 = setup.sender(1);
         let mut state_machine = setup.state_machine;
 
         let dkg_id = 0;
@@ -537,23 +512,17 @@ mod tests {
         let response2 = nonce_response(dkg_id, sign_id, sign_iter_id, 2);
 
         // Insert a couple of messages with the same sender.
-        assert!(state_machine.message_counts(NonceRequest, 0, 0));
+        assert_message_counts!(state_machine, NonceRequest => all: 0);
 
-        state_machine
-            .enqueue_message(sender1, request.clone())
-            .unwrap();
-        state_machine
-            .enqueue_message(sender1, response1.clone())
-            .unwrap();
+        state_machine.enqueue_message(request.clone()).unwrap();
+        state_machine.enqueue_message(response1.clone()).unwrap();
         assert_message_counts!(state_machine,
             NonceRequest => all: 1;
             NonceResponse => all: 1;
         );
 
         // Insert a message with a different sender.
-        state_machine
-            .enqueue_message(sender2, response2.clone())
-            .unwrap();
+        state_machine.enqueue_message(response2.clone()).unwrap();
         assert_message_counts!(state_machine,
             NonceRequest => all: 1;
             NonceResponse => all: 2;
@@ -563,11 +532,11 @@ mod tests {
     #[test]
     fn test_out_of_order_messages() {
         let mut setup = TestSetup::setup(2);
-        let sender1 = setup.sender(0);
-        let sender2 = setup.sender(1);
+        let mut signer1 = setup.next_signer();
+        let mut signer2 = setup.next_signer();
+        let sender1 = signer1.as_public_key();
+        let sender2 = signer2.as_public_key();
         let mut state_machine = setup.state_machine;
-        let mut signer1 = setup.signers.pop().unwrap();
-        let mut signer2 = setup.signers.pop().unwrap();
 
         let nonce_request = nonce_request(1, 1, 1);
         let nonce_response1 = signer1.process(&nonce_request).unwrap().single();
@@ -615,11 +584,11 @@ mod tests {
     #[test]
     fn test_nonce_phase_with_in_order_messages() {
         let mut setup = TestSetup::setup(2);
-        let sender1 = setup.sender(0);
-        let sender2 = setup.sender(1);
+        let mut signer1 = setup.next_signer();
+        let mut signer2 = setup.next_signer();
+        let sender1 = signer1.as_public_key();
+        let sender2 = signer2.as_public_key();
         let mut state_machine = setup.state_machine;
-        let mut signer1 = setup.signers.pop().unwrap();
-        let mut signer2 = setup.signers.pop().unwrap();
 
         assert_eq!(state_machine.signer_count(), 2);
 
@@ -643,7 +612,7 @@ mod tests {
             .process_message(sender1, nonce_request)
             .expect("should be able to process message");
 
-        assert!(state_machine.message_counts(NonceRequest, 1, 0));
+        assert_message_counts!(state_machine, NonceRequest => total: 1, pending: 0);
         assert_state!(state_machine, State::Signing);
         assert!(matches!(
             state_machine.coordinator.state,
@@ -669,11 +638,11 @@ mod tests {
     #[test]
     fn test_dkg_verification_state_machine() {
         let mut setup = TestSetup::setup(2);
-        let sender1 = setup.sender(0);
-        let sender2 = setup.sender(1);
+        let mut signer1 = setup.next_signer();
+        let mut signer2 = setup.next_signer();
+        let sender1 = signer1.as_public_key();
+        let sender2 = signer2.as_public_key();
         let mut state_machine = setup.state_machine;
-        let mut signer1 = setup.signers.pop().unwrap();
-        let mut signer2 = setup.signers.pop().unwrap();
 
         let nonce_request = nonce_request(1, 1, 1);
 
@@ -685,8 +654,8 @@ mod tests {
         state_machine
             .process_message(sender1, nonce_request)
             .unwrap();
-        assert!(state_machine.message_counts(NonceRequest, 1, 0));
-        assert!(matches!(state_machine.state(), &State::Signing));
+        assert_message_counts!(state_machine, NonceRequest => total: 1, pending: 0);
+        assert_state!(state_machine, State::Signing);
         assert!(matches!(
             state_machine.coordinator.state,
             wsts::state_machine::coordinator::State::NonceGather(_)
@@ -718,7 +687,7 @@ mod tests {
             1,
             1,
             1,
-            vec![nonce_response2.clone(), nonce_response1.clone()],
+            vec![nonce_response1.clone(), nonce_response2.clone()],
         );
 
         // Process the signature share request
@@ -730,22 +699,6 @@ mod tests {
             .process(&sig_share_request)
             .expect("should be able to process message")
             .single();
-
-        // Process signer 1's signature share response with both signers.
-        signer1
-            .process(&sig_share_response1)
-            .expect("should be able to process message");
-        signer2
-            .process(&sig_share_response1)
-            .expect("should be able to process message");
-
-        // Process signer 2's signature share response with both signers.
-        signer1
-            .process(&sig_share_response2)
-            .expect("should be able to process message");
-        signer2
-            .process(&sig_share_response2)
-            .expect("should be able to process message");
 
         // Process the first signature share response in the state machine --
         // this should succeed.

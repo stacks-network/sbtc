@@ -1,6 +1,6 @@
 //! Helper types and functions for testing.
 
-use std::collections::HashMap;
+use std::collections::VecDeque;
 
 use rand::rngs::OsRng;
 use secp256k1::XOnlyPublicKey;
@@ -20,9 +20,21 @@ use crate::{
 
 use super::{verification::StateMachine, wsts::WstsNetMessageType};
 
+/// A trait for converting a type to a [`PublicKey`].
+pub trait AsPublicKey {
+    /// Converts the implementing type to a [`PublicKey`].
+    fn as_public_key(&self) -> PublicKey;
+}
+
+impl AsPublicKey for Signer<v2::Party> {
+    fn as_public_key(&self) -> PublicKey {
+        self.public_keys.signers[&self.signer_id].into()
+    }
+}
+
 pub struct TestSetup {
     pub state_machine: StateMachine,
-    pub signers: Vec<Signer<v2::Party>>,
+    signers: VecDeque<Signer<v2::Party>>,
     #[allow(dead_code)]
     pub aggregate_key: XOnlyPublicKey,
 }
@@ -36,6 +48,7 @@ impl TestSetup {
         let (coordinators, signers) =
             wsts_test::run_dkg::<frost::Coordinator<v2::Aggregator>, v2::Party>(num_parties, 5);
 
+        let signers = signers.into();
         let aggregate_key = pubkey_xonly();
         let coordinator: FrostCoordinator = coordinators.into_iter().next().unwrap().into();
         let state_machine = StateMachine::new(coordinator, aggregate_key, None)
@@ -48,15 +61,8 @@ impl TestSetup {
         }
     }
 
-    pub fn sender(&self, index: usize) -> PublicKey {
-        self.state_machine
-            .coordinator
-            .get_config()
-            .signer_public_keys
-            .iter()
-            .map(|(_, point)| crate::keys::PublicKey::try_from(point))
-            .collect::<Result<Vec<_>, _>>()
-            .expect("failed to convert public keys")[index]
+    pub fn next_signer(&mut self) -> Signer<v2::Party> {
+        self.signers.pop_front().expect("no more signers")
     }
 }
 
@@ -105,35 +111,38 @@ pub fn signature_share_request(
 
 /// Helpers for the [`StateMachine`] type.
 impl StateMachine {
-    /// Asserts the message counts for the given message type. Returns
+    /// Checks the message counts for the given message type. Returns
     /// `true` if the counts match the expected values, and `false`
     /// otherwise, printing the mismatches to stderr. Intended to be used
     /// together with [`assert!`].
     pub fn message_counts(
         &self,
         message_type: WstsNetMessageType,
-        expected_total: usize,
-        expected_pending: usize,
+        expected_total: Option<usize>,
+        expected_pending: Option<usize>,
     ) -> bool {
         let total_count = self.total_message_count(message_type);
         let pending_count = self.pending_message_count(message_type);
 
         let mut results = Vec::new();
 
-        // Check the total counts.
-        if total_count != expected_total {
-            results.push(format!(
-                "expected {} total messages of type {:?}, got {}",
-                expected_total, message_type, total_count
-            ));
+        // Check the total counts, if specified.
+        if let Some(expected_total) = expected_total {
+            // Check the total counts.
+            if total_count != expected_total {
+                results.push(format!(
+                    "expected {expected_total} total messages of type {message_type:?}, got {total_count}"
+                ));
+            }
         }
 
-        // Check the pending counts.
-        if pending_count != expected_pending {
-            results.push(format!(
-                "expected {} pending messages of type {:?}, got {}",
-                expected_pending, message_type, pending_count
-            ));
+        // Check the pending counts, if specified.
+        if let Some(expected_pending) = expected_pending {
+            if pending_count != expected_pending {
+                results.push(format!(
+                    "expected {expected_pending} pending messages of type {message_type:?}, got {pending_count}"
+                ));
+            }
         }
 
         if results.is_empty() {
@@ -144,54 +153,6 @@ impl StateMachine {
                 eprintln!(" - {}", result);
             }
             false
-        }
-    }
-
-    /// Prints message statistics for this [`StateMachine`] to `stderr`.
-    pub fn print_message_stats(&self) {
-        let message_types = vec![
-            WstsNetMessageType::NonceRequest,
-            WstsNetMessageType::NonceResponse,
-            WstsNetMessageType::SignatureShareRequest,
-            WstsNetMessageType::SignatureShareResponse,
-        ];
-
-        eprintln!("-- MESSAGE STATS --");
-        for message_type in &message_types {
-            eprintln!(
-                "{:?} messages: total: {}, pending: {}",
-                message_type,
-                self.total_message_count(*message_type),
-                self.pending_message_count(*message_type),
-            );
-        }
-
-        eprintln!();
-        for message_type in message_types {
-            let stats: HashMap<PublicKey, (usize, usize)> = HashMap::new();
-            let messages = self
-                .wsts_messages
-                .get(&message_type)
-                .unwrap_or(&vec![])
-                .iter()
-                .fold(stats, |mut acc, msg| {
-                    let entry = acc.entry(msg.sender).or_insert((0, 0));
-                    entry.0 += 1;
-                    if msg.processed {
-                        entry.1 += 1;
-                    }
-                    acc
-                });
-
-            eprintln!("{:?} messages:", message_type);
-            for (sender, processed) in messages {
-                eprintln!(
-                    " - sender: {:?}: total: {}, processed: {}",
-                    &sender.to_string()[..16],
-                    processed.0,
-                    processed.1,
-                );
-            }
         }
     }
 
@@ -208,7 +169,6 @@ impl StateMachine {
 
     /// Gets the number of buffered messages of the given type that are
     /// currently stored in this [`StateMachine`].
-    #[cfg(test)]
     pub fn total_message_count(&self, message_type: WstsNetMessageType) -> usize {
         // The `_ as u32` should be safe here since we know that the number of
         // signers is far less than `u32::MAX`, and each message is deduplicated
@@ -222,7 +182,6 @@ impl StateMachine {
 
     /// Gets the number of signers that are expected to participate in the DKG
     /// verification.
-    #[cfg(test)]
     pub fn signer_count(&self) -> u32 {
         self.coordinator.get_config().num_signers
     }
@@ -268,7 +227,22 @@ macro_rules! assert_allowed_msg_type {
 
 /// Convenience macro for asserting the message counts for a [`StateMachine`].
 ///
+/// To specify that both `total` and `pending` counts should be $value, the
+/// format is:
+/// ```rust
+/// [`WstsMessageType`] => all: $value;
+/// ```
+///
+/// To specify either `total`, `pending`, or both, the format is:
+/// ```rust
+/// [`WstsMessageType`] => total: $value, pending: $value;
+/// ```
+///
+/// The `WstsMessageType` must be one of the variants of [`WstsNetMessageType`],
+/// without the prefix.
+///
 /// # Example
+///
 /// ```rust
 /// assert_message_counts!(state_machine,
 ///     NonceRequest => all: 0;
@@ -279,10 +253,14 @@ macro_rules! assert_allowed_msg_type {
 /// ```
 macro_rules! assert_message_counts {
     ($state_machine:expr, $($msg_type:ident => $($field:ident: $value:expr),* $(, )?);* $(;)?) => {
+        // For each "MessageType => field: value [,..];"" line...
         $({
             let mut expected_total = None;
             let mut expected_pending = None;
+            // For each "field: value" pair...
             $(
+                // Match the field and set the expected value, or panic if the
+                // field is unknown.
                 match stringify!($field) {
                     "total" => expected_total = Some($value),
                     "pending" => expected_pending = Some($value),
@@ -296,8 +274,11 @@ macro_rules! assert_message_counts {
                     _ => panic!("unknown field: {}. Expected 'all', 'total', or 'pending'", stringify!($field)),
                 }
             )*
-            let expected_total = expected_total.expect("expected 'total' or 'all' to be specified");
-            let expected_pending = expected_pending.expect("expected 'pending' or 'all' to be specified");
+            // If no field was specified, panic.
+            if expected_total.is_none() && expected_pending.is_none() {
+                panic!("expected 'total', 'pending' or 'all' to be specified");
+            }
+            // Perform our assertion.
             assert!(
                 $state_machine.message_counts(
                     WstsNetMessageType::$msg_type,

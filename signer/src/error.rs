@@ -40,7 +40,8 @@ pub enum Error {
     #[error("invalid signing request")]
     InvalidSigningOperation,
 
-    /// The DKG verification state machine is in an end-state.
+    /// The DKG verification state machine is in an end-state and can't be used
+    /// for the requested operation.
     #[error("DKG verification state machine is in an end-state and cannot be used for the requested operation: {0}")]
     DkgVerificationEnded(PublicKeyXOnly, Box<dkg::verification::State>),
 
