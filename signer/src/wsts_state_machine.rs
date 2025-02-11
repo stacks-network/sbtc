@@ -45,7 +45,25 @@ pub enum StateMachineId {
     /// Identifier for a Bitcoin signing state machines
     BitcoinSign(SigHash),
     /// Identifier for a rotate key verification signing round
-    RotateKey(PublicKeyXOnly, model::BitcoinBlockHash),
+    DkgVerification(PublicKeyXOnly, model::BitcoinBlockRef),
+}
+
+impl std::fmt::Display for StateMachineId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateMachineId::Dkg(block) => write!(
+                f,
+                "dkg(block_hash={}, block_height={})",
+                block.block_hash, block.block_height
+            ),
+            StateMachineId::BitcoinSign(sighash) => write!(f, "bitcoin-sign({})", sighash),
+            StateMachineId::DkgVerification(pubkey, block) => write!(
+                f,
+                "dkg-verification(key={pubkey}, block_hash={}, block_height={})",
+                block.block_hash, block.block_height
+            ),
+        }
+    }
 }
 
 impl From<&model::BitcoinBlockRef> for StateMachineId {
@@ -113,6 +131,12 @@ impl std::ops::DerefMut for FrostCoordinator {
     }
 }
 
+impl From<frost::Coordinator<Aggregator>> for FrostCoordinator {
+    fn from(value: frost::Coordinator<Aggregator>) -> Self {
+        Self(value)
+    }
+}
+
 /// A trait for WSTS state machines.
 pub trait WstsCoordinator
 where
@@ -125,6 +149,9 @@ where
 
     /// Gets the coordinator configuration.
     fn get_config(&self) -> Config;
+
+    /// Creates a new coordinator state machine from the given configuration.
+    fn from_config(config: Config) -> Self;
 
     /// Create a new coordinator state machine from the given aggregate
     /// key.
@@ -211,6 +238,10 @@ impl WstsCoordinator for FireCoordinator {
 
     fn get_config(&self) -> Config {
         self.0.get_config()
+    }
+
+    fn from_config(config: Config) -> Self {
+        Self(fire::Coordinator::<Aggregator>::new(config))
     }
 
     async fn load<S>(
@@ -311,6 +342,10 @@ impl WstsCoordinator for FrostCoordinator {
 
     fn get_config(&self) -> Config {
         self.0.get_config()
+    }
+
+    fn from_config(config: Config) -> Self {
+        Self(frost::Coordinator::<Aggregator>::new(config))
     }
 
     async fn load<S>(

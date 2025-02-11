@@ -13,6 +13,7 @@ pub mod blocklist_client;
 pub mod codec;
 pub mod config;
 pub mod context;
+pub mod dkg;
 pub mod ecdsa;
 pub mod emily_client;
 pub mod error;

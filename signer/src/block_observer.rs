@@ -375,7 +375,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// Process all recent stacks blocks.
     #[tracing::instrument(skip_all)]
     async fn process_stacks_blocks(&self) -> Result<(), Error> {
-        tracing::info!("processing bitcoin block");
+        tracing::info!("processing stacks block");
         let stacks_client = self.context.get_stacks_client();
         let tenure_info = stacks_client.get_tenure_info().await?;
 
@@ -640,6 +640,15 @@ impl<C: Context, B> BlockObserver<C, B> {
         let db = self.context.get_storage_mut();
 
         let last_dkg = db.get_latest_encrypted_dkg_shares().await?;
+
+        if let Some(ref shares) = last_dkg {
+            tracing::info!(
+                aggregate_key = %shares.aggregate_key,
+                status = ?shares.dkg_shares_status,
+                "checking latest DKG shares"
+            );
+        }
+
         let Some(
             last_dkg @ EncryptedDkgShares {
                 dkg_shares_status: model::DkgSharesStatus::Unverified,
@@ -661,6 +670,10 @@ impl<C: Context, B> BlockObserver<C, B> {
             .saturating_add(verification_window as u64);
 
         if max_verification_height < chain_tip.block_height {
+            tracing::info!(
+                aggregate_key = %last_dkg.aggregate_key,
+                "latest DKG shares are unverified and the verification window expired, marking them as failed"
+            );
             db.revoke_dkg_shares(last_dkg.aggregate_key).await?;
         }
 
