@@ -643,12 +643,23 @@ async fn test_get_deposits_request_paging(
         .expect("Wiping Emily database in test setup failed.");
 
     let futures = (0..num_deposits).map(|_| {
-        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
         let create_deposit_request_body = CreateDepositRequestBody {
             bitcoin_tx_output_index: 0,
             bitcoin_txid: setup.tx.compute_txid().to_string(),
-            deposit_script: setup.deposit.deposit_script().to_hex_string(),
-            reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+            deposit_script: setup
+                .deposits
+                .first()
+                .unwrap()
+                .deposit_script()
+                .to_hex_string(),
+            reclaim_script: setup
+                .reclaims
+                .first()
+                .unwrap()
+                .reclaim_script()
+                .to_hex_string(),
+            transaction_hex: serialize_hex(&setup.tx),
         };
         deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
     });
