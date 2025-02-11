@@ -1921,13 +1921,96 @@ impl super::DbRead for PgStore {
 
     async fn get_swept_withdrawal_requests(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _context_window: u16,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
-        // TODO: This can use a similar query to
-        // `get_swept_deposit_requests()`, but using withdrawal tables instead
-        // of deposit.
-        unimplemented!()
+        // The following tests define the criteria for this query:
+        // - [X] get_swept_deposit_requests_returns_swept_deposit_requests
+        // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
+        // - [X] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
+        // - [X] get_swept_deposit_requests_response_tx_reorged
+
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
+            return Ok(Vec::new());
+        };
+
+        sqlx::query_as::<_, model::SweptWithdrawalRequest>(
+            "
+            WITH RECURSIVE bitcoin_blockchain AS (
+                SELECT
+                    block_hash,
+                    block_height
+                FROM sbtc_signer.bitcoin_blockchain_of($1, $2)
+            ),
+            stacks_blockchain AS (
+                SELECT
+                    stacks_blocks.block_hash,
+                    stacks_blocks.block_height,
+                    stacks_blocks.parent_hash
+                FROM sbtc_signer.stacks_blocks stacks_blocks
+                JOIN bitcoin_blockchain AS bb
+                    ON bb.block_hash = stacks_blocks.bitcoin_anchor
+                WHERE stacks_blocks.block_hash = $3
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash,
+                    parent.block_height,
+                    parent.parent_hash
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_blockchain last
+                    ON parent.block_hash = last.parent_hash
+                JOIN bitcoin_blockchain AS bb
+                    ON bb.block_hash = parent.bitcoin_anchor
+            )
+            SELECT
+                bc_trx.txid AS sweep_txid,
+                bc_trx.block_hash AS sweep_block_hash,
+                bc_blocks.block_height AS sweep_block_height,
+                withdrawal_req.request_id,
+                withdrawal_req.txid,
+                withdrawal_req.block_hash,
+                withdrawal_req.recipient,
+                withdrawal_req.amount,
+                withdrawal_req.max_fee,
+                withdrawal_req.sender_address
+            FROM bitcoin_blockchain AS bc_blocks
+            INNER JOIN sbtc_signer.bitcoin_transactions AS bc_trx USING (block_hash)
+            INNER JOIN sbtc_signer.bitcoin_tx_outputs AS bto USING (txid)
+            INNER JOIN sbtc_signer.withdrawal_requests AS withdrawal_req
+                ON withdrawal_req.request_id = bto.request_id
+                AND withdrawal_req.block_hash = bto.stacks_block_hash
+            LEFT JOIN sbtc_signer.withdrawal_accept_events AS wae
+                ON wae.request_id = withdrawal_req.request_id
+                AND wae.block_hash = withdrawal_req.block_hash
+            LEFT JOIN sbtc_signer.withdrawal_reject_events AS wre
+                ON wre.request_id = withdrawal_req.request_id
+                AND wre.block_hash = withdrawal_req.block_hash
+            LEFT JOIN stacks_blockchain AS sb
+                ON sb.block_hash = withdrawal_req.block_hash
+            GROUP BY
+                bc_trx.txid,
+                bc_trx.block_hash,
+                bc_blocks.block_height,
+                withdrawal_req.request_id,
+                withdrawal_req.txid,
+                withdrawal_req.block_hash,
+                withdrawal_req.recipient,
+                withdrawal_req.amount,
+                withdrawal_req.max_fee,
+                withdrawal_req.sender_address
+            HAVING
+                COUNT(wae.request_id) = 0
+                AND COUNT(wre.request_id) = 0;
+        ",
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(stacks_chain_tip.block_hash)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_deposit_request(
