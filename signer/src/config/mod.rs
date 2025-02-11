@@ -431,6 +431,11 @@ impl SignerConfig {
             .chain([self_public_key])
             .collect()
     }
+
+    /// Return the public key of the signer.
+    pub fn public_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.private_key)
+    }
 }
 
 /// Configuration for the Stacks event observer server (hosted within the signer).

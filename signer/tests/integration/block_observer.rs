@@ -199,8 +199,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     let waiting_fut = async {
         let db2 = db2.clone();
         while current_chain_tip != Some(chain_tip) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
             current_chain_tip = db2.get_bitcoin_canonical_chain_tip().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     };
 
