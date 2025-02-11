@@ -19,6 +19,7 @@ use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::BitcoinTxRef;
 use crate::storage::model::BitcoinTxSigHash;
 use crate::storage::model::BitcoinWithdrawalOutput;
 use crate::storage::model::DkgSharesStatus;
@@ -833,11 +834,11 @@ pub enum WithdrawalRequestStatus {
     /// block anchoring the Stacks block that confirmed the withdrawal
     /// request, and the block hash is the associated block hash of that
     /// bitcoin block.
-    Confirmed(u64, BitcoinBlockHash),
+    Confirmed,
     /// We have a record of the withdrawal request being included as an
     /// output in another bitcoin transaction that has been confirmed on
     /// the canonical bitcoin blockchain.
-    Fulfilled(BitcoinTxId),
+    Fulfilled(BitcoinTxRef),
     /// We have a record of the withdrawal request transaction, and it has
     /// not been confirmed on the canonical Stacks blockchain.
     ///
@@ -869,6 +870,13 @@ pub struct WithdrawalRequestReport {
     pub max_fee: u64,
     /// The script_pubkey of the output.
     pub script_pubkey: ScriptBuf,
+    /// Whether this signers' blocklist client accepted the withdrawal
+    /// request or not. This should only be `None` if we do not have a
+    /// record of the withdrawal request.
+    pub is_accepted: Option<bool>,
+    /// The height of the bitcoin chain tip during the execution of the
+    /// contract call that generated the withdrawal request.
+    pub block_height: u64,
 }
 
 impl WithdrawalRequestReport {

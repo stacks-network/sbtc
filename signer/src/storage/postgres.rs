@@ -133,6 +133,35 @@ struct DepositStatusSummary {
     signers_public_key: PublicKeyXOnly,
 }
 
+/// A convenience struct for retrieving a deposit request report
+#[derive(sqlx::FromRow)]
+pub struct WithdrawalStatusSummary {
+    /// The current signer may not have a record of their vote for
+    /// the deposit. When that happens the `can_accept` and
+    /// `can_sign` fields will be None.
+    is_accepted: Option<bool>,
+    /// The height of the bitcoin chain tip during the execution of the
+    /// contract call that generated the withdrawal request.
+    #[sqlx(try_from = "i64")]
+    bitcoin_block_height: u64,
+    /// The amount associated with the deposit UTXO in sats.
+    #[sqlx(try_from = "i64")]
+    amount: u64,
+    /// The maximum amount to spend for the bitcoin miner fee when sweeping
+    /// in the funds.
+    #[sqlx(try_from = "i64")]
+    max_fee: u64,
+    /// The reclaim script for the deposit.
+    recipient: model::ScriptPubKey,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
+    stacks_block_hash: model::StacksBlockHash,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
+    #[sqlx(try_from = "i64")]
+    stacks_block_height: u64,
+}
+
 // A convenience struct for retrieving the signers' UTXO
 #[derive(sqlx::FromRow)]
 struct PgSignerUtxo {
@@ -735,6 +764,177 @@ impl PgStore {
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+    }
+
+    /// Check whether the given block hash is a part of the stacks
+    /// blockchain identified by the given chain-tip.
+    pub async fn in_canonical_stacks_blockchain(
+        &self,
+        chain_tip: &model::StacksBlockHash,
+        block_hash: &model::StacksBlockHash,
+        block_height: u64,
+    ) -> Result<bool, Error> {
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH RECURSIVE tx_block_chain AS (
+                SELECT
+                    block_hash
+                  , block_height
+                  , parent_hash
+                FROM sbtc_signer.stacks_blocks
+                WHERE block_hash = $1
+
+                UNION ALL
+
+                SELECT
+                    child.block_hash
+                  , child.block_height
+                  , child.parent_hash
+                FROM sbtc_signer.stacks_blocks AS child
+                JOIN tx_block_chain AS parent
+                  ON child.block_hash = parent.parent_hash
+                WHERE parent.block_height > $2
+            )
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM tx_block_chain AS tbc
+                WHERE tbc.block_hash = $3
+            );
+        "#,
+        )
+        .bind(chain_tip)
+        .bind(i64::try_from(block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(block_hash)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    /// Fetch a status summary of a withdrawal request.
+    ///
+    /// In this query we fetch the raw withdrawal request and add some
+    /// information about whether this signer accepted the request.
+    ///
+    /// `None` is returned if withdrawal request is not in the database or
+    /// if the withdrawal request is not associated with a stacks block in
+    /// the database.
+    pub async fn get_withdrawal_request_status_summary(
+        &self,
+        id: &model::QualifiedRequestId,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<WithdrawalStatusSummary>, Error> {
+        sqlx::query_as::<_, WithdrawalStatusSummary>(
+            r#"
+            SELECT
+                ws.is_accepted
+              , wr.amount
+              , wr.max_fee
+              , wr.recipient
+              , ws.signers_public_key
+              , wr.block_height AS bitcoin_block_height
+              , wr.block_hash   AS stacks_block_hash
+              , sb.bitcoin_anchor
+              , sb.block_height AS stacks_block_height
+            FROM sbtc_signer.withdrawal_requests AS wr
+            JOIN sbtc_signer.stacks_blocks AS sb USING (block_hash)
+            LEFT JOIN sbtc_signer.withdrawal_signers AS ws
+              ON ws.request_id = wr.request_id
+             AND ws.block_hash = wr.block_hash
+             AND ws.signer_pub_key = $1
+            WHERE wr.txid = $2
+              AND wr.request_id = $3
+              AND wr.block_hash = $4
+            LIMIT 1
+            "#,
+        )
+        .bind(signer_public_key)
+        .bind(id.txid)
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(id.block_hash)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    /// Fetch the bitcoin transaction ID that swept the withdrawal along
+    /// with the block hash that confirmed the transaction.
+    ///
+    /// `None` is returned if there is no transaction sweeping out the
+    /// funds that has been confirmed on the blockchain identified by the
+    /// given chain-tip.
+    pub async fn get_withdrawal_sweep_info(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        id: &model::QualifiedRequestId,
+    ) -> Result<Option<model::BitcoinTxRef>, Error> {
+        sqlx::query_as::<_, model::BitcoinTxRef>(
+            r#"
+            SELECT 
+                bwo.bitcoin_txid AS txid
+              , bt.block_hash
+            FROM sbtc_signer.withdrawal_requests AS wr
+            JOIN sbtc_signer.bitcoin_withdrawals_outputs AS bwo
+              ON bwo.request_id = wr.request_id
+             AND bwo.stacks_block_hash = wr.block_hash
+            JOIN sbtc_signer.bitcoin_transactions AS bt
+              ON bt.txid = bwo.bitcoin_txid
+            JOIN sbtc_signer.bitcoin_blockchain_until($1, wr.block_height) AS bbu
+              ON bbu.block_hash = bt.block_hash
+            WHERE wr.txid = $2
+              AND wr.request_id = $3
+              AND wr.block_hash = $4
+            LIMIT 1
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(id.txid)
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(id.block_hash)
+        .bind(id.block_hash)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    ///
+    pub async fn get_withdrawal_request_report2(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
+        id: &model::QualifiedRequestId,
+        signer_public_key: &PublicKey,
+    ) -> Result<Option<WithdrawalRequestReport>, Error> {
+        let summary_fut = self.get_withdrawal_request_status_summary(id, signer_public_key);
+        let Some(summary) = summary_fut.await? else {
+            return Ok(None);
+        };
+
+        let sweep_info_fut = self.get_withdrawal_sweep_info(bitcoin_chain_tip, id);
+        let status = match sweep_info_fut.await? {
+            Some(tx_ref) => WithdrawalRequestStatus::Fulfilled(tx_ref),
+            None => {
+                let in_canonical_stacks_blockchain_fut = self.in_canonical_stacks_blockchain(
+                    stacks_chain_tip,
+                    &summary.stacks_block_hash,
+                    summary.stacks_block_height,
+                );
+                if in_canonical_stacks_blockchain_fut.await? {
+                    WithdrawalRequestStatus::Confirmed
+                } else {
+                    WithdrawalRequestStatus::Unconfirmed
+                }
+            }
+        };
+
+        Ok(Some(WithdrawalRequestReport {
+            id: *id,
+            amount: summary.amount,
+            max_fee: summary.max_fee,
+            is_accepted: summary.is_accepted,
+            script_pubkey: summary.recipient.into(),
+            status,
+            block_height: summary.bitcoin_block_height,
+        }))
     }
 }
 
