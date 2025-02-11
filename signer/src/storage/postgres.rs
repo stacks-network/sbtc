@@ -767,7 +767,7 @@ impl PgStore {
 
     /// Check whether the given block hash is a part of the stacks
     /// blockchain identified by the given chain-tip.
-    pub async fn in_canonical_stacks_blockchain(
+    async fn in_canonical_stacks_blockchain(
         &self,
         chain_tip: &model::StacksBlockHash,
         block_hash: &model::StacksBlockHash,
@@ -817,7 +817,7 @@ impl PgStore {
     /// `None` is returned if withdrawal request is not in the database or
     /// if the withdrawal request is not associated with a stacks block in
     /// the database.
-    pub async fn get_withdrawal_request_status_summary(
+    async fn get_withdrawal_request_status_summary(
         &self,
         id: &model::QualifiedRequestId,
         signer_public_key: &PublicKey,
@@ -857,7 +857,7 @@ impl PgStore {
     /// `None` is returned if there is no transaction sweeping out the
     /// funds that has been confirmed on the blockchain identified by the
     /// given chain-tip.
-    pub async fn get_withdrawal_sweep_info(
+    async fn get_withdrawal_sweep_info(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         id: &model::QualifiedRequestId,
