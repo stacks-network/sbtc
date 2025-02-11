@@ -317,11 +317,11 @@ async fn get_deposits() {
         }
     }
 
-    let chunksize: u16 = 2;
+    let chunksize = 2;
     // If the number of elements is an exact multiple of the chunk size the "final"
     // query will still have a next token, and the next query will now have a next
     // token and will return no additional data.
-    let expected_chunks: u16 = expected_deposit_infos.len() as u16 / chunksize + 1;
+    let expected_chunks = expected_deposit_infos.len() / chunksize + 1;
 
     // Act.
     // ----
@@ -335,7 +335,7 @@ async fn get_deposits() {
             &configuration,
             status,
             next_token.as_ref().and_then(|o| o.as_deref()),
-            Some(chunksize as i32),
+            Some(chunksize as u32),
         )
         .await
         .expect("Received an error after making a valid get deposits api call.");
@@ -349,13 +349,13 @@ async fn get_deposits() {
 
     // Assert.
     // -------
-    assert_eq!(expected_chunks, gotten_deposit_info_chunks.len() as u16);
+    assert_eq!(expected_chunks, gotten_deposit_info_chunks.len());
     let max_chunk_size = gotten_deposit_info_chunks
         .iter()
         .map(|chunk| chunk.len())
         .max()
         .unwrap();
-    assert!(chunksize >= max_chunk_size as u16);
+    assert!(chunksize >= max_chunk_size);
 
     let mut gotten_deposit_infos = gotten_deposit_info_chunks
         .into_iter()
@@ -440,7 +440,7 @@ async fn get_deposits_for_recipient() {
     }
 
     // The size of the chunks to grab from the api.
-    let chunksize: u16 = 2;
+    let chunksize = 2;
 
     // Act.
     // ----
@@ -456,7 +456,7 @@ async fn get_deposits_for_recipient() {
                 &configuration,
                 recipient,
                 next_token.as_ref().and_then(|o| o.as_deref()),
-                Some(chunksize as i32),
+                Some(chunksize),
             )
             .await
             .expect("Received an error after making a valid get deposits for recipient api call.");

@@ -14,7 +14,7 @@
 # [blocklist_client]
 # endpoint = "http://127.0.0.1:8080"
 
-# The delay, in milliseconds, for the retry after a blocklist client failure 
+# The delay, in milliseconds, for the retry after a blocklist client failure
 #
 # Required: false
 # Environment: SIGNER_BLOCKLIST_CLIENT__RETRY_DELAY
@@ -37,6 +37,11 @@
 endpoints = [
     "http://testApiKey@localhost:3031",
 ]
+
+# The pagination timeout, in seconds, used to fetch deposits requests from Emily.
+# Required: false
+# Environment: SIGNER_EMILY__PAGINATION_TIMEOUT
+# pagination_timeout = 15
 
 # !! ==============================================================================
 # !! Bitcoin Core Configuration

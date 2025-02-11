@@ -12,6 +12,12 @@ use bitcoin::Transaction;
 use bitcoin::TxMerkleNode;
 use bitcoin::Txid;
 use bitcoincore_rpc_json::Utxo;
+use fake::Fake as _;
+use futures::future::join_all;
+use rand::SeedableRng;
+use test_case::test_case;
+use test_log::test;
+use url::Url;
 
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
@@ -51,14 +57,9 @@ use signer::testing::dummy::DepositTxConfig;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::model::TestData;
-
-use fake::Fake as _;
-use rand::SeedableRng;
 use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
-use test_log::test;
-use url::Url;
 
 use crate::utxo_construction::make_deposit_request;
 
@@ -154,8 +155,12 @@ async fn deposit_flow() {
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
     let stacks_client = WrappedMock::default();
 
     // Wipe the Emily database to start fresh
@@ -571,8 +576,12 @@ async fn get_deposit_request_works() {
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
     wipe_databases(&emily_client.config())
         .await
@@ -602,4 +611,48 @@ async fn get_deposit_request_works() {
     // This one doesn't exist
     let request = emily_client.get_deposit(&txid, 50).await.unwrap();
     assert!(request.is_none());
+}
+
+#[test_case(3, 10, Some(2), 3; "handles paging")]
+#[test_case(3, 0, Some(2), 2; "handles timeout")]
+#[tokio::test]
+async fn test_get_deposits_request_paging(
+    num_deposits: usize,
+    timeout_secs: u64,
+    page_size: Option<u16>,
+    expected_result: usize,
+) {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 150;
+
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(timeout_secs),
+        page_size,
+    )
+    .unwrap();
+
+    wipe_databases(&emily_client.config())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
+
+    let futures = (0..num_deposits).map(|_| {
+        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let create_deposit_request_body = CreateDepositRequestBody {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            deposit_script: setup.deposit.deposit_script().to_hex_string(),
+            reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+        };
+        deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
+    });
+
+    let results = join_all(futures).await;
+    for result in results {
+        result.expect("cannot create emily deposit");
+    }
+
+    let deposits = emily_client.get_deposits().await.unwrap();
+    assert_eq!(deposits.len(), expected_result);
 }
