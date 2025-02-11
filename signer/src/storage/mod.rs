@@ -25,7 +25,6 @@ use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 /// Represents the ability to read data from the signer storage.
@@ -466,12 +465,6 @@ pub trait DbWrite {
     fn write_withdrawal_accept_event(
         &self,
         event: &WithdrawalAcceptEvent,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
-
-    /// Write the withdrawal-create event to the database.
-    fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Write the completed deposit event to the database.

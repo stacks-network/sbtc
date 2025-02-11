@@ -81,7 +81,6 @@ use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 /// Dummy block
@@ -356,21 +355,6 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
             block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        WithdrawalCreateEvent {
-            txid: config.fake_with_rng(rng),
-            block_id: config.fake_with_rng(rng),
-            request_id: rng.next_u32() as u64,
-            amount: rng.next_u32() as u64,
-            sender: config.fake_with_rng(rng),
-            recipient: config.fake_with_rng::<ScriptPubKey, _>(rng),
-            max_fee: rng.next_u32() as u64,
-            block_height: rng.next_u32() as u64,
         }
     }
 }

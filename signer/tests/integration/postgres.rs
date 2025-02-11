@@ -16,6 +16,7 @@ use futures::StreamExt as _;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 use signer::storage::model::DkgSharesStatus;
+use signer::storage::model::WithdrawalRequest;
 use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
@@ -50,7 +51,6 @@ use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalAcceptEvent;
-use signer::storage::model::WithdrawalCreateEvent;
 use signer::storage::model::WithdrawalRejectEvent;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
@@ -1191,29 +1191,30 @@ async fn writing_completed_deposit_requests_postgres() {
 
 /// Here we test that we can store withdrawal-create events.
 #[tokio::test]
-async fn writing_withdrawal_create_requests_postgres() {
+async fn writing_withdrawal_requests_postgres() {
     let store = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let event: WithdrawalCreateEvent = fake::Faker.fake_with_rng(&mut rng);
+    let event: WithdrawalRequest = fake::Faker.fake_with_rng(&mut rng);
 
     // Let's see if we can write these rows to the database.
     store
-        .write_withdrawal_create_event(&event.clone().into())
+        .write_withdrawal_request(&event.clone().into())
         .await
         .unwrap();
+
     let mut db_event =
-        sqlx::query_as::<_, ([u8; 32], [u8; 32], i64, i64, String, Vec<u8>, i64, i64)>(
+        sqlx::query_as::<_, (i64, [u8; 32], [u8; 32], Vec<u8>, i64, i64, String, i64)>(
             r#"
-            SELECT txid
+            SELECT request_id
+                 , txid
                  , block_hash
-                 , request_id
-                 , amount
-                 , sender
                  , recipient
+                 , amount
                  , max_fee
+                 , sender_address
                  , block_height
-            FROM sbtc_signer.withdrawal_create_events"#,
+            FROM sbtc_signer.withdrawal_requests"#,
         )
         .fetch_all(store.pool())
         .await
@@ -1221,14 +1222,14 @@ async fn writing_withdrawal_create_requests_postgres() {
     // Did we only write one row
     assert_eq!(db_event.len(), 1);
 
-    let (txid, block_id, request_id, amount, sender, recipient, max_fee, block_height) =
+    let (request_id, txid, block_hash, recipient, amount, max_fee, sender, block_height) =
         db_event.pop().unwrap();
 
     assert_eq!(txid, event.txid.into_bytes());
-    assert_eq!(block_id, event.block_id.into_bytes());
+    assert_eq!(block_hash, event.block_hash.into_bytes());
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(amount as u64, event.amount);
-    assert_eq!(sender, event.sender.to_string());
+    assert_eq!(sender, event.sender_address.to_string());
     assert_eq!(recipient, event.recipient.to_bytes());
     assert_eq!(max_fee as u64, event.max_fee);
     assert_eq!(block_height as u64, event.block_height);
