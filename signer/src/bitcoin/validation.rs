@@ -135,6 +135,12 @@ impl BitcoinPreSignRequest {
     {
         let mut cache = ValidationCache::default();
 
+        let bitcoin_chain_tip = &btc_ctx.chain_tip;
+        let stacks_chain_tip = db.get_stacks_chain_tip(bitcoin_chain_tip).await?;
+        let Some(stacks_chain_tip) = stacks_chain_tip.map(|b| b.block_hash) else {
+            return Err(Error::NoStacksChainTip);
+        };
+
         for requests in &self.request_package {
             // Fetch all deposit reports and votes
             for outpoint in &requests.deposits {
@@ -142,7 +148,7 @@ impl BitcoinPreSignRequest {
                 let output_index = outpoint.vout;
 
                 let report_future = db.get_deposit_request_report(
-                    &btc_ctx.chain_tip,
+                    bitcoin_chain_tip,
                     &txid,
                     output_index,
                     &btc_ctx.signer_public_key,
@@ -161,10 +167,11 @@ impl BitcoinPreSignRequest {
             }
 
             // Fetch all withdrawal reports and votes
-            for id in &requests.withdrawals {
+            for qualified_id in &requests.withdrawals {
                 let report = db.get_withdrawal_request_report(
-                    &btc_ctx.chain_tip,
-                    id,
+                    bitcoin_chain_tip,
+                    &stacks_chain_tip,
+                    qualified_id,
                     &btc_ctx.signer_public_key,
                 );
                 let Some(report) = report.await? else {
@@ -172,10 +179,12 @@ impl BitcoinPreSignRequest {
                 };
 
                 let votes = db
-                    .get_withdrawal_request_signer_votes(id, &btc_ctx.aggregate_key)
+                    .get_withdrawal_request_signer_votes(qualified_id, &btc_ctx.aggregate_key)
                     .await?;
 
-                cache.withdrawal_reports.insert(id, (report, votes));
+                cache
+                    .withdrawal_reports
+                    .insert(qualified_id, (report, votes));
             }
         }
         Ok(cache)

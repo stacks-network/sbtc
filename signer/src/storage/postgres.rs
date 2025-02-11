@@ -6,7 +6,6 @@ use std::sync::OnceLock;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
-use bitcoin::ScriptBuf;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
@@ -830,10 +829,8 @@ impl PgStore {
               , wr.amount
               , wr.max_fee
               , wr.recipient
-              , ws.signers_public_key
               , wr.block_height AS bitcoin_block_height
               , wr.block_hash   AS stacks_block_hash
-              , sb.bitcoin_anchor
               , sb.block_height AS stacks_block_height
             FROM sbtc_signer.withdrawal_requests AS wr
             JOIN sbtc_signer.stacks_blocks AS sb USING (block_hash)
@@ -841,14 +838,12 @@ impl PgStore {
               ON ws.request_id = wr.request_id
              AND ws.block_hash = wr.block_hash
              AND ws.signer_pub_key = $1
-            WHERE wr.txid = $2
-              AND wr.request_id = $3
-              AND wr.block_hash = $4
+            WHERE wr.request_id = $2
+              AND wr.block_hash = $3
             LIMIT 1
             "#,
         )
         .bind(signer_public_key)
-        .bind(id.txid)
         .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
         .bind(id.block_hash)
         .fetch_optional(&self.0)
@@ -880,61 +875,17 @@ impl PgStore {
               ON bt.txid = bwo.bitcoin_txid
             JOIN sbtc_signer.bitcoin_blockchain_until($1, wr.block_height) AS bbu
               ON bbu.block_hash = bt.block_hash
-            WHERE wr.txid = $2
-              AND wr.request_id = $3
-              AND wr.block_hash = $4
+            WHERE wr.request_id = $2
+              AND wr.block_hash = $3
             LIMIT 1
             "#,
         )
         .bind(chain_tip)
-        .bind(id.txid)
         .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(id.block_hash)
         .bind(id.block_hash)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
-    }
-
-    ///
-    pub async fn get_withdrawal_request_report2(
-        &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-        stacks_chain_tip: &model::StacksBlockHash,
-        id: &model::QualifiedRequestId,
-        signer_public_key: &PublicKey,
-    ) -> Result<Option<WithdrawalRequestReport>, Error> {
-        let summary_fut = self.get_withdrawal_request_status_summary(id, signer_public_key);
-        let Some(summary) = summary_fut.await? else {
-            return Ok(None);
-        };
-
-        let sweep_info_fut = self.get_withdrawal_sweep_info(bitcoin_chain_tip, id);
-        let status = match sweep_info_fut.await? {
-            Some(tx_ref) => WithdrawalRequestStatus::Fulfilled(tx_ref),
-            None => {
-                let in_canonical_stacks_blockchain_fut = self.in_canonical_stacks_blockchain(
-                    stacks_chain_tip,
-                    &summary.stacks_block_hash,
-                    summary.stacks_block_height,
-                );
-                if in_canonical_stacks_blockchain_fut.await? {
-                    WithdrawalRequestStatus::Confirmed
-                } else {
-                    WithdrawalRequestStatus::Unconfirmed
-                }
-            }
-        };
-
-        Ok(Some(WithdrawalRequestReport {
-            id: *id,
-            amount: summary.amount,
-            max_fee: summary.max_fee,
-            is_accepted: summary.is_accepted,
-            script_pubkey: summary.recipient.into(),
-            status,
-            block_height: summary.bitcoin_block_height,
-        }))
     }
 }
 
@@ -1634,41 +1585,41 @@ impl super::DbRead for PgStore {
 
     async fn get_withdrawal_request_report(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
         id: &model::QualifiedRequestId,
-        _signer_public_key: &PublicKey,
+        signer_public_key: &PublicKey,
     ) -> Result<Option<WithdrawalRequestReport>, Error> {
-        // Returning Ok(None) means that all withdrawals fail validation,
-        // because without a report we assume the withdrawal request does
-        // not exist.
+        let summary_fut = self.get_withdrawal_request_status_summary(id, signer_public_key);
+        let Some(summary) = summary_fut.await? else {
+            return Ok(None);
+        };
 
-        let withdrawal = sqlx::query_as::<_, model::WithdrawalRequest>(
-            r#"SELECT
-                request_id
-              , txid
-              , block_hash
-              , recipient
-              , amount
-              , max_fee
-              , sender_address
-              , block_height
-            FROM sbtc_signer.withdrawal_requests
-            WHERE request_id = $1
-              AND block_hash = $2
-            "#,
-        )
-        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(id.txid)
-        .fetch_one(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
+        let sweep_info_fut = self.get_withdrawal_sweep_info(bitcoin_chain_tip, id);
+        let status = match sweep_info_fut.await? {
+            Some(tx_ref) => WithdrawalRequestStatus::Fulfilled(tx_ref),
+            None => {
+                let in_canonical_stacks_blockchain_fut = self.in_canonical_stacks_blockchain(
+                    stacks_chain_tip,
+                    &summary.stacks_block_hash,
+                    summary.stacks_block_height,
+                );
+                if in_canonical_stacks_blockchain_fut.await? {
+                    WithdrawalRequestStatus::Confirmed
+                } else {
+                    WithdrawalRequestStatus::Unconfirmed
+                }
+            }
+        };
 
         Ok(Some(WithdrawalRequestReport {
             id: *id,
-            status: WithdrawalRequestStatus::Confirmed(1, *chain_tip),
-            amount: withdrawal.amount,
-            max_fee: withdrawal.max_fee,
-            script_pubkey: ScriptBuf::new(),
+            amount: summary.amount,
+            max_fee: summary.max_fee,
+            is_accepted: summary.is_accepted,
+            script_pubkey: summary.recipient.into(),
+            status,
+            block_height: summary.bitcoin_block_height,
         }))
     }
 
