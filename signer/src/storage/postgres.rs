@@ -1465,7 +1465,7 @@ impl super::DbRead for PgStore {
 
         Ok(Some(WithdrawalRequestReport {
             id: *id,
-            status: WithdrawalRequestStatus::Confirmed(1, chain_tip.clone()),
+            status: WithdrawalRequestStatus::Confirmed(1, *chain_tip),
             amount: withdrawal.amount,
             max_fee: withdrawal.max_fee,
             script_pubkey: ScriptBuf::new(),
