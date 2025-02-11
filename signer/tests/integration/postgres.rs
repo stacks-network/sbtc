@@ -3062,7 +3062,7 @@ async fn deposit_report_with_deposit_request_confirmed() {
 }
 
 #[tokio::test]
-async fn withdrawal_report_with_no_withdrawal_request() {
+async fn withdrawal_report_with_no_withdrawal_request_or_no_block() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(24);
 
@@ -3096,7 +3096,7 @@ async fn withdrawal_report_with_no_withdrawal_request() {
         block_hash: stacks_chain_tip,
     };
 
-    let report = db
+    let maybe_report = db
         .get_withdrawal_request_report(
             &bitcoin_chain_tip,
             &stacks_chain_tip,
@@ -3105,7 +3105,25 @@ async fn withdrawal_report_with_no_withdrawal_request() {
         )
         .await
         .unwrap();
-    assert!(report.is_none());
+
+    assert!(maybe_report.is_none());
+
+
+    let withdrawal_request: model::WithdrawalRequest = Faker.fake_with_rng(&mut rng);
+    db.write_withdrawal_request(&withdrawal_request).await.unwrap();
+
+    let qualified_id = withdrawal_request.qualified_id();
+    let maybe_report = db
+        .get_withdrawal_request_report(
+            &bitcoin_chain_tip,
+            &stacks_chain_tip,
+            &qualified_id,
+            signer_public_key,
+        )
+        .await
+        .unwrap();
+
+    assert!(maybe_report.is_none());
 }
 
 #[tokio::test]
@@ -3129,7 +3147,8 @@ async fn withdrawal_report_with_no_withdrawal_votes() {
     let test_data = TestData::generate(&mut rng, &signer_public_keys, &test_params);
     test_data.write_to(&db).await;
 
-    let bitcoin_chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let bitcoin_chain_tip_ref = db.get_bitcoin_canonical_chain_tip_ref().await.unwrap().unwrap();
+    let bitcoin_chain_tip = bitcoin_chain_tip_ref.block_hash;
     let stacks_chain_tip_block = db
         .get_stacks_chain_tip(&bitcoin_chain_tip)
         .await
@@ -3137,13 +3156,15 @@ async fn withdrawal_report_with_no_withdrawal_votes() {
         .unwrap();
     let stacks_chain_tip = stacks_chain_tip_block.block_hash;
 
-    let withdrawal_request: model::WithdrawalRequest = Faker.fake_with_rng(&mut rng);
-
-    let qualified_id = QualifiedRequestId {
-        request_id: Faker.fake_with_rng::<u32, _>(&mut rng) as u64,
-        txid: Faker.fake_with_rng(&mut rng),
+    let withdrawal_request = model::WithdrawalRequest {
         block_hash: stacks_chain_tip,
+        block_height: bitcoin_chain_tip_ref.block_height - 1,
+        ..Faker.fake_with_rng(&mut rng)
     };
+
+    db.write_withdrawal_request(&withdrawal_request).await.unwrap();
+
+    let qualified_id = withdrawal_request.qualified_id();
 
     let report = db
         .get_withdrawal_request_report(
@@ -3153,12 +3174,33 @@ async fn withdrawal_report_with_no_withdrawal_votes() {
             signer_public_key,
         )
         .await
+        .unwrap()
         .unwrap();
-    assert!(report.is_none());
-}
 
-#[tokio::test]
-async fn withdrawal_report_with_no_stacks_block() {}
+    assert!(report.is_accepted.is_none());
+
+    let withdrawal_decision = model::WithdrawalSigner {
+        request_id: qualified_id.request_id,
+        block_hash: qualified_id.block_hash,
+        txid: qualified_id.txid,
+        signer_pub_key: *signer_public_key,
+        is_accepted: true,
+    };
+    db.write_withdrawal_signer_decision(&withdrawal_decision).await.unwrap();
+
+    let report = db
+        .get_withdrawal_request_report(
+            &bitcoin_chain_tip,
+            &stacks_chain_tip,
+            &qualified_id,
+            signer_public_key,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(report.is_accepted, Some(true));
+}
 
 #[tokio::test]
 async fn withdrawal_report_with_withdrawal_request_reorged() {}
