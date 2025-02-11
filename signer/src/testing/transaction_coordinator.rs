@@ -172,6 +172,7 @@ where
         let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
+        let original_test_data = test_data.clone();
 
         // Add signer utxo to storage
         let tx_1 = bitcoin::Transaction {
@@ -185,6 +186,7 @@ where
             &bitcoin_chain_tip,
             vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
         );
+        test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
         // Add estimate_fee_rate

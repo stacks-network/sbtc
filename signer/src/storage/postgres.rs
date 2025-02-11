@@ -26,7 +26,6 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::TransactionType;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
@@ -1333,6 +1332,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
+              , wr.block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc USING (block_hash)
             LEFT JOIN sbtc_signer.withdrawal_signers AS ws
@@ -1408,6 +1408,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
+              , wr.block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             JOIN sbtc_signer.withdrawal_signers signers ON
@@ -2212,8 +2213,9 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_address
+              , block_height
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT DO NOTHING",
         )
         .bind(i64::try_from(request.request_id).map_err(Error::ConversionDatabaseInt)?)
@@ -2223,6 +2225,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&request.sender_address)
+        .bind(i64::try_from(request.block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2561,39 +2564,6 @@ impl super::DbWrite for PgStore {
         .bind(event.sweep_block_hash.to_byte_array())
         .bind(i64::try_from(event.sweep_block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sweep_txid.to_byte_array())
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
-
-    async fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> Result<(), Error> {
-        sqlx::query(
-            "
-        INSERT INTO sbtc_signer.withdrawal_create_events (
-            txid
-          , block_hash
-          , request_id
-          , amount
-          , sender
-          , recipient
-          , max_fee
-          , block_height
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        )
-        .bind(event.txid)
-        .bind(event.block_id)
-        .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
-        .bind(event.sender.to_string())
-        .bind(event.recipient.as_bytes())
-        .bind(i64::try_from(event.max_fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(event.block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

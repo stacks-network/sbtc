@@ -268,6 +268,11 @@ pub struct WithdrawalRequest {
     pub max_fee: u64,
     /// The address that initiated the request.
     pub sender_address: StacksPrincipal,
+    /// The block height of the bitcoin blockchain when the stacks
+    /// transaction that emitted this event was executed.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    pub block_height: u64,
 }
 
 impl WithdrawalRequest {
@@ -1167,16 +1172,16 @@ impl From<sbtc::events::WithdrawalRejectEvent> for WithdrawalRejectEvent {
     }
 }
 
-impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
-    fn from(sbtc_event: sbtc::events::WithdrawalCreateEvent) -> WithdrawalCreateEvent {
-        WithdrawalCreateEvent {
-            txid: sbtc_event.txid.into(),
-            block_id: sbtc_event.block_id.into(),
+impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalRequest {
+    fn from(sbtc_event: sbtc::events::WithdrawalCreateEvent) -> WithdrawalRequest {
+        WithdrawalRequest {
             request_id: sbtc_event.request_id,
-            amount: sbtc_event.amount,
-            sender: sbtc_event.sender.into(),
+            txid: sbtc_event.txid.into(),
+            block_hash: sbtc_event.block_id.into(),
             recipient: sbtc_event.recipient.into(),
+            amount: sbtc_event.amount,
             max_fee: sbtc_event.max_fee,
+            sender_address: sbtc_event.sender.into(),
             block_height: sbtc_event.block_height,
         }
     }
@@ -1234,32 +1239,6 @@ pub struct CompletedDepositEvent {
     pub sweep_txid: BitcoinTxId,
 }
 
-/// This is the event that is emitted from the `create-withdrawal-request`
-/// public function in sbtc-registry smart contract.
-#[derive(Debug, Clone)]
-pub struct WithdrawalCreateEvent {
-    /// The transaction id of the stacks transaction that generated this
-    /// event.
-    pub txid: StacksTxId,
-    /// The block ID of the block for this event.
-    pub block_id: StacksBlockHash,
-    /// This is the unique identifier of the withdrawal request.
-    pub request_id: u64,
-    /// This is the amount of sBTC that is locked and requested to be
-    /// withdrawal as sBTC.
-    pub amount: u64,
-    /// This is the principal who has their sBTC locked up.
-    pub sender: StacksPrincipal,
-    /// This is the address to send the BTC to when fulfilling the
-    /// withdrawal request.
-    pub recipient: ScriptPubKey,
-    /// This is the maximum amount of BTC "spent" to the miners for the
-    /// transaction fee.
-    pub max_fee: u64,
-    /// The block height of the bitcoin blockchain when the stacks
-    /// transaction that emitted this event was executed.
-    pub block_height: u64,
-}
 /// This is the event that is emitted from the `complete-withdrawal-accept`
 /// public function in sbtc-registry smart contract.
 #[derive(Debug, Clone)]
