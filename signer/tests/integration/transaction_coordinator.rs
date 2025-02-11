@@ -1181,7 +1181,6 @@ async fn run_subsequent_dkg() {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         });
 
     // We only proceed with the test after all processes have started, and
@@ -1497,7 +1496,6 @@ async fn sign_bitcoin_transaction() {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1928,7 +1926,6 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2508,7 +2505,6 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -3301,7 +3297,6 @@ async fn test_conservative_initial_sbtc_limits() {
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
             dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
-            dkg_verification_results: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
