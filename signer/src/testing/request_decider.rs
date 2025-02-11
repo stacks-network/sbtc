@@ -18,6 +18,7 @@ use crate::network::MessageTransfer as _;
 use crate::request_decider::RequestDeciderEventLoop;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
@@ -177,6 +178,7 @@ where
             &handle.context.get_storage_mut(),
             group_key,
             signer_set.clone(),
+            DkgSharesStatus::Verified,
         )
         .await;
 
@@ -301,7 +303,7 @@ where
     /// Assert that the transaction signer will make and store decisions
     /// received from other signers.
     pub async fn assert_should_store_decisions_received_from_other_signers(self) {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let network = WanNetwork::default();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
@@ -342,6 +344,7 @@ where
                 &handle.context.get_storage_mut(),
                 group_key,
                 signer_set.clone(),
+                DkgSharesStatus::Verified,
             )
             .await;
         }
@@ -362,7 +365,7 @@ where
         for handle in event_loop_handles.iter_mut() {
             let msg = RequestDeciderEvent::ReceivedDepositDecision;
             handle
-                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(13))
+                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
                 .await
                 .expect("timed out waiting for events");
         }
@@ -539,12 +542,18 @@ async fn store_dummy_dkg_shares<R, S>(
     storage: &S,
     group_key: PublicKey,
     signer_set: BTreeSet<PublicKey>,
+    status: DkgSharesStatus,
 ) where
     R: rand::CryptoRng + rand::RngCore,
     S: storage::DbWrite,
 {
-    let mut shares =
-        testing::dummy::encrypted_dkg_shares(&fake::Faker, rng, signer_private_key, group_key);
+    let mut shares = testing::dummy::encrypted_dkg_shares(
+        &fake::Faker,
+        rng,
+        signer_private_key,
+        group_key,
+        status,
+    );
     shares.signer_set_public_keys = signer_set.into_iter().collect();
 
     storage

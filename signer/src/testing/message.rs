@@ -113,7 +113,7 @@ impl fake::Dummy<fake::Faker> for message::WstsMessage {
         };
 
         Self {
-            txid: dummy::txid(config, rng),
+            id: dummy::txid(config, rng).into(),
             inner: wsts::net::Message::DkgEndBegin(dkg_end_begin),
         }
     }

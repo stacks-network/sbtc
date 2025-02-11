@@ -1,6 +1,7 @@
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bitcoin::consensus::encode::serialize_hex;
 use fake::Fake;
@@ -78,7 +79,7 @@ async fn create_signer_database() -> PgStore {
     signer::testing::storage::new_test_database().await
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn should_store_decisions_for_pending_deposit_requests() {
     let num_signers = 3;
     let signing_threshold = 2;
@@ -306,8 +307,12 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await

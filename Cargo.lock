@@ -821,6 +821,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitcoinconsensus"
+version = "0.106.0+26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e12cba9cce5043cdda968e07b9df6d05ec6b0b38aa27a9a40bb575cf3e521ae9"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "bitcoincore-rpc"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4209,9 +4218,9 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p256k1"
-version = "7.2.1"
+version = "7.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8641765697df03a529cd21181fbccd1cad9f66086c24252b91c16bf38cdddd6"
+checksum = "57afd4c19b05645dcc7898653c7e63079a3f16578897685a304f14467d7c2825"
 dependencies = [
  "bindgen",
  "bitvec",
@@ -5728,6 +5737,7 @@ dependencies = [
  "aquamarine",
  "axum",
  "bitcoin",
+ "bitcoinconsensus",
  "bitcoincore-rpc",
  "bitcoincore-rpc-json",
  "bitcoincore-zmq",
@@ -7632,7 +7642,7 @@ dependencies = [
 [[package]]
 name = "wsts"
 version = "10.0.0"
-source = "git+https://github.com/Trust-Machines/wsts.git?rev=53ae23f5f35def420877ccc8c0fe3662e64e38a1#53ae23f5f35def420877ccc8c0fe3662e64e38a1"
+source = "git+https://github.com/Trust-Machines/wsts.git?rev=a7bf38bd54cddf0b78c0f7c521a5ed1537a684fa#a7bf38bd54cddf0b78c0f7c521a5ed1537a684fa"
 dependencies = [
  "aes-gcm",
  "bs58 0.5.1",
