@@ -159,8 +159,8 @@ impl<Storage>
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
 {
-    /// Asserts that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
-    pub async fn assert_ignore_withdrawals(mut self) {
+    /// Asserts that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
+    pub async fn assert_processes_withdrawals(mut self) {
         // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
@@ -240,8 +240,12 @@ where
             .expect("Error extracting withdrawals from db");
 
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
-        assert!(withdrawals.is_empty());
         assert!(!withdrawals_in_storage.is_empty());
+        for withdrawal in withdrawals_in_storage {
+            assert!(withdrawals
+                .iter()
+                .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+        }
     }
 
     /// Assert that a coordinator should be able to coordiante a signing round
