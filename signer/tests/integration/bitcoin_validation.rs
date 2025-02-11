@@ -110,6 +110,7 @@ async fn one_tx_per_request_set() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -212,6 +213,7 @@ async fn one_invalid_deposit_invalidates_tx() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -325,6 +327,7 @@ async fn one_withdrawal_errors_validation() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -401,6 +404,7 @@ async fn cannot_sign_deposit_is_ok() {
 
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -556,6 +560,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -695,6 +700,7 @@ async fn outcome_is_independent_of_input_order() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
