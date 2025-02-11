@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
+use bitcoin::ScriptBuf;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
@@ -19,6 +20,7 @@ use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositConfirmationStatus;
 use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::WithdrawalRequestReport;
+use crate::bitcoin::validation::WithdrawalRequestStatus;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -1432,14 +1434,42 @@ impl super::DbRead for PgStore {
 
     async fn get_withdrawal_request_report(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _id: &model::QualifiedRequestId,
+        chain_tip: &model::BitcoinBlockHash,
+        id: &model::QualifiedRequestId,
         _signer_public_key: &PublicKey,
     ) -> Result<Option<WithdrawalRequestReport>, Error> {
         // Returning Ok(None) means that all withdrawals fail validation,
         // because without a report we assume the withdrawal request does
         // not exist.
-        Ok(None)
+
+        let withdrawal = sqlx::query_as::<_, model::WithdrawalRequest>(
+            r#"SELECT
+                request_id
+              , txid
+              , block_hash
+              , recipient
+              , amount
+              , max_fee
+              , sender_address
+              , block_height
+            FROM sbtc_signer.withdrawal_requests
+            WHERE request_id = $1
+              AND block_hash = $2
+            "#,
+        )
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(id.txid)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(Some(WithdrawalRequestReport {
+            id: *id,
+            status: WithdrawalRequestStatus::Confirmed(1, *chain_tip),
+            amount: withdrawal.amount,
+            max_fee: withdrawal.max_fee,
+            script_pubkey: ScriptBuf::new(),
+        }))
     }
 
     async fn get_bitcoin_blocks_with_transaction(
