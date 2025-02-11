@@ -159,8 +159,8 @@ impl<Storage>
 where
     Storage: DbRead + DbWrite + Clone + Sync + Send + 'static,
 {
-    /// Asserts that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
-    pub async fn assert_ignore_withdrawals(mut self) {
+    /// Asserts that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
+    pub async fn assert_processes_withdrawals(mut self) {
         // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
@@ -172,6 +172,7 @@ where
         let (aggregate_key, bitcoin_chain_tip, mut test_data) = self
             .prepare_database_and_run_dkg(&mut rng, &mut testing_signer_set)
             .await;
+        let original_test_data = test_data.clone();
 
         // Add signer utxo to storage
         let tx_1 = bitcoin::Transaction {
@@ -185,6 +186,7 @@ where
             &bitcoin_chain_tip,
             vec![(model::TransactionType::SbtcTransaction, tx_1.clone())],
         );
+        test_data.remove(original_test_data);
         self.write_test_data(&test_data).await;
 
         // Add estimate_fee_rate
@@ -240,8 +242,12 @@ where
             .expect("Error extracting withdrawals from db");
 
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
-        assert!(withdrawals.is_empty());
         assert!(!withdrawals_in_storage.is_empty());
+        for withdrawal in withdrawals_in_storage {
+            assert!(withdrawals
+                .iter()
+                .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+        }
     }
 
     /// Assert that a coordinator should be able to coordiante a signing round
@@ -1019,8 +1025,14 @@ where
             .into();
 
         let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-        let (aggregate_key, all_dkg_shares) =
-            signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
+        let (aggregate_key, all_dkg_shares) = signer_set
+            .run_dkg(
+                bitcoin_chain_tip,
+                dkg_txid.into(),
+                rng,
+                model::DkgSharesStatus::Verified,
+            )
+            .await;
 
         let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
 

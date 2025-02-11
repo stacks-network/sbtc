@@ -50,11 +50,8 @@ pub struct BitcoinCoreMessageStream {
 }
 
 impl BitcoinCoreMessageStream {
-    /// Create a new one using the endpoint(s) in the config.
-    pub async fn new_from_endpoint<T>(endpoint: &str, _subscriptions: &[T]) -> Result<Self, Error>
-    where
-        T: AsRef<str>,
-    {
+    /// Create a new one using the given endpoint.
+    pub async fn new_from_endpoint(endpoint: &str) -> Result<Self, Error> {
         let inner_stream = tokio::time::timeout(Duration::from_secs(10), async {
             bitcoincore_zmq::subscribe_async_monitor(&[endpoint])
         })

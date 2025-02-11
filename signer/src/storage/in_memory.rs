@@ -21,10 +21,10 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::model::DkgSharesStatus;
 use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -45,7 +45,9 @@ pub struct Store {
     /// Deposit requests
     pub deposit_requests: HashMap<DepositRequestPk, model::DepositRequest>,
 
-    /// Deposit requests
+    /// A mapping between (request_ids, block_hash) and withdrawal-create events.
+    /// Note that a single request_id may be associated with
+    /// more than one withdrawal-create event because of reorgs.
     pub withdrawal_requests: HashMap<WithdrawalRequestPk, model::WithdrawalRequest>,
 
     /// Deposit request to signers
@@ -89,11 +91,6 @@ pub struct Store {
 
     /// Rotate keys transactions
     pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
-
-    /// A mapping between request_ids and withdrawal-create events. Note
-    /// that in prod we can have a single request_id be associated with
-    /// more than one withdrawal-create event because of reorgs.
-    pub withdrawal_create_events: HashMap<u64, WithdrawalCreateEvent>,
 
     /// A mapping between request_ids and withdrawal-accept events. Note
     /// that in prod we can have a single request_id be associated with
@@ -253,7 +250,7 @@ impl Store {
             !context_window_end_block.as_ref().is_some_and(|block| {
                 self.bitcoin_blocks
                     .get(&stacks_block.bitcoin_anchor)
-                    .is_some_and(|anchor| anchor.block_height <= block.block_height)
+                    .is_some_and(|anchor| anchor.block_height < block.block_height)
             })
         })
         .flat_map(|stacks_block| {
@@ -298,6 +295,18 @@ impl super::DbRead for SharedStore {
             .values()
             .max_by_key(|block| (block.block_height, block.block_hash))
             .map(|block| block.block_hash))
+    }
+
+    async fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .bitcoin_blocks
+            .values()
+            .max_by_key(|block| (block.block_height, block.block_hash))
+            .map(model::BitcoinBlockRef::from))
     }
 
     async fn get_stacks_chain_tip(
@@ -601,8 +610,27 @@ impl super::DbRead for SharedStore {
             .map(|(_, shares)| shares.clone()))
     }
 
+    async fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.dkg_shares_status == DkgSharesStatus::Verified)
+            .max_by_key(|(time, _)| time)
+            .map(|(_, shares)| shares.clone()))
+    }
+
     async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
-        Ok(self.lock().await.encrypted_dkg_shares.len() as u32)
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.dkg_shares_status != DkgSharesStatus::Failed)
+            .count() as u32)
     }
 
     async fn get_last_key_rotation(
@@ -1172,18 +1200,6 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> Result<(), Error> {
-        self.lock()
-            .await
-            .withdrawal_create_events
-            .insert(event.request_id, event.clone());
-
-        Ok(())
-    }
-
     async fn write_withdrawal_accept_event(
         &self,
         event: &WithdrawalAcceptEvent,
@@ -1263,5 +1279,33 @@ impl super::DbWrite for SharedStore {
                 .insert(sighash.sighash, sighash.clone());
         });
         Ok(())
+    }
+
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Failed;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Verified;
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }

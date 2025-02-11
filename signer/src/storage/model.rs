@@ -268,6 +268,11 @@ pub struct WithdrawalRequest {
     pub max_fee: u64,
     /// The address that initiated the request.
     pub sender_address: StacksPrincipal,
+    /// The block height of the bitcoin blockchain when the stacks
+    /// transaction that emitted this event was executed.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    pub block_height: u64,
 }
 
 impl WithdrawalRequest {
@@ -463,6 +468,16 @@ pub struct EncryptedDkgShares {
     /// (shares) that are needed in order to construct a signature.
     #[sqlx(try_from = "i32")]
     pub signature_share_threshold: u16,
+    /// The current status of the DKG shares.
+    pub dkg_shares_status: DkgSharesStatus,
+    /// The block hash of the chain tip of the canonical bitcoin blockchain
+    /// when the DKG round associated with these shares started.
+    pub started_at_bitcoin_block_hash: BitcoinBlockHash,
+    /// The block height of the chain tip of the canonical bitcoin blockchain
+    /// when the DKG round associated with these shares started.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
+    pub started_at_bitcoin_block_height: u64,
 }
 
 /// Persisted public DKG shares from other signers
@@ -541,6 +556,20 @@ impl From<SignerVotes> for BitArray<[u8; 16]> {
     fn from(votes: SignerVotes) -> BitArray<[u8; 16]> {
         Self::from(&votes)
     }
+}
+
+/// The possible states for DKG shares.
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::Type)]
+#[sqlx(type_name = "dkg_shares_status", rename_all = "snake_case")]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub enum DkgSharesStatus {
+    /// The DKG shares have not passed or failed verification.
+    Unverified,
+    /// The DKG shares have passed verification.
+    Verified,
+    /// The DKG shares have failed verification or the shares have not
+    /// passed verification within our configured window.
+    Failed,
 }
 
 /// The types of transactions the signer is interested in.
@@ -813,9 +842,12 @@ impl std::fmt::Display for BitcoinBlockHash {
 
 /// A struct that references a specific bitcoin block is identifier and its
 /// position in the blockchain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    #[sqlx(try_from = "i64")]
     pub block_height: u64,
     /// Bitcoin block hash. It uniquely identifies the bitcoin block.
     pub block_hash: BitcoinBlockHash,
@@ -833,6 +865,12 @@ impl From<&BitcoinBlock> for BitcoinBlockRef {
             block_hash: value.block_hash,
             block_height: value.block_height,
         }
+    }
+}
+
+impl AsRef<BitcoinBlockHash> for BitcoinBlockRef {
+    fn as_ref(&self) -> &BitcoinBlockHash {
+        &self.block_hash
     }
 }
 
@@ -1134,16 +1172,16 @@ impl From<sbtc::events::WithdrawalRejectEvent> for WithdrawalRejectEvent {
     }
 }
 
-impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalCreateEvent {
-    fn from(sbtc_event: sbtc::events::WithdrawalCreateEvent) -> WithdrawalCreateEvent {
-        WithdrawalCreateEvent {
-            txid: sbtc_event.txid.into(),
-            block_id: sbtc_event.block_id.into(),
+impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalRequest {
+    fn from(sbtc_event: sbtc::events::WithdrawalCreateEvent) -> WithdrawalRequest {
+        WithdrawalRequest {
             request_id: sbtc_event.request_id,
-            amount: sbtc_event.amount,
-            sender: sbtc_event.sender.into(),
+            txid: sbtc_event.txid.into(),
+            block_hash: sbtc_event.block_id.into(),
             recipient: sbtc_event.recipient.into(),
+            amount: sbtc_event.amount,
             max_fee: sbtc_event.max_fee,
+            sender_address: sbtc_event.sender.into(),
             block_height: sbtc_event.block_height,
         }
     }
@@ -1201,32 +1239,6 @@ pub struct CompletedDepositEvent {
     pub sweep_txid: BitcoinTxId,
 }
 
-/// This is the event that is emitted from the `create-withdrawal-request`
-/// public function in sbtc-registry smart contract.
-#[derive(Debug, Clone)]
-pub struct WithdrawalCreateEvent {
-    /// The transaction id of the stacks transaction that generated this
-    /// event.
-    pub txid: StacksTxId,
-    /// The block ID of the block for this event.
-    pub block_id: StacksBlockHash,
-    /// This is the unique identifier of the withdrawal request.
-    pub request_id: u64,
-    /// This is the amount of sBTC that is locked and requested to be
-    /// withdrawal as sBTC.
-    pub amount: u64,
-    /// This is the principal who has their sBTC locked up.
-    pub sender: StacksPrincipal,
-    /// This is the address to send the BTC to when fulfilling the
-    /// withdrawal request.
-    pub recipient: ScriptPubKey,
-    /// This is the maximum amount of BTC "spent" to the miners for the
-    /// transaction fee.
-    pub max_fee: u64,
-    /// The block height of the bitcoin blockchain when the stacks
-    /// transaction that emitted this event was executed.
-    pub block_height: u64,
-}
 /// This is the event that is emitted from the `complete-withdrawal-accept`
 /// public function in sbtc-registry smart contract.
 #[derive(Debug, Clone)]

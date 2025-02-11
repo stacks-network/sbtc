@@ -37,6 +37,7 @@ use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxRef;
+use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::postgres::PgStore;
@@ -362,6 +363,7 @@ impl TestSweepSetup {
             amount: self.withdrawal_request.amount,
             max_fee: self.withdrawal_request.max_fee,
             sender_address: self.withdrawal_sender.clone().into(),
+            block_height: block.block_height, // This should be set to the bitcoin block height.
         };
         db.write_withdrawal_request(&withdrawal_request)
             .await
@@ -380,6 +382,9 @@ impl TestSweepSetup {
             aggregate_key,
             signer_set_public_keys: self.signer_keys.clone(),
             signature_share_threshold: self.signatures_required,
+            dkg_shares_status: model::DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
+            started_at_bitcoin_block_height: 0,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }
@@ -544,6 +549,27 @@ impl TestSignerSet {
     pub fn aggregate_key(&self) -> PublicKey {
         self.signer.keypair.public_key().into()
     }
+}
+
+/// Set the dkg_shares_status of the shares associated with the given
+/// aggregate key to the given status.
+pub async fn set_verification_status(
+    db: &PgStore,
+    aggregate_key: PublicKey,
+    status: DkgSharesStatus,
+) {
+    sqlx::query(
+        r#"
+        UPDATE sbtc_signer.dkg_shares
+        SET dkg_shares_status = $1
+        WHERE aggregate_key = $2
+        "#,
+    )
+    .bind(status)
+    .bind(aggregate_key)
+    .execute(db.pool())
+    .await
+    .unwrap();
 }
 
 /// The information about a sweep transaction that has been confirmed.
@@ -936,6 +962,7 @@ impl TestSweepSetup2 {
             amount: self.withdrawal_request.amount,
             max_fee: self.withdrawal_request.max_fee,
             sender_address: self.withdrawal_sender.clone().into(),
+            block_height: block.block_height, // This should be set to the bitcoin block height.
         };
         db.write_withdrawal_request(&withdrawal_request)
             .await
@@ -978,6 +1005,9 @@ impl TestSweepSetup2 {
             aggregate_key,
             signer_set_public_keys: self.signers.keys.clone(),
             signature_share_threshold: self.signatures_required,
+            dkg_shares_status: model::DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
+            started_at_bitcoin_block_height: 0,
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }
