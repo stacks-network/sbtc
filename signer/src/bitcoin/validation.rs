@@ -878,7 +878,7 @@ pub struct WithdrawalRequestReport {
     /// the funds.
     pub max_fee: u64,
     /// The script_pubkey of the output.
-    pub script_pubkey: ScriptBuf,
+    pub recipient: ScriptBuf,
     /// Whether this signers' blocklist client accepted the withdrawal
     /// request or not. This should only be `None` if we do not have a
     /// record of the withdrawal request.
@@ -910,7 +910,7 @@ impl WithdrawalRequestReport {
             block_hash: self.id.block_hash,
             amount: self.amount,
             max_fee: self.max_fee,
-            script_pubkey: self.script_pubkey.clone().into(),
+            script_pubkey: self.recipient.clone().into(),
             signer_bitmap: votes.into(),
         }
     }

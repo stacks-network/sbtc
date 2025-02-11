@@ -1617,7 +1617,7 @@ impl super::DbRead for PgStore {
             amount: summary.amount,
             max_fee: summary.max_fee,
             is_accepted: summary.is_accepted,
-            script_pubkey: summary.recipient.into(),
+            recipient: summary.recipient.into(),
             status,
             block_height: summary.bitcoin_block_height,
         }))
