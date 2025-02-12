@@ -1,7 +1,6 @@
 # Variables.
 # ------------------------------------------------------------------------------
 x-common-vars:
-  - &STACKS_BLOCKCHAIN_COMMIT 49777d3fd73a6dbb610be80c376b7d9389c9871a
   - &STACKS_API_COMMIT 46e1ae256e474eac98979d0a3df685fe3fa48d6d
   - &BTC_ADDR miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
   - &MINER_SEED 9e446f6b0c6a96cf2190e54bcd5a8569c3e386f091605499464389b8d4e0bfc201 # stx: STEW4ZNT093ZHK4NEQKX8QJGM2Y7WWJ2FQQS5C19, btc: miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT, pub_key: 035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c, wif: cStMQXkK5yTFGP3KbNXYQ3sJf2qwQiKrZwR9QJnksp32eKzef1za
@@ -11,7 +10,7 @@ x-common-vars:
   - &BITCOIN_RPC_USER devnet
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
-  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-5s} # 5 second bitcoin block times in epoch 2.5
+  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-1s} # 1 second bitcoin block times in epoch 2.5
   - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
@@ -32,6 +31,11 @@ x-common-vars:
 
 # Templates.
 # ------------------------------------------------------------------------------
+x-stacks-blockchain: &stacks-blockchain
+  image: blockstack/stacks-core:3.1.0.0.5
+  profiles:
+    - default
+
 x-postgres: &postgres
   image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
   stop_grace_period: 5s
@@ -58,10 +62,7 @@ x-sbtc-signer: &sbtc-signer
     - sbtc-signer
 
 x-stacks-signer: &stacks-signer
-  build:
-    context: stacks
-    args:
-      GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
+  <<: *stacks-blockchain
   depends_on:
     - stacks-node
   volumes:
@@ -73,11 +74,11 @@ x-stacks-signer: &stacks-signer
     - /bin/bash
     - -c
     - |
+      apt-get update && apt-get install -y gettext-base
+      cd /data/
       set -e
       envsubst < config.toml.in > config.toml
       exec stacks-signer run --config config.toml
-  profiles:
-    - default
 
 # Services.
 # ------------------------------------------------------------------------------
@@ -245,7 +246,7 @@ services:
   # Bitcoin / Burnchain.
   # --------------------
   bitcoin:
-    build: bitcoin
+    image: bitcoin/bitcoin:25.2
     ports:
       - "18443:18443"
       - "28332:28332"
@@ -257,6 +258,11 @@ services:
       - |
         set -e
         bitcoind
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli -rpcwait getblockcount"]
+      interval: 5s
+      timeout: 1s
+      retries: 3
     profiles:
       - default
       - bitcoin-mempool
@@ -264,7 +270,8 @@ services:
   bitcoin-miner:
     build: bitcoin
     depends_on:
-      - bitcoin
+      bitcoin:
+        condition: service_healthy
     volumes:
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     environment:
@@ -324,12 +331,10 @@ services:
   # Stacks Blockchain.
   # ------------------
   stacks-node:
-    build:
-      context: stacks
-      args:
-        GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
+    <<: *stacks-blockchain
     depends_on:
-      - bitcoin
+      bitcoin:
+        condition: service_healthy
     ports:
       - "20443:20443"
     volumes:
@@ -362,12 +367,11 @@ services:
       - /bin/bash
       - -c
       - |
+        apt-get update && apt-get install -y gettext-base
+        cd /data/
         set -e
         envsubst < config.toml.in > config.toml
-        bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
         exec stacks-node start --config config.toml
-    profiles:
-      - default
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -471,14 +475,9 @@ services:
       - default
 
   stacks-api:
-    image: stacks-api:latest
+    image: blockstack/stacks-blockchain-api:8.6.0
     container_name: stacks-api
     stop_grace_period: 5s
-    build:
-      context: stacks-api
-      args:
-        GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
-        GIT_BRANCH: "v8.5.0"
     ports:
       - 3999:3999
       - 3700:3700
@@ -506,14 +505,9 @@ services:
       - default
 
   stacks-explorer:
-    image: stacks-explorer
+    image: hirosystems/explorer:1.248.0
     container_name: stacks-explorer
     stop_grace_period: 5s
-    build:
-      context: stacks-explorer
-      args:
-        GIT_URI: "https://github.com/hirosystems/explorer.git"
-        GIT_BRANCH: "v1.245.0"
     ports:
       - 3020:3000
     depends_on:
