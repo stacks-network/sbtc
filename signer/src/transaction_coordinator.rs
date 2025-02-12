@@ -277,12 +277,15 @@ where
         let bitcoin_chain_tip = self
             .context
             .get_storage()
-            .get_bitcoin_canonical_chain_tip()
+            .get_bitcoin_canonical_chain_tip_ref()
             .await?
             .ok_or(Error::NoChainTip)?;
 
         let span = tracing::Span::current();
-        span.record("chain_tip", tracing::field::display(&bitcoin_chain_tip));
+        span.record(
+            "chain_tip",
+            tracing::field::display(&bitcoin_chain_tip.block_hash),
+        );
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -295,7 +298,7 @@ where
         // If we are not the coordinator, then we have no business
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
-        if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+        if !self.is_coordinator(&bitcoin_chain_tip.block_hash, &signer_public_keys) {
             // Before returning, we also check if all the smart contracts are
             // deployed: we do this as some other coordinator could have deployed
             // them, in which case we need to updated our state.
@@ -312,15 +315,15 @@ where
         let should_coordinate_dkg =
             should_coordinate_dkg(&self.context, &bitcoin_chain_tip).await?;
         let aggregate_key = if should_coordinate_dkg {
-            self.coordinate_dkg(&bitcoin_chain_tip).await?
+            self.coordinate_dkg(&bitcoin_chain_tip.block_hash).await?
         } else {
-            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip))?
+            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
         };
 
-        self.deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
+        self.deploy_smart_contracts(&bitcoin_chain_tip.block_hash, &aggregate_key)
             .await?;
 
-        self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip, &aggregate_key)
+        self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip.block_hash, &aggregate_key)
             .await?;
 
         let bitcoin_processing_fut = self.construct_and_sign_bitcoin_sbtc_transactions(
@@ -334,7 +337,7 @@ where
         }
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
-            &bitcoin_chain_tip,
+            &bitcoin_chain_tip.block_hash,
             &aggregate_key,
         )
         .await?;
@@ -547,7 +550,7 @@ where
     #[tracing::instrument(skip_all)]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
@@ -555,7 +558,7 @@ where
         let stacks_chain_tip = self
             .context
             .get_storage()
-            .get_stacks_chain_tip(bitcoin_chain_tip)
+            .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
@@ -564,8 +567,11 @@ where
             "retrieved the stacks chain tip"
         );
 
-        let pending_requests_fut =
-            self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
+        let pending_requests_fut = self.get_pending_requests(
+            &bitcoin_chain_tip.block_hash,
+            aggregate_key,
+            signer_public_keys,
+        );
 
         // If Self::get_pending_requests returns Ok(None) then there are no
         // requests to respond to, so let's just exit.
@@ -582,15 +588,19 @@ where
         let transaction_package = pending_requests.construct_transactions()?;
 
         self.construct_and_send_bitcoin_presign_request(
-            bitcoin_chain_tip,
+            &bitcoin_chain_tip.block_hash,
             &pending_requests.signer_state,
             &transaction_package,
         )
         .await?;
 
         for mut transaction in transaction_package {
-            self.sign_and_broadcast(bitcoin_chain_tip, signer_public_keys, &mut transaction)
-                .await?;
+            self.sign_and_broadcast(
+                &bitcoin_chain_tip.block_hash,
+                signer_public_keys,
+                &mut transaction,
+            )
+            .await?;
 
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
@@ -1453,15 +1463,13 @@ where
         let context_window = self.context_window;
         let threshold = self.threshold;
 
-        let pending_deposit_requests = self
-            .context
-            .get_storage()
+        let storage = self.context.get_storage();
+
+        let pending_deposit_requests = storage
             .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
-        let pending_withdraw_requests = self
-            .context
-            .get_storage()
+        let pending_withdraw_requests = storage
             .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
             .await?;
 
@@ -1828,16 +1836,10 @@ pub fn coordinator_public_key(
 /// whether or not a new DKG round should be coordinated.
 pub async fn should_coordinate_dkg(
     context: &impl Context,
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<bool, Error> {
     let storage = context.get_storage();
     let config = context.config();
-
-    // Get the bitcoin block at the chain tip so that we know the height
-    let bitcoin_chain_tip_block = storage
-        .get_bitcoin_block(bitcoin_chain_tip)
-        .await?
-        .ok_or(Error::NoChainTip)?;
 
     // Get the number of DKG shares that have been stored
     let dkg_shares_entry_count = storage.get_encrypted_dkg_shares_count().await?;
@@ -1861,8 +1863,7 @@ pub async fn should_coordinate_dkg(
             Ok(true)
         }
         (current, target, Some(dkg_min_height))
-            if current < target.get()
-                && bitcoin_chain_tip_block.block_height >= dkg_min_height.get() =>
+            if current < target.get() && bitcoin_chain_tip.block_height >= dkg_min_height.get() =>
         {
             tracing::info!(
                 ?dkg_min_bitcoin_block_height,
@@ -2055,14 +2056,17 @@ mod tests {
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
-        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+        let bitcoin_chain_tip = model::BitcoinBlockRef {
+            block_height: chain_tip_height,
+            block_hash: Faker.fake(),
+        };
 
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
-                block_height: chain_tip_height,
+                block_hash: bitcoin_chain_tip.block_hash,
+                block_height: bitcoin_chain_tip.block_height,
                 parent_hash: Faker.fake(),
-                block_hash: bitcoin_chain_tip,
             })
             .await
             .unwrap();
