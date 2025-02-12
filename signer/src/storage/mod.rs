@@ -187,19 +187,19 @@ pub trait DbRead {
     /// 1. Check that the current signer accepted by the withdrawal
     ///    request.
     /// 2. Check that the transaction that created the withdrawal is in a
-    ///    stacks block anchored by a bitcoin block on the blockchain
-    ///    identified by the given chain tip.
-    /// 3. Check that the withdrawal has not been included on a sweep
+    ///    stacks block on the stacks blockchain identified by the given
+    ///    chain tip.
+    /// 3. Check that the withdrawal has not been included in a sweep
     ///    transaction that has been confirmed by block on the bitcoin
     ///    blockchain identified by the given chain tip.
     ///
-    ///  `Ok(None)` is returned if we do not have a record of the
-    /// withdrawal request.
-    ///
-    /// Note: The above list is probably not exhaustive.
+    /// `Ok(None)` is returned if we do not have a record of the withdrawal
+    /// request or if the withdrawal request is confirmed on a stacks block
+    /// that we do not know about
     fn get_withdrawal_request_report(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
         id: &model::QualifiedRequestId,
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<WithdrawalRequestReport>, Error>> + Send;
@@ -485,7 +485,7 @@ pub trait DbWrite {
         prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the bitcoin transactions sighaes to the database.
+    /// Write the bitcoin transactions sighashes to the database.
     fn write_bitcoin_txs_sighashes(
         &self,
         sighashes: &[model::BitcoinTxSigHash],

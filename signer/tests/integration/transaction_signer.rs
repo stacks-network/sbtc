@@ -187,6 +187,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     fill_signers_utxo(&db, bitcoin_block.unwrap(), &public_aggregate_key, &mut rng).await;
 
     // Store the necessary data for passing validation
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_deposit_tx(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_deposit_request(&db).await;
@@ -328,6 +329,7 @@ pub async fn presign_requests_with_dkg_shares_status(status: DkgSharesStatus, is
 
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
