@@ -76,7 +76,7 @@ exec_run() {
 
 exec_demo() {
   cargo run -p signer --bin demo-cli donation --amount 10000
-  cargo run -p signer --bin demo-cli deposit --amount 100000
+  cargo run -p signer --bin demo-cli deposit --amount 10000000 # 0.1 BTC
 }
 
 exec_info() {

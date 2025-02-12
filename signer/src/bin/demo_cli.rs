@@ -108,7 +108,7 @@ struct DepositArgs {
 
 #[derive(Debug, Args)]
 struct WithdrawArgs {
-    /// Amount to withdraw in satoshis (including fees).
+    /// Amount to withdraw in satoshis (excluding fees).
     #[clap(long)]
     amount: u64,
     /// Maximum fee to pay for the transaction in satoshis.
@@ -324,7 +324,7 @@ async fn exec_withdraw(ctx: &Context, args: WithdrawArgs) -> Result<(), Error> {
     let recipient = address_to_clarity_arg(&recipient_addr);
 
     let withdrawal_request = InitiateWithdrawalRequest {
-        amount: args.amount - args.max_fee,
+        amount: args.amount,
         recipient,
         max_fee: args.max_fee,
         deployer: ctx.deployer,
