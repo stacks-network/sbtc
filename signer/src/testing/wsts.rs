@@ -406,6 +406,7 @@ impl SignerSet {
         bitcoin_chain_tip: model::BitcoinBlockHash,
         id: WstsMessageId,
         rng: &mut Rng,
+        dkg_shares_status: model::DkgSharesStatus,
     ) -> (PublicKey, Vec<model::EncryptedDkgShares>) {
         let mut signer_handles = Vec::new();
         for signer in self.signers.drain(..) {
@@ -420,15 +421,22 @@ impl SignerSet {
             self.signers.push(signer)
         }
 
+        let started_at = model::BitcoinBlockRef {
+            block_hash: bitcoin_chain_tip,
+            block_height: 0,
+        };
+
         (
             aggregate_key,
             self.signers
                 .iter()
                 .map(|signer| {
-                    signer
+                    let mut shares = signer
                         .wsts_signer
-                        .get_encrypted_dkg_shares(rng)
-                        .expect("failed to get encrypted shares")
+                        .get_encrypted_dkg_shares(rng, &started_at)
+                        .expect("failed to get encrypted shares");
+                    shares.dkg_shares_status = dkg_shares_status;
+                    shares
                 })
                 .collect(),
         )
@@ -554,7 +562,12 @@ mod tests {
         let mut signer_set = SignerSet::new(&signer_info, threshold, || network.connect());
 
         let (_, dkg_shares) = signer_set
-            .run_dkg(bitcoin_chain_tip, txid.into(), &mut rng)
+            .run_dkg(
+                bitcoin_chain_tip,
+                txid.into(),
+                &mut rng,
+                model::DkgSharesStatus::Unverified,
+            )
             .await;
 
         assert_eq!(dkg_shares.len(), num_signers as usize);

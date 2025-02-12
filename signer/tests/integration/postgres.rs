@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashSet;
-use std::io::Read;
+use std::io::Read as _;
 use std::time::Duration;
 
 use bitcoin::hashes::Hash as _;
@@ -10,10 +10,13 @@ use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
+use fake::Faker;
 use futures::future::join_all;
-use futures::StreamExt;
-use rand::seq::IteratorRandom;
-use rand::seq::SliceRandom;
+use futures::StreamExt as _;
+use rand::seq::IteratorRandom as _;
+use rand::seq::SliceRandom as _;
+use signer::storage::model::DkgSharesStatus;
+use signer::storage::model::WithdrawalRequest;
 use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
@@ -48,7 +51,6 @@ use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalAcceptEvent;
-use signer::storage::model::WithdrawalCreateEvent;
 use signer::storage::model::WithdrawalRejectEvent;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
@@ -700,7 +702,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     signer::testing::storage::drop_db(pg_store).await;
 }
 
-/// This tests that when fetching pending accepted deposits we ingore swept ones.
+/// This tests that when fetching pending accepted deposits we ignore swept ones.
 #[tokio::test]
 async fn should_not_return_swept_deposits_as_pending_accepted() {
     let db = testing::storage::new_test_database().await;
@@ -868,7 +870,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         * percent_of_original_requests_expected_to_be_in_bounds)
         .floor() as usize;
 
-    // Prepare some datastructures to filter the deposit requests that we're going to put out of bounds
+    // Prepare some data structures to filter the deposit requests that we're going to put out of bounds
     // and to check against later.
     pending_accepted_deposit_requests.shuffle(&mut rng);
     let mut unique_deposit_ids = pending_accepted_deposit_requests
@@ -999,7 +1001,12 @@ async fn should_return_the_same_last_key_rotation_as_in_memory_store() {
         testing::wsts::SignerSet::new(&signer_info, threshold, || dummy_wsts_network.connect());
     let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
     let (_, all_shares) = testing_signer_set
-        .run_dkg(chain_tip, dkg_txid.into(), &mut rng)
+        .run_dkg(
+            chain_tip,
+            dkg_txid.into(),
+            &mut rng,
+            model::DkgSharesStatus::Verified,
+        )
         .await;
 
     let shares = all_shares.first().unwrap();
@@ -1184,29 +1191,30 @@ async fn writing_completed_deposit_requests_postgres() {
 
 /// Here we test that we can store withdrawal-create events.
 #[tokio::test]
-async fn writing_withdrawal_create_requests_postgres() {
+async fn writing_withdrawal_requests_postgres() {
     let store = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let event: WithdrawalCreateEvent = fake::Faker.fake_with_rng(&mut rng);
+    let event: WithdrawalRequest = fake::Faker.fake_with_rng(&mut rng);
 
     // Let's see if we can write these rows to the database.
     store
-        .write_withdrawal_create_event(&event.clone().into())
+        .write_withdrawal_request(&event.clone().into())
         .await
         .unwrap();
+
     let mut db_event =
-        sqlx::query_as::<_, ([u8; 32], [u8; 32], i64, i64, String, Vec<u8>, i64, i64)>(
+        sqlx::query_as::<_, (i64, [u8; 32], [u8; 32], Vec<u8>, i64, i64, String, i64)>(
             r#"
-            SELECT txid
+            SELECT request_id
+                 , txid
                  , block_hash
-                 , request_id
-                 , amount
-                 , sender
                  , recipient
+                 , amount
                  , max_fee
+                 , sender_address
                  , block_height
-            FROM sbtc_signer.withdrawal_create_events"#,
+            FROM sbtc_signer.withdrawal_requests"#,
         )
         .fetch_all(store.pool())
         .await
@@ -1214,14 +1222,14 @@ async fn writing_withdrawal_create_requests_postgres() {
     // Did we only write one row
     assert_eq!(db_event.len(), 1);
 
-    let (txid, block_id, request_id, amount, sender, recipient, max_fee, block_height) =
+    let (request_id, txid, block_hash, recipient, amount, max_fee, sender, block_height) =
         db_event.pop().unwrap();
 
     assert_eq!(txid, event.txid.into_bytes());
-    assert_eq!(block_id, event.block_id.into_bytes());
+    assert_eq!(block_hash, event.block_hash.into_bytes());
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(amount as u64, event.amount);
-    assert_eq!(sender, event.sender.to_string());
+    assert_eq!(sender, event.sender_address.to_string());
     assert_eq!(recipient, event.recipient.to_bytes());
     assert_eq!(max_fee as u64, event.max_fee);
     assert_eq!(block_height as u64, event.block_height);
@@ -1321,7 +1329,10 @@ async fn fetching_deposit_request_votes() {
         num_keys: 7,
         signatures_required: 4,
     };
-    let shares: EncryptedDkgShares = signer_set_config.fake_with_rng(&mut rng);
+    let shares = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Unverified,
+        ..signer_set_config.fake_with_rng(&mut rng)
+    };
 
     store.write_encrypted_dkg_shares(&shares).await.unwrap();
 
@@ -1533,7 +1544,10 @@ async fn fetching_withdrawal_request_votes() {
         num_keys: 7,
         signatures_required: 4,
     };
-    let shares: EncryptedDkgShares = signer_set_config.fake_with_rng(&mut rng);
+    let shares = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Unverified,
+        ..signer_set_config.fake_with_rng(&mut rng)
+    };
 
     store.write_encrypted_dkg_shares(&shares).await.unwrap();
 
@@ -1778,6 +1792,9 @@ async fn is_signer_script_pub_key_checks_dkg_shares_for_script_pubkeys() {
         aggregate_key,
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(&mut rng)],
         signature_share_threshold: 1,
+        dkg_shares_status: Faker.fake_with_rng(&mut rng),
+        started_at_bitcoin_block_hash: fake::Faker.fake_with_rng(&mut rng),
+        started_at_bitcoin_block_height: fake::Faker.fake_with_rng::<u32, _>(&mut rng) as u64,
     };
     db.write_encrypted_dkg_shares(&shares).await.unwrap();
     mem.write_encrypted_dkg_shares(&shares).await.unwrap();
@@ -1822,8 +1839,11 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
             , signer_set_public_keys
             , signature_share_threshold
             , created_at
+            , dkg_shares_status
+            , started_at_bitcoin_block_hash
+            , started_at_bitcoin_block_height
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP - INTERVAL '366 DAYS')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP - INTERVAL '366 DAYS', $8, $9, $10)
         ON CONFLICT DO NOTHING"#,
     )
     .bind(shares.aggregate_key)
@@ -1833,6 +1853,9 @@ async fn get_signers_script_pubkeys_returns_non_empty_vec_old_rows() {
     .bind(&shares.script_pubkey)
     .bind(&shares.signer_set_public_keys)
     .bind(shares.signature_share_threshold as i32)
+    .bind(shares.dkg_shares_status)
+    .bind(shares.started_at_bitcoin_block_hash)
+    .bind(shares.started_at_bitcoin_block_height as i64)
     .execute(db.pool())
     .await
     .unwrap();
@@ -1885,6 +1908,84 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
     // So when we try to get the last DKG shares this time, we'll get the
     // same ones as last time since they are the most recent.
     let some_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(some_shares.as_ref(), Some(&shares2));
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// The [`DbRead::get_latest_verified_dkg_shares`] function is supposed to
+/// fetch the last encrypted DKG shares with status 'verified' from in the
+/// database.
+#[tokio::test]
+async fn get_last_verified_dkg_shares_does_whats_advertised() {
+    let db = testing::storage::new_test_database().await;
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // We have an empty database, so we don't have any DKG shares there.
+    let no_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    let no_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    // Let's create some random DKG shares and store them in the database.
+    // When we fetch the last one, there is only one to get, so nothing
+    // surprising yet.
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.dkg_shares_status = model::DkgSharesStatus::Failed;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let stored_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(stored_shares.as_ref(), Some(&shares));
+
+    // But these shares are not verified so nothing still
+    let no_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.dkg_shares_status = model::DkgSharesStatus::Unverified;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let stored_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(stored_shares.as_ref(), Some(&shares));
+
+    // None of these shares are verified so nothing still
+    let no_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert!(no_shares.is_none());
+
+    let mut shares: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+    let stored_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+    assert_eq!(stored_shares.as_ref(), Some(&shares));
+
+    // Finally some verified shares.
+    let verified_shares = db.get_latest_verified_dkg_shares().await.unwrap();
+    assert_eq!(verified_shares.as_ref(), Some(&shares));
+
+    // Now let's add in some more verified shares to make sure that we get
+    // the latest ones.
+    let mut shares0: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares0.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares0).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let mut shares1: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares1.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares1).await.unwrap();
+
+    tokio::time::sleep(Duration::from_millis(5)).await;
+
+    let mut shares2: model::EncryptedDkgShares = fake::Faker.fake_with_rng(&mut rng);
+    shares2.dkg_shares_status = model::DkgSharesStatus::Verified;
+    db.write_encrypted_dkg_shares(&shares2).await.unwrap();
+
+    // So when we try to get the last verified DKG shares this time, we'll
+    // get the most recent ones.
+    let some_shares = db.get_latest_verified_dkg_shares().await.unwrap();
     assert_eq!(some_shares.as_ref(), Some(&shares2));
 
     signer::testing::storage::drop_db(db).await;
@@ -2403,14 +2504,14 @@ async fn transaction_coordinator_test_environment(
     }
 }
 
-#[test(tokio::test)]
-/// Tests that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
-async fn should_ignore_withdrawals() {
+/// Tests that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
+#[tokio::test]
+async fn should_process_withdrawals() {
     let store = testing::storage::new_test_database().await;
 
     transaction_coordinator_test_environment(store.clone())
         .await
-        .assert_ignore_withdrawals()
+        .assert_processes_withdrawals()
         .await;
 
     testing::storage::drop_db(store).await;
@@ -2675,7 +2776,7 @@ async fn deposit_report_with_deposit_request_spent() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
     test_data.write_to(&db).await;
 
-    // Let's write the deposit request and associated trasnaction to the
+    // Let's write the deposit request and associated transaction to the
     // database. Here the deposit transaction will be confirmed on the
     // canonical bitcoin blockchain.
     let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
@@ -2773,7 +2874,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
     test_data.write_to(&db).await;
 
-    // Let's write the deposit request and associated trasnaction to the
+    // Let's write the deposit request and associated transaction to the
     // database. Here the deposit transaction will be confirmed on the
     // canonical bitcoin blockchain.
     let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
@@ -3371,4 +3472,200 @@ async fn compare_in_memory_stacks_chain_tip() {
     );
 
     signer::testing::storage::drop_db(pg_store).await;
+}
+
+#[tokio::test]
+async fn write_and_get_dkg_shares_is_pending() {
+    let db = testing::storage::new_test_database().await;
+
+    let insert = EncryptedDkgShares {
+        aggregate_key: fake::Faker.fake(),
+        tweaked_aggregate_key: fake::Faker.fake(),
+        encrypted_private_shares: vec![],
+        script_pubkey: fake::Faker.fake(),
+        public_shares: vec![],
+        signer_set_public_keys: vec![],
+        signature_share_threshold: 1,
+        dkg_shares_status: DkgSharesStatus::Unverified,
+        ..fake::Faker.fake()
+    };
+
+    db.write_encrypted_dkg_shares(&insert).await.unwrap();
+
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    assert_eq!(insert, select);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[test(tokio::test)]
+async fn verify_dkg_shares_succeeds() {
+    let db = testing::storage::new_test_database().await;
+
+    // We start with a pending entry.
+    let insert = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Unverified,
+        ..Faker.fake()
+    };
+
+    // Write the dkg_shares entry.
+    db.write_encrypted_dkg_shares(&insert).await.unwrap();
+
+    // Now to verify the shares.
+    let result = db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "verify failed, when it should succeed");
+
+    // Get the dkg_shares entry.
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    // Assert that the status is now verified and that the block hash and height
+    // are correct, and that the rest of the fields remain the same.
+    let compare = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Verified,
+        ..insert.clone()
+    };
+    assert_eq!(select, compare);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[tokio::test]
+async fn revoke_dkg_shares_succeeds() {
+    let db = testing::storage::new_test_database().await;
+
+    // We start with a pending entry.
+    let insert = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Unverified,
+        ..Faker.fake()
+    };
+
+    // Write the dkg_shares entry.
+    db.write_encrypted_dkg_shares(&insert).await.unwrap();
+
+    // Now try to fail the keys.
+    let result = db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "revoke failed, when it should succeed");
+
+    // Get the dkg_shares entry we just inserted.
+    let select = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    // Assert that the status is now revoked and that the rest of the fields
+    // remain the same.
+    let compare = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Failed,
+        ..insert.clone()
+    };
+    assert_eq!(select, compare);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// This test checks that DKG shares verification status follows a one-way state transition:
+///
+/// 1. Unverified -> Verified: Once shares are verified, they cannot be revoked
+/// 2. Unverified -> Failed: Once shares are marked as failed, they cannot be verified
+///
+/// The test verifies both transition paths:
+/// - Unverified -> Verified -> (attempt revoke, stays Verified)
+/// - Unverified -> Failed -> (attempt verify, stays Failed)
+#[tokio::test]
+async fn verification_status_one_way_street() {
+    let db = testing::storage::new_test_database().await;
+
+    // We start with a pending entry.
+    let insert = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Unverified,
+        ..Faker.fake()
+    };
+
+    // Write the dkg_shares entry.
+    db.write_encrypted_dkg_shares(&insert).await.unwrap();
+
+    // Now try to verify.
+    let result = db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "verify failed, when it should succeed");
+
+    let select1 = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    assert_eq!(select1.dkg_shares_status, DkgSharesStatus::Verified);
+
+    // Now try to revoke. This shouldn't have any effect because we have
+    // verified the shares already.
+    let result = db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(!result, "revoking succeeded, when it should fail");
+
+    // Get the dkg_shares entry we just inserted.
+    let select2 = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    let compare = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Verified,
+        ..insert
+    };
+
+    assert_eq!(select1, select2);
+    assert_eq!(select1, compare);
+
+    // We start with a pending entry.
+    let insert = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Unverified,
+        ..Faker.fake()
+    };
+
+    // Write the dkg_shares entry.
+    db.write_encrypted_dkg_shares(&insert).await.unwrap();
+
+    // Now try to revoke.
+    let result = db.revoke_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(result, "revoke failed, when it should succeed");
+
+    let select1 = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    assert_eq!(select1.dkg_shares_status, DkgSharesStatus::Failed);
+
+    // Now try to verify them. This should be a no-op, since the keys have
+    // already been marked as failed.
+    let result = db.verify_dkg_shares(insert.aggregate_key).await.unwrap();
+    assert!(!result, "verify succeeded, when it should fail");
+
+    // Get the dkg_shares entry we just inserted.
+    let select2 = db
+        .get_encrypted_dkg_shares(insert.aggregate_key)
+        .await
+        .expect("database error")
+        .expect("no shares found");
+
+    let compare = EncryptedDkgShares {
+        dkg_shares_status: DkgSharesStatus::Failed,
+        ..insert
+    };
+
+    assert_eq!(select1, select2);
+    assert_eq!(select1, compare);
+
+    signer::testing::storage::drop_db(db).await;
 }

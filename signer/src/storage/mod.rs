@@ -25,7 +25,6 @@ use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 /// Represents the ability to read data from the signer storage.
@@ -232,7 +231,13 @@ pub trait DbRead {
         &self,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
 
-    /// Returns the number of DKG shares entries in the database.
+    /// Return the most recent DKG shares that have passed verification,
+    /// and return None if no such shares exist.
+    fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
+
+    /// Returns the number of non-failed DKG shares entries in the database.
     fn get_encrypted_dkg_shares_count(&self) -> impl Future<Output = Result<u32, Error>> + Send;
 
     /// Return the latest rotate-keys transaction confirmed by the given `chain-tip`.
@@ -462,12 +467,6 @@ pub trait DbWrite {
         event: &WithdrawalAcceptEvent,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the withdrawal-create event to the database.
-    fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
-
     /// Write the completed deposit event to the database.
     fn write_completed_deposit_event(
         &self,
@@ -497,4 +496,26 @@ pub trait DbWrite {
         &self,
         withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Marks the stored DKG shares for the provided aggregate key as revoked
+    /// and thus should no longer be used.
+    ///
+    /// This can be due to a failed DKG process, the key having been
+    /// compromised, or any other reason that would require the shares for the
+    /// provided aggregate key to not be used in the signing of transactions.
+    fn revoke_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
+
+    /// Marks the stored DKG shares as verified, meaning that the shares have
+    /// been used to sign a transaction input spending a UTXO locked by itself.
+    fn verify_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
 }

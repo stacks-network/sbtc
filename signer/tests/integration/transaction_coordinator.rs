@@ -60,6 +60,7 @@ use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
+use signer::storage::model::DkgSharesStatus;
 use signer::storage::postgres::PgStore;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
@@ -145,7 +146,12 @@ where
 
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
     let (aggregate_key, all_dkg_shares) = signer_set
-        .run_dkg(bitcoin_chain_tip, dkg_txid.into(), rng)
+        .run_dkg(
+            bitcoin_chain_tip,
+            dkg_txid.into(),
+            rng,
+            model::DkgSharesStatus::Verified,
+        )
         .await;
 
     let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
@@ -802,7 +808,7 @@ async fn deploy_smart_contracts_coordinator<F>(
 /// Some of the preconditions for this test to run successfully includes
 /// having bootstrap public keys that align with the [`Keypair`] returned
 /// from the [`testing::wallet::regtest_bootstrap_wallet`] function.
-#[tokio::test]
+#[test(tokio::test)]
 async fn run_dkg_from_scratch() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (signer_wallet, signer_key_pairs): (_, [Keypair; 3]) =
@@ -846,6 +852,9 @@ async fn run_dkg_from_scratch() {
         let mut ctx = TestContext::builder()
             .with_storage(db.clone())
             .with_mocked_clients()
+            .modify_settings(|config| {
+                config.signer.private_key = kp.secret_key().into();
+            })
             .build();
 
         // When the signer binary starts up in main(), it sets the current
@@ -925,18 +934,10 @@ async fn run_dkg_from_scratch() {
         }
     });
 
-    let tx_signer_processes = signers
-        .iter()
-        .map(|(context, _, kp, net)| TxSignerEventLoop {
-            network: net.spawn(),
-            threshold: context.config().signer.bootstrap_signatures_required as u32,
-            context: context.clone(),
-            context_window: 10000,
-            wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
-            signer_private_key: kp.secret_key().into(),
-            rng: rand::rngs::OsRng,
-            dkg_begin_pause: None,
-        });
+    let tx_signer_processes = signers.iter().map(|(context, _, _, net)| {
+        TxSignerEventLoop::new(context.clone(), net.spawn(), OsRng)
+            .expect("failed to create TxSignerEventLoop")
+    });
 
     // We only proceed with the test after all processes have started, and
     // we use this counter to notify us when that happens.
@@ -1086,6 +1087,11 @@ async fn run_subsequent_dkg() {
             })
             .build();
 
+        // 2. Populate each database with the same data, so that they
+        //    have the same view of the canonical bitcoin blockchain.
+        //    This ensures that they participate in DKG.
+        data.write_to(&db).await;
+
         // When the signer binary starts up in main(), it sets the current
         // signer set public keys in the context state using the values in
         // the bootstrap_signing_set configuration parameter. Later, this
@@ -1100,6 +1106,7 @@ async fn run_subsequent_dkg() {
         db.write_encrypted_dkg_shares(&EncryptedDkgShares {
             aggregate_key: aggregate_key_1,
             signer_set_public_keys: signer_set_public_keys.iter().copied().collect(),
+            dkg_shares_status: DkgSharesStatus::Verified,
             ..Faker.fake()
         })
         .await
@@ -1140,11 +1147,6 @@ async fn run_subsequent_dkg() {
         })
         .await;
 
-        // 2. Populate each database with the same data, so that they
-        //    have the same view of the canonical bitcoin blockchain.
-        //    This ensures that they participate in DKG.
-        data.write_to(&db).await;
-
         let network = network.connect(&ctx);
 
         signers.push((ctx, db, kp, network));
@@ -1178,6 +1180,7 @@ async fn run_subsequent_dkg() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         });
 
     // We only proceed with the test after all processes have started, and
@@ -1315,8 +1318,12 @@ async fn sign_bitcoin_transaction() {
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await
@@ -1492,6 +1499,7 @@ async fn sign_bitcoin_transaction() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -1732,8 +1740,12 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await
@@ -1921,6 +1933,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2336,8 +2349,12 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client: EmilyClient = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await
@@ -2499,6 +2516,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -2672,6 +2690,7 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        dkg_shares_status: DkgSharesStatus::Unverified,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
@@ -2806,6 +2825,7 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let dkg_shares = model::EncryptedDkgShares {
         aggregate_key: aggregate_key.clone(),
         script_pubkey: aggregate_key.signers_script_pubkey().into(),
+        dkg_shares_status: DkgSharesStatus::Unverified,
         ..Faker.fake_with_rng(&mut rng)
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
@@ -3100,15 +3120,17 @@ async fn test_conservative_initial_sbtc_limits() {
     // Compute DKG and store it into db
     // =========================================================================
     let mut signer_set = create_signer_set(&signer_key_pairs, signatures_required as u32).0;
-    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng);
+    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng).into();
+    let chain_tip = chain_tip_info.hash.into();
 
-    let (aggregate_key, encrypted_shares) = signer_set
-        .run_dkg(chain_tip_info.hash.into(), dkg_txid.into(), &mut rng)
+    let (aggregate_key, mut encrypted_shares) = signer_set
+        .run_dkg(chain_tip, dkg_txid, &mut rng, DkgSharesStatus::Verified)
         .await;
 
-    for ((_, db, _, _), dkg_shares) in signers.iter_mut().zip(&encrypted_shares) {
+    for ((_, db, _, _), dkg_shares) in signers.iter_mut().zip(encrypted_shares.iter_mut()) {
+        dkg_shares.dkg_shares_status = DkgSharesStatus::Verified;
         signer_set
-            .write_as_rotate_keys_tx(db, &chain_tip_info.hash.into(), dkg_shares, &mut rng)
+            .write_as_rotate_keys_tx(db, &chain_tip, dkg_shares, &mut rng)
             .await;
 
         db.write_encrypted_dkg_shares(&dkg_shares)
@@ -3286,6 +3308,7 @@ async fn test_conservative_initial_sbtc_limits() {
             signer_private_key: kp.secret_key().into(),
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
         let counter = start_count.clone();
         tokio::spawn(async move {

@@ -5,8 +5,11 @@
 //!
 //! For more details, see the [`TxSignerEventLoop`] documentation.
 
+use std::collections::BTreeSet;
+use std::num::NonZeroUsize;
 use std::time::Duration;
 
+use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::validation::BitcoinTxContext;
 use crate::context::Context;
 use crate::context::P2PEvent;
@@ -15,6 +18,7 @@ use crate::context::SignerEvent;
 use crate::context::SignerSignal;
 use crate::context::TxCoordinatorEvent;
 use crate::context::TxSignerEvent;
+use crate::dkg;
 use crate::ecdsa::SignEcdsa as _;
 use crate::error::Error;
 use crate::keys::PrivateKey;
@@ -36,11 +40,14 @@ use crate::stacks::contracts::StacksTx;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::SigHash;
 use crate::storage::DbRead;
 use crate::storage::DbWrite as _;
+use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::SignerStateMachine;
 use crate::wsts_state_machine::StateMachineId;
+use crate::wsts_state_machine::WstsCoordinator;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
@@ -123,13 +130,7 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     pub network: Network,
     /// Private key of the signer for network communication.
     pub signer_private_key: PrivateKey,
-    /// WSTS state machines for active signing rounds and DKG rounds
-    ///
-    /// - For signing rounds, the TxID is the ID of the transaction to be
-    ///   signed.
-    ///
-    /// - For DKG rounds, TxID should be the ID of the transaction that
-    ///   defined the signer set.
+    /// WSTS state machines for active signing and DKG rounds.
     pub wsts_state_machines: LruCache<StateMachineId, SignerStateMachine>,
     /// The threshold for the signer
     pub threshold: u32,
@@ -140,6 +141,10 @@ pub struct TxSignerEventLoop<Context, Network, Rng> {
     /// The time the signer should pause for after receiving a DKG begin message
     /// before relaying to give the other signers time to catch up.
     pub dkg_begin_pause: Option<Duration>,
+    /// WSTS FROST state machines for verifying full and correct participation
+    /// during DKG using the FROST algorithm. This is then used during the
+    /// verification of the Stacks rotate-keys transaction.
+    pub dkg_verification_state_machines: LruCache<StateMachineId, dkg::verification::StateMachine>,
 }
 
 /// This struct represents a signature hash and the public key that locks
@@ -179,6 +184,38 @@ where
     N: network::MessageTransfer,
     Rng: rand::RngCore + rand::CryptoRng,
 {
+    /// Creates a new instance of the [`TxSignerEventLoop`] using the given
+    /// [`Context`] (and its `config()`),
+    /// [`MessageTransfer`](network::MessageTransfer), and random number
+    /// generator.
+    pub fn new(context: C, network: N, rng: Rng) -> Result<Self, Error> {
+        // The _ as usize cast is fine, since we know that
+        // MAX_SIGNER_STATE_MACHINES is less than u32::MAX, and we only support
+        // running this binary on 32 or 64-bit CPUs.
+        let max_state_machines = NonZeroUsize::new(crate::MAX_SIGNER_STATE_MACHINES as usize)
+            .ok_or(Error::TypeConversion)?;
+
+        let config = context.config();
+        let signer_private_key = config.signer.private_key;
+        let context_window = config.signer.context_window;
+        let threshold = config.signer.bootstrap_signatures_required.into();
+        let dkg_begin_pause = config.signer.dkg_begin_pause.map(Duration::from_secs);
+
+        Ok(Self {
+            context,
+            network,
+            signer_private_key,
+            context_window,
+            wsts_state_machines: LruCache::new(max_state_machines),
+            threshold,
+            rng,
+            dkg_begin_pause,
+            dkg_verification_state_machines: LruCache::new(
+                NonZeroUsize::new(5).ok_or(Error::TypeConversion)?,
+            ),
+        })
+    }
+
     /// Run the signer event loop
     #[tracing::instrument(
         skip_all,
@@ -345,14 +382,28 @@ where
     ) -> Result<(), Error> {
         let db = self.context.get_storage_mut();
 
-        let maybe_aggregate_key = self.context.state().current_aggregate_key();
+        let aggregate_key = self
+            .context
+            .state()
+            .current_aggregate_key()
+            .ok_or(Error::NoDkgShares)?;
+
+        let dkg_shares = db.get_encrypted_dkg_shares(aggregate_key).await?;
+        let aggregate_key = match dkg_shares.map(|shares| shares.dkg_shares_status) {
+            Some(DkgSharesStatus::Verified) => aggregate_key,
+            None | Some(DkgSharesStatus::Unverified) | Some(DkgSharesStatus::Failed) => {
+                db.get_latest_verified_dkg_shares()
+                    .await?
+                    .ok_or(Error::NoVerifiedDkgShares)?
+                    .aggregate_key
+            }
+        };
 
         let btc_ctx = BitcoinTxContext {
             chain_tip: chain_tip.block_hash,
             chain_tip_height: chain_tip.block_height,
-            context_window: self.context_window,
             signer_public_key: self.signer_public_key(),
-            aggregate_key: maybe_aggregate_key.ok_or(Error::NoDkgShares)?,
+            aggregate_key,
         };
 
         tracing::debug!("validating bitcoin transaction pre-sign");
@@ -458,6 +509,7 @@ where
             deployer: self.context.config().signer.deployer,
         };
         let ctx = &self.context;
+
         tracing::info!("running validation on stacks transaction");
         match &request.contract_tx {
             StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(contract)) => {
@@ -508,6 +560,7 @@ where
         let MsgChainTipReport { chain_tip, .. } = chain_tip_report;
 
         match &msg.inner {
+            // === DKG BEGIN ===
             WstsNetMessage::DkgBegin(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
 
@@ -519,12 +572,11 @@ where
                     return Ok(());
                 }
 
-                tracing::debug!("processing message");
-
                 // Assert that DKG should be allowed to proceed given the current state
                 // and configuration.
                 assert_allow_dkg_begin(&self.context, chain_tip).await?;
 
+                tracing::debug!("processing message");
                 let signer_public_keys = self.context.state().current_signer_public_keys();
 
                 let state_machine = SignerStateMachine::new(
@@ -532,20 +584,32 @@ where
                     self.threshold,
                     self.signer_private_key,
                 )?;
-                let id = StateMachineId::from(&chain_tip.block_hash);
-                self.wsts_state_machines.put(id, state_machine);
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.wsts_state_machines
+                    .put(state_machine_id, state_machine);
 
+                // If a DKG-begin pause is configured, sleep for a bit before
+                // processing the message and broadcasting our responses.
                 if let Some(pause) = self.dkg_begin_pause {
-                    // Let's give the others some slack
                     tracing::debug!(
                         "sleeping a bit to give the other peers some slack to get dkg-begin"
                     );
                     tokio::time::sleep(pause).await;
                 }
 
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
-                    .await?;
+                // Process the message.
+                self.relay_message(
+                    &state_machine_id,
+                    msg.id,
+                    msg_public_key,
+                    None,
+                    &msg.inner,
+                    &chain_tip.block_hash,
+                )
+                .await?;
             }
+
+            // === DKG PRIVATE BEGIN ===
             WstsNetMessage::DkgPrivateBegin(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
 
@@ -558,33 +622,55 @@ where
                 }
 
                 tracing::debug!("processing message");
-
-                let id = StateMachineId::from(&chain_tip.block_hash);
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
-                    .await?;
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.relay_message(
+                    &state_machine_id,
+                    msg.id,
+                    msg_public_key,
+                    None,
+                    &msg.inner,
+                    &chain_tip.block_hash,
+                )
+                .await?;
             }
+
+            // === DKG PUBLIC SHARES ===
             WstsNetMessage::DkgPublicShares(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
                 span.record(WSTS_SIGNER_ID, request.signer_id);
 
                 tracing::debug!("processing message");
-
-                let id = StateMachineId::from(&chain_tip.block_hash);
-                self.validate_sender(&id, request.signer_id, &msg_public_key)?;
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
-                    .await?;
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.relay_message(
+                    &state_machine_id,
+                    msg.id,
+                    msg_public_key,
+                    Some(request.signer_id),
+                    &msg.inner,
+                    &chain_tip.block_hash,
+                )
+                .await?;
             }
+
+            // === DKG PRIVATE SHARES ===
             WstsNetMessage::DkgPrivateShares(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
                 span.record(WSTS_SIGNER_ID, request.signer_id);
 
                 tracing::debug!("processing message");
-
-                let id = StateMachineId::from(&chain_tip.block_hash);
-                self.validate_sender(&id, request.signer_id, &msg_public_key)?;
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
-                    .await?;
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.relay_message(
+                    &state_machine_id,
+                    msg.id,
+                    msg_public_key,
+                    Some(request.signer_id),
+                    &msg.inner,
+                    &chain_tip.block_hash,
+                )
+                .await?;
             }
+
+            // === DKG END-BEGIN ===
             WstsNetMessage::DkgEndBegin(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
 
@@ -597,10 +683,19 @@ where
                 }
 
                 tracing::debug!("processing message");
-                let id = StateMachineId::from(&chain_tip.block_hash);
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
-                    .await?;
+                let state_machine_id = StateMachineId::Dkg(*chain_tip);
+                self.relay_message(
+                    &state_machine_id,
+                    msg.id,
+                    msg_public_key,
+                    None,
+                    &msg.inner,
+                    &chain_tip.block_hash,
+                )
+                .await?;
             }
+
+            // === DKG END ===
             WstsNetMessage::DkgEnd(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
                 span.record(WSTS_SIGNER_ID, request.signer_id);
@@ -609,15 +704,20 @@ where
                     DkgStatus::Success => {
                         tracing::info!(
                             wsts_dkg_status = "success",
-                            "signer reports successful dkg round"
+                            "signer reports successful DKG round"
                         );
                     }
-                    DkgStatus::Failure(fail) => {
-                        // TODO(#414): handle DKG failure
-                        tracing::warn!(wsts_dkg_status = "failure", reason = ?fail, "signer reports failed dkg round");
+                    DkgStatus::Failure(reason) => {
+                        tracing::warn!(
+                            wsts_dkg_status = "failure",
+                            ?reason,
+                            "signer reports failed DKG round"
+                        );
                     }
                 }
             }
+
+            // === NONCE REQUEST ===
             WstsNetMessage::NonceRequest(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
                 span.record(WSTS_SIGN_ID, request.sign_id);
@@ -632,42 +732,96 @@ where
                 }
 
                 tracing::debug!(signature_type = ?request.signature_type, "processing message");
-
                 let db = self.context.get_storage();
-                let accepted_sighash =
-                    Self::validate_bitcoin_sign_request(&db, &request.message).await;
 
-                let validation_status = match &accepted_sighash {
-                    Ok(_) => "success",
-                    Err(Error::SigHashConversion(_)) => "improper-sighash",
-                    Err(Error::UnknownSigHash(_)) => "unknown-sighash",
-                    Err(Error::InvalidSigHash(_)) => "invalid-sighash",
-                    Err(_) => "unexpected-failure",
+                let (state_machine_id, aggregate_key) = match msg.id {
+                    // Nonce requests aren't used by DKG; we shouldn't be here.
+                    WstsMessageId::Dkg(_) => {
+                        tracing::warn!("received message is not allowed in the current context");
+                        return Ok(());
+                    }
+
+                    // This is a Bitcoin transaction signing round. The data
+                    // to sign is expected to be an input sighash we know.
+                    WstsMessageId::Sweep(txid) => {
+                        span.record("txid", txid.to_string());
+
+                        let accepted_sighash =
+                            Self::validate_bitcoin_sign_request(&db, &request.message).await;
+
+                        let validation_status = match &accepted_sighash {
+                            Ok(_) => "success",
+                            Err(Error::SigHashConversion(_)) => "improper-sighash",
+                            Err(Error::UnknownSigHash(_)) => "unknown-sighash",
+                            Err(Error::InvalidSigHash(_)) => "invalid-sighash",
+                            Err(_) => "unexpected-failure",
+                        };
+
+                        metrics::counter!(
+                            Metrics::SignRequestsTotal,
+                            "blockchain" => BITCOIN_BLOCKCHAIN,
+                            "kind" => "sweep",
+                            "status" => validation_status,
+                        )
+                        .increment(1);
+
+                        let accepted_sighash = accepted_sighash?;
+                        let id = StateMachineId::BitcoinSign(accepted_sighash.sighash);
+
+                        (id, accepted_sighash.public_key)
+                    }
+
+                    // This is a DKG verification signing round. The data
+                    // to sign is expected to be a well-known mock tx sighash.
+                    WstsMessageId::DkgVerification(key) => {
+                        let new_key: PublicKeyXOnly = key.into();
+
+                        // Validate the received message.
+                        Self::validate_dkg_verification_message(
+                            &db,
+                            &new_key,
+                            Some(&request.message),
+                            self.context.config().signer.dkg_verification_window,
+                            &chain_tip_report.chain_tip,
+                        )
+                        .await?;
+
+                        // Ensure that we have a DKG verification state machine
+                        // initialized.
+                        let state_machine_id = self
+                            .ensure_dkg_verification_state_machine(new_key, chain_tip)
+                            .await?;
+
+                        (state_machine_id, new_key)
+                    }
                 };
 
-                metrics::counter!(
-                    Metrics::SignRequestsTotal,
-                    "blockchain" => BITCOIN_BLOCKCHAIN,
-                    "kind" => "sweep",
-                    "status" => validation_status,
-                )
-                .increment(1);
-
-                let accepted_sighash = accepted_sighash?;
-                let id = accepted_sighash.sighash.into();
-
+                // Create a new `SignerStateMachine`.
                 let state_machine = SignerStateMachine::load(
                     &db,
-                    accepted_sighash.public_key,
+                    aggregate_key,
                     self.threshold,
                     self.signer_private_key,
                 )
                 .await?;
 
-                self.wsts_state_machines.put(id, state_machine);
-                self.relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
-                    .await?;
+                // Put the state machine into the cache.
+                self.wsts_state_machines
+                    .put(state_machine_id, state_machine);
+
+                // Process the message.
+                self.relay_message(
+                    &state_machine_id,
+                    msg.id,
+                    msg_public_key,
+                    None,
+                    &msg.inner,
+                    &chain_tip.block_hash,
+                )
+                .await?;
             }
+
+            // === SIGNATURE-SHARE REQUEST ===
             WstsNetMessage::SignatureShareRequest(request) => {
                 span.record(WSTS_DKG_ID, request.dkg_id);
                 span.record(WSTS_SIGN_ID, request.sign_id);
@@ -682,20 +836,250 @@ where
                 }
 
                 tracing::debug!(signature_type = ?request.signature_type, "processing message");
-
                 let db = self.context.get_storage();
-                let accepted_sighash =
-                    Self::validate_bitcoin_sign_request(&db, &request.message).await?;
+                let mut should_pop_state_machine = true;
 
-                let id = accepted_sighash.sighash.into();
+                let state_machine_id = match msg.id {
+                    // Signature share requests aren't used by DKG; we shouldn't
+                    // be here.
+                    WstsMessageId::Dkg(_) => {
+                        tracing::warn!("received message is not allowed in the current context");
+                        return Ok(());
+                    }
+
+                    // This is a Bitcoin transaction signing round. The data
+                    // to sign is expected to be an input sighash we know.
+                    WstsMessageId::Sweep(txid) => {
+                        span.record("txid", txid.to_string());
+
+                        // Validate the sighash and upon success, convert it to
+                        // a state machine ID.
+                        Self::validate_bitcoin_sign_request(&db, &request.message)
+                            .await?
+                            .sighash
+                            .into()
+                    }
+
+                    // This is a DKG verification signing round. The data
+                    // to sign is expected to be a well-known mock tx sighash.
+                    WstsMessageId::DkgVerification(key) => {
+                        let new_key: PublicKeyXOnly = key.into();
+
+                        // Validate the received message.
+                        Self::validate_dkg_verification_message(
+                            &db,
+                            &new_key,
+                            Some(&request.message),
+                            self.context.config().signer.dkg_verification_window,
+                            &chain_tip_report.chain_tip,
+                        )
+                        .await?;
+
+                        // If we're receiving a `SignatureShareRequest` message, then
+                        // we should have a DKG verification state machine as we must
+                        // have processed the `NonceRequest` message.
+                        let state_machine_id = StateMachineId::DkgVerification(new_key, *chain_tip);
+                        self.assert_dkg_verification_state_machine_state(&state_machine_id)?;
+
+                        // We keep DKG verification-related state machines around
+                        // so that `verify_sender()` works. This is a bit of a hack.
+                        should_pop_state_machine = false;
+                        state_machine_id
+                    }
+                };
+
+                // Process the message in the signer state machine.
                 let response = self
-                    .relay_message(id, msg.id, &msg.inner, &chain_tip.block_hash)
+                    .relay_message(
+                        &state_machine_id,
+                        msg.id,
+                        msg_public_key,
+                        None,
+                        &msg.inner,
+                        &chain_tip.block_hash,
+                    )
                     .await;
 
-                self.wsts_state_machines.pop(&id);
+                // If the state machine is not a DKG verification state machine,
+                // then we should pop it from the cache already here since we
+                // are not interested in `SignatureShareResponse` messages.
+                // TODO: We keep DKG verification-related state machines around
+                // so that `verify_sender()` works. This is a bit of a hack.
+                if should_pop_state_machine {
+                    self.wsts_state_machines.pop(&state_machine_id);
+                }
+
                 response?;
             }
-            WstsNetMessage::NonceResponse(_) | WstsNetMessage::SignatureShareResponse(_) => {}
+
+            // === NONCE RESPONSE ===
+            WstsNetMessage::NonceResponse(request) => {
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
+
+                // We only handle DKG verification-related messages here.
+                let new_key = match msg.id {
+                    WstsMessageId::DkgVerification(key) => key.into(),
+                    WstsMessageId::Dkg(_) => return Err(Error::InvalidSigningOperation),
+                    WstsMessageId::Sweep(_) => return Ok(()),
+                };
+
+                tracing::debug!("processing message");
+
+                // Validate the received message.
+                Self::validate_dkg_verification_message(
+                    &self.context.get_storage(),
+                    &new_key,
+                    Some(&request.message),
+                    self.context.config().signer.dkg_verification_window,
+                    &chain_tip_report.chain_tip,
+                )
+                .await?;
+
+                // Ensure that we have a DKG verification state machine. This
+                // implicitly asserts the state machine is in a valid state for
+                // use if already existing. We do this here because it's
+                // possible that we receive a `NonceResponse` message before a
+                // `NonceRequest` message due to the nature of the internet.
+                let state_machine_id = self
+                    .ensure_dkg_verification_state_machine(new_key, chain_tip)
+                    .await?;
+
+                // Process the message. We do not use `relay_message()` here
+                // because we do not need to respond; we only want to process
+                // it in our DKG verification state machine for tracking purposes.
+                self.process_dkg_verification_message(
+                    state_machine_id,
+                    msg_public_key,
+                    Some(request.signer_id),
+                    &msg.inner,
+                )
+                .await?;
+            }
+
+            // === SIGNATURE-SHARE RESPONSE ===
+            WstsNetMessage::SignatureShareResponse(request) => {
+                span.record(WSTS_DKG_ID, request.dkg_id);
+                span.record(WSTS_SIGNER_ID, request.signer_id);
+                span.record(WSTS_SIGN_ID, request.sign_id);
+                span.record(WSTS_SIGN_ITER_ID, request.sign_iter_id);
+
+                // We only handle DKG verification-related messages here.
+                let new_key = match msg.id {
+                    WstsMessageId::DkgVerification(key) => key.into(),
+                    WstsMessageId::Dkg(_) => return Err(Error::InvalidSigningOperation),
+                    WstsMessageId::Sweep(_) => return Ok(()),
+                };
+
+                tracing::debug!("processing message");
+
+                // Validate the received message.
+                Self::validate_dkg_verification_message(
+                    &self.context.get_storage(),
+                    &new_key,
+                    None,
+                    self.context.config().signer.dkg_verification_window,
+                    &chain_tip_report.chain_tip,
+                )
+                .await?;
+
+                // If we're receiving a `SignatureShareResponse` message, then
+                // we should have a DKG verification state machine as we must
+                // have processed the `NonceRequest` message.
+                let state_machine_id = StateMachineId::DkgVerification(new_key, *chain_tip);
+
+                // Ensure that we have a DKG verification state machine and that
+                // it is in a valid state for use.
+                self.assert_dkg_verification_state_machine_state(&state_machine_id)?;
+
+                // Process the message. We do not use `relay_message()` here
+                // because we do not need to respond; we only want to process
+                // it in our DKG verification state machine for tracking purposes.
+                self.process_dkg_verification_message(
+                    state_machine_id,
+                    msg_public_key,
+                    Some(request.signer_id),
+                    &msg.inner,
+                )
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate a DKG verification message, asserting that:
+    /// - The new key provided by the sender matches our view of the latest
+    ///   aggregate key (not the _current_ key, but the key which we intend to
+    ///   rotate to).
+    /// - Ensure that the provided key shares are not in a
+    ///   [`DkgSharesStatus::Failed`] state.
+    /// - Ensure that the message is within the allowed verification window.
+    /// - If a message is provided, ensure that it matches the expected Bitcoin
+    ///   sighash of our well-known mock transaction.
+    pub async fn validate_dkg_verification_message<DB>(
+        storage: &DB,
+        new_key: &PublicKeyXOnly,
+        message: Option<&[u8]>,
+        dkg_verification_window: u16,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+    ) -> Result<(), Error>
+    where
+        DB: DbRead,
+    {
+        let latest_shares = storage
+            .get_latest_encrypted_dkg_shares()
+            .await?
+            .ok_or(Error::NoDkgShares)?;
+
+        let latest_key = latest_shares.aggregate_key.into();
+
+        // Ensure that the new key matches the current aggregate key.
+        if *new_key != latest_key {
+            tracing::warn!(
+                latest_aggregate_key = %latest_key,
+                new_aggregate_key = %new_key,
+                "🔐 aggregate key for our latest DKG shares entry does not match the aggregate key requested for DKG verification"
+            );
+            return Err(Error::AggregateKeyMismatch {
+                actual: Box::new(latest_key),
+                expected: Box::new(*new_key),
+            });
+        }
+
+        // If the DKG shares are in a failed state then we do not allow
+        // re-validation.
+        if latest_shares.dkg_shares_status == DkgSharesStatus::Failed {
+            tracing::warn!("🔐 DKG shares are in a failed state and may not be re-validated");
+            return Err(Error::DkgVerificationFailed(latest_key));
+        }
+
+        // Ensure we are within the verification window
+        let max_verification_height = latest_shares
+            .started_at_bitcoin_block_height
+            .saturating_add(dkg_verification_window as u64);
+
+        if bitcoin_chain_tip.block_height > max_verification_height {
+            tracing::warn!("🔐 DKG verification outside the allowed window");
+            return Err(Error::DkgVerificationWindowElapsed(
+                latest_shares.aggregate_key,
+            ));
+        }
+
+        // If we don't have a message (i.e. from `SignatureShareResponse`) then
+        // we can exit early.
+        let Some(message) = message else {
+            return Ok(());
+        };
+
+        // Ensure that the received message matches the bitcoin sighash we
+        // expect to sign.
+        let tap_sighash = UnsignedMockTransaction::new(new_key.into()).compute_sighash()?;
+        if tap_sighash.as_byte_array() != message {
+            tracing::warn!(data_len = %message.len(), "🔐 sighash mismatch for DKG verification signing");
+            return Err(Error::InvalidSigHash(tap_sighash.into()));
         }
 
         Ok(())
@@ -705,13 +1089,13 @@ where
     /// matches the signer in the corresponding state machine.
     fn validate_sender(
         &mut self,
-        id: &StateMachineId,
+        state_machine_id: &StateMachineId,
         signer_id: u32,
         sender_public_key: &PublicKey,
     ) -> Result<(), Error> {
-        let public_keys = match self.wsts_state_machines.get(id) {
+        let public_keys = match self.wsts_state_machines.get(state_machine_id) {
             Some(state_machine) => &state_machine.public_keys,
-            None => return Err(Error::MissingStateMachine),
+            None => return Err(Error::MissingStateMachine(*state_machine_id)),
         };
 
         let wsts_public_key = public_keys
@@ -746,16 +1130,23 @@ where
         }
     }
 
+    /// Persists the encrypted DKG shares stored in the state machine identified
+    /// by the given state machine id.
     #[tracing::instrument(skip(self))]
-    async fn store_dkg_shares(&mut self, id: &StateMachineId) -> Result<(), Error> {
+    async fn store_dkg_shares(&mut self, state_machine_id: &StateMachineId) -> Result<(), Error> {
         let state_machine = self
             .wsts_state_machines
-            .get(id)
-            .ok_or(Error::MissingStateMachine)?;
+            .get(state_machine_id)
+            .ok_or_else(|| Error::MissingStateMachine(*state_machine_id))?;
 
-        let encrypted_dkg_shares = state_machine.get_encrypted_dkg_shares(&mut self.rng)?;
+        let StateMachineId::Dkg(started_at) = state_machine_id else {
+            return Err(Error::UnexpectedStateMachineId(*state_machine_id));
+        };
 
-        tracing::debug!("storing DKG shares");
+        let encrypted_dkg_shares =
+            state_machine.get_encrypted_dkg_shares(&mut self.rng, started_at)?;
+
+        tracing::debug!("🔐 storing DKG shares");
         self.context
             .get_storage_mut()
             .write_encrypted_dkg_shares(&encrypted_dkg_shares)
@@ -764,39 +1155,318 @@ where
         Ok(())
     }
 
+    /// Creates a new DKG verification state machine for the given aggregate
+    /// key.
+    async fn create_dkg_verification_state_machine<S>(
+        storage: &S,
+        aggregate_key: PublicKeyXOnly,
+        signer_private_key: PrivateKey,
+    ) -> Result<dkg::verification::StateMachine, Error>
+    where
+        S: DbRead + Send + Sync,
+    {
+        let dkg_shares = storage
+            .get_encrypted_dkg_shares(aggregate_key)
+            .await?
+            .ok_or_else(|| {
+                tracing::warn!("🔐 no DKG shares found for requested aggregate key");
+                Error::MissingDkgShares(aggregate_key)
+            })?;
+
+        // Collect the public keys of the signers into a BTreeSet. All signers
+        // do this to ensure that the same set of public keys produce the same
+        // de-duplicated and ordered list of public keys.
+        let signing_set: BTreeSet<PublicKey> = dkg_shares
+            .signer_set_public_keys
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+
+        tracing::debug!(
+            num_signers = signing_set.len(),
+            %aggregate_key,
+            threshold = %dkg_shares.signature_share_threshold,
+            "🔐 creating now FROST coordinator to track DKG verification signing round"
+        );
+
+        // Create the WSTS FROST coordinator.
+        let coordinator = FrostCoordinator::load(
+            storage,
+            aggregate_key,
+            signing_set,
+            dkg_shares.signature_share_threshold,
+            signer_private_key,
+        )
+        .await?;
+
+        // Create the DKG verification state machine using the above coordinator.
+        let state_machine = dkg::verification::StateMachine::new(coordinator, aggregate_key, None)
+            .map_err(Error::DkgVerification)?;
+
+        Ok(state_machine)
+    }
+
+    /// Ensures that a DKG verification state machine exists for the given
+    /// aggregate key and bitcoin chain tip block hash. If the state machine
+    /// exists already then the id is simply returned back; otherwise, a new
+    /// state machine is created and stored in this instance.
+    ///
+    /// The `aggregate_key` provided here should be the _new_ aggregate key
+    /// which is being verified.
+    ///
+    /// Returns an error if the state machine exists and is in an invalid state
+    /// for use via [`Self::assert_dkg_verification_state_machine_state`].
+    async fn ensure_dkg_verification_state_machine(
+        &mut self,
+        aggregate_key: PublicKeyXOnly,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+    ) -> Result<StateMachineId, Error> {
+        let state_machine_id = StateMachineId::DkgVerification(aggregate_key, *bitcoin_chain_tip);
+
+        if !self
+            .dkg_verification_state_machines
+            .contains(&state_machine_id)
+        {
+            let storage = self.context.get_storage();
+            let coordinator = Self::create_dkg_verification_state_machine(
+                &storage,
+                aggregate_key,
+                self.signer_private_key,
+            )
+            .await?;
+            self.dkg_verification_state_machines
+                .put(state_machine_id, coordinator);
+        } else {
+            self.assert_dkg_verification_state_machine_state(&state_machine_id)?;
+        }
+
+        Ok(state_machine_id)
+    }
+
+    /// Asserts that the DKG state machine is in a valid state for use. Returns
+    /// an error if:
+    /// - the state machine id is not a DKG verification state machine id,
+    /// - the state machine does not exist, or
+    /// - the state machine is in an end-state.
+    fn assert_dkg_verification_state_machine_state(
+        &mut self,
+        state_machine_id: &StateMachineId,
+    ) -> Result<(), Error> {
+        // We only support DKG verification state machines here.
+        let StateMachineId::DkgVerification(aggregate_key, _) = state_machine_id else {
+            tracing::warn!(%state_machine_id, "🔐 unexpected state machine id for DKG verification signing round");
+            return Err(Error::UnexpectedStateMachineId(*state_machine_id));
+        };
+
+        // Get our state machine, returning an error if it doesn't exist (we
+        // just created it if needed, so this should never happen).
+        let state_machine = self
+            .dkg_verification_state_machines
+            .get_mut(state_machine_id)
+            .ok_or_else(|| Error::MissingStateMachine(*state_machine_id))?;
+
+        // Determine if the state machine is in an end-state.
+        let is_end_state = match state_machine.state() {
+            dkg::verification::State::Success(_) => {
+                tracing::warn!("🔐 the DKG verification signing round already completed for this aggregate key");
+                true
+            }
+            dkg::verification::State::Error => {
+                tracing::warn!("🔐 the DKG verification state machine for this aggregate key is in a failed state and may not be used");
+                true
+            }
+            dkg::verification::State::Expired => {
+                tracing::warn!("🔐 the DKG verification state machine for this aggregate key is expired and the state machine may not be used");
+                true
+            }
+            dkg::verification::State::Idle | dkg::verification::State::Signing => false,
+        };
+
+        // If the state machine did already exist and is in an end-state, then
+        // we remove the `SignerStateMachine` and return an error. We leave the
+        // DKG verification state machine in place so that we can perform this
+        // check again for new messages within the same Bitcoin
+        // block/coordinator tenure.
+        if is_end_state {
+            self.wsts_state_machines.pop(state_machine_id);
+            return Err(Error::DkgVerificationEnded(
+                *aggregate_key,
+                Box::new(state_machine.state().clone()),
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Processes a DKG verification message.
+    #[tracing::instrument(skip_all)]
+    async fn process_dkg_verification_message(
+        &mut self,
+        state_machine_id: StateMachineId,
+        sender: PublicKey,
+        signer_id: Option<u32>,
+        msg: &WstsNetMessage,
+    ) -> Result<(), Error> {
+        // We should only be handling messages for the DKG verification state
+        // machine. We'll grab the aggregate key from the id as well.
+        let aggregate_key = match state_machine_id {
+            StateMachineId::DkgVerification(aggregate_key, _) => aggregate_key,
+            _ => {
+                tracing::warn!("🔐 unexpected state machine id for DKG verification signing round");
+                return Err(Error::UnexpectedStateMachineId(state_machine_id));
+            }
+        };
+
+        let state_machine = self
+            .dkg_verification_state_machines
+            .get_mut(&state_machine_id);
+        let Some(state_machine) = state_machine else {
+            tracing::warn!("🔐 missing FROST coordinator for DKG verification");
+            return Err(Error::MissingStateMachine(state_machine_id));
+        };
+
+        // Validate that the sender is a valid member of the signing set and
+        // has the correct id according to the state machine/coordinator.
+        if let Some(signer_id) = signer_id {
+            state_machine
+                .validate_sender(signer_id, sender)
+                .map_err(Error::DkgVerification)?;
+        }
+
+        tracing::trace!(?msg, "🔐 processing FROST coordinator message");
+
+        // Process the message in the DKG verification state machine.
+        state_machine.process_message(sender, msg.clone())
+            .inspect_err(|error| tracing::warn!(?error, %sender, "🔐 failed to process FROST coordinator message"))
+            .map_err(Error::DkgVerification)?;
+
+        // Check if the state machine is in an end-state and handle it
+        // accordingly.
+        match state_machine.state() {
+            dkg::verification::State::Success(signature) => {
+                tracing::info!("🔐 successfully completed DKG verification signing round");
+                let signature = *signature;
+                let db = self.context.get_storage_mut();
+
+                // We're at an end-state, so remove the state machines.
+                self.wsts_state_machines.pop(&state_machine_id);
+                self.dkg_verification_state_machines.pop(&state_machine_id);
+
+                // Perform verification of the signature.
+                tracing::info!("🔐 verifying that the signature can be used to spend a UTXO locked by the new aggregate key");
+                let mock_tx = UnsignedMockTransaction::new(aggregate_key.into());
+
+                match mock_tx.verify_signature(&signature) {
+                    Ok(()) => {
+                        tracing::info!("🔐 signature verification successful");
+                        db.verify_dkg_shares(aggregate_key).await?;
+                        tracing::info!("🔐 DKG shares entry has been marked as verified");
+                    }
+                    Err(error) => {
+                        tracing::warn!(%error, "🔐 signature verification failed");
+                        db.revoke_dkg_shares(aggregate_key).await?;
+                        tracing::info!("🔐 DKG shares entry has been marked as failed");
+                    }
+                }
+            }
+            dkg::verification::State::Error | dkg::verification::State::Expired => {
+                tracing::warn!(
+                    state = ?state_machine.state(),
+                    "🔐 failed to complete DKG verification signing round"
+                );
+
+                // The state machine is now invalidated, so remove both of our
+                // state machines and return an error.
+                self.dkg_verification_state_machines.pop(&state_machine_id);
+                self.wsts_state_machines.pop(&state_machine_id);
+
+                return Err(Error::DkgVerificationFailed(aggregate_key));
+            }
+            dkg::verification::State::Idle | dkg::verification::State::Signing => {}
+        }
+
+        Ok(())
+    }
+
     #[tracing::instrument(skip_all)]
     async fn relay_message(
         &mut self,
-        state_machine_id: StateMachineId,
+        state_machine_id: &StateMachineId,
         wsts_id: WstsMessageId,
+        sender: PublicKey,
+        signer_id: Option<u32>,
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
-        let Some(state_machine) = self.wsts_state_machines.get_mut(&state_machine_id) else {
-            tracing::warn!("missing signing round");
-            return Err(Error::MissingStateMachine);
-        };
-
-        let outbound_messages = state_machine.process(msg).map_err(Error::Wsts)?;
-
-        for outbound_message in outbound_messages.iter() {
-            // The WSTS state machine assume we read our own messages
-            state_machine
-                .process(outbound_message)
-                .map_err(Error::Wsts)?;
+        // Validate that the sender is a valid member of the signing set and
+        // has the correct id according to the signer state machine.
+        if let Some(signer_id) = signer_id {
+            self.validate_sender(state_machine_id, signer_id, &sender)?;
         }
 
+        // Process the message in the WSTS signer state machine.
+        let outbound_messages = match self.wsts_state_machines.get_mut(state_machine_id) {
+            Some(state_machine) => state_machine.process(msg).map_err(Error::Wsts)?,
+            None => {
+                tracing::warn!("missing signing round");
+                return Err(Error::MissingStateMachine(*state_machine_id));
+            }
+        };
+
+        // Check and store if this is a DKG verification-related message.
+        let is_dkg_verification = matches!(
+            state_machine_id,
+            StateMachineId::DkgVerification(_, chain_tip) if chain_tip.block_hash == *bitcoin_chain_tip
+        );
+
+        // If this is a DKG verification then we need to process the message in
+        // the frost coordinator as well to be able to properly follow the
+        // signing round (which is otherwise handled by the signer state
+        // machine). We pass `None` as the `signer_id` because we have just
+        // validated the sender above.
+        if is_dkg_verification {
+            self.process_dkg_verification_message(*state_machine_id, sender, None, msg)
+                .await?;
+        }
+
+        // The WSTS state machines assume we read our own messages, so if the
+        // state machine emitted any outbound messages then we need to process
+        // them manually. We ignore any extra messages emitted from these calls.
+        for outbound_message in outbound_messages.iter() {
+            // Process in the signer state machine.
+            self.wsts_state_machines
+                .get_mut(state_machine_id)
+                .ok_or_else(|| Error::MissingStateMachine(*state_machine_id))?
+                .process(outbound_message)
+                .map_err(Error::Wsts)?;
+
+            // If this is a DKG verification then we need to process the message
+            // in the FROST state machine as well for it to properly follow
+            // the signing round.
+            if is_dkg_verification {
+                self.process_dkg_verification_message(
+                    *state_machine_id,
+                    sender,
+                    signer_id,
+                    outbound_message,
+                )
+                .await?;
+            }
+        }
+
+        // If the state machine emitted any outbound events, we need to send
+        // them to our peers as well.
         for outbound in outbound_messages {
             // We cannot store DKG shares until the signer state machine
             // emits a DkgEnd message, because that is the only way to know
             // whether it has truly received all relevant messages from its
             // peers.
             if let WstsNetMessage::DkgEnd(DkgEnd { status: DkgStatus::Success, .. }) = outbound {
-                self.store_dkg_shares(&state_machine_id).await?;
-                self.wsts_state_machines.pop(&state_machine_id);
+                self.store_dkg_shares(state_machine_id).await?;
+                self.wsts_state_machines.pop(state_machine_id);
             }
-            let msg = message::WstsMessage { id: wsts_id, inner: outbound };
 
+            // Publish the message to the network.
+            let msg = message::WstsMessage { id: wsts_id, inner: outbound };
             self.send_message(msg, bitcoin_chain_tip).await?;
         }
 
@@ -830,7 +1500,7 @@ where
 
 /// Asserts whether a `DkgBegin` WSTS message should be allowed to proceed
 /// based on the current state of the signer and the DKG configuration.
-async fn assert_allow_dkg_begin(
+pub async fn assert_allow_dkg_begin(
     context: &impl Context,
     bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<(), Error> {
@@ -1018,10 +1688,10 @@ mod tests {
         // Write `dkg_shares` entries for the `current` number of rounds, simulating
         // the signer having participated in that many successful DKG rounds.
         for _ in 0..dkg_rounds_current {
-            storage
-                .write_encrypted_dkg_shares(&Faker.fake())
-                .await
-                .unwrap();
+            let mut shares: model::EncryptedDkgShares = Faker.fake();
+            shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+            storage.write_encrypted_dkg_shares(&shares).await.unwrap();
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
@@ -1062,10 +1732,10 @@ mod tests {
 
         // Write 1 DKG shares entry to the database, simulating that DKG has
         // successfully run once.
-        storage
-            .write_encrypted_dkg_shares(&Faker.fake())
-            .await
-            .unwrap();
+        let mut shares: model::EncryptedDkgShares = Faker.fake();
+        shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+        storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
         // Dummy chain tip hash which will be used to fetch the block height.
         let bitcoin_chain_tip = model::BitcoinBlockRef {
@@ -1093,6 +1763,7 @@ mod tests {
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1131,10 +1802,10 @@ mod tests {
 
         // Write 1 DKG shares entry to the database, simulating that DKG has
         // successfully run once.
-        storage
-            .write_encrypted_dkg_shares(&Faker.fake())
-            .await
-            .unwrap();
+        let mut shares: model::EncryptedDkgShares = Faker.fake();
+        shares.dkg_shares_status = model::DkgSharesStatus::Verified;
+
+        storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
         // Dummy chain tip hash which will be used to fetch the block height.
         let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
@@ -1159,6 +1830,7 @@ mod tests {
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         // Create a DkgBegin message to be handled by the signer.
@@ -1243,6 +1915,7 @@ mod tests {
             threshold: 1,
             rng: rand::rngs::OsRng,
             dkg_begin_pause: None,
+            dkg_verification_state_machines: LruCache::new(NonZeroUsize::new(5).unwrap()),
         };
 
         let msg = message::WstsMessage {

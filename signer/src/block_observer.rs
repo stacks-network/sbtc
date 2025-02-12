@@ -38,6 +38,7 @@ use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::EncryptedDkgShares;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -157,6 +158,11 @@ where
 
                     if let Err(error) = self.process_stacks_blocks().await {
                         tracing::warn!(%error, "could not process stacks blocks");
+                    }
+
+                    if let Err(error) = self.check_pending_dkg_shares(block_hash).await {
+                        tracing::warn!(%error, "could not check pending dkg shares");
+                        continue;
                     }
 
                     tracing::debug!("updating the signer state");
@@ -369,7 +375,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// Process all recent stacks blocks.
     #[tracing::instrument(skip_all)]
     async fn process_stacks_blocks(&self) -> Result<(), Error> {
-        tracing::info!("processing bitcoin block");
+        tracing::info!("processing stacks block");
         let stacks_client = self.context.get_stacks_client();
         let tenure_info = stacks_client.get_tenure_info().await?;
 
@@ -628,6 +634,51 @@ impl<C: Context, B> BlockObserver<C, B> {
         tracing::info!("updating the signer state with the current signer set");
         self.set_signer_set_and_aggregate_key(chain_tip).await
     }
+
+    /// Checks if the latest dkg share is pending and is no longer valid
+    async fn check_pending_dkg_shares(&self, chain_tip: BlockHash) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
+
+        let last_dkg = db.get_latest_encrypted_dkg_shares().await?;
+
+        if let Some(ref shares) = last_dkg {
+            tracing::info!(
+                aggregate_key = %shares.aggregate_key,
+                status = ?shares.dkg_shares_status,
+                "checking latest DKG shares"
+            );
+        }
+
+        let Some(
+            last_dkg @ EncryptedDkgShares {
+                dkg_shares_status: model::DkgSharesStatus::Unverified,
+                ..
+            },
+        ) = last_dkg
+        else {
+            return Ok(());
+        };
+
+        let chain_tip = db
+            .get_bitcoin_block(&chain_tip.into())
+            .await?
+            .ok_or(Error::NoChainTip)?;
+        let verification_window = self.context.config().signer.dkg_verification_window;
+
+        let max_verification_height = last_dkg
+            .started_at_bitcoin_block_height
+            .saturating_add(verification_window as u64);
+
+        if max_verification_height < chain_tip.block_height {
+            tracing::info!(
+                aggregate_key = %last_dkg.aggregate_key,
+                "latest DKG shares are unverified and the verification window expired, marking them as failed"
+            );
+            db.revoke_dkg_shares(last_dkg.aggregate_key).await?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Return the signing set that can make sBTC related contract calls along
@@ -694,6 +745,7 @@ mod tests {
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
+    use crate::storage::model::DkgSharesStatus;
     use crate::testing::block_observer::TestHarness;
     use crate::testing::context::*;
 
@@ -996,6 +1048,9 @@ mod tests {
             public_shares: Vec::new(),
             signer_set_public_keys: vec![aggregate_key],
             signature_share_threshold: 1,
+            dkg_shares_status: DkgSharesStatus::Unverified,
+            started_at_bitcoin_block_hash: block_hash.into(),
+            started_at_bitcoin_block_height: 1,
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

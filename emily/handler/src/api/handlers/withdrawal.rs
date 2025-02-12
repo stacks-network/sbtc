@@ -64,7 +64,7 @@ pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp
     params(
         ("status" = Status, Query, description = "the status to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "withdrawal",
     responses(
