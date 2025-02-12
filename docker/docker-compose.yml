@@ -468,7 +468,7 @@ services:
       - default
 
   stacks-api:
-    image: blockstack/stacks-blockchain-api:8.5.0
+    image: blockstack/stacks-blockchain-api:8.6.0
     container_name: stacks-api
     stop_grace_period: 5s
     ports:
@@ -498,7 +498,7 @@ services:
       - default
 
   stacks-explorer:
-    image: hirosystems/explorer:1.245.0
+    image: hirosystems/explorer:1.248.0
     container_name: stacks-explorer
     stop_grace_period: 5s
     ports:
