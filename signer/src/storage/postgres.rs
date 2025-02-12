@@ -786,13 +786,13 @@ impl PgStore {
                 UNION ALL
 
                 SELECT
-                    child.block_hash
-                  , child.block_height
-                  , child.parent_hash
-                FROM sbtc_signer.stacks_blocks AS child
-                JOIN tx_block_chain AS parent
-                  ON child.block_hash = parent.parent_hash
-                WHERE parent.block_height > $2
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.stacks_blocks AS parent
+                JOIN tx_block_chain AS child
+                  ON parent.block_hash = child.parent_hash
+                WHERE child.block_height > $2
             )
             SELECT EXISTS (
                 SELECT TRUE
