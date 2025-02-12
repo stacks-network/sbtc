@@ -11,7 +11,7 @@ sources:
 
 transforms:
   # This is required because Cloudwatch is picky about empty tags ("dimensions")
-  # And our `build` metric has an emtpy revision.
+  # And our `build` metric has an empty revision.
   sbtc_prometheus_metrics_strip_empty_tags:
     type: remap
     inputs:

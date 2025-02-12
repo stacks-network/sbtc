@@ -1,6 +1,6 @@
 # Docker
 
-This project includes a `Dockerfile` which creates a build container based on `ubuntu-22.04` on the `arm64` platform.  This allows development on `MacOS` to proceed without worrying about the complex dependencies, and without having to pipe data from the internt directly into a shell.
+This project includes a `Dockerfile` which creates a build container based on `ubuntu-22.04` on the `arm64` platform.  This allows development on `MacOS` to proceed without worrying about the complex dependencies, and without having to pipe data from the internet directly into a shell.
 
 ## Build the build container
 ```

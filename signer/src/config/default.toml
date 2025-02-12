@@ -104,7 +104,7 @@ endpoints = ["http://localhost:20443"]
 private_key = "41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc"
 
 # Specifies which network to use when constructing and sending transactions
-# on stacks and bitcoin. This cooresponds to the `chain` flag in the
+# on stacks and bitcoin. This corresponds to the `chain` flag in the
 # bitcoin.conf file of the connected bitcoin-core node, and the
 # `burnchain.mode` flag int he config.toml of the connected stacks-core
 # node.
