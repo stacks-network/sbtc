@@ -1620,7 +1620,7 @@ impl super::DbRead for PgStore {
             is_accepted: summary.is_accepted,
             recipient: summary.recipient.into(),
             status,
-            block_height: summary.bitcoin_block_height,
+            bitcoin_block_height: summary.bitcoin_block_height,
         }))
     }
 

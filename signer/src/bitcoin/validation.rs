@@ -882,7 +882,7 @@ pub struct WithdrawalRequestReport {
     pub is_accepted: Option<bool>,
     /// The height of the bitcoin chain tip during the execution of the
     /// contract call that generated the withdrawal request.
-    pub block_height: u64,
+    pub bitcoin_block_height: u64,
 }
 
 impl WithdrawalRequestReport {
