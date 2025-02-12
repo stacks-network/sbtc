@@ -134,7 +134,7 @@ struct DepositStatusSummary {
 
 /// A convenience struct for retrieving a withdrawal request report
 #[derive(sqlx::FromRow)]
-pub struct WithdrawalStatusSummary {
+struct WithdrawalStatusSummary {
     /// The current signer may not have a record of their vote for the
     /// withdrawal. When that happens the `is_accepted` field will be
     /// [`None`].
