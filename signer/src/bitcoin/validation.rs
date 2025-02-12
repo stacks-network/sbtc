@@ -839,10 +839,7 @@ impl DepositRequestReport {
 pub enum WithdrawalRequestStatus {
     /// We have a record of the withdrawal request transaction, and it has
     /// been confirmed on the canonical Stacks blockchain. We have not
-    /// fulfilled the request. The integer is the height of the bitcoin
-    /// block anchoring the Stacks block that confirmed the withdrawal
-    /// request, and the block hash is the associated block hash of that
-    /// bitcoin block.
+    /// fulfilled the request.
     Confirmed,
     /// We have a record of the withdrawal request being included as an
     /// output in another bitcoin transaction that has been confirmed on
