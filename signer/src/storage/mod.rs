@@ -485,7 +485,7 @@ pub trait DbWrite {
         prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the bitcoin transactions sighaes to the database.
+    /// Write the bitcoin transactions sighashes to the database.
     fn write_bitcoin_txs_sighashes(
         &self,
         sighashes: &[model::BitcoinTxSigHash],
