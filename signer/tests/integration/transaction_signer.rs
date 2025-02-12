@@ -680,7 +680,6 @@ mod validate_dkg_verification_message {
     #[tokio::test]
     async fn no_dkg_shares() {
         let db = testing::storage::new_test_database().await;
-        //let aggregate_key = Keypair::new_global(&mut OsRng).x_only_public_key().into();
 
         // Just use default since we don't even have stored shares.
         let params = TestParams::default();
