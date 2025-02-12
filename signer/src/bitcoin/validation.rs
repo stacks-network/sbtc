@@ -1394,6 +1394,41 @@ mod tests {
         assert_eq!(status, mapping.status);
     }
 
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 100_000_000,
+            max_fee: u64::MAX,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: None,
+        },
+        status: InputValidationResult::CannotSignUtxo,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    } ; "no-dkg-shares-status")]
+    fn withdrawal_report_validation(mapping: DepositReportErrorMapping) {
+        let mut tx = crate::testing::btc::base_signer_transaction();
+        tx.input.push(TxIn {
+            previous_output: OutPoint::null(),
+            script_sig: ScriptBuf::new(),
+            sequence: Sequence::ZERO,
+            witness: Witness::new(),
+        });
+
+        let status =
+            mapping
+                .report
+                .validate(mapping.chain_tip_height, &tx, TX_FEE, &mapping.limits);
+
+        assert_eq!(status, mapping.status);
+    }
+
     #[test_case(
         BitcoinPreSignRequest {
             request_package: vec![TxRequestIds {
