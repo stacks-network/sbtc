@@ -303,7 +303,7 @@ where
     /// Assert that the transaction signer will make and store decisions
     /// received from other signers.
     pub async fn assert_should_store_decisions_received_from_other_signers(self) {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let network = WanNetwork::default();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
@@ -365,7 +365,7 @@ where
         for handle in event_loop_handles.iter_mut() {
             let msg = RequestDeciderEvent::ReceivedDepositDecision;
             handle
-                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(13))
+                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
                 .await
                 .expect("timed out waiting for events");
         }

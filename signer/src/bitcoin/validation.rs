@@ -479,11 +479,10 @@ impl BitcoinTxValidationData {
         });
 
         let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
-            match report.validate(chain_tip_height, tx, tx_fee, sbtc_limits) {
-                WithdrawalValidationResult::Unsupported
-                | WithdrawalValidationResult::Unknown
-                | WithdrawalValidationResult::AmountTooHigh => false,
-            }
+            matches!(
+                report.validate(chain_tip_height, tx, tx_fee, sbtc_limits),
+                WithdrawalValidationResult::Ok
+            )
         });
 
         deposit_validation_results && withdrawal_validation_results
@@ -591,6 +590,8 @@ impl InputValidationResult {
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
+    /// The withdrawal request passed validation
+    Ok,
     /// The withdrawal request amount exceeds the allowed per-withdrawal cap
     AmountTooHigh,
     /// The signer does not have a record of the withdrawal request in
@@ -882,7 +883,7 @@ impl WithdrawalRequestReport {
     where
         F: FeeAssessment,
     {
-        WithdrawalValidationResult::Unsupported
+        WithdrawalValidationResult::Ok
     }
 
     fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {

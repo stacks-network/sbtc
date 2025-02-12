@@ -16,6 +16,7 @@ use futures::StreamExt as _;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 use signer::storage::model::DkgSharesStatus;
+use signer::storage::model::WithdrawalRequest;
 use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
@@ -50,7 +51,6 @@ use signer::storage::model::StacksBlock;
 use signer::storage::model::StacksBlockHash;
 use signer::storage::model::StacksTxId;
 use signer::storage::model::WithdrawalAcceptEvent;
-use signer::storage::model::WithdrawalCreateEvent;
 use signer::storage::model::WithdrawalRejectEvent;
 use signer::storage::model::WithdrawalSigner;
 use signer::storage::postgres::PgStore;
@@ -1191,29 +1191,30 @@ async fn writing_completed_deposit_requests_postgres() {
 
 /// Here we test that we can store withdrawal-create events.
 #[tokio::test]
-async fn writing_withdrawal_create_requests_postgres() {
+async fn writing_withdrawal_requests_postgres() {
     let store = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let event: WithdrawalCreateEvent = fake::Faker.fake_with_rng(&mut rng);
+    let event: WithdrawalRequest = fake::Faker.fake_with_rng(&mut rng);
 
     // Let's see if we can write these rows to the database.
     store
-        .write_withdrawal_create_event(&event.clone().into())
+        .write_withdrawal_request(&event.clone().into())
         .await
         .unwrap();
+
     let mut db_event =
-        sqlx::query_as::<_, ([u8; 32], [u8; 32], i64, i64, String, Vec<u8>, i64, i64)>(
+        sqlx::query_as::<_, (i64, [u8; 32], [u8; 32], Vec<u8>, i64, i64, String, i64)>(
             r#"
-            SELECT txid
+            SELECT request_id
+                 , txid
                  , block_hash
-                 , request_id
-                 , amount
-                 , sender
                  , recipient
+                 , amount
                  , max_fee
+                 , sender_address
                  , block_height
-            FROM sbtc_signer.withdrawal_create_events"#,
+            FROM sbtc_signer.withdrawal_requests"#,
         )
         .fetch_all(store.pool())
         .await
@@ -1221,14 +1222,14 @@ async fn writing_withdrawal_create_requests_postgres() {
     // Did we only write one row
     assert_eq!(db_event.len(), 1);
 
-    let (txid, block_id, request_id, amount, sender, recipient, max_fee, block_height) =
+    let (request_id, txid, block_hash, recipient, amount, max_fee, sender, block_height) =
         db_event.pop().unwrap();
 
     assert_eq!(txid, event.txid.into_bytes());
-    assert_eq!(block_id, event.block_id.into_bytes());
+    assert_eq!(block_hash, event.block_hash.into_bytes());
     assert_eq!(request_id as u64, event.request_id);
     assert_eq!(amount as u64, event.amount);
-    assert_eq!(sender, event.sender.to_string());
+    assert_eq!(sender, event.sender_address.to_string());
     assert_eq!(recipient, event.recipient.to_bytes());
     assert_eq!(max_fee as u64, event.max_fee);
     assert_eq!(block_height as u64, event.block_height);
@@ -2121,6 +2122,62 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// This tests that withdrawal requests where there is an associated sweep
+/// transaction will show up in the query results from
+/// [`DbRead::get_swept_withdrawal_requests`].
+#[tokio::test]
+async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This query doesn't *need* bitcoind (it's just a query), we just need
+    // the transaction data in the database. We use the [`TestSweepSetup`]
+    // structure because it has helper functions for generating and storing
+    // sweep transactions, and the [`TestSweepSetup`] structure correctly
+    // sets up the database.
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    // We need to manually update the database with new bitcoin block
+    // headers.
+    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    setup.store_stacks_genesis_block(&db).await;
+
+    // Backfill Stacks???
+
+    // This isn't technically required right now, but the deposit
+    // transaction is supposed to be there, so future versions of our query
+    // can rely on that fact.
+    setup.store_withdrawal_request(&db).await;
+
+    let chain_tip = setup.sweep_block_hash.into();
+    let context_window = 20;
+
+    let mut requests = db
+        .get_swept_withdrawal_requests(&chain_tip, context_window)
+        .await
+        .unwrap();
+
+    // There should only be one request in the database and it has a sweep
+    // trasnaction so the length should be 1.
+    assert_eq!(requests.len(), 1);
+
+    // Its details should match that of the deposit request.
+    let req = requests.pop().unwrap();
+
+    assert_eq!(req.amount, setup.withdrawal_request.amount);
+    assert_eq!(req.txid, setup.withdrawal_request.txid);
+    assert_eq!(req.sweep_block_hash, setup.sweep_block_hash.into());
+    assert_eq!(req.sweep_block_height, setup.sweep_block_height);
+    assert_eq!(req.sweep_txid, setup.sweep_tx_info.txid.into());
+    assert_eq!(req.request_id, setup.withdrawal_request.request_id);
+    assert_eq!(req.block_hash, setup.withdrawal_request.block_hash);
+    assert_eq!(req.sender_address, setup.withdrawal_sender.into());
+    assert_eq!(req.max_fee, setup.withdrawal_request.max_fee);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This function tests that deposit requests that do not have a confirmed
 /// response (sweep) bitcoin transaction are not returned from
 /// [`DbRead::get_swept_deposit_requests`].
@@ -2503,14 +2560,14 @@ async fn transaction_coordinator_test_environment(
     }
 }
 
-#[test(tokio::test)]
-/// Tests that TxCoordinatorEventLoop::get_pending_requests ignores withdrawals
-async fn should_ignore_withdrawals() {
+/// Tests that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
+#[tokio::test]
+async fn should_process_withdrawals() {
     let store = testing::storage::new_test_database().await;
 
     transaction_coordinator_test_environment(store.clone())
         .await
-        .assert_ignore_withdrawals()
+        .assert_processes_withdrawals()
         .await;
 
     testing::storage::drop_db(store).await;

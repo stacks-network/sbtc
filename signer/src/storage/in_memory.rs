@@ -21,7 +21,6 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
@@ -46,7 +45,9 @@ pub struct Store {
     /// Deposit requests
     pub deposit_requests: HashMap<DepositRequestPk, model::DepositRequest>,
 
-    /// Deposit requests
+    /// A mapping between (request_ids, block_hash) and withdrawal-create events.
+    /// Note that a single request_id may be associated with
+    /// more than one withdrawal-create event because of reorgs.
     pub withdrawal_requests: HashMap<WithdrawalRequestPk, model::WithdrawalRequest>,
 
     /// Deposit request to signers
@@ -90,11 +91,6 @@ pub struct Store {
 
     /// Rotate keys transactions
     pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
-
-    /// A mapping between request_ids and withdrawal-create events. Note
-    /// that in prod we can have a single request_id be associated with
-    /// more than one withdrawal-create event because of reorgs.
-    pub withdrawal_create_events: HashMap<u64, WithdrawalCreateEvent>,
 
     /// A mapping between request_ids and withdrawal-accept events. Note
     /// that in prod we can have a single request_id be associated with
@@ -254,7 +250,7 @@ impl Store {
             !context_window_end_block.as_ref().is_some_and(|block| {
                 self.bitcoin_blocks
                     .get(&stacks_block.bitcoin_anchor)
-                    .is_some_and(|anchor| anchor.block_height <= block.block_height)
+                    .is_some_and(|anchor| anchor.block_height < block.block_height)
             })
         })
         .flat_map(|stacks_block| {
@@ -1200,18 +1196,6 @@ impl super::DbWrite for SharedStore {
             .await
             .rotate_keys_transactions
             .insert(key_rotation.txid, key_rotation.clone());
-
-        Ok(())
-    }
-
-    async fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> Result<(), Error> {
-        self.lock()
-            .await
-            .withdrawal_create_events
-            .insert(event.request_id, event.clone());
 
         Ok(())
     }

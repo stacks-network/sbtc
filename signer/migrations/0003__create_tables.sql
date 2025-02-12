@@ -152,6 +152,7 @@ CREATE TABLE sbtc_signer.completed_deposit_events (
     created_at          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 
+-- DEPRECATED: Use `sbtc_signer.withdrawal_requests` instead.
 CREATE TABLE sbtc_signer.withdrawal_create_events (
     id           BIGSERIAL PRIMARY KEY,
     txid         BYTEA   NOT NULL,

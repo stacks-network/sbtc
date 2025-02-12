@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
+use bitcoin::ScriptBuf;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
@@ -19,6 +20,7 @@ use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::DepositConfirmationStatus;
 use crate::bitcoin::validation::DepositRequestReport;
 use crate::bitcoin::validation::WithdrawalRequestReport;
+use crate::bitcoin::validation::WithdrawalRequestStatus;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
@@ -26,7 +28,6 @@ use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::TransactionType;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
@@ -1333,6 +1334,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
+              , wr.block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc USING (block_hash)
             LEFT JOIN sbtc_signer.withdrawal_signers AS ws
@@ -1408,6 +1410,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
+              , wr.block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             JOIN sbtc_signer.withdrawal_signers signers ON
@@ -1431,14 +1434,42 @@ impl super::DbRead for PgStore {
 
     async fn get_withdrawal_request_report(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _id: &model::QualifiedRequestId,
+        chain_tip: &model::BitcoinBlockHash,
+        id: &model::QualifiedRequestId,
         _signer_public_key: &PublicKey,
     ) -> Result<Option<WithdrawalRequestReport>, Error> {
         // Returning Ok(None) means that all withdrawals fail validation,
         // because without a report we assume the withdrawal request does
         // not exist.
-        Ok(None)
+
+        let withdrawal = sqlx::query_as::<_, model::WithdrawalRequest>(
+            r#"SELECT
+                request_id
+              , txid
+              , block_hash
+              , recipient
+              , amount
+              , max_fee
+              , sender_address
+              , block_height
+            FROM sbtc_signer.withdrawal_requests
+            WHERE request_id = $1
+              AND block_hash = $2
+            "#,
+        )
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(id.txid)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(Some(WithdrawalRequestReport {
+            id: *id,
+            status: WithdrawalRequestStatus::Confirmed(1, *chain_tip),
+            amount: withdrawal.amount,
+            max_fee: withdrawal.max_fee,
+            script_pubkey: ScriptBuf::new(),
+        }))
     }
 
     async fn get_bitcoin_blocks_with_transaction(
@@ -2295,8 +2326,9 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_address
+              , block_height
               )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT DO NOTHING",
         )
         .bind(i64::try_from(request.request_id).map_err(Error::ConversionDatabaseInt)?)
@@ -2306,6 +2338,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&request.sender_address)
+        .bind(i64::try_from(request.block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2644,39 +2677,6 @@ impl super::DbWrite for PgStore {
         .bind(event.sweep_block_hash.to_byte_array())
         .bind(i64::try_from(event.sweep_block_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sweep_txid.to_byte_array())
-        .execute(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)?;
-
-        Ok(())
-    }
-
-    async fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> Result<(), Error> {
-        sqlx::query(
-            "
-        INSERT INTO sbtc_signer.withdrawal_create_events (
-            txid
-          , block_hash
-          , request_id
-          , amount
-          , sender
-          , recipient
-          , max_fee
-          , block_height
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
-        )
-        .bind(event.txid)
-        .bind(event.block_id)
-        .bind(i64::try_from(event.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(event.amount).map_err(Error::ConversionDatabaseInt)?)
-        .bind(event.sender.to_string())
-        .bind(event.recipient.as_bytes())
-        .bind(i64::try_from(event.max_fee).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(event.block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

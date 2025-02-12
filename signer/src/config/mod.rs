@@ -234,6 +234,9 @@ pub struct EmilyClientConfig {
     /// Emily API endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<Url>,
+    /// Pagination timeout in seconds.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub pagination_timeout: std::time::Duration,
 }
 
 impl Validatable for EmilyClientConfig {
@@ -502,6 +505,7 @@ impl Settings {
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         )?;
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
+        cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 15)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
 
         if let Some(path) = config_path {
@@ -642,6 +646,7 @@ mod tests {
         );
         assert_eq!(settings.signer.dkg_verification_window, 10);
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
     }
 
     #[test]
@@ -948,20 +953,22 @@ mod tests {
         let config_str = std::fs::read_to_string(config_file).unwrap();
         let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
 
-        let mut remove_parameter = |parameter: &str| {
+        let mut remove_parameter = |config_name: &str, parameter: &str| {
             config_toml
-                .get_mut("signer")
+                .get_mut(&config_name)
                 .unwrap()
                 .as_table_mut()
                 .unwrap()
                 .remove(parameter);
         };
-        remove_parameter("context_window");
-        remove_parameter("deposit_decisions_retry_window");
-        remove_parameter("signer_round_max_duration");
-        remove_parameter("bitcoin_presign_request_max_duration");
-        remove_parameter("dkg_max_duration");
-        remove_parameter("max_deposits_per_bitcoin_tx");
+        remove_parameter("signer", "context_window");
+        remove_parameter("signer", "deposit_decisions_retry_window");
+        remove_parameter("signer", "signer_round_max_duration");
+        remove_parameter("signer", "bitcoin_presign_request_max_duration");
+        remove_parameter("signer", "dkg_max_duration");
+        remove_parameter("signer", "max_deposits_per_bitcoin_tx");
+
+        remove_parameter("emily", "pagination_timeout");
 
         let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
 
@@ -980,6 +987,8 @@ mod tests {
             Duration::from_secs(30)
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
     }
 
     #[test]

@@ -363,6 +363,7 @@ impl TestSweepSetup {
             amount: self.withdrawal_request.amount,
             max_fee: self.withdrawal_request.max_fee,
             sender_address: self.withdrawal_sender.clone().into(),
+            block_height: block.block_height, // This should be set to the bitcoin block height.
         };
         db.write_withdrawal_request(&withdrawal_request)
             .await
@@ -961,6 +962,7 @@ impl TestSweepSetup2 {
             amount: self.withdrawal_request.amount,
             max_fee: self.withdrawal_request.max_fee,
             sender_address: self.withdrawal_sender.clone().into(),
+            block_height: block.block_height, // This should be set to the bitcoin block height.
         };
         db.write_withdrawal_request(&withdrawal_request)
             .await
