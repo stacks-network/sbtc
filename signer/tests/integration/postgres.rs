@@ -2150,7 +2150,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     // can rely on that fact.
     setup.store_withdrawal_request(&db).await;
 
-
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
 
@@ -2178,7 +2177,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
 
     signer::testing::storage::drop_db(db).await;
 }
-
 
 /// This function tests that deposit requests that do not have a confirmed
 /// response (sweep) bitcoin transaction are not returned from
