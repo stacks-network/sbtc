@@ -46,19 +46,18 @@ jobs:
         with:
           script: |
             const link = process.env.link;
+            const releaseBody = context.payload.release.body.trim();
 
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: context.payload.release.id,
               body: 
-                `
-                ${context.payload.release.body}
+                `${releaseBody}
                 
                 **Release Docker Image:** [https://${link}](https://${link})
-                
-                You can verify the attestation using this [guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
-                `
+
+                You can verify the attestation using this [guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).`.trim()
             });
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
