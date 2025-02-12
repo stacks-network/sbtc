@@ -132,12 +132,12 @@ struct DepositStatusSummary {
     signers_public_key: PublicKeyXOnly,
 }
 
-/// A convenience struct for retrieving a deposit request report
+/// A convenience struct for retrieving a withdrawal request report
 #[derive(sqlx::FromRow)]
 pub struct WithdrawalStatusSummary {
-    /// The current signer may not have a record of their vote for
-    /// the deposit. When that happens the `can_accept` and
-    /// `can_sign` fields will be None.
+    /// The current signer may not have a record of their vote for the
+    /// withdrawal. When that happens the `is_accepted` field will be
+    /// [`None`].
     is_accepted: Option<bool>,
     /// The height of the bitcoin chain tip during the execution of the
     /// contract call that generated the withdrawal request.
@@ -150,7 +150,7 @@ pub struct WithdrawalStatusSummary {
     /// in the funds.
     #[sqlx(try_from = "i64")]
     max_fee: u64,
-    /// The reclaim script for the deposit.
+    /// The recipient scriptPubKey of the withdrawn funds.
     recipient: model::ScriptPubKey,
     /// Stacks block ID of the block that includes the transaction
     /// associated with this withdrawal request.
