@@ -3319,10 +3319,11 @@ async fn withdrawal_report_with_withdrawal_request_reorged() {
     // Now let's generate a report where we know that the withdrawal
     // request is not on the blockchain identified by the given chain tip.
     let qualified_id = withdrawal_request.qualified_id();
+    let random_stacks_chain_tip = Faker.fake_with_rng(&mut rng);
     let report = db
         .get_withdrawal_request_report(
             &bitcoin_chain_tip,
-            &stacks_chain_tip_block.parent_hash,
+            &random_stacks_chain_tip,
             &qualified_id,
             signer_public_key,
         )
