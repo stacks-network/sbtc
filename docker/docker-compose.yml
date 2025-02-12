@@ -258,6 +258,11 @@ services:
       - |
         set -e
         bitcoind
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli -rpcwait getblockcount"]
+      interval: 5s
+      timeout: 1s
+      retries: 3
     profiles:
       - default
       - bitcoin-mempool
@@ -265,7 +270,8 @@ services:
   bitcoin-miner:
     build: bitcoin
     depends_on:
-      - bitcoin
+      bitcoin:
+        condition: service_healthy
     volumes:
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     environment:
@@ -327,7 +333,8 @@ services:
   stacks-node:
     <<: *stacks-blockchain
     depends_on:
-      - bitcoin
+      bitcoin:
+        condition: service_healthy
     ports:
       - "20443:20443"
     volumes:
