@@ -702,7 +702,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     signer::testing::storage::drop_db(pg_store).await;
 }
 
-/// This tests that when fetching pending accepted deposits we ingore swept ones.
+/// This tests that when fetching pending accepted deposits we ignore swept ones.
 #[tokio::test]
 async fn should_not_return_swept_deposits_as_pending_accepted() {
     let db = testing::storage::new_test_database().await;
@@ -870,7 +870,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         * percent_of_original_requests_expected_to_be_in_bounds)
         .floor() as usize;
 
-    // Prepare some datastructures to filter the deposit requests that we're going to put out of bounds
+    // Prepare some data structures to filter the deposit requests that we're going to put out of bounds
     // and to check against later.
     pending_accepted_deposit_requests.shuffle(&mut rng);
     let mut unique_deposit_ids = pending_accepted_deposit_requests
@@ -1917,7 +1917,7 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
 /// fetch the last encrypted DKG shares with status 'verified' from in the
 /// database.
 #[tokio::test]
-async fn get_last_verfied_dkg_shares_does_whats_advertised() {
+async fn get_last_verified_dkg_shares_does_whats_advertised() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -2776,7 +2776,7 @@ async fn deposit_report_with_deposit_request_spent() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
     test_data.write_to(&db).await;
 
-    // Let's write the deposit request and associated trasnaction to the
+    // Let's write the deposit request and associated transaction to the
     // database. Here the deposit transaction will be confirmed on the
     // canonical bitcoin blockchain.
     let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
@@ -2874,7 +2874,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
     test_data.write_to(&db).await;
 
-    // Let's write the deposit request and associated trasnaction to the
+    // Let's write the deposit request and associated transaction to the
     // database. Here the deposit transaction will be confirmed on the
     // canonical bitcoin blockchain.
     let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
