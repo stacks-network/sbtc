@@ -136,8 +136,8 @@ impl BitcoinPreSignRequest {
         let mut cache = ValidationCache::default();
 
         let bitcoin_chain_tip = &btc_ctx.chain_tip;
-        let stacks_chain_tip = db.get_stacks_chain_tip(bitcoin_chain_tip).await?;
-        let Some(stacks_chain_tip) = stacks_chain_tip.map(|b| b.block_hash) else {
+        let maybe_stacks_chain_tip = db.get_stacks_chain_tip(bitcoin_chain_tip).await?;
+        let Some(stacks_chain_tip) = maybe_stacks_chain_tip.map(|b| b.block_hash) else {
             return Err(Error::NoStacksChainTip);
         };
 
