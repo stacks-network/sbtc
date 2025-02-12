@@ -2008,7 +2008,6 @@ impl super::DbRead for PgStore {
                 withdrawal_req.sender_address
             FROM bitcoin_blockchain AS bc_blocks
             INNER JOIN sbtc_signer.bitcoin_transactions AS bc_trx USING (block_hash)
-            INNER JOIN sbtc_signer.bitcoin_tx_outputs AS bto USING (txid)
             INNER JOIN sbtc_signer.withdrawal_requests AS withdrawal_req
                 ON withdrawal_req.request_id = bto.request_id
                 AND withdrawal_req.block_hash = bto.stacks_block_hash
