@@ -68,11 +68,6 @@ pub struct CreateDepositRequestBody {
     pub transaction_hex: String,
 }
 
-/// This is the dust limit for deposits in the sBTC smart contracts.
-/// Deposit amounts that is less than this amount will be rejected by the
-/// smart contract.
-pub const DEPOSIT_DUST_LIMIT: u64 = 546;
-
 fn parse_with_custom_error<T, F, E>(input: &str, parser: F, error_msg: &str) -> Result<T, Error>
 where
     F: Fn(&str) -> Result<T, E>,
