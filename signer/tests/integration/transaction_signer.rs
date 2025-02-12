@@ -6,7 +6,15 @@ use bitcoincore_rpc::RpcApi;
 use fake::Fake as _;
 use fake::Faker;
 use lru::LruCache;
+use rand::rngs::OsRng;
 use rand::SeedableRng as _;
+use signer::bitcoin::MockBitcoinInteract;
+use signer::emily_client::MockEmilyInteract;
+use signer::network::in_memory2::SignerNetworkInstance;
+use signer::stacks::api::MockStacksInteract;
+use signer::storage::postgres::PgStore;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use test_case::test_case;
 
 use signer::bitcoin::utxo::RequestRef;
@@ -35,8 +43,6 @@ use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SigHash;
 use signer::storage::model::StacksTxId;
-use signer::storage::DbRead as _;
-use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::transaction_signer::ChainTipStatus;
@@ -53,6 +59,17 @@ use crate::setup::DepositAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
+
+type MockedTxSigner = TxSignerEventLoop<
+    TestContext<
+        PgStore,
+        WrappedMock<MockBitcoinInteract>,
+        WrappedMock<MockStacksInteract>,
+        WrappedMock<MockEmilyInteract>,
+    >,
+    SignerNetworkInstance,
+    OsRng,
+>;
 
 /// Test that [`TxSignerEventLoop::assert_valid_stacks_tx_sign_request`]
 /// errors when the signer is not in the signer set.
@@ -246,7 +263,7 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         .await
         .unwrap();
 
-    // check if we are receving an Ack from the signer
+    // Check if we are receiving an Ack from the signer
     tokio::time::timeout(Duration::from_secs(2), async move {
         handle.receive().await.unwrap();
     })
@@ -598,4 +615,268 @@ async fn max_one_state_machine_per_bitcoin_block_hash_for_dkg() {
     assert_eq!(tx_signer.wsts_state_machines.len(), 2);
 
     testing::storage::drop_db(db).await;
+}
+
+/// Module containing tests for the
+/// [`MockedTxSigner::validate_dkg_verification_message`] function. See
+/// [`MockedTxSigner`] for information on the validations that these tests
+/// are asserting.
+mod validate_dkg_verification_message {
+    use rand::rngs::StdRng;
+    use secp256k1::Keypair;
+
+    use signer::{
+        bitcoin::utxo::UnsignedMockTransaction, keys::PublicKeyXOnly,
+        storage::model::EncryptedDkgShares,
+    };
+
+    use super::*;
+
+    /// Helper struct for testing
+    /// [`MockedTxSigner::validate_dkg_verification_message`].
+    struct TestParams {
+        pub new_aggregate_key: PublicKeyXOnly,
+        pub dkg_verification_window: u16,
+        pub bitcoin_chain_tip: BitcoinBlockRef,
+        pub message: Option<Vec<u8>>,
+    }
+
+    impl Default for TestParams {
+        fn default() -> Self {
+            let new_aggregate_key = Keypair::new_global(&mut OsRng).x_only_public_key().into();
+            Self {
+                new_aggregate_key,
+                dkg_verification_window: 0,
+                bitcoin_chain_tip: BitcoinBlockRef {
+                    block_hash: BitcoinBlockHash::from([0; 32]),
+                    block_height: 0,
+                },
+                message: None,
+            }
+        }
+    }
+
+    impl TestParams {
+        fn new(new_aggregate_key: PublicKeyXOnly) -> Self {
+            Self {
+                new_aggregate_key,
+                ..Self::default()
+            }
+        }
+        /// Executes [`MockedTxSigner::validate_dkg_verification_message`] with
+        /// the values in this [`TestParams`] instance.
+        async fn execute(&self, db: &PgStore) -> Result<(), Error> {
+            MockedTxSigner::validate_dkg_verification_message::<PgStore>(
+                &db,
+                &self.new_aggregate_key,
+                self.message.as_deref(),
+                self.dkg_verification_window,
+                &self.bitcoin_chain_tip,
+            )
+            .await
+        }
+    }
+
+    #[tokio::test]
+    async fn no_dkg_shares() {
+        let db = testing::storage::new_test_database().await;
+
+        // Just use default since we don't even have stored shares.
+        let params = TestParams::default();
+
+        let result = params.execute(&db).await.unwrap_err();
+        assert!(matches!(result, Error::NoDkgShares));
+    }
+
+    #[tokio::test]
+    async fn latest_key_mismatch() {
+        let mut rng = StdRng::seed_from_u64(42);
+        let db = testing::storage::new_test_database().await;
+        let latest_aggregate_key = Keypair::new_global(&mut rng).public_key().into();
+        let new_aggregate_key = Keypair::new_global(&mut rng).x_only_public_key().into();
+
+        // Create new DKG shares and store them in the database. We expect the
+        // aggregate keys to not match, so we set them to values we explicitly
+        // know won't match.
+        let shares = EncryptedDkgShares {
+            aggregate_key: latest_aggregate_key,
+            ..Faker.fake()
+        };
+        db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+        // Just to show that these two aren't equal.
+        assert_ne!(new_aggregate_key, shares.aggregate_key.into());
+
+        // New params with the new aggregate key which won't match.
+        let params = TestParams::new(new_aggregate_key);
+
+        let result = params.execute(&db).await.unwrap_err();
+
+        if let Error::AggregateKeyMismatch { actual, expected } = result {
+            let actual = *actual;
+            let expected = *expected;
+
+            assert_eq!(actual, latest_aggregate_key.into());
+            assert_eq!(expected, new_aggregate_key);
+            assert_ne!(actual, expected);
+        } else {
+            panic!("Expected an AggregateKeyMismatch error, got: {:?}", result);
+        }
+    }
+
+    #[tokio::test]
+    async fn latest_key_in_failed_state() {
+        let db = testing::storage::new_test_database().await;
+        let aggregate_key: PublicKey = Keypair::new_global(&mut OsRng).public_key().into();
+        let aggregate_key_x_only = aggregate_key.into();
+
+        // Create new DKG shares and store them in the database. We expect the
+        // aggregate keys to match but validation to fail due to the latest shares
+        // being marked as `Failed`.
+        let shares = EncryptedDkgShares {
+            aggregate_key,
+            dkg_shares_status: DkgSharesStatus::Failed,
+            ..Faker.fake()
+        };
+        db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+        // Setup the test parameters.
+        let params = TestParams::new(aggregate_key_x_only);
+
+        let result = params.execute(&db).await.unwrap_err();
+
+        assert!(matches!(
+            result,
+            Error::DkgVerificationFailed(key) if aggregate_key_x_only == key
+        ))
+    }
+
+    #[tokio::test]
+    async fn verification_window_elapsed() {
+        let db = testing::storage::new_test_database().await;
+        let aggregate_key: PublicKey = Keypair::new_global(&mut OsRng).public_key().into();
+
+        // Create new DKG shares and store them in the database. We expect the
+        // aggregate keys to match and the status to be allowed. We use 0 as the
+        // starting block.
+        let shares = EncryptedDkgShares {
+            aggregate_key,
+            dkg_shares_status: DkgSharesStatus::Unverified,
+            started_at_bitcoin_block_height: 0,
+            ..Faker.fake()
+        };
+        db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+        // Setup the test parameters with a verification window of 10 blocks and
+        // the actual time elapsed being 11 blocks.
+        let params = TestParams {
+            new_aggregate_key: aggregate_key.into(),
+            dkg_verification_window: 10,
+            bitcoin_chain_tip: BitcoinBlockRef {
+                block_hash: BitcoinBlockHash::from([0; 32]),
+                block_height: 11,
+            },
+            ..Default::default()
+        };
+
+        let result = params.execute(&db).await.unwrap_err();
+
+        assert!(matches!(
+            result,
+            Error::DkgVerificationWindowElapsed(key) if aggregate_key == key
+        ))
+    }
+
+    #[tokio::test]
+    async fn verification_window_is_inclusive() {
+        let db = testing::storage::new_test_database().await;
+        let aggregate_key: PublicKey = Keypair::new_global(&mut OsRng).public_key().into();
+
+        // Create new DKG shares and store them in the database. We expect the
+        // aggregate keys to match and the status to be allowed. We use 0 as the
+        // starting block.
+        let shares = EncryptedDkgShares {
+            aggregate_key,
+            dkg_shares_status: DkgSharesStatus::Unverified,
+            started_at_bitcoin_block_height: 0,
+            ..Faker.fake()
+        };
+        db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+        // Setup the test parameters with a verification window of 10 blocks and
+        // the actual time elapsed being 10 blocks. Tests that the verification
+        // window is inclusive.
+        let params = TestParams {
+            new_aggregate_key: aggregate_key.into(),
+            dkg_verification_window: 10,
+            bitcoin_chain_tip: BitcoinBlockRef {
+                block_hash: BitcoinBlockHash::from([0; 32]),
+                block_height: 10,
+            },
+            ..Default::default()
+        };
+
+        params.execute(&db).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn expected_sighash_succeeds() {
+        let db = testing::storage::new_test_database().await;
+        let aggregate_key: PublicKey = Keypair::new_global(&mut OsRng).public_key().into();
+
+        // Create new DKG shares and store them in the database. We expect
+        // all other verifications to succeed.
+        let shares = EncryptedDkgShares {
+            aggregate_key,
+            dkg_shares_status: DkgSharesStatus::Unverified,
+            started_at_bitcoin_block_height: 0,
+            ..Faker.fake()
+        };
+        db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+        let sighash = UnsignedMockTransaction::new(aggregate_key.into())
+            .compute_sighash()
+            .unwrap();
+
+        // Setup the test parameters using the expected sighash.
+        let params = TestParams {
+            new_aggregate_key: aggregate_key.into(),
+            message: Some(sighash.as_byte_array().to_vec()),
+            ..Default::default()
+        };
+
+        params.execute(&db).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn unexpected_sighash_fails() {
+        let db = testing::storage::new_test_database().await;
+        let aggregate_key: PublicKey = Keypair::new_global(&mut OsRng).public_key().into();
+
+        // Create new DKG shares and store them in the database. We expect
+        // all other verifications to succeed.
+        let shares = EncryptedDkgShares {
+            aggregate_key,
+            dkg_shares_status: DkgSharesStatus::Unverified,
+            started_at_bitcoin_block_height: 0,
+            ..Faker.fake()
+        };
+        db.write_encrypted_dkg_shares(&shares).await.unwrap();
+
+        // Setup the test parameters using a random sighash, which we expect
+        // to fail validation.
+        let params = TestParams {
+            new_aggregate_key: aggregate_key.into(),
+            dkg_verification_window: 10,
+            bitcoin_chain_tip: BitcoinBlockRef {
+                block_hash: BitcoinBlockHash::from([0; 32]),
+                block_height: 10,
+            },
+            message: Some(Faker.fake()),
+        };
+
+        let result = params.execute(&db).await.unwrap_err();
+
+        assert!(matches!(result, Error::InvalidSigHash(_)));
+    }
 }

@@ -1019,7 +1019,7 @@ where
     /// - Ensure that the message is within the allowed verification window.
     /// - If a message is provided, ensure that it matches the expected Bitcoin
     ///   sighash of our well-known mock transaction.
-    async fn validate_dkg_verification_message<DB>(
+    pub async fn validate_dkg_verification_message<DB>(
         storage: &DB,
         new_key: &PublicKeyXOnly,
         message: Option<&[u8]>,
@@ -1038,11 +1038,15 @@ where
 
         // Ensure that the new key matches the current aggregate key.
         if *new_key != latest_key {
-            tracing::warn!("🔐 aggregate key mismatch for DKG verification signing");
-            return Err(Error::AggregateKeyMismatch(
-                Box::new(latest_key),
-                Box::new(*new_key),
-            ));
+            tracing::warn!(
+                latest_aggregate_key = %latest_key,
+                new_aggregate_key = %new_key,
+                "🔐 aggregate key for our latest DKG shares entry does not match the aggregate key requested for DKG verification"
+            );
+            return Err(Error::AggregateKeyMismatch {
+                actual: Box::new(latest_key),
+                expected: Box::new(*new_key),
+            });
         }
 
         // If the DKG shares are in a failed state then we do not allow
@@ -1057,7 +1061,7 @@ where
             .started_at_bitcoin_block_height
             .saturating_add(dkg_verification_window as u64);
 
-        if max_verification_height < bitcoin_chain_tip.block_height {
+        if bitcoin_chain_tip.block_height > max_verification_height {
             tracing::warn!("🔐 DKG verification outside the allowed window");
             return Err(Error::DkgVerificationWindowElapsed(
                 latest_shares.aggregate_key,
