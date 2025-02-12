@@ -32,6 +32,11 @@ x-common-vars:
 
 # Templates.
 # ------------------------------------------------------------------------------
+x-stacks-blockchain: &stacks-blockchain
+  image: blockstack/stacks-core:3.1.0.0.5
+  profiles:
+    - default
+
 x-postgres: &postgres
   image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
   stop_grace_period: 5s
@@ -58,7 +63,7 @@ x-sbtc-signer: &sbtc-signer
     - sbtc-signer
 
 x-stacks-signer: &stacks-signer
-  image: blockstack/stacks-core:3.1.0.0.5
+  <<: *stacks-blockchain
   depends_on:
     - stacks-node
   volumes:
@@ -75,8 +80,6 @@ x-stacks-signer: &stacks-signer
       set -e
       envsubst < config.toml.in > config.toml
       exec stacks-signer run --config config.toml
-  profiles:
-    - default
 
 # Services.
 # ------------------------------------------------------------------------------
@@ -323,7 +326,7 @@ services:
   # Stacks Blockchain.
   # ------------------
   stacks-node:
-    image: blockstack/stacks-core:3.1.0.0.5
+    <<: *stacks-blockchain
     depends_on:
       - bitcoin
     ports:
@@ -363,9 +366,6 @@ services:
         set -e
         envsubst < config.toml.in > config.toml
         exec stacks-node start --config config.toml
-    profiles:
-        # bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
-      - default
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
