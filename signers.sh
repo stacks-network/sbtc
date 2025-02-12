@@ -7,8 +7,8 @@
 LC_CTYPE=en_US.UTF-8
 
 # Colors
-GRAY='\e[0;90m'        # Gray
-RED='\e[0;31m'          # Red
+GRAY='\e[0;90m' # Gray
+RED='\e[0;31m' # Red
 NC='\e[0m' # No Color
 BOLD='\e[1m' # Bold
 
@@ -75,24 +75,12 @@ exec_run() {
 }
 
 exec_demo() {
-  if [ -z "$1" ]; then
-    pubkey=$(psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only)
-    pubkey=$(echo "$pubkey" | cut -c 2-)
-    echo "Signers aggregate_key: $pubkey"
-  else
-    pubkey="$1"
-  fi
-
-  cargo run -p signer --bin demo-cli donation --amount 2000000 --signer-key "$pubkey"
-  cargo run -p signer --bin demo-cli deposit --amount 42 --max-fee 20000 --lock-time 50 --stacks-addr ST2SBXRBJJTH7GV5J93HJ62W2NRRQ46XYBK92Y039 --signer-key "$pubkey"
+  cargo run -p signer --bin demo-cli donation --amount 10000
+  cargo run -p signer --bin demo-cli deposit --amount 10000000 # 0.1 BTC
 }
 
 exec_info() {
-  pubkey=$(psql postgresql://postgres:postgres@localhost:5432/signer -c "SELECT aggregate_key FROM sbtc_signer.dkg_shares ORDER BY created_at DESC LIMIT 1" --no-align --quiet --tuples-only)
-  pubkey=$(echo "$pubkey" | cut -c 2-)
-  echo "Signers aggregate_key: $pubkey"
-
-  cargo run -p signer --bin demo-cli info --signer-key "$pubkey"
+  cargo run -p signer --bin demo-cli info
 }
 
 # The main function
