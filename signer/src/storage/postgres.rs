@@ -833,7 +833,8 @@ impl PgStore {
               , wr.block_hash   AS stacks_block_hash
               , sb.block_height AS stacks_block_height
             FROM sbtc_signer.withdrawal_requests AS wr
-            JOIN sbtc_signer.stacks_blocks AS sb USING (block_hash)
+            JOIN sbtc_signer.stacks_blocks AS sb 
+              ON sb.block_hash = wr.block_hash
             LEFT JOIN sbtc_signer.withdrawal_signers AS ws
               ON ws.request_id = wr.request_id
              AND ws.block_hash = wr.block_hash
