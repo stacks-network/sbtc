@@ -627,6 +627,9 @@ pub struct TestSweepSetup2 {
     pub donation: OutPoint,
     /// The transaction that swept in the deposit transaction.
     pub sweep_tx_info: Option<SweepTxInfo>,
+    /// The stacks blocks confirming the withdrawal requests, along with a
+    /// genesis block.
+    pub stacks_blocks: Vec<model::StacksBlock>,
     /// The withdrawal requests, the recipient, or the funds on bitcoin,
     /// and the block hash and height of the bitcoin canonical bitcoin
     /// blockchain when the transaction that generated with withdrawal
@@ -710,6 +713,27 @@ impl TestSweepSetup2 {
             .collect();
         withdrawals.sort_by_key(|(w, _, _)| w.qualified_id());
 
+        let genesis_block = model::StacksBlock {
+            block_hash: Faker.fake_with_rng(&mut OsRng),
+            block_height: 0,
+            parent_hash: StacksBlockId::first_mined().into(),
+            bitcoin_anchor: deposit_block_hash.into(),
+        };
+
+        let stacks_blocks: Vec<model::StacksBlock> = withdrawals
+            .iter()
+            .scan(genesis_block, |parent_block, (request, _, block_ref)| {
+                let child_block = model::StacksBlock {
+                    block_hash: request.block_hash,
+                    block_height: parent_block.block_height + 1,
+                    parent_hash: parent_block.block_hash,
+                    bitcoin_anchor: block_ref.block_hash,
+                };
+                *parent_block = child_block.clone();
+                Some(child_block)
+            })
+            .collect();
+
         let settings = Settings::new_from_default_config().unwrap();
         let client = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
         let deposits: Vec<(DepositInfo, utxo::DepositRequest, BitcoinTxInfo)> = deposits
@@ -729,6 +753,7 @@ impl TestSweepSetup2 {
             sweep_tx_info: None,
             donation,
             signers,
+            stacks_blocks,
             withdrawals,
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
@@ -756,13 +781,7 @@ impl TestSweepSetup2 {
     /// Store a stacks genesis block that is on the canonical Stacks
     /// blockchain identified by the sweep chain tip.
     pub async fn store_stacks_genesis_block(&self, db: &PgStore) {
-        let block = model::StacksBlock {
-            block_hash: Faker.fake_with_rng(&mut OsRng),
-            block_height: 0,
-            parent_hash: StacksBlockId::first_mined().into(),
-            bitcoin_anchor: self.deposit_block_hash.into(),
-        };
-        db.write_stacks_block(&block).await.unwrap();
+        db.write_stacks_block(&self.stacks_blocks[0]).await.unwrap();
     }
 
     /// During [`Self::new_setup`] we submitted a donation transaction that
@@ -1008,6 +1027,10 @@ impl TestSweepSetup2 {
     }
 
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
+        for stacks_block in self.stacks_blocks.iter() {
+            db.write_stacks_block(stacks_block).await.unwrap();
+        }
+
         for (withdrawal_request, _, bitcoin_block_ref) in self.withdrawals.iter() {
             let stacks_block = model::StacksBlock {
                 block_hash: withdrawal_request.block_hash,
