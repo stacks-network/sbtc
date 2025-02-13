@@ -119,7 +119,7 @@ pub const WITHDRAWAL_DUST_LIMIT: u64 = 546;
 pub const WITHDRAWAL_MIN_CONFIRMATIONS: u64 = 6;
 
 /// This is the number of bitcoin blocks that a withdrawal request will
-/// stay live for before it expires and is considered rejected.
+/// remain live before it expires and is considered rejected.
 ///
 /// This is the value suggested in
 /// https://github.com/stacks-network/sbtc/issues/620.
