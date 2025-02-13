@@ -99,19 +99,19 @@ pub const DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX: u16 = 25;
 /// smart contract.
 pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 
-/// This is the dust limit for withdrawal amounts. The smart contract has
-/// one, but we have our own here to make sure that we respect bitcoin's
-/// dust limits even if the smart contracts are updated and this check is
-/// removed.
+/// This is the least amount that can be withdrawn from Stacks onto
+/// bitcoin. The smart contract has a dust limit, but we have our own to
+/// make sure that we respect bitcoin's dust limits even if the smart
+/// contracts changed are updated and this check is removed.
 pub const WITHDRAWAL_DUST_LIMIT: u64 = 546;
 
-/// This is the number of blocks that the signers will wait before acting
-/// on a withdrawal request. We do this to ensure that the withdrawal
-/// request is deemed final on the Stacks blockchain.
+/// This is the number of bitcoin blocks that the signers will wait before
+/// acting on a withdrawal request. We do this to ensure that the
+/// withdrawal request is deemed final on the Stacks blockchain.
 pub const WITHDRAWAL_BLOCKS_WAIT: u64 = 6;
 
-/// This is the number of blocks that a withdrawal request will stay live
-/// for before it expires and is considered rejected.
+/// This is the number of bitcoin blocks that a withdrawal request will
+/// stay live for before it expires and is considered rejected.
 pub const WITHDRAWAL_BLOCKS_EXPIRY: u64 = 24;
 
 /// This is the default maximum virtual size of a bitcoin transaction
