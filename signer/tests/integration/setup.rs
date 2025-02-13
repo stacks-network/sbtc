@@ -957,9 +957,14 @@ impl TestSweepSetup2 {
     }
 
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
+        let block_height = match self.sweep_block_height() {
+            Some(height) => height,
+            None => Faker.fake_with_rng::<u32, _>(&mut OsRng) as u64,
+        };
+
         let block = model::StacksBlock {
             block_hash: self.withdrawal_request.block_hash,
-            block_height: self.sweep_block_height().unwrap(),
+            block_height,
             parent_hash: Faker.fake_with_rng(&mut OsRng),
             bitcoin_anchor: self.deposit_block_hash.into(),
         };
