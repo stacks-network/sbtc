@@ -1008,12 +1008,12 @@ impl TestSweepSetup2 {
     }
 
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
-        for (withdrawal_request, _, block) in self.withdrawals.iter() {
+        for (withdrawal_request, _, bitcoin_block_ref) in self.withdrawals.iter() {
             let stacks_block = model::StacksBlock {
                 block_hash: withdrawal_request.block_hash,
                 block_height: Faker.fake_with_rng::<u32, _>(&mut OsRng) as u64,
                 parent_hash: Faker.fake_with_rng(&mut OsRng),
-                bitcoin_anchor: block.block_hash,
+                bitcoin_anchor: bitcoin_block_ref.block_hash,
             };
             db.write_stacks_block(&stacks_block).await.unwrap();
 
@@ -1025,7 +1025,7 @@ impl TestSweepSetup2 {
                 amount: withdrawal_request.amount,
                 max_fee: withdrawal_request.max_fee,
                 sender_address: self.withdrawal_sender.clone().into(),
-                bitcoin_block_height: block.block_height, // This should be set to the bitcoin block height.
+                bitcoin_block_height: bitcoin_block_ref.block_height,
             };
             db.write_withdrawal_request(&withdrawal_request)
                 .await
