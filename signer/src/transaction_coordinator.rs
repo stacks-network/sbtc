@@ -49,6 +49,7 @@ use crate::stacks::api::FeePriority;
 use crate::stacks::api::GetNakamotoStartHeight;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
@@ -929,6 +930,43 @@ where
             .context
             .get_stacks_client()
             .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .await?;
+
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        let tx = multi_tx.tx();
+
+        let sign_request = StacksTransactionSignRequest {
+            aggregate_key: *bitcoin_aggregate_key,
+            contract_tx: contract_call.into(),
+            nonce: tx.get_origin_nonce(),
+            tx_fee: tx.get_tx_fee(),
+            txid: tx.txid(),
+        };
+
+        Ok((sign_request, multi_tx))
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_withdrawal_accept_stacks_sign_request(
+        &self,
+        withdrawal_accept: model::WithdrawalAcceptEvent,
+        bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
+            request_id: withdrawal_accept.request_id,
+            outpoint: withdrawal_accept.outpoint,
+            tx_fee: withdrawal_accept.fee,
+            signer_bitmap: withdrawal_accept.signer_bitmap,
+            deployer: self.context.config().signer.deployer,
+            sweep_block_hash: withdrawal_accept.sweep_block_hash,
+            sweep_block_height: withdrawal_accept.sweep_block_height,
+        });
+
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, &contract_call, FeePriority::Medium)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
