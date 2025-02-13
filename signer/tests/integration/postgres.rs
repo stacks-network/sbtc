@@ -16,8 +16,8 @@ use futures::StreamExt as _;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 use signer::storage::model::DkgSharesStatus;
-use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
+use signer::storage::model::SweptWithdrawalRequest;
 use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
