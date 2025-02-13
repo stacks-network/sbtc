@@ -297,7 +297,7 @@ async fn one_invalid_deposit_invalidates_tx() {
 }
 
 #[tokio::test]
-async fn one_withdrawal_errors_validation() {
+async fn one_withdrawal_passes_validation() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -308,6 +308,8 @@ async fn one_withdrawal_errors_validation() {
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
@@ -358,9 +360,15 @@ async fn one_withdrawal_errors_validation() {
         aggregate_key,
     };
 
-    let result = request.construct_package_sighashes(&ctx, &btc_ctx).await;
+    let validation_data = request.construct_package_sighashes(&ctx, &btc_ctx).await.unwrap();
 
-    assert!(result.is_err());
+    // There are a few invariants that we uphold for our validation data.
+    // These are things like "the transaction ID per package must be the
+    // same", we check for them here.
+    validation_data.assert_invariants();
+    // We only had a package with one set of requests that were being
+    // handled.
+    assert_eq!(validation_data.len(), 1);
 
     testing::storage::drop_db(db).await;
 }
