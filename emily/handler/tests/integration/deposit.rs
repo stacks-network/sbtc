@@ -620,7 +620,7 @@ async fn get_deposits_for_reclaim_pubkey() {
     }
 
     // The size of the chunks to grab from the api.
-    let chunksize: u16 = 2;
+    let chunksize = 2;
 
     // Act.
     // ----
@@ -636,7 +636,7 @@ async fn get_deposits_for_reclaim_pubkey() {
                 &configuration,
                 pubkey,
                 next_token.as_ref().and_then(|o| o.as_deref()),
-                Some(chunksize as i32),
+                Some(chunksize),
             )
             .await
             .expect("Received an error after making a valid get deposits for pubkey api call.");
