@@ -444,13 +444,13 @@ impl BitcoinTxValidationData {
             .map(|(output_index, (_, report))| BitcoinWithdrawalOutput {
                 bitcoin_txid,
                 bitcoin_chain_tip: self.chain_tip,
-                output_index: output_index as u32,
+                output_index: output_index as u32 + 2,
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
                 validation_result: report.validate(
                     self.chain_tip_height,
-                    output_index,
+                    output_index + 2,
                     &self.tx,
                     self.tx_fee,
                     &self.sbtc_limits,
@@ -497,7 +497,8 @@ impl BitcoinTxValidationData {
                 .withdrawals
                 .iter()
                 .enumerate()
-                .all(|(output_index, (_, report))| {
+                .all(|(index, (_, report))| {
+                    let output_index = index + 2;
                     let result =
                         report.validate(chain_tip_height, output_index, tx, tx_fee, sbtc_limits);
                     result == WithdrawalValidationResult::Ok
