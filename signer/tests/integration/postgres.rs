@@ -2143,18 +2143,67 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
     setup.store_stacks_genesis_block(&db).await;
 
-    // Backfill Stacks???
+    let bitcoin_chain_tip_ref = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
+    let bitcoin_chain_tip = bitcoin_chain_tip_ref.block_hash;
 
-    // This isn't technically required right now, but the deposit
-    // transaction is supposed to be there, so future versions of our query
-    // can rely on that fact.
-    setup.store_withdrawal_request(&db).await;
+    let stacks_chain_tip_block = db
+        .get_stacks_chain_tip(&bitcoin_chain_tip)
+        .await
+        .unwrap()
+        .unwrap();
 
-    let chain_tip = setup.sweep_block_hash.into();
+    // Note that the block_height matters here, since the queries look for
+    // sweeps in blocks with height greater than or equal to the block
+    // height in the withdrawal request. In this case, the sweep
+    // transaction is confirmed on the chain tip of the bitcoin blockchain.
+    let withdrawal_request = WithdrawalRequest {
+        block_hash: stacks_chain_tip_block.block_hash,
+        block_height: bitcoin_chain_tip_ref.block_height - 1,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    let qualified_id = withdrawal_request.qualified_id();
+
+    db.write_withdrawal_request(&withdrawal_request)
+        .await
+        .unwrap();
+
+    // Okay now let's pretend that the withdrawal has been swept. For that
+    // we need a row in the `bitcoin_withdrawals_outputs` table, and
+    // records in the `transactions` and `bitcoin_transactions` tables. We
+    // place the sweep on the bitcoin chain tip.
+    let swept_output = BitcoinWithdrawalOutput {
+        request_id: qualified_id.request_id,
+        stacks_txid: qualified_id.txid,
+        stacks_block_hash: qualified_id.block_hash,
+        bitcoin_chain_tip,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: swept_output.bitcoin_txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: bitcoin_chain_tip.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: swept_output.bitcoin_txid,
+        block_hash: bitcoin_chain_tip,
+    };
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_bitcoin_withdrawals_outputs(&[swept_output])
+        .await
+        .unwrap();
+
+    // let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
 
     let mut requests = db
-        .get_swept_withdrawal_requests(&chain_tip, context_window)
+        .get_swept_withdrawal_requests(&bitcoin_chain_tip, context_window)
         .await
         .unwrap();
 

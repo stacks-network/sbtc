@@ -1961,9 +1961,11 @@ impl super::DbRead for PgStore {
         // - [X] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
         // - [X] get_swept_deposit_requests_response_tx_reorged
 
+        println!("1");
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
+        println!("2");
 
         sqlx::query_as::<_, model::SweptWithdrawalRequest>(
             "
