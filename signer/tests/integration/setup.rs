@@ -720,18 +720,23 @@ impl TestSweepSetup2 {
             bitcoin_anchor: deposit_block_hash.into(),
         };
 
-        let stacks_blocks: Vec<model::StacksBlock> = withdrawals
-            .iter()
-            .scan(genesis_block, |parent_block, (request, _, block_ref)| {
-                let child_block = model::StacksBlock {
-                    block_hash: request.block_hash,
-                    block_height: parent_block.block_height + 1,
-                    parent_hash: parent_block.block_hash,
-                    bitcoin_anchor: block_ref.block_hash,
-                };
-                *parent_block = child_block.clone();
-                Some(child_block)
-            })
+        let initial_state = genesis_block.clone();
+        let stacks_blocks =
+            withdrawals
+                .iter()
+                .scan(initial_state, |parent_block, (request, _, block_ref)| {
+                    let child_block = model::StacksBlock {
+                        block_hash: request.block_hash,
+                        block_height: parent_block.block_height + 1,
+                        parent_hash: parent_block.block_hash,
+                        bitcoin_anchor: block_ref.block_hash,
+                    };
+                    *parent_block = child_block.clone();
+                    Some(child_block)
+                });
+
+        let stacks_blocks: Vec<model::StacksBlock> = std::iter::once(genesis_block)
+            .chain(stacks_blocks)
             .collect();
 
         let settings = Settings::new_from_default_config().unwrap();
