@@ -23,7 +23,7 @@ use signer::testing::context::TestContext;
 use signer::testing::context::*;
 
 use crate::setup::{backfill_bitcoin_blocks, TestSignerSet};
-use crate::setup::{DepositAmounts, TestSweepSetup2};
+use crate::setup::{SweepAmounts, TestSweepSetup2};
 
 const TEST_FEE_RATE: f64 = 10.0;
 
@@ -101,9 +101,10 @@ async fn one_tx_per_request_set() {
     ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
-    let amounts = [DepositAmounts {
+    let amounts = [SweepAmounts {
         amount: 1_000_000,
         max_fee: 500_000,
+        is_deposit: true,
     }];
 
     let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
@@ -197,13 +198,15 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: low_fee,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 
@@ -313,13 +316,15 @@ async fn one_withdrawal_passes_validation() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 700_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 
@@ -360,7 +365,10 @@ async fn one_withdrawal_passes_validation() {
         aggregate_key,
     };
 
-    let validation_data = request.construct_package_sighashes(&ctx, &btc_ctx).await.unwrap();
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
 
     // There are a few invariants that we uphold for our validation data.
     // These are things like "the transaction ID per package must be the
@@ -390,13 +398,15 @@ async fn cannot_sign_deposit_is_ok() {
     ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 700_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 
@@ -554,13 +564,15 @@ async fn sighashes_match_from_sbtc_requests_object() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 700_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 
@@ -686,21 +698,25 @@ async fn outcome_is_independent_of_input_order() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_500_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 700_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 2_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 

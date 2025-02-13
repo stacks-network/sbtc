@@ -586,9 +586,10 @@ pub struct SweepTxInfo {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct DepositAmounts {
+pub struct SweepAmounts {
     pub amount: u64,
     pub max_fee: u64,
+    pub is_deposit: bool,
 }
 
 /// A struct containing an actual deposit and a sweep transaction. The
@@ -636,13 +637,14 @@ impl TestSweepSetup2 {
     /// 4. Generate a set of "signer keys" that kinda represent the
     ///    signers. Transactions can be signed using only the private keys
     ///    of the "signer" from (1).
-    pub fn new_setup(signers: TestSignerSet, faucet: &Faucet, amounts: &[DepositAmounts]) -> Self {
+    pub fn new_setup(signers: TestSignerSet, faucet: &Faucet, amounts: &[SweepAmounts]) -> Self {
         let signer = &signers.signer;
         let rpc = faucet.rpc;
         let signers_public_key = signer.keypair.x_only_public_key().0;
 
         let depositors: Vec<_> = amounts
             .iter()
+            .filter(|dep| dep.is_deposit)
             .map(|dep| {
                 more_asserts::assert_lt!(dep.amount, 50_000_000);
                 let depositor = Recipient::new(AddressType::P2tr);
@@ -658,7 +660,7 @@ impl TestSweepSetup2 {
 
         let mut deposits = Vec::new();
 
-        for (depositor, DepositAmounts { amount, max_fee }) in depositors.into_iter() {
+        for (depositor, SweepAmounts { amount, max_fee, .. }) in depositors.into_iter() {
             // Now lets make a deposit transaction and submit it
             let utxo = depositor.get_utxos(rpc, None).pop().unwrap();
             let (deposit_tx, deposit_request, deposit_info) =
