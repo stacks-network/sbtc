@@ -16,6 +16,7 @@ use futures::StreamExt as _;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 use signer::storage::model::DkgSharesStatus;
+use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
 use time::OffsetDateTime;
 
@@ -2128,20 +2129,23 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
 #[tokio::test]
 async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(16);
 
-    // This query doesn't *need* bitcoind (it's just a query), we just need
-    // the transaction data in the database. We use the [`TestSweepSetup`]
-    // structure because it has helper functions for generating and storing
-    // sweep transactions, and the [`TestSweepSetup`] structure correctly
-    // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    // We only want the blockchain to be generated
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: false,
+    };
 
-    // We need to manually update the database with new bitcoin block
-    // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
-    setup.store_stacks_genesis_block(&db).await;
+    let signer_public_keys = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let signer_public_key = &signer_public_keys[0];
+    let test_data = TestData::generate(&mut rng, &signer_public_keys, &test_params);
+    test_data.write_to(&db).await;
 
     let bitcoin_chain_tip_ref = db
         .get_bitcoin_canonical_chain_tip_ref()
@@ -2149,7 +2153,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         .unwrap()
         .unwrap();
     let bitcoin_chain_tip = bitcoin_chain_tip_ref.block_hash;
-
     let stacks_chain_tip_block = db
         .get_stacks_chain_tip(&bitcoin_chain_tip)
         .await
@@ -2193,15 +2196,20 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         txid: swept_output.bitcoin_txid,
         block_hash: bitcoin_chain_tip,
     };
+    
     db.write_transaction(&sweep_tx_model).await.unwrap();
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
-    db.write_bitcoin_withdrawals_outputs(&[swept_output])
+    db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
         .await
         .unwrap();
 
-    // let chain_tip = setup.sweep_block_hash.into();
-    let context_window = 20;
 
+    let bitcoin_block = db
+        .get_bitcoin_block(&bitcoin_chain_tip)
+        .await
+        .unwrap()
+        .unwrap();
+    let context_window = 20;
     let mut requests = db
         .get_swept_withdrawal_requests(&bitcoin_chain_tip, context_window)
         .await
@@ -2214,15 +2222,28 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     // Its details should match that of the deposit request.
     let req = requests.pop().unwrap();
 
-    assert_eq!(req.amount, setup.withdrawal_request.amount);
-    assert_eq!(req.txid, setup.withdrawal_request.txid);
-    assert_eq!(req.sweep_block_hash, setup.sweep_block_hash.into());
-    assert_eq!(req.sweep_block_height, setup.sweep_block_height);
-    assert_eq!(req.sweep_txid, setup.sweep_tx_info.txid.into());
-    assert_eq!(req.request_id, setup.withdrawal_request.request_id);
-    assert_eq!(req.block_hash, setup.withdrawal_request.block_hash);
-    assert_eq!(req.sender_address, setup.withdrawal_sender.into());
-    assert_eq!(req.max_fee, setup.withdrawal_request.max_fee);
+    let expected = SweptWithdrawalRequest {
+        amount: withdrawal_request.amount,
+        txid: withdrawal_request.txid,
+        sweep_block_hash: bitcoin_chain_tip,
+        sweep_block_height: bitcoin_block.block_height,
+        sweep_txid: swept_output.bitcoin_txid,
+        request_id: qualified_id.request_id,
+        block_hash: withdrawal_request.block_hash,
+        sender_address: withdrawal_request.sender_address,
+        max_fee: withdrawal_request.max_fee,
+        recipient: withdrawal_request.recipient,
+    };
+
+    assert_eq!(req.amount, expected.amount);
+    assert_eq!(req.txid, expected.txid);
+    assert_eq!(req.sweep_block_hash, expected.sweep_block_hash);
+    assert_eq!(req.sweep_block_height, expected.sweep_block_height);
+    assert_eq!(req.sweep_txid, expected.sweep_txid);
+    assert_eq!(req.request_id, expected.request_id);
+    assert_eq!(req.block_hash, expected.block_hash);
+    assert_eq!(req.sender_address, expected.sender_address);
+    assert_eq!(req.max_fee, expected.max_fee);
 
     signer::testing::storage::drop_db(db).await;
 }
