@@ -1154,7 +1154,6 @@ impl AsContractCall for RejectWithdrawalV1 {
             return Err(WithdrawalRejectErrorMsg::BitmapMismatch.into_error(req_ctx, self));
         }
 
-        // TODO: how many votes are needed to be valid?
         let withdrawal_signers = &ctx
             .get_storage()
             .get_withdrawal_signers(self.id.request_id, &self.id.block_hash)
