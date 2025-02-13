@@ -202,6 +202,14 @@ where
         // Create the coordinator
         self.context.state().set_sbtc_contracts_deployed();
         let signer_network = SignerNetwork::single(&self.context);
+        let stacks_chain_tip = self
+            .context
+            .get_storage()
+            .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
+            .await
+            .unwrap()
+            .unwrap();
+
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
@@ -217,7 +225,8 @@ where
         // Get pending withdrawals from coordinator
         let pending_requests = coordinator
             .get_pending_requests(
-                &bitcoin_chain_tip.block_hash,
+                &bitcoin_chain_tip,
+                &stacks_chain_tip.block_hash,
                 &aggregate_key,
                 &signer_info
                     .last()

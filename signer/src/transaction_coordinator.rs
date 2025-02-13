@@ -18,6 +18,7 @@ use sha2::Digest;
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::UnsignedMockTransaction;
+use crate::bitcoin::validation::WithdrawalRequestStatus;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::TransactionLookupHint;
 use crate::context::Context;
@@ -63,6 +64,7 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
+use crate::WITHDRAWAL_REQUIRED_CONFIRMATIONS;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
@@ -547,7 +549,9 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip_all, fields(
+        stacks_chain_tip = tracing::field::Empty,
+    ))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockRef,
@@ -562,13 +566,19 @@ where
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
+        tracing::Span::current().record(
+            "stacks_chain_tip_block_hash",
+            stacks_chain_tip.block_hash.to_hex(),
+        );
+
         tracing::debug!(
-            stacks_chain_tip = %stacks_chain_tip.block_hash,
+            stacks_chain_tip_block_height = stacks_chain_tip.block_height,
             "retrieved the stacks chain tip"
         );
 
         let pending_requests_fut = self.get_pending_requests(
-            &bitcoin_chain_tip.block_hash,
+            &bitcoin_chain_tip,
+            &stacks_chain_tip.block_hash,
             aggregate_key,
             signer_public_keys,
         );
@@ -1455,7 +1465,8 @@ where
     #[tracing::instrument(skip_all)]
     pub async fn get_pending_requests(
         &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+        stacks_chain_tip: &model::StacksBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
@@ -1466,19 +1477,25 @@ where
         let storage = self.context.get_storage();
 
         let pending_deposit_requests = storage
-            .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
+            .get_pending_accepted_deposit_requests(
+                bitcoin_chain_tip.as_ref(),
+                context_window,
+                threshold,
+            )
             .await?;
 
         let pending_withdraw_requests = storage
-            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                context_window,
+                threshold,
+            )
             .await?;
 
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
-            let votes = self
-                .context
-                .get_storage()
+            let votes = storage
                 .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
                 .await?;
 
@@ -1489,11 +1506,72 @@ where
         let mut withdrawals = Vec::new();
 
         for req in pending_withdraw_requests {
-            let votes = self
-                .context
-                .get_storage()
+            let votes = storage
                 .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
                 .await?;
+
+            let qualified_id = req.qualified_id();
+            let signer_public_key = self.signer_public_key();
+            let report_fut = storage.get_withdrawal_request_report(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                &qualified_id,
+                &signer_public_key,
+            );
+            let report = match report_fut.await {
+                Ok(Some(report)) => report,
+                Ok(None) => {
+                    tracing::debug!(
+                        request_id = %req.request_id,
+                        "withdrawal request missing or confirmed in a currently unknown stacks block"
+                    );
+                    continue;
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        request_id = %req.request_id,
+                        "error fetching withdrawal request report"
+                    );
+                    continue;
+                }
+            };
+
+            match report.status {
+                WithdrawalRequestStatus::Confirmed => {
+                    tracing::debug!(
+                        request_id = %req.request_id,
+                        "withdrawal request confirmed in stacks block"
+                    );
+                    let num_confirmations = bitcoin_chain_tip.block_height - report.block_height;
+                    if num_confirmations <= WITHDRAWAL_REQUIRED_CONFIRMATIONS {
+                        tracing::debug!(
+                            request_id = %req.request_id,
+                            num_confirmations,
+                            required_confirmations = WITHDRAWAL_REQUIRED_CONFIRMATIONS,
+                            "withdrawal request has not yet reached required confirmations"
+                        );
+                        continue;
+                    }
+                }
+                WithdrawalRequestStatus::Fulfilled(tx_ref) => {
+                    tracing::info!(
+                        request_id = %req.request_id,
+                        bitcoin_txid = %tx_ref.txid,
+                        bitcoin_block_hash = %tx_ref.block_hash,
+                        "withdrawal request already fulfilled"
+                    );
+                }
+                WithdrawalRequestStatus::Unconfirmed => {
+                    tracing::debug!(
+                        request_id = %req.request_id,
+                        request_bitcoin_block_height = report.block_height,
+                        current_bitcoin_block_height = bitcoin_chain_tip.block_height,
+                        "withdrawal request unconfirmed in stacks block"
+                    );
+                    continue;
+                }
+            }
 
             let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
             withdrawals.push(withdrawal);
@@ -1508,10 +1586,14 @@ where
             return Ok(None);
         }
         let signer_config = &self.context.config().signer;
+        let signer_state = self
+            .get_btc_state(&bitcoin_chain_tip.block_hash, aggregate_key)
+            .await?;
+
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
+            signer_state,
             accept_threshold: threshold,
             num_signers,
             sbtc_limits: self.context.state().get_current_limits(),

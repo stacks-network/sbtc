@@ -51,6 +51,14 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 ///    contracts takes a maximum of 128 keys.
 const MAX_KEYS: u16 = 128;
 
+/// The number of Bitcoin blocks that the signers will wait from the Bitcoin
+/// anchor block associated with the Stacks block confirming the withdrawal
+/// request transaction, before attempting to sweep the funds.
+///
+/// Each block is generally 10 minutes apart, so a value of `6` would represent
+/// an hour in wall-clock time (during normal Bitcoin network conditions).
+pub const WITHDRAWAL_REQUIRED_CONFIRMATIONS: u64 = 6;
+
 /// Each deposit has a reclaim script spend path that can be executed after
 /// some "time". Right now this "time", the locktime, can only be
 /// denominated in bitcoin blocks. Once locktime number of blocks have been
