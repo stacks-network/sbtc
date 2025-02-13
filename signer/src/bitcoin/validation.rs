@@ -29,8 +29,8 @@ use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-use crate::WITHDRAWAL_BLOCKS_WAIT;
 use crate::WITHDRAWAL_DUST_LIMIT;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
@@ -951,7 +951,7 @@ impl WithdrawalRequestReport {
         }
 
         let block_wait = bitcoin_chain_tip_height.saturating_sub(self.bitcoin_block_height);
-        if block_wait < WITHDRAWAL_BLOCKS_WAIT {
+        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS {
             return WithdrawalValidationResult::RequestNotFinal;
         }
 
@@ -1419,12 +1419,12 @@ mod tests {
             max_fee: TX_FEE.to_sat(),
             // This does not matter during validation.
             recipient: ScriptBuf::new().into(),
-            // This needs to be WITHDRAWAL_BLOCKS_WAIT less than the
+            // This needs to be WITHDRAWAL_MIN_CONFIRMATIONS less than the
             // chain_tip_height.
             bitcoin_block_height: 0,
         },
         // This is part of sBTC consensus.
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         // This is set by Emily.
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::Ok,
@@ -1444,7 +1444,7 @@ mod tests {
             bitcoin_block_height: 0,
         },
         status: WithdrawalValidationResult::AmountTooHigh,
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
     } ; "amount-too-high")]
     #[test_case(WithdrawalReportErrorMapping {
@@ -1461,7 +1461,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::AmountIsDust,
     } ; "amount-is-dust")]
@@ -1479,7 +1479,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::Ok,
     } ; "amount-and-fee-divorced")]
@@ -1497,7 +1497,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::FeeTooHigh,
     } ; "fee-too-high")]
@@ -1515,7 +1515,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::NoVote,
     } ; "no-vote")]
@@ -1554,7 +1554,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::RequestFulfilled,
     } ; "request-fulfilled")]
@@ -1572,7 +1572,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT - 1,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS - 1,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::RequestNotFinal,
     } ; "request-not-final")]
@@ -1590,7 +1590,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::RequestRejected,
     } ; "request-rejected")]
@@ -1608,7 +1608,7 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::TxNotOnBestChain,
     } ; "tx-not-on-best-chain")]
@@ -1656,7 +1656,7 @@ mod tests {
         // should never happen, and is a programming error whenever we
         // observe it.
         let output_index = tx.output.len();
-        let bitcoin_chain_tip_height = WITHDRAWAL_BLOCKS_WAIT;
+        let bitcoin_chain_tip_height = WITHDRAWAL_MIN_CONFIRMATIONS;
         let limits = &SbtcLimits::unlimited();
 
         let status = report.validate(bitcoin_chain_tip_height, output_index, &tx, TX_FEE, limits);

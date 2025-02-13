@@ -108,7 +108,7 @@ pub const WITHDRAWAL_DUST_LIMIT: u64 = 546;
 /// This is the number of bitcoin blocks that the signers will wait before
 /// acting on a withdrawal request. We do this to ensure that the
 /// withdrawal request is deemed final on the Stacks blockchain.
-pub const WITHDRAWAL_BLOCKS_WAIT: u64 = 6;
+pub const WITHDRAWAL_MIN_CONFIRMATIONS: u64 = 6;
 
 /// This is the number of bitcoin blocks that a withdrawal request will
 /// stay live for before it expires and is considered rejected.
