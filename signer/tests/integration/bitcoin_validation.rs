@@ -25,8 +25,10 @@ use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
-use crate::setup::{backfill_bitcoin_blocks, TestSignerSet};
-use crate::setup::{SweepAmounts, TestSweepSetup2};
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::SweepAmounts;
+use crate::setup::TestSignerSet;
+use crate::setup::TestSweepSetup2;
 
 const TEST_FEE_RATE: f64 = 10.0;
 
