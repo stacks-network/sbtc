@@ -55,8 +55,13 @@ pub enum Error {
     DkgVerificationWindowElapsed(PublicKey),
 
     /// Expected two aggregate keys to match, but they did not.
-    #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
-    AggregateKeyMismatch(Box<PublicKeyXOnly>, Box<PublicKeyXOnly>),
+    #[error("two aggregate keys were expected to match but did not: actual={actual}, expected={expected}")]
+    AggregateKeyMismatch {
+        /// The aggregate key being compared to the `expected` aggregate key.
+        actual: Box<PublicKeyXOnly>,
+        /// The expected aggregate key.
+        expected: Box<PublicKeyXOnly>,
+    },
 
     /// The aggregate key for the given block hash could not be determined.
     #[error("the signer set aggregate key could not be determined for bitcoin block {0}")]
@@ -149,7 +154,7 @@ pub enum Error {
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
     /// This is the error that is returned when validating a bitcoin
-    /// trasnaction.
+    /// transaction.
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
@@ -320,12 +325,12 @@ pub enum Error {
     InvalidEcdsaSignatureBytes(#[source] secp256k1::Error),
 
     /// This happens when we attempt to convert a `[u8; 65]` into a
-    /// recoverable EDCSA signature.
+    /// recoverable ECDSA signature.
     #[error("could not recover the public key from the signature: {0}")]
     InvalidRecoverableSignatureBytes(#[source] secp256k1::Error),
 
     /// This happens when we attempt to recover a public key from a
-    /// recoverable EDCSA signature.
+    /// recoverable ECDSA signature.
     #[error("could not recover the public key from the signature: {0}, digest: {1}")]
     InvalidRecoverableSignature(#[source] secp256k1::Error, secp256k1::Message),
 

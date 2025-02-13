@@ -248,6 +248,7 @@ pub struct WithdrawalRequest {
     /// affects a transaction that calls the initiate-withdrawal-request
     /// public function.
     #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub request_id: u64,
     /// The stacks transaction ID that lead to the creation of the
     /// withdrawal request.
@@ -316,7 +317,7 @@ impl WithdrawalSigner {
 }
 
 /// A connection between a bitcoin block and a bitcoin transaction.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 pub struct BitcoinTxRef {
     /// Transaction ID.
     pub txid: BitcoinTxId,

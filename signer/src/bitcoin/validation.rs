@@ -19,6 +19,7 @@ use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::BitcoinTxRef;
 use crate::storage::model::BitcoinTxSigHash;
 use crate::storage::model::BitcoinWithdrawalOutput;
 use crate::storage::model::DkgSharesStatus;
@@ -134,6 +135,12 @@ impl BitcoinPreSignRequest {
     {
         let mut cache = ValidationCache::default();
 
+        let bitcoin_chain_tip = &btc_ctx.chain_tip;
+        let maybe_stacks_chain_tip = db.get_stacks_chain_tip(bitcoin_chain_tip).await?;
+        let Some(stacks_chain_tip) = maybe_stacks_chain_tip.map(|b| b.block_hash) else {
+            return Err(Error::NoStacksChainTip);
+        };
+
         for requests in &self.request_package {
             // Fetch all deposit reports and votes
             for outpoint in &requests.deposits {
@@ -141,7 +148,7 @@ impl BitcoinPreSignRequest {
                 let output_index = outpoint.vout;
 
                 let report_future = db.get_deposit_request_report(
-                    &btc_ctx.chain_tip,
+                    bitcoin_chain_tip,
                     &txid,
                     output_index,
                     &btc_ctx.signer_public_key,
@@ -160,10 +167,11 @@ impl BitcoinPreSignRequest {
             }
 
             // Fetch all withdrawal reports and votes
-            for id in &requests.withdrawals {
+            for qualified_id in &requests.withdrawals {
                 let report = db.get_withdrawal_request_report(
-                    &btc_ctx.chain_tip,
-                    id,
+                    bitcoin_chain_tip,
+                    &stacks_chain_tip,
+                    qualified_id,
                     &btc_ctx.signer_public_key,
                 );
                 let Some(report) = report.await? else {
@@ -171,10 +179,12 @@ impl BitcoinPreSignRequest {
                 };
 
                 let votes = db
-                    .get_withdrawal_request_signer_votes(id, &btc_ctx.aggregate_key)
+                    .get_withdrawal_request_signer_votes(qualified_id, &btc_ctx.aggregate_key)
                     .await?;
 
-                cache.withdrawal_reports.insert(id, (report, votes));
+                cache
+                    .withdrawal_reports
+                    .insert(qualified_id, (report, votes));
             }
         }
         Ok(cache)
@@ -829,15 +839,12 @@ impl DepositRequestReport {
 pub enum WithdrawalRequestStatus {
     /// We have a record of the withdrawal request transaction, and it has
     /// been confirmed on the canonical Stacks blockchain. We have not
-    /// fulfilled the request. The integer is the height of the bitcoin
-    /// block anchoring the Stacks block that confirmed the withdrawal
-    /// request, and the block hash is the associated block hash of that
-    /// bitcoin block.
-    Confirmed(u64, BitcoinBlockHash),
+    /// fulfilled the request.
+    Confirmed,
     /// We have a record of the withdrawal request being included as an
     /// output in another bitcoin transaction that has been confirmed on
     /// the canonical bitcoin blockchain.
-    Fulfilled(BitcoinTxId),
+    Fulfilled(BitcoinTxRef),
     /// We have a record of the withdrawal request transaction, and it has
     /// not been confirmed on the canonical Stacks blockchain.
     ///
@@ -868,7 +875,14 @@ pub struct WithdrawalRequestReport {
     /// the funds.
     pub max_fee: u64,
     /// The script_pubkey of the output.
-    pub script_pubkey: ScriptBuf,
+    pub recipient: ScriptBuf,
+    /// Whether this signers' blocklist client accepted the withdrawal
+    /// request or not. This should only be `None` if we do not have a
+    /// record of the withdrawal request.
+    pub is_accepted: Option<bool>,
+    /// The height of the bitcoin chain tip during the execution of the
+    /// contract call that generated the withdrawal request.
+    pub block_height: u64,
 }
 
 impl WithdrawalRequestReport {
@@ -893,7 +907,7 @@ impl WithdrawalRequestReport {
             block_hash: self.id.block_hash,
             amount: self.amount,
             max_fee: self.max_fee,
-            script_pubkey: self.script_pubkey.clone().into(),
+            script_pubkey: self.recipient.clone().into(),
             signer_bitmap: votes.into(),
         }
     }
