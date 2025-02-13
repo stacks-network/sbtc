@@ -5,6 +5,7 @@ use bitcoin::hashes::Hash as _;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
+use test_case::test_case;
 
 use sbtc::testing::regtest;
 use signer::bitcoin::utxo::SbtcRequests;
@@ -301,8 +302,54 @@ async fn one_invalid_deposit_invalidates_tx() {
     testing::storage::drop_db(db).await;
 }
 
+#[test_case(vec![
+    SweepAmounts {
+        amount: 700_000,
+        max_fee: 500_000,
+        is_deposit: true,
+    },
+    SweepAmounts {
+        amount: 1_000_000,
+        max_fee: 500_000,
+        is_deposit: false,
+    },
+]; "one-withdrawal-one-deposit")]
+#[test_case(vec![
+    SweepAmounts {
+        amount: 123_456,
+        max_fee: 50_000,
+        is_deposit: false,
+    },
+    SweepAmounts {
+        amount: 1_000_000,
+        max_fee: 500_000,
+        is_deposit: false,
+    },
+    SweepAmounts {
+        amount: 456_789,
+        max_fee: 900_000,
+        is_deposit: false,
+    },
+]; "three-withdrawals")]
+#[test_case(vec![
+    SweepAmounts {
+        amount: 123_456,
+        max_fee: 50_000,
+        is_deposit: true,
+    },
+    SweepAmounts {
+        amount: 1_000_000,
+        max_fee: 500_000,
+        is_deposit: false,
+    },
+    SweepAmounts {
+        amount: 456_789,
+        max_fee: 900_000,
+        is_deposit: false,
+    },
+]; "two-withdrawals-one-deposit")]
 #[tokio::test]
-async fn one_withdrawal_passes_validation() {
+async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -317,18 +364,6 @@ async fn one_withdrawal_passes_validation() {
     ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
-    let amounts = [
-        SweepAmounts {
-            amount: 700_000,
-            max_fee: 500_000,
-            is_deposit: true,
-        },
-        SweepAmounts {
-            amount: 1_000_000,
-            max_fee: 500_000,
-            is_deposit: false,
-        },
-    ];
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
@@ -392,8 +427,8 @@ async fn one_withdrawal_passes_validation() {
     assert_eq!(validation_data.len(), 1);
 
     let output_rows = validation_data[0].to_withdrawal_rows();
-    assert_eq!(output_rows.len(), 1);
-
+    let num_withdrawals = amounts.iter().filter(|am| !am.is_deposit).count();
+    assert_eq!(output_rows.len(), num_withdrawals);
     let iter = output_rows.iter().zip(setup.withdrawals.iter()).enumerate();
 
     for (output_index, (row, (withdrawal_request, _, _))) in iter {
