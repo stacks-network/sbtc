@@ -35,7 +35,6 @@ exec_run() {
   printf "${GRAY}Running ${NC}${BOLD}$*${NC} signers\n"
 
   # Turn all the relevant postgres instances off and on.
-  docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres down
   docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres up --detach
 
   # Wait for the postgres instances to start (can get ssl handshake errors etc. otherwise)
@@ -58,6 +57,7 @@ exec_run() {
   printf "${BOLD}Using bootstrap signer set:${NC} $BOOTSTRAP_SIGNER_SET\n"
 
   # Spin up the specified number of signers.
+  cargo build --bin  signer
   i=1
   while [ $i -le "$1" ]
   do
