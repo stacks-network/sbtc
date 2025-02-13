@@ -1078,9 +1078,14 @@ impl AsContractCall for RejectWithdrawalV1 {
             return Err(WithdrawalRejectErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
 
-        // 1. The request exists. Check whether the associated withdrawal request transaction is confirmed on the canonical stacks blockchain. Fail the withdrawal request if it is not on the canonical stacks blockchain.
+        // 1. The request exists. Check whether the associated withdrawal request transaction
+        //    is confirmed on the canonical stacks blockchain. Fail the withdrawal request if
+        //    it is not on the canonical stacks blockchain.
         //
-        // 2. The double spend check. Check whether the qualified request ID is in the bitcoin_withdrawals_outputs table, and that any of the associated txids are confirmed on the canonical bitcoin blockchain. Fail the withdrawal request if such a transaction was found.
+        // 2. The double spend check. Check whether the qualified request ID is in the
+        //    bitcoin_withdrawals_outputs table, and that any of the associated txids are
+        //    confirmed on the canonical bitcoin blockchain. Fail the withdrawal request if
+        //    such a transaction was found.
 
         let stacks_chain_tip = ctx
             .get_storage()
@@ -1117,7 +1122,10 @@ impl AsContractCall for RejectWithdrawalV1 {
             }
         }
 
-        // 3. The request is final. Check that we've seen six new bitcoin blocks since observing the bitcoin anchor block associated with the Stacks block confirming the withdrawal request transaction. Fail the withdrawal request if we’ve observed less than 6 bitcoin blocks since the anchor block.
+        // 3. The request is final. Check that we've seen six new bitcoin blocks since observing
+        //    the bitcoin anchor block associated with the Stacks block confirming the withdrawal
+        //    request transaction. Fail the withdrawal request if we’ve observed less than 6
+        //    bitcoin blocks since the anchor block.
 
         let request_block_height = report.block_height;
 
@@ -1132,8 +1140,6 @@ impl AsContractCall for RejectWithdrawalV1 {
         };
 
         let tip_block_height = tip_bitcoin_block.block_height;
-
-        //let tip_block_height = req_ctx.chain_tip.block_height;
 
         if tip_block_height < (request_block_height + 6) {
             return Err(
