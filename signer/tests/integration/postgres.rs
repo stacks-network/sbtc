@@ -3864,7 +3864,7 @@ async fn withdrawal_report_with_withdrawal_request_confirmed() {
 
     assert_eq!(report.is_accepted, Some(false));
     assert_eq!(report.status, WithdrawalRequestStatus::Confirmed);
-    assert_eq!(report.block_height, withdrawal_request.block_height);
+    assert_eq!(report.bitcoin_block_height, withdrawal_request.block_height);
     assert_eq!(report.amount, withdrawal_request.amount);
     assert_eq!(report.max_fee, withdrawal_request.max_fee);
     assert_eq!(&report.recipient, withdrawal_request.recipient.deref());

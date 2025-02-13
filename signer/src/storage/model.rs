@@ -240,6 +240,23 @@ pub struct DepositSigner {
 }
 
 /// Withdraw request.
+///
+/// # Notes
+///
+/// When we receive a record of a withdrawal request, we know that it has
+/// been confirmed. However, the block containing the transaction that
+/// generated this request may be reorganized, causing it to no longer be
+/// part of the canonical Stacks blockchain. In that scenario, the
+/// withdrawal request effectively ceases to exist. If the same transaction
+/// is "replayed" and confirmed in a new block, a "new" withdrawal request
+/// will be generated because the Stacks block hash has changed. This
+/// differs from deposit requests, where a reorganized deposit is
+/// considered the same across blocks.
+///
+/// So withdrawal requests are tied to the specific Stacks block containing
+/// the transaction that created them. If that transaction is reorganized
+/// to a new block, a new request is generated, and the old one must be
+/// ignored.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawalRequest {
