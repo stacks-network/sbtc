@@ -24,7 +24,6 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
-use crate::stacks::contracts::RotateKeysV1;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
