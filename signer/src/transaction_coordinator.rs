@@ -946,8 +946,12 @@ where
         Ok((sign_request, multi_tx))
     }
 
+    /// Transform the withdrawal accept event into a Stacks sign request
+    /// object.
+    ///
+    /// This function uses stacks-core for fee estimation of the transaction.
     #[tracing::instrument(skip_all)]
-    async fn construct_withdrawal_accept_stacks_sign_request(
+    pub async fn construct_withdrawal_accept_stacks_sign_request(
         &self,
         withdrawal_accept: model::WithdrawalAcceptEvent,
         bitcoin_aggregate_key: &PublicKey,
@@ -2057,6 +2061,12 @@ mod tests {
         test_environment().assert_processes_withdrawals().await;
     }
 
+    #[tokio::test]
+    async fn should_construct_withdrawal_accept_stacks_sign_request() {
+        test_environment()
+            .assert_construct_withdrawal_accept_stacks_sign_request()
+            .await;
+    }
     #[test_case(0, None, 1, 100, true; "first DKG allowed without min height")]
     #[test_case(0, Some(100), 1, 5, true; "first DKG allowed regardless of min height")]
     #[test_case(1, None, 2, 100, false; "subsequent DKG not allowed without min height")]
