@@ -99,10 +99,11 @@ pub const DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX: u16 = 25;
 /// smart contract.
 pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 
-/// This is the least amount that can be withdrawn from Stacks onto
-/// bitcoin. The smart contract has a dust limit, but we have our own to
-/// make sure that we respect bitcoin's dust limits even if the smart
-/// contracts changed are updated and this check is removed.
+/// This is the max dust amount for a standard transaction using the
+/// default `dustrelayfee` config setting from bitcoin core. The smart
+/// contract has this dust limit as well, but we have our own to make sure
+/// that we respect bitcoin's default dust limits even if the smart
+/// contracts are updated and the check is removed.
 pub const WITHDRAWAL_DUST_LIMIT: u64 = 546;
 
 /// This is the number of bitcoin blocks that the signers will wait before
