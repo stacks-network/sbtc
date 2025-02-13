@@ -60,7 +60,7 @@ use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
@@ -1460,54 +1460,53 @@ where
         })
     }
 
-    /// TODO(#742): This function needs to filter deposit requests based on
-    /// time as well. We need to do this because deposit requests are locked
-    /// using OP_CSV, which lock up coins based on block height or
-    /// multiples of 512 seconds measure by the median time past.
-    #[tracing::instrument(skip_all)]
-    pub async fn get_pending_requests(
-        &self,
+    /// Fetches pending withdrawal requests from storage and filters them based
+    /// on the remaining consensus rules as defined in #741:
+    ///
+    /// 1. The request must not have been swept within the current canonical Bitcoin chain.
+    /// 2. The request must be confirmed in a canonical Stacks block.
+    /// 3. The request must have reached the required number of Bitcoin confirmations.
+    /// 4. The request must have been approved by the required number of signers.
+    /// 5. * Not applicable for the coordinator.
+    /// 6. * Applicable during packaging (later step).
+    /// 7. The request must not have expired.
+    /// 8. The request amount must be above the dust limit.
+    /// 9. The request must be within the current sBTC caps.
+    pub async fn get_eligible_pending_withdrawal_requests(
+        storage: &impl DbRead,
         bitcoin_chain_tip: &model::BitcoinBlockRef,
         stacks_chain_tip: &model::StacksBlockHash,
-        aggregate_key: &PublicKey,
-        signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<Option<utxo::SbtcRequests>, Error> {
-        tracing::debug!("fetching pending deposit and withdrawal requests");
-        let context_window = self.context_window;
-        let threshold = self.threshold;
+        aggregate_public_key: &PublicKey,
+        signer_public_key: &PublicKey,
+        approval_threshold: u16,
+    ) -> Result<Vec<utxo::WithdrawalRequest>, Error> {
+        // We set the context window (number of Bitcoin blocks to recurse
+        // backwards over) to `WITHDRAWAL_BLOCKS_EXPIRY` to exclude requests
+        // which are expired.
+        let context_window = WITHDRAWAL_BLOCKS_EXPIRY as u16; // We control this value.
 
-        let storage = self.context.get_storage();
-
-        let pending_deposit_requests = storage
-            .get_pending_accepted_deposit_requests(
-                bitcoin_chain_tip.as_ref(),
-                context_window,
-                threshold,
-            )
-            .await?;
-
+        // Fetch pending withdrawal requests from storage. This method performs
+        // the following filtering:
+        // 1. Accepted by at least `threshold` signers [#741 1.1.4],
+        // 2. In a canonical stacks block which is anchored in the canonical
+        //    bitcoin chain (our current chain tip) [#741 1.1.1 & 1.1.2], and
+        // 3. Still within the validity period (not expired) [#741 1.1.7].
         let pending_withdraw_requests = storage
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 context_window,
-                threshold,
+                approval_threshold,
             )
             .await?;
 
-        let signer_public_key = self.signer_public_key();
-        let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
-
-        for req in pending_deposit_requests {
-            let votes = storage
-                .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
-                .await?;
-
-            let deposit = utxo::DepositRequest::from_model(req, votes);
-            deposits.push(deposit);
+        if pending_withdraw_requests.is_empty() {
+            tracing::debug!("no pending withdrawal requests eligible for consideration found");
         }
 
-        let mut withdrawals = Vec::new();
+        let mut eligible_withdrawals = Vec::new();
 
+        // Iterate over the pending withdrawal requests we fetched above and
+        // validate them against the remaining consensus rules.
         for req in pending_withdraw_requests {
             // Consensus rule #741 pt. 1.1.8.
             if req.amount < WITHDRAWAL_DUST_LIMIT {
@@ -1520,41 +1519,10 @@ where
                 continue;
             }
 
-            // Attempt to fetch the stacks' bitcoin anchor block from the db.
-            // If we can't find it, we skip the withdrawal request. Otherwise,
-            // we check that the request has not expired
-            let stacks_anchor = storage.get_stacks_anchor_block_ref(&req.block_hash).await;
-            match stacks_anchor {
-                Ok(Some(anchor)) => {
-                    let max_processable_height = req.block_height + WITHDRAWAL_BLOCKS_EXPIRY;
-                    if anchor.block_height > max_processable_height {
-                        tracing::debug!(
-                            request_id = %req.request_id,
-                            request_block_height = req.block_height,
-                            anchor_block_height = anchor.block_height,
-                            max_processable_height,
-                            reason = "expired",
-                            "skipping withdrawal request"
-                        );
-                        continue;
-                    }
-                }
-                Ok(None) => {
-                    tracing::debug!(
-                        request_id = %req.request_id,
-                        reason = "missing_anchor_block",
-                        "skipping withdrawal request"
-                    );
-                    continue;
-                }
-                Err(error) => {
-                    tracing::warn!(%error, "error fetching stacks' bitcoin anchor block for withdrawal request; skipping");
-                    continue;
-                }
-            }
-
+            // Fetch the votes for the withdrawal request from storage. This
+            // uses the aggregate
             let votes = storage
-                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
+                .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_public_key)
                 .await?;
 
             let qualified_id = req.qualified_id();
@@ -1564,7 +1532,7 @@ where
                 bitcoin_chain_tip.as_ref(),
                 stacks_chain_tip,
                 &qualified_id,
-                &signer_public_key,
+                signer_public_key,
             );
             let report = match report_fut.await {
                 Ok(Some(report)) => report,
@@ -1593,7 +1561,8 @@ where
                         request_id = %req.request_id,
                         "withdrawal request confirmed in stacks block"
                     );
-                    let num_confirmations = bitcoin_chain_tip.block_height - report.block_height;
+                    let num_confirmations =
+                        bitcoin_chain_tip.block_height - report.bitcoin_block_height;
                     if num_confirmations <= WITHDRAWAL_BLOCKS_WAIT {
                         tracing::debug!(
                             request_id = %req.request_id,
@@ -1628,7 +1597,7 @@ where
                 WithdrawalRequestStatus::Unconfirmed => {
                     tracing::debug!(
                         request_id = %req.request_id,
-                        request_bitcoin_block_height = report.block_height,
+                        request_bitcoin_block_height = report.bitcoin_block_height,
                         current_bitcoin_block_height = bitcoin_chain_tip.block_height,
                         "withdrawal request unconfirmed in stacks block"
                     );
@@ -1637,8 +1606,58 @@ where
             }
 
             let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
-            withdrawals.push(withdrawal);
+            eligible_withdrawals.push(withdrawal);
         }
+
+        Ok(eligible_withdrawals)
+    }
+
+    /// TODO(#742): This function needs to filter deposit requests based on
+    /// time as well. We need to do this because deposit requests are locked
+    /// using OP_CSV, which lock up coins based on block height or
+    /// multiples of 512 seconds measure by the median time past.
+    #[tracing::instrument(skip_all)]
+    pub async fn get_pending_requests(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+        stacks_chain_tip: &model::StacksBlockHash,
+        aggregate_key: &PublicKey,
+        signer_public_keys: &BTreeSet<PublicKey>,
+    ) -> Result<Option<utxo::SbtcRequests>, Error> {
+        tracing::debug!("fetching pending deposit and withdrawal requests");
+        let context_window = self.context_window;
+        let threshold = self.threshold;
+
+        let storage = self.context.get_storage();
+
+        let pending_deposit_requests = storage
+            .get_pending_accepted_deposit_requests(
+                bitcoin_chain_tip.as_ref(),
+                context_window,
+                threshold,
+            )
+            .await?;
+
+        let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
+
+        for req in pending_deposit_requests {
+            let votes = storage
+                .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
+                .await?;
+
+            let deposit = utxo::DepositRequest::from_model(req, votes);
+            deposits.push(deposit);
+        }
+
+        let withdrawals = Self::get_eligible_pending_withdrawal_requests(
+            &storage,
+            bitcoin_chain_tip,
+            stacks_chain_tip,
+            aggregate_key,
+            &self.pub_key(),
+            threshold,
+        )
+        .await?;
 
         let num_signers = signer_public_keys
             .len()
@@ -1830,6 +1849,7 @@ where
         Ok(wallet)
     }
 
+    /// Gets this signer's public key.
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
     }
