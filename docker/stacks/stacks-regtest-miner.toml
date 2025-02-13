@@ -195,3 +195,7 @@ amount = 10000000000000000
 # below was created using the SignerWallet struct.
 address = "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
 amount = 10000000000000000
+
+[[ustx_balance]]
+address = "ST3497E9JFQ7KB9VEHAZRWYKF3296WQZEXBPXG193" # Demo principal
+amount = 10000000000000000

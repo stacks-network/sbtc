@@ -35,8 +35,7 @@ message SignerMessage {
 
 // A wsts message.
 message WstsMessage {
-  // The transaction ID this message relates to, will be a dummy ID for DKG messages
-  bitcoin.BitcoinTxid txid = 1;
+  reserved 1;
   // The wsts message
   oneof inner {
     // Tell signers to begin DKG by sending DKG public shares
@@ -59,6 +58,18 @@ message WstsMessage {
     crypto.wsts.SignatureShareRequest signature_share_request = 10;
     // Tell coordinator signature shares
     crypto.wsts.SignatureShareResponse signature_share_response = 11;
+  }
+  oneof id {
+    // If this WSTS message is related to a Bitcoin signing round, this field
+    // will be set to the related Bitcoin transaction ID.
+    bitcoin.BitcoinTxid sweep = 12;
+    // If this WSTS message is related to a rotate-keys transaction, this field
+    // will be set to the _new_ aggregate public key being verified.
+    crypto.PublicKey dkg_verification = 13;
+    // If this WSTS message is related to a DKG round, this field will be set
+    // to the 32-byte id determined based on the coordinator public key and
+    // block hash, set by the coordinator.
+    crypto.Uint256 dkg = 14;
   }
 }
 

@@ -71,6 +71,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::RotateKeysTransaction;
@@ -80,7 +81,6 @@ use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 /// Dummy block
@@ -240,6 +240,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
     group_key: PublicKey,
+    status: DkgSharesStatus,
 ) -> model::EncryptedDkgShares {
     let party_state = wsts::traits::PartyState {
         polynomial: None,
@@ -272,6 +273,9 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         script_pubkey: group_key.signers_script_pubkey().into(),
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(rng)],
         signature_share_threshold: 1,
+        dkg_shares_status: status,
+        started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
+        started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
     }
 }
 
@@ -355,21 +359,6 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     }
 }
 
-impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        WithdrawalCreateEvent {
-            txid: config.fake_with_rng(rng),
-            block_id: config.fake_with_rng(rng),
-            request_id: rng.next_u32() as u64,
-            amount: rng.next_u32() as u64,
-            sender: config.fake_with_rng(rng),
-            recipient: config.fake_with_rng::<ScriptPubKey, _>(rng),
-            max_fee: rng.next_u32() as u64,
-            block_height: rng.next_u32() as u64,
-        }
-    }
-}
-
 impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
@@ -441,6 +430,9 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
             public_shares: Vec::new(),
             signer_set_public_keys,
             signature_share_threshold: config.signatures_required,
+            dkg_shares_status: DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
+            started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
         }
     }
 }

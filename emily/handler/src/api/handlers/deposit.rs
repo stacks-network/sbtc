@@ -88,7 +88,7 @@ pub async fn get_deposit(
     params(
         ("txid" = String, Path, description = "txid associated with the Deposit."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
@@ -145,7 +145,7 @@ pub async fn get_deposits_for_transaction(
     params(
         ("status" = Status, Query, description = "the status to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
@@ -196,7 +196,7 @@ pub async fn get_deposits(
     params(
         ("recipient" = String, Path, description = "the recipient to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
@@ -354,8 +354,7 @@ pub async fn create_deposit(
             Err(e) => return Err(e),
         }
 
-        let limits = accessors::get_limits(&context).await?;
-        let deposit_info = body.validate(&limits, context.settings.is_mainnet)?;
+        let deposit_info = body.validate(context.settings.is_mainnet)?;
 
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {

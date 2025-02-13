@@ -26,7 +26,6 @@ use crate::setup::{backfill_bitcoin_blocks, TestSignerSet};
 use crate::setup::{DepositAmounts, TestSweepSetup2};
 
 const TEST_FEE_RATE: f64 = 10.0;
-const TEST_CONTEXT_WINDOW: u16 = 1000;
 
 /// Create the signers' Bitcoin state object.
 async fn signer_btc_state<C>(
@@ -111,6 +110,7 @@ async fn one_tx_per_request_set() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -136,7 +136,6 @@ async fn one_tx_per_request_set() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -214,6 +213,7 @@ async fn one_invalid_deposit_invalidates_tx() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -239,7 +239,6 @@ async fn one_invalid_deposit_invalidates_tx() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -328,6 +327,7 @@ async fn one_withdrawal_errors_validation() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -356,7 +356,6 @@ async fn one_withdrawal_errors_validation() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let result = request.construct_package_sighashes(&ctx, &btc_ctx).await;
@@ -405,6 +404,7 @@ async fn cannot_sign_deposit_is_ok() {
 
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -450,7 +450,6 @@ async fn cannot_sign_deposit_is_ok() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -561,6 +560,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -586,7 +586,6 @@ async fn sighashes_match_from_sbtc_requests_object() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data = request
@@ -701,6 +700,7 @@ async fn outcome_is_independent_of_input_order() {
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
 
+    setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
     setup.store_donation(&db).await;
     setup.store_deposit_txs(&db).await;
@@ -726,7 +726,6 @@ async fn outcome_is_independent_of_input_order() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
-        context_window: TEST_CONTEXT_WINDOW,
     };
 
     let validation_data1 = request

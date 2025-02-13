@@ -31,8 +31,8 @@ use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
+use crate::storage::model::WithdrawalRequest;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use sbtc::webhooks::NewBlockEvent;
@@ -378,11 +378,11 @@ async fn handle_withdrawal_accept(
 ))]
 async fn handle_withdrawal_create(
     ctx: &impl Context,
-    event: WithdrawalCreateEvent,
+    event: WithdrawalRequest,
     stacks_block_height: u64,
 ) -> Result<CreateWithdrawalRequestBody, Error> {
     ctx.get_storage_mut()
-        .write_withdrawal_create_event(&event)
+        .write_withdrawal_request(&event)
         .await?;
 
     tracing::debug!(topic = "withdrawal-create", "handled stacks event");
@@ -392,7 +392,7 @@ async fn handle_withdrawal_create(
         parameters: Box::new(WithdrawalParameters { max_fee: event.max_fee }),
         recipient: event.recipient.to_string(),
         request_id: event.request_id,
-        stacks_block_hash: event.block_id.to_hex(),
+        stacks_block_hash: event.block_hash.to_hex(),
         stacks_block_height,
     })
 }
@@ -470,7 +470,6 @@ mod tests {
     use axum::http::Request;
     use bitcoin::OutPoint;
     use bitvec::array::BitArray;
-    use clarity::types::chainstate::StacksBlockId;
     use clarity::vm::types::PrincipalData;
     use emily_client::models::UpdateDepositsResponse;
     use emily_client::models::UpdateWithdrawalsResponse;
@@ -478,6 +477,7 @@ mod tests {
     use rand::rngs::OsRng;
     use rand::SeedableRng as _;
     use secp256k1::SECP256K1;
+    use stacks_common::types::chainstate::StacksBlockId;
     use test_case::test_case;
     use tower::ServiceExt;
 
@@ -512,7 +512,7 @@ mod tests {
         include_str!("../../tests/fixtures/rotate-keys-and-invalid-event.json");
 
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
-    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
+    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_requests.get(&(1, StacksBlockId::from_hex("75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78").unwrap().into())).is_none(); "withdrawal-create")]
     #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
     #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
     #[test_case(ROTATE_KEYS_WEBHOOK, |db| db.rotate_keys_transactions.is_empty(); "rotate-keys")]
@@ -558,13 +558,12 @@ mod tests {
 
         let res = new_block_handler(state, body).await;
         assert_eq!(res, StatusCode::OK);
-
         // Now there should be something here
         assert!(!table_is_empty(db.lock().await));
     }
 
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
-    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_create_events.get(&1).is_none(); "withdrawal-create")]
+    #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_requests.get(&(1, StacksBlockId::from_hex("75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78").unwrap().into())).is_none(); "withdrawal-create")]
     #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
     #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
     #[test_case(ROTATE_KEYS_WEBHOOK, |db| db.rotate_keys_transactions.is_empty(); "rotate-keys")]
@@ -871,14 +870,14 @@ mod tests {
         let stacks_first_tx = &test_data.stacks_transactions[0];
         let stacks_first_block = &test_data.stacks_blocks[0];
 
-        let event = WithdrawalCreateEvent {
+        let event = WithdrawalRequest {
             request_id: 1,
-            block_id: stacks_first_tx.block_hash.into(),
+            block_hash: stacks_first_tx.block_hash.into(),
             amount: 100,
             max_fee: 1,
             recipient: ScriptPubKey::from_bytes(vec![]),
             txid: stacks_first_tx.txid,
-            sender: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
+            sender_address: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
             block_height: test_data.bitcoin_blocks[0].block_height,
         };
 
@@ -897,10 +896,10 @@ mod tests {
         assert!(res.is_ok());
         assert_eq!(res.unwrap(), expectation);
         let db = db.lock().await;
-        assert_eq!(db.withdrawal_create_events.len(), 1);
+        assert_eq!(db.withdrawal_requests.len(), 1);
         assert!(db
-            .withdrawal_create_events
-            .get(&expectation.request_id)
+            .withdrawal_requests
+            .get(&(expectation.request_id, stacks_first_block.block_hash))
             .is_some());
     }
 

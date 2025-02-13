@@ -15,7 +15,7 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 
 /// A BIP 340-341 Schnorr proof.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TaprootSignature(bitcoin::taproot::Signature);
 
 impl Deref for TaprootSignature {
