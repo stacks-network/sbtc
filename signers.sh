@@ -35,7 +35,6 @@ exec_run() {
   printf "${GRAY}Running ${NC}${BOLD}$*${NC} signers\n"
 
   # Turn all the relevant postgres instances off and on.
-  docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres down
   docker compose -f "$DOCKER_COMPOSE_PATH" --profile sbtc-postgres up --detach
 
   # Wait for the postgres instances to start (can get ssl handshake errors etc. otherwise)
