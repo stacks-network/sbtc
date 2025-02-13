@@ -61,9 +61,6 @@ services:
       - ./nodes/stacks/Config.toml.in:/stacks/Config.toml.in:ro
       - /mnt/stacks:/stacks
     environment:
-      BITCOIN_RPC_USERNAME: *BITCOIN_RPC_USERNAME
-      BITCOIN_RPC_PASSWORD: *BITCOIN_RPC_PASSWORD
-      BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
       STACKS_RPC_PORT: *STACKS_RPC_PORT
     entrypoint:
       - /bin/bash

@@ -10,9 +10,6 @@ bootstrap_node = "02196f005965cebe6ddc3901b7b1cc1aa7a88f305bb8c5893456b8f9a60592
 chain = "bitcoin"
 mode = "mainnet"
 peer_host = "bitcoin"
-username = "$BITCOIN_RPC_USERNAME"
-password = "$BITCOIN_RPC_PASSWORD"
-rpc_port = $BITCOIN_RPC_PORT
 peer_port = 8333
 
 [connection_options]
