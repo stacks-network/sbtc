@@ -1215,7 +1215,7 @@ async fn writing_withdrawal_requests_postgres() {
                  , amount
                  , max_fee
                  , sender_address
-                 , block_height
+                 , bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests"#,
         )
         .fetch_all(store.pool())
