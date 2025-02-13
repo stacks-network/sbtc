@@ -613,7 +613,7 @@ pub enum WithdrawalValidationResult {
     /// The withdrawal request amount exceeds the allowed per-withdrawal cap
     AmountTooHigh,
     /// The withdrawal request amount is below the bitcoin dust amount.
-    AmountTooLow,
+    AmountIsDust,
     /// The assessed fee exceeds the max-fee in the withdrawal request.
     FeeTooHigh,
     /// The signer does not have a record of their vote on the withdrawal
@@ -635,8 +635,9 @@ pub enum WithdrawalValidationResult {
     RequestNotFinal,
     /// The signer has rejected the withdrawal request.
     RequestRejected,
-    /// The withdrawal transaction has been confirmed by a stacks block
-    /// that is not part of the canonical Stacks blockchain.
+    /// The transaction that created the withdrawal request has been
+    /// confirmed by a stacks block that is not part of the canonical
+    /// Stacks blockchain.
     TxNotOnBestChain,
     /// The signer does not have a record of the withdrawal request in
     /// their database.
@@ -868,24 +869,17 @@ impl DepositRequestReport {
 /// An enum for the confirmation status of a withdrawal request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WithdrawalRequestStatus {
-    /// We have a record of the withdrawal request transaction, and it has
-    /// been confirmed on the canonical Stacks blockchain. We have not
-    /// fulfilled the request.
+    /// We have a record of the withdrawal request transaction, and it is
+    /// confirmed by a block on the canonical Stacks blockchain. We have
+    /// not fulfilled the request.
     Confirmed,
     /// We have a record of the withdrawal request being included as an
     /// output in another bitcoin transaction that has been confirmed on
     /// the canonical bitcoin blockchain.
     Fulfilled(BitcoinTxRef),
-    /// We have a record of the withdrawal request transaction, and it has
-    /// not been confirmed on the canonical Stacks blockchain.
-    ///
-    /// Usually we will almost certainly have a record of a withdrawal
-    /// request, and we require that the withdrawal transaction be
-    /// confirmed before we write it to our database. But the withdrawal
-    /// transaction can be affected by a bitcoin reorg, where it is no
-    /// longer confirmed on the canonical bitcoin blockchain. If this
-    /// happens when we query for the status then it will come back as
-    /// unconfirmed.
+    /// We have a record of the transaction that created the withdrawal
+    /// request, but it is not confirmed on the canonical Stacks blockchain
+    /// and the withdrawal request has not been fulfilled.
     Unconfirmed,
 }
 
@@ -953,7 +947,7 @@ impl WithdrawalRequestReport {
         }
 
         if self.amount < WITHDRAWAL_DUST_LIMIT {
-            return WithdrawalValidationResult::AmountTooLow;
+            return WithdrawalValidationResult::AmountIsDust;
         }
 
         let block_wait = bitcoin_chain_tip_height.saturating_sub(self.bitcoin_block_height);
@@ -1469,8 +1463,8 @@ mod tests {
         },
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
-        status: WithdrawalValidationResult::AmountTooLow,
-    } ; "amount-too-low")]
+        status: WithdrawalValidationResult::AmountIsDust,
+    } ; "amount-is-dust")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
             status: WithdrawalRequestStatus::Confirmed,
