@@ -275,7 +275,7 @@ pub async fn get_deposits_for_reclaim_pubkey(
     configuration: &configuration::Configuration,
     reclaim_pubkey: &str,
     next_token: Option<&str>,
-    page_size: Option<i32>,
+    page_size: Option<u32>,
 ) -> Result<models::GetDepositsResponse, Error<GetDepositsForReclaimPubkeyError>> {
     let local_var_configuration = configuration;
 

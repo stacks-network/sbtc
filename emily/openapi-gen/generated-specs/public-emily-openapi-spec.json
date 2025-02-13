@@ -719,7 +719,8 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "nullable": true
+              "nullable": true,
+              "minimum": 0
             }
           }
         ],
