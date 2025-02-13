@@ -964,7 +964,7 @@ impl WithdrawalRequestReport {
             return WithdrawalValidationResult::Unknown;
         };
 
-        if assessed_fee.to_sat() > self.max_fee.min(self.amount) {
+        if assessed_fee.to_sat() > self.max_fee {
             return WithdrawalValidationResult::FeeTooHigh;
         }
 
@@ -1465,6 +1465,24 @@ mod tests {
         limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
         status: WithdrawalValidationResult::AmountIsDust,
     } ; "amount-is-dust")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: TX_FEE.to_sat() - 1,
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new().into(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::Ok,
+    } ; "amount-and-fee-divorced")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
             status: WithdrawalRequestStatus::Confirmed,
