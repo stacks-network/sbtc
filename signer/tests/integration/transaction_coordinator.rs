@@ -107,6 +107,7 @@ use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::AsBlockRef as _;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -3024,6 +3025,7 @@ fn create_test_setup(
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
     let deposit_block_hash = faucet.generate_blocks(1).pop().unwrap();
+    let block_header = rpc.get_block_header_info(&deposit_block_hash).unwrap();
     let tx_info = bitcoin_client
         .get_tx_info(&deposit_tx.compute_txid(), &deposit_block_hash)
         .unwrap()
@@ -3033,13 +3035,15 @@ fn create_test_setup(
         // We don't use `signer`
         signer: Recipient::new(AddressType::P2tr),
     };
+    let (request, recipient) = generate_withdrawal();
+
     TestSweepSetup2 {
         deposit_block_hash,
         deposits: vec![(deposit_info, deposit_request, tx_info)],
         sweep_tx_info: None,
         donation,
         signers: test_signers,
-        withdrawals: vec![generate_withdrawal()],
+        withdrawals: vec![(request, recipient, block_header.as_block_ref())],
         withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
         signatures_required,
     }
