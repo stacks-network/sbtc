@@ -636,7 +636,7 @@ pub enum WithdrawalValidationResult {
     /// The signer has rejected the withdrawal request.
     RequestRejected,
     /// The withdrawal transaction has been confirmed by a stacks block
-    /// that is not part of the canonical stacks blockchain.
+    /// that is not part of the canonical Stacks blockchain.
     TxNotOnBestChain,
     /// The signer does not have a record of the withdrawal request in
     /// their database.
@@ -1407,22 +1407,34 @@ mod tests {
 
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
+            // This is the only acceptable status.
             status: WithdrawalRequestStatus::Confirmed,
+            // This does not matter during validation.
             id: QualifiedRequestId {
                 request_id: 0,
                 txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
+            // This is the only acceptable value.
             is_accepted: Some(true),
+            // This just needs to be under the sBTC withdrawal maximum in
+            // the SbtcLimits.
             amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            // The max fee just needs to be greater than or equal to the
+            // assessed fee.
+            max_fee: TX_FEE.to_sat(),
+            // This does not matter during validation.
             recipient: ScriptBuf::new().into(),
+            // This needs to be WITHDRAWAL_BLOCKS_WAIT less than the
+            // chain_tip_height.
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::Ok,
+        // This is part of sBTC consensus.
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::unlimited(),
-    } ; "happy-path-status")]
+        // This is set by Emily.
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::Ok,
+    } ; "happy-path-ok")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
             status: WithdrawalRequestStatus::Confirmed,
@@ -1432,14 +1444,14 @@ mod tests {
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
-            amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            amount: Amount::ONE_BTC.to_sat() + 1,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
         status: WithdrawalValidationResult::AmountTooHigh,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat() - 1),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
     } ; "amount-too-high")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1451,13 +1463,13 @@ mod tests {
             },
             is_accepted: Some(true),
             amount: WITHDRAWAL_DUST_LIMIT - 1,
-            max_fee: u64::MAX,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::AmountTooLow,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::AmountTooLow,
     } ; "amount-too-low")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1473,9 +1485,9 @@ mod tests {
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::FeeTooHigh,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::FeeTooHigh,
     } ; "fee-too-high")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1487,13 +1499,13 @@ mod tests {
             },
             is_accepted: None,
             amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::NoVote,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::NoVote,
     } ; "no-vote")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1505,13 +1517,13 @@ mod tests {
             },
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::RequestExpired,
         chain_tip_height: WITHDRAWAL_BLOCKS_EXPIRY + 1,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestExpired,
     } ; "request-expired")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1526,13 +1538,13 @@ mod tests {
             },
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::RequestFulfilled,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestFulfilled,
     } ; "request-fulfilled")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1544,13 +1556,13 @@ mod tests {
             },
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::RequestNotFinal,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT - 1,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestNotFinal,
     } ; "request-not-final")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1562,13 +1574,13 @@ mod tests {
             },
             is_accepted: Some(false),
             amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::RequestRejected,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestRejected,
     } ; "request-rejected")]
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
@@ -1580,13 +1592,13 @@ mod tests {
             },
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
-            max_fee: u64::MAX,
+            max_fee: TX_FEE.to_sat(),
             recipient: ScriptBuf::new().into(),
             bitcoin_block_height: 0,
         },
-        status: WithdrawalValidationResult::TxNotOnBestChain,
         chain_tip_height: WITHDRAWAL_BLOCKS_WAIT,
-        limits: SbtcLimits::unlimited(),
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::TxNotOnBestChain,
     } ; "tx-not-on-best-chain")]
     fn withdrawal_report_validation(mapping: WithdrawalReportErrorMapping) {
         let mut tx = crate::testing::btc::base_signer_transaction();
@@ -1604,6 +1616,40 @@ mod tests {
             .validate(chain_tip_height, output_index, &tx, TX_FEE, limits);
 
         assert_eq!(status, mapping.status);
+    }
+
+    #[test]
+    fn withdrawal_report_validation_unknown() {
+        let report = WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: u64::MAX,
+            recipient: ScriptBuf::new().into(),
+            bitcoin_block_height: 0,
+        };
+        let mut tx = crate::testing::btc::base_signer_transaction();
+        tx.output.push(TxOut {
+            value: Amount::from_sat(report.amount),
+            script_pubkey: report.recipient.clone(),
+        });
+
+        // This output_index is out of bounds, and is not the index for the
+        // withdrawal output, so we won't know the assessed fee. This
+        // should never happen, and is a programming error whenever we
+        // observe it.
+        let output_index = tx.output.len();
+        let bitcoin_chain_tip_height = WITHDRAWAL_BLOCKS_WAIT;
+        let limits = &SbtcLimits::unlimited();
+
+        let status = report.validate(bitcoin_chain_tip_height, output_index, &tx, TX_FEE, limits);
+
+        assert_eq!(status, WithdrawalValidationResult::Unknown);
     }
 
     #[test_case(
