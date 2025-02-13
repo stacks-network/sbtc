@@ -624,7 +624,7 @@ where
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
-            private_key: private_key,
+            private_key,
             threshold: self.signing_threshold,
             context_window: self.context_window,
             signing_round_max_duration: Duration::from_millis(500),
