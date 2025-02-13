@@ -2131,58 +2131,35 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(16);
 
-    // We only want the blockchain to be generated
-    let num_signers = 3;
-    let test_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
-        num_stacks_blocks_per_bitcoin_block: 1,
-        num_deposit_requests_per_block: 0,
-        num_withdraw_requests_per_block: 0,
-        num_signers_per_request: num_signers,
-        consecutive_blocks: false,
+    let bitcoin_block = model::BitcoinBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+        parent_hash: fake::Faker.fake_with_rng(&mut rng),
     };
 
-    let signer_public_keys = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
-    let signer_public_key = &signer_public_keys[0];
-    let test_data = TestData::generate(&mut rng, &signer_public_keys, &test_params);
-    test_data.write_to(&db).await;
-
-    let bitcoin_chain_tip_ref = db
-        .get_bitcoin_canonical_chain_tip_ref()
-        .await
-        .unwrap()
-        .unwrap();
-    let bitcoin_chain_tip = bitcoin_chain_tip_ref.block_hash;
-    let stacks_chain_tip_block = db
-        .get_stacks_chain_tip(&bitcoin_chain_tip)
-        .await
-        .unwrap()
-        .unwrap();
-
-    // Note that the block_height matters here, since the queries look for
-    // sweeps in blocks with height greater than or equal to the block
-    // height in the withdrawal request. In this case, the sweep
-    // transaction is confirmed on the chain tip of the bitcoin blockchain.
-    let withdrawal_request = WithdrawalRequest {
-        block_hash: stacks_chain_tip_block.block_hash,
-        block_height: bitcoin_chain_tip_ref.block_height - 1,
-        ..Faker.fake_with_rng(&mut rng)
+    let stacks_block = model::StacksBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        bitcoin_anchor: bitcoin_block.block_hash,
     };
-    let qualified_id = withdrawal_request.qualified_id();
 
-    db.write_withdrawal_request(&withdrawal_request)
-        .await
-        .unwrap();
+    let withdrawal_request = model::WithdrawalRequest {
+        request_id: 1,
+        txid: fake::Faker.fake_with_rng(&mut rng),
+        block_hash: stacks_block.block_hash,
+        recipient: fake::Faker.fake_with_rng(&mut rng),
+        amount: 1_000,
+        max_fee: 1_000,
+        sender_address: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+    };
 
-    // Okay now let's pretend that the withdrawal has been swept. For that
-    // we need a row in the `bitcoin_withdrawals_outputs` table, and
-    // records in the `transactions` and `bitcoin_transactions` tables. We
-    // place the sweep on the bitcoin chain tip.
     let swept_output = BitcoinWithdrawalOutput {
-        request_id: qualified_id.request_id,
-        stacks_txid: qualified_id.txid,
-        stacks_block_hash: qualified_id.block_hash,
-        bitcoin_chain_tip,
+        request_id: withdrawal_request.request_id,
+        stacks_txid: withdrawal_request.txid,
+        stacks_block_hash: withdrawal_request.block_hash,
+        bitcoin_chain_tip: bitcoin_block.block_hash,
         ..Faker.fake_with_rng(&mut rng)
     };
 
@@ -2190,13 +2167,19 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
         tx: Vec::new(),
-        block_hash: bitcoin_chain_tip.to_byte_array(),
+        block_hash: bitcoin_block.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
         txid: swept_output.bitcoin_txid,
-        block_hash: bitcoin_chain_tip,
+        block_hash: bitcoin_block.block_hash,
     };
-    
+
+    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+    db.write_stacks_block(&stacks_block).await.unwrap();
+    db.write_withdrawal_request(&withdrawal_request)
+        .await
+        .unwrap();
+
     db.write_transaction(&sweep_tx_model).await.unwrap();
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
     db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
@@ -2204,14 +2187,10 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         .unwrap();
 
 
-    let bitcoin_block = db
-        .get_bitcoin_block(&bitcoin_chain_tip)
-        .await
-        .unwrap()
-        .unwrap();
+    
     let context_window = 20;
     let mut requests = db
-        .get_swept_withdrawal_requests(&bitcoin_chain_tip, context_window)
+        .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await
         .unwrap();
 
@@ -2225,10 +2204,10 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     let expected = SweptWithdrawalRequest {
         amount: withdrawal_request.amount,
         txid: withdrawal_request.txid,
-        sweep_block_hash: bitcoin_chain_tip,
+        sweep_block_hash: bitcoin_block.block_hash,
         sweep_block_height: bitcoin_block.block_height,
         sweep_txid: swept_output.bitcoin_txid,
-        request_id: qualified_id.request_id,
+        request_id: withdrawal_request.request_id,
         block_hash: withdrawal_request.block_hash,
         sender_address: withdrawal_request.sender_address,
         max_fee: withdrawal_request.max_fee,
