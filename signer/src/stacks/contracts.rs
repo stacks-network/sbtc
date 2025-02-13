@@ -1094,8 +1094,7 @@ impl AsContractCall for RejectWithdrawalV1 {
                 &req_ctx.chain_tip.block_hash,
                 &stacks_chain_tip.block_hash,
                 &self.id,
-                //&ctx.signer().public_key(),
-                &req_ctx.origin,
+                &ctx.config().signer.public_key(),
             )
             .await
             .map_err(|_| WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self))?
