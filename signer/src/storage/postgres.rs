@@ -1229,37 +1229,6 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_accepted_deposit_requests(
-        &self,
-        signer: &PublicKey,
-    ) -> Result<Vec<model::DepositRequest>, Error> {
-        sqlx::query_as::<_, model::DepositRequest>(
-            r#"
-            SELECT
-                requests.txid
-              , requests.output_index
-              , requests.spend_script
-              , requests.reclaim_script
-              , requests.recipient
-              , requests.amount
-              , requests.max_fee
-              , requests.lock_time
-              , requests.signers_public_key
-              , requests.sender_script_pub_keys
-            FROM sbtc_signer.deposit_requests requests
-                 JOIN sbtc_signer.deposit_signers signers
-                   ON requests.txid = signers.txid
-                  AND requests.output_index = signers.output_index
-            WHERE
-                signers.signer_pub_key = $1
-            "#,
-        )
-        .bind(signer.serialize())
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn get_deposit_request_report(
         &self,
         chain_tip: &model::BitcoinBlockHash,
