@@ -1074,7 +1074,6 @@ impl AsContractCall for RejectWithdrawalV1 {
     where
         C: Context + Send + Sync,
     {
-        eprintln!("check deployer");
         if self.deployer != req_ctx.deployer {
             return Err(WithdrawalRejectErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
@@ -1083,7 +1082,6 @@ impl AsContractCall for RejectWithdrawalV1 {
         //
         // 2. The double spend check. Check whether the qualified request ID is in the bitcoin_withdrawals_outputs table, and that any of the associated txids are confirmed on the canonical bitcoin blockchain. Fail the withdrawal request if such a transaction was found.
 
-        eprintln!("get withdrawal request report");
         let stacks_chain_tip = ctx
             .get_storage()
             .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
@@ -1102,50 +1100,41 @@ impl AsContractCall for RejectWithdrawalV1 {
             .await
             .map_err(|_| WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self))?
         else {
-            eprintln!("no withdrawal request report");
             return Err(WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self));
         };
 
-        eprintln!("check withdrawal request report status");
         match report.status {
             WithdrawalRequestStatus::Confirmed => (),
             WithdrawalRequestStatus::Fulfilled(_txid) => {
                 // fails #2
-                eprintln!("withdrawal request was fulfilled");
                 return Err(
                     WithdrawalRejectErrorMsg::WithdrawalRequestFulfilled.into_error(req_ctx, self)
                 );
             }
             WithdrawalRequestStatus::Unconfirmed => {
                 // fails #1
-                eprintln!("withdrawal request was unconfirmed");
                 return Err(WithdrawalRejectErrorMsg::WithdrawalRequestUnconfirmed
                     .into_error(req_ctx, self));
             }
         }
 
-        eprintln!("validate final request");
         // 3. The request is final. Check that we've seen six new bitcoin blocks since observing the bitcoin anchor block associated with the Stacks block confirming the withdrawal request transaction. Fail the withdrawal request if we’ve observed less than 6 bitcoin blocks since the anchor block.
 
         let request_block_height = report.block_height;
-        eprintln!("request_block_height {}", request_block_height);
 
         let Some(tip_block_hash) = ctx.get_storage().get_bitcoin_canonical_chain_tip().await?
         else {
-            eprintln!("no bitcoin canonical chain tip");
             return Err(WithdrawalRejectErrorMsg::NoBitcoinChainTip.into_error(req_ctx, self));
         };
 
         let Some(tip_bitcoin_block) = ctx.get_storage().get_bitcoin_block(&tip_block_hash).await?
         else {
-            eprintln!("no bitcoin block for canonical chain tip");
             return Err(WithdrawalRejectErrorMsg::MissingBitcoinBlock.into_error(req_ctx, self));
         };
 
         let tip_block_height = tip_bitcoin_block.block_height;
 
         //let tip_block_height = req_ctx.chain_tip.block_height;
-        eprintln!("tip_block_height {}", tip_block_height);
 
         if tip_block_height < (request_block_height + 6) {
             return Err(
@@ -1153,56 +1142,37 @@ impl AsContractCall for RejectWithdrawalV1 {
             );
         }
 
-        eprintln!("validate bitmap");
         // 4. The request is collectively rejected or expired.
-        eprintln!("get withdrawal request signer votes");
         let signer_votes = ctx
             .get_storage()
             .get_withdrawal_request_signer_votes(&self.id, &req_ctx.aggregate_key)
             .await
             .map_err(|_| WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self))?;
         let signer_bitmap = BitArray::<[u8; 16]>::from(signer_votes);
-        eprintln!("signer_votes  {}", &signer_bitmap);
-        eprintln!("signer_bitmap {}", &self.signer_bitmap);
 
         if signer_bitmap != self.signer_bitmap {
             return Err(WithdrawalRejectErrorMsg::BitmapMismatch.into_error(req_ctx, self));
         }
 
         // TODO: how many votes are needed to be valid?
-        eprintln!("get withdrawal signers");
         let withdrawal_signers = &ctx
             .get_storage()
             .get_withdrawal_signers(self.id.request_id, &self.id.block_hash)
             .await
             .map_err(|_| WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self))?;
 
-        let mut accepted_count = 0;
         let mut rejected_count = 0;
         for signer in withdrawal_signers {
-            if signer.is_accepted {
-                accepted_count += 1;
-            } else {
+            if !signer.is_accepted {
                 rejected_count += 1;
             }
         }
 
         let threshold = req_ctx.signatures_required;
-        eprintln!("threshold {threshold}");
-        let state = ctx.state();
-        eprintln!("{state:?}");
         let num_signers = ctx.state().current_signer_set().get_signers().len();
-        eprintln!("num_signers {num_signers}");
         let reject_threshold = num_signers - threshold as usize + 1;
-        eprintln!("reject_threshold {reject_threshold}");
-
-        eprintln!("{} signers accepted the withdrawal", accepted_count);
 
         if rejected_count < reject_threshold {
-            eprintln!(
-                "{} signers rejected the withdrawal, needed {}",
-                rejected_count, reject_threshold
-            );
             return Err(
                 WithdrawalRejectErrorMsg::WithdrawalRequestNotRejected.into_error(req_ctx, self)
             );
