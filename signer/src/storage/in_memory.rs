@@ -316,6 +316,18 @@ impl super::DbRead for SharedStore {
         Ok(self.lock().await.get_stacks_chain_tip(bitcoin_chain_tip))
     }
 
+    async fn get_stacks_anchor_block_ref(
+        &self,
+        stacks_block_hash: &model::StacksBlockHash,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        let store = self.lock().await;
+        let anchor_block = store
+            .stacks_blocks
+            .get(stacks_block_hash)
+            .and_then(|block| store.bitcoin_blocks.get(&block.bitcoin_anchor));
+        Ok(anchor_block.map(model::BitcoinBlockRef::from))
+    }
+
     async fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,

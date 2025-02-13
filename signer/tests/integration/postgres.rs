@@ -704,7 +704,7 @@ async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_
     signer::testing::storage::drop_db(pg_store).await;
 }
 
-/// This tests that when fetching pending accepted deposits we ingore swept ones.
+/// This tests that when fetching pending accepted deposits we ignore swept ones.
 #[tokio::test]
 async fn should_not_return_swept_deposits_as_pending_accepted() {
     let db = testing::storage::new_test_database().await;
@@ -872,7 +872,7 @@ async fn should_return_only_accepted_pending_deposits_that_are_within_reclaim_bo
         * percent_of_original_requests_expected_to_be_in_bounds)
         .floor() as usize;
 
-    // Prepare some datastructures to filter the deposit requests that we're going to put out of bounds
+    // Prepare some data structures to filter the deposit requests that we're going to put out of bounds
     // and to check against later.
     pending_accepted_deposit_requests.shuffle(&mut rng);
     let mut unique_deposit_ids = pending_accepted_deposit_requests
@@ -1919,7 +1919,7 @@ async fn get_last_encrypted_dkg_shares_gets_most_recent_shares() {
 /// fetch the last encrypted DKG shares with status 'verified' from in the
 /// database.
 #[tokio::test]
-async fn get_last_verfied_dkg_shares_does_whats_advertised() {
+async fn get_last_verified_dkg_shares_does_whats_advertised() {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -2107,7 +2107,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
         .unwrap();
 
     // There should only be one request in the database and it has a sweep
-    // trasnaction so the length should be 1.
+    // transaction so the length should be 1.
     assert_eq!(requests.len(), 1);
 
     // Its details should match that of the deposit request.
@@ -2778,7 +2778,7 @@ async fn deposit_report_with_deposit_request_spent() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
     test_data.write_to(&db).await;
 
-    // Let's write the deposit request and associated trasnaction to the
+    // Let's write the deposit request and associated transaction to the
     // database. Here the deposit transaction will be confirmed on the
     // canonical bitcoin blockchain.
     let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
@@ -2876,7 +2876,7 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
     test_data.write_to(&db).await;
 
-    // Let's write the deposit request and associated trasnaction to the
+    // Let's write the deposit request and associated transaction to the
     // database. Here the deposit transaction will be confirmed on the
     // canonical bitcoin blockchain.
     let deposit_request: model::DepositRequest = fake::Faker.fake_with_rng(&mut rng);
@@ -3319,10 +3319,11 @@ async fn withdrawal_report_with_withdrawal_request_reorged() {
     // Now let's generate a report where we know that the withdrawal
     // request is not on the blockchain identified by the given chain tip.
     let qualified_id = withdrawal_request.qualified_id();
+    let random_stacks_chain_tip = Faker.fake_with_rng(&mut rng);
     let report = db
         .get_withdrawal_request_report(
             &bitcoin_chain_tip,
-            &stacks_chain_tip_block.parent_hash,
+            &random_stacks_chain_tip,
             &qualified_id,
             signer_public_key,
         )
@@ -4477,6 +4478,70 @@ async fn verification_status_one_way_street() {
 
     assert_eq!(select1, select2);
     assert_eq!(select1, compare);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[tokio::test]
+async fn get_stacks_anchor_block_ref_works() {
+    let db = testing::storage::new_test_database().await;
+
+    let bitcoin_genesis: BitcoinBlock = fake::Faker.fake();
+    db.write_bitcoin_block(&bitcoin_genesis).await.unwrap();
+    for _ in 0..100 {}
+
+    let anchor_block: BitcoinBlock = fake::Faker.fake();
+    let anchor_block_ref = anchor_block.clone().into();
+    let stacks_block = model::StacksBlock {
+        bitcoin_anchor: anchor_block.block_hash,
+        ..fake::Faker.fake()
+    };
+
+    db.write_bitcoin_block(&anchor_block).await.unwrap();
+    db.write_stacks_block(&stacks_block).await.unwrap();
+
+    let select = db
+        .get_stacks_anchor_block_ref(&stacks_block.block_hash)
+        .await
+        .expect("failed to query db");
+
+    assert_eq!(select, Some(anchor_block_ref));
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// We have no FK constraint from `bitcoin_anchor` to
+/// `bitcoin_blocks.block_hash`, so we need to support this case.
+#[tokio::test]
+async fn get_stacks_anchor_block_ref_missing_anchor() {
+    let db = testing::storage::new_test_database().await;
+
+    let stacks_block = Faker.fake();
+
+    db.write_stacks_block(&stacks_block).await.unwrap();
+
+    let select = db
+        .get_stacks_anchor_block_ref(&stacks_block.block_hash)
+        .await
+        .expect("failed to query db");
+
+    assert_eq!(select, None);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+#[tokio::test]
+async fn get_stacks_anchor_block_ref_missing_stacks_block() {
+    let db = testing::storage::new_test_database().await;
+
+    let stacks_block_hash = Faker.fake();
+
+    let select = db
+        .get_stacks_anchor_block_ref(&stacks_block_hash)
+        .await
+        .expect("failed to query db");
+
+    assert_eq!(select, None);
 
     signer::testing::storage::drop_db(db).await;
 }

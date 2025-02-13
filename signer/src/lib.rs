@@ -51,14 +51,6 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 ///    contracts takes a maximum of 128 keys.
 const MAX_KEYS: u16 = 128;
 
-/// The number of Bitcoin blocks that the signers will wait from the Bitcoin
-/// anchor block associated with the Stacks block confirming the withdrawal
-/// request transaction, before attempting to sweep the funds.
-///
-/// Each block is generally 10 minutes apart, so a value of `6` would represent
-/// an hour in wall-clock time (during normal Bitcoin network conditions).
-pub const WITHDRAWAL_REQUIRED_CONFIRMATIONS: u64 = 6;
-
 /// Each deposit has a reclaim script spend path that can be executed after
 /// some "time". Right now this "time", the locktime, can only be
 /// denominated in bitcoin blocks. Once locktime number of blocks have been
@@ -106,6 +98,21 @@ pub const DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX: u16 = 25;
 /// Deposit amounts that is less than this amount will be rejected by the
 /// smart contract.
 pub const DEPOSIT_DUST_LIMIT: u64 = 546;
+
+/// This is the least amount that can be withdrawn from Stacks onto
+/// bitcoin. The smart contract has a dust limit, but we have our own to
+/// make sure that we respect bitcoin's dust limits even if the smart
+/// contracts changed are updated and this check is removed.
+pub const WITHDRAWAL_DUST_LIMIT: u64 = 546;
+
+/// This is the number of bitcoin blocks that the signers will wait before
+/// acting on a withdrawal request. We do this to ensure that the
+/// withdrawal request is deemed final on the Stacks blockchain.
+pub const WITHDRAWAL_BLOCKS_WAIT: u64 = 6;
+
+/// This is the number of bitcoin blocks that a withdrawal request will
+/// stay live for before it expires and is considered rejected.
+pub const WITHDRAWAL_BLOCKS_EXPIRY: u64 = 24;
 
 /// This is the default maximum virtual size of a bitcoin transaction
 /// package. This value is the default limit set in bitcoin core, and

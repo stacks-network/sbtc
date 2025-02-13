@@ -18,6 +18,11 @@ criteria = "safe-to-deploy"
 version = "7.2.2"
 notes = "This change only adds wrapping to some additional bindings so that they get mangled and avoid linking errors."
 
+[[audits.webpki-roots]]
+who = "djordon <dan.jordon@gmail.com>"
+criteria = "safe-to-deploy"
+version = "0.25.4"
+
 [[audits.wsts]]
 who = "cylewitruk <cyle.witruk@outlook.com>"
 criteria = "safe-to-deploy"

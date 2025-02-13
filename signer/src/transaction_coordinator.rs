@@ -64,7 +64,9 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
-use crate::WITHDRAWAL_REQUIRED_CONFIRMATIONS;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_BLOCKS_WAIT;
+use crate::WITHDRAWAL_DUST_LIMIT;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
@@ -577,7 +579,7 @@ where
         );
 
         let pending_requests_fut = self.get_pending_requests(
-            &bitcoin_chain_tip,
+            bitcoin_chain_tip,
             &stacks_chain_tip.block_hash,
             aggregate_key,
             signer_public_keys,
@@ -1492,6 +1494,7 @@ where
             )
             .await?;
 
+        let signer_public_key = self.signer_public_key();
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
@@ -1506,15 +1509,60 @@ where
         let mut withdrawals = Vec::new();
 
         for req in pending_withdraw_requests {
+            // Consensus rule #741 pt. 1.1.8.
+            if req.amount < WITHDRAWAL_DUST_LIMIT {
+                tracing::debug!(
+                    request_id = %req.request_id,
+                    amount = req.amount,
+                    reason = "amount_below_dust_limit",
+                    "skipping withdrawal request"
+                );
+                continue;
+            }
+
+            // Attempt to fetch the stacks' bitcoin anchor block from the db.
+            // If we can't find it, we skip the withdrawal request. Otherwise,
+            // we check that the request has not expired
+            let stacks_anchor = storage.get_stacks_anchor_block_ref(&req.block_hash).await;
+            match stacks_anchor {
+                Ok(Some(anchor)) => {
+                    let max_processable_height = req.block_height + WITHDRAWAL_BLOCKS_EXPIRY;
+                    if anchor.block_height > max_processable_height {
+                        tracing::debug!(
+                            request_id = %req.request_id,
+                            request_block_height = req.block_height,
+                            anchor_block_height = anchor.block_height,
+                            max_processable_height,
+                            reason = "expired",
+                            "skipping withdrawal request"
+                        );
+                        continue;
+                    }
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        request_id = %req.request_id,
+                        reason = "missing_anchor_block",
+                        "skipping withdrawal request"
+                    );
+                    continue;
+                }
+                Err(error) => {
+                    tracing::warn!(%error, "error fetching stacks' bitcoin anchor block for withdrawal request; skipping");
+                    continue;
+                }
+            }
+
             let votes = storage
                 .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
                 .await?;
 
             let qualified_id = req.qualified_id();
-            let signer_public_key = self.signer_public_key();
+
+            // Attempt to fetch the withdrawal request report from the db.
             let report_fut = storage.get_withdrawal_request_report(
                 bitcoin_chain_tip.as_ref(),
-                &stacks_chain_tip,
+                stacks_chain_tip,
                 &qualified_id,
                 &signer_public_key,
             );
@@ -1523,7 +1571,8 @@ where
                 Ok(None) => {
                     tracing::debug!(
                         request_id = %req.request_id,
-                        "withdrawal request missing or confirmed in a currently unknown stacks block"
+                        reason = "unknown_withdrawal_request",
+                        "skipping withdrawal request"
                     );
                     continue;
                 }
@@ -1538,22 +1587,34 @@ where
             };
 
             match report.status {
+                // Consensus rule #741 pts. 1.1.2 & 1.1.3.
                 WithdrawalRequestStatus::Confirmed => {
                     tracing::debug!(
                         request_id = %req.request_id,
                         "withdrawal request confirmed in stacks block"
                     );
                     let num_confirmations = bitcoin_chain_tip.block_height - report.block_height;
-                    if num_confirmations <= WITHDRAWAL_REQUIRED_CONFIRMATIONS {
+                    if num_confirmations <= WITHDRAWAL_BLOCKS_WAIT {
                         tracing::debug!(
                             request_id = %req.request_id,
                             num_confirmations,
-                            required_confirmations = WITHDRAWAL_REQUIRED_CONFIRMATIONS,
+                            required_confirmations = WITHDRAWAL_BLOCKS_WAIT,
                             "withdrawal request has not yet reached required confirmations"
                         );
                         continue;
                     }
+                    if num_confirmations > WITHDRAWAL_BLOCKS_EXPIRY {
+                        tracing::debug!(
+                            request_id = %req.request_id,
+                            num_confirmations,
+                            expiry_blocks = WITHDRAWAL_BLOCKS_EXPIRY,
+                            "withdrawal request has expired"
+                        );
+                        continue;
+                    }
                 }
+
+                // Consensus rule #741 pt. 1.1.1.
                 WithdrawalRequestStatus::Fulfilled(tx_ref) => {
                     tracing::info!(
                         request_id = %req.request_id,
@@ -1562,6 +1623,8 @@ where
                         "withdrawal request already fulfilled"
                     );
                 }
+
+                // Consensus rule #741 pt. 1.1.2.
                 WithdrawalRequestStatus::Unconfirmed => {
                     tracing::debug!(
                         request_id = %req.request_id,
