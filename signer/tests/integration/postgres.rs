@@ -447,7 +447,7 @@ async fn get_pending_withdrawal_requests_only_pending() {
     let amounts = SweepAmounts {
         amount: 123456,
         max_fee: 12345,
-        is_deposit: true,
+        is_deposit: false,
     };
     let signers = TestSignerSet::new(&mut rng);
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
