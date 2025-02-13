@@ -113,7 +113,7 @@ Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
 **recipient** | **String** | the recipient to search by when getting all deposits. | [required] |
 **next_token** | Option<**String**> | the next token value from the previous return of this api call. |  |
-**page_size** | Option<**i32**> | the maximum number of items in the response list. |  |
+**page_size** | Option<**u32**> | the maximum number of items in the response list. |  |
 
 ### Return type
 
@@ -143,7 +143,7 @@ Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
 **reclaim_pubkey** | **String** | the reclaim schnorr public key to search by when getting all deposits. | [required] |
 **next_token** | Option<**String**> | the next token value from the previous return of this api call. |  |
-**page_size** | Option<**u32**> | the maximum number of items in the response list. |  |
+**page_size** | Option<**i32**> | the maximum number of items in the response list. |  |
 
 ### Return type
 

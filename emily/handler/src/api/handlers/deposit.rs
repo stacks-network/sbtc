@@ -248,7 +248,7 @@ pub async fn get_deposits_for_recipient(
     params(
         ("reclaimPubkey" = String, Path, description = "the reclaim schnorr public key to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
-        ("pageSize" = Option<i32>, Query, description = "the maximum number of items in the response list.")
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
     responses(
