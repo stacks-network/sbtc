@@ -485,6 +485,10 @@ async fn swept_withdrawals_fail_validation() {
     setup.submit_sweep_tx(rpc, faucet);
     setup.store_sweep_tx(&db).await;
 
+    // The sweep happened right away, even before the withdrawal request
+    // was final, so when we go to do validation without generated enough
+    // votes, it's possible that validation will fail for a reason that's
+    // different from what we're expecting.
     let chain_tip = faucet
         .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS)
         .pop()
