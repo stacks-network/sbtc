@@ -49,6 +49,7 @@ use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
+use crate::utxo_construction::make_withdrawal;
 
 /// A struct containing an actual deposit and a sweep transaction. The
 /// sweep transaction was signed with the `signer` field's public key.
@@ -606,9 +607,9 @@ pub struct TestSweepSetup2 {
     pub donation: OutPoint,
     /// The transaction that swept in the deposit transaction.
     pub sweep_tx_info: Option<SweepTxInfo>,
-    /// The withdrawal request, and a bitmap for how the signers voted on
-    /// it.
-    pub withdrawal_request: utxo::WithdrawalRequest,
+    /// The withdrawal requests, a bitmap for how the signers voted on
+    /// it, and the recipient.
+    pub withdrawals: Vec<(utxo::WithdrawalRequest, Recipient)>,
     /// The address that initiated with withdrawal request.
     pub withdrawal_sender: PrincipalData,
     /// The signer object. It's public key represents the group of signers'
@@ -673,7 +674,13 @@ impl TestSweepSetup2 {
 
         // This is randomly generated withdrawal request and the recipient
         // who can sign for the withdrawal UTXO.
-        let (withdrawal_request, _withdrawal_recipient) = generate_withdrawal();
+
+        let withdrawals: Vec<_> = amounts
+            .iter()
+            .filter(|dep| !dep.is_deposit)
+            .map(|dep| make_withdrawal(dep.amount, dep.max_fee))
+            .collect();
+
         let settings = Settings::new_from_default_config().unwrap();
         let client = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
         let deposits: Vec<(DepositInfo, utxo::DepositRequest, BitcoinTxInfo)> = deposits
@@ -693,7 +700,7 @@ impl TestSweepSetup2 {
             sweep_tx_info: None,
             donation,
             signers,
-            withdrawal_request,
+            withdrawals,
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
         }
@@ -707,11 +714,10 @@ impl TestSweepSetup2 {
     }
 
     pub fn withdrawal_ids(&self) -> Vec<QualifiedRequestId> {
-        vec![QualifiedRequestId {
-            request_id: self.withdrawal_request.request_id,
-            txid: self.withdrawal_request.txid,
-            block_hash: self.withdrawal_request.block_hash,
-        }]
+        self.withdrawals
+            .iter()
+            .map(|(req, _)| req.qualified_id())
+            .collect()
     }
 
     pub fn sweep_block_hash(&self) -> Option<BitcoinBlockHash> {
@@ -769,7 +775,10 @@ impl TestSweepSetup2 {
         let signer_utxo = aggregated_signer.get_utxos(rpc, None).pop().unwrap();
 
         let withdrawals = if with_withdrawals {
-            vec![self.withdrawal_request.clone()]
+            self.withdrawals
+                .iter()
+                .map(|(dep, _)| dep.clone())
+                .collect()
         } else {
             Vec::new()
         };
@@ -846,7 +855,7 @@ impl TestSweepSetup2 {
             db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
         }
     }
-    /// Store the transaction that swept the deposit into the signers' UTXO
+    /// Store the transaction that swept the deposits and/or withdrawals
     /// into the database
     pub async fn store_sweep_tx(&self, db: &PgStore) {
         let sweep = self.sweep_tx_info.as_ref().expect("no sweep tx info set");
@@ -925,50 +934,54 @@ impl TestSweepSetup2 {
     /// generate the corresponding deposit signer votes and store these
     /// decisions in the database.
     pub async fn store_withdrawal_decisions(&self, db: &PgStore) {
-        let withdrawal_signers: Vec<model::WithdrawalSigner> = self
-            .signers
-            .keys
-            .iter()
-            .copied()
-            .zip(self.withdrawal_request.signer_bitmap)
-            .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
-                request_id: self.withdrawal_request.request_id,
-                block_hash: self.withdrawal_request.block_hash,
-                txid: self.withdrawal_request.txid,
-                signer_pub_key,
-                is_accepted: !is_rejected,
-            })
-            .collect();
+        for (withdrawal_request, _) in self.withdrawals.iter() {
+            let withdrawal_signers: Vec<model::WithdrawalSigner> = self
+                .signers
+                .keys
+                .iter()
+                .copied()
+                .zip(withdrawal_request.signer_bitmap)
+                .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
+                    request_id: withdrawal_request.request_id,
+                    block_hash: withdrawal_request.block_hash,
+                    txid: withdrawal_request.txid,
+                    signer_pub_key,
+                    is_accepted: !is_rejected,
+                })
+                .collect();
 
-        for decision in withdrawal_signers {
-            db.write_withdrawal_signer_decision(&decision)
-                .await
-                .unwrap();
+            for decision in withdrawal_signers {
+                db.write_withdrawal_signer_decision(&decision)
+                    .await
+                    .unwrap();
+            }
         }
     }
 
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
-        let block = model::StacksBlock {
-            block_hash: self.withdrawal_request.block_hash,
-            block_height: Faker.fake_with_rng::<u32, _>(&mut OsRng) as u64,
-            parent_hash: Faker.fake_with_rng(&mut OsRng),
-            bitcoin_anchor: self.deposit_block_hash.into(),
-        };
-        db.write_stacks_block(&block).await.unwrap();
+        for (withdrawal_request, _) in self.withdrawals.iter() {
+            let block = model::StacksBlock {
+                block_hash: withdrawal_request.block_hash,
+                block_height: Faker.fake_with_rng::<u32, _>(&mut OsRng) as u64,
+                parent_hash: Faker.fake_with_rng(&mut OsRng),
+                bitcoin_anchor: self.deposit_block_hash.into(),
+            };
+            db.write_stacks_block(&block).await.unwrap();
 
-        let withdrawal_request = model::WithdrawalRequest {
-            request_id: self.withdrawal_request.request_id,
-            txid: self.withdrawal_request.txid,
-            block_hash: self.withdrawal_request.block_hash,
-            recipient: self.withdrawal_request.clone().script_pubkey,
-            amount: self.withdrawal_request.amount,
-            max_fee: self.withdrawal_request.max_fee,
-            sender_address: self.withdrawal_sender.clone().into(),
-            bitcoin_block_height: block.block_height, // This should be set to the bitcoin block height.
-        };
-        db.write_withdrawal_request(&withdrawal_request)
-            .await
-            .unwrap();
+            let withdrawal_request = model::WithdrawalRequest {
+                request_id: withdrawal_request.request_id,
+                txid: withdrawal_request.txid,
+                block_hash: withdrawal_request.block_hash,
+                recipient: withdrawal_request.clone().script_pubkey,
+                amount: withdrawal_request.amount,
+                max_fee: withdrawal_request.max_fee,
+                sender_address: self.withdrawal_sender.clone().into(),
+                bitcoin_block_height: block.block_height, // This should be set to the bitcoin block height.
+            };
+            db.write_withdrawal_request(&withdrawal_request)
+                .await
+                .unwrap();
+        }
     }
 
     /// We need to have a row in the dkg_shares table for the scriptPubKey

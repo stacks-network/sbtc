@@ -3039,7 +3039,7 @@ fn create_test_setup(
         sweep_tx_info: None,
         donation,
         signers: test_signers,
-        withdrawal_request: generate_withdrawal().0,
+        withdrawals: vec![generate_withdrawal()],
         withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
         signatures_required,
     }
