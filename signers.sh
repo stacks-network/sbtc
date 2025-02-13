@@ -58,6 +58,7 @@ exec_run() {
   printf "${BOLD}Using bootstrap signer set:${NC} $BOOTSTRAP_SIGNER_SET\n"
 
   # Spin up the specified number of signers.
+  cargo build --bin  signer
   i=1
   while [ $i -le "$1" ]
   do
