@@ -2227,6 +2227,55 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// This tests that withdrawal requests that do not have a confirmed
+/// response (sweep) bitcoin transaction are not returned from
+/// [`DbRead::get_swept_withdrawal_requests`].
+#[tokio::test]
+async fn get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_requests() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(16);
+
+    // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
+    let bitcoin_block = model::BitcoinBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+    };
+    let stacks_block = model::StacksBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        bitcoin_anchor: bitcoin_block.block_hash,
+    };
+    let withdrawal_request = model::WithdrawalRequest {
+        request_id: 1,
+        txid: fake::Faker.fake_with_rng(&mut rng),
+        block_hash: stacks_block.block_hash,
+        recipient: fake::Faker.fake_with_rng(&mut rng),
+        amount: 1_000,
+        max_fee: 1_000,
+        sender_address: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+    };
+
+    // Now write all the data to the database.
+    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+    db.write_stacks_block(&stacks_block).await.unwrap();
+    db.write_withdrawal_request(&withdrawal_request)
+        .await
+        .unwrap();
+
+    // There should be no requests because db do not contain sweep transaction
+    let context_window = 20;
+    let requests = db
+        .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
+        .await
+        .unwrap();
+    assert_eq!(requests.len(), 0);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This function tests that deposit requests that do not have a confirmed
 /// response (sweep) bitcoin transaction are not returned from
 /// [`DbRead::get_swept_deposit_requests`].
