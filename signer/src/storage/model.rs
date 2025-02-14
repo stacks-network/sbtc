@@ -459,6 +459,16 @@ pub struct SweptWithdrawalRequest {
     pub sender_address: StacksPrincipal,
 }
 
+impl SweptWithdrawalRequest {
+    /// The qualified request ID for the withdrawal request.
+    pub fn withdrawal_outpoint(&self) -> bitcoin::OutPoint {
+        OutPoint {
+            txid: self.sweep_txid.into(),
+            vout: 2, // TODO: This field will be stored in the database
+        }
+    }
+}
+
 /// Persisted DKG shares
 ///
 /// This struct represents the output of a successful run of distributed
