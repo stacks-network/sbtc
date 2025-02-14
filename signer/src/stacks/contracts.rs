@@ -1093,7 +1093,7 @@ impl AsContractCall for RejectWithdrawalV1 {
             .await
             .unwrap()
             .unwrap();
-        let Some(report) = ctx
+        let maybe_report = ctx
             .get_storage()
             .get_withdrawal_request_report(
                 &req_ctx.chain_tip.block_hash,
@@ -1101,8 +1101,9 @@ impl AsContractCall for RejectWithdrawalV1 {
                 &self.id,
                 &ctx.config().signer.public_key(),
             )
-            .await?
-        else {
+            .await?;
+
+        let Some(report) = maybe_report else {
             return Err(WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self));
         };
 
