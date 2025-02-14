@@ -313,7 +313,7 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
 }
 
 /// For this test we check that the `RejectWithdrawalV1::validate` function
-/// returns a withdrawal validation error with a WithdrawalRequestNotFinal message
+/// returns a withdrawal validation error with a RequestNotFinal message
 /// when bitmap in the transaction does not match what our records would
 /// create for the bitmap.
 #[tokio::test]
@@ -365,10 +365,7 @@ async fn reject_withdrawal_validation_not_final() {
     let validation_result = reject_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalRejectValidation(ref err) => {
-            assert_eq!(
-                err.error,
-                WithdrawalRejectErrorMsg::WithdrawalRequestNotFinal
-            )
+            assert_eq!(err.error, WithdrawalRejectErrorMsg::RequestNotFinal)
         }
         err => panic!("unexpected error during validation {err}"),
     }

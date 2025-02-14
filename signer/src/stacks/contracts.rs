@@ -996,22 +996,22 @@ pub enum WithdrawalRejectErrorMsg {
     MissingStacksBlock,
     /// No withdrawal signers
     #[error("No withdrawal signers")]
-    NoWithdrawalSigners,
+    NoSigners,
     /// No withdrawal report
     #[error("No withdrawal report")]
-    NoWithdrawalReport,
+    NoReport,
     /// Withdrawal request fulfilled
     #[error("Withdrawal request fulfilled")]
-    WithdrawalRequestFulfilled,
+    RequestFulfilled,
     /// Withdrawal request unconfirmed
     #[error("Withdrawal request unconfirmed")]
-    WithdrawalRequestUnconfirmed,
+    RequestUnconfirmed,
     /// Withdrawal request not final
     #[error("Withdrawal request not final")]
-    WithdrawalRequestNotFinal,
+    RequestNotFinal,
     /// Withdrawal request wasn't rejected by (num_signers - threshold + 1) signers
     #[error("Withdrawal request not rejected")]
-    WithdrawalRequestNotRejected,
+    RequestNotRejected,
 }
 
 impl WithdrawalRejectErrorMsg {
@@ -1111,14 +1111,11 @@ impl AsContractCall for RejectWithdrawalV1 {
             WithdrawalRequestStatus::Confirmed => (),
             WithdrawalRequestStatus::Fulfilled(_txid) => {
                 // fails #2
-                return Err(
-                    WithdrawalRejectErrorMsg::WithdrawalRequestFulfilled.into_error(req_ctx, self)
-                );
+                return Err(WithdrawalRejectErrorMsg::RequestFulfilled.into_error(req_ctx, self));
             }
             WithdrawalRequestStatus::Unconfirmed => {
                 // fails #1
-                return Err(WithdrawalRejectErrorMsg::WithdrawalRequestUnconfirmed
-                    .into_error(req_ctx, self));
+                return Err(WithdrawalRejectErrorMsg::RequestUnconfirmed.into_error(req_ctx, self));
             }
         }
 
@@ -1130,9 +1127,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         let request_block_height = report.block_height;
 
         if req_ctx.chain_tip.block_height < (request_block_height + 6) {
-            return Err(
-                WithdrawalRejectErrorMsg::WithdrawalRequestNotFinal.into_error(req_ctx, self)
-            );
+            return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 
         // 4. The request is collectively rejected or expired.
@@ -1163,9 +1158,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         let reject_threshold = num_signers - threshold as usize + 1;
 
         if rejected_count < reject_threshold {
-            return Err(
-                WithdrawalRejectErrorMsg::WithdrawalRequestNotRejected.into_error(req_ctx, self)
-            );
+            return Err(WithdrawalRejectErrorMsg::RequestNotRejected.into_error(req_ctx, self));
         }
 
         Ok(())
