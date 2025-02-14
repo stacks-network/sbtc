@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use bitcoin::block::Header;
 use bitcoin::block::Version;
+use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::Amount;
@@ -228,6 +229,7 @@ async fn deposit_flow() {
         bitcoin_txid: deposit_request.outpoint.txid.to_string(),
         deposit_script: deposit_request.deposit_script.to_hex_string(),
         reclaim_script: deposit_request.reclaim_script.to_hex_string(),
+        transaction_hex: serialize_hex(&deposit_tx),
     };
 
     // Create a fresh block for the block observer to process
@@ -587,13 +589,16 @@ async fn get_deposit_request_works() {
         .await
         .expect("Wiping Emily database in test setup failed.");
 
-    let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+    let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
+    let deposit = setup.deposits.first().unwrap();
+    let reclaim = setup.reclaims.first().unwrap();
 
     let emily_request = CreateDepositRequestBody {
         bitcoin_tx_output_index: 0,
         bitcoin_txid: setup.tx.compute_txid().to_string(),
-        deposit_script: setup.deposit.deposit_script().to_hex_string(),
-        reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+        deposit_script: deposit.deposit_script().to_hex_string(),
+        reclaim_script: reclaim.reclaim_script().to_hex_string(),
+        transaction_hex: serialize_hex(&setup.tx),
     };
 
     deposit_api::create_deposit(emily_client.config(), emily_request.clone())
@@ -603,8 +608,8 @@ async fn get_deposit_request_works() {
     let txid = setup.tx.compute_txid().into();
     let request = emily_client.get_deposit(&txid, 0).await.unwrap().unwrap();
 
-    assert_eq!(request.deposit_script, setup.deposit.deposit_script());
-    assert_eq!(request.reclaim_script, setup.reclaim.reclaim_script());
+    assert_eq!(request.deposit_script, deposit.deposit_script());
+    assert_eq!(request.reclaim_script, reclaim.reclaim_script());
     assert_eq!(request.outpoint.txid, setup.tx.compute_txid());
     assert_eq!(request.outpoint.vout, 0);
 
@@ -638,12 +643,23 @@ async fn test_get_deposits_request_paging(
         .expect("Wiping Emily database in test setup failed.");
 
     let futures = (0..num_deposits).map(|_| {
-        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
         let create_deposit_request_body = CreateDepositRequestBody {
             bitcoin_tx_output_index: 0,
             bitcoin_txid: setup.tx.compute_txid().to_string(),
-            deposit_script: setup.deposit.deposit_script().to_hex_string(),
-            reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+            deposit_script: setup
+                .deposits
+                .first()
+                .unwrap()
+                .deposit_script()
+                .to_hex_string(),
+            reclaim_script: setup
+                .reclaims
+                .first()
+                .unwrap()
+                .reclaim_script()
+                .to_hex_string(),
+            transaction_hex: serialize_hex(&setup.tx),
         };
         deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
     });
