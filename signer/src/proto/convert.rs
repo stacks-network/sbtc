@@ -454,7 +454,7 @@ impl TryFrom<proto::AcceptWithdrawal> for AcceptWithdrawalV1 {
 impl From<RejectWithdrawalV1> for proto::RejectWithdrawal {
     fn from(value: RejectWithdrawalV1) -> Self {
         proto::RejectWithdrawal {
-            request_id: value.request_id,
+            id: Some(value.id.into()),
             signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
             deployer: Some(value.deployer.into()),
         }
@@ -478,7 +478,7 @@ impl TryFrom<proto::RejectWithdrawal> for RejectWithdrawalV1 {
             });
 
         Ok(RejectWithdrawalV1 {
-            request_id: value.request_id,
+            id: value.id.required()?.try_into()?,
             signer_bitmap,
             deployer: value.deployer.required()?.try_into()?,
         })
