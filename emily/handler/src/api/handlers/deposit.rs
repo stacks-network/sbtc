@@ -5,6 +5,9 @@ use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
 use crate::database::entries::StatusEntry;
+use bitcoin::opcodes::all as opcodes;
+use bitcoin::ScriptBuf;
+use sbtc::deposits::ReclaimScriptInputs;
 use tracing::{debug, instrument};
 use warp::reply::{json, with_status, Reply};
 
@@ -191,7 +194,7 @@ pub async fn get_deposits(
     operation_id = "getDepositsForRecipient",
     path = "/deposit/recipient/{recipient}",
     params(
-        ("recipient" = String, Path, description = "the status to search by when getting all deposits."),
+        ("recipient" = String, Path, description = "the recipient to search by when getting all deposits."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
@@ -210,7 +213,7 @@ pub async fn get_deposits_for_recipient(
     recipient: String,
     query: BasicPaginationQuery,
 ) -> impl warp::reply::Reply {
-    debug!("In get deposits for recipient");
+    debug!("in get deposits for recipient: {recipient}");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
@@ -233,6 +236,58 @@ pub async fn get_deposits_for_recipient(
     }
     // Handle and respond.
     handler(context, recipient, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Get deposits by recipient handler.
+#[utoipa::path(
+    get,
+    operation_id = "getDepositsForReclaimPubkey",
+    path = "/deposit/reclaim-pubkey/{reclaimPubkey}",
+    params(
+        ("reclaimPubkey" = String, Path, description = "the reclaim schnorr public key to search by when getting all deposits."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
+    ),
+    tag = "deposit",
+    responses(
+        (status = 200, description = "Deposits retrieved successfully", body = GetDepositsResponse),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+#[instrument(skip(context))]
+pub async fn get_deposits_for_reclaim_pubkey(
+    context: EmilyContext,
+    reclaim_pubkey: String,
+    query: BasicPaginationQuery,
+) -> impl warp::reply::Reply {
+    debug!("in get deposits for reclaim pubkey: {reclaim_pubkey}");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        reclaim_pubkey: String,
+        query: BasicPaginationQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        let (entries, next_token) = accessors::get_deposit_entries_by_reclaim_pubkey(
+            &context,
+            &reclaim_pubkey,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into resource types.
+        let deposits: Vec<DepositInfo> = entries.into_iter().map(|entry| entry.into()).collect();
+        // Create response.
+        let response = GetDepositsResponse { deposits, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, reclaim_pubkey, query)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
@@ -324,6 +379,7 @@ pub async fn create_deposit(
             amount: deposit_info.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
+            reclaim_pubkey: parse_reclaim_pubkey(&deposit_info.reclaim_script),
             ..Default::default()
         };
         // Validate deposit entry.
@@ -417,6 +473,45 @@ pub async fn update_deposits(
     handler(context, api_key, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
+const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
+
+/// Parse the reclaim script to extract the pubkey.
+/// Currently only supports the sBTC Bridge and Leather Wallet reclaim scripts.
+fn parse_reclaim_pubkey(reclaim_script: &ScriptBuf) -> Option<String> {
+    let reclaim = ReclaimScriptInputs::parse(reclaim_script).ok()?;
+
+    match reclaim.user_script().as_bytes() {
+        [OP_DROP, _key_len, pubkey @ .., OP_CHECKSIG] => Some(hex::encode(pubkey)),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use bitcoin::{
+        key::rand::rngs::OsRng,
+        secp256k1::{SecretKey, SECP256K1},
+    };
+
+    #[tokio::test]
+    async fn test_parse_reclaim_pubkey_two_ways() {
+        let secret_key = SecretKey::new(&mut OsRng);
+        let pubkey = secret_key.x_only_public_key(SECP256K1).0.serialize();
+        let user_script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice(pubkey)
+            .push_opcode(opcodes::OP_CHECKSIG)
+            .into_script();
+        let reclaim_script = ReclaimScriptInputs::try_new(14, user_script)
+            .unwrap()
+            .reclaim_script();
+        let pubkey_from_script = parse_reclaim_pubkey(&reclaim_script).unwrap();
+        assert_eq!(pubkey_from_script, hex::encode(pubkey));
+    }
 }
 
 // TODO(393): Add handler unit tests.

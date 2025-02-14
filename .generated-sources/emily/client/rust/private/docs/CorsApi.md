@@ -8,6 +8,7 @@ Method | HTTP request | Description
 [**chainstate_options**](CorsApi.md#chainstate_options) | **OPTIONS** /chainstate | CORS support
 [**deposit_options**](CorsApi.md#deposit_options) | **OPTIONS** /deposit | CORS support
 [**deposit_recipient_recipient_options**](CorsApi.md#deposit_recipient_recipient_options) | **OPTIONS** /deposit/recipient/{recipient} | CORS support
+[**deposit_reclaim_pubkey_reclaim_pubkey_options**](CorsApi.md#deposit_reclaim_pubkey_reclaim_pubkey_options) | **OPTIONS** /deposit/reclaim-pubkey/{reclaimPubkey} | CORS support
 [**deposit_txid_index_options**](CorsApi.md#deposit_txid_index_options) | **OPTIONS** /deposit/{txid}/{index} | CORS support
 [**deposit_txid_options**](CorsApi.md#deposit_txid_options) | **OPTIONS** /deposit/{txid} | CORS support
 [**health_options**](CorsApi.md#health_options) | **OPTIONS** /health | CORS support
@@ -114,7 +115,37 @@ Handles CORS preflight requests
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**recipient** | **String** | the status to search by when getting all deposits. | [required] |
+**recipient** | **String** | the recipient to search by when getting all deposits. | [required] |
+
+### Return type
+
+ (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+
+## deposit_reclaim_pubkey_reclaim_pubkey_options
+
+> deposit_reclaim_pubkey_reclaim_pubkey_options(reclaim_pubkey)
+CORS support
+
+Handles CORS preflight requests
+
+### Parameters
+
+
+Name | Type | Description  | Required | Notes
+------------- | ------------- | ------------- | ------------- | -------------
+**reclaim_pubkey** | **String** | the reclaim schnorr public key to search by when getting all deposits. | [required] |
 
 ### Return type
 
