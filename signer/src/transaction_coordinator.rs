@@ -971,7 +971,7 @@ where
         let outpoint = req.withdrawal_outpoint();
         let assessed_bitcoin_fee = tx_info
             .assess_output_fee(outpoint.vout as usize)
-            .ok_or_else(|| Error::VoutMissing(outpoint.txid.into(), outpoint.vout))?;
+            .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
 
         // TODO: Add the signer_bitmap to SweptWithdrawalRequest
         let req_id = QualifiedRequestId {
