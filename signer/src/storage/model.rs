@@ -239,7 +239,7 @@ pub struct DepositSigner {
     pub can_sign: bool,
 }
 
-/// Withdraw request.
+/// Withdrawal request.
 ///
 /// # Notes
 ///
@@ -418,7 +418,7 @@ impl SweptDepositRequest {
     }
 }
 
-/// Withdraw request.
+/// Withdrawal request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweptWithdrawalRequest {
