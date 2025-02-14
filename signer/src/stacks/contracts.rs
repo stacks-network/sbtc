@@ -1128,19 +1128,7 @@ impl AsContractCall for RejectWithdrawalV1 {
 
         let request_block_height = report.block_height;
 
-        let Some(tip_block_hash) = ctx.get_storage().get_bitcoin_canonical_chain_tip().await?
-        else {
-            return Err(WithdrawalRejectErrorMsg::NoBitcoinChainTip.into_error(req_ctx, self));
-        };
-
-        let Some(tip_bitcoin_block) = ctx.get_storage().get_bitcoin_block(&tip_block_hash).await?
-        else {
-            return Err(WithdrawalRejectErrorMsg::MissingBitcoinBlock.into_error(req_ctx, self));
-        };
-
-        let tip_block_height = tip_bitcoin_block.block_height;
-
-        if tip_block_height < (request_block_height + 6) {
+        if req_ctx.chain_tip.block_height < (request_block_height + 6) {
             return Err(
                 WithdrawalRejectErrorMsg::WithdrawalRequestNotFinal.into_error(req_ctx, self)
             );

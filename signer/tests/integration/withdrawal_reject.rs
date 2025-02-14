@@ -10,6 +10,8 @@ use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::WithdrawalRejectErrorMsg;
 use signer::storage::model::BitcoinBlockRef;
+use signer::storage::postgres::PgStore;
+use signer::storage::DbRead;
 use signer::testing;
 
 use fake::Fake;
@@ -69,7 +71,10 @@ fn make_withdrawal_reject(data: &TestSweepSetup) -> (RejectWithdrawalV1, ReqCont
 /// given information. If the information here is correct then the returned
 /// [`RejectWithdrawalV1`] object will pass validation with the given
 /// context.
-fn make_withdrawal_reject2(data: &TestSweepSetup2) -> (RejectWithdrawalV1, ReqContext) {
+async fn make_withdrawal_reject2(
+    data: &TestSweepSetup2,
+    db: &PgStore,
+) -> (RejectWithdrawalV1, ReqContext) {
     // Okay now we get ready to create the transaction using the
     // `RejectWithdrawalV1` type.
     let complete_withdrawal_tx = RejectWithdrawalV1 {
@@ -80,11 +85,20 @@ fn make_withdrawal_reject2(data: &TestSweepSetup2) -> (RejectWithdrawalV1, ReqCo
         deployer: StacksAddress::burn_address(false),
     };
 
+    let tip_block_hash = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let tip_bitcoin_block = db
+        .get_bitcoin_block(&tip_block_hash)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let tip_block_height = tip_bitcoin_block.block_height;
+
     // This is what the current signer thinks is the state of things.
     let req_ctx = ReqContext {
         chain_tip: BitcoinBlockRef {
-            block_hash: data.sweep_block_hash().unwrap(),
-            block_height: data.sweep_block_height().unwrap(),
+            block_hash: tip_block_hash,
+            block_height: tip_block_height,
         },
         // This value means that the signer will go back 20 blocks when
         // looking for pending and rejected withdrawal requests.
@@ -124,13 +138,7 @@ async fn reject_withdrawal_validation_happy_path() {
     let mut setup =
         TestSweepSetup2::new_setup(test_signer_set.clone(), &faucet, &[deposit_amounts]);
 
-    eprintln!("sweep block hash {:?}", &setup.sweep_block_hash());
-    eprintln!("sweep block height {:?}", &setup.sweep_block_height());
-
     setup.submit_sweep_tx(rpc, faucet, true);
-
-    eprintln!("sweep block hash {:?}", &setup.sweep_block_hash());
-    eprintln!("sweep block height {:?}", &setup.sweep_block_height());
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -167,13 +175,13 @@ async fn reject_withdrawal_validation_happy_path() {
     setup.store_withdrawal_request(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
-    // Generate the transaction and corresponding request context.
-    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject2(&setup);
-
     // Generate more blocks then backfill the DB
     let mut hashes = faucet.generate_blocks(6);
     let last = hashes.pop().unwrap();
     backfill_bitcoin_blocks(&db, rpc, &last).await;
+
+    // Generate the transaction and corresponding request context.
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject2(&setup, &db).await;
 
     reject_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
@@ -379,13 +387,34 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let amount = 1_000_000;
+    let test_signer_set = TestSignerSet::new(&mut rng);
+    let deposit_amounts = DepositAmounts { amount, max_fee: amount / 2 };
+    let mut setup =
+        TestSweepSetup2::new_setup(test_signer_set.clone(), &faucet, &[deposit_amounts]);
+
+    setup.submit_sweep_tx(rpc, faucet, true);
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    let public_keys = test_signer_set
+        .keys
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<PublicKey>>();
+    ctx.state().update_current_signer_set(public_keys);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -398,27 +427,22 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
+    setup.reject_withdrawal_request();
     setup.store_withdrawal_request(&db).await;
     setup.store_withdrawal_decisions(&db).await;
-
-    // Generate the transaction and corresponding request context.
-    let (mut reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup);
-    // Different: We're going to get the bitmap that is a little different
-    // from what is expected.
-    let first_vote = *reject_withdrawal_tx.signer_bitmap.get(0).unwrap();
-    reject_withdrawal_tx.signer_bitmap.set(0, !first_vote);
-
-    let ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
-        .with_mocked_stacks_client()
-        .with_mocked_emily_client()
-        .build();
 
     // Generate more blocks then backfill the DB
     let mut hashes = faucet.generate_blocks(6);
     let last = hashes.pop().unwrap();
     backfill_bitcoin_blocks(&db, rpc, &last).await;
+
+    // Generate the transaction and corresponding request context.
+    let (mut reject_withdrawal_tx, req_ctx) = make_withdrawal_reject2(&setup, &db).await;
+
+    // Different: We're going to get the bitmap that is a little different
+    // from what is expected.
+    let first_vote = *reject_withdrawal_tx.signer_bitmap.get(0).unwrap();
+    reject_withdrawal_tx.signer_bitmap.set(0, !first_vote);
 
     let validation_result = reject_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
