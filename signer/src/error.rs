@@ -158,11 +158,6 @@ pub enum Error {
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
-    /// This is the error that is returned when a transaction has no inputs.
-    /// This should never occur.
-    #[error("Transaction has no inputs, txid: {0}, block hash {1:?}")]
-    BitcoinNoInputsInTransaction(bitcoin::Txid, Option<bitcoin::BlockHash>),
-
     /// This can only be thrown when the number of bytes for a sighash or
     /// not exactly equal to 32. This should never occur.
     #[error("could not convert message in nonce request to sighash {0}")]
@@ -355,6 +350,10 @@ pub enum Error {
     /// This should never happen.
     #[error("outpoint missing from transaction when assessing fee {0}")]
     OutPointMissing(bitcoin::OutPoint),
+
+    /// This should never happen.
+    #[error("output_index missing from block when assessing fee, txid: {0}, vout: {1}")]
+    VoutMissing(bitcoin::Txid, u32),
 
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]

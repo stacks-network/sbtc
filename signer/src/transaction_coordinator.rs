@@ -16,7 +16,6 @@ use futures::StreamExt as _;
 use sha2::Digest;
 
 use crate::bitcoin::utxo;
-use crate::bitcoin::utxo::BitcoinInputsOutputs as _;
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::BitcoinInteract;
@@ -969,30 +968,17 @@ where
             .ok_or_else(|| {
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
             })?;
-        // Retrieve the first input, which is the signer's UTXO.
-        let outpoint = tx_info
-            .inputs()
-            .first()
-            .ok_or_else(|| {
-                // This should never happen as we expect at least one
-                // input in the transaction.
-                Error::BitcoinNoInputsInTransaction(
-                    req.sweep_txid.into(),
-                    Some(req.sweep_block_hash.into()),
-                )
-            })?
-            .previous_output;
-
+        let outpoint = req.withdrawal_outpoint();
         let assessed_bitcoin_fee = tx_info
-            .assess_input_fee(&outpoint)
-            .ok_or_else(|| Error::OutPointMissing(outpoint))?;
+            .assess_output_fee(outpoint.vout as usize)
+            .ok_or_else(|| Error::VoutMissing(outpoint.txid.into(), outpoint.vout))?;
 
+        // TODO: Add the signer_bitmap to SweptWithdrawalRequest
         let req_id = QualifiedRequestId {
             request_id: req.request_id,
             txid: req.txid,
             block_hash: req.block_hash,
         };
-
         let votes = self
             .context
             .get_storage()
@@ -1001,7 +987,7 @@ where
 
         let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
             request_id: req.request_id,
-            outpoint,
+            outpoint: req.withdrawal_outpoint(),
             tx_fee: assessed_bitcoin_fee.to_sat(),
             signer_bitmap: votes.into(),
             deployer: self.context.config().signer.deployer,

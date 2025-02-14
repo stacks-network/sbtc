@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
@@ -26,9 +27,9 @@ use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
+use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::ToLittleEndianOrder as _;
-use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
@@ -37,8 +38,10 @@ use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 use crate::transaction_coordinator::coordinator_public_key;
 use crate::transaction_coordinator::TxCoordinatorEventLoop;
+use bitcoin::hashes::Hash as _;
 
-use bitvec::field::BitField;
+use bitvec::array::BitArray;
+use bitvec::field::BitField as _;
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
@@ -606,6 +609,67 @@ where
     /// Assert we get a withdrawal accept tx
     pub async fn assert_construct_withdrawal_accept_stacks_sign_request(mut self) {
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let signer_network = SignerNetwork::single(&self.context);
+        let private_key = PrivateKey::new(&mut rng);
+        let bitcoin_aggregate_key = PublicKey::from_private_key(&private_key);
+
+        // Create test data for the withdrawal request
+        let stacks_block: StacksBlock = fake::Faker.fake_with_rng(&mut rng);
+        let withdrawal_req = model::WithdrawalRequest {
+            block_hash: stacks_block.block_hash,
+            ..fake::Faker.fake_with_rng::<model::WithdrawalRequest, _>(&mut rng)
+        };
+
+        // Create test data for the withdrawal sweep tx
+        let sweep_block_hash = bitcoin::BlockHash::all_zeros();
+        let sweep_tx = bitcoin::Transaction {
+            input: vec![],
+            output: vec![
+                // Note: `assess_output_fee` expects a valid `vout` index to be at least the third output (index 2).
+                bitcoin::TxOut::NULL,
+                bitcoin::TxOut::NULL,
+                bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(withdrawal_req.amount),
+                    script_pubkey: bitcoin_aggregate_key.signers_script_pubkey(),
+                },
+            ],
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::ZERO,
+        };
+
+        let store = self.context.get_storage_mut();
+        store.write_stacks_block(&stacks_block).await.unwrap();
+        store
+            .write_withdrawal_request(&withdrawal_req)
+            .await
+            .unwrap();
+
+        let sweep_tx_info = BitcoinTxInfo {
+            in_active_chain: true,
+            fee: bitcoin::Amount::from_sat(1000),
+            tx: sweep_tx.clone(),
+            txid: sweep_tx.compute_txid(),
+            hash: sweep_tx.compute_wtxid(),
+            size: sweep_tx.total_size() as u64,
+            vsize: sweep_tx.vsize() as u64,
+            vin: Vec::new(),
+            vout: Vec::new(),
+            block_hash: sweep_block_hash,
+            confirmations: 0,
+            block_time: 0,
+        };
+
+        let withdrawal_req = model::SweptWithdrawalRequest {
+            request_id: withdrawal_req.request_id,
+            txid: withdrawal_req.txid,
+            block_hash: stacks_block.block_hash,
+            sweep_txid: sweep_tx_info.txid.into(),
+            sweep_block_hash: sweep_block_hash.into(),
+            sweep_block_height: 0,
+            ..fake::Faker.fake_with_rng(&mut rng)
+        };
+
+        let withdrawal_fee = sweep_tx_info.assess_output_fee(2).unwrap().to_sat();
 
         // Add estimate_fee_rate
         self.context
@@ -617,9 +681,14 @@ where
             })
             .await;
 
-        let signer_network = SignerNetwork::single(&self.context);
-        let private_key = PrivateKey::new(&mut rng);
-        let bitcoin_aggregate_key = PublicKey::from_private_key(&private_key);
+        self.context
+            .with_bitcoin_client(|client| {
+                client.expect_get_tx_info().times(1).returning(move |_, _| {
+                    let sweep_tx_info = sweep_tx_info.clone();
+                    Box::pin(async { Ok(Some(sweep_tx_info)) })
+                });
+            })
+            .await;
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
@@ -631,16 +700,18 @@ where
             dkg_max_duration: Duration::from_millis(500),
             is_epoch3: true,
         };
-        let withdrawal_accept: WithdrawalAcceptEvent = fake::Faker.fake_with_rng(&mut rng);
         let (sign_request, multi_tx) = coordinator
             .construct_withdrawal_accept_stacks_sign_request(
-                withdrawal_accept.clone(),
+                withdrawal_req.clone(),
                 &bitcoin_aggregate_key,
                 &WALLET.0,
             )
             .await
             .expect("Failed to construct withdrawal accept stacks sign request");
 
+        // We are not storing the decisions in the db, so we will get all zeros
+        let signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
+        let outpoint = withdrawal_req.withdrawal_outpoint();
         assert_eq!(sign_request.tx_fee, 123000);
         assert_eq!(sign_request.aggregate_key, bitcoin_aggregate_key);
         assert_eq!(sign_request.txid, multi_tx.tx().txid());
@@ -648,15 +719,13 @@ where
         if let StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(call)) =
             sign_request.contract_tx
         {
-            assert_eq!(call.tx_fee, withdrawal_accept.fee);
-            assert_eq!(call.request_id, withdrawal_accept.request_id);
-            assert_eq!(call.outpoint, withdrawal_accept.outpoint);
-            assert_eq!(call.signer_bitmap, withdrawal_accept.signer_bitmap);
-            assert_eq!(call.sweep_block_hash, withdrawal_accept.sweep_block_hash);
-            assert_eq!(
-                call.sweep_block_height,
-                withdrawal_accept.sweep_block_height
-            );
+            println!("{:?}", call.signer_bitmap);
+            assert_eq!(call.tx_fee, withdrawal_fee);
+            assert_eq!(call.request_id, withdrawal_req.request_id);
+            assert_eq!(call.outpoint, outpoint);
+            assert_eq!(call.signer_bitmap, signer_bitmap);
+            assert_eq!(call.sweep_block_hash, withdrawal_req.sweep_block_hash);
+            assert_eq!(call.sweep_block_height, withdrawal_req.sweep_block_height);
         } else {
             panic!("Expected ContractCall::AcceptWithdrawalV1");
         }
@@ -674,17 +743,17 @@ where
             assert_eq!(
                 *function_args,
                 vec![
-                    Value::UInt(withdrawal_accept.request_id as u128),
+                    Value::UInt(withdrawal_req.request_id as u128),
                     Value::Sequence(SequenceData::Buffer(BuffData {
-                        data: withdrawal_accept.outpoint.txid.to_le_bytes().to_vec()
+                        data: outpoint.txid.to_le_bytes().to_vec()
                     })),
-                    Value::UInt(withdrawal_accept.signer_bitmap.load_le()),
-                    Value::UInt(withdrawal_accept.outpoint.vout as u128),
-                    Value::UInt(withdrawal_accept.fee as u128),
+                    Value::UInt(signer_bitmap.load_le()),
+                    Value::UInt(outpoint.vout as u128),
+                    Value::UInt(withdrawal_fee as u128),
                     Value::Sequence(SequenceData::Buffer(BuffData {
-                        data: withdrawal_accept.sweep_block_hash.to_le_bytes().to_vec()
+                        data: withdrawal_req.sweep_block_hash.to_le_bytes().to_vec()
                     })),
-                    Value::UInt(withdrawal_accept.sweep_block_height as u128),
+                    Value::UInt(withdrawal_req.sweep_block_height as u128),
                 ]
             );
         } else {
