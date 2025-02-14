@@ -58,6 +58,7 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 
 use super::api::StacksInteract;
 
@@ -1124,9 +1125,10 @@ impl AsContractCall for RejectWithdrawalV1 {
         //    request transaction. Fail the withdrawal request if we’ve observed less than 6
         //    bitcoin blocks since the anchor block.
 
-        let request_block_height = report.block_height;
+        let request_block_height = report.bitcoin_block_height;
+        let blocks_observed = req_ctx.chain_tip.block_height - request_block_height;
 
-        if req_ctx.chain_tip.block_height < (request_block_height + 6) {
+        if blocks_observed < 6 {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 
@@ -1157,7 +1159,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         let num_signers = ctx.state().current_signer_set().get_signers().len();
         let reject_threshold = num_signers - threshold as usize + 1;
 
-        if rejected_count < reject_threshold {
+        if blocks_observed < WITHDRAWAL_BLOCKS_EXPIRY && rejected_count < reject_threshold {
             return Err(WithdrawalRejectErrorMsg::RequestNotRejected.into_error(req_ctx, self));
         }
 
