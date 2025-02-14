@@ -719,7 +719,6 @@ where
         if let StacksTx::ContractCall(ContractCall::AcceptWithdrawalV1(call)) =
             sign_request.contract_tx
         {
-            println!("{:?}", call.signer_bitmap);
             assert_eq!(call.tx_fee, withdrawal_fee);
             assert_eq!(call.request_id, withdrawal_req.request_id);
             assert_eq!(call.outpoint, outpoint);

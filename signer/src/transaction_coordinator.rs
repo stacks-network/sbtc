@@ -947,7 +947,7 @@ where
         Ok((sign_request, multi_tx))
     }
 
-    /// Transform the withdrawal accept event into a Stacks sign request
+    /// Transform the swept withdrawal request into a Stacks sign request
     /// object.
     ///
     /// This function uses stacks-core for fee estimation of the transaction.
