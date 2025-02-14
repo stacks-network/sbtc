@@ -1,10 +1,16 @@
 use std::collections::HashSet;
 use std::sync::OnceLock;
+use std::time::Duration;
 
+use bitcoincore_rpc::RpcApi as _;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::types::chainstate::StacksAddress;
+use fake::Fake as _;
+use fake::Faker;
+use rand::SeedableRng as _;
+use sbtc::testing::regtest;
 use secp256k1::ecdsa::RecoverableSignature;
 use secp256k1::Keypair;
 use signer::config::Settings;
@@ -249,4 +255,66 @@ async fn estimate_tx_fees() {
         .await
         .unwrap();
     more_asserts::assert_gt!(fee, 0);
+}
+
+#[ignore = "This is an integration test that requires a stacks-node to work"]
+#[tokio::test]
+async fn is_deposit_completed_works() {
+    let stacks_client = stacks_client();
+    let stacks_client = stacks_client.get_client();
+    let rpc = {
+        let username = regtest::BITCOIN_CORE_RPC_USERNAME.to_string();
+        let password = regtest::BITCOIN_CORE_RPC_PASSWORD.to_string();
+        let auth = bitcoincore_rpc::Auth::UserPass(username, password);
+        bitcoincore_rpc::Client::new("http://localhost:18443", auth).unwrap()
+    };
+    let mut rng = rand::rngs::StdRng::seed_from_u64(123);
+
+    let signers = deploy_smart_contracts().await;
+    let outpoint = bitcoin::OutPoint {
+        txid: Faker.fake_with_rng::<BitcoinTxId, _>(&mut rng).into(),
+        vout: 0,
+    };
+
+    // Make the request to the mock server
+    let response = stacks_client
+        .is_deposit_completed(signers.wallet.address(), &outpoint)
+        .await
+        .unwrap();
+
+    assert_eq!(response, false);
+
+    let chain_tip_block_hash = rpc.get_best_block_hash().unwrap();
+    let header = rpc.get_block_header_info(&chain_tip_block_hash).unwrap();
+
+    let contract = CompleteDepositV1 {
+        outpoint,
+        amount: 123654789,
+        recipient: PrincipalData::parse("SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y").unwrap(),
+        deployer: *testing::wallet::WALLET.0.address(),
+        sweep_txid: BitcoinTxId::from([0; 32]),
+        sweep_block_hash: BitcoinBlockHash::from(chain_tip_block_hash),
+        sweep_block_height: header.height as u64,
+    };
+    let mut unsigned = MultisigTx::new_tx(&contract, &signers.wallet, TX_FEE);
+
+    for signature in make_signatures(unsigned.tx(), &signers.keys) {
+        unsigned.add_signature(signature).unwrap();
+    }
+    let tx = unsigned.finalize_transaction();
+
+    match stacks_client.submit_tx(&tx).await.unwrap() {
+        SubmitTxResponse::Acceptance(_) => (),
+        SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
+    }
+
+    // We sleep so that the block gets confirmed.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    let response = stacks_client
+        .is_deposit_completed(signers.wallet.address(), &outpoint)
+        .await
+        .unwrap();
+
+    assert_eq!(response, true);
 }
