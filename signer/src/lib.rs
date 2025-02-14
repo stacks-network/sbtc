@@ -99,6 +99,32 @@ pub const DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX: u16 = 25;
 /// smart contract.
 pub const DEPOSIT_DUST_LIMIT: u64 = 546;
 
+/// This is the max dust amount for a standard transaction using the
+/// default `dustrelayfee` config setting from bitcoin core. The smart
+/// contract has this dust limit as well, but we have our own to make sure
+/// that we respect bitcoin's default dust limits even if the smart
+/// contracts are updated and the check is removed.
+///
+/// See the following for more on the dustrelatfee:
+/// https://github.com/bitcoin/bitcoin/blob/c242fa5be358150d83c2446896b6f4c45c6365e9/src/policy/policy.cpp#L26-L41
+pub const WITHDRAWAL_DUST_LIMIT: u64 = 546;
+
+/// This is the number of bitcoin blocks that the signers will wait before
+/// acting on a withdrawal request. We do this to ensure that the
+/// withdrawal request is deemed final on the Stacks blockchain.
+///
+/// The value here was taken from the last paragraph of the opening comment
+/// of https://github.com/stacks-network/sbtc/discussions/12 and in the
+/// comments of https://github.com/stacks-network/sbtc/issues/16.
+pub const WITHDRAWAL_MIN_CONFIRMATIONS: u64 = 6;
+
+/// This is the number of bitcoin blocks that a withdrawal request will
+/// remain live before it expires and is considered rejected.
+///
+/// This is the value suggested in
+/// https://github.com/stacks-network/sbtc/issues/620.
+pub const WITHDRAWAL_BLOCKS_EXPIRY: u64 = 24;
+
 /// This is the default maximum virtual size of a bitcoin transaction
 /// package. This value is the default limit set in bitcoin core, and
 /// corresponds to the `limitancestorsize` and/or `limitdescendantsize`

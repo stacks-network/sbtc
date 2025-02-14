@@ -239,7 +239,24 @@ pub struct DepositSigner {
     pub can_sign: bool,
 }
 
-/// Withdraw request.
+/// Withdrawal request.
+///
+/// # Notes
+///
+/// When we receive a record of a withdrawal request, we know that it has
+/// been confirmed. However, the block containing the transaction that
+/// generated this request may be reorganized, causing it to no longer be
+/// part of the canonical Stacks blockchain. In that scenario, the
+/// withdrawal request effectively ceases to exist. If the same transaction
+/// is "replayed" and confirmed in a new block, a "new" withdrawal request
+/// will be generated because the Stacks block hash has changed. This
+/// differs from deposit requests, where a reorganized deposit is
+/// considered the same across blocks.
+///
+/// So withdrawal requests are tied to the specific Stacks block containing
+/// the transaction that created them. If that transaction is reorganized
+/// to a new block, a new request is generated, and the old one must be
+/// ignored.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct WithdrawalRequest {
@@ -273,7 +290,7 @@ pub struct WithdrawalRequest {
     /// transaction that emitted this event was executed.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
-    pub block_height: u64,
+    pub bitcoin_block_height: u64,
 }
 
 impl WithdrawalRequest {
@@ -401,7 +418,7 @@ impl SweptDepositRequest {
     }
 }
 
-/// Withdraw request.
+/// Withdrawal request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweptWithdrawalRequest {
@@ -1183,7 +1200,7 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalRequest {
             amount: sbtc_event.amount,
             max_fee: sbtc_event.max_fee,
             sender_address: sbtc_event.sender.into(),
-            block_height: sbtc_event.block_height,
+            bitcoin_block_height: sbtc_event.block_height,
         }
     }
 }
