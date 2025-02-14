@@ -16,6 +16,7 @@ use futures::StreamExt as _;
 use sha2::Digest;
 
 use crate::bitcoin::utxo;
+use crate::bitcoin::utxo::BitcoinInputsOutputs as _;
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::BitcoinInteract;
@@ -59,6 +60,7 @@ use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
@@ -953,20 +955,61 @@ where
     #[tracing::instrument(skip_all)]
     pub async fn construct_withdrawal_accept_stacks_sign_request(
         &self,
-        withdrawal_accept: model::WithdrawalAcceptEvent,
+        req: model::SweptWithdrawalRequest,
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        // Retrieve the Bitcoin sweep transaction and compute the assessed fee
+        // from the Bitcoin node
+        let tx_info = self
+            .context
+            .get_bitcoin_client()
+            .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
+            .await?
+            .ok_or_else(|| {
+                Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
+            })?;
+        // Retrieve the first input, which is the signer's UTXO.
+        let outpoint = tx_info
+            .inputs()
+            .first()
+            .ok_or_else(|| {
+                // This should never happen as we expect at least one
+                // input in the transaction.
+                Error::BitcoinNoInputsInTransaction(
+                    req.sweep_txid.into(),
+                    Some(req.sweep_block_hash.into()),
+                )
+            })?
+            .previous_output;
+
+        let assessed_bitcoin_fee = tx_info
+            .assess_input_fee(&outpoint)
+            .ok_or_else(|| Error::OutPointMissing(outpoint))?;
+
+        let req_id = QualifiedRequestId {
+            request_id: req.request_id,
+            txid: req.txid,
+            block_hash: req.block_hash,
+        };
+
+        let votes = self
+            .context
+            .get_storage()
+            .get_withdrawal_request_signer_votes(&req_id, bitcoin_aggregate_key)
+            .await?;
+
         let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
-            request_id: withdrawal_accept.request_id,
-            outpoint: withdrawal_accept.outpoint,
-            tx_fee: withdrawal_accept.fee,
-            signer_bitmap: withdrawal_accept.signer_bitmap,
+            request_id: req.request_id,
+            outpoint,
+            tx_fee: assessed_bitcoin_fee.to_sat(),
+            signer_bitmap: votes.into(),
             deployer: self.context.config().signer.deployer,
-            sweep_block_hash: withdrawal_accept.sweep_block_hash,
-            sweep_block_height: withdrawal_accept.sweep_block_height,
+            sweep_block_hash: req.sweep_block_hash,
+            sweep_block_height: req.sweep_block_height,
         });
 
+        // Estimate the fee for the stacks transaction
         let tx_fee = self
             .context
             .get_stacks_client()

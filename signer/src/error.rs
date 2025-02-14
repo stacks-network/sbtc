@@ -158,6 +158,11 @@ pub enum Error {
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
+    /// This is the error that is returned when a transaction has no inputs.
+    /// This should never occur.
+    #[error("Transaction has no inputs, txid: {0}, block hash {1:?}")]
+    BitcoinNoInputsInTransaction(bitcoin::Txid, Option<bitcoin::BlockHash>),
+
     /// This can only be thrown when the number of bytes for a sighash or
     /// not exactly equal to 32. This should never occur.
     #[error("could not convert message in nonce request to sighash {0}")]
