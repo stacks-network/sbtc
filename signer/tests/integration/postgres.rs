@@ -16,8 +16,8 @@ use futures::StreamExt as _;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 use signer::storage::model::DkgSharesStatus;
-use signer::storage::model::WithdrawalRequest;
 use signer::storage::model::SweptWithdrawalRequest;
+use signer::storage::model::WithdrawalRequest;
 use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
@@ -2131,19 +2131,18 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(16);
 
+    // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
     let bitcoin_block = model::BitcoinBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
         block_height: 1,
         parent_hash: fake::Faker.fake_with_rng(&mut rng),
     };
-
     let stacks_block = model::StacksBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
         block_height: 1,
         parent_hash: fake::Faker.fake_with_rng(&mut rng),
         bitcoin_anchor: bitcoin_block.block_hash,
     };
-
     let withdrawal_request = model::WithdrawalRequest {
         request_id: 1,
         txid: fake::Faker.fake_with_rng(&mut rng),
@@ -2154,7 +2153,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         sender_address: fake::Faker.fake_with_rng(&mut rng),
         block_height: 1,
     };
-
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
         stacks_txid: withdrawal_request.txid,
@@ -2162,7 +2160,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         bitcoin_chain_tip: bitcoin_block.block_hash,
         ..Faker.fake_with_rng(&mut rng)
     };
-
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
@@ -2174,33 +2171,37 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         block_hash: bitcoin_block.block_hash,
     };
 
+    // There should no withdrawal request in the empty database
+    let context_window = 20;
+    let requests = db
+        .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
+        .await
+        .unwrap();
+    assert_eq!(requests.len(), 0);
+
+    // Now write all the data to the database.
     db.write_bitcoin_block(&bitcoin_block).await.unwrap();
     db.write_stacks_block(&stacks_block).await.unwrap();
     db.write_withdrawal_request(&withdrawal_request)
         .await
         .unwrap();
-
     db.write_transaction(&sweep_tx_model).await.unwrap();
     db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
     db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
         .await
         .unwrap();
 
-
-    
+    // There should only be one request in the database and it has a sweep
+    // trasnaction so the length should be 1.
     let context_window = 20;
     let mut requests = db
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await
         .unwrap();
-
-    // There should only be one request in the database and it has a sweep
-    // trasnaction so the length should be 1.
     assert_eq!(requests.len(), 1);
 
-    // Its details should match that of the deposit request.
+    // Its details should match that of the withdrawals request.
     let req = requests.pop().unwrap();
-
     let expected = SweptWithdrawalRequest {
         amount: withdrawal_request.amount,
         txid: withdrawal_request.txid,
@@ -2213,7 +2214,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         max_fee: withdrawal_request.max_fee,
         recipient: withdrawal_request.recipient,
     };
-
     assert_eq!(req.amount, expected.amount);
     assert_eq!(req.txid, expected.txid);
     assert_eq!(req.sweep_block_hash, expected.sweep_block_hash);

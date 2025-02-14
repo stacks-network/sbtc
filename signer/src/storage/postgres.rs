@@ -1956,24 +1956,21 @@ impl super::DbRead for PgStore {
         context_window: u16,
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
         // The following tests define the criteria for this query:
-        // - [X] get_swept_deposit_requests_returns_swept_deposit_requests
-        // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
-        // - [X] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
-        // - [X] get_swept_deposit_requests_response_tx_reorged
+        // - [X] get_swept_withdrawal_requests_returns_swept_withdrawal_requests
+        // - [ ] get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_requests
+        // - [ ] get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_responses
+        // - [ ] get_swept_withdrawal_requests_response_tx_reorged
 
-        println!("1");
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
-        println!("2");
-
         sqlx::query_as::<_, model::SweptWithdrawalRequest>(
             "
                 WITH RECURSIVE bitcoin_blockchain AS (
                     SELECT
                         block_hash,
                         block_height
-                    FROM sbtc_signer.bitcoin_blockchain_of($1, $2)
+                    FROM bitcoin_blockchain_of($1, $2)
                 ),
                 stacks_blockchain AS (
                     SELECT
@@ -1984,9 +1981,7 @@ impl super::DbRead for PgStore {
                     JOIN bitcoin_blockchain AS bb
                         ON bb.block_hash = stacks_blocks.bitcoin_anchor
                     WHERE stacks_blocks.block_hash = $3
-
                     UNION ALL
-
                     SELECT
                         parent.block_hash,
                         parent.block_height,
@@ -2003,7 +1998,7 @@ impl super::DbRead for PgStore {
                     bc_blocks.block_height AS sweep_block_height,
                     wr.request_id,
                     wr.txid,
-                    wr.block_hash AS stacks_block_hash,
+                    wr.block_hash AS block_hash,
                     wr.recipient,
                     wr.amount,
                     wr.max_fee,
@@ -2022,6 +2017,7 @@ impl super::DbRead for PgStore {
                 LEFT JOIN stacks_blockchain AS sb
                     ON sb.block_hash = wr.block_hash
                 WHERE wae.request_id IS NULL
+
                 GROUP BY
                     bwo.bitcoin_txid,
                     bc_blocks.block_hash,
@@ -2033,7 +2029,6 @@ impl super::DbRead for PgStore {
                     wr.amount,
                     wr.max_fee,
                     wr.sender_address
-                HAVING COUNT(sb.block_hash) = 0;
         ",
         )
         .bind(chain_tip)
