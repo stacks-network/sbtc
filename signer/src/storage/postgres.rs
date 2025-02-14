@@ -829,7 +829,7 @@ impl PgStore {
               , wr.amount
               , wr.max_fee
               , wr.recipient
-              , wr.block_height AS bitcoin_block_height
+              , wr.bitcoin_block_height
               , wr.block_hash   AS stacks_block_hash
               , sb.block_height AS stacks_block_height
             FROM sbtc_signer.withdrawal_requests AS wr
@@ -874,7 +874,7 @@ impl PgStore {
              AND bwo.stacks_block_hash = wr.block_hash
             JOIN sbtc_signer.bitcoin_transactions AS bt
               ON bt.txid = bwo.bitcoin_txid
-            JOIN sbtc_signer.bitcoin_blockchain_until($1, wr.block_height) AS bbu
+            JOIN sbtc_signer.bitcoin_blockchain_until($1, wr.bitcoin_block_height) AS bbu
               ON bbu.block_hash = bt.block_hash
             WHERE wr.request_id = $2
               AND wr.block_hash = $3
@@ -1508,7 +1508,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-              , wr.block_height
+              , wr.bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc USING (block_hash)
             LEFT JOIN sbtc_signer.withdrawal_signers AS ws
@@ -1584,7 +1584,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-              , wr.block_height
+              , wr.bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             JOIN sbtc_signer.withdrawal_signers signers ON
@@ -2417,7 +2417,7 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_address
-              , block_height
+              , bitcoin_block_height
               )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT DO NOTHING",
@@ -2429,7 +2429,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&request.sender_address)
-        .bind(i64::try_from(request.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(request.bitcoin_block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

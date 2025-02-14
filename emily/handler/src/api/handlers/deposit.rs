@@ -5,7 +5,6 @@ use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
 use crate::database::entries::StatusEntry;
-use stacks_common::codec::StacksMessageCodec as _;
 use tracing::{debug, instrument};
 use warp::reply::{json, with_status, Reply};
 
@@ -24,7 +23,7 @@ use crate::database::entries::deposit::{
     DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
-use bitcoin::ScriptBuf;
+use stacks_common::codec::StacksMessageCodec as _;
 use warp::http::StatusCode;
 
 /// Get deposit handler.
@@ -259,7 +258,10 @@ pub async fn create_deposit(
     context: EmilyContext,
     body: CreateDepositRequestBody,
 ) -> impl warp::reply::Reply {
-    debug!("In create deposit");
+    debug!(
+        "Creating deposit with txid: {}, output index: {}",
+        body.bitcoin_txid, body.bitcoin_tx_output_index
+    );
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
@@ -297,11 +299,7 @@ pub async fn create_deposit(
             Err(e) => return Err(e),
         }
 
-        let status = Status::Pending;
-
-        // Get parameters from scripts.
-        let script_parameters =
-            scripts_to_resource_parameters(&body.deposit_script, &body.reclaim_script)?;
+        let deposit_info = body.validate(context.settings.is_mainnet)?;
 
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
@@ -309,10 +307,10 @@ pub async fn create_deposit(
                 bitcoin_txid: body.bitcoin_txid,
                 bitcoin_tx_output_index: body.bitcoin_tx_output_index,
             },
-            recipient: script_parameters.recipient,
+            recipient: hex::encode(deposit_info.recipient.serialize_to_vec()),
             parameters: DepositParametersEntry {
-                max_fee: script_parameters.max_fee,
-                lock_time: script_parameters.lock_time,
+                max_fee: deposit_info.max_fee,
+                lock_time: deposit_info.lock_time.to_consensus_u32(),
             },
             history: vec![DepositEvent {
                 status: StatusEntry::Pending,
@@ -320,10 +318,10 @@ pub async fn create_deposit(
                 stacks_block_hash: stacks_block_hash.clone(),
                 stacks_block_height,
             }],
-            status,
+            status: Status::Pending,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
-            amount: script_parameters.amount,
+            amount: deposit_info.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
             ..Default::default()
@@ -340,40 +338,6 @@ pub async fn create_deposit(
     handler(context, body)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
-}
-
-/// Parameters from the deposit and reclaim scripts.
-struct ScriptParameters {
-    amount: u64,
-    max_fee: u64,
-    recipient: String,
-    lock_time: u32,
-}
-
-/// Convert scripts to resource parameters.
-///
-/// This function is used to convert the deposit and reclaim scripts into the
-/// parameters that are stored in the database.
-fn scripts_to_resource_parameters(
-    deposit_script: &str,
-    reclaim_script: &str,
-) -> Result<ScriptParameters, Error> {
-    let deposit_script_buf = ScriptBuf::from_hex(deposit_script)?;
-    let deposit_script_inputs = sbtc::deposits::DepositScriptInputs::parse(&deposit_script_buf)?;
-
-    let reclaim_script_buf = ScriptBuf::from_hex(reclaim_script)?;
-    let reclaim_script_inputs = sbtc::deposits::ReclaimScriptInputs::parse(&reclaim_script_buf)?;
-
-    let recipient_bytes = deposit_script_inputs.recipient.serialize_to_vec();
-    let recipient_hex_string = hex::encode(&recipient_bytes);
-
-    Ok(ScriptParameters {
-        // TODO(TBD): Get the amount from some script related data somehow.
-        amount: 0,
-        max_fee: deposit_script_inputs.max_fee,
-        recipient: recipient_hex_string,
-        lock_time: reclaim_script_inputs.lock_time(),
-    })
 }
 
 /// Update deposits handler.
@@ -456,30 +420,3 @@ pub async fn update_deposits(
 }
 
 // TODO(393): Add handler unit tests.
-
-// Test module
-#[cfg(test)]
-mod tests {
-
-    use super::*;
-    use sbtc::testing::{self, deposits::TxSetup};
-    use test_case::test_case;
-
-    #[test_case(15000, 500_000, 150; "All parameters are normal numbers")]
-    #[test_case(0, 0, 0; "All parameters are zeros")]
-    fn test_scripts_to_resource_parameters(max_fee: u64, amount_sats: u64, lock_time: u32) {
-        let setup: TxSetup = testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
-
-        let deposit_script = setup.deposit.deposit_script().to_hex_string();
-        let reclaim_script = setup.reclaim.reclaim_script().to_hex_string();
-
-        let script_parameters: ScriptParameters =
-            scripts_to_resource_parameters(&deposit_script, &reclaim_script).unwrap();
-
-        assert_eq!(script_parameters.max_fee, max_fee);
-        assert_eq!(script_parameters.lock_time, lock_time);
-
-        // TODO: Test the recipient with an input value.
-        assert!(script_parameters.recipient.len() > 0);
-    }
-}

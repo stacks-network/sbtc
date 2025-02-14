@@ -1,5 +1,6 @@
 use std::str::FromStr;
 
+use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::hex::DisplayHex;
 use bitcoin::{
     absolute, transaction::Version, Amount, OutPoint, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
@@ -259,6 +260,7 @@ async fn exec_deposit(ctx: &Context, args: DepositArgs) -> Result<(), Error> {
             bitcoin_txid: txid.to_string(),
             deposit_script: deposit_script.deposit_script().to_hex_string(),
             reclaim_script: reclaim_script.reclaim_script().to_hex_string(),
+            transaction_hex: serialize_hex(&unsigned_tx),
         },
     )
     .await?;

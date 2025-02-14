@@ -878,7 +878,7 @@ mod tests {
             recipient: ScriptPubKey::from_bytes(vec![]),
             txid: stacks_first_tx.txid,
             sender_address: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
-            block_height: test_data.bitcoin_blocks[0].block_height,
+            bitcoin_block_height: test_data.bitcoin_blocks[0].block_height,
         };
 
         // Expected struct to be added to the created_withdrawals vector

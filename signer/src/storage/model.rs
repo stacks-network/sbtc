@@ -239,7 +239,7 @@ pub struct DepositSigner {
     pub can_sign: bool,
 }
 
-/// Withdraw request.
+/// Withdrawal request.
 ///
 /// # Notes
 ///
@@ -290,7 +290,7 @@ pub struct WithdrawalRequest {
     /// transaction that emitted this event was executed.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
-    pub block_height: u64,
+    pub bitcoin_block_height: u64,
 }
 
 impl WithdrawalRequest {
@@ -418,7 +418,7 @@ impl SweptDepositRequest {
     }
 }
 
-/// Withdraw request.
+/// Withdrawal request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweptWithdrawalRequest {
@@ -1200,7 +1200,7 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalRequest {
             amount: sbtc_event.amount,
             max_fee: sbtc_event.max_fee,
             sender_address: sbtc_event.sender.into(),
-            block_height: sbtc_event.block_height,
+            bitcoin_block_height: sbtc_event.block_height,
         }
     }
 }
