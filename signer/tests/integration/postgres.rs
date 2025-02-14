@@ -2469,6 +2469,83 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     signer::testing::storage::drop_db(db).await;
 }
 
+/// This tests that accepted withdrawal requests will not show up in the query results from
+/// [`DbRead::get_swept_withdrawal_requests`].
+#[tokio::test]
+async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_responses() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(16);
+
+    // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
+    let bitcoin_block = model::BitcoinBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+    };
+    let stacks_block = model::StacksBlock {
+        block_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        bitcoin_anchor: bitcoin_block.block_hash,
+    };
+    let withdrawal_request = model::WithdrawalRequest {
+        request_id: 1,
+        txid: fake::Faker.fake_with_rng(&mut rng),
+        block_hash: stacks_block.block_hash,
+        recipient: fake::Faker.fake_with_rng(&mut rng),
+        amount: 1_000,
+        max_fee: 1_000,
+        sender_address: fake::Faker.fake_with_rng(&mut rng),
+        block_height: 1,
+    };
+    let swept_output = BitcoinWithdrawalOutput {
+        request_id: withdrawal_request.request_id,
+        stacks_txid: withdrawal_request.txid,
+        stacks_block_hash: withdrawal_request.block_hash,
+        bitcoin_chain_tip: bitcoin_block.block_hash,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    let sweep_tx_model = model::Transaction {
+        tx_type: model::TransactionType::SbtcTransaction,
+        txid: swept_output.bitcoin_txid.to_byte_array(),
+        tx: Vec::new(),
+        block_hash: bitcoin_block.block_hash.to_byte_array(),
+    };
+    let sweep_tx_ref = model::BitcoinTxRef {
+        txid: swept_output.bitcoin_txid,
+        block_hash: bitcoin_block.block_hash,
+    };
+
+    let event = WithdrawalAcceptEvent {
+        request_id: withdrawal_request.request_id,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    // Now write all the data to the database.
+    db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+    db.write_stacks_block(&stacks_block).await.unwrap();
+    db.write_withdrawal_request(&withdrawal_request)
+        .await
+        .unwrap();
+    db.write_transaction(&sweep_tx_model).await.unwrap();
+    db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+    db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
+        .await
+        .unwrap();
+    db.write_withdrawal_accept_event(&event).await.unwrap();
+
+    // There should only be one request in the database and it has a sweep
+    // trasnaction so the length should be 1.
+    let context_window = 20;
+    let requests = db
+        .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
+        .await
+        .unwrap();
+    assert_eq!(requests.len(), 0);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
 /// This checks that the DbRead::can_sign_deposit_tx implementation for
 /// PgStore operators as it is supposed to. Specifically, it checks that it
 /// returns Some(true) if the caller is part of the signing set,

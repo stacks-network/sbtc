@@ -1957,7 +1957,7 @@ impl super::DbRead for PgStore {
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
         // The following tests define the criteria for this query:
         // - [X] get_swept_withdrawal_requests_returns_swept_withdrawal_requests
-        // - [ ] get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_requests
+        // - [X] get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_requests
         // - [ ] get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_responses
         // - [ ] get_swept_withdrawal_requests_response_tx_reorged
 
@@ -2013,7 +2013,6 @@ impl super::DbRead for PgStore {
                     ON bc_blocks.block_hash = bt.block_hash
                 LEFT JOIN sbtc_signer.withdrawal_accept_events AS wae
                     ON wae.request_id = wr.request_id
-                    AND wae.block_hash = wr.block_hash
                 LEFT JOIN stacks_blockchain AS sb
                     ON sb.block_hash = wr.block_hash
                 WHERE wae.request_id IS NULL
