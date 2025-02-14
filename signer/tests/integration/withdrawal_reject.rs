@@ -279,7 +279,7 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     // Different: Let's use a request_id that does not exist in our
     // database. In these tests, the withdrawal id starts at 0 and
     // increments by 1 for each withdrawal request generated.
-    reject_withdrawal_tx.id.request_id = u64::MAX;
+    reject_withdrawal_tx.id.request_id = i64::MAX as u64;
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())

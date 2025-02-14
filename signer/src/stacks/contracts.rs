@@ -1101,8 +1101,7 @@ impl AsContractCall for RejectWithdrawalV1 {
                 &self.id,
                 &ctx.config().signer.public_key(),
             )
-            .await
-            .map_err(|_| WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self))?
+            .await?
         else {
             return Err(WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self));
         };
@@ -1151,8 +1150,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         let signer_votes = ctx
             .get_storage()
             .get_withdrawal_request_signer_votes(&self.id, &req_ctx.aggregate_key)
-            .await
-            .map_err(|_| WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self))?;
+            .await?;
         let signer_bitmap = BitArray::<[u8; 16]>::from(signer_votes);
 
         if signer_bitmap != self.signer_bitmap {
@@ -1162,8 +1160,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         let withdrawal_signers = &ctx
             .get_storage()
             .get_withdrawal_signers(self.id.request_id, &self.id.block_hash)
-            .await
-            .map_err(|_| WithdrawalRejectErrorMsg::RequestMissing.into_error(req_ctx, self))?;
+            .await?;
 
         let mut rejected_count = 0;
         for signer in withdrawal_signers {
