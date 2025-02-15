@@ -86,21 +86,15 @@ async fn make_withdrawal_reject2(
         deployer: StacksAddress::burn_address(false),
     };
 
-    let tip_block_hash = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-    let tip_bitcoin_block = db
-        .get_bitcoin_block(&tip_block_hash)
+    let chain_tip = db
+        .get_bitcoin_canonical_chain_tip_ref()
         .await
         .unwrap()
         .unwrap();
 
-    let tip_block_height = tip_bitcoin_block.block_height;
-
     // This is what the current signer thinks is the state of things.
     let req_ctx = ReqContext {
-        chain_tip: BitcoinBlockRef {
-            block_hash: tip_block_hash,
-            block_height: tip_block_height,
-        },
+        chain_tip,
         // This value means that the signer will go back 20 blocks when
         // looking for pending and rejected withdrawal requests.
         context_window: 20,
