@@ -986,21 +986,6 @@ pub enum WithdrawalRejectErrorMsg {
     /// pending and accepted withdrawal requests.
     #[error("no record of withdrawal request in pending and accepted withdrawal requests")]
     RequestMissing,
-    /// No bitcoin chain tip
-    #[error("No bitcoin chain tip")]
-    NoBitcoinChainTip,
-    /// Missing bitcoin block
-    #[error("Missing bitcoin block")]
-    MissingBitcoinBlock,
-    /// Missing stacks block
-    #[error("Missing stacks block")]
-    MissingStacksBlock,
-    /// No withdrawal signers
-    #[error("No withdrawal signers")]
-    NoSigners,
-    /// No withdrawal report
-    #[error("No withdrawal report")]
-    NoReport,
     /// Withdrawal request fulfilled
     #[error("Withdrawal request fulfilled")]
     RequestFulfilled,
