@@ -235,9 +235,13 @@ impl Store {
         let first_block = self.bitcoin_blocks.get(chain_tip);
 
         let context_window_end_block = std::iter::successors(first_block, |block| {
-            self.bitcoin_blocks.get(&block.parent_hash)
+            Some(self.bitcoin_blocks.get(&block.parent_hash).unwrap_or(block))
         })
         .nth(context_window as usize);
+
+        let Some(context_window_end_block) = context_window_end_block else {
+            return Vec::new();
+        };
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip) else {
             return Vec::new();
@@ -247,11 +251,9 @@ impl Store {
             self.stacks_blocks.get(&stacks_block.parent_hash)
         })
         .take_while(|stacks_block| {
-            !context_window_end_block.as_ref().is_some_and(|block| {
-                self.bitcoin_blocks
-                    .get(&stacks_block.bitcoin_anchor)
-                    .is_some_and(|anchor| anchor.block_height < block.block_height)
-            })
+            self.bitcoin_blocks
+                .get(&stacks_block.bitcoin_anchor)
+                .is_some_and(|anchor| anchor.block_height >= context_window_end_block.block_height)
         })
         .flat_map(|stacks_block| {
             self.stacks_block_to_withdrawal_requests
