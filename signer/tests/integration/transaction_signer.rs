@@ -55,7 +55,7 @@ use wsts::net::NonceRequest;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::fill_signers_utxo;
 use crate::setup::set_verification_status;
-use crate::setup::DepositAmounts;
+use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -313,7 +313,11 @@ pub async fn presign_requests_with_dkg_shares_status(status: DkgSharesStatus, is
     // Create a test setup object so that we can simply create proper DKG
     // shares in the database. Note that calling TestSweepSetup2::new_setup
     // creates two bitcoin block.
-    let amounts = DepositAmounts { amount: 100000, max_fee: 10000 };
+    let amounts = SweepAmounts {
+        amount: 100000,
+        max_fee: 10000,
+        is_deposit: true,
+    };
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
     let block_header = rpc

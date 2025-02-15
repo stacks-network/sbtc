@@ -40,12 +40,16 @@ use sbtc::testing::regtest::AsUtxo;
 pub static REQUEST_IDS: AtomicU64 = AtomicU64::new(0);
 
 pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
-    let recipient = Recipient::new(AddressType::P2tr);
     let amount = OsRng.sample(Uniform::new(200_000, 250_000));
+    make_withdrawal(amount, amount / 2)
+}
+
+pub fn make_withdrawal(amount: u64, max_fee: u64) -> (WithdrawalRequest, Recipient) {
+    let recipient = Recipient::new(AddressType::P2tr);
 
     let req = WithdrawalRequest {
         amount,
-        max_fee: amount / 2,
+        max_fee,
         script_pubkey: recipient.script_pubkey.clone().into(),
         signer_bitmap: BitArray::ZERO,
         request_id: REQUEST_IDS.fetch_add(1, Ordering::Relaxed),
