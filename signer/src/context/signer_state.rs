@@ -233,6 +233,17 @@ impl SbtcLimits {
             max_mintable_cap: None,
         }
     }
+
+    /// Create a new Self with only the given withdrawal maximum set.
+    pub fn new_per_withdrawal(max: u64) -> Self {
+        Self {
+            total_cap: None,
+            per_deposit_minimum: None,
+            per_deposit_cap: None,
+            per_withdrawal_cap: Some(Amount::from_sat(max)),
+            max_mintable_cap: None,
+        }
+    }
 }
 
 /// Represents a signer in the current signer set.

@@ -1215,7 +1215,7 @@ async fn writing_withdrawal_requests_postgres() {
                  , amount
                  , max_fee
                  , sender_address
-                 , block_height
+                 , bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests"#,
         )
         .fetch_all(store.pool())
@@ -1234,7 +1234,7 @@ async fn writing_withdrawal_requests_postgres() {
     assert_eq!(sender, event.sender_address.to_string());
     assert_eq!(recipient, event.recipient.to_bytes());
     assert_eq!(max_fee as u64, event.max_fee);
-    assert_eq!(block_height as u64, event.block_height);
+    assert_eq!(block_height as u64, event.bitcoin_block_height);
 
     signer::testing::storage::drop_db(store).await;
 }
@@ -3197,7 +3197,7 @@ async fn withdrawal_report_with_no_withdrawal_votes() {
     // sweep transaction in the database, so it doesn't matter.
     let withdrawal_request = WithdrawalRequest {
         block_hash: stacks_chain_tip,
-        block_height: bitcoin_chain_tip_ref.block_height,
+        bitcoin_block_height: bitcoin_chain_tip_ref.block_height,
         ..Faker.fake_with_rng(&mut rng)
     };
 
@@ -3308,7 +3308,7 @@ async fn withdrawal_report_with_withdrawal_request_reorged() {
     // chain tip.
     let withdrawal_request = WithdrawalRequest {
         block_hash: stacks_chain_tip_block.block_hash,
-        block_height: bitcoin_chain_tip_ref.block_height,
+        bitcoin_block_height: bitcoin_chain_tip_ref.block_height,
         ..Faker.fake_with_rng(&mut rng)
     };
 
@@ -3392,7 +3392,7 @@ async fn withdrawal_report_with_withdrawal_request_fulfilled() {
     // transaction is confirmed on the chain tip of the bitcoin blockchain.
     let withdrawal_request = WithdrawalRequest {
         block_hash: stacks_chain_tip_block.block_hash,
-        block_height: bitcoin_chain_tip_ref.block_height - 1,
+        bitcoin_block_height: bitcoin_chain_tip_ref.block_height - 1,
         ..Faker.fake_with_rng(&mut rng)
     };
     let qualified_id = withdrawal_request.qualified_id();
@@ -3517,7 +3517,7 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged() {
     assert_eq!(stacks_block.block_height, 1);
     let withdrawal_request = WithdrawalRequest {
         block_hash: stacks_block.block_hash,
-        block_height: bitcoin_chain_tip_ref.block_height,
+        bitcoin_block_height: bitcoin_chain_tip_ref.block_height,
         ..Faker.fake_with_rng(&mut rng)
     };
     let qualified_id = withdrawal_request.qualified_id();
@@ -3677,7 +3677,7 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged2() {
 
     let withdrawal_request = WithdrawalRequest {
         block_hash: stacks_chain_tip.block_hash,
-        block_height: bitcoin_chain_tip.block_height,
+        bitcoin_block_height: bitcoin_chain_tip.block_height,
         ..Faker.fake_with_rng(&mut rng)
     };
     let qualified_id = withdrawal_request.qualified_id();
@@ -3827,7 +3827,7 @@ async fn withdrawal_report_with_withdrawal_request_confirmed() {
 
     let withdrawal_request = WithdrawalRequest {
         block_hash: stacks_chain_tip_block.block_hash,
-        block_height: bitcoin_chain_tip_ref.block_height - 1,
+        bitcoin_block_height: bitcoin_chain_tip_ref.block_height - 1,
         ..Faker.fake_with_rng(&mut rng)
     };
     let qualified_id = withdrawal_request.qualified_id();
@@ -3864,7 +3864,10 @@ async fn withdrawal_report_with_withdrawal_request_confirmed() {
 
     assert_eq!(report.is_accepted, Some(false));
     assert_eq!(report.status, WithdrawalRequestStatus::Confirmed);
-    assert_eq!(report.block_height, withdrawal_request.block_height);
+    assert_eq!(
+        report.bitcoin_block_height,
+        withdrawal_request.bitcoin_block_height
+    );
     assert_eq!(report.amount, withdrawal_request.amount);
     assert_eq!(report.max_fee, withdrawal_request.max_fee);
     assert_eq!(&report.recipient, withdrawal_request.recipient.deref());
