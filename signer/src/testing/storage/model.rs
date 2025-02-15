@@ -615,9 +615,16 @@ mod tests {
             .await
             .unwrap()
         {
+            // Check the stacks heights increment as expected
+            assert_eq!(current.block_height, walk.last().unwrap().block_height - 1);
             walk.push(current);
         }
 
+        // Check that we walked at least `num_bitcoin_blocks` stacks blocks:
+        // TestData connects the first stacks block of a bitcoin block to a
+        // random stacks block of the parent bitcoin block, so the stacks chain
+        // will have at least one stacks block in each bitcoin block; the
+        // bitcoin chain itself will be fork-less because of consecutive_blocks
         assert_ge!(walk.len(), 10);
     }
 }
