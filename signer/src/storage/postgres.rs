@@ -32,6 +32,8 @@ use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 use crate::MAX_REORG_BLOCK_COUNT;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -767,7 +769,7 @@ impl PgStore {
 
     /// Check whether the given block hash is a part of the stacks
     /// blockchain identified by the given chain-tip.
-    async fn in_canonical_stacks_blockchain(
+    pub async fn in_canonical_stacks_blockchain(
         &self,
         chain_tip: &model::StacksBlockHash,
         block_hash: &model::StacksBlockHash,
@@ -1548,6 +1550,152 @@ impl super::DbRead for PgStore {
         .bind(stacks_chain_tip.block_hash)
         .bind(i32::from(context_window))
         .bind(i64::from(threshold))
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_pending_rejected_withdrawal_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        context_window: u16,
+        max_rejections: u16,
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(&chain_tip.block_hash).await? else {
+            return Ok(Vec::new());
+        };
+
+        let confirmation_height = chain_tip
+            .block_height
+            .saturating_sub(WITHDRAWAL_MIN_CONFIRMATIONS);
+        let expiration_height = chain_tip
+            .block_height
+            .saturating_sub(WITHDRAWAL_BLOCKS_EXPIRY);
+
+        sqlx::query_as::<_, model::WithdrawalRequest>(
+            r#"
+            WITH RECURSIVE bitcoin_blockchain AS (
+                SELECT
+                    block_hash
+                  , block_height
+                FROM bitcoin_blockchain_of($1, $2)
+            ),
+            stacks_context_window AS (
+                SELECT
+                    stacks_blocks.block_hash
+                  , stacks_blocks.block_height
+                  , stacks_blocks.parent_hash
+                FROM sbtc_signer.stacks_blocks stacks_blocks
+                WHERE stacks_blocks.block_hash = $3
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_context_window last
+                  ON parent.block_hash = last.parent_hash
+                JOIN bitcoin_blockchain block
+                  ON block.block_hash = parent.bitcoin_anchor
+            ),
+            -- First compute the pending requests, i.e. requestes that are final
+            -- but have no confirmed withdrawals outputs tx nor rejected events 
+            pending_withdrawals AS (
+                SELECT
+                    wr.request_id
+                  , wr.txid
+                  , wr.block_hash
+                  , wr.recipient
+                  , wr.amount
+                  , wr.max_fee
+                  , wr.sender_address
+                  , wr.bitcoin_block_height
+                FROM sbtc_signer.withdrawal_requests wr
+                -- Request confirmed on stacks chain
+                JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
+                -- Request not accepted
+                LEFT JOIN sbtc_signer.bitcoin_withdrawals_outputs AS bwo
+                  ON bwo.request_id = wr.request_id
+                 AND bwo.stacks_block_hash = wr.block_hash
+                LEFT JOIN bitcoin_transactions AS bc_trx
+                  ON bc_trx.txid = bwo.bitcoin_txid
+                LEFT JOIN bitcoin_blockchain
+                  ON bc_trx.block_hash = bitcoin_blockchain.block_hash
+                -- Request not rejected
+                LEFT JOIN withdrawal_reject_events AS wre
+                  ON wre.request_id = wr.request_id
+                LEFT JOIN stacks_context_window sc2
+                  ON wre.block_hash = sc2.block_hash
+                WHERE
+                    -- Request is final
+                    wr.bitcoin_block_height <= $4
+
+                -- we need to group since we could have multiple withdrawals 
+                -- outputs for a single request, and some of them may not be in
+                -- the canonical chain, resulting in a NULL bc_trx.block_hash;
+                -- so we group and check that all the rows have NULL
+                GROUP BY
+                    wr.request_id
+                  , wr.txid
+                  , wr.block_hash
+                  , wr.recipient
+                  , wr.amount
+                  , wr.max_fee
+                  , wr.sender_address
+                  , wr.bitcoin_block_height
+                HAVING
+                    -- Request not accepted (cont'd)
+                    COUNT(bc_trx.block_hash) = 0
+                    -- Request not rejected (cont'd)
+                AND COUNT(sc2.block_hash) = 0
+            )
+            -- Now from the above pick the ones having either enough votes
+            -- against, or have expired
+            SELECT
+                wr.request_id
+              , wr.txid
+              , wr.block_hash
+              , wr.recipient
+              , wr.amount
+              , wr.max_fee
+              , wr.sender_address
+              , wr.bitcoin_block_height
+            FROM pending_withdrawals wr
+            JOIN sbtc_signer.withdrawal_signers signers USING(request_id, block_hash)
+            WHERE NOT signers.is_accepted
+            GROUP BY wr.request_id
+                   , wr.txid
+                   , wr.block_hash
+                   , wr.recipient
+                   , wr.amount
+                   , wr.max_fee
+                   , wr.sender_address
+                   , wr.bitcoin_block_height
+            HAVING COUNT(wr.request_id) > $5
+            
+            UNION
+            
+            SELECT
+                wr.request_id
+              , wr.txid
+              , wr.block_hash
+              , wr.recipient
+              , wr.amount
+              , wr.max_fee
+              , wr.sender_address
+              , wr.bitcoin_block_height
+            FROM pending_withdrawals wr
+            WHERE wr.bitcoin_block_height < $6
+            "#,
+        )
+        .bind(chain_tip.block_hash)
+        .bind(i32::from(context_window))
+        .bind(stacks_chain_tip.block_hash)
+        .bind(i64::try_from(confirmation_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i32::from(max_rejections))
+        .bind(i64::try_from(expiration_height).map_err(Error::ConversionDatabaseInt)?)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
