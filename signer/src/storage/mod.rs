@@ -91,12 +91,6 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
-    /// Get the deposit requests that the signer has accepted to sign
-    fn get_accepted_deposit_requests(
-        &self,
-        signer: &PublicKey,
-    ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
-
     /// This function returns a deposit request report that does the
     /// following:
     ///

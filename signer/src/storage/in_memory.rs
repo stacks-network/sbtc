@@ -404,30 +404,6 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
-    async fn get_accepted_deposit_requests(
-        &self,
-        signer: &PublicKey,
-    ) -> Result<Vec<model::DepositRequest>, Error> {
-        let store = self.lock().await;
-
-        let accepted_deposit_pks = store
-            .signer_to_deposit_request
-            .get(signer)
-            .cloned()
-            .unwrap_or_default();
-
-        Ok(accepted_deposit_pks
-            .into_iter()
-            .map(|req| {
-                store
-                    .deposit_requests
-                    .get(&req)
-                    .cloned()
-                    .expect("missing deposit request")
-            })
-            .collect())
-    }
-
     async fn get_deposit_request_report(
         &self,
         _chain_tip: &model::BitcoinBlockHash,
