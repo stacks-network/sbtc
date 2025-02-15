@@ -349,6 +349,15 @@ where
             .await;
         }
 
+        let db = event_loop_handles.first().unwrap().context.get_storage();
+        let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+        let signer_public_key = signer_set.first().unwrap();
+        let pending_deposits_count = db
+            .get_pending_deposit_requests(&chain_tip, self.context_window, signer_public_key)
+            .await
+            .unwrap()
+            .len();
+
         // For each signer, send a signal to simulate the observation of a new block.
         for handle in event_loop_handles.iter() {
             handle
@@ -357,9 +366,7 @@ where
                 .expect("failed to send signal");
         }
 
-        let num_expected_decisions = (self.num_signers - 1) as u16
-            * self.context_window
-            * self.test_model_parameters.num_deposit_requests_per_block as u16;
+        let num_expected_decisions = ((self.num_signers - 1) * pending_deposits_count) as u16;
 
         // Wait for the expected number of decisions to be received by each signer.
         for handle in event_loop_handles.iter_mut() {
