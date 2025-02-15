@@ -3397,3 +3397,84 @@ async fn test_conservative_initial_sbtc_limits() {
         testing::storage::drop_db(db).await;
     }
 }
+
+/// Asserts that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
+#[tokio::test]
+pub async fn assert_processes_withdrawals() {
+    let num_signers = 7;
+    let signing_threshold = 3;
+
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let mut rng = rand::rngs::StdRng::seed_from_u64(56);
+
+    let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
+    let signatures_required: u16 = 2;
+
+    let network = WanNetwork::default();
+
+    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+
+    // =========================================================================
+    // Create a database, an associated context, and a Keypair for each of the
+    // signers in the signing set.
+    // -------------------------------------------------------------------------
+    // - We load the database with a bitcoin blocks going back to some
+    //   genesis block.
+    // =========================================================================
+    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
+        .iter()
+        .map(|kp| kp.public_key().into())
+        .collect();
+    let mut signers = Vec::new();
+    for kp in signer_key_pairs.iter() {
+        let db = testing::storage::new_test_database().await;
+        backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
+
+        // Ensure a stacks tip exists before DKG
+        let mut stacks_block: model::StacksBlock = Faker.fake_with_rng(&mut rng);
+        stacks_block.bitcoin_anchor = chain_tip_info.hash.into();
+        db.write_stacks_block(&stacks_block).await.unwrap();
+
+        let ctx = TestContext::builder()
+            .with_storage(db.clone())
+            .with_first_bitcoin_core_client()
+            .with_mocked_stacks_client()
+            .with_mocked_emily_client()
+            .build();
+
+        // When the signer binary starts up in main(), it sets the current
+        // signer set public keys in the context state using the values in
+        // the bootstrap_signing_set configuration parameter. Later, this
+        // state gets updated in the block observer. We're not running a
+        // block observer in this test, nor are we going through main, so
+        // we manually update the necessary state here.
+        ctx.state()
+            .update_current_signer_set(signer_set_public_keys.clone());
+
+        let network = network.connect(&ctx);
+
+        signers.push((ctx, db, kp, network));
+    }
+
+    // =========================================================================
+    // Compute DKG and store it into db
+    // =========================================================================
+    let mut signer_set = create_signer_set(&signer_key_pairs, signatures_required as u32).0;
+    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng).into();
+    let chain_tip = chain_tip_info.hash.into();
+
+    let (aggregate_key, mut encrypted_shares) = signer_set
+        .run_dkg(chain_tip, dkg_txid, &mut rng, DkgSharesStatus::Verified)
+        .await;
+
+    for ((_, db, _, _), dkg_shares) in signers.iter_mut().zip(encrypted_shares.iter_mut()) {
+        dkg_shares.dkg_shares_status = DkgSharesStatus::Verified;
+        signer_set
+            .write_as_rotate_keys_tx(db, &chain_tip, dkg_shares, &mut rng)
+            .await;
+
+        db.write_encrypted_dkg_shares(&dkg_shares)
+            .await
+            .expect("failed to write encrypted shares");
+    }
+}

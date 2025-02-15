@@ -65,7 +65,6 @@ use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-use crate::WITHDRAWAL_BLOCKS_WAIT;
 use crate::WITHDRAWAL_DUST_LIMIT;
 
 use bitcoin::hashes::Hash as _;
@@ -1463,15 +1462,15 @@ where
     /// Fetches pending withdrawal requests from storage and filters them based
     /// on the remaining consensus rules as defined in #741:
     ///
-    /// 1. The request must not have been swept within the current canonical Bitcoin chain.
-    /// 2. The request must be confirmed in a canonical Stacks block.
-    /// 3. The request must have reached the required number of Bitcoin confirmations.
-    /// 4. The request must have been approved by the required number of signers.
+    /// 1. [x] The request must not have been swept within the current canonical Bitcoin chain.
+    /// 2. [x] The request must be confirmed in a canonical Stacks block.
+    /// 3. [ ] The request must have reached the required number of Bitcoin confirmations.
+    /// 4. [ ] The request must have been approved by the required number of signers.
     /// 5. * Not applicable for the coordinator.
     /// 6. * Applicable during packaging (later step).
-    /// 7. The request must not have expired.
-    /// 8. The request amount must be above the dust limit.
-    /// 9. The request must be within the current sBTC caps.
+    /// 7. [x] The request must not have expired.
+    /// 8. [ ] The request amount must be above the dust limit.
+    /// 9. [ ] The request must be within the current sBTC caps.
     pub async fn get_eligible_pending_withdrawal_requests(
         storage: &impl DbRead,
         bitcoin_chain_tip: &model::BitcoinBlockRef,
@@ -1563,11 +1562,11 @@ where
                     );
                     let num_confirmations =
                         bitcoin_chain_tip.block_height - report.bitcoin_block_height;
-                    if num_confirmations <= WITHDRAWAL_BLOCKS_WAIT {
+                    if num_confirmations <= WITHDRAWAL_BLOCKS_EXPIRY {
                         tracing::debug!(
                             request_id = %req.request_id,
                             num_confirmations,
-                            required_confirmations = WITHDRAWAL_BLOCKS_WAIT,
+                            required_confirmations = WITHDRAWAL_BLOCKS_EXPIRY,
                             "withdrawal request has not yet reached required confirmations"
                         );
                         continue;
