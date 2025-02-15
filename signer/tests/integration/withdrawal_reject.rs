@@ -524,13 +524,34 @@ async fn reject_withdrawal_validation_not_final() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let amount = 1_000_000;
+    let test_signer_set = TestSignerSet::new(&mut rng);
+    let deposit_amounts = DepositAmounts { amount, max_fee: amount / 2 };
+    let mut setup =
+        TestSweepSetup2::new_setup(test_signer_set.clone(), &faucet, &[deposit_amounts]);
+
+    setup.submit_sweep_tx(rpc, faucet, true);
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    let public_keys = test_signer_set
+        .keys
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<PublicKey>>();
+    ctx.state().update_current_signer_set(public_keys);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -543,24 +564,17 @@ async fn reject_withdrawal_validation_not_final() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
+    setup.reject_withdrawal_request();
     setup.store_withdrawal_request(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
-    // Generate the transaction and corresponding request context.
-    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup);
-
-    // This should not return an Err.
-    let ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
-        .with_mocked_stacks_client()
-        .with_mocked_emily_client()
-        .build();
-
-    // Generate more blocks then backfill the DB
+    // Generate an insufficient number of blocks then backfill the DB
     let mut hashes = faucet.generate_blocks(5);
     let last = hashes.pop().unwrap();
     backfill_bitcoin_blocks(&db, rpc, &last).await;
+
+    // Generate the transaction and corresponding request context.
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject2(&setup, &db).await;
 
     let validation_result = reject_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -569,6 +583,16 @@ async fn reject_withdrawal_validation_not_final() {
         }
         err => panic!("unexpected error during validation {err}"),
     }
+
+    // now generate an extra block and it should be valid
+    let mut hashes = faucet.generate_blocks(1);
+    let last = hashes.pop().unwrap();
+    backfill_bitcoin_blocks(&db, rpc, &last).await;
+
+    // Generate the transaction and corresponding request context.
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject2(&setup, &db).await;
+
+    reject_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
     testing::storage::drop_db(db).await;
 }
