@@ -54,6 +54,7 @@ use crate::message::SignerWithdrawalDecision;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::StacksTransactionSignature;
 use crate::message::WstsMessage;
+use crate::message::WstsMessageId;
 use crate::proto;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
@@ -68,6 +69,8 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+
+use super::wsts_message;
 
 /// This trait is to make it easy to handle fields of protobuf structs that
 /// are `None`, when they should be `Some(_)`.
@@ -1089,8 +1092,17 @@ impl From<WstsMessage> for proto::WstsMessage {
                 proto::wsts_message::Inner::SignatureShareResponse(inner.into())
             }
         };
+
         proto::WstsMessage {
-            txid: Some(BitcoinTxId::from(value.txid).into()),
+            id: Some(match value.id {
+                WstsMessageId::Sweep(txid) => wsts_message::Id::Sweep(proto::BitcoinTxid {
+                    txid: Some(proto::Uint256::from(BitcoinTxId::from(txid).into_bytes())),
+                }),
+                WstsMessageId::DkgVerification(pubkey) => {
+                    wsts_message::Id::DkgVerification(pubkey.into())
+                }
+                WstsMessageId::Dkg(id) => wsts_message::Id::Dkg(id.into()),
+            }),
             inner: Some(inner),
         }
     }
@@ -1098,6 +1110,7 @@ impl From<WstsMessage> for proto::WstsMessage {
 
 impl TryFrom<proto::WstsMessage> for WstsMessage {
     type Error = Error;
+
     fn try_from(value: proto::WstsMessage) -> Result<Self, Self::Error> {
         let inner = match value.inner.required()? {
             proto::wsts_message::Inner::DkgBegin(inner) => {
@@ -1131,8 +1144,17 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                 wsts::net::Message::SignatureShareResponse(inner.try_into()?)
             }
         };
+
         Ok(WstsMessage {
-            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
+            id: match value.id.required()? {
+                wsts_message::Id::Sweep(txid) => {
+                    WstsMessageId::Sweep(BitcoinTxId::try_from(txid)?.into())
+                }
+                wsts_message::Id::DkgVerification(pubkey) => {
+                    WstsMessageId::DkgVerification(PublicKey::try_from(pubkey)?)
+                }
+                wsts_message::Id::Dkg(id) => WstsMessageId::Dkg(id.into()),
+            },
             inner,
         })
     }
@@ -1737,21 +1759,24 @@ mod tests {
         U: From<T>,
         E: std::fmt::Debug,
     {
-        // The type T originates from a signer. Let's create a random
-        // instance of one.
-        let original: T = Faker.fake_with_rng(&mut OsRng);
-        // The type U is a protobuf type. Before sending it to other
-        // signers, we convert our internal type into it's protobuf
-        // counterpart. We can always infallibly create U from T.
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..25 {
+            // The type T originates from a signer. Let's create a random
+            // instance of one.
+            let original: T = Faker.fake_with_rng(&mut OsRng);
+            // The type U is a protobuf type. Before sending it to other
+            // signers, we convert our internal type into it's protobuf
+            // counterpart. We can always infallibly create U from T.
+            let proto_original = U::from(original.clone());
 
-        // Some other signer receives an instance of U. This could be a
-        // malicious actor or a modified version of the signer binary
-        // where they made some mistake, so converting back to T can fail.
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        // In this case, we know U was created from T correctly, so we
-        // should be able to convert back without issues.
-        assert_eq!(original, original_from_proto);
+            // Some other signer receives an instance of U. This could be a
+            // malicious actor or a modified version of the signer binary
+            // where they made some mistake, so converting back to T can fail.
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            // In this case, we know U was created from T correctly, so we
+            // should be able to convert back without issues.
+            assert_eq!(original, original_from_proto);
+        }
     }
 
     /// This test is identical to [`convert_protobuf_types`] tests above,
@@ -1792,11 +1817,14 @@ mod tests {
         U: From<T>,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..10 {
+            let original: T = Unit.fake_with_rng(&mut OsRng);
+            let proto_original = U::from(original.clone());
 
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        assert_eq!(original, original_from_proto);
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            assert_eq!(original, original_from_proto);
+        }
     }
 
     // The following are tests for structs that do not derive eq
@@ -1842,11 +1870,14 @@ mod tests {
         U: From<T>,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..25 {
+            let original: T = Unit.fake_with_rng(&mut OsRng);
+            let proto_original = U::from(original.clone());
 
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        assert_eq!(wrapper(original), wrapper(original_from_proto));
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            assert_eq!(wrapper(original), wrapper(original_from_proto));
+        }
     }
 
     #[test]

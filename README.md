@@ -8,6 +8,10 @@
 - [sBTC Landing Page](https://sbtc.tech/)
 - [sBTC Docs](https://docs.stacks.co/concepts/sbtc)
 
+## Releases
+
+See [`RELEASE.md`](./RELEASE.md).
+
 ## Design Docs
 
 **All decisions are made and tracked via GitHub issues where they and their rationale can be verified publicly.** Due to sBTC's critical nature extensive research and planning has been done to ensure all funds remain secure on launch.
@@ -153,7 +157,7 @@ This GitHub Actions workflow, Cargo Vet, is designed to automate the vetting of 
 - **Failure**: Check the GitHub Actions logs for errors and annotations about unvetted dependencies.
 Download the audit-suggestions.txt artifact from the "Artifacts" section of the GitHub Actions interface for a detailed report.
 
-- **Addressing Unvetted Dependencies**: Use the suggestions in the audit-suggestions.txt file to update your dependency audit policies in the supply-chain.toml file. 
+- **Addressing Unvetted Dependencies**: Use the suggestions in the audit-suggestions.txt file to update your dependency audit policies in the supply-chain.toml file.
 
 Running this command you are able to check the suggestions offline:
 

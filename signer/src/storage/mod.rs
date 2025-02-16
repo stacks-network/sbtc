@@ -25,7 +25,6 @@ use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 /// Represents the ability to read data from the signer storage.
@@ -46,6 +45,11 @@ pub trait DbRead {
     fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> impl Future<Output = Result<Option<model::BitcoinBlockHash>, Error>> + Send;
+
+    /// Get the bitcoin canonical chain tip.
+    fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::BitcoinBlockRef>, Error>> + Send;
 
     /// Get the stacks chain tip, defined as the highest stacks block
     /// confirmed by the bitcoin chain tip.
@@ -86,12 +90,6 @@ pub trait DbRead {
         txid: &model::BitcoinTxId,
         output_index: u32,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
-
-    /// Get the deposit requests that the signer has accepted to sign
-    fn get_accepted_deposit_requests(
-        &self,
-        signer: &PublicKey,
-    ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
 
     /// This function returns a deposit request report that does the
     /// following:
@@ -183,19 +181,19 @@ pub trait DbRead {
     /// 1. Check that the current signer accepted by the withdrawal
     ///    request.
     /// 2. Check that the transaction that created the withdrawal is in a
-    ///    stacks block anchored by a bitcoin block on the blockchain
-    ///    identified by the given chain tip.
-    /// 3. Check that the withdrawal has not been included on a sweep
+    ///    stacks block on the stacks blockchain identified by the given
+    ///    chain tip.
+    /// 3. Check that the withdrawal has not been included in a sweep
     ///    transaction that has been confirmed by block on the bitcoin
     ///    blockchain identified by the given chain tip.
     ///
-    ///  `Ok(None)` is returned if we do not have a record of the
-    /// withdrawal request.
-    ///
-    /// Note: The above list is probably not exhaustive.
+    /// `Ok(None)` is returned if we do not have a record of the withdrawal
+    /// request or if the withdrawal request is confirmed on a stacks block
+    /// that we do not know about
     fn get_withdrawal_request_report(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
         id: &model::QualifiedRequestId,
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<WithdrawalRequestReport>, Error>> + Send;
@@ -227,7 +225,13 @@ pub trait DbRead {
         &self,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
 
-    /// Returns the number of DKG shares entries in the database.
+    /// Return the most recent DKG shares that have passed verification,
+    /// and return None if no such shares exist.
+    fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
+
+    /// Returns the number of non-failed DKG shares entries in the database.
     fn get_encrypted_dkg_shares_count(&self) -> impl Future<Output = Result<u32, Error>> + Send;
 
     /// Return the latest rotate-keys transaction confirmed by the given `chain-tip`.
@@ -457,12 +461,6 @@ pub trait DbWrite {
         event: &WithdrawalAcceptEvent,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the withdrawal-create event to the database.
-    fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
-
     /// Write the completed deposit event to the database.
     fn write_completed_deposit_event(
         &self,
@@ -481,7 +479,7 @@ pub trait DbWrite {
         prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the bitcoin transactions sighaes to the database.
+    /// Write the bitcoin transactions sighashes to the database.
     fn write_bitcoin_txs_sighashes(
         &self,
         sighashes: &[model::BitcoinTxSigHash],
@@ -492,4 +490,26 @@ pub trait DbWrite {
         &self,
         withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Marks the stored DKG shares for the provided aggregate key as revoked
+    /// and thus should no longer be used.
+    ///
+    /// This can be due to a failed DKG process, the key having been
+    /// compromised, or any other reason that would require the shares for the
+    /// provided aggregate key to not be used in the signing of transactions.
+    fn revoke_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
+
+    /// Marks the stored DKG shares as verified, meaning that the shares have
+    /// been used to sign a transaction input spending a UTXO locked by itself.
+    fn verify_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
 }

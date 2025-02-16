@@ -165,7 +165,7 @@ pub async fn get_deposits(
     configuration: &configuration::Configuration,
     status: models::Status,
     next_token: Option<&str>,
-    page_size: Option<i32>,
+    page_size: Option<u32>,
 ) -> Result<models::GetDepositsResponse, Error<GetDepositsError>> {
     let local_var_configuration = configuration;
 
@@ -213,7 +213,7 @@ pub async fn get_deposits_for_recipient(
     configuration: &configuration::Configuration,
     recipient: &str,
     next_token: Option<&str>,
-    page_size: Option<i32>,
+    page_size: Option<u32>,
 ) -> Result<models::GetDepositsResponse, Error<GetDepositsForRecipientError>> {
     let local_var_configuration = configuration;
 
@@ -264,7 +264,7 @@ pub async fn get_deposits_for_transaction(
     configuration: &configuration::Configuration,
     txid: &str,
     next_token: Option<&str>,
-    page_size: Option<i32>,
+    page_size: Option<u32>,
 ) -> Result<models::GetDepositsForTransactionResponse, Error<GetDepositsForTransactionError>> {
     let local_var_configuration = configuration;
 

@@ -1,16 +1,19 @@
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::time::Duration;
 
-use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api;
-use emily_client::models::CreateDepositRequestBody;
+use bitcoin::consensus::encode::serialize_hex;
 use fake::Fake;
 use fake::Faker;
 use mockito::Server;
 use rand::SeedableRng as _;
-
 use serde_json::json;
+use url::Url;
+
+use emily_client::apis::deposit_api;
+use emily_client::apis::testing_api;
+use emily_client::models::CreateDepositRequestBody;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::blocklist_client::BlocklistClient;
 use signer::context::Context;
@@ -29,7 +32,6 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
-use url::Url;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
@@ -77,7 +79,7 @@ async fn create_signer_database() -> PgStore {
     signer::testing::storage::new_test_database().await
 }
 
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn should_store_decisions_for_pending_deposit_requests() {
     let num_signers = 3;
     let signing_threshold = 2;
@@ -305,8 +307,12 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await
@@ -374,6 +380,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
         bitcoin_txid: setup.deposit_request.outpoint.txid.to_string(),
         deposit_script: setup.deposit_request.deposit_script.to_hex_string(),
         reclaim_script: setup.deposit_request.reclaim_script.to_hex_string(),
+        transaction_hex: serialize_hex(&setup.deposit_tx_info.tx),
     };
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await
