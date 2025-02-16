@@ -105,6 +105,7 @@ impl TestData {
         let withdraw_data = WithdrawData::generate(
             rng,
             signer_keys,
+            &block,
             &stacks_blocks,
             &self.withdraw_requests,
             params.num_withdraw_requests_per_block,
@@ -332,7 +333,7 @@ impl TestData {
                 let cands = self
                     .stacks_blocks
                     .iter()
-                    .filter(|stacks_block| stacks_block.bitcoin_anchor == b.block_hash)
+                    .filter(|stacks_block| stacks_block.bitcoin_anchor == b.parent_hash)
                     .collect::<Vec<_>>();
                 cands.choose(rng).cloned()
             })
@@ -445,6 +446,7 @@ impl WithdrawData {
     fn generate(
         rng: &mut impl rand::RngCore,
         signer_keys: &[PublicKey],
+        bitcoin_block: &model::BitcoinBlock,
         stacks_blocks: &[model::StacksBlock],
         withdraw_requests: &[model::WithdrawalRequest],
         num_withdraw_requests: usize,
@@ -469,6 +471,7 @@ impl WithdrawData {
                     withdraw_request.block_hash = stacks_block_hash;
                     withdraw_request.request_id = next_withdraw_request_id;
                     withdraw_request.recipient = fake::Faker.fake_with_rng(rng);
+                    withdraw_request.bitcoin_block_height = bitcoin_block.block_height;
 
                     let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
                     raw_transaction.tx_type = model::TransactionType::WithdrawRequest;
@@ -563,4 +566,65 @@ impl StacksBlockSummary {
 fn vec_diff<T: std::cmp::Eq + std::hash::Hash>(subtrahend: &mut Vec<T>, minuend: &[T]) {
     let minuend_set = minuend.iter().collect::<HashSet<_>>();
     subtrahend.retain(|v| !minuend_set.contains(v));
+}
+
+#[cfg(test)]
+mod tests {
+    use more_asserts::assert_ge;
+    use rand::SeedableRng as _;
+
+    use crate::{
+        storage::{self, DbRead as _},
+        testing,
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn check_simple_chain() {
+        let mut store = storage::in_memory::Store::new_shared();
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        let test_model_params = Params {
+            num_bitcoin_blocks: 10,
+            num_stacks_blocks_per_bitcoin_block: 5,
+            num_deposit_requests_per_block: 0,
+            num_withdraw_requests_per_block: 0,
+            num_signers_per_request: 0,
+            consecutive_blocks: true,
+        };
+        let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, 7);
+
+        let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+        test_data.write_to(&mut store).await;
+
+        let bitcoin_chain_tip = store
+            .get_bitcoin_canonical_chain_tip()
+            .await
+            .unwrap()
+            .unwrap();
+        let tip = store
+            .get_stacks_chain_tip(&bitcoin_chain_tip)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let mut walk = vec![tip];
+        while let Some(current) = store
+            .get_stacks_block(&walk.last().unwrap().parent_hash)
+            .await
+            .unwrap()
+        {
+            // Check the stacks heights increment as expected
+            assert_eq!(current.block_height, walk.last().unwrap().block_height - 1);
+            walk.push(current);
+        }
+
+        // Check that we walked at least `num_bitcoin_blocks` stacks blocks:
+        // TestData connects the first stacks block of a bitcoin block to a
+        // random stacks block of the parent bitcoin block, so the stacks chain
+        // will have at least one stacks block in each bitcoin block; the
+        // bitcoin chain itself will be fork-less because of consecutive_blocks
+        assert_ge!(walk.len(), 10);
+    }
 }

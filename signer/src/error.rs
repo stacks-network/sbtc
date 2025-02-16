@@ -351,6 +351,10 @@ pub enum Error {
     #[error("outpoint missing from transaction when assessing fee {0}")]
     OutPointMissing(bitcoin::OutPoint),
 
+    /// This should never happen.
+    #[error("output_index missing from block when assessing fee, txid: {0}, vout: {1}")]
+    VoutMissing(bitcoin::Txid, u32),
+
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]
     ParseHexInt(#[source] std::num::ParseIntError),
