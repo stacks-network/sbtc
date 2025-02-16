@@ -154,6 +154,18 @@ pub trait StacksInteract: Send + Sync {
         outpoint: &OutPoint,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
+    /// Retrieve a boolean value from the stacks node indicating whether
+    /// the withdrawal request has a response transaction either accepting
+    /// or rejecting the request.
+    ///
+    /// The request is made to `POST
+    /// /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`.
+    fn is_withdrawal_completed(
+        &self,
+        contract_principal: &StacksAddress,
+        request_id: u64,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Get the latest account info for the given address.
     fn get_account(
         &self,
@@ -592,6 +604,60 @@ impl StacksClient {
             .client
             .get(url)
             .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json::<DataVarResponse>()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+            .map(|x| x.data)
+    }
+
+    /// Retrieve the latest value of a data variable from the specified
+    /// contract.
+    ///
+    /// This is done by making a `POST
+    /// /v2/map_entry/<contract-principal>/<contract-name>/<map-name>`
+    /// request. In the request we specify that the proof should not be
+    /// included in the response.
+    ///
+    /// See here for more information about this endpoint:
+    /// https://github.com/stacks-network/stacks-core/blob/c1a1f50fddcbc11054fae537103423e21221665a/stackslib/src/net/api/getmapentry.rs#L82-L97
+    #[tracing::instrument(skip_all)]
+    pub async fn get_map_entry(
+        &self,
+        contract_principal: &StacksAddress,
+        contract_name: &ContractName,
+        map_name: &ClarityName,
+        map_entry: &Value,
+    ) -> Result<Value, Error> {
+        let path = format!("/v2/map_entry/{contract_principal}/{contract_name}/{map_name}?proof=0");
+
+        let url = self
+            .endpoint
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
+
+        tracing::debug!(
+            %contract_principal,
+            %contract_name,
+            %map_name,
+            "fetching contract map entry"
+        );
+
+        let body = map_entry
+            .serialize_to_hex()
+            .map_err(Error::ClarityValueSerialization)?;
+
+        let response = self
+            .client
+            .post(url)
+            .timeout(REQUEST_TIMEOUT)
+            .json(&serde_json::Value::String(body))
             .send()
             .await
             .map_err(Error::StacksNodeRequest)?;
@@ -1196,6 +1262,33 @@ impl StacksInteract for StacksClient {
         }
     }
 
+    async fn is_withdrawal_completed(
+        &self,
+        deployer: &StacksAddress,
+        request_id: u64,
+    ) -> Result<bool, Error> {
+        // Both ContractName::from and ClarityName::from can panic when
+        // given the "wrong" strings. These particular strings do not
+        // panic, and we test this fact in our unit tests.
+        let contract_name = ContractName::from("sbtc-registry");
+        let map_name = ClarityName::from("withdrawal-status");
+
+        let map_entry = Value::UInt(request_id as u128);
+        let result = self
+            .get_map_entry(deployer, &contract_name, &map_name, &map_entry)
+            .await?;
+
+        // The `get-deposit-status` read-only function retrieves values
+        // from a map in the smart contract using the `map-get?` Clarity
+        // function. This map stores boolean values, setting them to `true`
+        // when a deposit is completed and not setting them otherwise.
+        // Therefore, a missing value implicitly means `false`.
+        match result {
+            Value::Optional(OptionalData { data }) => Ok(data.is_some()),
+            _ => Err(Error::InvalidStacksResponse("did not get optional data")),
+        }
+    }
+
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         self.get_account(address).await
     }
@@ -1400,6 +1493,21 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         self.exec(|client, retry| async move {
             let result = client
                 .is_deposit_completed(contract_principal, outpoint)
+                .await;
+            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
+            result
+        })
+        .await
+    }
+
+    async fn is_withdrawal_completed(
+        &self,
+        contract_principal: &StacksAddress,
+        request_id: u64,
+    ) -> Result<bool, Error> {
+        self.exec(|client, retry| async move {
+            let result = client
+                .is_withdrawal_completed(contract_principal, request_id)
                 .await;
             retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
             result

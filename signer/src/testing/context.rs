@@ -414,6 +414,18 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .await
     }
 
+    async fn is_withdrawal_completed(
+        &self,
+        contract_principal: &StacksAddress,
+        request_id: u64,
+    ) -> Result<bool, Error> {
+        self.inner
+            .lock()
+            .await
+            .is_withdrawal_completed(contract_principal, request_id)
+            .await
+    }
+
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         self.inner.lock().await.get_account(address).await
     }

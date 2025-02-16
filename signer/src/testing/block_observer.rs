@@ -330,6 +330,9 @@ impl StacksInteract for TestHarness {
     ) -> Result<bool, Error> {
         unimplemented!()
     }
+    async fn is_withdrawal_completed(&self, _: &StacksAddress, _: u64) -> Result<bool, Error> {
+        unimplemented!()
+    }
     async fn get_account(&self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
         // issue #118
         todo!()
