@@ -747,7 +747,7 @@ where
                         span.record("txid", txid.to_string());
 
                         let accepted_sighash =
-                            Self::validate_bitcoin_sign_request(&db, &request.message, &chain_tip)
+                            Self::validate_bitcoin_sign_request(&db, &request.message, chain_tip)
                                 .await;
 
                         let validation_status = match &accepted_sighash {
@@ -855,7 +855,7 @@ where
 
                         // Validate the sighash and upon success, convert it to
                         // a state machine ID.
-                        Self::validate_bitcoin_sign_request(&db, &request.message, &chain_tip)
+                        Self::validate_bitcoin_sign_request(&db, &request.message, chain_tip)
                             .await?
                             .sighash
                             .into()
