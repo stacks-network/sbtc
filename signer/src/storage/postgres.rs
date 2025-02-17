@@ -1958,7 +1958,7 @@ impl super::DbRead for PgStore {
         // The following tests define the criteria for this query:
         // - [X] get_swept_withdrawal_requests_returns_swept_withdrawal_requests
         // - [X] get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_requests
-        // - [ ] get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_responses
+        // - [X] get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_responses
         // - [ ] get_swept_withdrawal_requests_response_tx_reorged
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
@@ -2014,7 +2014,7 @@ impl super::DbRead for PgStore {
                 LEFT JOIN sbtc_signer.withdrawal_accept_events AS wae
                     ON wae.request_id = wr.request_id
                 LEFT JOIN stacks_blockchain AS sb
-                    ON sb.block_hash = wr.block_hash
+                    ON sb.block_hash = wae.block_hash
                 WHERE wae.request_id IS NULL
 
                 GROUP BY
@@ -2028,6 +2028,9 @@ impl super::DbRead for PgStore {
                     wr.amount,
                     wr.max_fee,
                     wr.sender_address
+
+                HAVING
+                    COUNT(sb.block_hash) = 0
         ",
         )
         .bind(chain_tip)
