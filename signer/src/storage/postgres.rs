@@ -1569,6 +1569,7 @@ impl super::DbRead for PgStore {
 
         sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
+            -- get_pending_rejected_withdrawal_requests
             WITH RECURSIVE bitcoin_blockchain AS (
                 SELECT
                     block_hash
@@ -1592,6 +1593,13 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_context_window last
                   ON parent.block_hash = last.parent_hash
+                -- Limit the recursion to the bitcoin context window height. We
+                -- are not joining directly on `bitcoin_blockchain` as once we
+                -- get the stacks chain tip considering its anchor block, then
+                -- we can just walk backwards.
+                JOIN sbtc_signer.bitcoin_blocks block
+                  ON block.block_hash = parent.bitcoin_anchor
+                WHERE block.block_height >= (SELECT MIN(block_height) FROM bitcoin_blockchain)
             )
             SELECT
                 wr.request_id

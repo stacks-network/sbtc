@@ -4546,6 +4546,13 @@ async fn pending_rejected_withdrawal_no_events() {
         .expect("no chain tip");
 
     for withdrawal in test_data.withdraw_requests {
+        if withdrawal.bitcoin_block_height == test_data.bitcoin_blocks[0].block_height {
+            // The stacks blocks in the first bitcoin block have an hallucinated
+            // anchor, so they are in the canonical chain but have no link to
+            // bitcoin chain, making things weird.
+            continue;
+        }
+
         let stacks_block = db
             .get_stacks_block(&withdrawal.block_hash)
             .await
