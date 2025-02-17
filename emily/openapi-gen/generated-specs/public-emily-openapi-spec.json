@@ -684,18 +684,18 @@
         }
       }
     },
-    "/deposit/reclaim-pubkey/{reclaimPubkey}": {
+    "/deposit/reclaim-pubkeys/{reclaimPubkeys}": {
       "get": {
         "tags": [
           "deposit"
         ],
         "summary": "Get deposits by recipient handler.",
-        "operationId": "getDepositsForReclaimPubkey",
+        "operationId": "getDepositsForReclaimPubkeys",
         "parameters": [
           {
-            "name": "reclaimPubkey",
+            "name": "reclaimPubkeys",
             "in": "path",
-            "description": "The reclaim x-only public key to search by when retrieving all deposits. For multi-sig, use the SHA-256 hash of the concatenated public keys.",
+            "description": "The comma-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
             "required": true,
             "schema": {
               "type": "string"
@@ -792,9 +792,9 @@
         "description": "Handles CORS preflight requests",
         "parameters": [
           {
-            "name": "reclaimPubkey",
+            "name": "reclaimPubkeys",
             "in": "path",
-            "description": "The reclaim x-only public key to search by when retrieving all deposits. For multi-sig, use the SHA-256 hash of the concatenated public keys.",
+            "description": "The comma-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
             "required": true,
             "schema": {
               "type": "string"

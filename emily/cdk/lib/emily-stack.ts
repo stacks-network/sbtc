@@ -182,11 +182,11 @@ export class EmilyStack extends cdk.Stack {
         });
 
         // Index to efficiently query deposits that comes from a specific address
-        const byAddressIndexName: string = "DepositReclaimPubkeyIndex";
+        const byReclaimPubkeysHashIndexName: string = "DepositReclaimPubkeysHashIndex";
         table.addGlobalSecondaryIndex({
-            indexName: byAddressIndexName,
+            indexName: byReclaimPubkeysHashIndexName,
             partitionKey: {
-                name: 'ReclaimPubkey',
+                name: 'ReclaimPubkeysHash',
                 type: dynamodb.AttributeType.STRING
             },
             sortKey: {

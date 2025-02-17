@@ -13,8 +13,8 @@ use crate::common::error::{Error, Inconsistency};
 use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::deposit::{
-    DepositInfoByRecipientEntry, DepositInfoByReclaimPubkeyEntry,
-    DepositTableByRecipientSecondaryIndex, DepositTableByReclaimPubkeySecondaryIndex,
+    DepositInfoByRecipientEntry, DepositInfoByReclaimPubkeysEntry,
+    DepositTableByRecipientSecondaryIndex, DepositTableByReclaimPubkeysSecondaryIndex,
     ValidatedDepositUpdate,
 };
 use super::entries::limits::{
@@ -100,15 +100,15 @@ pub async fn get_deposit_entries_by_recipient(
 
 /// Get deposit entries by reclaim pubkey.
 #[allow(clippy::ptr_arg)]
-pub async fn get_deposit_entries_by_reclaim_pubkey(
+pub async fn get_deposit_entries_by_reclaim_pubkeys_hash(
     context: &EmilyContext,
-    reclaim_pubkey: &String,
+    reclaim_pubkeys_hash: &String,
     maybe_next_token: Option<String>,
     maybe_page_size: Option<u16>,
-) -> Result<(Vec<DepositInfoByReclaimPubkeyEntry>, Option<String>), Error> {
-    query_with_partition_key::<DepositTableByReclaimPubkeySecondaryIndex>(
+) -> Result<(Vec<DepositInfoByReclaimPubkeysEntry>, Option<String>), Error> {
+    query_with_partition_key::<DepositTableByReclaimPubkeysSecondaryIndex>(
         context,
-        reclaim_pubkey,
+        reclaim_pubkeys_hash,
         maybe_next_token,
         maybe_page_size,
     )

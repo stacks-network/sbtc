@@ -549,7 +549,7 @@ async fn get_deposits_for_recipient() {
 }
 
 #[tokio::test]
-async fn get_deposits_for_reclaim_pubkey() {
+async fn get_deposits_for_reclaim_pubkeys() {
     let configuration = clean_setup().await;
     // Arrange.
     // --------
@@ -616,7 +616,7 @@ async fn get_deposits_for_reclaim_pubkey() {
         }
         // Add the pubkey data to the pubkey data hashmap that stores what
         // we expect to see from the pubkey.
-        expected_pubkey_data.insert(serialize_hex(pubkey), expected_deposit_infos.clone());
+        expected_pubkey_data.insert(hex::encode(pubkey), expected_deposit_infos.clone());
     }
 
     // The size of the chunks to grab from the api.
@@ -632,7 +632,7 @@ async fn get_deposits_for_reclaim_pubkey() {
         let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
         let mut next_token: Option<Option<String>> = None;
         loop {
-            let response = apis::deposit_api::get_deposits_for_reclaim_pubkey(
+            let response = apis::deposit_api::get_deposits_for_reclaim_pubkeys(
                 &configuration,
                 pubkey,
                 next_token.as_ref().and_then(|o| o.as_deref()),
