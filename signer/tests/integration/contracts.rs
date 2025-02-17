@@ -160,7 +160,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: *testing::wallet::WALLET.0.address(),
 }); "create-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
-    request_id: 2,
+    request_id: 1,
     signer_bitmap: BitArray::ZERO,
     deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
@@ -317,4 +317,27 @@ async fn is_deposit_completed_works() {
         .unwrap();
 
     assert_eq!(response, true);
+}
+
+
+#[ignore = "This is an integration test that requires a stacks-node to work"]
+#[tokio::test]
+async fn is_withdrawal_completed_works() {
+    let stacks_client = stacks_client();
+    let stacks_client = stacks_client.get_client();
+    let _rpc = {
+        let username = regtest::BITCOIN_CORE_RPC_USERNAME.to_string();
+        let password = regtest::BITCOIN_CORE_RPC_PASSWORD.to_string();
+        let auth = bitcoincore_rpc::Auth::UserPass(username, password);
+        bitcoincore_rpc::Client::new("http://localhost:18443", auth).unwrap()
+    };
+
+    let signers = deploy_smart_contracts().await;
+
+    // Make the request to the mock server
+    let response = stacks_client
+        .is_withdrawal_completed(signers.wallet.address(), 1)
+        .await;
+
+    let _ = dbg!(response);
 }
