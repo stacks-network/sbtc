@@ -485,6 +485,7 @@ async fn swept_withdrawals_fail_validation() {
 
     // Let's confirm a sweep transaction
     setup.submit_sweep_tx(rpc, faucet);
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
     setup.store_sweep_tx(&db).await;
 
     // The sweep happened right away, even before the withdrawal request

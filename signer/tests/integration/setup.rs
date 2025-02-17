@@ -906,6 +906,33 @@ impl TestSweepSetup2 {
             db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
         }
     }
+
+    /// Store the rows in the `bitcoin_withdrawals_outputs` for the
+    /// withdrawals.
+    /// 
+    /// This simulates the withdrawals successfully going through
+    /// validation, where we write to the `bitcoin_withdrawals_outputs`
+    /// table at the end.
+    pub async fn store_bitcoin_withdrawals_outputs(&self, db: &PgStore) {
+        let sweep = self.sweep_tx_info.as_ref().expect("no sweep tx info set");
+
+        for (index, (w, _, _)) in self.withdrawals.iter().enumerate() {
+            let swept_output = BitcoinWithdrawalOutput {
+                request_id: w.request_id,
+                stacks_txid: w.txid,
+                stacks_block_hash: w.block_hash,
+                bitcoin_chain_tip: sweep.block_hash,
+                is_valid_tx: true,
+                validation_result: WithdrawalValidationResult::Ok,
+                output_index: index as u32 + 2,
+                bitcoin_txid: sweep.tx_info.txid.into(),
+            };
+            db.write_bitcoin_withdrawals_outputs(&[swept_output])
+                .await
+                .unwrap();
+        }
+    }
+
     /// Store the transaction that swept the deposits and/or withdrawals
     /// into the database
     pub async fn store_sweep_tx(&self, db: &PgStore) {
@@ -942,22 +969,6 @@ impl TestSweepSetup2 {
 
         for output in sweep.tx_info.to_outputs(&signer_script_pubkeys) {
             db.write_tx_output(&output).await.unwrap();
-        }
-
-        for (index, (w, _, _)) in self.withdrawals.iter().enumerate() {
-            let swept_output = BitcoinWithdrawalOutput {
-                request_id: w.request_id,
-                stacks_txid: w.txid,
-                stacks_block_hash: w.block_hash,
-                bitcoin_chain_tip: sweep.block_hash,
-                is_valid_tx: true,
-                validation_result: WithdrawalValidationResult::Ok,
-                output_index: index as u32 + 2,
-                bitcoin_txid: sweep.tx_info.txid.into(),
-            };
-            db.write_bitcoin_withdrawals_outputs(&[swept_output])
-                .await
-                .unwrap();
         }
     }
 
