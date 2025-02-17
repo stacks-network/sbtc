@@ -58,10 +58,10 @@ pub enum GetDepositsForRecipientError {
     UnknownValue(serde_json::Value),
 }
 
-/// struct for typed errors of method [`get_deposits_for_reclaim_pubkey`]
+/// struct for typed errors of method [`get_deposits_for_reclaim_pubkeys`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum GetDepositsForReclaimPubkeyError {
+pub enum GetDepositsForReclaimPubkeysError {
     Status400(models::ErrorResponse),
     Status404(models::ErrorResponse),
     Status405(models::ErrorResponse),
@@ -271,20 +271,20 @@ pub async fn get_deposits_for_recipient(
     }
 }
 
-pub async fn get_deposits_for_reclaim_pubkey(
+pub async fn get_deposits_for_reclaim_pubkeys(
     configuration: &configuration::Configuration,
-    reclaim_pubkey: &str,
+    reclaim_pubkeys: &str,
     next_token: Option<&str>,
     page_size: Option<u32>,
-) -> Result<models::GetDepositsResponse, Error<GetDepositsForReclaimPubkeyError>> {
+) -> Result<models::GetDepositsResponse, Error<GetDepositsForReclaimPubkeysError>> {
     let local_var_configuration = configuration;
 
     let local_var_client = &local_var_configuration.client;
 
     let local_var_uri_str = format!(
-        "{}/deposit/reclaim-pubkey/{reclaimPubkey}",
+        "{}/deposit/reclaim-pubkeys/{reclaimPubkeys}",
         local_var_configuration.base_path,
-        reclaimPubkey = crate::apis::urlencode(reclaim_pubkey)
+        reclaimPubkeys = crate::apis::urlencode(reclaim_pubkeys)
     );
     let mut local_var_req_builder =
         local_var_client.request(reqwest::Method::GET, local_var_uri_str.as_str());
@@ -311,7 +311,7 @@ pub async fn get_deposits_for_reclaim_pubkey(
     if !local_var_status.is_client_error() && !local_var_status.is_server_error() {
         serde_json::from_str(&local_var_content).map_err(Error::from)
     } else {
-        let local_var_entity: Option<GetDepositsForReclaimPubkeyError> =
+        let local_var_entity: Option<GetDepositsForReclaimPubkeysError> =
             serde_json::from_str(&local_var_content).ok();
         let local_var_error = ResponseContent {
             status: local_var_status,

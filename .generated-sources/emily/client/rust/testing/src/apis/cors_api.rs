@@ -41,10 +41,10 @@ pub enum DepositRecipientRecipientOptionsError {
     UnknownValue(serde_json::Value),
 }
 
-/// struct for typed errors of method [`deposit_reclaim_pubkey_reclaim_pubkey_options`]
+/// struct for typed errors of method [`deposit_reclaim_pubkeys_reclaim_pubkeys_options`]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum DepositReclaimPubkeyReclaimPubkeyOptionsError {
+pub enum DepositReclaimPubkeysReclaimPubkeysOptionsError {
     UnknownValue(serde_json::Value),
 }
 
@@ -263,18 +263,18 @@ pub async fn deposit_recipient_recipient_options(
 }
 
 /// Handles CORS preflight requests
-pub async fn deposit_reclaim_pubkey_reclaim_pubkey_options(
+pub async fn deposit_reclaim_pubkeys_reclaim_pubkeys_options(
     configuration: &configuration::Configuration,
-    reclaim_pubkey: &str,
-) -> Result<(), Error<DepositReclaimPubkeyReclaimPubkeyOptionsError>> {
+    reclaim_pubkeys: &str,
+) -> Result<(), Error<DepositReclaimPubkeysReclaimPubkeysOptionsError>> {
     let local_var_configuration = configuration;
 
     let local_var_client = &local_var_configuration.client;
 
     let local_var_uri_str = format!(
-        "{}/deposit/reclaim-pubkey/{reclaimPubkey}",
+        "{}/deposit/reclaim-pubkeys/{reclaimPubkeys}",
         local_var_configuration.base_path,
-        reclaimPubkey = crate::apis::urlencode(reclaim_pubkey)
+        reclaimPubkeys = crate::apis::urlencode(reclaim_pubkeys)
     );
     let mut local_var_req_builder =
         local_var_client.request(reqwest::Method::OPTIONS, local_var_uri_str.as_str());
@@ -293,7 +293,7 @@ pub async fn deposit_reclaim_pubkey_reclaim_pubkey_options(
     if !local_var_status.is_client_error() && !local_var_status.is_server_error() {
         Ok(())
     } else {
-        let local_var_entity: Option<DepositReclaimPubkeyReclaimPubkeyOptionsError> =
+        let local_var_entity: Option<DepositReclaimPubkeysReclaimPubkeysOptionsError> =
             serde_json::from_str(&local_var_content).ok();
         let local_var_error = ResponseContent {
             status: local_var_status,
