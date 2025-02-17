@@ -3886,7 +3886,7 @@ async fn can_write_and_get_multiple_bitcoin_txs_sighashes() {
 
     let withdrawal_outputs_futures = sighashes
         .iter()
-        .map(|sighash| db.will_sign_bitcoin_tx_sighash(&sighash.sighash));
+        .map(|sighash| db.will_sign_bitcoin_tx_sighash(&sighash.sighash, &sighash.chain_tip));
 
     let results = join_all(withdrawal_outputs_futures).await;
 
