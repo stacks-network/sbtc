@@ -1626,7 +1626,6 @@ impl super::DbRead for PgStore {
                 ON wre.request_id = wr.request_id
             LEFT JOIN stacks_context_window sc2
                 ON wre.block_hash = sc2.block_hash
-            -- TODO: check also for accept-withdrawal events?
             -- Request is expired
             WHERE wr.bitcoin_block_height < $4
 
