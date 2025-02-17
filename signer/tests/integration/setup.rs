@@ -630,8 +630,8 @@ pub struct TestSweepSetup2 {
     /// The stacks blocks confirming the withdrawal requests, along with a
     /// genesis block.
     pub stacks_blocks: Vec<model::StacksBlock>,
-    /// The withdrawal requests, the recipient, or the funds on bitcoin,
-    /// and the block hash and height of the bitcoin canonical bitcoin
+    /// The withdrawal requests, the recipient of the funds on bitcoin, and
+    /// the block hash and height of the tip of the canonical bitcoin
     /// blockchain when the transaction that generated with withdrawal
     /// request was executed.
     pub withdrawals: Vec<(utxo::WithdrawalRequest, Recipient, BitcoinBlockRef)>,
