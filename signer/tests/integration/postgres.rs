@@ -14,7 +14,6 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use fake::Faker;
 use futures::future::join_all;
 use futures::StreamExt as _;
-use more_asserts::assert_ge;
 use more_asserts::assert_gt;
 use more_asserts::assert_le;
 use rand::seq::IteratorRandom as _;
@@ -24,7 +23,6 @@ use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::WithdrawalRequest;
 use signer::testing::IterTestExt as _;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
-use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 use time::OffsetDateTime;
 
 use signer::bitcoin::validation::DepositConfirmationStatus;
@@ -4499,8 +4497,7 @@ async fn pending_rejected_withdrawal_no_events() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 10;
-    let threshold = 6;
-    let context_window = 10;
+    let context_window = 1000;
     let test_model_params = testing::storage::model::Params {
         num_bitcoin_blocks: 50,
         num_stacks_blocks_per_bitcoin_block: 3,
@@ -4509,34 +4506,35 @@ async fn pending_rejected_withdrawal_no_events() {
         num_signers_per_request: num_signers,
         consecutive_blocks: false,
     };
-    let max_rejections = (num_signers - threshold) as u16;
 
     let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
 
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
 
     test_data.write_to(&mut db).await;
-    // Also write DKG shares to later fetch the votes
-    let shares = EncryptedDkgShares {
-        signer_set_public_keys: signer_set,
-        signature_share_threshold: threshold as u16,
-        dkg_shares_status: model::DkgSharesStatus::Verified,
-        ..fake::Faker.fake_with_rng(&mut rng)
-    };
-    db.write_encrypted_dkg_shares(&shares).await.unwrap();
 
-    let bitcoin_chain_tip = db
+    let mut bitcoin_chain_tip = db
         .get_bitcoin_canonical_chain_tip_ref()
         .await
         .expect("failed to get canonical chain tip")
         .expect("no chain tip");
 
+    let chain_depth = bitcoin_chain_tip.block_height - test_data.bitcoin_blocks[0].block_height;
+
+    // Append some blocks to ensure we have expired requests
+    for _ in chain_depth..WITHDRAWAL_BLOCKS_EXPIRY + 5 {
+        let new_block = BitcoinBlock {
+            block_hash: fake::Faker.fake_with_rng(&mut rng),
+            block_height: bitcoin_chain_tip.block_height + 1,
+            parent_hash: bitcoin_chain_tip.block_hash,
+        };
+        db.write_bitcoin_block(&new_block).await.unwrap();
+
+        bitcoin_chain_tip = new_block.into();
+    }
+
     let pending_rejected = db
-        .get_pending_rejected_withdrawal_requests(
-            &bitcoin_chain_tip,
-            context_window,
-            max_rejections,
-        )
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
         .await
         .expect("failed to get pending rejected withdrawals");
     assert!(!pending_rejected.is_empty());
@@ -4568,30 +4566,11 @@ async fn pending_rejected_withdrawal_no_events() {
             continue;
         }
 
-        let id = withdrawal.qualified_id();
         let confirmations = bitcoin_chain_tip.block_height - withdrawal.bitcoin_block_height;
-
-        if confirmations < WITHDRAWAL_MIN_CONFIRMATIONS {
-            assert!(!pending_rejected.contains(&withdrawal));
-            continue;
-        }
-
-        let is_expired = confirmations > WITHDRAWAL_BLOCKS_EXPIRY;
-
-        let vote_against = db
-            .get_withdrawal_request_signer_votes(&id, &shares.aggregate_key)
-            .await
-            .unwrap()
-            .iter()
-            .filter(|vote| !vote.is_accepted.unwrap_or(true))
-            .count();
-        let is_rejected = vote_against as u16 > max_rejections;
-
-        if pending_rejected.contains(&withdrawal) {
-            assert!(is_expired || is_rejected);
-        } else {
-            assert!(!is_expired && !is_rejected);
-        }
+        assert_eq!(
+            pending_rejected.contains(&withdrawal),
+            confirmations > WITHDRAWAL_BLOCKS_EXPIRY
+        )
     }
 
     signer::testing::storage::drop_db(db).await;
@@ -4605,8 +4584,6 @@ async fn pending_rejected_withdrawal_expiration() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 10;
-    let threshold = 6;
-    let max_rejections = (num_signers - threshold) as u16;
 
     // Let's start with a fork-less chain
     let test_model_params = testing::storage::model::Params {
@@ -4621,7 +4598,7 @@ async fn pending_rejected_withdrawal_expiration() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
     test_data.write_to(&mut db).await;
 
-    // Add a withdrawal request not yet confirmed
+    // Add a withdrawal request not yet confirmed nor expired
     let request_confirmations = 1;
     let request_bitcoin_block = test_data
         .bitcoin_blocks
@@ -4663,7 +4640,7 @@ async fn pending_rejected_withdrawal_expiration() {
 
         // Check that now we do get it as rejected
         let pending_rejected = db
-            .get_pending_rejected_withdrawal_requests(&new_block.into(), 1000, max_rejections)
+            .get_pending_rejected_withdrawal_requests(&new_block.into(), 1000)
             .await
             .expect("failed to get pending rejected withdrawals");
 
@@ -4691,121 +4668,11 @@ async fn pending_rejected_withdrawal_expiration() {
 
     // Check that now we do get it as rejected
     let pending_rejected = db
-        .get_pending_rejected_withdrawal_requests(&new_block.into(), 1000, max_rejections)
+        .get_pending_rejected_withdrawal_requests(&new_block.into(), 1000)
         .await
         .expect("failed to get pending rejected withdrawals");
 
     assert_eq!(&pending_rejected.single(), &request);
-
-    signer::testing::storage::drop_db(db).await;
-}
-
-/// Test that a withdrawal with enough votes against is considered rejected
-/// after being confirmed on bitcoin.
-#[test_log::test(tokio::test)]
-async fn pending_rejected_withdrawal_rejected() {
-    let mut db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
-    let num_signers = 10;
-    let threshold = 6;
-    let max_rejections = (num_signers - threshold) as u16;
-
-    // Let's start with a fork-less chain
-    let test_model_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
-        num_stacks_blocks_per_bitcoin_block: 3,
-        num_deposit_requests_per_block: 0,
-        num_withdraw_requests_per_block: 0,
-        num_signers_per_request: 0,
-        consecutive_blocks: true,
-    };
-    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
-    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
-    test_data.write_to(&mut db).await;
-
-    // Add a withdrawal request not yet confirmed
-    let request_confirmations = WITHDRAWAL_MIN_CONFIRMATIONS as usize - 1;
-    let request_bitcoin_block = test_data
-        .bitcoin_blocks
-        .get(test_data.bitcoin_blocks.len() - request_confirmations - 1)
-        .unwrap();
-    let request_stacks_block = test_data
-        .stacks_blocks
-        .iter()
-        .find(|block| block.bitcoin_anchor == request_bitcoin_block.block_hash)
-        .unwrap();
-
-    let request = WithdrawalRequest {
-        block_hash: request_stacks_block.block_hash,
-        bitcoin_block_height: request_bitcoin_block.block_height,
-        ..fake::Faker.fake_with_rng(&mut rng)
-    };
-    db.write_withdrawal_request(&request).await.unwrap();
-
-    // Add enough votes against
-    for signer in signer_set.iter().take(max_rejections as usize + 1) {
-        let decision = WithdrawalSigner {
-            request_id: request.request_id,
-            txid: request.txid,
-            block_hash: request.block_hash,
-            signer_pub_key: signer.clone(),
-            is_accepted: false,
-        };
-        db.write_withdrawal_signer_decision(&decision)
-            .await
-            .unwrap();
-    }
-
-    let bitcoin_chain_tip = db
-        .get_bitcoin_canonical_chain_tip_ref()
-        .await
-        .expect("failed to get canonical chain tip")
-        .expect("no chain tip");
-
-    assert_eq!(
-        bitcoin_chain_tip.block_height - request.bitcoin_block_height,
-        WITHDRAWAL_MIN_CONFIRMATIONS - 1
-    );
-
-    // Check we don't get it as rejected yet
-    let pending_rejected = db
-        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000, max_rejections)
-        .await
-        .expect("failed to get pending rejected withdrawals");
-
-    assert!(pending_rejected.is_empty());
-
-    // Append a new block, reaching WITHDRAWAL_MIN_CONFIRMATIONS, and then
-    // continue exceeding WITHDRAWAL_BLOCKS_EXPIRY, checking that the request
-    // stays rejected
-    for _ in 0..WITHDRAWAL_BLOCKS_EXPIRY {
-        let bitcoin_chain_tip = db
-            .get_bitcoin_canonical_chain_tip_ref()
-            .await
-            .expect("failed to get canonical chain tip")
-            .expect("no chain tip");
-
-        let new_block = BitcoinBlock {
-            block_hash: fake::Faker.fake_with_rng(&mut rng),
-            block_height: bitcoin_chain_tip.block_height + 1,
-            parent_hash: bitcoin_chain_tip.block_hash,
-        };
-        db.write_bitcoin_block(&new_block).await.unwrap();
-
-        assert_ge!(
-            new_block.block_height - request.bitcoin_block_height,
-            WITHDRAWAL_MIN_CONFIRMATIONS
-        );
-
-        // Check that now we do get it as rejected
-        let pending_rejected = db
-            .get_pending_rejected_withdrawal_requests(&new_block.into(), 1000, max_rejections)
-            .await
-            .expect("failed to get pending rejected withdrawals");
-
-        assert_eq!(&pending_rejected.single(), &request);
-    }
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -4818,12 +4685,10 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(42);
 
     let num_signers = 10;
-    let threshold = 6;
-    let max_rejections = (num_signers - threshold) as u16;
 
     // Let's start with a fork-less chain
     let test_model_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
+        num_bitcoin_blocks: 30,
         num_stacks_blocks_per_bitcoin_block: 3,
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
@@ -4834,8 +4699,8 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
     test_data.write_to(&mut db).await;
 
-    // Add a withdrawal request not yet confirmed
-    let request_confirmations = WITHDRAWAL_MIN_CONFIRMATIONS as usize;
+    // Add a withdrawal request already expired
+    let request_confirmations = WITHDRAWAL_BLOCKS_EXPIRY as usize + 1;
     let request_bitcoin_block = test_data
         .bitcoin_blocks
         .get(test_data.bitcoin_blocks.len() - request_confirmations - 1)
@@ -4853,20 +4718,6 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
     };
     db.write_withdrawal_request(&request).await.unwrap();
 
-    // Add enough votes against
-    for signer in signer_set.iter().take(max_rejections as usize + 1) {
-        let decision = WithdrawalSigner {
-            request_id: request.request_id,
-            txid: request.txid,
-            block_hash: request.block_hash,
-            signer_pub_key: signer.clone(),
-            is_accepted: false,
-        };
-        db.write_withdrawal_signer_decision(&decision)
-            .await
-            .unwrap();
-    }
-
     // First, check that the request is pending rejected
     let bitcoin_chain_tip = db
         .get_bitcoin_canonical_chain_tip_ref()
@@ -4875,7 +4726,7 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
         .expect("no chain tip");
 
     let pending_rejected = db
-        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000, max_rejections)
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000)
         .await
         .expect("failed to get pending rejected withdrawals");
 
@@ -4895,6 +4746,7 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
             .unwrap()
             .unwrap();
     }
+
     // Create the forked block that will contain the reject event
     let forked_stacks_block = StacksBlock {
         parent_hash: fork_base.block_hash,
@@ -4909,6 +4761,14 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
         .await
         .unwrap()
         .unwrap();
+    assert!(db
+        .in_canonical_stacks_blockchain(
+            &stacks_chain_tip.block_hash,
+            &fork_base.block_hash,
+            fork_base.block_height
+        )
+        .await
+        .unwrap());
     assert!(!db
         .in_canonical_stacks_blockchain(
             &stacks_chain_tip.block_hash,
@@ -4927,13 +4787,13 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
 
     // With a forked rejection event, the request is still pending rejected
     let pending_rejected = db
-        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000, max_rejections)
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000)
         .await
         .expect("failed to get pending rejected withdrawals");
 
     assert_eq!(&pending_rejected.single(), &request);
 
-    // Now let's add a confirmed rejection event (to fork base, so it's in the
+    // Now let's add a confirmed rejection event to fork base, so it's in the
     // canonical chain.
     let event = WithdrawalRejectEvent {
         request_id: request.request_id,
@@ -4944,10 +4804,174 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
 
     // With a confirmed rejection event, we should no longer get the request
     let pending_rejected = db
-        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000, max_rejections)
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000)
         .await
         .expect("failed to get pending rejected withdrawals");
 
+    assert!(pending_rejected.is_empty());
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// Check that pending_rejected_withdrawal correctly skips expired requests
+/// that have a confirmed withdrawal output.
+#[test_log::test(tokio::test)]
+async fn pending_rejected_withdrawal_already_accepted() {
+    let mut db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let num_signers = 10;
+
+    // Let's start with a fork-less chain
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 30,
+        num_stacks_blocks_per_bitcoin_block: 3,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: 0,
+        consecutive_blocks: true,
+    };
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&mut db).await;
+
+    // Add a withdrawal request already expired
+    let request_confirmations = WITHDRAWAL_BLOCKS_EXPIRY as usize + 1;
+    let request_bitcoin_block = test_data
+        .bitcoin_blocks
+        .get(test_data.bitcoin_blocks.len() - request_confirmations - 1)
+        .unwrap();
+    let request_stacks_block = test_data
+        .stacks_blocks
+        .iter()
+        .find(|block| block.bitcoin_anchor == request_bitcoin_block.block_hash)
+        .unwrap();
+
+    let request = WithdrawalRequest {
+        block_hash: request_stacks_block.block_hash,
+        bitcoin_block_height: request_bitcoin_block.block_height,
+        ..fake::Faker.fake_with_rng(&mut rng)
+    };
+    db.write_withdrawal_request(&request).await.unwrap();
+
+    // First, check that the request is pending rejected
+    let bitcoin_chain_tip = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .expect("failed to get canonical chain tip")
+        .expect("no chain tip");
+
+    let pending_rejected = db
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000)
+        .await
+        .expect("failed to get pending rejected withdrawals");
+
+    assert_eq!(&pending_rejected.single(), &request);
+
+    // Now, let's add a withdrawal output in a fork (tip - 2)
+    let mut fork_base = db
+        .get_bitcoin_block(&bitcoin_chain_tip.block_hash)
+        .await
+        .unwrap()
+        .unwrap();
+    for _ in 0..2 {
+        fork_base = db
+            .get_bitcoin_block(&fork_base.parent_hash)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    // Create the forked block that will contain the withdrawal output
+    let forked_block = BitcoinBlock {
+        parent_hash: fork_base.block_hash,
+        block_height: fork_base.block_height + 1,
+        ..fake::Faker.fake_with_rng(&mut rng)
+    };
+    db.write_bitcoin_block(&forked_block).await.unwrap();
+
+    let forked_withdrawal_output = BitcoinWithdrawalOutput {
+        request_id: request.request_id,
+        stacks_block_hash: request.block_hash,
+        ..fake::Faker.fake_with_rng(&mut rng)
+    };
+    db.write_bitcoin_withdrawals_outputs(&[forked_withdrawal_output.clone()])
+        .await
+        .unwrap();
+    db.write_transaction(&model::Transaction {
+        txid: forked_withdrawal_output.bitcoin_txid.into_bytes(),
+        tx: vec![],
+        tx_type: model::TransactionType::SbtcTransaction,
+        block_hash: forked_block.block_hash.into_bytes(),
+    })
+    .await
+    .unwrap();
+    db.write_bitcoin_transaction(&model::BitcoinTxRef {
+        txid: forked_withdrawal_output.bitcoin_txid,
+        block_hash: forked_block.block_hash,
+    })
+    .await
+    .unwrap();
+
+    let bitcoin_chain_tip = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(db
+        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &fork_base.clone().into(),)
+        .await
+        .unwrap());
+    assert!(!db
+        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &forked_block.into(),)
+        .await
+        .unwrap());
+
+    // With a forked withdrawal output, the request is still pending rejected
+    let pending_rejected = db
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000)
+        .await
+        .expect("failed to get pending rejected withdrawals");
+    assert_eq!(&pending_rejected.single(), &request);
+
+    // Now let's add a withdrawal output in the canonical chain
+    let canonical_withdrawal_output = BitcoinWithdrawalOutput {
+        request_id: request.request_id,
+        stacks_block_hash: request.block_hash,
+        ..fake::Faker.fake_with_rng(&mut rng)
+    };
+    db.write_bitcoin_withdrawals_outputs(&[canonical_withdrawal_output.clone()])
+        .await
+        .unwrap();
+
+    // The output is not confirmed yet, so it shouldn't affect the request
+    let pending_rejected = db
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000)
+        .await
+        .expect("failed to get pending rejected withdrawals");
+    assert_eq!(&pending_rejected.single(), &request);
+
+    // Confirming it (putting the output txid in a confirmed block)
+    db.write_transaction(&model::Transaction {
+        txid: canonical_withdrawal_output.bitcoin_txid.into_bytes(),
+        tx: vec![],
+        tx_type: model::TransactionType::SbtcTransaction,
+        block_hash: fork_base.block_hash.into_bytes(),
+    })
+    .await
+    .unwrap();
+    db.write_bitcoin_transaction(&model::BitcoinTxRef {
+        txid: canonical_withdrawal_output.bitcoin_txid,
+        block_hash: fork_base.block_hash,
+    })
+    .await
+    .unwrap();
+
+    // With a confirmed withdrawal output, we should no longer get the request
+    let pending_rejected = db
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, 1000)
+        .await
+        .expect("failed to get pending rejected withdrawals");
     assert!(pending_rejected.is_empty());
 
     signer::testing::storage::drop_db(db).await;

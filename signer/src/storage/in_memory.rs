@@ -535,7 +535,6 @@ impl super::DbRead for SharedStore {
         &self,
         _chain_tip: &model::BitcoinBlockRef,
         _context_window: u16,
-        _max_rejections: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         unimplemented!()
     }

@@ -181,7 +181,6 @@ pub trait DbRead {
         &self,
         chain_tip: &model::BitcoinBlockRef,
         context_window: u16,
-        max_rejections: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
     /// This function returns a withdrawal request report that does the
