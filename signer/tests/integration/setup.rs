@@ -909,7 +909,7 @@ impl TestSweepSetup2 {
 
     /// Store the rows in the `bitcoin_withdrawals_outputs` for the
     /// withdrawals.
-    /// 
+    ///
     /// This simulates the withdrawals successfully going through
     /// validation, where we write to the `bitcoin_withdrawals_outputs`
     /// table at the end.
@@ -1048,14 +1048,6 @@ impl TestSweepSetup2 {
         }
 
         for (withdrawal_request, _, bitcoin_block_ref) in self.withdrawals.iter() {
-            let stacks_block = model::StacksBlock {
-                block_hash: withdrawal_request.block_hash,
-                block_height: Faker.fake_with_rng::<u32, _>(&mut OsRng) as u64,
-                parent_hash: Faker.fake_with_rng(&mut OsRng),
-                bitcoin_anchor: bitcoin_block_ref.block_hash,
-            };
-            db.write_stacks_block(&stacks_block).await.unwrap();
-
             let withdrawal_request = model::WithdrawalRequest {
                 request_id: withdrawal_request.request_id,
                 txid: withdrawal_request.txid,
