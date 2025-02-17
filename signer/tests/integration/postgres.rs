@@ -4489,8 +4489,8 @@ async fn verification_status_one_way_street() {
     signer::testing::storage::drop_db(db).await;
 }
 
-/// Tests that get_pending_rejected_withdrawal_requests correctly return voted
-/// against and expired requests in case there are no events affecting them.
+/// Tests that get_pending_rejected_withdrawal_requests correctly return expired
+/// requests in case there are no events affecting them.
 #[test_log::test(tokio::test)]
 async fn pending_rejected_withdrawal_no_events() {
     let mut db = testing::storage::new_test_database().await;
@@ -4521,7 +4521,8 @@ async fn pending_rejected_withdrawal_no_events() {
 
     let chain_depth = bitcoin_chain_tip.block_height - test_data.bitcoin_blocks[0].block_height;
 
-    // Append some blocks to ensure we have expired requests
+    // Append some blocks to ensure we have expired requests; we expire the
+    // requests in the first 5 canonical blocks, while keeping the others valid.
     for _ in chain_depth..WITHDRAWAL_BLOCKS_EXPIRY + 5 {
         let new_block = BitcoinBlock {
             block_hash: fake::Faker.fake_with_rng(&mut rng),
@@ -4545,6 +4546,7 @@ async fn pending_rejected_withdrawal_no_events() {
         .expect("failed to get stacks chain tip")
         .expect("no chain tip");
 
+    let mut non_expired = 0;
     for withdrawal in test_data.withdraw_requests {
         if withdrawal.bitcoin_block_height == test_data.bitcoin_blocks[0].block_height {
             // The stacks blocks in the first bitcoin block have an hallucinated
@@ -4577,8 +4579,11 @@ async fn pending_rejected_withdrawal_no_events() {
         assert_eq!(
             pending_rejected.contains(&withdrawal),
             confirmations > WITHDRAWAL_BLOCKS_EXPIRY
-        )
+        );
+        non_expired += 1;
     }
+    // Sanity check we are testing both cases
+    assert_gt!(non_expired, 0);
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -4926,11 +4931,11 @@ async fn pending_rejected_withdrawal_already_accepted() {
         .unwrap()
         .unwrap();
     assert!(db
-        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &fork_base.clone().into(),)
+        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &fork_base.clone().into())
         .await
         .unwrap());
     assert!(!db
-        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &forked_block.into(),)
+        .in_canonical_bitcoin_blockchain(&bitcoin_chain_tip, &forked_block.into())
         .await
         .unwrap());
 
