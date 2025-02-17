@@ -146,7 +146,7 @@ Handles CORS preflight requests
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**reclaim_pubkey** | **String** | the reclaim schnorr public key to search by when getting all deposits. | [required] |
+**reclaim_pubkey** | **String** | The reclaim x-only public key to search by when retrieving all deposits. For multi-sig, use the SHA-256 hash of the concatenated public keys. | [required] |
 
 ### Return type
 

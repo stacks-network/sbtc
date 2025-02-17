@@ -141,7 +141,7 @@ Get deposits by recipient handler.
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**reclaim_pubkey** | **String** | the reclaim schnorr public key to search by when getting all deposits. | [required] |
+**reclaim_pubkey** | **String** | The reclaim x-only public key to search by when retrieving all deposits. For multi-sig, use the SHA-256 hash of the concatenated public keys. | [required] |
 **next_token** | Option<**String**> | the next token value from the previous return of this api call. |  |
 **page_size** | Option<**u32**> | the maximum number of items in the response list. |  |
 
