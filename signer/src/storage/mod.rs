@@ -350,7 +350,14 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<Option<model::DepositRequest>, Error>> + Send;
 
-    /// Get the bitcoin sighash output.
+    /// Return whether this signer will sign for the given sighash given
+    /// the current bitcoin chain tip. Also return the associated x-only
+    /// public key associated with the sighash.
+    ///
+    /// A signer should only use the current bitcoin chain tip here. Each
+    /// sighash is created with an associated bitcoin chain tip. When that
+    /// chain tip changes, a signer should no longer sign for any
+    /// associated sighashes.
     fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,

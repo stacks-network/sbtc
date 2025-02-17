@@ -288,6 +288,17 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
 
     assert!(will_sign);
 
+    // Check that an incorrect block hash leads to None being returned by
+    // the `will_sign_bitcoin_tx_sighash` query
+    let some_block_hash = setup.deposit_block_hash.into();
+    assert_ne!(some_block_hash, chain_tip.block_hash);
+    let response = db
+        .will_sign_bitcoin_tx_sighash(&deposit_digest.sighash.into(), &some_block_hash)
+        .await
+        .expect("query to check if deposit sighash is stored failed");
+
+    assert!(response.is_none());
+
     testing::storage::drop_db(db).await;
 }
 
