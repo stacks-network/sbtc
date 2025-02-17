@@ -531,6 +531,14 @@ impl super::DbRead for SharedStore {
             .collect())
     }
 
+    async fn get_pending_rejected_withdrawal_requests(
+        &self,
+        _chain_tip: &model::BitcoinBlockRef,
+        _context_window: u16,
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
+        unimplemented!()
+    }
+
     async fn get_withdrawal_request_report(
         &self,
         _bitcoin_chain_tip: &model::BitcoinBlockHash,
