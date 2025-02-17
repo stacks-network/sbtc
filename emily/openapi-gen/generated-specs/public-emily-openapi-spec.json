@@ -695,7 +695,7 @@
           {
             "name": "reclaimPubkey",
             "in": "path",
-            "description": "the reclaim schnorr public key to search by when getting all deposits.",
+            "description": "The reclaim x-only public key to search by when retrieving all deposits. For multi-sig, use the SHA-256 hash of the concatenated public keys.",
             "required": true,
             "schema": {
               "type": "string"
@@ -794,7 +794,7 @@
           {
             "name": "reclaimPubkey",
             "in": "path",
-            "description": "the reclaim schnorr public key to search by when getting all deposits.",
+            "description": "The reclaim x-only public key to search by when retrieving all deposits. For multi-sig, use the SHA-256 hash of the concatenated public keys.",
             "required": true,
             "schema": {
               "type": "string"

@@ -69,7 +69,8 @@ pub struct DepositEntry {
     pub fulfillment: Option<Fulfillment>,
     /// History of this deposit transaction.
     pub history: Vec<DepositEvent>,
-    /// schnorr reclaim pubkey from which the deposit was made.
+    /// The x-only pubkey used to create the reclaim script which the deposit was made.
+    /// For multi-sig, this is the SHA-256 hash of the concatenated public keys.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reclaim_pubkey: Option<String>,
 }
@@ -526,7 +527,7 @@ impl From<DepositInfoByRecipientEntry> for DepositInfo {
     }
 }
 
-/// Search token for schnorr reclaim pubkey GSI.
+/// Search token for reclaim pubkey GSI.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct DepositInfoByReclaimPubkeyEntrySearchToken {

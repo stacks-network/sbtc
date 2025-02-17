@@ -1,16 +1,20 @@
 //! Handlers for Deposit endpoints.
+
+use bitcoin::opcodes::all::{self as opcodes};
+use bitcoin::ScriptBuf;
+use sha2::Digest;
+use stacks_common::codec::StacksMessageCodec as _;
+use tracing::{debug, instrument};
+use warp::http::StatusCode;
+use warp::reply::{json, with_status, Reply};
+
+use sbtc::deposits::ReclaimScriptInputs;
+
 use crate::api::models::common::Status;
 use crate::api::models::deposit::requests::BasicPaginationQuery;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
-use crate::database::entries::StatusEntry;
-use bitcoin::opcodes::all as opcodes;
-use bitcoin::ScriptBuf;
-use sbtc::deposits::ReclaimScriptInputs;
-use tracing::{debug, instrument};
-use warp::reply::{json, with_status, Reply};
-
 use crate::api::models::deposit::{Deposit, DepositInfo};
 use crate::api::models::{
     deposit::requests::{
@@ -26,8 +30,7 @@ use crate::database::entries::deposit::{
     DepositEntry, DepositEntryKey, DepositEvent, DepositParametersEntry,
     ValidatedUpdateDepositsRequest,
 };
-use stacks_common::codec::StacksMessageCodec as _;
-use warp::http::StatusCode;
+use crate::database::entries::StatusEntry;
 
 /// Get deposit handler.
 #[utoipa::path(
@@ -246,8 +249,7 @@ pub async fn get_deposits_for_recipient(
     operation_id = "getDepositsForReclaimPubkey",
     path = "/deposit/reclaim-pubkey/{reclaimPubkey}",
     params(
-        ("reclaimPubkey" = String, Path, description = "the reclaim schnorr public key to search by when getting all deposits."),
-        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("reclaimPubkey" = String, Path, description = "The reclaim x-only public key to search by when retrieving all deposits. For multi-sig, use the SHA-256 hash of the concatenated public keys."),        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
     tag = "deposit",
@@ -477,14 +479,48 @@ pub async fn update_deposits(
 
 const OP_DROP: u8 = opcodes::OP_DROP.to_u8();
 const OP_CHECKSIG: u8 = opcodes::OP_CHECKSIG.to_u8();
+const OP_CHECKSIGADD: u8 = opcodes::OP_CHECKSIGADD.to_u8();
+const OP_NUMEQUAL: u8 = opcodes::OP_NUMEQUAL.to_u8();
+const OP_PUSHBYTES_32: u8 = opcodes::OP_PUSHBYTES_32.to_u8();
+const OP_PUSHNUM_1: u8 = opcodes::OP_PUSHNUM_1.to_u8();
+const OP_PUSHNUM_16: u8 = opcodes::OP_PUSHNUM_16.to_u8();
 
-/// Parse the reclaim script to extract the pubkey.
-/// Currently only supports the sBTC Bridge and Leather Wallet reclaim scripts.
+/// Parse the reclaim script to extract the pubkey, or the hash of the pubkeys, in case of multi-sig.
+/// Currently only supports the sBTC Bridge, Leather and Asigna reclaim scripts.
 fn parse_reclaim_pubkey(reclaim_script: &ScriptBuf) -> Option<String> {
     let reclaim = ReclaimScriptInputs::parse(reclaim_script).ok()?;
 
     match reclaim.user_script().as_bytes() {
-        [OP_DROP, _key_len, pubkey @ .., OP_CHECKSIG] => Some(hex::encode(pubkey)),
+        // The reclaim script used by sBTC Bridge and Leather.
+        [OP_DROP, OP_PUSHBYTES_32, pubkey @ .., OP_CHECKSIG] => Some(hex::encode(pubkey)),
+        // The multi-sig reclaim script used by Asigna.
+        [OP_DROP, keys_data @ .., OP_NUMEQUAL] => {
+            // keys_data is a composed like below:
+            // [OP_PUSHBYTES_32, pubkey1, OP_CHECKSIG,
+            //  OP_PUSHBYTES_32, pubkey2, OP_CHECKSIGADD,
+            //  ...
+            //  OP_PUSHBYTES_32, pubkeyN, OP_CHECKSIGADD,
+            //  OP_PUSHNUM_N]
+            let mut data_iter = keys_data.iter();
+            let mut hasher = sha2::Sha256::new();
+            while let Some(&opcode) = data_iter.next() {
+                match opcode {
+                    OP_PUSHBYTES_32 => {
+                        if let Ok(pubkey) = <Vec<u8> as TryInto<[u8; 32]>>::try_into(
+                            data_iter.by_ref().take(32).cloned().collect(),
+                        ) {
+                            hasher.update(pubkey);
+                        } else {
+                            return None; // Malformed script
+                        }
+                    }
+                    OP_CHECKSIG | OP_CHECKSIGADD => continue, // Skip sig verification opcodes
+                    OP_PUSHNUM_1..=OP_PUSHNUM_16 => break,    // End of pubkeys
+                    _ => return None,                         // Unexpected opcode
+                }
+            }
+            Some(hex::encode(hasher.finalize()))
+        }
         _ => None,
     }
 }
@@ -498,7 +534,7 @@ mod tests {
     };
 
     #[tokio::test]
-    async fn test_parse_reclaim_pubkey_two_ways() {
+    async fn test_parse_bridge_reclaim_pubkey_two_ways() {
         let secret_key = SecretKey::new(&mut OsRng);
         let pubkey = secret_key.x_only_public_key(SECP256K1).0.serialize();
         let user_script = ScriptBuf::builder()
@@ -511,6 +547,48 @@ mod tests {
             .reclaim_script();
         let pubkey_from_script = parse_reclaim_pubkey(&reclaim_script).unwrap();
         assert_eq!(pubkey_from_script, hex::encode(pubkey));
+    }
+
+    #[tokio::test]
+    async fn test_parse_asigna_reclaim_pubkey_two_ways() {
+        let mut user_script = ScriptBuf::builder().push_opcode(opcodes::OP_DROP);
+
+        let pubkeys: Vec<[u8; 32]> = (0..3)
+            .map(|_| {
+                SecretKey::new(&mut OsRng)
+                    .x_only_public_key(SECP256K1)
+                    .0
+                    .serialize()
+            })
+            .collect();
+        let mut pubkeys_iter = pubkeys.iter();
+        let first_pubkey = pubkeys_iter.next().unwrap();
+
+        user_script = user_script
+            .push_slice(first_pubkey)
+            .push_opcode(opcodes::OP_CHECKSIG);
+
+        for pubkey in pubkeys_iter {
+            user_script = user_script
+                .push_slice(pubkey)
+                .push_opcode(opcodes::OP_CHECKSIGADD);
+        }
+
+        user_script = user_script
+            .push_int(pubkeys.len() as i64)
+            .push_opcode(opcodes::OP_NUMEQUAL);
+
+        let reclaim_script = ReclaimScriptInputs::try_new(14, user_script.into_script())
+            .unwrap()
+            .reclaim_script();
+        let pubkey_from_script = parse_reclaim_pubkey(&reclaim_script).unwrap();
+
+        let mut hasher = sha2::Sha256::new();
+        for pubkey in &pubkeys {
+            hasher.update(pubkey);
+        }
+        let expected_hash: String = hex::encode(hasher.finalize());
+        assert_eq!(expected_hash, pubkey_from_script);
     }
 }
 
