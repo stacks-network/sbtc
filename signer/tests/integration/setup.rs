@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::collections::HashSet;
 
 use bitcoin::consensus::Encodable as _;
@@ -32,6 +33,7 @@ use signer::block_observer::Deposit;
 use signer::codec::Encode as _;
 use signer::config::Settings;
 use signer::context::SbtcLimits;
+use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
@@ -548,6 +550,14 @@ impl TestSignerSet {
 
     pub fn aggregate_key(&self) -> PublicKey {
         self.signer.keypair.public_key().into()
+    }
+
+    pub fn signer_keys_btree(&self) -> BTreeSet<PublicKey> {
+        self.keys.iter().copied().collect()
+    }
+
+    pub fn private_key(&self) -> PrivateKey {
+        self.signer.keypair.secret_key().into()
     }
 }
 

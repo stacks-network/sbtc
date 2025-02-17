@@ -53,6 +53,7 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::DkgSharesStatus;
+use crate::storage::model::StacksBlockHash;
 use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
@@ -83,6 +84,9 @@ pub struct ReqContext {
     /// the bitcoin blockchain with the greatest height. On ties, we sort
     /// by the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockRef,
+    /// This signer's current view of the chain tip of the canonical
+    /// stacks blockchain.
+    pub stacks_chain_tip: StacksBlockHash,
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
     pub context_window: u16,
@@ -735,6 +739,7 @@ impl AcceptWithdrawalV1 {
         let withdrawal_requests = db
             .get_pending_accepted_withdrawal_requests(
                 &req_ctx.chain_tip.block_hash,
+                &req_ctx.stacks_chain_tip,
                 req_ctx.context_window,
                 req_ctx.signatures_required,
             )

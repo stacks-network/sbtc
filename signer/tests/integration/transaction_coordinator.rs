@@ -16,6 +16,7 @@ use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Transaction;
 use bitcoincore_rpc::RpcApi as _;
+use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
@@ -43,6 +44,7 @@ use sbtc::testing::regtest::AsUtxo as _;
 use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use signer::bitcoin::rpc::BitcoinCoreClient;
+use signer::bitcoin::utxo;
 use signer::bitcoin::utxo::BitcoinInputsOutputs;
 use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::BitcoinInteract as _;
@@ -62,6 +64,8 @@ use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::postgres::PgStore;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::transaction_coordinator::select_coordinator;
@@ -107,6 +111,7 @@ use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::DepositAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -2994,6 +2999,66 @@ fn create_signer_set(signers: &[Keypair], threshold: u32) -> (SignerSet, InMemor
     )
 }
 
+// async fn create_signer_utxo(
+//     db: &(impl DbRead + DbWrite),
+//     rpc: &bitcoincore_rpc::Client,
+//     faucet: &regtest::Faucet,
+// ) -> (bitcoin::OutPoint, bitcoin::Txid) {
+//     // Get some coins to spend (and our "utxo" outpoint).
+//     let outpoint = faucet.send_to(10_000, &addr.address);
+//     let signer_utxo_block_hash = faucet.generate_blocks(1).pop().unwrap();
+
+//     let signer_utxo_tx = client.get_tx(&outpoint.txid).unwrap().unwrap();
+//     let signer_utxo_txid = signer_utxo_tx.tx.compute_txid();
+
+//     let mut signer_utxo_tx_encoded = Vec::new();
+//     signer_utxo_tx
+//         .tx
+//         .consensus_encode(&mut signer_utxo_tx_encoded)
+//         .unwrap();
+
+//     let utxo_input = model::TxPrevout {
+//         txid: signer_utxo_txid.into(),
+//         prevout_type: model::TxPrevoutType::SignersInput,
+//         ..Faker.fake_with_rng(&mut rng)
+//     };
+
+//     let utxo_output = model::TxOutput {
+//         txid: signer_utxo_txid.into(),
+//         output_index: 0,
+//         output_type: model::TxOutputType::Donation,
+//         script_pubkey: aggregate_key.signers_script_pubkey().into(),
+//         ..Faker.fake_with_rng(&mut rng)
+//     };
+
+//     db.write_bitcoin_block(&model::BitcoinBlock {
+//         block_height: 1,
+//         block_hash: signer_utxo_block_hash.into(),
+//         parent_hash: BlockHash::all_zeros().into(),
+//     })
+//     .await
+//     .unwrap();
+
+//     db.write_transaction(&model::Transaction {
+//         txid: signer_utxo_txid.to_byte_array(),
+//         tx: signer_utxo_tx_encoded,
+//         tx_type: model::TransactionType::SbtcTransaction,
+//         block_hash: signer_utxo_block_hash.to_byte_array(),
+//     })
+//     .await
+//     .unwrap();
+
+//     db.write_tx_prevout(&utxo_input).await.unwrap();
+//     db.write_tx_output(&utxo_output).await.unwrap();
+
+//     db.write_bitcoin_transaction(&model::BitcoinTxRef {
+//         block_hash: signer_utxo_block_hash.into(),
+//         txid: signer_utxo_txid.into(),
+//     })
+//     .await
+//     .unwrap();
+// }
+
 fn create_test_setup(
     dkg_shares: &EncryptedDkgShares,
     signatures_required: u16,
@@ -3398,83 +3463,220 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-/// Asserts that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
-#[tokio::test]
-pub async fn assert_processes_withdrawals() {
-    let num_signers = 7;
-    let signing_threshold = 3;
+#[test_log::test(tokio::test)]
+pub async fn assert_can_process_withdrawals() {
+    let db = testing::storage::new_test_database().await;
 
+    let context = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+
+    let test_model_parameters = testing::storage::model::Params {
+        consecutive_blocks: true,
+        num_bitcoin_blocks: 30,
+        num_stacks_blocks_per_bitcoin_block: 5,
+        num_deposit_requests_per_block: 2,
+        num_withdraw_requests_per_block: 2,
+        num_signers_per_request: 3,
+    };
+
+    let testenv = testing::transaction_coordinator::TestEnvironment {
+        context,
+        context_window: 1_000,
+        num_signers: 3,
+        signing_threshold: 2,
+        test_model_parameters,
+    };
+
+    testenv.assert_processes_withdrawals().await;
+}
+
+/// Asserts that TxCoordinatorEventLoop::get_pending_requests processes withdrawals
+#[test_log::test(tokio::test)]
+pub async fn test_coordinator_withdrawal_filtering() {
+    let db = testing::storage::new_test_database().await;
     let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoin_client = BitcoinCoreClient::new(
+        "http://localhost:18443",
+        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+    )
+    .unwrap();
     let mut rng = rand::rngs::StdRng::seed_from_u64(56);
 
-    let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
-    let signatures_required: u16 = 2;
+    let signer_set = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(
+        signer_set,
+        faucet,
+        &[DepositAmounts {
+            amount: 1_000_000,
+            max_fee: 100_000,
+        }],
+    );
+    setup.signatures_required = 2;
+    let signer_keys = setup.signers.signer_keys_btree();
 
-    let network = WanNetwork::default();
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    // Normal: This stores a genesis stacks block anchored to the bitcoin
+    // blockchain identified by setup.sweep_block_hash.
+    setup.store_stacks_genesis_block(&db).await;
+    setup.store_dkg_shares(&db).await;
 
-    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    let mut withdrawal_request_id = 0;
 
-    // =========================================================================
-    // Create a database, an associated context, and a Keypair for each of the
-    // signers in the signing set.
-    // -------------------------------------------------------------------------
-    // - We load the database with a bitcoin blocks going back to some
-    //   genesis block.
-    // =========================================================================
-    let signer_set_public_keys: BTreeSet<PublicKey> = signer_key_pairs
-        .iter()
-        .map(|kp| kp.public_key().into())
-        .collect();
-    let mut signers = Vec::new();
-    for kp in signer_key_pairs.iter() {
-        let db = testing::storage::new_test_database().await;
-        backfill_bitcoin_blocks(&db, rpc, &chain_tip_info.hash).await;
-
-        // Ensure a stacks tip exists before DKG
-        let mut stacks_block: model::StacksBlock = Faker.fake_with_rng(&mut rng);
-        stacks_block.bitcoin_anchor = chain_tip_info.hash.into();
-        db.write_stacks_block(&stacks_block).await.unwrap();
-
-        let ctx = TestContext::builder()
-            .with_storage(db.clone())
-            .with_first_bitcoin_core_client()
-            .with_mocked_stacks_client()
-            .with_mocked_emily_client()
-            .build();
-
-        // When the signer binary starts up in main(), it sets the current
-        // signer set public keys in the context state using the values in
-        // the bootstrap_signing_set configuration parameter. Later, this
-        // state gets updated in the block observer. We're not running a
-        // block observer in this test, nor are we going through main, so
-        // we manually update the necessary state here.
-        ctx.state()
-            .update_current_signer_set(signer_set_public_keys.clone());
-
-        let network = network.connect(&ctx);
-
-        signers.push((ctx, db, kp, network));
+    async fn write_withdrawal_decisions(
+        db: &PgStore,
+        req: &model::WithdrawalRequest,
+        decisions: &[(PublicKey, bool)],
+    ) {
+        for (signer_pub_key, decision) in decisions {
+            let signer_pub_key = *signer_pub_key;
+            let withdrawal_signer = model::WithdrawalSigner {
+                request_id: req.request_id,
+                txid: req.txid,
+                block_hash: req.block_hash,
+                is_accepted: *decision,
+                signer_pub_key,
+            };
+            db.write_withdrawal_signer_decision(&withdrawal_signer)
+                .await
+                .unwrap();
+        }
     }
 
-    // =========================================================================
-    // Compute DKG and store it into db
-    // =========================================================================
-    let mut signer_set = create_signer_set(&signer_key_pairs, signatures_required as u32).0;
-    let dkg_txid = testing::dummy::txid(&fake::Faker, &mut rng).into();
-    let chain_tip = chain_tip_info.hash.into();
-
-    let (aggregate_key, mut encrypted_shares) = signer_set
-        .run_dkg(chain_tip, dkg_txid, &mut rng, DkgSharesStatus::Verified)
-        .await;
-
-    for ((_, db, _, _), dkg_shares) in signers.iter_mut().zip(encrypted_shares.iter_mut()) {
-        dkg_shares.dkg_shares_status = DkgSharesStatus::Verified;
-        signer_set
-            .write_as_rotate_keys_tx(db, &chain_tip, dkg_shares, &mut rng)
-            .await;
-
-        db.write_encrypted_dkg_shares(&dkg_shares)
-            .await
-            .expect("failed to write encrypted shares");
+    struct StacksBlockInfo {
+        block_hash: model::StacksBlockHash,
+        block_height: u64,
+        bitcoin_anchor: model::BitcoinBlockHash,
+        bitcoin_height: u64,
     }
+
+    let bitcoin_chain_info = rpc.get_blockchain_info().unwrap();
+
+    // Create a blockchain with 30 bitcoin blocks with 5 stacks blocks each (= 150 stacks blocks).
+    let mut stacks_block_infos = vec![StacksBlockInfo {
+        block_hash: model::StacksBlockHash::from([0; 32]),
+        block_height: 0,
+        bitcoin_anchor: bitcoin_chain_info.best_block_hash.into(),
+        bitcoin_height: bitcoin_chain_info.blocks,
+    }];
+
+    for bitcoin_block_hash in faucet.generate_blocks(30) {
+        let block = rpc.get_block(&bitcoin_block_hash).unwrap();
+        let bitcoin_block_height = block.bip34_block_height().unwrap();
+        db.write_bitcoin_block(&block.into()).await.unwrap();
+        for _ in 0..5 {
+            let parent_hash = stacks_block_infos.last().unwrap().block_hash;
+            let block_height = stacks_block_infos.last().unwrap().block_height + 1;
+            let stacks_block = model::StacksBlock {
+                bitcoin_anchor: bitcoin_block_hash.into(),
+                block_hash: Faker.fake(),
+                parent_hash,
+                block_height,
+            };
+            db.write_stacks_block(&stacks_block).await.unwrap();
+            stacks_block_infos.push(StacksBlockInfo {
+                block_hash: stacks_block.block_hash,
+                block_height: stacks_block.block_height,
+                bitcoin_anchor: stacks_block.bitcoin_anchor,
+                bitcoin_height: bitcoin_block_height,
+            });
+        }
+    }
+
+    let bitcoin_chain_tip = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
+    let stacks_chain_tip = db
+        .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let dkg_shares = model::EncryptedDkgShares {
+        started_at_bitcoin_block_hash: bitcoin_chain_tip.block_hash.into(),
+        started_at_bitcoin_block_height: bitcoin_chain_tip.block_height,
+        signer_set_public_keys: signer_set.signer_keys().to_vec(),
+        ..Faker.fake()
+    };
+    db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
+
+    let context = TestContext::builder()
+        .with_storage(db.clone())
+        .with_bitcoin_client(bitcoin_client)
+        .with_mocked_emily_client()
+        .with_mocked_stacks_client()
+        .build();
+    let network = SignerNetwork::single(&context);
+
+    push_utxo_donation(
+        &context,
+        &dkg_shares.aggregate_key,
+        &stacks_block_infos[1].bitcoin_anchor,
+    )
+    .await;
+
+    let coordinator = TxCoordinatorEventLoop {
+        context,
+        network: network.spawn(),
+        private_key: setup.signers.signer.keypair.secret_key().into(),
+        threshold: setup.signatures_required,
+        context_window: 1_000,
+        signing_round_max_duration: Duration::from_millis(500),
+        bitcoin_presign_request_max_duration: Duration::from_millis(500),
+        dkg_max_duration: Duration::from_millis(500),
+        is_epoch3: true,
+    };
+
+    //Get pending withdrawals from coordinator
+    let pending_requests = coordinator
+        .get_pending_requests(
+            &bitcoin_chain_tip,
+            &stacks_chain_tip.block_hash,
+            &dkg_shares.aggregate_key,
+            &signer_keys,
+        )
+        .await
+        .unwrap();
+
+    assert!(pending_requests.is_none());
+
+    // Create a withdrawal request
+    let stacks_block = &stacks_block_infos[50];
+    withdrawal_request_id += 1;
+    let withdrawal_1 = utxo::WithdrawalRequest {
+        request_id: withdrawal_request_id,
+        txid: Faker.fake(),
+        block_hash: stacks_block.block_hash.into(),
+        amount: 100_000,
+        max_fee: 1_000,
+        script_pubkey: Recipient::new(AddressType::P2pkh)
+            .address
+            .script_pubkey()
+            .into(),
+        signer_bitmap: BitArray::new([0; 16]),
+    };
+    db.write_withdrawal_request(&withdrawal_1).await.unwrap();
+    write_withdrawal_decisions(
+        &db,
+        &withdrawal_1,
+        &[(signer1, true), (signer2, true), (signer3, true)],
+    )
+    .await;
+
+    //Get pending withdrawals from coordinator
+    let pending_requests = coordinator
+        .get_pending_requests(
+            &bitcoin_chain_tip,
+            &stacks_chain_tip.block_hash,
+            &dkg_shares.aggregate_key,
+            &signer_keys,
+        )
+        .await
+        .unwrap();
+
+    //testing::storage::drop_db(db).await;
 }

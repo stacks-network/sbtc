@@ -68,6 +68,7 @@ use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 use crate::WITHDRAWAL_DUST_LIMIT;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
@@ -1535,12 +1536,12 @@ where
     ///
     /// 1. [x] The request must not have been swept within the current canonical Bitcoin chain.
     /// 2. [x] The request must be confirmed in a canonical Stacks block.
-    /// 3. [ ] The request must have reached the required number of Bitcoin confirmations.
-    /// 4. [ ] The request must have been approved by the required number of signers.
+    /// 3. [x] The request must have reached the required number of Bitcoin confirmations.
+    /// 4. [x] The request must have been approved by the required number of signers.
     /// 5. * Not applicable for the coordinator.
     /// 6. * Applicable during packaging (later step).
     /// 7. [x] The request must not have expired.
-    /// 8. [ ] The request amount must be above the dust limit.
+    /// 8. [x] The request amount must be above the dust limit.
     /// 9. [ ] The request must be within the current sBTC caps.
     pub async fn get_eligible_pending_withdrawal_requests(
         storage: &impl DbRead,
@@ -1556,14 +1557,15 @@ where
         let context_window = WITHDRAWAL_BLOCKS_EXPIRY as u16; // We control this value.
 
         // Fetch pending withdrawal requests from storage. This method performs
-        // the following filtering:
-        // 1. Accepted by at least `threshold` signers [#741 1.1.4],
+        // the following filtering according to consensus rules:
+        // 1. Accepted by at least `threshold` signers [4],
         // 2. In a canonical stacks block which is anchored in the canonical
-        //    bitcoin chain (our current chain tip) [#741 1.1.1 & 1.1.2], and
-        // 3. Still within the validity period (not expired) [#741 1.1.7].
+        //    bitcoin chain (our current chain tip) [1 & 2], and
+        // 3. Still within the validity period (not expired) [7].
         let pending_withdraw_requests = storage
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
+                stacks_chain_tip,
                 context_window,
                 approval_threshold,
             )
@@ -1578,7 +1580,7 @@ where
         // Iterate over the pending withdrawal requests we fetched above and
         // validate them against the remaining consensus rules.
         for req in pending_withdraw_requests {
-            // Consensus rule #741 pt. 1.1.8.
+            // Consensus rule [8].
             if req.amount < WITHDRAWAL_DUST_LIMIT {
                 tracing::debug!(
                     request_id = %req.request_id,
@@ -1625,24 +1627,24 @@ where
             };
 
             match report.status {
-                // Consensus rule #741 pts. 1.1.2 & 1.1.3.
+                // Consensus rules [2 & 3].
                 WithdrawalRequestStatus::Confirmed => {
-                    tracing::debug!(
-                        request_id = %req.request_id,
-                        "withdrawal request confirmed in stacks block"
-                    );
                     let num_confirmations =
                         bitcoin_chain_tip.block_height - report.bitcoin_block_height;
-                    if num_confirmations <= WITHDRAWAL_BLOCKS_EXPIRY {
+
+                    // Consensus rule [3].
+                    if num_confirmations < WITHDRAWAL_MIN_CONFIRMATIONS {
                         tracing::debug!(
                             request_id = %req.request_id,
                             num_confirmations,
-                            required_confirmations = WITHDRAWAL_BLOCKS_EXPIRY,
-                            "withdrawal request has not yet reached required confirmations"
+                            required_confirmations = WITHDRAWAL_MIN_CONFIRMATIONS,
+                            "withdrawal request confirmed, but has not yet reached required confirmations"
                         );
                         continue;
                     }
-                    if num_confirmations > WITHDRAWAL_BLOCKS_EXPIRY {
+
+                    // Consensus rule [7].
+                    if num_confirmations >= WITHDRAWAL_BLOCKS_EXPIRY {
                         tracing::debug!(
                             request_id = %req.request_id,
                             num_confirmations,
@@ -1651,9 +1653,13 @@ where
                         );
                         continue;
                     }
+                    tracing::debug!(
+                        request_id = %req.request_id,
+                        "withdrawal request confirmed and meets required confirmation window"
+                    );
                 }
 
-                // Consensus rule #741 pt. 1.1.1.
+                // Consensus rule [1].
                 WithdrawalRequestStatus::Fulfilled(tx_ref) => {
                     tracing::info!(
                         request_id = %req.request_id,
@@ -1661,9 +1667,10 @@ where
                         bitcoin_block_hash = %tx_ref.block_hash,
                         "withdrawal request already fulfilled"
                     );
+                    continue;
                 }
 
-                // Consensus rule #741 pt. 1.1.2.
+                // Consensus rule
                 WithdrawalRequestStatus::Unconfirmed => {
                     tracing::debug!(
                         request_id = %req.request_id,
@@ -1675,7 +1682,7 @@ where
                 }
             }
 
-            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
+            let withdrawal = utxo::WithdrawalRequest::from_model(req.into(), votes);
             eligible_withdrawals.push(withdrawal);
         }
 
@@ -1719,6 +1726,7 @@ where
             deposits.push(deposit);
         }
 
+        tracing::debug!("fetching eligible withdrawal requests");
         let withdrawals = Self::get_eligible_pending_withdrawal_requests(
             &storage,
             bitcoin_chain_tip,

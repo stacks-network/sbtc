@@ -304,6 +304,93 @@ impl WithdrawalRequest {
     }
 }
 
+/// Represents a withdrawal request that has been confirmed on the Stacks
+/// blockchain.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct PendingWithdrawalRequest {
+    /// Request ID of the withdrawal request. These are supposed to be
+    /// unique, but there can be duplicates if there is a reorg that
+    /// affects a transaction that calls the initiate-withdrawal-request
+    /// public function.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    pub request_id: u64,
+    /// The stacks transaction ID that lead to the creation of the
+    /// withdrawal request.
+    pub txid: StacksTxId,
+    /// Stacks block ID of the block that includes the transaction
+    /// associated with this withdrawal request.
+    pub block_hash: StacksBlockHash,
+    /// The address that should receive the BTC withdrawal.
+    pub recipient: ScriptPubKey,
+    /// The amount to withdraw.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..1_000_000_000"))]
+    pub amount: u64,
+    /// The maximum portion of the withdrawn amount that may
+    /// be used to pay for transaction fees.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "100..10000"))]
+    pub max_fee: u64,
+    /// The address that initiated the request.
+    pub sender_address: StacksPrincipal,
+    /// The block height of the bitcoin blockchain when the stacks
+    /// transaction that emitted this event was executed.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
+    pub bitcoin_block_height: u64,
+    /// If the withdrawal request has been confirmed in a sweep transaction,
+    /// this field will contain the block hash of the bitcoin block in which
+    /// the sweep transaction was confirmed.
+    sweep_block_hash: Option<BitcoinBlockHash>,
+    /// If the withdrawal request has been confirmed in a sweep transaction,
+    /// this field will contain the block height of the bitcoin block in which
+    /// the sweep transaction was confirmed.
+    /// If the withdrawal request has been confirmed in a sweep transaction,
+    /// this field will contain the transaction ID of the sweep transaction.
+    sweep_txid: Option<BitcoinTxId>,
+}
+
+impl PendingWithdrawalRequest {
+    /// Return the identifier for the withdrawal request.
+    pub fn qualified_id(&self) -> QualifiedRequestId {
+        QualifiedRequestId {
+            request_id: self.request_id,
+            txid: self.txid,
+            block_hash: self.block_hash,
+        }
+    }
+
+    /// Return the outpoint associated with the withdrawal request.
+    pub fn sweep_info(&self) -> Option<BitcoinTxRef> {
+        let (Some(sweep_txid), Some(sweep_block_hash)) = (self.sweep_txid, self.sweep_block_hash)
+        else {
+            return None;
+        };
+
+        Some(BitcoinTxRef {
+            txid: sweep_txid,
+            block_hash: sweep_block_hash,
+        })
+    }
+}
+
+impl From<PendingWithdrawalRequest> for WithdrawalRequest {
+    fn from(pending: PendingWithdrawalRequest) -> Self {
+        WithdrawalRequest {
+            request_id: pending.request_id,
+            txid: pending.txid,
+            block_hash: pending.block_hash,
+            recipient: pending.recipient,
+            amount: pending.amount,
+            max_fee: pending.max_fee,
+            sender_address: pending.sender_address,
+            bitcoin_block_height: pending.bitcoin_block_height,
+        }
+    }
+}
+
 /// A signer acknowledging a withdrawal request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]

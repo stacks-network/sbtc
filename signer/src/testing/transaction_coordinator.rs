@@ -180,6 +180,7 @@ where
         // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
+        let storage = self.context.get_storage();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
         let mut testing_signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -218,9 +219,7 @@ where
         // Create the coordinator
         self.context.state().set_sbtc_contracts_deployed();
         let signer_network = SignerNetwork::single(&self.context);
-        let stacks_chain_tip = self
-            .context
-            .get_storage()
+        let stacks_chain_tip = storage
             .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
             .await
             .unwrap()
@@ -254,28 +253,67 @@ where
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
+        let bitcoin_chain_tip_ref = storage
+            .get_bitcoin_canonical_chain_tip_ref()
+            .await
+            .expect("failed to get chain tip")
+            .expect("missing bitcoin chain tip");
+
+        let stacks_chain_tip = storage
+            .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
+            .await
+            .expect("failed to get chain tip")
+            .expect("missing stacks chain tip");
+
         // Get pending withdrawals from storage
-        let withdrawals_in_storage = coordinator
-            .context
-            .get_storage()
+        let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_chain_tip.block_hash,
+                &stacks_chain_tip.block_hash,
                 self.context_window,
                 self.signing_threshold,
             )
             .await
             .expect("Error extracting withdrawals from db");
 
+        let max_processable_height =
+            bitcoin_chain_tip_ref.block_height - crate::WITHDRAWAL_MIN_CONFIRMATIONS;
+        let min_processable_height =
+            bitcoin_chain_tip.block_height - crate::WITHDRAWAL_BLOCKS_EXPIRY;
+
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
         assert!(!withdrawals_in_storage.is_empty());
         for withdrawal in withdrawals_in_storage {
+            if withdrawal.bitcoin_block_height > max_processable_height {
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %max_processable_height,
+                    "skipping asserting withdrawal exists as it doesn't have enough confirmations");
+                continue;
+            }
+
+            if withdrawal.bitcoin_block_height <= min_processable_height {
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %min_processable_height,
+                    "skipping asserting withdrawal exists as it is expired");
+                continue;
+            }
+
+            tracing::info!(
+                request_id = %withdrawal.request_id,
+                block_height = %withdrawal.bitcoin_block_height,
+                %max_processable_height,
+                "checking withdrawal");
             assert!(withdrawals
                 .iter()
                 .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
         }
     }
 
-    /// Assert that a coordinator should be able to coordiante a signing round
+    /// Assert that a coordinator should be able to coordinate a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(
         mut self,
         delay_to_process_new_blocks: Duration,

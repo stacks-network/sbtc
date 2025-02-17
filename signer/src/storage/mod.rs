@@ -178,10 +178,11 @@ pub trait DbRead {
     /// `threshold` signers and has no responses
     fn get_pending_accepted_withdrawal_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
         context_window: u16,
         threshold: u16,
-    ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
+    ) -> impl Future<Output = Result<Vec<model::PendingWithdrawalRequest>, Error>> + Send;
 
     /// This function returns a withdrawal request report that does the
     /// following:

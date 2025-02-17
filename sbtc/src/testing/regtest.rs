@@ -251,6 +251,11 @@ impl Faucet {
             .unwrap()
     }
 
+    /// Generates one block with coinbase rewards being sent to this recipient.
+    pub fn generate_block(&self) -> Option<BlockHash> {
+        self.generate_blocks(1).pop()
+    }
+
     /// Return all UTXOs for this recipient where the amount is greater
     /// than or equal to the given amount. The address must be tracked by
     /// the bitcoin-core wallet.

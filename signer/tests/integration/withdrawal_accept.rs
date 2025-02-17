@@ -59,6 +59,8 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
             block_hash: data.sweep_block_hash.into(),
             block_height: data.sweep_block_height,
         },
+        // TODO: Will probably need to make this work
+        stacks_chain_tip: signer::storage::model::StacksBlockHash::from([0; 32]),
         // This value means that the signer will go back 20 blocks when
         // looking for pending and accepted withdrawal requests.
         context_window: 20,
