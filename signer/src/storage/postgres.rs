@@ -2114,6 +2114,7 @@ impl super::DbRead for PgStore {
     async fn will_sign_bitcoin_tx_sighash(
         &self,
         sighash: &model::SigHash,
+        chain_tip: &model::BitcoinBlockHash,
     ) -> Result<Option<(bool, PublicKeyXOnly)>, Error> {
         sqlx::query_as::<_, (bool, PublicKeyXOnly)>(
             r#"
@@ -2122,9 +2123,11 @@ impl super::DbRead for PgStore {
               , x_only_public_key
             FROM sbtc_signer.bitcoin_tx_sighashes
             WHERE sighash = $1
+              AND chain_tip = $2
             "#,
         )
         .bind(sighash)
+        .bind(chain_tip)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)

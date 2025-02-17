@@ -747,7 +747,8 @@ where
                         span.record("txid", txid.to_string());
 
                         let accepted_sighash =
-                            Self::validate_bitcoin_sign_request(&db, &request.message).await;
+                            Self::validate_bitcoin_sign_request(&db, &request.message, &chain_tip)
+                                .await;
 
                         let validation_status = match &accepted_sighash {
                             Ok(_) => "success",
@@ -854,7 +855,7 @@ where
 
                         // Validate the sighash and upon success, convert it to
                         // a state machine ID.
-                        Self::validate_bitcoin_sign_request(&db, &request.message)
+                        Self::validate_bitcoin_sign_request(&db, &request.message, &chain_tip)
                             .await?
                             .sighash
                             .into()
@@ -1115,7 +1116,11 @@ where
 
     /// Check whether we will sign the message, which is supposed to be a
     /// bitcoin sighash
-    async fn validate_bitcoin_sign_request<D>(db: &D, msg: &[u8]) -> Result<AcceptedSigHash, Error>
+    async fn validate_bitcoin_sign_request<D>(
+        db: &D,
+        msg: &[u8],
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+    ) -> Result<AcceptedSigHash, Error>
     where
         D: DbRead,
     {
@@ -1123,7 +1128,8 @@ where
             .map_err(Error::SigHashConversion)?
             .into();
 
-        match db.will_sign_bitcoin_tx_sighash(&sighash).await? {
+        let chain_tip = &bitcoin_chain_tip.block_hash;
+        match db.will_sign_bitcoin_tx_sighash(&sighash, chain_tip).await? {
             Some((true, public_key)) => Ok(AcceptedSigHash { public_key, sighash }),
             Some((false, _)) => Err(Error::InvalidSigHash(sighash)),
             None => Err(Error::UnknownSigHash(sighash)),
