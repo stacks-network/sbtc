@@ -433,11 +433,11 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
     assert_eq!(output_rows.len(), num_withdrawals);
     let iter = output_rows.iter().zip(setup.withdrawals.iter()).enumerate();
 
-    for (output_index, (row, (withdrawal_request, _, _))) in iter {
+    for (output_index, (row, withdrawal)) in iter {
         assert_eq!(row.validation_result, WithdrawalValidationResult::Ok);
-        assert_eq!(row.request_id, withdrawal_request.request_id);
-        assert_eq!(row.stacks_block_hash, withdrawal_request.block_hash);
-        assert_eq!(row.stacks_txid, withdrawal_request.txid);
+        assert_eq!(row.request_id, withdrawal.request.request_id);
+        assert_eq!(row.stacks_block_hash, withdrawal.request.block_hash);
+        assert_eq!(row.stacks_txid, withdrawal.request.txid);
         assert_eq!(row.output_index, output_index as u32 + 2);
         assert!(row.is_valid_tx);
     }
@@ -539,14 +539,14 @@ async fn swept_withdrawals_fail_validation() {
 
     let iter = output_rows.iter().zip(setup.withdrawals.iter()).enumerate();
 
-    for (output_index, (row, (withdrawal_request, _, _))) in iter {
+    for (output_index, (row, withdrawal)) in iter {
         assert_eq!(
             row.validation_result,
             WithdrawalValidationResult::RequestFulfilled
         );
-        assert_eq!(row.request_id, withdrawal_request.request_id);
-        assert_eq!(row.stacks_block_hash, withdrawal_request.block_hash);
-        assert_eq!(row.stacks_txid, withdrawal_request.txid);
+        assert_eq!(row.request_id, withdrawal.request.request_id);
+        assert_eq!(row.stacks_block_hash, withdrawal.request.block_hash);
+        assert_eq!(row.stacks_txid, withdrawal.request.txid);
         assert_eq!(row.output_index, output_index as u32 + 2);
         assert!(!row.is_valid_tx);
     }

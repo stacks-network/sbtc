@@ -112,6 +112,7 @@ use crate::setup::AsBlockRef as _;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
+use crate::setup::WithdrawalTriple;
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
@@ -3050,7 +3051,11 @@ fn create_test_setup(
         donation,
         stacks_blocks: vec![stacks_block],
         signers: test_signers,
-        withdrawals: vec![(request, recipient, block_header.as_block_ref())],
+        withdrawals: vec![WithdrawalTriple {
+            request,
+            recipient,
+            block_ref: block_header.as_block_ref(),
+        }],
         withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
         signatures_required,
     }
