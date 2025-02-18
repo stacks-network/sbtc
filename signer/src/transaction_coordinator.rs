@@ -1682,7 +1682,7 @@ where
                 }
             }
 
-            let withdrawal = utxo::WithdrawalRequest::from_model(req.into(), votes);
+            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
             eligible_withdrawals.push(withdrawal);
         }
 

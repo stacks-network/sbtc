@@ -3105,6 +3105,7 @@ fn create_test_setup(
         donation,
         signers: test_signers,
         withdrawal_request: generate_withdrawal().0,
+        withdrawal_requests: vec![],
         withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
         signatures_required,
     }
@@ -3599,7 +3600,7 @@ pub async fn test_coordinator_withdrawal_filtering() {
     let dkg_shares = model::EncryptedDkgShares {
         started_at_bitcoin_block_hash: bitcoin_chain_tip.block_hash.into(),
         started_at_bitcoin_block_height: bitcoin_chain_tip.block_height,
-        signer_set_public_keys: signer_set.signer_keys().to_vec(),
+        signer_set_public_keys: setup.signers.keys.clone(),
         ..Faker.fake()
     };
     db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
@@ -3659,13 +3660,6 @@ pub async fn test_coordinator_withdrawal_filtering() {
             .into(),
         signer_bitmap: BitArray::new([0; 16]),
     };
-    db.write_withdrawal_request(&withdrawal_1).await.unwrap();
-    write_withdrawal_decisions(
-        &db,
-        &withdrawal_1,
-        &[(signer1, true), (signer2, true), (signer3, true)],
-    )
-    .await;
 
     //Get pending withdrawals from coordinator
     let pending_requests = coordinator

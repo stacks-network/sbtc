@@ -174,15 +174,28 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
-    /// Get pending withdrawal requests that have been accepted by at least
-    /// `threshold` signers and has no responses
+    /// This function returns withdrawal requests meeting the following
+    /// criteria, with the assumption that the canonical bitcoin chain tip is
+    /// the given `bitcoin_chain_tip` and the canonical stacks chain tip is the
+    /// given `stacks_chain_tip`:
+    ///
+    /// 1. The withdrawal request transaction (`create-withdrawal-request`
+    ///    contract call) is confirmed in a stacks block anchored to the
+    ///    canonical bitcoin blockchain.
+    /// 2. The withdrawal request has not been included in a sweep transaction
+    ///    that has been confirmed in a block on the canonical bitcoin
+    ///    blockchain.
+    /// 3. The withdrawal request has been approved by at least
+    ///    `signature_threshold` signers. **NOTE:** This does does not currently
+    ///    verify that the approving signers are part of the current signer set;
+    ///    you need to check this separately.
     fn get_pending_accepted_withdrawal_requests(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         stacks_chain_tip: &model::StacksBlockHash,
         context_window: u16,
-        threshold: u16,
-    ) -> impl Future<Output = Result<Vec<model::PendingWithdrawalRequest>, Error>> + Send;
+        signature_threshold: u16,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
     /// This function returns a withdrawal request report that does the
     /// following:

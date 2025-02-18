@@ -1501,19 +1501,19 @@ impl super::DbRead for PgStore {
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         stacks_chain_tip: &model::StacksBlockHash,
         context_window: u16,
-        threshold: u16,
-    ) -> Result<Vec<model::PendingWithdrawalRequest>, Error> {
+        signature_threshold: u16,
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         dbg!(
             &bitcoin_chain_tip,
             &stacks_chain_tip,
             context_window,
-            threshold
+            signature_threshold
         );
 
-        sqlx::query_as::<_, model::PendingWithdrawalRequest>(
+        sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
             -- get_pending_accepted_withdrawal_requests
-            WITH RECURSIVE bitcoin_context_window AS (
+            WITH RECURSIVE bitcoin_blockchain AS (
                 SELECT
                     block_hash
                   , parent_hash
@@ -1528,10 +1528,10 @@ impl super::DbRead for PgStore {
                   , parent.parent_hash
                   , last.depth + 1
                 FROM sbtc_signer.bitcoin_blocks parent
-                JOIN bitcoin_context_window last ON parent.block_hash = last.parent_hash
+                JOIN bitcoin_blockchain last ON parent.block_hash = last.parent_hash
                 WHERE last.depth <= $3
             ),
-            stacks_context_window AS (
+            stacks_blockchain AS (
                 SELECT
                     stacks_blocks.block_hash
                   , stacks_blocks.block_height
@@ -1546,10 +1546,10 @@ impl super::DbRead for PgStore {
                   , parent.block_height
                   , parent.parent_hash
                 FROM sbtc_signer.stacks_blocks parent
-                JOIN stacks_context_window last
-                        ON parent.block_hash = last.parent_hash
-                JOIN bitcoin_context_window block
-                        ON block.block_hash = parent.bitcoin_anchor
+                JOIN stacks_blockchain last
+                    ON parent.block_hash = last.parent_hash
+                JOIN bitcoin_blockchain block
+                    ON block.block_hash = parent.bitcoin_anchor
             )
             SELECT
                 wr.request_id
@@ -1560,10 +1560,8 @@ impl super::DbRead for PgStore {
               , wr.max_fee
               , wr.sender_address
               , wr.bitcoin_block_height
-              , bt.txid as sweep_txid
-              , bt.block_hash as sweep_block_hash
             FROM sbtc_signer.withdrawal_requests wr
-            JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
+            JOIN stacks_blockchain sc ON wr.block_hash = sc.block_hash
             JOIN sbtc_signer.withdrawal_signers signers ON
                 wr.txid = signers.txid AND
                 wr.request_id = signers.request_id AND
@@ -1573,18 +1571,20 @@ impl super::DbRead for PgStore {
                 AND bwo.stacks_block_hash = wr.block_hash
             LEFT JOIN sbtc_signer.bitcoin_transactions bt
                 ON bt.txid = bwo.bitcoin_txid
-            LEFT JOIN bitcoin_context_window AS bitcoin_blocks
-                ON bt.block_hash = bitcoin_blocks.block_hash
+            LEFT JOIN bitcoin_blockchain AS bb
+                ON bt.block_hash = bb.block_hash
             WHERE
                 signers.is_accepted
-            GROUP BY wr.request_id, wr.block_hash, wr.txid, bt.txid, bt.block_hash
+                AND bb.block_hash IS NULL
+            GROUP BY wr.request_id, wr.block_hash, wr.txid
             HAVING COUNT(wr.request_id) >= $4
+            ORDER BY wr.request_id ASC
             "#,
         )
         .bind(bitcoin_chain_tip)
         .bind(stacks_chain_tip)
         .bind(i32::from(context_window))
-        .bind(i64::from(threshold))
+        .bind(i64::from(signature_threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)

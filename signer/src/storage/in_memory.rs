@@ -525,7 +525,7 @@ impl super::DbRead for SharedStore {
         _stacks_chain_tip: &model::StacksBlockHash,
         _context_window: u16,
         _threshold: u16,
-    ) -> Result<Vec<model::PendingWithdrawalRequest>, Error> {
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         unimplemented!();
     }
 
