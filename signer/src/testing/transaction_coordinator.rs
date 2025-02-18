@@ -826,7 +826,7 @@ where
             panic!("Expected ContractCall::RejectWithdrawalV1");
         };
 
-        assert_eq!(call.request_id, withdrawal_req.request_id);
+        assert_eq!(call.id, withdrawal_req.qualified_id());
         assert_eq!(call.signer_bitmap, signer_bitmap);
 
         let TransactionPayload::ContractCall(TransactionContractCall {

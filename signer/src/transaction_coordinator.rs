@@ -1032,7 +1032,7 @@ where
             .await?;
 
         let contract_call = ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
-            request_id: req.request_id,
+            id: req.qualified_id(),
             signer_bitmap: votes.into(),
             deployer: self.context.config().signer.deployer,
         });
