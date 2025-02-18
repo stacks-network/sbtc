@@ -156,7 +156,7 @@ pub trait StacksInteract: Send + Sync {
     /// sBTC has been minted for the deposit request.
     ///
     /// The request is made to `POST
-    /// /v2/map_entry/<contract-principal>/<contract-name>/<map-name>`
+    /// /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`.
     fn is_deposit_completed(
         &self,
         contract_principal: &StacksAddress,
@@ -168,7 +168,7 @@ pub trait StacksInteract: Send + Sync {
     /// or rejecting the request.
     ///
     /// The request is made to `POST
-    /// /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`.
+    /// /v2/map_entry/<contract-principal>/<contract-name>/<map-name>`
     fn is_withdrawal_completed(
         &self,
         contract_principal: &StacksAddress,
