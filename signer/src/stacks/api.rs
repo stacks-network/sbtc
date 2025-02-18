@@ -58,6 +58,10 @@ const TX_FEE_TX_SIZE_MULTIPLIER: u64 = 2 * MINIMUM_TX_FEE_RATE_PER_BYTE;
 /// case the stacks node returns wonky values. This is 10 STX.
 const MAX_TX_FEE: u64 = 10_000_000;
 
+/// This is the name of the MAP in the sbtc-registry smart contract that
+/// stores the status of a withdrawal request.
+const WITHDRAWAL_STATUS_MAP_NAME: &str = "withdrawal-status";
+
 /// This is a dummy STX transfer payload used only for estimating STX
 /// transfer costs.
 const DUMMY_STX_TRANSFER_PAYLOAD: TransactionPayload = TransactionPayload::TokenTransfer(
@@ -1269,8 +1273,8 @@ impl StacksInteract for StacksClient {
         // Both ContractName::from and ClarityName::from can panic when
         // given the "wrong" strings. These particular strings do not
         // panic, and we test this fact in our unit tests.
-        let contract_name = ContractName::from("sbtc-registry");
-        let map_name = ClarityName::from("withdrawal-status");
+        let contract_name = ContractName::from(SmartContract::SbtcRegistry.contract_name());
+        let map_name = ClarityName::from(WITHDRAWAL_STATUS_MAP_NAME);
 
         let map_entry = Value::UInt(request_id as u128);
         let result = self
