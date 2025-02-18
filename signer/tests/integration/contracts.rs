@@ -347,7 +347,7 @@ async fn is_withdrawal_completed_rejection_works() {
         sweep_block_height: chain_tip_info.blocks,
     });
 
-    let _txid = signers.sign_and_submit(&mint_sbtc).await;
+    signers.sign_and_submit(&mint_sbtc).await;
 
     let start_withdrawal = ContractCallWrapper(InitiateWithdrawalRequest {
         amount: 22500,
@@ -356,7 +356,7 @@ async fn is_withdrawal_completed_rejection_works() {
         deployer: *testing::wallet::WALLET.0.address(),
     });
 
-    let _txid = signers.sign_and_submit(&start_withdrawal).await;
+    signers.sign_and_submit(&start_withdrawal).await;
 
     let reject_withdrawal = ContractCallWrapper(RejectWithdrawalV1 {
         request_id: 1,
@@ -364,7 +364,7 @@ async fn is_withdrawal_completed_rejection_works() {
         deployer: *testing::wallet::WALLET.0.address(),
     });
 
-    let _txid = signers.sign_and_submit(&reject_withdrawal).await;
+    signers.sign_and_submit(&reject_withdrawal).await;
 
     // Wait for confirmation. The stacks node takes it's sweet time
     // confirming transactions.
