@@ -796,10 +796,6 @@ impl TestSweepSetup2 {
         Some(self.sweep_tx_info.as_ref()?.block_hash)
     }
 
-    pub fn sweep_block_height(&self) -> Option<u64> {
-        Some(self.sweep_tx_info.as_ref()?.block_height)
-    }
-
     /// Store a stacks genesis block that is on the canonical Stacks
     /// blockchain identified by the sweep chain tip.
     pub async fn store_stacks_genesis_block(&self, db: &PgStore) {
@@ -1060,8 +1056,10 @@ impl TestSweepSetup2 {
     }
 
     pub fn reject_withdrawal_request(&mut self) {
-        for i in 0..self.signers.keys.len() {
-            self.withdrawal_request.signer_bitmap.replace(i, true);
+        for withdrawal in self.withdrawals.iter_mut() {
+            for i in 0..self.signers.keys.len() {
+                withdrawal.request.signer_bitmap.replace(i, true);
+            }
         }
     }
 

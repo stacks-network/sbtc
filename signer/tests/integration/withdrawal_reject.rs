@@ -21,7 +21,7 @@ use signer::testing::context::*;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 
 use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::DepositAmounts;
+use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -80,8 +80,8 @@ async fn make_withdrawal_reject2(
     // `RejectWithdrawalV1` type.
     let complete_withdrawal_tx = RejectWithdrawalV1 {
         // This points to the withdrawal request transaction.
-        id: data.withdrawal_request.qualified_id(),
-        signer_bitmap: data.withdrawal_request.signer_bitmap,
+        id: data.withdrawals[0].request.qualified_id(),
+        signer_bitmap: data.withdrawals[0].request.signer_bitmap,
         // The deployer must match what is in the signers' context.
         deployer: StacksAddress::burn_address(false),
     };
@@ -129,11 +129,23 @@ async fn reject_withdrawal_validation_happy_path() {
 
     let amount = 1_000_000;
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let deposit_amounts = DepositAmounts { amount, max_fee: amount / 2 };
-    let mut setup =
-        TestSweepSetup2::new_setup(test_signer_set.clone(), &faucet, &[deposit_amounts]);
+    let deposit_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: true,
+    };
+    let withdraw_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: false,
+    };
+    let mut setup = TestSweepSetup2::new_setup(
+        test_signer_set.clone(),
+        &faucet,
+        &[deposit_amounts, withdraw_amounts],
+    );
 
-    setup.submit_sweep_tx(rpc, faucet, true);
+    setup.submit_sweep_tx(rpc, faucet);
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -196,11 +208,23 @@ async fn reject_withdrawal_validation_not_final() {
 
     let amount = 1_000_000;
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let deposit_amounts = DepositAmounts { amount, max_fee: amount / 2 };
-    let mut setup =
-        TestSweepSetup2::new_setup(test_signer_set.clone(), &faucet, &[deposit_amounts]);
+    let deposit_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: true,
+    };
+    let withdraw_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: false,
+    };
+    let mut setup = TestSweepSetup2::new_setup(
+        test_signer_set.clone(),
+        &faucet,
+        &[deposit_amounts, withdraw_amounts],
+    );
 
-    setup.submit_sweep_tx(rpc, faucet, true);
+    setup.submit_sweep_tx(rpc, faucet);
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -237,7 +261,7 @@ async fn reject_withdrawal_validation_not_final() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate more blocks then backfill the DB
-    let mut hashes = faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY - 1);
+    let mut hashes = faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY - 2);
     let last = hashes.pop().unwrap();
     backfill_bitcoin_blocks(&db, rpc, &last).await;
 
@@ -393,11 +417,23 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
 
     let amount = 1_000_000;
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let deposit_amounts = DepositAmounts { amount, max_fee: amount / 2 };
-    let mut setup =
-        TestSweepSetup2::new_setup(test_signer_set.clone(), &faucet, &[deposit_amounts]);
+    let deposit_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: true,
+    };
+    let withdraw_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: false,
+    };
+    let mut setup = TestSweepSetup2::new_setup(
+        test_signer_set.clone(),
+        &faucet,
+        &[deposit_amounts, withdraw_amounts],
+    );
 
-    setup.submit_sweep_tx(rpc, faucet, true);
+    setup.submit_sweep_tx(rpc, faucet);
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
