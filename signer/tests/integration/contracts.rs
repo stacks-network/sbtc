@@ -335,11 +335,10 @@ async fn is_withdrawal_completed_rejection_works() {
     let signers = deploy_smart_contracts().await;
     let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
 
+    let txid: BitcoinTxId = Faker.fake_with_rng(&mut rand::rngs::OsRng);
+
     let mint_sbtc = ContractCallWrapper(CompleteDepositV1 {
-        outpoint: bitcoin::OutPoint {
-            txid: Faker.fake_with_rng::<BitcoinTxId, _>(&mut rand::rngs::OsRng).into(),
-            vout: 0,
-        },
+        outpoint: bitcoin::OutPoint::new(txid.into(), 0),
         amount: 123654789,
         recipient: PrincipalData::from(*testing::wallet::WALLET.0.address()),
         deployer: *testing::wallet::WALLET.0.address(),
