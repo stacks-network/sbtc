@@ -58,6 +58,10 @@ const TX_FEE_TX_SIZE_MULTIPLIER: u64 = 2 * MINIMUM_TX_FEE_RATE_PER_BYTE;
 /// case the stacks node returns wonky values. This is 10 STX.
 const MAX_TX_FEE: u64 = 10_000_000;
 
+/// This is the name of the read-only function in the sbtc-registry smart
+/// contract that returns the status of a deposit request.
+const DEPOSIT_STATUS_READ_ONLY_FUNCTION_NAME: &str = "get-deposit-status";
+
 /// This is a dummy STX transfer payload used only for estimating STX
 /// transfer costs.
 const DUMMY_STX_TRANSFER_PAYLOAD: TransactionPayload = TransactionPayload::TokenTransfer(
@@ -1169,8 +1173,8 @@ impl StacksInteract for StacksClient {
         // Both ContractName::from and ClarityName::from can panic when
         // given the "wrong" strings. These particular strings do not
         // panic, and we test this fact in our unit tests.
-        let contract_name = ContractName::from("sbtc-registry");
-        let fn_name = ClarityName::from("get-deposit-status");
+        let contract_name = ContractName::from(SmartContract::SbtcRegistry.contract_name());
+        let fn_name = ClarityName::from(DEPOSIT_STATUS_READ_ONLY_FUNCTION_NAME);
 
         // The transaction IDs are written in little endian format when
         // making the contract call that sets the deposit status, so we
