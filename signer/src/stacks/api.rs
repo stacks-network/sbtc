@@ -617,15 +617,14 @@ impl StacksClient {
             .map(|x| x.data)
     }
 
-    /// Retrieve the latest value of a data variable from the specified
-    /// contract.
+    /// Retrieve the value of a map entry from the specified contract.
     ///
     /// This is done by making a `POST
     /// /v2/map_entry/<contract-principal>/<contract-name>/<map-name>`
     /// request. In the request we specify that the proof should not be
     /// included in the response.
     ///
-    /// See here for more information about this endpoint:
+    /// See here for the source handler of this endpoint:
     /// https://github.com/stacks-network/stacks-core/blob/c1a1f50fddcbc11054fae537103423e21221665a/stackslib/src/net/api/getmapentry.rs#L82-L97
     #[tracing::instrument(skip_all)]
     pub async fn get_map_entry(
@@ -1278,11 +1277,11 @@ impl StacksInteract for StacksClient {
             .get_map_entry(deployer, &contract_name, &map_name, &map_entry)
             .await?;
 
-        // The `get-deposit-status` read-only function retrieves values
-        // from a map in the smart contract using the `map-get?` Clarity
-        // function. This map stores boolean values, setting them to `true`
-        // when a deposit is completed and not setting them otherwise.
-        // Therefore, a missing value implicitly means `false`.
+        // This map `withdrawal-status` in the smart contract stores
+        // boolean values, setting them to `true` when a withdrawal is
+        // accepted and `false` when rejected. Either value means the
+        // request has been completed, while a missing value implicitly
+        // means that the request has not been completed.
         match result {
             Value::Optional(OptionalData { data }) => Ok(data.is_some()),
             _ => Err(Error::InvalidStacksResponse("did not get optional data")),
@@ -2118,6 +2117,43 @@ mod tests {
             .unwrap();
 
         assert_eq!(response, expected_response.unwrap_or(false));
+        mock.assert();
+    }
+
+    #[test_case(Some(true); "accepted-withdrawal")]
+    #[test_case(Some(false); "rejected-withdrawal")]
+    #[test_case(None; "incomplete-withdrawal")]
+    #[tokio::test]
+    async fn is_withdrawal_completed_works(expected_response: Option<bool>) {
+        // Create our simulated response JSON.
+        let data = expected_response.map(|x| Box::new(Value::Bool(x)));
+        let clarity_value = Value::Optional(OptionalData { data });
+        let json_response = serde_json::json!({
+            "data": format!("0x{}", clarity_value.serialize_to_hex().unwrap()),
+        });
+        let raw_json_response = serde_json::to_string(&json_response).unwrap();
+
+        // Setup our mock server
+        // POST /v2/map_entry/<contract-principal>/sbtc-registry/withdrawal-status
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("POST", "/v2/map_entry/ST000000000000000000002AMW42H/sbtc-registry/withdrawal-status?proof=0")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
+
+        // Make the request to the mock server
+        let response = client
+            .is_withdrawal_completed(&StacksAddress::burn_address(false), 1)
+            .await
+            .unwrap();
+
+        assert_eq!(response, expected_response.is_some());
         mock.assert();
     }
 
