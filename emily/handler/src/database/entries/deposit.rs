@@ -914,7 +914,7 @@ mod tests {
             last_update_block_hash: "hash6".to_string(),
             fulfillment: Some(fulfillment.clone()),
             history: vec![pending.clone(), accepted.clone(), confirmed.clone()],
-            reclaim_pubkeys_hash: Some("test-reclaim-pubkeys".to_string()),
+            reclaim_pubkeys_hash: Some(hex::encode([1u8; 32])),
         };
 
         // Ensure the deposit is valid.
