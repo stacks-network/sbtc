@@ -25,6 +25,7 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::StacksBlock;
@@ -758,6 +759,96 @@ where
         } else {
             panic!("Expected TransactionPayload::ContractCall(TransactionContractCall)");
         }
+    }
+
+    /// Assert we get a withdrawal reject tx
+    pub async fn assert_construct_withdrawal_reject_stacks_sign_request(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let signer_network = SignerNetwork::single(&self.context);
+        let private_key = PrivateKey::new(&mut rng);
+        let bitcoin_aggregate_key = PublicKey::from_private_key(&private_key);
+
+        // Create test data for the withdrawal request
+        let stacks_block: StacksBlock = fake::Faker.fake_with_rng(&mut rng);
+        let withdrawal_req = model::WithdrawalRequest {
+            block_hash: stacks_block.block_hash,
+            ..fake::Faker.fake_with_rng(&mut rng)
+        };
+
+        let store = self.context.get_storage_mut();
+        store.write_stacks_block(&stacks_block).await.unwrap();
+        store
+            .write_withdrawal_request(&withdrawal_req)
+            .await
+            .unwrap();
+
+        // Add estimate_fee_rate
+        self.context
+            .with_stacks_client(|client| {
+                client
+                    .expect_estimate_fees()
+                    .times(1)
+                    .returning(|_, _, _| Box::pin(async { Ok(123000) }));
+            })
+            .await;
+
+        let coordinator = TxCoordinatorEventLoop {
+            context: self.context,
+            network: signer_network.spawn(),
+            private_key,
+            threshold: self.signing_threshold,
+            context_window: self.context_window,
+            signing_round_max_duration: Duration::from_millis(500),
+            bitcoin_presign_request_max_duration: Duration::from_millis(500),
+            dkg_max_duration: Duration::from_millis(500),
+            is_epoch3: true,
+        };
+
+        let (sign_request, multi_tx) = coordinator
+            .construct_withdrawal_reject_stacks_sign_request(
+                withdrawal_req.clone(),
+                &bitcoin_aggregate_key,
+                &WALLET.0,
+            )
+            .await
+            .expect("Failed to construct withdrawal reject stacks sign request");
+
+        // We are not storing the decisions in the db, so we will get all zeros
+        let signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
+        assert_eq!(sign_request.tx_fee, 123000);
+        assert_eq!(sign_request.aggregate_key, bitcoin_aggregate_key);
+        assert_eq!(sign_request.txid, multi_tx.tx().txid());
+        assert_eq!(sign_request.nonce, multi_tx.tx().get_origin_nonce());
+
+        let StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(call)) =
+            sign_request.contract_tx
+        else {
+            panic!("Expected ContractCall::RejectWithdrawalV1");
+        };
+
+        assert_eq!(call.id, withdrawal_req.qualified_id());
+        assert_eq!(call.signer_bitmap, signer_bitmap);
+
+        let TransactionPayload::ContractCall(TransactionContractCall {
+            address,
+            contract_name,
+            function_name,
+            function_args,
+        }) = &multi_tx.tx().payload
+        else {
+            panic!("Expected TransactionPayload::ContractCall(TransactionContractCall)");
+        };
+
+        assert_eq!(*address, *WALLET.0.address());
+        assert_eq!(contract_name.to_string(), RejectWithdrawalV1::CONTRACT_NAME);
+        assert_eq!(function_name.to_string(), RejectWithdrawalV1::FUNCTION_NAME);
+        assert_eq!(
+            *function_args,
+            vec![
+                Value::UInt(withdrawal_req.request_id as u128),
+                Value::UInt(signer_bitmap.load_le()),
+            ]
+        );
     }
 }
 
