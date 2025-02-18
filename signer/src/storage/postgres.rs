@@ -2014,10 +2014,9 @@ impl super::DbRead for PgStore {
                     ON bc_blocks.block_hash = bt.block_hash
                 LEFT JOIN sbtc_signer.withdrawal_accept_events AS wae
                     ON wae.request_id = wr.request_id
-                    AND wae.sweep_txid = bt.txid
                 LEFT JOIN stacks_blockchain AS sb
                     ON sb.block_hash = wae.block_hash
-                WHERE wae.request_id IS NULL OR sb.block_hash IS NULL
+                WHERE sb.block_hash IS NULL
 
                 GROUP BY
                     bwo.bitcoin_txid,
