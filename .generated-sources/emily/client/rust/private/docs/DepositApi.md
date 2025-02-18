@@ -141,7 +141,7 @@ Get deposits by recipient handler.
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**reclaim_pubkeys** | **String** | The comma-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script. | [required] |
+**reclaim_pubkeys** | **String** | The dash-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script. | [required] |
 **next_token** | Option<**String**> | the next token value from the previous return of this api call. |  |
 **page_size** | Option<**u32**> | the maximum number of items in the response list. |  |
 

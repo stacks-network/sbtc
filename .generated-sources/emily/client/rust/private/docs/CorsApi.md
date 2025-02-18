@@ -145,7 +145,7 @@ Handles CORS preflight requests
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**reclaim_pubkeys** | **String** | The comma-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script. | [required] |
+**reclaim_pubkeys** | **String** | The dash-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script. | [required] |
 
 ### Return type
 
