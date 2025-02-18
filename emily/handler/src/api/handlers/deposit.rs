@@ -274,8 +274,8 @@ pub async fn get_deposits_for_reclaim_pubkeys(
         reclaim_pubkeys: String,
         query: BasicPaginationQuery,
     ) -> Result<impl warp::reply::Reply, Error> {
-        let mut reclaim_pubkeys_bytes = validate_reclaim_pubkeys(&reclaim_pubkeys)?;
-        let reclaim_pubkeys_hash = sorted_sha256(&mut reclaim_pubkeys_bytes);
+        let reclaim_pubkeys_bytes = validate_reclaim_pubkeys(&reclaim_pubkeys)?;
+        let reclaim_pubkeys_hash = sorted_sha256(reclaim_pubkeys_bytes);
         let (entries, next_token) = accessors::get_deposit_entries_by_reclaim_pubkeys_hash(
             &context,
             &reclaim_pubkeys_hash,
@@ -496,7 +496,7 @@ const OP_PUSHNUM_1: u8 = opcodes::OP_PUSHNUM_1.to_u8();
 const OP_PUSHNUM_16: u8 = opcodes::OP_PUSHNUM_16.to_u8();
 
 /// Sort the pubkeys and hash them with sha256.
-fn sorted_sha256(pubkeys: &mut Vec<[u8; 32]>) -> String {
+fn sorted_sha256(mut pubkeys: Vec<[u8; 32]>) -> String {
     pubkeys.sort();
 
     let mut hasher = Sha256::new();
@@ -548,7 +548,7 @@ fn extract_reclaim_pubkeys_hash(reclaim_script: &ScriptBuf) -> Option<String> {
         }
         _ => None,
     }
-    .map(|mut pubkeys| sorted_sha256(&mut pubkeys))
+    .map(sorted_sha256)
 }
 
 /// Parse a dash-separated list of hex-encoded pubkeys into a Vec<[u8; 32]>.
@@ -668,27 +668,27 @@ mod tests {
     }
 
     #[test_case(vec![]; "empty")]
-    #[test_case(vec![[0x01; 32]]; "single-key")]
-    #[test_case(vec![[0x01; 32], [0x02; 32]]; "multi-keys")]
+    #[test_case(vec![[1u8; 32]]; "single-key")]
+    #[test_case(vec![[1u8; 32], [2u8; 32]]; "multi-keys")]
     #[tokio::test]
-    async fn test_sorted_sha256(mut pubkeys: Vec<[u8; 32]>) {
+    async fn test_sorted_sha256(pubkeys: Vec<[u8; 32]>) {
         let mut expected = Sha256::new();
         for pubkey in &pubkeys {
             expected.update(pubkey);
         }
-        let result: String = sorted_sha256(&mut pubkeys);
+        let result: String = sorted_sha256(pubkeys);
         assert_eq!(result, hex::encode(expected.finalize()));
     }
 
     #[tokio::test]
     async fn test_sorted_sha256_multiple_keys_order_independant() {
-        let mut pubkeys1: Vec<[u8; 32]> = vec![[0x02; 32], [0x01; 32]];
-        let mut pubkeys2: Vec<[u8; 32]> = vec![[0x01; 32], [0x02; 32]];
-        assert_eq!(sorted_sha256(&mut pubkeys1), sorted_sha256(&mut pubkeys2));
+        let pubkeys1: Vec<[u8; 32]> = vec![[2u8; 32], [1u8; 32]];
+        let pubkeys2: Vec<[u8; 32]> = vec![[1u8; 32], [2u8; 32]];
+        assert_eq!(sorted_sha256(pubkeys1), sorted_sha256(pubkeys2));
     }
 
-    #[test_case(vec![[0x01; 32]]; "single-key")]
-    #[test_case(vec![[0x02; 32], [0x01; 32]]; "multi-keys")]
+    #[test_case(vec![[1u8; 32]]; "single-key")]
+    #[test_case(vec![[2u8; 32], [1u8; 32]]; "multi-keys")]
     #[tokio::test]
     async fn test_validate_reclaim_pubkeys_hash_matches_extract_reclaim_pubkeys_hash(
         pubkeys: Vec<[u8; 32]>,
@@ -698,8 +698,9 @@ mod tests {
             .map(|key| hex::encode(key))
             .collect::<Vec<String>>()
             .join("-");
-        let mut validated_pubkeys = validate_reclaim_pubkeys(&pubkeys_hex).unwrap();
-        let query_pubkeys_hash = sorted_sha256(&mut validated_pubkeys);
+        let validated_pubkeys = validate_reclaim_pubkeys(&pubkeys_hex).unwrap();
+        let query_pubkeys_hash = sorted_sha256(validated_pubkeys);
+
         let user_script = match pubkeys.len() {
             1 => make_reclaim_script(pubkeys.first().unwrap()),
             _ => make_asigna_reclaim_script(&pubkeys),
