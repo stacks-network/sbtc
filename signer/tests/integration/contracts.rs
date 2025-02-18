@@ -323,8 +323,6 @@ async fn is_deposit_completed_works() {
 #[ignore = "This is an integration test that requires a stacks-node to work"]
 #[tokio::test]
 async fn is_withdrawal_completed_rejection_works() {
-    let mut rng = rand::rngs::StdRng::seed_from_u64(456);
-
     let stacks_client = stacks_client();
     let stacks_client = stacks_client.get_client();
     let rpc = {
@@ -339,7 +337,7 @@ async fn is_withdrawal_completed_rejection_works() {
 
     let mint_sbtc = ContractCallWrapper(CompleteDepositV1 {
         outpoint: bitcoin::OutPoint {
-            txid: Faker.fake_with_rng::<BitcoinTxId, _>(&mut rng).into(),
+            txid: Faker.fake_with_rng::<BitcoinTxId, _>(&mut rand::rngs::OsRng).into(),
             vout: 0,
         },
         amount: 123654789,
