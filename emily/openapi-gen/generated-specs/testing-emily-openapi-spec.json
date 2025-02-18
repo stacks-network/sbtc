@@ -2350,12 +2350,12 @@
         "type": "object",
         "description": "Struct that represents the current status of the API.",
         "required": [
-          "is_okay"
+          "version"
         ],
         "properties": {
-          "is_okay": {
-            "type": "boolean",
-            "description": "Whether the API is okay."
+          "version": {
+            "type": "string",
+            "description": "The version of the API."
           }
         }
       },
