@@ -541,6 +541,7 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
 }
 
 /// The information about a sweep transaction that has been confirmed.
+#[derive(Clone)]
 pub struct TestSignerSet {
     /// The signer object. It's public key represents the group of signers'
     /// public keys, allowing us to abstract away the fact that there are
@@ -1054,11 +1055,18 @@ impl TestSweepSetup2 {
         }
     }
 
+    pub fn reject_withdrawal_request(&mut self) {
+        for withdrawal in self.withdrawals.iter_mut() {
+            for i in 0..self.signers.keys.len() {
+                withdrawal.request.signer_bitmap.replace(i, true);
+            }
+        }
+    }
+
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
         for stacks_block in self.stacks_blocks.iter() {
             db.write_stacks_block(stacks_block).await.unwrap();
         }
-
         for withdrawal in self.withdrawals.iter() {
             let withdrawal_request = model::WithdrawalRequest {
                 request_id: withdrawal.request.request_id,
