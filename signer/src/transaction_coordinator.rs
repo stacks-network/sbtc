@@ -49,6 +49,7 @@ use crate::stacks::api::FeePriority;
 use crate::stacks::api::GetNakamotoStartHeight;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
@@ -58,6 +59,7 @@ use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
@@ -929,6 +931,75 @@ where
             .context
             .get_stacks_client()
             .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .await?;
+
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        let tx = multi_tx.tx();
+
+        let sign_request = StacksTransactionSignRequest {
+            aggregate_key: *bitcoin_aggregate_key,
+            contract_tx: contract_call.into(),
+            nonce: tx.get_origin_nonce(),
+            tx_fee: tx.get_tx_fee(),
+            txid: tx.txid(),
+        };
+
+        Ok((sign_request, multi_tx))
+    }
+
+    /// Transform the swept withdrawal request into a Stacks sign request
+    /// object.
+    ///
+    /// This function uses stacks-core for fee estimation of the transaction.
+    #[tracing::instrument(skip_all)]
+    pub async fn construct_withdrawal_accept_stacks_sign_request(
+        &self,
+        req: model::SweptWithdrawalRequest,
+        bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        // Retrieve the Bitcoin sweep transaction and compute the assessed fee
+        // from the Bitcoin node
+        let tx_info = self
+            .context
+            .get_bitcoin_client()
+            .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
+            .await?
+            .ok_or_else(|| {
+                Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
+            })?;
+        let outpoint = req.withdrawal_outpoint();
+        let assessed_bitcoin_fee = tx_info
+            .assess_output_fee(outpoint.vout as usize)
+            .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
+
+        // TODO: Add the signer_bitmap to SweptWithdrawalRequest
+        let req_id = QualifiedRequestId {
+            request_id: req.request_id,
+            txid: req.txid,
+            block_hash: req.block_hash,
+        };
+        let votes = self
+            .context
+            .get_storage()
+            .get_withdrawal_request_signer_votes(&req_id, bitcoin_aggregate_key)
+            .await?;
+
+        let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
+            request_id: req.request_id,
+            outpoint: req.withdrawal_outpoint(),
+            tx_fee: assessed_bitcoin_fee.to_sat(),
+            signer_bitmap: votes.into(),
+            deployer: self.context.config().signer.deployer,
+            sweep_block_hash: req.sweep_block_hash,
+            sweep_block_height: req.sweep_block_height,
+        });
+
+        // Estimate the fee for the stacks transaction
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, &contract_call, FeePriority::Medium)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -2019,6 +2090,12 @@ mod tests {
         test_environment().assert_processes_withdrawals().await;
     }
 
+    #[tokio::test]
+    async fn should_construct_withdrawal_accept_stacks_sign_request() {
+        test_environment()
+            .assert_construct_withdrawal_accept_stacks_sign_request()
+            .await;
+    }
     #[test_case(0, None, 1, 100, true; "first DKG allowed without min height")]
     #[test_case(0, Some(100), 1, 5, true; "first DKG allowed regardless of min height")]
     #[test_case(1, None, 2, 100, false; "subsequent DKG not allowed without min height")]
