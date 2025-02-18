@@ -570,17 +570,20 @@ async fn get_deposits_for_reclaim_pubkeys() {
             .push_opcode(opcodes::OP_DROP)
             .push_slice(pubkey)
             .push_opcode(opcodes::OP_CHECKSIG);
-        for pubkey in iter {
+
+        // Asigna reclaim script
+        if pubkeys.len() > 1 {
+            for pubkey in iter {
+                reclaim_user_script = reclaim_user_script
+                    .push_slice(pubkey)
+                    .push_opcode(opcodes::OP_CHECKSIGADD);
+            }
             reclaim_user_script = reclaim_user_script
-                .push_slice(pubkey)
-                .push_opcode(opcodes::OP_CHECKSIGADD);
+                .push_int(pubkeys.len() as i64)
+                .push_opcode(opcodes::OP_NUMEQUAL);
         }
 
-        let reclaim_user_script = reclaim_user_script
-            .push_int(pubkeys.len() as i64)
-            .push_opcode(opcodes::OP_NUMEQUAL)
-            .into_script();
-
+        let reclaim_user_script = reclaim_user_script.into_script();
         let pubkey = pubkeys
             .iter()
             .map(|p| hex::encode(p))

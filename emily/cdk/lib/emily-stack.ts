@@ -205,7 +205,6 @@ export class EmilyStack extends cdk.Stack {
                 "DepositScript",
             ]
         });
-        // TODO(388): Add an additional GSI for querying by user; not required for MVP.
         return table;
     }
 
