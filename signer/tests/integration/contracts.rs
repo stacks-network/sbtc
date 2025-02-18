@@ -358,6 +358,13 @@ async fn is_withdrawal_completed_rejection_works() {
 
     signers.sign_and_submit(&start_withdrawal).await;
 
+    let is_completed = stacks_client
+        .is_withdrawal_completed(signers.wallet.address(), 1)
+        .await
+        .unwrap();
+
+    assert!(!is_completed);
+
     let reject_withdrawal = ContractCallWrapper(RejectWithdrawalV1 {
         request_id: 1,
         signer_bitmap: BitArray::ZERO,
@@ -370,9 +377,10 @@ async fn is_withdrawal_completed_rejection_works() {
     // confirming transactions.
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let response = stacks_client
+    let is_completed = stacks_client
         .is_withdrawal_completed(signers.wallet.address(), 1)
-        .await;
+        .await
+        .unwrap();
 
-    let _ = dbg!(response);
+    assert!(is_completed);
 }
