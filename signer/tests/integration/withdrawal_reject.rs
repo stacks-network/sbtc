@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
 use sbtc::testing::regtest;
+use sbtc::testing::regtest::Faucet;
 use signer::error::Error;
 use signer::keys::PublicKey;
 use signer::stacks::contracts::AsContractCall as _;
@@ -116,6 +117,26 @@ async fn make_withdrawal_reject2(
     (complete_withdrawal_tx, req_ctx)
 }
 
+fn new_sweep_setup(signers: &TestSignerSet, faucet: &Faucet) -> TestSweepSetup2 {
+    let amount = 1_000_000;
+    let deposit_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: true,
+    };
+    let withdraw_amounts = SweepAmounts {
+        amount,
+        max_fee: amount / 2,
+        is_deposit: false,
+    };
+
+    TestSweepSetup2::new_setup(
+        signers.clone(),
+        &faucet,
+        &[deposit_amounts, withdraw_amounts],
+    )
+}
+
 /// For this test we check that the `RejectWithdrawalV1::validate` function
 /// returns okay when everything matches the way that it is supposed to.
 #[tokio::test]
@@ -127,23 +148,8 @@ async fn reject_withdrawal_validation_happy_path() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let amount = 1_000_000;
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let deposit_amounts = SweepAmounts {
-        amount,
-        max_fee: amount / 2,
-        is_deposit: true,
-    };
-    let withdraw_amounts = SweepAmounts {
-        amount,
-        max_fee: amount / 2,
-        is_deposit: false,
-    };
-    let mut setup = TestSweepSetup2::new_setup(
-        test_signer_set.clone(),
-        &faucet,
-        &[deposit_amounts, withdraw_amounts],
-    );
+    let mut setup = new_sweep_setup(&test_signer_set, &faucet);
 
     setup.submit_sweep_tx(rpc, faucet);
 
@@ -206,23 +212,8 @@ async fn reject_withdrawal_validation_not_final() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    let amount = 1_000_000;
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let deposit_amounts = SweepAmounts {
-        amount,
-        max_fee: amount / 2,
-        is_deposit: true,
-    };
-    let withdraw_amounts = SweepAmounts {
-        amount,
-        max_fee: amount / 2,
-        is_deposit: false,
-    };
-    let mut setup = TestSweepSetup2::new_setup(
-        test_signer_set.clone(),
-        &faucet,
-        &[deposit_amounts, withdraw_amounts],
-    );
+    let mut setup = new_sweep_setup(&test_signer_set, &faucet);
 
     setup.submit_sweep_tx(rpc, faucet);
 
@@ -415,6 +406,10 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
+    let test_signer_set = TestSignerSet::new(&mut rng);
+    let mut setup = new_sweep_setup(&test_signer_set, &faucet);
+
+    setup.submit_sweep_tx(rpc, faucet);
     let amount = 1_000_000;
     let test_signer_set = TestSignerSet::new(&mut rng);
     let deposit_amounts = SweepAmounts {
