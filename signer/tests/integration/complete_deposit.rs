@@ -17,7 +17,7 @@ use signer::testing::context::*;
 use fake::Fake;
 
 use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::DepositAmounts;
+use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -427,7 +427,11 @@ async fn complete_deposit_validation_fee_too_low() {
     // bitcoin core for some things and rely on the database for others.
     // Hopefully this test does not become an issue down the line due to a
     // refactor.
-    let amounts = DepositAmounts { amount: 50000, max_fee: 80_000 };
+    let amounts = SweepAmounts {
+        amount: 50000,
+        max_fee: 80_000,
+        is_deposit: true,
+    };
     let mut setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
     // Normal: the signers' block observer should be getting new block
@@ -446,7 +450,7 @@ async fn complete_deposit_validation_fee_too_low() {
 
     // Normal: we submit the transaction sweeping the funds. It gets
     // confirmed; this generates a new bitcoin block behind the scene.
-    setup.submit_sweep_tx(rpc, faucet, false);
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: When a new bitcoin block is generated, we need to update the
     // signer's database with blockchain data.
