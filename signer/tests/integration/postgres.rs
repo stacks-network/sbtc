@@ -2518,6 +2518,9 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
 
     let event = WithdrawalAcceptEvent {
         request_id: withdrawal_request.request_id,
+        sweep_block_hash: bitcoin_block.block_hash,
+        sweep_txid: sweep_tx_ref.txid,
+        block_id: stacks_block.block_hash,
         ..Faker.fake_with_rng(&mut rng)
     };
 
@@ -2781,7 +2784,8 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
     let event = WithdrawalAcceptEvent {
         request_id: withdrawal_request.request_id,
         block_id: original_event_block.block_hash,
-        sweep_block_hash: new_block.block_hash,
+        sweep_block_hash: bitcoin_block.block_hash,
+        sweep_txid: sweep_tx_ref.txid,
         ..Faker.fake_with_rng(&mut rng)
     };
 
@@ -2798,8 +2802,8 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
     assert_eq!(requests.len(), 0);
 
     // Now assume we have a reorg: the new bitcoin chain is `sweep_block_hash`
-    // and the complete deposit event is no longer in the canonical chain.
-    // The deposit should no longer be confirmed.
+    // and the accept withdrawal event is no longer in the canonical chain.
+    // The withdrawal should no longer be confirmed.
     let requests = db
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await

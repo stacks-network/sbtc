@@ -1959,11 +1959,12 @@ impl super::DbRead for PgStore {
         // - [X] get_swept_withdrawal_requests_returns_swept_withdrawal_requests
         // - [X] get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_requests
         // - [X] get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_responses
-        // - [ ] get_swept_withdrawal_requests_response_tx_reorged
+        // - [X] get_swept_withdrawal_requests_response_tx_reorged
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
         };
+
         sqlx::query_as::<_, model::SweptWithdrawalRequest>(
             "
                 WITH RECURSIVE bitcoin_blockchain AS (
@@ -2013,9 +2014,10 @@ impl super::DbRead for PgStore {
                     ON bc_blocks.block_hash = bt.block_hash
                 LEFT JOIN sbtc_signer.withdrawal_accept_events AS wae
                     ON wae.request_id = wr.request_id
+                    AND wae.sweep_txid = bt.txid
                 LEFT JOIN stacks_blockchain AS sb
                     ON sb.block_hash = wae.block_hash
-                WHERE wae.request_id IS NULL
+                WHERE wae.request_id IS NULL OR sb.block_hash IS NULL
 
                 GROUP BY
                     bwo.bitcoin_txid,
