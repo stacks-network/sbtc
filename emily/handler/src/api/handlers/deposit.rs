@@ -531,12 +531,13 @@ fn extract_reclaim_pubkeys_hash(reclaim_script: &ScriptBuf) -> Option<String> {
             while let Some(&opcode) = data_iter.next() {
                 match opcode {
                     OP_PUSHBYTES_32 => {
-                        if let Ok(pubkey) = <Vec<u8> as TryInto<[u8; 32]>>::try_into(
-                            data_iter.by_ref().take(32).cloned().collect(),
-                        ) {
-                            pubkeys.push(pubkey);
-                        } else {
-                            return None; // Malformed script
+                        // Collect the next 32 bytes
+                        let pubkey_bytes: Vec<u8> = data_iter.by_ref().take(32).cloned().collect();
+                        let pubkey_result: Result<[u8; 32], _> = pubkey_bytes.try_into();
+
+                        match pubkey_result {
+                            Ok(pubkey) => pubkeys.push(pubkey),
+                            Err(_) => return None, // Malformed pubkey
                         }
                     }
                     OP_CHECKSIG | OP_CHECKSIGADD => continue, // Skip sig verification opcodes
