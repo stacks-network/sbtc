@@ -2131,16 +2131,43 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(16);
 
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: false,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    let bitcoin_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let bitcoin_tip_height = db
+        .get_bitcoin_block(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .block_height;
+    let stacks_tip = db
+        .get_stacks_chain_tip(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap();
+
     // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
     let bitcoin_block = model::BitcoinBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: bitcoin_tip_height + 1,
+        parent_hash: bitcoin_tip,
     };
     let stacks_block = model::StacksBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: stacks_tip.block_height + 1,
+        parent_hash: stacks_tip.block_hash,
         bitcoin_anchor: bitcoin_block.block_hash,
     };
     let withdrawal_request = model::WithdrawalRequest {
@@ -2151,7 +2178,7 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
+        block_height: stacks_block.block_height,
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
@@ -2235,16 +2262,43 @@ async fn get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_reques
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(16);
 
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: false,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    let bitcoin_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let bitcoin_tip_height = db
+        .get_bitcoin_block(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .block_height;
+    let stacks_tip = db
+        .get_stacks_chain_tip(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap();
+
     // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
     let bitcoin_block = model::BitcoinBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: bitcoin_tip_height + 1,
+        parent_hash: bitcoin_tip,
     };
     let stacks_block = model::StacksBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: stacks_tip.block_height + 1,
+        parent_hash: stacks_tip.block_hash,
         bitcoin_anchor: bitcoin_block.block_hash,
     };
     let withdrawal_request = model::WithdrawalRequest {
@@ -2255,7 +2309,7 @@ async fn get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_reques
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
+        block_height: stacks_block.block_height,
     };
 
     // Now write all the data to the database.
@@ -2476,16 +2530,43 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(16);
 
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: false,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    let bitcoin_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let bitcoin_tip_height = db
+        .get_bitcoin_block(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .block_height;
+    let stacks_tip = db
+        .get_stacks_chain_tip(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap();
+
     // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
     let bitcoin_block = model::BitcoinBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: bitcoin_tip_height + 1,
+        parent_hash: bitcoin_tip,
     };
     let stacks_block = model::StacksBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: stacks_tip.block_height + 1,
+        parent_hash: stacks_tip.block_hash,
         bitcoin_anchor: bitcoin_block.block_hash,
     };
     let withdrawal_request = model::WithdrawalRequest {
@@ -2496,7 +2577,7 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
+        block_height: stacks_block.block_height,
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
@@ -2722,16 +2803,43 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(16);
 
+    let num_signers = 3;
+    let test_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 10,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: false,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
+    test_data.write_to(&db).await;
+
+    let bitcoin_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let bitcoin_tip_height = db
+        .get_bitcoin_block(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .block_height;
+    let stacks_tip = db
+        .get_stacks_chain_tip(&bitcoin_tip)
+        .await
+        .unwrap()
+        .unwrap();
+
     // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
     let bitcoin_block = model::BitcoinBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: bitcoin_tip_height + 1,
+        parent_hash: bitcoin_tip,
     };
     let stacks_block = model::StacksBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
-        parent_hash: fake::Faker.fake_with_rng(&mut rng),
+        block_height: stacks_tip.block_height + 1,
+        parent_hash: stacks_tip.block_hash,
         bitcoin_anchor: bitcoin_block.block_hash,
     };
     let withdrawal_request = model::WithdrawalRequest {
@@ -2742,7 +2850,7 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: 1,
+        block_height: stacks_block.block_height,
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
