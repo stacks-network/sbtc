@@ -33,6 +33,7 @@ use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
+use reqwest::StatusCode;
 use serde::{Deserialize, Deserializer};
 use url::Url;
 
@@ -642,7 +643,7 @@ impl StacksClient {
         contract_name: &ContractName,
         map_name: &ClarityName,
         map_entry: &Value,
-    ) -> Result<Value, Error> {
+    ) -> Result<Option<Value>, Error> {
         let path = format!("/v2/map_entry/{contract_principal}/{contract_name}/{map_name}?proof=0");
 
         let url = self
@@ -670,13 +671,20 @@ impl StacksClient {
             .await
             .map_err(Error::StacksNodeRequest)?;
 
+        // It looks like the stacks node returns a 404 if the data is not
+        // available, see
+        // https://github.com/stacks-network/stacks-core/blob/c1a1f50fddcbc11054fae537103423e21221665a/stackslib/src/net/api/getmapentry.rs#L223-L225C22
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
         response
             .error_for_status()
             .map_err(Error::StacksNodeResponse)?
             .json::<DataVarResponse>()
             .await
             .map_err(Error::UnexpectedStacksResponse)
-            .map(|x| x.data)
+            .map(|x| Some(x.data))
     }
 
     /// Get the latest account info for the given address.
@@ -1292,7 +1300,7 @@ impl StacksInteract for StacksClient {
         // request has been completed, while a missing value implicitly
         // means that the request has not been completed.
         match result {
-            Value::Optional(OptionalData { data }) => Ok(data.is_some()),
+            Some(Value::Optional(OptionalData { data })) => Ok(data.is_some()),
             _ => Err(Error::InvalidStacksResponse("did not get optional data")),
         }
     }
