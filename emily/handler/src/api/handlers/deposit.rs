@@ -2,13 +2,12 @@
 
 use bitcoin::opcodes::all::{self as opcodes};
 use bitcoin::ScriptBuf;
+use sbtc::deposits::ReclaimScriptInputs;
 use sha2::{Digest, Sha256};
 use stacks_common::codec::StacksMessageCodec as _;
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, warn};
 use warp::http::StatusCode;
 use warp::reply::{json, with_status, Reply};
-
-use sbtc::deposits::ReclaimScriptInputs;
 
 use crate::api::models::common::Status;
 use crate::api::models::deposit::requests::BasicPaginationQuery;
@@ -319,8 +318,9 @@ pub async fn create_deposit(
     body: CreateDepositRequestBody,
 ) -> impl warp::reply::Reply {
     debug!(
-        "Creating deposit with txid: {}, output index: {}",
-        body.bitcoin_txid, body.bitcoin_tx_output_index
+        bitcoin_txid = %body.bitcoin_txid,
+        bitcoin_tx_output_index = %body.bitcoin_tx_output_index,
+        "creating deposit"
     );
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
@@ -360,7 +360,14 @@ pub async fn create_deposit(
         }
 
         let deposit_info = body.validate(context.settings.is_mainnet)?;
-
+        let reclaim_pubkeys_hash = extract_reclaim_pubkeys_hash(&deposit_info.reclaim_script);
+        if reclaim_pubkeys_hash.is_none() {
+            warn!(
+                bitcoin_txid = %body.bitcoin_txid,
+                bitcoin_tx_output_index = %body.bitcoin_tx_output_index,
+                "unknown reclaim script"
+            );
+        }
         // Make table entry.
         let deposit_entry: DepositEntry = DepositEntry {
             key: DepositEntryKey {
@@ -384,7 +391,7 @@ pub async fn create_deposit(
             amount: deposit_info.amount,
             reclaim_script: body.reclaim_script,
             deposit_script: body.deposit_script,
-            reclaim_pubkeys_hash: extract_reclaim_pubkeys_hash(&deposit_info.reclaim_script),
+            reclaim_pubkeys_hash,
             ..Default::default()
         };
         // Validate deposit entry.
