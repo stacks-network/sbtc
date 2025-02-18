@@ -124,12 +124,12 @@ impl StacksBlock {
     }
 
     /// Generate a chain of stacks blocks with a length equal to `1 +
-    /// bitcoin_chain.len()`, descending from this block. 
-    /// 
+    /// bitcoin_chain.len()`, descending from this block.
+    ///
     /// The chain will start with this block as the genesis block and each
     /// subsequent block will be a child of the previous block with its height
-    /// incremented by one. 
-    /// 
+    /// incremented by one.
+    ///
     /// Each block will be anchored to the corresponding bitcoin block index in
     /// the provided bitcoin chain.
     pub fn generate_descendant_chain<I, B>(&self, bitcoin_chain: I) -> Vec<Cow<'_, StacksBlock>>

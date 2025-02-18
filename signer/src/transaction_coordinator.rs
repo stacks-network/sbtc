@@ -197,6 +197,9 @@ pub struct GetPendingRequestsParams<'a> {
     /// request to be considered for the sweep transaction package, and the
     /// number of signatures required for each transaction.
     pub signature_threshold: u16,
+    /// The number of bitcoin confirmations (blocks) after which a withdrawal
+    /// request shall be considered expired.
+    pub withdrawal_blocks_expiry: u64,
 }
 
 /// This function defines which messages this event loop is interested
@@ -1594,10 +1597,14 @@ where
         const SKIP_REASON_INSUFFICIENT_CONFIRMATIONS: &str = "insufficient_confirmations";
         const SKIP_REASON_INSUFFICIENT_VOTES: &str = "insufficient_votes";
 
-        // We set the context window (number of Bitcoin blocks to recurse
-        // backwards over) to `WITHDRAWAL_BLOCKS_EXPIRY` to exclude requests
-        // which are expired.
-        let context_window = WITHDRAWAL_BLOCKS_EXPIRY as u16; // We control this value.
+        // We set the context window for the pending-accepted query below to the
+        // number of blocks that the withdrawal request is considered
+        // valid (not expired). This limits the number of blocks the query will
+        // consider when fetching pending withdrawal requests.
+        let context_window = params
+            .withdrawal_blocks_expiry
+            .try_into()
+            .map_err(|_| Error::TypeConversion)?;
 
         // Fetch pending withdrawal requests from storage. This method performs
         // the following filtering according to consensus rules:
@@ -1675,7 +1682,9 @@ where
 
             // Fetch the votes for the withdrawal request from storage for the
             // public keys of the signers in the current signing set, based on
-            // the current signers' aggregate key.
+            // the current signers' aggregate key. Note: this could have been
+            // baked into the initial query, but we need the votes' values for
+            // our return value.
             let votes = storage
                 .get_withdrawal_request_signer_votes(&req.qualified_id(), params.aggregate_key)
                 .await?;
@@ -1789,6 +1798,7 @@ where
                 signature_threshold: self.threshold,
                 signer_btc_state: &signer_btc_state,
                 sbtc_limits: &sbtc_limits,
+                withdrawal_blocks_expiry: WITHDRAWAL_BLOCKS_EXPIRY,
             };
 
             // Fetch eligible deposit requests.
@@ -2335,11 +2345,6 @@ mod tests {
     #[tokio::test]
     async fn should_get_signer_utxo_donations() {
         test_environment().assert_get_signer_utxo_donations().await;
-    }
-
-    #[tokio::test]
-    async fn should_process_withdrawals() {
-        test_environment().assert_processes_withdrawals().await;
     }
 
     #[tokio::test]

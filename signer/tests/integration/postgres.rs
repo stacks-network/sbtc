@@ -4583,7 +4583,6 @@ mod get_pending_accepted_withdrawal_requests {
     }
 
     // TODO:
-    // - Not enough confirmations
     // - Expired requests
 
     /// Asserts that we only return requests that have been accepted by the
