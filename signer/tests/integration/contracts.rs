@@ -286,15 +286,14 @@ async fn is_deposit_completed_works() {
     };
 
     // Make the request to the mock server
-    let response = stacks_client
+    let is_completed = stacks_client
         .is_deposit_completed(signers.wallet.address(), &outpoint)
         .await
         .unwrap();
 
-    assert_eq!(response, false);
+    assert!(!is_completed);
 
-    let chain_tip_block_hash = rpc.get_best_block_hash().unwrap();
-    let header = rpc.get_block_header_info(&chain_tip_block_hash).unwrap();
+    let chain_tip_info = rpc.get_blockchain_info().unwrap();
 
     let complete_deposit = CompleteDepositV1 {
         outpoint,
@@ -302,20 +301,21 @@ async fn is_deposit_completed_works() {
         recipient: PrincipalData::parse("SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y").unwrap(),
         deployer: *testing::wallet::WALLET.0.address(),
         sweep_txid: BitcoinTxId::from([0; 32]),
-        sweep_block_hash: BitcoinBlockHash::from(chain_tip_block_hash),
-        sweep_block_height: header.height as u64,
+        sweep_block_hash: BitcoinBlockHash::from(chain_tip_info.best_block_hash),
+        sweep_block_height: chain_tip_info.blocks as u64,
     };
-    let _txid = signers.sign_and_submit(&complete_deposit).await;
+
+    signers.sign_and_submit(&complete_deposit).await;
 
     // We sleep so that the block gets confirmed.
     tokio::time::sleep(Duration::from_secs(5)).await;
 
-    let response = stacks_client
+    let is_completed = stacks_client
         .is_deposit_completed(signers.wallet.address(), &outpoint)
         .await
         .unwrap();
 
-    assert_eq!(response, true);
+    assert!(is_completed);
 }
 
 /// This tests whether the `is_withdrawal_completed` function works when
