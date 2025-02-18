@@ -267,6 +267,16 @@ async fn reject_withdrawal_validation_not_final() {
         err => panic!("unexpected error during validation {err}"),
     }
 
+    // Generate more blocks then backfill the DB
+    let mut hashes = faucet.generate_blocks(2);
+    let last = hashes.pop().unwrap();
+    backfill_bitcoin_blocks(&db, rpc, &last).await;
+
+    // Generate the transaction and corresponding request context.
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject2(&setup, &db).await;
+
+    reject_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
+
     testing::storage::drop_db(db).await;
 }
 
