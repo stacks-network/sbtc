@@ -2535,10 +2535,19 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
     db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
         .await
         .unwrap();
+
+    // Before we write corresponding withdrawal accept event query should return 1 request
+    let context_window = 20;
+    let requests = db
+        .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
+        .await
+        .unwrap();
+    assert_eq!(requests.len(), 1);
+
+
     db.write_withdrawal_accept_event(&event).await.unwrap();
 
-    // There should only be one request in the database and it has a sweep
-    // trasnaction so the length should be 1.
+    // Since we have corresponding withdrawal accept event query should return nothing
     let context_window = 20;
     let requests = db
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
