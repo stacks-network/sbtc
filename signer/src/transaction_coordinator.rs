@@ -292,10 +292,11 @@ where
         Ok(is_epoch3)
     }
 
-    #[tracing::instrument(
-        skip_all,
-        fields(public_key = %self.signer_public_key(), chain_tip = tracing::field::Empty)
-    )]
+    #[tracing::instrument(skip_all, fields(
+        public_key = %self.signer_public_key(),
+        bitcoin_tip_hash = tracing::field::Empty,
+        bitcoin_tip_height = tracing::field::Empty,
+    ))]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         if !self.is_epoch3().await? {
             return Ok(());
@@ -315,10 +316,8 @@ where
             .ok_or(Error::NoChainTip)?;
 
         let span = tracing::Span::current();
-        span.record(
-            "chain_tip",
-            tracing::field::display(&bitcoin_chain_tip.block_hash),
-        );
+        span.record("bitcoin_tip_hash", bitcoin_chain_tip.block_hash.to_string());
+        span.record("bitcoin_tip_height", bitcoin_chain_tip.block_height);
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -581,7 +580,8 @@ where
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
     #[tracing::instrument(skip_all, fields(
-        stacks_chain_tip = tracing::field::Empty,
+        stacks_tip_hash = tracing::field::Empty,
+        stacks_tip_height = tracing::field::Empty,
     ))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
@@ -591,21 +591,15 @@ where
     ) -> Result<(), Error> {
         let storage = self.context.get_storage();
 
-        tracing::debug!("fetching the stacks chain tip");
+        // Fetch the stacks chain tip from the database.
         let stacks_chain_tip = storage
             .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
-        tracing::Span::current().record(
-            "stacks_chain_tip_block_hash",
-            stacks_chain_tip.block_hash.to_hex(),
-        );
-
-        tracing::debug!(
-            stacks_chain_tip_block_height = stacks_chain_tip.block_height,
-            "retrieved the stacks chain tip"
-        );
+        let span = tracing::Span::current();
+        span.record("stacks_tip_hash", stacks_chain_tip.block_hash.to_hex());
+        span.record("stacks_tip_height", stacks_chain_tip.block_height);
 
         // Create a future that fetches pending deposit and withdrawal requests
         // from the database.
@@ -1591,11 +1585,14 @@ where
     where
         DB: DbRead,
     {
+        // Constants used for logging (local to this method).
         const REQUEST_SKIPPED_MESSAGE: &str = "skipping withdrawal request";
         const SKIP_REASON_AMOUNT_IS_DUST: &str = "amount_is_dust";
         const SKIP_REASON_PER_WITHDRAWAL_CAP_EXCEEDED: &str = "per_withdrawal_cap_exceeded";
         const SKIP_REASON_INSUFFICIENT_CONFIRMATIONS: &str = "insufficient_confirmations";
         const SKIP_REASON_INSUFFICIENT_VOTES: &str = "insufficient_votes";
+
+        let mut eligible_withdrawals = Vec::new();
 
         // We set the context window for the pending-accepted query below to the
         // number of blocks that the withdrawal request is considered
@@ -1627,8 +1624,6 @@ where
             tracing::debug!("no pending withdrawal requests eligible for consideration found");
             return Ok(Vec::new());
         }
-
-        let mut eligible_withdrawals = Vec::new();
 
         // Iterate over the pending withdrawal requests we fetched above and
         // validate them against the remaining consensus rules.
@@ -1738,6 +1733,7 @@ where
     where
         DB: DbRead,
     {
+        tracing::debug!("fetching eligible deposit requests");
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         // First, we fetch pending deposit requests with initial filtering
@@ -1775,8 +1771,10 @@ where
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
+        tracing::info!("preparing pending requests for processing");
+
         let storage = self.context.get_storage();
-        tracing::debug!("fetching pending deposit and withdrawal requests");
+        let config = self.context.config();
 
         // Get the current signers' BTC state.
         let signer_btc_state = self
@@ -1802,11 +1800,10 @@ where
             };
 
             // Fetch eligible deposit requests.
-            tracing::debug!("fetching eligible deposit requests");
+
             let deposits = Self::get_eligible_pending_deposit_requests(&storage, &params).await?;
 
             // Fetch eligible withdrawal requests.
-            tracing::debug!("fetching eligible withdrawal requests");
             let withdrawals =
                 Self::get_eligible_pending_withdrawal_requests(&storage, &params).await?;
 
@@ -1826,13 +1823,9 @@ where
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
+        let max_deposits_per_bitcoin_tx = config.signer.max_deposits_per_bitcoin_tx.get();
+
         // Construct and return the `utxo::SbtcRequests` object.
-        let max_deposits_per_bitcoin_tx = self
-            .context
-            .config()
-            .signer
-            .max_deposits_per_bitcoin_tx
-            .into();
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
@@ -1934,6 +1927,10 @@ where
         }
     }
 
+    /// Estimates the fees for the contract deploy transaction, constructs the
+    /// [`StacksTransactionSignRequest`] to be broadcast to the signers for
+    /// signing and returns it along with the corresponding [`MultisigTx`] being
+    /// signed.
     async fn construct_deploy_contracts_stacks_sign_request(
         &self,
         contract_deploy: SmartContract,

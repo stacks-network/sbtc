@@ -42,7 +42,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
         // This is the assessed transaction fee for fulfilling the withdrawal
         // request.
         tx_fee: fee,
-        //
+        // Bitmap over how signers voted on the withdrawal request.
         signer_bitmap: data.withdrawal_request.signer_bitmap,
         // The deployer must match what is in the signers' context.
         deployer: StacksAddress::burn_address(false),
@@ -59,8 +59,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
             block_hash: data.sweep_block_hash.into(),
             block_height: data.sweep_block_height,
         },
-        // TODO: Will probably need to make this work
-        stacks_chain_tip: signer::storage::model::StacksBlockHash::from([0; 32]),
+        stacks_chain_tip: data.withdrawal_request.block_hash,
         // This value means that the signer will go back 20 blocks when
         // looking for pending and accepted withdrawal requests.
         context_window: 20,
