@@ -323,6 +323,13 @@ impl StacksInteract for TestHarness {
         // issue #118
         todo!()
     }
+    async fn is_deposit_completed(
+        &self,
+        _: &StacksAddress,
+        _: &bitcoin::OutPoint,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
     async fn get_account(&self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
         // issue #118
         todo!()
