@@ -333,7 +333,7 @@ async fn is_withdrawal_completed_rejection_works() {
     };
 
     let signers = deploy_smart_contracts().await;
-    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
+    let chain_tip_info = rpc.get_blockchain_info().unwrap();
 
     let txid: BitcoinTxId = Faker.fake_with_rng(&mut rand::rngs::OsRng);
 
@@ -343,8 +343,8 @@ async fn is_withdrawal_completed_rejection_works() {
         recipient: PrincipalData::from(*testing::wallet::WALLET.0.address()),
         deployer: *testing::wallet::WALLET.0.address(),
         sweep_txid: BitcoinTxId::from([0; 32]),
-        sweep_block_hash: chain_tip_info.hash.into(),
-        sweep_block_height: chain_tip_info.height,
+        sweep_block_hash: chain_tip_info.best_block_hash.into(),
+        sweep_block_height: chain_tip_info.blocks,
     });
 
     let _txid = signers.sign_and_submit(&mint_sbtc).await;
