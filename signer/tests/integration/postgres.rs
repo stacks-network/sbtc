@@ -2177,7 +2177,7 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await
         .unwrap();
-    assert_eq!(requests.len(), 0);
+    assert!(requests.is_empty());
 
     // Now write all the data to the database.
     db.write_bitcoin_block(&bitcoin_block).await.unwrap();
@@ -2271,7 +2271,7 @@ async fn get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_reques
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await
         .unwrap();
-    assert_eq!(requests.len(), 0);
+    assert!(requests.is_empty());
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -2552,7 +2552,7 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await
         .unwrap();
-    assert_eq!(requests.len(), 0);
+    assert!(requests.is_empty());
 
     signer::testing::storage::drop_db(db).await;
 }
@@ -2809,7 +2809,7 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
         .get_swept_withdrawal_requests(&new_block.block_hash, context_window)
         .await
         .unwrap();
-    assert_eq!(requests.len(), 0);
+    assert!(requests.is_empty());
 
     // Now assume we have a reorg: the new bitcoin chain tip is `bitcoin_block`
     // and the accept withdrawal event is no longer in the canonical chain.
