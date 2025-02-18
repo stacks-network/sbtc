@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
+use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::RpcApi as _;
@@ -27,6 +28,7 @@ use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::TxDeconstructor as _;
+use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::block_observer::BlockObserver;
 use signer::block_observer::Deposit;
 use signer::codec::Encode as _;
@@ -35,8 +37,11 @@ use signer::context::SbtcLimits;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
+use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
+use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::BitcoinTxRef;
+use signer::storage::model::BitcoinWithdrawalOutput;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
@@ -49,6 +54,20 @@ use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
+use crate::utxo_construction::make_withdrawal;
+
+pub trait AsBlockRef {
+    fn as_block_ref(&self) -> BitcoinBlockRef;
+}
+
+impl AsBlockRef for bitcoincore_rpc_json::GetBlockHeaderResult {
+    fn as_block_ref(&self) -> BitcoinBlockRef {
+        BitcoinBlockRef {
+            block_hash: self.hash.into(),
+            block_height: self.height as u64,
+        }
+    }
+}
 
 /// A struct containing an actual deposit and a sweep transaction. The
 /// sweep transaction was signed with the `signer` field's public key.
@@ -390,7 +409,7 @@ impl TestSweepSetup {
     }
 
     // This is all normal happy path things that need to happen in order to
-    // pass validation of a stacks transaction.
+    // pass validation of a Stacks transaction.
     pub async fn store_happy_path_data(&mut self, db: &PgStore) {
         self.store_deposit_tx(&db).await;
         self.store_sweep_tx(&db).await;
@@ -408,7 +427,7 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
     // There are no non-coinbase transactions below this height.
     while block_header.height as u64 >= regtest::MIN_BLOCKCHAIN_HEIGHT {
         let parent_header_hash = block_header.previous_block_hash.unwrap();
-        let bitcoin_block = model::BitcoinBlock {
+        let bitcoin_block = BitcoinBlock {
             block_hash: block_header.hash.into(),
             block_height: block_header.height as u64,
             parent_hash: parent_header_hash.into(),
@@ -581,14 +600,30 @@ pub struct SweepTxInfo {
     /// The height of the bitcoin block that confirmed the sweep
     /// transaction.
     pub block_height: u64,
+    /// The parent block hash of the `block_hash`.
+    pub parent_hash: BitcoinBlockHash,
     /// The transaction that swept in the deposit transaction.
     pub tx_info: BitcoinTxInfo,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct DepositAmounts {
+pub struct SweepAmounts {
     pub amount: u64,
     pub max_fee: u64,
+    pub is_deposit: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct WithdrawalTriple {
+    /// The withdrawal requests.
+    pub request: utxo::WithdrawalRequest,
+    /// The recipient of the withdrawn funds. This is to test that we can
+    /// spend the withdrawn funds.
+    #[allow(unused)]
+    pub recipient: Recipient,
+    /// The chain tip of the canonical bitcoin blockchain when the contract
+    /// call that created the withdrawal request on Stacks was executed.
+    pub block_ref: BitcoinBlockRef,
 }
 
 /// A struct containing an actual deposit and a sweep transaction. The
@@ -605,9 +640,14 @@ pub struct TestSweepSetup2 {
     pub donation: OutPoint,
     /// The transaction that swept in the deposit transaction.
     pub sweep_tx_info: Option<SweepTxInfo>,
-    /// The withdrawal request, and a bitmap for how the signers voted on
-    /// it.
-    pub withdrawal_request: utxo::WithdrawalRequest,
+    /// The stacks blocks confirming the withdrawal requests, along with a
+    /// genesis block.
+    pub stacks_blocks: Vec<model::StacksBlock>,
+    /// The withdrawal requests, the recipient of the funds on bitcoin, and
+    /// the block hash and height of the tip of the canonical bitcoin
+    /// blockchain when the transaction that generated with withdrawal
+    /// request was executed.
+    pub withdrawals: Vec<WithdrawalTriple>,
     /// The address that initiated with withdrawal request.
     pub withdrawal_sender: PrincipalData,
     /// The signer object. It's public key represents the group of signers'
@@ -636,13 +676,14 @@ impl TestSweepSetup2 {
     /// 4. Generate a set of "signer keys" that kinda represent the
     ///    signers. Transactions can be signed using only the private keys
     ///    of the "signer" from (1).
-    pub fn new_setup(signers: TestSignerSet, faucet: &Faucet, amounts: &[DepositAmounts]) -> Self {
+    pub fn new_setup(signers: TestSignerSet, faucet: &Faucet, amounts: &[SweepAmounts]) -> Self {
         let signer = &signers.signer;
         let rpc = faucet.rpc;
         let signers_public_key = signer.keypair.x_only_public_key().0;
 
         let depositors: Vec<_> = amounts
             .iter()
+            .filter(|dep| dep.is_deposit)
             .map(|dep| {
                 more_asserts::assert_lt!(dep.amount, 50_000_000);
                 let depositor = Recipient::new(AddressType::P2tr);
@@ -653,12 +694,12 @@ impl TestSweepSetup2 {
 
         // Start off with some initial UTXOs to work with.
 
-        let donation = faucet.send_to(100_000, &signer.address);
+        let donation = faucet.send_to(Amount::ONE_BTC.to_sat(), &signer.address);
         faucet.generate_blocks(1);
 
         let mut deposits = Vec::new();
 
-        for (depositor, DepositAmounts { amount, max_fee }) in depositors.into_iter() {
+        for (depositor, SweepAmounts { amount, max_fee, .. }) in depositors.into_iter() {
             // Now lets make a deposit transaction and submit it
             let utxo = depositor.get_utxos(rpc, None).pop().unwrap();
             let (deposit_tx, deposit_request, deposit_info) =
@@ -668,10 +709,48 @@ impl TestSweepSetup2 {
             deposits.push((deposit_tx, deposit_request, deposit_info));
         }
         let deposit_block_hash = faucet.generate_blocks(1).pop().unwrap();
+        let block_ref = rpc
+            .get_block_header_info(&deposit_block_hash)
+            .unwrap()
+            .as_block_ref();
 
-        // This is randomly generated withdrawal request and the recipient
+        // These are randomly generated withdrawal requests with recipients
         // who can sign for the withdrawal UTXO.
-        let (withdrawal_request, _withdrawal_recipient) = generate_withdrawal();
+        let mut withdrawals: Vec<_> = amounts
+            .iter()
+            .filter(|sweep_amount| !sweep_amount.is_deposit)
+            .map(|&SweepAmounts { amount, max_fee, .. }| {
+                let (request, recipient) = make_withdrawal(amount, max_fee);
+                WithdrawalTriple { request, recipient, block_ref }
+            })
+            .collect();
+        withdrawals.sort_by_key(|w| w.request.qualified_id());
+
+        let genesis_block = model::StacksBlock {
+            block_hash: Faker.fake_with_rng(&mut OsRng),
+            block_height: 0,
+            parent_hash: StacksBlockId::first_mined().into(),
+            bitcoin_anchor: deposit_block_hash.into(),
+        };
+
+        let initial_state = genesis_block.clone();
+        let stacks_blocks = withdrawals
+            .iter()
+            .scan(initial_state, |parent_block, withdrawal| {
+                let child_block = model::StacksBlock {
+                    block_hash: withdrawal.request.block_hash,
+                    block_height: parent_block.block_height + 1,
+                    parent_hash: parent_block.block_hash,
+                    bitcoin_anchor: withdrawal.block_ref.block_hash,
+                };
+                *parent_block = child_block.clone();
+                Some(child_block)
+            });
+
+        let stacks_blocks: Vec<model::StacksBlock> = std::iter::once(genesis_block)
+            .chain(stacks_blocks)
+            .collect();
+
         let settings = Settings::new_from_default_config().unwrap();
         let client = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
         let deposits: Vec<(DepositInfo, utxo::DepositRequest, BitcoinTxInfo)> = deposits
@@ -691,7 +770,8 @@ impl TestSweepSetup2 {
             sweep_tx_info: None,
             donation,
             signers,
-            withdrawal_request,
+            stacks_blocks,
+            withdrawals,
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
         }
@@ -705,11 +785,10 @@ impl TestSweepSetup2 {
     }
 
     pub fn withdrawal_ids(&self) -> Vec<QualifiedRequestId> {
-        vec![QualifiedRequestId {
-            request_id: self.withdrawal_request.request_id,
-            txid: self.withdrawal_request.txid,
-            block_hash: self.withdrawal_request.block_hash,
-        }]
+        self.withdrawals
+            .iter()
+            .map(|withdrawal| withdrawal.request.qualified_id())
+            .collect()
     }
 
     pub fn sweep_block_hash(&self) -> Option<BitcoinBlockHash> {
@@ -719,13 +798,7 @@ impl TestSweepSetup2 {
     /// Store a stacks genesis block that is on the canonical Stacks
     /// blockchain identified by the sweep chain tip.
     pub async fn store_stacks_genesis_block(&self, db: &PgStore) {
-        let block = model::StacksBlock {
-            block_hash: Faker.fake_with_rng(&mut OsRng),
-            block_height: 0,
-            parent_hash: StacksBlockId::first_mined().into(),
-            bitcoin_anchor: self.deposit_block_hash.into(),
-        };
-        db.write_stacks_block(&block).await.unwrap();
+        db.write_stacks_block(&self.stacks_blocks[0]).await.unwrap();
     }
 
     /// During [`Self::new_setup`] we submitted a donation transaction that
@@ -760,17 +833,17 @@ impl TestSweepSetup2 {
     /// This function generates a sweep transaction that sweeps in the
     /// deposited funds and sweeps out the withdrawal funds in a proper
     /// sweep transaction, that is also confirmed on bitcoin.
-    pub fn submit_sweep_tx(&mut self, rpc: &Client, faucet: &Faucet, with_withdrawals: bool) {
+    pub fn submit_sweep_tx(&mut self, rpc: &Client, faucet: &Faucet) {
         // Okay now we try to peg-in the deposit by making a transaction.
         // Let's start by getting the signer's sole UTXO.
         let aggregated_signer = &self.signers.signer;
         let signer_utxo = aggregated_signer.get_utxos(rpc, None).pop().unwrap();
 
-        let withdrawals = if with_withdrawals {
-            vec![self.withdrawal_request.clone()]
-        } else {
-            Vec::new()
-        };
+        let withdrawals = self
+            .withdrawals
+            .iter()
+            .map(|withdrawal| withdrawal.request.clone())
+            .collect();
 
         let requests = SbtcRequests {
             deposits: self
@@ -812,7 +885,7 @@ impl TestSweepSetup2 {
 
         // Let's sweep in the transaction
         let block_hash = faucet.generate_blocks(1).pop().unwrap();
-        let block_height = rpc.get_block_header_info(&block_hash).unwrap().height as u64;
+        let block_header = rpc.get_block_header_info(&block_hash).unwrap();
 
         let settings = Settings::new_from_default_config().unwrap();
         let client = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
@@ -820,7 +893,8 @@ impl TestSweepSetup2 {
 
         self.sweep_tx_info = Some(SweepTxInfo {
             block_hash: block_hash.into(),
-            block_height,
+            block_height: block_header.height as u64,
+            parent_hash: block_header.previous_block_hash.unwrap().into(),
             tx_info,
         });
     }
@@ -844,7 +918,34 @@ impl TestSweepSetup2 {
             db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
         }
     }
-    /// Store the transaction that swept the deposit into the signers' UTXO
+
+    /// Store the rows in the `bitcoin_withdrawals_outputs` for the
+    /// withdrawals.
+    ///
+    /// This simulates the withdrawals successfully going through
+    /// validation, where we write to the `bitcoin_withdrawals_outputs`
+    /// table at the end.
+    pub async fn store_bitcoin_withdrawals_outputs(&self, db: &PgStore) {
+        let sweep = self.sweep_tx_info.as_ref().expect("no sweep tx info set");
+
+        for (index, withdrawal) in self.withdrawals.iter().enumerate() {
+            let swept_output = BitcoinWithdrawalOutput {
+                request_id: withdrawal.request.request_id,
+                stacks_txid: withdrawal.request.txid,
+                stacks_block_hash: withdrawal.request.block_hash,
+                bitcoin_chain_tip: sweep.block_hash,
+                is_valid_tx: true,
+                validation_result: WithdrawalValidationResult::Ok,
+                output_index: index as u32 + 2,
+                bitcoin_txid: sweep.tx_info.txid.into(),
+            };
+            db.write_bitcoin_withdrawals_outputs(&[swept_output])
+                .await
+                .unwrap();
+        }
+    }
+
+    /// Store the transaction that swept the deposits and/or withdrawals
     /// into the database
     pub async fn store_sweep_tx(&self, db: &PgStore) {
         let sweep = self.sweep_tx_info.as_ref().expect("no sweep tx info set");
@@ -861,6 +962,12 @@ impl TestSweepSetup2 {
             block_hash: sweep_tx.block_hash.into(),
         };
 
+        let block = BitcoinBlock {
+            block_hash: sweep.block_hash,
+            block_height: sweep.block_height,
+            parent_hash: sweep.parent_hash,
+        };
+        db.write_bitcoin_block(&block).await.unwrap();
         db.write_transaction(&sweep_tx).await.unwrap();
         db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
 
@@ -923,50 +1030,50 @@ impl TestSweepSetup2 {
     /// generate the corresponding deposit signer votes and store these
     /// decisions in the database.
     pub async fn store_withdrawal_decisions(&self, db: &PgStore) {
-        let withdrawal_signers: Vec<model::WithdrawalSigner> = self
-            .signers
-            .keys
-            .iter()
-            .copied()
-            .zip(self.withdrawal_request.signer_bitmap)
-            .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
-                request_id: self.withdrawal_request.request_id,
-                block_hash: self.withdrawal_request.block_hash,
-                txid: self.withdrawal_request.txid,
-                signer_pub_key,
-                is_accepted: !is_rejected,
-            })
-            .collect();
+        for withdrawal in self.withdrawals.iter() {
+            let withdrawal_signers: Vec<model::WithdrawalSigner> = self
+                .signers
+                .keys
+                .iter()
+                .copied()
+                .zip(withdrawal.request.signer_bitmap)
+                .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
+                    request_id: withdrawal.request.request_id,
+                    block_hash: withdrawal.request.block_hash,
+                    txid: withdrawal.request.txid,
+                    signer_pub_key,
+                    is_accepted: !is_rejected,
+                })
+                .collect();
 
-        for decision in withdrawal_signers {
-            db.write_withdrawal_signer_decision(&decision)
-                .await
-                .unwrap();
+            for decision in withdrawal_signers {
+                db.write_withdrawal_signer_decision(&decision)
+                    .await
+                    .unwrap();
+            }
         }
     }
 
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
-        let block = model::StacksBlock {
-            block_hash: self.withdrawal_request.block_hash,
-            block_height: Faker.fake_with_rng::<u32, _>(&mut OsRng) as u64,
-            parent_hash: Faker.fake_with_rng(&mut OsRng),
-            bitcoin_anchor: self.deposit_block_hash.into(),
-        };
-        db.write_stacks_block(&block).await.unwrap();
+        for stacks_block in self.stacks_blocks.iter() {
+            db.write_stacks_block(stacks_block).await.unwrap();
+        }
 
-        let withdrawal_request = model::WithdrawalRequest {
-            request_id: self.withdrawal_request.request_id,
-            txid: self.withdrawal_request.txid,
-            block_hash: self.withdrawal_request.block_hash,
-            recipient: self.withdrawal_request.clone().script_pubkey,
-            amount: self.withdrawal_request.amount,
-            max_fee: self.withdrawal_request.max_fee,
-            sender_address: self.withdrawal_sender.clone().into(),
-            bitcoin_block_height: block.block_height, // This should be set to the bitcoin block height.
-        };
-        db.write_withdrawal_request(&withdrawal_request)
-            .await
-            .unwrap();
+        for withdrawal in self.withdrawals.iter() {
+            let withdrawal_request = model::WithdrawalRequest {
+                request_id: withdrawal.request.request_id,
+                txid: withdrawal.request.txid,
+                block_hash: withdrawal.request.block_hash,
+                recipient: withdrawal.request.clone().script_pubkey,
+                amount: withdrawal.request.amount,
+                max_fee: withdrawal.request.max_fee,
+                sender_address: self.withdrawal_sender.clone().into(),
+                bitcoin_block_height: withdrawal.block_ref.block_height,
+            };
+            db.write_withdrawal_request(&withdrawal_request)
+                .await
+                .unwrap();
+        }
     }
 
     /// We need to have a row in the dkg_shares table for the scriptPubKey
@@ -1005,7 +1112,7 @@ impl TestSweepSetup2 {
             aggregate_key,
             signer_set_public_keys: self.signers.keys.clone(),
             signature_share_threshold: self.signatures_required,
-            dkg_shares_status: model::DkgSharesStatus::Verified,
+            dkg_shares_status: DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
             started_at_bitcoin_block_height: 0,
         };

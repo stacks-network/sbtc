@@ -5,6 +5,7 @@ use bitcoin::hashes::Hash as _;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
+use test_case::test_case;
 
 use sbtc::testing::regtest;
 use signer::bitcoin::utxo::SbtcRequests;
@@ -13,6 +14,7 @@ use signer::bitcoin::validation::BitcoinTxContext;
 use signer::bitcoin::validation::BitcoinTxValidationData;
 use signer::bitcoin::validation::InputValidationResult;
 use signer::bitcoin::validation::TxRequestIds;
+use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::context::Context;
 use signer::context::SbtcLimits;
 use signer::message::BitcoinPreSignRequest;
@@ -21,9 +23,12 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
+use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
-use crate::setup::{backfill_bitcoin_blocks, TestSignerSet};
-use crate::setup::{DepositAmounts, TestSweepSetup2};
+use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::SweepAmounts;
+use crate::setup::TestSignerSet;
+use crate::setup::TestSweepSetup2;
 
 const TEST_FEE_RATE: f64 = 10.0;
 
@@ -101,9 +106,10 @@ async fn one_tx_per_request_set() {
     ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let signers = TestSignerSet::new(&mut rng);
-    let amounts = [DepositAmounts {
+    let amounts = [SweepAmounts {
         amount: 1_000_000,
         max_fee: 500_000,
+        is_deposit: true,
     }];
 
     let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
@@ -197,13 +203,15 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: low_fee,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 
@@ -296,8 +304,54 @@ async fn one_invalid_deposit_invalidates_tx() {
     testing::storage::drop_db(db).await;
 }
 
+#[test_case(vec![
+    SweepAmounts {
+        amount: 700_000,
+        max_fee: 500_000,
+        is_deposit: true,
+    },
+    SweepAmounts {
+        amount: 1_000_000,
+        max_fee: 500_000,
+        is_deposit: false,
+    },
+]; "one-withdrawal-one-deposit")]
+#[test_case(vec![
+    SweepAmounts {
+        amount: 123_456,
+        max_fee: 50_000,
+        is_deposit: false,
+    },
+    SweepAmounts {
+        amount: 1_000_000,
+        max_fee: 500_000,
+        is_deposit: false,
+    },
+    SweepAmounts {
+        amount: 456_789,
+        max_fee: 900_000,
+        is_deposit: false,
+    },
+]; "three-withdrawals")]
+#[test_case(vec![
+    SweepAmounts {
+        amount: 123_456,
+        max_fee: 50_000,
+        is_deposit: true,
+    },
+    SweepAmounts {
+        amount: 1_000_000,
+        max_fee: 500_000,
+        is_deposit: false,
+    },
+    SweepAmounts {
+        amount: 456_789,
+        max_fee: 900_000,
+        is_deposit: false,
+    },
+]; "two-withdrawals-one-deposit")]
 #[tokio::test]
-async fn one_withdrawal_errors_validation() {
+async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -309,17 +363,9 @@ async fn one_withdrawal_errors_validation() {
         .with_mocked_emily_client()
         .build();
 
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
+
     let signers = TestSignerSet::new(&mut rng);
-    let amounts = [
-        DepositAmounts {
-            amount: 700_000,
-            max_fee: 500_000,
-        },
-        DepositAmounts {
-            amount: 1_000_000,
-            max_fee: 500_000,
-        },
-    ];
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
@@ -337,8 +383,19 @@ async fn one_withdrawal_errors_validation() {
     setup.store_withdrawal_request(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
-    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-    let chain_tip_block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
+    let chain_tip = faucet
+        .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS)
+        .pop()
+        .unwrap();
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    let chain_tip_ref = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
+    // Sanity check
+    assert_eq!(chain_tip, chain_tip_ref.block_hash.into());
 
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 
@@ -352,15 +409,147 @@ async fn one_withdrawal_errors_validation() {
     };
 
     let btc_ctx = BitcoinTxContext {
-        chain_tip: chain_tip_block.block_hash,
-        chain_tip_height: chain_tip_block.block_height,
+        chain_tip: chain_tip_ref.block_hash,
+        chain_tip_height: chain_tip_ref.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
     };
 
-    let result = request.construct_package_sighashes(&ctx, &btc_ctx).await;
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
 
-    assert!(result.is_err());
+    // There are a few invariants that we uphold for our validation data.
+    // These are things like "the transaction ID per package must be the
+    // same", we check for them here.
+    validation_data.assert_invariants();
+    // We only had a package with one set of requests that were being
+    // handled.
+    assert_eq!(validation_data.len(), 1);
+
+    let output_rows = validation_data[0].to_withdrawal_rows();
+    let num_withdrawals = amounts.iter().filter(|am| !am.is_deposit).count();
+    assert_eq!(output_rows.len(), num_withdrawals);
+    let iter = output_rows.iter().zip(setup.withdrawals.iter()).enumerate();
+
+    for (output_index, (row, withdrawal)) in iter {
+        assert_eq!(row.validation_result, WithdrawalValidationResult::Ok);
+        assert_eq!(row.request_id, withdrawal.request.request_id);
+        assert_eq!(row.stacks_block_hash, withdrawal.request.block_hash);
+        assert_eq!(row.stacks_txid, withdrawal.request.txid);
+        assert_eq!(row.output_index, output_index as u32 + 2);
+        assert!(row.is_valid_tx);
+    }
+
+    testing::storage::drop_db(db).await;
+}
+
+#[tokio::test]
+async fn swept_withdrawals_fail_validation() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
+
+    let signers = TestSignerSet::new(&mut rng);
+    let amounts = [SweepAmounts {
+        amount: 700_000,
+        max_fee: 500_000,
+        is_deposit: false,
+    }];
+
+    // When making assertions below, we need to make sure that we're
+    // comparing the right deposits transaction outputs, so we sort.
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+
+    setup.store_stacks_genesis_block(&db).await;
+    setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
+    setup.store_deposit_txs(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_deposit_decisions(&db).await;
+    // For the withdrawal
+    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_decisions(&db).await;
+
+    // Let's confirm a sweep transaction
+    setup.submit_sweep_tx(rpc, faucet);
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
+    setup.store_sweep_tx(&db).await;
+
+    // The sweep happened right away, even before the withdrawal request
+    // was final, so when we go to do validation without generated enough
+    // votes, it's possible that validation will fail for a reason that's
+    // different from what we're expecting.
+    let chain_tip = faucet
+        .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS)
+        .pop()
+        .unwrap();
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    let chain_tip_ref = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
+    let aggregate_key = setup.signers.signer.keypair.public_key().into();
+
+    let request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
+            deposits: setup.deposit_outpoints(),
+            withdrawals: setup.withdrawal_ids(),
+        }],
+        fee_rate: TEST_FEE_RATE,
+        last_fees: None,
+    };
+
+    let btc_ctx = BitcoinTxContext {
+        chain_tip: chain_tip_ref.block_hash,
+        chain_tip_height: chain_tip_ref.block_height,
+        signer_public_key: setup.signers.keys[0],
+        aggregate_key,
+    };
+
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
+
+    // There are a few invariants that we uphold for our validation data.
+    // These are things like "the transaction ID per package must be the
+    // same", we check for them here.
+    validation_data.assert_invariants();
+    // We only had a package with one set of requests that were being
+    // handled.
+    assert_eq!(validation_data.len(), 1);
+
+    let output_rows = validation_data[0].to_withdrawal_rows();
+    assert_eq!(output_rows.len(), 1);
+
+    let iter = output_rows.iter().zip(setup.withdrawals.iter()).enumerate();
+
+    for (output_index, (row, withdrawal)) in iter {
+        assert_eq!(
+            row.validation_result,
+            WithdrawalValidationResult::RequestFulfilled
+        );
+        assert_eq!(row.request_id, withdrawal.request.request_id);
+        assert_eq!(row.stacks_block_hash, withdrawal.request.block_hash);
+        assert_eq!(row.stacks_txid, withdrawal.request.txid);
+        assert_eq!(row.output_index, output_index as u32 + 2);
+        assert!(!row.is_valid_tx);
+    }
 
     testing::storage::drop_db(db).await;
 }
@@ -382,13 +571,15 @@ async fn cannot_sign_deposit_is_ok() {
     ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 700_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 
@@ -546,13 +737,15 @@ async fn sighashes_match_from_sbtc_requests_object() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 700_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 
@@ -678,21 +871,25 @@ async fn outcome_is_independent_of_input_order() {
 
     let signers = TestSignerSet::new(&mut rng);
     let amounts = [
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_500_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 700_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 1_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
-        DepositAmounts {
+        SweepAmounts {
             amount: 2_000_000,
             max_fee: 500_000,
+            is_deposit: true,
         },
     ];
 

@@ -75,7 +75,7 @@ use test_case::test_case;
 use test_log::test;
 
 use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::DepositAmounts;
+use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -392,7 +392,11 @@ async fn get_pending_deposit_requests_only_pending() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
-    let amounts = DepositAmounts { amount: 123456, max_fee: 12345 };
+    let amounts = SweepAmounts {
+        amount: 123456,
+        max_fee: 12345,
+        is_deposit: true,
+    };
     let signers = TestSignerSet::new(&mut rng);
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
@@ -444,7 +448,11 @@ async fn get_pending_withdrawal_requests_only_pending() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
-    let amounts = DepositAmounts { amount: 123456, max_fee: 12345 };
+    let amounts = SweepAmounts {
+        amount: 123456,
+        max_fee: 12345,
+        is_deposit: false,
+    };
     let signers = TestSignerSet::new(&mut rng);
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
