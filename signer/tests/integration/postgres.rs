@@ -2544,7 +2544,6 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
         .unwrap();
     assert_eq!(requests.len(), 1);
 
-
     db.write_withdrawal_accept_event(&event).await.unwrap();
 
     // Since we have corresponding withdrawal accept event query should return nothing
@@ -2775,6 +2774,8 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
         .await
         .unwrap();
 
+    // Creating new bitcoin block, withdrawal accept event will happen
+    // in stacks block ancored to this block
     let new_block = model::BitcoinBlock {
         block_hash: fake::Faker.fake_with_rng(&mut rng),
         block_height: bitcoin_block.block_height + 1,
@@ -2810,7 +2811,7 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
         .unwrap();
     assert_eq!(requests.len(), 0);
 
-    // Now assume we have a reorg: the new bitcoin chain is `sweep_block_hash`
+    // Now assume we have a reorg: the new bitcoin chain tip is `bitcoin_block`
     // and the accept withdrawal event is no longer in the canonical chain.
     // The withdrawal should no longer be confirmed.
     let requests = db
