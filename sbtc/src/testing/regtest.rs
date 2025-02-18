@@ -127,6 +127,7 @@ pub struct Faucet {
 }
 
 /// Helper struct for representing an address we control on bitcoin.
+#[derive(Debug, Clone)]
 pub struct Recipient {
     /// The public/private key pair
     pub keypair: secp256k1::Keypair,

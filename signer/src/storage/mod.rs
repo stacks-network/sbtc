@@ -197,6 +197,14 @@ pub trait DbRead {
         signature_threshold: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
+    /// Get pending rejected withdrawal requests that have failed but are not
+    /// rejected yet
+    fn get_pending_rejected_withdrawal_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        context_window: u16,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
+
     /// This function returns a withdrawal request report that does the
     /// following:
     ///
