@@ -17,6 +17,7 @@ use signer::config::Settings;
 use signer::stacks::api::StacksInteract;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall;
+use signer::stacks::contracts::AsTxPayload;
 use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
@@ -24,6 +25,7 @@ use signer::stacks::contracts::SMART_CONTRACTS;
 use signer::stacks::wallet::SignerWallet;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
+use signer::storage::model::StacksTxId;
 use signer::testing::wallet::ContractCallWrapper;
 use signer::util::ApiFallbackClient;
 use tokio::sync::OnceCell;
@@ -77,6 +79,22 @@ impl SignerStxState {
 
         match self.stacks_client.submit_tx(&tx).await.unwrap() {
             SubmitTxResponse::Acceptance(_) => (),
+            SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
+        }
+    }
+
+    /// Sign and submit an object that can be turned into the payload of a
+    /// Stacks transaction.
+    async fn sign_and_submit<P: AsTxPayload>(&self, payload: &P) -> StacksTxId {
+        let mut unsigned = MultisigTx::new_tx(payload, &self.wallet, TX_FEE);
+        for signature in make_signatures(unsigned.tx(), &self.keys) {
+            unsigned.add_signature(signature).unwrap();
+        }
+
+        let tx = unsigned.finalize_transaction();
+
+        match self.stacks_client.submit_tx(&tx).await.unwrap() {
+            SubmitTxResponse::Acceptance(txid) => txid.into(),
             SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
         }
     }
@@ -172,27 +190,18 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 #[tokio::test]
 async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: ContractCallWrapper<T>) {
     let signer = deploy_smart_contracts().await;
-    let mut unsigned = MultisigTx::new_tx(&contract, &signer.wallet, TX_FEE);
-
-    for signature in make_signatures(unsigned.tx(), &signer.keys) {
-        unsigned.add_signature(signature).unwrap();
-    }
-    let tx = unsigned.finalize_transaction();
 
     // We need to wait for the deployed contracts to be mined before we can
     // use them. Five seconds seems to be enough time for that to happen.
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
-    match signer.stacks_client.submit_tx(&tx).await.unwrap() {
-        SubmitTxResponse::Acceptance(_) => (),
-        SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
-    }
+    let txid = signer.sign_and_submit(&contract).await;
 
     // The submitted transaction tends to linger in the mempool for quite
     // some time before being confirmed in a Nakamoto block (best guess is
     // 5-10 minutes). It's not clear why this is the case.
     if true {
-        println!("{}", tx.txid());
+        println!("{}", txid);
         return;
     }
 
@@ -220,7 +229,7 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
         .collect::<Option<HashSet<_>>>()
         .unwrap();
 
-    assert!(txids.contains(&tx.txid()));
+    assert!(txids.contains(&txid));
 }
 
 #[ignore = "This is an integration test that requires a stacks-node to work"]
@@ -287,7 +296,7 @@ async fn is_deposit_completed_works() {
     let chain_tip_block_hash = rpc.get_best_block_hash().unwrap();
     let header = rpc.get_block_header_info(&chain_tip_block_hash).unwrap();
 
-    let contract = CompleteDepositV1 {
+    let complete_deposit = CompleteDepositV1 {
         outpoint,
         amount: 123654789,
         recipient: PrincipalData::parse("SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y").unwrap(),
@@ -296,17 +305,7 @@ async fn is_deposit_completed_works() {
         sweep_block_hash: BitcoinBlockHash::from(chain_tip_block_hash),
         sweep_block_height: header.height as u64,
     };
-    let mut unsigned = MultisigTx::new_tx(&contract, &signers.wallet, TX_FEE);
-
-    for signature in make_signatures(unsigned.tx(), &signers.keys) {
-        unsigned.add_signature(signature).unwrap();
-    }
-    let tx = unsigned.finalize_transaction();
-
-    match stacks_client.submit_tx(&tx).await.unwrap() {
-        SubmitTxResponse::Acceptance(_) => (),
-        SubmitTxResponse::Rejection(err) => panic!("{}", serde_json::to_string(&err).unwrap()),
-    }
+    let _txid = signers.sign_and_submit(&complete_deposit).await;
 
     // We sleep so that the block gets confirmed.
     tokio::time::sleep(Duration::from_secs(5)).await;
@@ -319,13 +318,14 @@ async fn is_deposit_completed_works() {
     assert_eq!(response, true);
 }
 
-
+/// This tests whether the `is_withdrawal_completed` function works when
+/// the smart contract has been completed with a rejection.
 #[ignore = "This is an integration test that requires a stacks-node to work"]
 #[tokio::test]
-async fn is_withdrawal_completed_works() {
+async fn is_withdrawal_completed_rejection_works() {
     let stacks_client = stacks_client();
     let stacks_client = stacks_client.get_client();
-    let _rpc = {
+    let rpc = {
         let username = regtest::BITCOIN_CORE_RPC_USERNAME.to_string();
         let password = regtest::BITCOIN_CORE_RPC_PASSWORD.to_string();
         let auth = bitcoincore_rpc::Auth::UserPass(username, password);
@@ -333,8 +333,41 @@ async fn is_withdrawal_completed_works() {
     };
 
     let signers = deploy_smart_contracts().await;
+    let chain_tip_info = rpc.get_chain_tips().unwrap().pop().unwrap();
 
-    // Make the request to the mock server
+    let mint_sbtc = ContractCallWrapper(CompleteDepositV1 {
+        outpoint: bitcoin::OutPoint::null(),
+        amount: 123654789,
+        recipient: PrincipalData::from(*testing::wallet::WALLET.0.address()),
+        deployer: *testing::wallet::WALLET.0.address(),
+        sweep_txid: BitcoinTxId::from([0; 32]),
+        sweep_block_hash: chain_tip_info.hash.into(),
+        sweep_block_height: chain_tip_info.height,
+    });
+
+    let _txid = signers.sign_and_submit(&mint_sbtc).await;
+
+    let start_withdrawal = ContractCallWrapper(InitiateWithdrawalRequest {
+        amount: 22500,
+        recipient: (0x00, vec![0; 20]),
+        max_fee: 3000,
+        deployer: *testing::wallet::WALLET.0.address(),
+    });
+
+    let _txid = signers.sign_and_submit(&start_withdrawal).await;
+
+    let reject_withdrawal = ContractCallWrapper(RejectWithdrawalV1 {
+        request_id: 1,
+        signer_bitmap: BitArray::ZERO,
+        deployer: *testing::wallet::WALLET.0.address(),
+    });
+
+    let _txid = signers.sign_and_submit(&reject_withdrawal).await;
+
+    // Wait for confirmation. The stacks node takes it's sweet time
+    // confirming transactions.
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
     let response = stacks_client
         .is_withdrawal_completed(signers.wallet.address(), 1)
         .await;
