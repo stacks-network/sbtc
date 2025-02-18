@@ -248,7 +248,7 @@ pub async fn get_deposits_for_recipient(
     operation_id = "getDepositsForReclaimPubkeys",
     path = "/deposit/reclaim-pubkeys/{reclaimPubkeys}",
     params(
-        ("reclaimPubkeys" = String, Path, description = "The comma-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script."),
+        ("reclaimPubkeys" = String, Path, description = "The dash-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
@@ -551,10 +551,10 @@ fn extract_reclaim_pubkeys_hash(reclaim_script: &ScriptBuf) -> Option<String> {
     .map(|mut pubkeys| sorted_sha256(&mut pubkeys))
 }
 
-/// Parse a comma-separated list of hex-encoded pubkeys into a Vec<[u8; 32]>.
+/// Parse a dash-separated list of hex-encoded pubkeys into a Vec<[u8; 32]>.
 fn validate_reclaim_pubkeys(reclaim_pubkeys: &str) -> Result<Vec<[u8; 32]>, Error> {
     reclaim_pubkeys
-        .split(',')
+        .split('-')
         .map(|s| {
             hex::decode(s)
                 .map_err(|_| {
@@ -643,12 +643,12 @@ mod tests {
     }
 
     #[test_case(""; "empty")]
-    #[test_case(","; "empty-commas")]
+    #[test_case("-"; "empty-dash")]
     #[test_case("invalid"; "invalid-pubkey")]
-    #[test_case("5da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c,"; "trailing-comma")]
+    #[test_case("5da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c-"; "trailing-dash")]
     #[test_case("a66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c"; "key-too-short")]
     #[test_case("035da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c"; "key-too-long")]
-    #[test_case("5da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c,invalid"; "multi-keys-one-too-long")]
+    #[test_case("5da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c-invalid"; "multi-keys-one-too-long")]
     #[tokio::test]
     async fn validate_reclaim_pubkeys_errors(input: &str) {
         let result = validate_reclaim_pubkeys(input);
@@ -659,7 +659,7 @@ mod tests {
     }
 
     #[test_case("5da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c", 1; "single-key")]
-    #[test_case("5da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c,883a1b3f430eefac5bed7aa0d428e267a558736346363cbfec6b0e321e31f453",2; "multi-keys")]
+    #[test_case("5da66963a375a1b994fbf695ddfa161954ffecdf67d80397650dcb4985f6a09c-883a1b3f430eefac5bed7aa0d428e267a558736346363cbfec6b0e321e31f453",2; "multi-keys")]
     #[tokio::test]
     async fn validate_reclaim_pubkeys_happy_path(input: &str, num_keys: usize) {
         let result = validate_reclaim_pubkeys(input);
@@ -697,10 +697,9 @@ mod tests {
             .iter()
             .map(|key| hex::encode(key))
             .collect::<Vec<String>>()
-            .join(",");
+            .join("-");
         let mut validated_pubkeys = validate_reclaim_pubkeys(&pubkeys_hex).unwrap();
         let query_pubkeys_hash = sorted_sha256(&mut validated_pubkeys);
-
         let user_script = match pubkeys.len() {
             1 => make_reclaim_script(pubkeys.first().unwrap()),
             _ => make_asigna_reclaim_script(&pubkeys),

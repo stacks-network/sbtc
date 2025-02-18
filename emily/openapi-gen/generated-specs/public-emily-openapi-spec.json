@@ -695,7 +695,7 @@
           {
             "name": "reclaimPubkeys",
             "in": "path",
-            "description": "The comma-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
+            "description": "The dash-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
             "required": true,
             "schema": {
               "type": "string"
@@ -794,7 +794,7 @@
           {
             "name": "reclaimPubkeys",
             "in": "path",
-            "description": "The comma-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
+            "description": "The dash-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
             "required": true,
             "schema": {
               "type": "string"
