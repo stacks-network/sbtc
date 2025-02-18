@@ -32,6 +32,7 @@ use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 use crate::MAX_REORG_BLOCK_COUNT;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -767,7 +768,7 @@ impl PgStore {
 
     /// Check whether the given block hash is a part of the stacks
     /// blockchain identified by the given chain-tip.
-    async fn in_canonical_stacks_blockchain(
+    pub async fn in_canonical_stacks_blockchain(
         &self,
         chain_tip: &model::StacksBlockHash,
         block_hash: &model::StacksBlockHash,
@@ -829,7 +830,7 @@ impl PgStore {
               , wr.amount
               , wr.max_fee
               , wr.recipient
-              , wr.block_height AS bitcoin_block_height
+              , wr.bitcoin_block_height
               , wr.block_hash   AS stacks_block_hash
               , sb.block_height AS stacks_block_height
             FROM sbtc_signer.withdrawal_requests AS wr
@@ -874,7 +875,7 @@ impl PgStore {
              AND bwo.stacks_block_hash = wr.block_hash
             JOIN sbtc_signer.bitcoin_transactions AS bt
               ON bt.txid = bwo.bitcoin_txid
-            JOIN sbtc_signer.bitcoin_blockchain_until($1, wr.block_height) AS bbu
+            JOIN sbtc_signer.bitcoin_blockchain_until($1, wr.bitcoin_block_height) AS bbu
               ON bbu.block_hash = bt.block_hash
             WHERE wr.request_id = $2
               AND wr.block_hash = $3
@@ -1229,37 +1230,6 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_accepted_deposit_requests(
-        &self,
-        signer: &PublicKey,
-    ) -> Result<Vec<model::DepositRequest>, Error> {
-        sqlx::query_as::<_, model::DepositRequest>(
-            r#"
-            SELECT
-                requests.txid
-              , requests.output_index
-              , requests.spend_script
-              , requests.reclaim_script
-              , requests.recipient
-              , requests.amount
-              , requests.max_fee
-              , requests.lock_time
-              , requests.signers_public_key
-              , requests.sender_script_pub_keys
-            FROM sbtc_signer.deposit_requests requests
-                 JOIN sbtc_signer.deposit_signers signers
-                   ON requests.txid = signers.txid
-                  AND requests.output_index = signers.output_index
-            WHERE
-                signers.signer_pub_key = $1
-            "#,
-        )
-        .bind(signer.serialize())
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn get_deposit_request_report(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -1486,7 +1456,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-              , wr.block_height
+              , wr.bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc USING (block_hash)
             LEFT JOIN sbtc_signer.withdrawal_signers AS ws
@@ -1562,7 +1532,7 @@ impl super::DbRead for PgStore {
               , wr.amount
               , wr.max_fee
               , wr.sender_address
-              , wr.block_height
+              , wr.bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests wr
             JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
             JOIN sbtc_signer.withdrawal_signers signers ON
@@ -1579,6 +1549,110 @@ impl super::DbRead for PgStore {
         .bind(stacks_chain_tip.block_hash)
         .bind(i32::from(context_window))
         .bind(i64::from(threshold))
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_pending_rejected_withdrawal_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        context_window: u16,
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
+        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(&chain_tip.block_hash).await? else {
+            return Ok(Vec::new());
+        };
+
+        let expiration_height = chain_tip
+            .block_height
+            .saturating_sub(WITHDRAWAL_BLOCKS_EXPIRY);
+
+        sqlx::query_as::<_, model::WithdrawalRequest>(
+            r#"
+            -- get_pending_rejected_withdrawal_requests
+            WITH RECURSIVE bitcoin_blockchain AS (
+                SELECT
+                    block_hash
+                  , block_height
+                FROM bitcoin_blockchain_of($1, $2)
+            ),
+            stacks_context_window AS (
+                SELECT
+                    stacks_blocks.block_hash
+                  , stacks_blocks.block_height
+                  , stacks_blocks.parent_hash
+                FROM sbtc_signer.stacks_blocks stacks_blocks
+                WHERE stacks_blocks.block_hash = $3
+
+                UNION ALL
+
+                SELECT
+                    parent.block_hash
+                  , parent.block_height
+                  , parent.parent_hash
+                FROM sbtc_signer.stacks_blocks parent
+                JOIN stacks_context_window last
+                  ON parent.block_hash = last.parent_hash
+                -- Limit the recursion to the bitcoin context window height. We
+                -- are not joining directly on `bitcoin_blockchain` as once we
+                -- get the stacks chain tip considering its anchor block, then
+                -- we can just walk backwards.
+                JOIN sbtc_signer.bitcoin_blocks block
+                  ON block.block_hash = parent.bitcoin_anchor
+                WHERE block.block_height >= (SELECT MIN(block_height) FROM bitcoin_blockchain)
+            )
+            SELECT
+                wr.request_id
+              , wr.txid
+              , wr.block_hash
+              , wr.recipient
+              , wr.amount
+              , wr.max_fee
+              , wr.sender_address
+              , wr.bitcoin_block_height
+            FROM sbtc_signer.withdrawal_requests wr
+            -- Request confirmed on stacks chain
+            JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
+            -- Request not accepted
+            LEFT JOIN sbtc_signer.bitcoin_withdrawals_outputs AS bwo
+                ON bwo.request_id = wr.request_id
+                AND bwo.stacks_block_hash = wr.block_hash
+            LEFT JOIN bitcoin_transactions AS bc_trx
+                ON bc_trx.txid = bwo.bitcoin_txid
+            LEFT JOIN bitcoin_blockchain
+                ON bc_trx.block_hash = bitcoin_blockchain.block_hash
+            -- Request not rejected
+            LEFT JOIN withdrawal_reject_events AS wre
+                ON wre.request_id = wr.request_id
+            LEFT JOIN stacks_context_window sc2
+                ON wre.block_hash = sc2.block_hash
+            -- Request is expired
+            WHERE wr.bitcoin_block_height < $4
+
+            -- we need to group since we could have multiple withdrawals 
+            -- outputs for a single request, and some of them may not be in
+            -- the canonical chain, resulting in a NULL bc_trx.block_hash;
+            -- so we group and check that all the rows have NULL
+            GROUP BY
+                wr.request_id
+              , wr.txid
+              , wr.block_hash
+              , wr.recipient
+              , wr.amount
+              , wr.max_fee
+              , wr.sender_address
+              , wr.bitcoin_block_height
+            HAVING
+                -- Request not accepted (cont'd)
+                COUNT(bitcoin_blockchain.block_height) = 0
+                -- Request not rejected (cont'd)
+            AND COUNT(sc2.block_hash) = 0
+            "#,
+        )
+        .bind(chain_tip.block_hash)
+        .bind(i32::from(context_window))
+        .bind(stacks_chain_tip.block_hash)
+        .bind(i64::try_from(expiration_height).map_err(Error::ConversionDatabaseInt)?)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -1620,7 +1694,7 @@ impl super::DbRead for PgStore {
             is_accepted: summary.is_accepted,
             recipient: summary.recipient.into(),
             status,
-            block_height: summary.bitcoin_block_height,
+            bitcoin_block_height: summary.bitcoin_block_height,
         }))
     }
 
@@ -2395,7 +2469,7 @@ impl super::DbWrite for PgStore {
               , amount
               , max_fee
               , sender_address
-              , block_height
+              , bitcoin_block_height
               )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT DO NOTHING",
@@ -2407,7 +2481,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&request.sender_address)
-        .bind(i64::try_from(request.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(request.bitcoin_block_height).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

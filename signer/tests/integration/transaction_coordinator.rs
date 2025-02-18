@@ -24,6 +24,7 @@ use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use clarity::types::chainstate::StacksAddress;
+use clarity::types::chainstate::StacksBlockId;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
 use clarity::vm::Value as ClarityValue;
@@ -107,9 +108,11 @@ use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::AsBlockRef as _;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
+use crate::setup::WithdrawalTriple;
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
 use crate::zmq::BITCOIN_CORE_ZMQ_ENDPOINT;
@@ -1606,7 +1609,7 @@ async fn sign_bitcoin_transaction() {
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -2044,7 +2047,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
 
     assert_eq!(deposit_tx.compute_txid(), deposit_request.outpoint.txid);
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     let _ = deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -2170,7 +2173,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         make_deposit_request(&depositor2, amount, utxo, max_fee, signers_public_key2);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -2183,7 +2186,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         make_deposit_request(&depositor1, amount, utxo, max_fee, signers_public_key1);
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
-    let body = deposit_request.as_emily_request();
+    let body = deposit_request.as_emily_request(&deposit_tx);
     deposit_api::create_deposit(emily_client.config(), body)
         .await
         .unwrap();
@@ -3024,6 +3027,7 @@ fn create_test_setup(
     rpc.send_raw_transaction(&deposit_tx).unwrap();
 
     let deposit_block_hash = faucet.generate_blocks(1).pop().unwrap();
+    let block_header = rpc.get_block_header_info(&deposit_block_hash).unwrap();
     let tx_info = bitcoin_client
         .get_tx_info(&deposit_tx.compute_txid(), &deposit_block_hash)
         .unwrap()
@@ -3033,13 +3037,25 @@ fn create_test_setup(
         // We don't use `signer`
         signer: Recipient::new(AddressType::P2tr),
     };
+    let (request, recipient) = generate_withdrawal();
+    let stacks_block = model::StacksBlock {
+        block_hash: Faker.fake_with_rng(&mut OsRng),
+        block_height: 0,
+        parent_hash: StacksBlockId::first_mined().into(),
+        bitcoin_anchor: deposit_block_hash.into(),
+    };
     TestSweepSetup2 {
         deposit_block_hash,
         deposits: vec![(deposit_info, deposit_request, tx_info)],
         sweep_tx_info: None,
         donation,
+        stacks_blocks: vec![stacks_block],
         signers: test_signers,
-        withdrawal_request: generate_withdrawal().0,
+        withdrawals: vec![WithdrawalTriple {
+            request,
+            recipient,
+            block_ref: block_header.as_block_ref(),
+        }],
         withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
         signatures_required,
     }

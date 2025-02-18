@@ -8,4 +8,4 @@ ALTER TABLE sbtc_signer.withdrawal_requests
 -- The block height of the bitcoin blockchain when the stacks
 -- transaction that emitted this event was executed.
 ALTER TABLE sbtc_signer.withdrawal_requests
-    ADD COLUMN block_height BIGINT NOT NULL;
+    ADD COLUMN bitcoin_block_height BIGINT NOT NULL;
