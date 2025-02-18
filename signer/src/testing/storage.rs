@@ -4,7 +4,9 @@ use std::future::Future;
 use std::time::Duration;
 
 use crate::error::Error;
-use crate::storage::model::{BitcoinBlock, BitcoinBlockHash, StacksBlock, StacksBlockHash};
+use crate::storage::model::{
+    BitcoinBlock, BitcoinBlockHash, BitcoinBlockRef, StacksBlock, StacksBlockHash,
+};
 use crate::storage::postgres::PgStore;
 use crate::storage::{DbRead, DbWrite};
 
@@ -203,7 +205,7 @@ pub trait DbReadExt {
     /// database.
     fn get_chain_tips_unchecked(
         &self,
-    ) -> impl Future<Output = (BitcoinBlockHash, StacksBlockHash)> + Send;
+    ) -> impl Future<Output = (BitcoinBlockRef, StacksBlockHash)> + Send;
 }
 
 /// Implement the [`DbWriteExt`] trait for all types that implement [`DbWrite`].
@@ -265,15 +267,15 @@ impl<T> DbReadExt for T
 where
     T: DbRead + Send + Sync + 'static,
 {
-    async fn get_chain_tips_unchecked(&self) -> (BitcoinBlockHash, StacksBlockHash) {
+    async fn get_chain_tips_unchecked(&self) -> (BitcoinBlockRef, StacksBlockHash) {
         let bitcoin_tip = self
-            .get_bitcoin_canonical_chain_tip()
+            .get_bitcoin_canonical_chain_tip_ref()
             .await
             .expect("db error: error when retrieving bitcoin chain tip")
             .expect("no bitcoin chain tip found");
 
         let stacks_tip = self
-            .get_stacks_chain_tip(&bitcoin_tip)
+            .get_stacks_chain_tip(&bitcoin_tip.block_hash)
             .await
             .expect("db error: error when retrieving stacks chain tip")
             .expect("no stacks chain tip found")

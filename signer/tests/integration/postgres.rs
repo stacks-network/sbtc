@@ -4582,6 +4582,10 @@ mod get_pending_accepted_withdrawal_requests {
         signer::testing::storage::drop_db(db).await;
     }
 
+    // TODO:
+    // - Not enough confirmations
+    // - Expired requests
+
     /// Asserts that we only return requests that have been accepted by the
     /// required number of signers. This test creates one valid withdrawal
     /// request with no votes.
@@ -4747,7 +4751,7 @@ mod get_pending_accepted_withdrawal_requests {
         let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
 
         // Assert that the chain tips are what we expect.
-        assert_eq!(&bitcoin_chain_tip, &bitcoin_3a.block_hash);
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
 
         // Give all requests enough 'yes' votes.
@@ -4766,7 +4770,7 @@ mod get_pending_accepted_withdrawal_requests {
         // get requests on the canonical chains.
         let mut requests = db
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip,
+                bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
                 context_window,
                 signature_threshold,
@@ -4877,7 +4881,7 @@ mod get_pending_accepted_withdrawal_requests {
     ///          └────────┘
     /// ```
     #[tokio::test]
-    async fn requests_swept_on_orphaned_chain_are_returned() {
+    async fn returns_request_swept_in_orphaned_bitcoin_block() {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
@@ -4900,7 +4904,7 @@ mod get_pending_accepted_withdrawal_requests {
 
         // Get our chain tips and assert they're what we expect.
         let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
-        assert_eq!(&bitcoin_chain_tip, &bitcoin_3a.block_hash);
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_1.block_hash);
 
         // Create and store a withdrawal request confirmed in block 1 (both
@@ -4911,7 +4915,7 @@ mod get_pending_accepted_withdrawal_requests {
         // should get it back here.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip,
+                bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
                 context_window,
                 signature_threshold,
@@ -4927,7 +4931,7 @@ mod get_pending_accepted_withdrawal_requests {
         // orphaned bitcoin block, so we should get it back here.
         let mut requests = db
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip,
+                bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
                 context_window,
                 signature_threshold,
@@ -4938,7 +4942,8 @@ mod get_pending_accepted_withdrawal_requests {
         assert_eq!(requests.pop().unwrap(), request);
     }
 
-    /// TODO: Describe me.
+    /// Asserts that a single request is not returned if it is swept in any
+    /// canonical bitcoin block, despite also being swept in orphaned block(s).
     ///
     /// This test creates blockchains with the following structure:
     ///
@@ -4958,7 +4963,7 @@ mod get_pending_accepted_withdrawal_requests {
     ///                      └────────┘
     /// ```
     #[tokio::test]
-    async fn request_with_multiple_sweeps_on_different_bitcoin_forks() {
+    async fn does_not_return_request_swept_in_both_canonical_and_orphaned_blocks() {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
@@ -4984,7 +4989,7 @@ mod get_pending_accepted_withdrawal_requests {
 
         // Get our chain tips and assert they're what we expect.
         let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
-        assert_eq!(&bitcoin_chain_tip, &bitcoin_3a.block_hash);
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
 
         // Create and store a withdrawal request confirmed in block 1 (both
@@ -4996,22 +5001,25 @@ mod get_pending_accepted_withdrawal_requests {
         // Sweep the request on the orphaned chain (B2b).
         sweep_withdrawal_request(&db, &request, &bitcoin_2b.block_hash).await;
 
-        // The request confirmed in the canonical chain and swept in an
-        // orphaned bitcoin block, so we should get it back here.
-        let mut requests = db
+        // The request is both confirmed (B1) and swept (B2a) in the canonical
+        // bitcoin chain. It is also swept in an orphaned block (B2b). The query
+        // should not return the request as it is considered swept due to B2a.
+        let requests = db
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip,
+                bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
                 context_window,
                 signature_threshold,
             )
             .await
             .expect("failed to query db");
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests.pop().unwrap(), request);
+        assert_eq!(requests.len(), 0);
     }
 
-    /// TODO: Describe me.
+    /// Asserts that, for two requests with the same `request_id` confirmed in
+    /// both a canonical and orphaned stacks block, that only the request
+    /// confirmed in the canonical stacks block is returned. Both stacks blocks
+    /// are anchored to the same bitcoin block in the canonical bitcoin chain.
     ///
     /// This test creates blockchains with the following structure:
     ///
@@ -5051,21 +5059,20 @@ mod get_pending_accepted_withdrawal_requests {
 
         // Get our chain tips and assert they're what we expect.
         let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
-        assert_eq!(&bitcoin_chain_tip, &bitcoin_1.block_hash);
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_1.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
 
         // Create withdrawal requests in both stacks forks using the same `request_id`.
-        // The requests are both in blocks anchored to the same canonical bitcoin block,
-        // but in different stacks forks. Only the request in the canonical chain should
-        // be returned.
         let expected =
             store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_2a, &[true, true]).await;
         store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_2b, &[true, true]).await;
 
-        // Get the pending requests.
+        // Get the pending requests. The requests are both in blocks anchored to
+        // the same canonical bitcoin block, but in different stacks forks. Only
+        // the request in the canonical chain should be returned.
         let mut requests = db
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip,
+                bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
                 context_window,
                 signature_threshold,

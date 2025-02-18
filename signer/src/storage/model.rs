@@ -89,6 +89,12 @@ pub struct BitcoinBlock {
     pub parent_hash: BitcoinBlockHash,
 }
 
+impl AsRef<BitcoinBlockHash> for BitcoinBlock {
+    fn as_ref(&self) -> &BitcoinBlockHash {
+        &self.block_hash
+    }
+}
+
 impl From<&bitcoin::Block> for BitcoinBlock {
     fn from(block: &bitcoin::Block) -> Self {
         BitcoinBlock {

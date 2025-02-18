@@ -618,9 +618,6 @@ pub struct TestSweepSetup2 {
     /// The withdrawal request, and a bitmap for how the signers voted on
     /// it.
     pub withdrawal_request: utxo::WithdrawalRequest,
-    /// Withdrawal requests that have been submitted, including a bitmap
-    /// for how the signers voted on it.
-    pub withdrawal_requests: Vec<utxo::WithdrawalRequest>,
     /// The address that initiated with withdrawal request.
     pub withdrawal_sender: PrincipalData,
     /// The signer object. It's public key represents the group of signers'
@@ -705,7 +702,6 @@ impl TestSweepSetup2 {
             donation,
             signers,
             withdrawal_request,
-            withdrawal_requests: Vec::new(),
             withdrawal_sender: PrincipalData::from(StacksAddress::burn_address(false)),
             signatures_required: 2,
         }

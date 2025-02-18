@@ -1571,13 +1571,14 @@ impl super::DbRead for PgStore {
                 AND bwo.stacks_block_hash = wr.block_hash
             LEFT JOIN sbtc_signer.bitcoin_transactions bt
                 ON bt.txid = bwo.bitcoin_txid
-            LEFT JOIN bitcoin_blockchain AS bb
-                ON bt.block_hash = bb.block_hash
+            LEFT JOIN bitcoin_blockchain AS canonical_sweep
+                ON bt.block_hash = canonical_sweep.block_hash
             WHERE
                 signers.is_accepted
-                AND bb.block_hash IS NULL
             GROUP BY wr.request_id, wr.block_hash, wr.txid
-            HAVING COUNT(wr.request_id) >= $4
+            HAVING 
+                COUNT(wr.request_id) >= $4
+                AND COUNT(canonical_sweep.block_hash) = 0
             ORDER BY wr.request_id ASC
             "#,
         )
