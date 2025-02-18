@@ -119,7 +119,6 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     signer
 }
 
-#[ignore]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654789,

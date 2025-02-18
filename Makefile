@@ -125,8 +125,17 @@ devenv-no-sbtc-down:
 devenv-up:
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
 
+devenv-clean-headers:
+	docker run --rm -v docker_stacks-node-data:/data busybox rm /data/nakamoto-neon/headers.sqlite
+
+devenv-up-fast: devenv-clean-headers
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
+
 devenv-down:
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0 -v
+
+devenv-down-fast:
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0
 
 devenv-sbtc-up:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build -d
@@ -137,7 +146,8 @@ devenv-sbtc-down:
 devenv-sbtc-build:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer build
 
-.PHONY: devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down devenv-sbtc-build
+.PHONY: devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down devenv-sbtc-build devenv-clean-headers devenv-up-fast devenv-down-fast
+
 
 # ##############################################################################
 # EMILY
