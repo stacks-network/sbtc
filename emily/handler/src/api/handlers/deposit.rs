@@ -1,6 +1,6 @@
 //! Handlers for Deposit endpoints.
+use crate::api::models::common::requests::BasicPaginationQuery;
 use crate::api::models::common::Status;
-use crate::api::models::deposit::requests::BasicPaginationQuery;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };
