@@ -1969,24 +1969,24 @@ impl super::DbRead for PgStore {
             "
                 WITH RECURSIVE bitcoin_blockchain AS (
                     SELECT
-                        block_hash,
-                        block_height
+                        block_hash
+                      , block_height
                     FROM bitcoin_blockchain_of($1, $2)
                 ),
                 stacks_blockchain AS (
                     SELECT
-                        stacks_blocks.block_hash,
-                        stacks_blocks.block_height,
-                        stacks_blocks.parent_hash
+                        stacks_blocks.block_hash
+                      , stacks_blocks.block_height
+                      , stacks_blocks.parent_hash
                     FROM sbtc_signer.stacks_blocks stacks_blocks
                     JOIN bitcoin_blockchain AS bb
                         ON bb.block_hash = stacks_blocks.bitcoin_anchor
                     WHERE stacks_blocks.block_hash = $3
                     UNION ALL
                     SELECT
-                        parent.block_hash,
-                        parent.block_height,
-                        parent.parent_hash
+                        parent.block_hash
+                      , parent.block_height
+                      , parent.parent_hash
                     FROM sbtc_signer.stacks_blocks parent
                     JOIN stacks_blockchain last
                         ON parent.block_hash = last.parent_hash
@@ -1994,16 +1994,16 @@ impl super::DbRead for PgStore {
                         ON bb.block_hash = parent.bitcoin_anchor
                 )
                 SELECT
-                    bwo.bitcoin_txid AS sweep_txid,
-                    bc_blocks.block_hash AS sweep_block_hash,
-                    bc_blocks.block_height AS sweep_block_height,
-                    wr.request_id,
-                    wr.txid,
-                    wr.block_hash AS block_hash,
-                    wr.recipient,
-                    wr.amount,
-                    wr.max_fee,
-                    wr.sender_address
+                    bwo.bitcoin_txid AS sweep_txid
+                  , bc_blocks.block_hash AS sweep_block_hash
+                  , bc_blocks.block_height AS sweep_block_height
+                  , wr.request_id
+                  , wr.txid
+                  , wr.block_hash AS block_hash
+                  , wr.recipient
+                  , wr.amount
+                  , wr.max_fee
+                  , wr.sender_address
                 FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
                 JOIN sbtc_signer.bitcoin_transactions AS bt
                     ON bt.txid = bwo.bitcoin_txid
@@ -2019,16 +2019,16 @@ impl super::DbRead for PgStore {
                 WHERE sb.block_hash IS NULL
 
                 GROUP BY
-                    bwo.bitcoin_txid,
-                    bc_blocks.block_hash,
-                    bc_blocks.block_height,
-                    wr.request_id,
-                    wr.txid,
-                    wr.block_hash,
-                    wr.recipient,
-                    wr.amount,
-                    wr.max_fee,
-                    wr.sender_address
+                    bwo.bitcoin_txid
+                  , bc_blocks.block_hash
+                  , bc_blocks.block_height
+                  , wr.request_id
+                  , wr.txid
+                  , wr.block_hash
+                  , wr.recipient
+                  , wr.amount
+                  , wr.max_fee
+                  , wr.sender_address
 
                 HAVING
                     COUNT(sb.block_hash) = 0
