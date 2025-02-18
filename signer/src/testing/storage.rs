@@ -154,6 +154,18 @@ pub async fn wait_for_dkg(db: &PgStore, count: u32) {
 /// testing purposes.
 pub trait DbWriteExt {
     /// Helper function to write multiple stacks blocks to the database.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbWriteExt;
+    /// # use crate::storage::model::BitcoinBlock;
+    /// # use crate::storage::model::StacksBlock;
+    ///
+    /// db.write_bitcoin_blocks(
+    ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+    /// )
+    /// .await?;
+    /// ```
     fn write_bitcoin_blocks<'a, I>(
         &self,
         blocks: I,
@@ -163,6 +175,18 @@ pub trait DbWriteExt {
         I::IntoIter: Send + Sync;
 
     /// Helper function to write multiple stacks blocks to the database.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbWriteExt;
+    /// # use crate::storage::model::BitcoinBlock;
+    /// # use crate::storage::model::StacksBlock;
+    ///
+    /// db.write_stacks_blocks(
+    ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+    /// )
+    /// .await?;
+    /// ```
     fn write_stacks_blocks<'a, I>(
         &self,
         blocks: I,
@@ -173,6 +197,19 @@ pub trait DbWriteExt {
 
     /// Helper function to write multiple bitcoin and stacks blocks to the
     /// database.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbWriteExt;
+    /// # use crate::storage::model::BitcoinBlock;
+    /// # use crate::storage::model::StacksBlock;
+    ///
+    /// db.write_blocks(
+    ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+    ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+    /// )
+    /// .await?;
+    /// ```
     fn write_blocks<'a, IB, IS>(
         &self,
         bitcoin_blocks: IB,
@@ -186,6 +223,19 @@ pub trait DbWriteExt {
 
     /// Helper function to write multiple bitcoin blocks to the database and
     /// panics on the first error.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbWriteExt;
+    /// # use crate::storage::model::BitcoinBlock;
+    /// # use crate::storage::model::StacksBlock;
+    ///
+    /// db.write_blocks_unchecked(
+    ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+    ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+    /// )
+    /// .await;
+    /// ```
     fn write_blocks_unchecked<'a, IB, IS>(
         &self,
         bitcoin_blocks: IB,
@@ -203,6 +253,13 @@ pub trait DbWriteExt {
 pub trait DbReadExt {
     /// Helper function to get both bitcoin and stacks chain tips from the
     /// database.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbReadExt;
+    ///
+    /// let (bitcoin_tip, stacks_tip) = db.get_chain_tips_unchecked().await;
+    /// ```
     fn get_chain_tips_unchecked(
         &self,
     ) -> impl Future<Output = (BitcoinBlockRef, StacksBlockHash)> + Send;

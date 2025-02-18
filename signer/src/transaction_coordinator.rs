@@ -616,6 +616,7 @@ where
             tracing::debug!("no requests to handle; skipping this round");
             return Ok(());
         };
+
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
@@ -1622,7 +1623,7 @@ where
         // If we didn't find any pending withdrawal requests, we can exit early.
         if pending_withdraw_requests.is_empty() {
             tracing::debug!("no pending withdrawal requests eligible for consideration found");
-            return Ok(Vec::new());
+            return Ok(eligible_withdrawals);
         }
 
         // Iterate over the pending withdrawal requests we fetched above and
@@ -1734,7 +1735,7 @@ where
         DB: DbRead,
     {
         tracing::debug!("fetching eligible deposit requests");
-        let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
+        let mut eligible_deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         // First, we fetch pending deposit requests with initial filtering
         // done by the storage layer.
@@ -1746,6 +1747,12 @@ where
             )
             .await?;
 
+        // If there are no pending deposit requests, we can exit early.
+        if pending_deposit_requests.is_empty() {
+            tracing::debug!("no pending deposit requests eligible for consideration found");
+            return Ok(eligible_deposits);
+        }
+
         // Iterate through each deposit request, fetch its _actual_ votes from
         // storage and
         for req in pending_deposit_requests {
@@ -1754,10 +1761,10 @@ where
                 .await?;
 
             let deposit = utxo::DepositRequest::from_model(req, votes);
-            deposits.push(deposit);
+            eligible_deposits.push(deposit);
         }
 
-        Ok(deposits)
+        Ok(eligible_deposits)
     }
 
     /// Fetches pending deposit and withdrawal requests from storage and filters

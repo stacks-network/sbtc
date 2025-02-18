@@ -10,6 +10,88 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
 
+/// Represents a naive, sequential chain of bitcoin blocks and provides basic
+/// functionality for manipulation. Does not handle forks/branches.
+pub struct BitcoinChain(Vec<BitcoinBlock>);
+
+impl<'a> IntoIterator for &'a BitcoinChain {
+    type Item = &'a BitcoinBlock;
+    type IntoIter = std::slice::Iter<'a, BitcoinBlock>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+/// Note: the `Default` derive generates `BitcoinChain(vec![])`, which is
+/// not a valid state.
+impl Default for BitcoinChain {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl BitcoinChain {
+    /// Generate a new chain of bitcoin blocks with a single genesis block.
+    ///
+    /// The first block is created with [`BitcoinBlock::new_genesis()`] and will
+    /// have a height of 0 and a parent hash of all zeroes. Each subsequent
+    /// block will have a height one greater than the previous block and a
+    /// parent hash equal to the hash of the previous block.
+    pub fn new() -> Self {
+        Self(vec![BitcoinBlock::new_genesis()])
+    }
+
+    /// Generate a new chain of bitcoin blocks with a length equal to `length`.
+    ///
+    /// See [`Self::new()`] for more information on how the blocks are
+    /// generated.
+    pub fn new_with_length(length: usize) -> Self {
+        let mut chain = Self::new();
+        chain.generate_blocks(length.saturating_sub(1));
+        chain
+    }
+
+    /// Generate a chain of `length` bitcoin blocks, descending from the last
+    /// block in the chain.
+    ///
+    /// Each block will have a height one greater than the previous block and a
+    /// parent hash equal to the hash of the previous block.
+    ///
+    /// Returns a vector of references to the newly generated blocks.
+    pub fn generate_blocks(&mut self, length: usize) -> Vec<&BitcoinBlock> {
+        for _ in 0..length {
+            let last_block = self.0.last().unwrap();
+            let new_block = last_block.new_child();
+            self.0.push(new_block);
+        }
+
+        self.0[(self.0.len() - length)..].iter().collect()
+    }
+
+    /// Gets the first block in the chain.
+    pub fn first_block(&self) -> &BitcoinBlock {
+        self.0.first().unwrap()
+    }
+
+    /// Gets the last block in the chain.
+    pub fn chain_tip(&self) -> &BitcoinBlock {
+        self.0.last().unwrap()
+    }
+
+    /// Gets the nth block in the chain, if it exists.
+    pub fn nth_block(&self) -> Option<&BitcoinBlock> {
+        self.0.get(1)
+    }
+
+    /// Gets the nth block in the chain, panicking if it does not exist.
+    pub fn nth_block_unchecked(&self) -> &BitcoinBlock {
+        self.0
+            .get(1)
+            .expect("no nth bitcoin block (index out of range)")
+    }
+}
+
 impl BitcoinBlock {
     /// Create a new bitcoin block with the following properties:
     /// - block_hash: random
@@ -33,29 +115,6 @@ impl BitcoinBlock {
             block_height: self.block_height + 1,
             parent_hash: self.block_hash,
         }
-    }
-
-    /// Generate a new chain of bitcoin blocks with the given length.
-    ///
-    /// The first block is created with [`Self::new_genesis()`] and will have a
-    /// height of 0 and a parent hash of all zeroes. Each subsequent block will
-    /// have a height one greater than the previous block and a parent hash
-    /// equal to the hash of the previous block.
-    pub fn new_chain(length: usize) -> Vec<Self> {
-        let genesis = Self::new_genesis();
-        genesis.generate_descendant_chain(length)
-    }
-
-    /// Generate a chain of bitcoin blocks with the given length, descending
-    /// from this block. The chain will start with this block as the genesis
-    /// block and each subsequent block will be a child of the previous block
-    /// with its height incremented by one.
-    pub fn generate_descendant_chain(&self, length: usize) -> Vec<BitcoinBlock> {
-        let mut chain = vec![self.clone()];
-        for _ in 0..length {
-            chain.push(chain.last().unwrap().new_child());
-        }
-        chain
     }
 }
 
