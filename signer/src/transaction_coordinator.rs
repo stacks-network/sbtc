@@ -332,7 +332,7 @@ where
         // If we are not the coordinator, then we have no business
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
-        if !self.is_coordinator(&bitcoin_chain_tip.block_hash, &signer_public_keys) {
+        if !self.is_coordinator(bitcoin_chain_tip.as_ref(), &signer_public_keys) {
             // Before returning, we also check if all the smart contracts are
             // deployed: we do this as some other coordinator could have deployed
             // them, in which case we need to updated our state.
@@ -349,15 +349,15 @@ where
         let should_coordinate_dkg =
             should_coordinate_dkg(&self.context, &bitcoin_chain_tip).await?;
         let aggregate_key = if should_coordinate_dkg {
-            self.coordinate_dkg(&bitcoin_chain_tip.block_hash).await?
+            self.coordinate_dkg(bitcoin_chain_tip.as_ref()).await?
         } else {
             maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
         };
 
-        self.deploy_smart_contracts(&bitcoin_chain_tip.block_hash, &aggregate_key)
+        self.deploy_smart_contracts(bitcoin_chain_tip.as_ref(), &aggregate_key)
             .await?;
 
-        self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip.block_hash, &aggregate_key)
+        self.check_and_submit_rotate_key_transaction(bitcoin_chain_tip.as_ref(), &aggregate_key)
             .await?;
 
         let bitcoin_processing_fut = self.construct_and_sign_bitcoin_sbtc_transactions(
@@ -371,7 +371,7 @@ where
         }
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
-            &bitcoin_chain_tip.block_hash,
+            bitcoin_chain_tip.as_ref(),
             &aggregate_key,
         )
         .await?;
@@ -631,7 +631,7 @@ where
         // Send the pre-sign request to the signers and wait for their
         // acknowledgments.
         self.construct_and_send_bitcoin_presign_request(
-            &bitcoin_chain_tip.block_hash,
+            bitcoin_chain_tip.as_ref(),
             &pending_requests.signer_state,
             &transaction_package,
         )
@@ -640,7 +640,7 @@ where
         // Construct, sign and broadcast the bitcoin transactions.
         for mut transaction in transaction_package {
             self.sign_and_broadcast(
-                &bitcoin_chain_tip.block_hash,
+                bitcoin_chain_tip.as_ref(),
                 signer_public_keys,
                 &mut transaction,
             )
@@ -1848,7 +1848,6 @@ where
             };
 
             // Fetch eligible deposit requests.
-
             let deposits = Self::get_eligible_pending_deposit_requests(&storage, &params).await?;
 
             // Fetch eligible withdrawal requests.
