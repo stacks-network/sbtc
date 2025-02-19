@@ -38,7 +38,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
             vout: 2,
         },
         // This points to the withdrawal request transaction.
-        request_id: data.withdrawal_request.request_id,
+        id: data.withdrawal_request.qualified_id(),
         // This is the assessed transaction fee for fulfilling the withdrawal
         // request.
         tx_fee: fee,
@@ -222,7 +222,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // Different: Let's use a request_id that does not exist in our
     // database. In these tests, the withdrawal id starts at 0 and
     // increments by 1 for each withdrawal request generated.
-    accept_withdrawal_tx.request_id = u64::MAX;
+    accept_withdrawal_tx.id.request_id = u64::MAX;
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())

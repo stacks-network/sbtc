@@ -172,7 +172,11 @@ impl AsContractCall for InitiateWithdrawalRequest {
     sweep_block_height: 7,
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
-    request_id: 0,
+    id: QualifiedRequestId {
+	    request_id: 0,
+	    txid: StacksTxId::from([0; 32]),
+	    block_hash: StacksBlockHash::from([0; 32]),
+    },
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
     signer_bitmap: BitArray::ZERO,
