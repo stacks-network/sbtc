@@ -5051,6 +5051,91 @@ mod get_pending_accepted_withdrawal_requests {
         signer::testing::storage::drop_db(db).await;
     }
 
+    /// Asserts that requests which are confirmed in stacks blocks whose anchor
+    /// block is, while in the canonical bitcoin chain, too old to be considered
+    /// accepted and are not returned.
+    ///
+    /// The signature threshold/context window we are testing is _inclusive_.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    /// Age:         3           2           1     
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │ The request is confirmed (✔)
+    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘ in S2 and we test different
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐ context windows.
+    /// Stacks:  │   S1 ✔ ├──►   S2   ├──►   S3   │
+    ///          └────────┘  └────────┘  └────────┘
+    /// ```
+    #[tokio::test]
+    async fn expired_requests_not_returned() {
+        let db = signer::testing::storage::new_test_database().await;
+        let signature_threshold = 2;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2 = bitcoin_1.new_child();
+        let bitcoin_3 = bitcoin_2.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2 = stacks_1.new_child().anchored_to(&bitcoin_2);
+        let stacks_3 = stacks_2.new_child().anchored_to(&bitcoin_3);
+
+        // Write our bitcoin + stacks blocks.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2, &bitcoin_2, &bitcoin_3],
+            [&stacks_1, &stacks_2, &stacks_2, &stacks_3],
+        )
+        .await;
+
+        // Get our chain tips.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Assert that the chain tips are what we expect.
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
+
+        // Store a withdrawal request, confirmed in B1/S1.
+        store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+
+        // Context window = 4, we should get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                4,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Context window 3, we should get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                3,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Context window 2, the request should NOT be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                2,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty());
+    }
+
     /// Asserts that requests with a confirmed rejection event are not returned.
     ///
     /// This test creates blockchains with the following structure:
