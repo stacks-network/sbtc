@@ -240,11 +240,7 @@ where
 
         // Get pending withdrawals from coordinator
         let pending_requests = coordinator
-            .get_pending_requests(
-                &bitcoin_chain_tip.block_hash,
-                &aggregate_key,
-                signer_public_keys,
-            )
+            .get_pending_requests(&bitcoin_chain_tip, &aggregate_key, signer_public_keys)
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
