@@ -3432,7 +3432,7 @@ mod get_eligible_pending_withdrawal_requests {
         },
         testing::{
             blocks::BitcoinChain,
-            storage::{DbReadExt, DbWriteExt},
+            storage::{DbReadTestExt as _, DbWriteTestExt as _},
         },
         transaction_coordinator::GetPendingRequestsParams,
     };
@@ -3629,11 +3629,10 @@ mod get_eligible_pending_withdrawal_requests {
         let stacks_chain = StacksBlock::new_anchored_chain(&bitcoin_chain);
 
         // Write the blocks to the database.
-        db.write_blocks_unchecked(&bitcoin_chain, &stacks_chain)
-            .await;
+        db.write_blocks(&bitcoin_chain, &stacks_chain).await;
 
         // Get the chain tips and assert that they're what we expect.
-        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
         assert_eq!(
             bitcoin_chain_tip.block_hash,
             bitcoin_chain.chain_tip().block_hash

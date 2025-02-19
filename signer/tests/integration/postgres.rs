@@ -4923,7 +4923,7 @@ async fn pending_rejected_withdrawal_already_accepted() {
 mod get_pending_accepted_withdrawal_requests {
     use signer::{
         bitcoin::validation::WithdrawalValidationResult,
-        testing::storage::{self, DbReadExt, DbWriteExt},
+        testing::storage::{self, DbReadTestExt as _, DbWriteTestExt as _},
     };
 
     use super::*;
@@ -5064,8 +5064,7 @@ mod get_pending_accepted_withdrawal_requests {
         let stacks_block = StacksBlock::new_genesis().anchored_to(&bitcoin_block);
 
         // Write our blocks.
-        db.write_blocks_unchecked([&bitcoin_block], [&stacks_block])
-            .await;
+        db.write_blocks([&bitcoin_block], [&stacks_block]).await;
 
         // Store a withdrawal request.
         store_withdrawal_request(&db, 1, &bitcoin_block, &stacks_block, &[]).await;
@@ -5121,8 +5120,7 @@ mod get_pending_accepted_withdrawal_requests {
         let stacks_block = StacksBlock::new_genesis().anchored_to(&bitcoin_block);
 
         // Write our blocks.
-        db.write_blocks_unchecked([&bitcoin_block], [&stacks_block])
-            .await;
+        db.write_blocks([&bitcoin_block], [&stacks_block]).await;
 
         // Setup withdrawal request 1: no votes
         store_withdrawal_request(&db, 1, &bitcoin_block, &stacks_block, &[]).await;
@@ -5195,14 +5193,14 @@ mod get_pending_accepted_withdrawal_requests {
         let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
 
         // Write our bitcoin + stacks blocks.
-        db.write_blocks_unchecked(
+        db.write_blocks(
             [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
             [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
         )
         .await;
 
         // Get our chain tips.
-        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
 
         // Assert that the chain tips are what we expect.
         assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
@@ -5273,8 +5271,7 @@ mod get_pending_accepted_withdrawal_requests {
         let stacks_block_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_block_1);
 
         // Write our blocks to the database.
-        db.write_blocks_unchecked([&bitcoin_block_1], [&stacks_block_1])
-            .await;
+        db.write_blocks([&bitcoin_block_1], [&stacks_block_1]).await;
 
         // Create and store a withdrawal request confirmed in block 1 (both
         // bitcoin and stacks) and give it enough 'yes' votes.
@@ -5350,14 +5347,14 @@ mod get_pending_accepted_withdrawal_requests {
         let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
 
         // Write the blocks to the database.
-        db.write_blocks_unchecked(
+        db.write_blocks(
             [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
             [&stacks_1],
         )
         .await;
 
         // Get our chain tips and assert they're what we expect.
-        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
         assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_1.block_hash);
 
@@ -5435,14 +5432,14 @@ mod get_pending_accepted_withdrawal_requests {
         let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
 
         // Write the blocks to the database.
-        db.write_blocks_unchecked(
+        db.write_blocks(
             [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
             [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
         )
         .await;
 
         // Get our chain tips and assert they're what we expect.
-        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
         assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
 
@@ -5505,14 +5502,14 @@ mod get_pending_accepted_withdrawal_requests {
         let stacks_3a = stacks_2a.new_child();
 
         // Write our blocks.
-        db.write_blocks_unchecked(
+        db.write_blocks(
             [&bitcoin_1],
             [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
         )
         .await;
 
         // Get our chain tips and assert they're what we expect.
-        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips_unchecked().await;
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
         assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_1.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
 

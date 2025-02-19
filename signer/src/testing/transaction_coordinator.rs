@@ -35,7 +35,7 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
-use crate::testing::storage::DbReadExt;
+use crate::testing::storage::DbReadTestExt;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 use crate::transaction_coordinator::coordinator_public_key;
@@ -259,7 +259,7 @@ where
         let withdrawals = pending_requests.withdrawals;
 
         // Get the chain tips from storage.
-        let (bitcoin_chain_tip_ref, stacks_chain_tip) = storage.get_chain_tips_unchecked().await;
+        let (bitcoin_chain_tip_ref, stacks_chain_tip) = storage.get_chain_tips().await;
 
         // Get pending withdrawals from storage.
         let withdrawals_in_storage = storage
