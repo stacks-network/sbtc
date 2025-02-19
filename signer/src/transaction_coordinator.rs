@@ -288,7 +288,7 @@ where
         let span = tracing::Span::current();
         span.record(
             "bitcoin_tip_hash",
-            tracing::field::display(bitcoin_chain_tip.block_hash.to_string()),
+            tracing::field::display(bitcoin_chain_tip.block_hash),
         );
         span.record("bitcoin_tip_height", bitcoin_chain_tip.block_height);
 
