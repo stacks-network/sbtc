@@ -187,8 +187,6 @@ pub struct GetPendingRequestsParams<'a> {
     pub aggregate_key: &'a PublicKey,
     /// The public keys of the current signer set.
     pub signer_public_keys: &'a BTreeSet<PublicKey>,
-    /// The signers' current BTC state (UTXO information, etc.).
-    pub signer_btc_state: &'a utxo::SignerBtcState,
     /// The current sBTC limits.
     pub sbtc_limits: &'a SbtcLimits,
     /// The maximum number of bitcoin blocks back from the chain tip to look for
@@ -1829,11 +1827,6 @@ where
         let storage = self.context.get_storage();
         let config = self.context.config();
 
-        // Get the current signers' BTC state.
-        let signer_btc_state = self
-            .get_btc_state(&bitcoin_chain_tip.block_hash, aggregate_key)
-            .await?;
-
         // Get the current sBTC limits (caps).
         let sbtc_limits = self.context.state().get_current_limits();
 
@@ -1847,7 +1840,6 @@ where
                 signer_public_keys,
                 context_window: self.context_window,
                 signature_threshold: self.threshold,
-                signer_btc_state: &signer_btc_state,
                 sbtc_limits: &sbtc_limits,
                 withdrawal_blocks_expiry: WITHDRAWAL_BLOCKS_EXPIRY,
             };
@@ -1870,6 +1862,11 @@ where
             return Ok(None);
         }
 
+        // Get the current signers' BTC state.
+        let signer_state = self
+            .get_btc_state(&bitcoin_chain_tip.block_hash, aggregate_key)
+            .await?;
+
         // Count the number of signers in the current signer set.
         let num_signers = signer_public_keys
             .len()
@@ -1882,7 +1879,7 @@ where
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: signer_btc_state,
+            signer_state,
             accept_threshold: self.threshold,
             num_signers,
             sbtc_limits,

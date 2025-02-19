@@ -3732,7 +3732,6 @@ mod get_eligible_pending_withdrawal_requests {
             context_window: signer::WITHDRAWAL_MIN_CONFIRMATIONS as u16,
             signature_threshold: signatures_required,
             sbtc_limits: &SbtcLimits::unlimited(),
-            signer_btc_state: &signer_btc_state,
             signer_public_keys: &signer_keys,
             withdrawal_blocks_expiry: signer::WITHDRAWAL_BLOCKS_EXPIRY,
         };
