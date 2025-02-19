@@ -754,6 +754,9 @@ where
                         data: withdrawal_req.sweep_block_hash.to_le_bytes().to_vec()
                     })),
                     Value::UInt(withdrawal_req.sweep_block_height as u128),
+                    Value::Sequence(SequenceData::Buffer(BuffData {
+                        data: outpoint.txid.to_le_bytes().to_vec()
+                    })),
                 ]
             );
         } else {
