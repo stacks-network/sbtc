@@ -356,7 +356,7 @@ pub async fn presign_requests_with_dkg_shares_status(status: DkgSharesStatus, is
         wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
         // We use this private key because it needs to be associated with
         // one of the public keys that we stored in the DKG shares table.
-        signer_private_key: setup.signers.signer.keypair.secret_key().into(),
+        signer_private_key: setup.signers.private_key(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,
@@ -421,7 +421,7 @@ async fn new_state_machine_per_valid_sighash() {
         wsts_state_machines: LruCache::new(NonZeroUsize::new(100).unwrap()),
         // We use this private key because it needs to be associated with
         // one of the public keys that we stored in the DKG shares table.
-        signer_private_key: setup.signers.signer.keypair.secret_key().into(),
+        signer_private_key: setup.signers.private_key(),
         threshold: 2,
         rng: rand::rngs::StdRng::seed_from_u64(51),
         dkg_begin_pause: None,

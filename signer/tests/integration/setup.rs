@@ -1110,7 +1110,7 @@ impl TestSweepSetup2 {
             parties: vec![Unit.fake_with_rng(&mut OsRng)],
         };
         let encoded = private_shares.encode_to_vec();
-        let signer_private_key = self.signers.signer.keypair.secret_bytes();
+        let signer_private_key = self.signers.private_key().to_bytes();
 
         let encrypted_private_shares =
             wsts::util::encrypt(&signer_private_key, &encoded, &mut OsRng)
