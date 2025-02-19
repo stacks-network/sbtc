@@ -1098,7 +1098,7 @@ impl AsContractCall for RejectWithdrawalV1 {
     /// 1. That the withdrawal request is not already completed.
     /// 2. Whether the smart contract deployer matches the deployer in our
     ///    context.
-    /// 2. Whether the associated withdrawal request transaction is
+    /// 3. Whether the associated withdrawal request transaction is
     ///    confirmed on the canonical stacks blockchain. Fail if it is not
     ///    on the canonical stacks blockchain.
     /// 4. Whether the request has been fulfilled. Fail if it has.
