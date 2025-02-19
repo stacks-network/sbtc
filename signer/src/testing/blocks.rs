@@ -80,14 +80,14 @@ impl BitcoinChain {
     }
 
     /// Gets the nth block in the chain, if it exists.
-    pub fn nth_block_checked(&self) -> Option<&BitcoinBlock> {
-        self.0.get(1)
+    pub fn nth_block_checked(&self, height: usize) -> Option<&BitcoinBlock> {
+        self.0.get(height)
     }
 
     /// Gets the nth block in the chain, panicking if it does not exist.
-    pub fn nth_block(&self) -> &BitcoinBlock {
+    pub fn nth_block(&self, height: usize) -> &BitcoinBlock {
         self.0
-            .get(1)
+            .get(height)
             .expect("no nth bitcoin block (index out of range)")
     }
 }
@@ -172,14 +172,14 @@ impl StacksChain {
     }
 
     /// Gets the nth block in the chain, if it exists.
-    pub fn nth_block_checked(&self) -> Option<&StacksBlock> {
-        self.0.get(1)
+    pub fn nth_block_checked(&self, height: usize) -> Option<&StacksBlock> {
+        self.0.get(height)
     }
 
     /// Gets the nth block in the chain, panicking if it does not exist.
-    pub fn nth_block(&self) -> &StacksBlock {
+    pub fn nth_block(&self, height: usize) -> &StacksBlock {
         self.0
-            .get(1)
+            .get(height)
             .expect("no nth bitcoin block (index out of range)")
     }
 }
