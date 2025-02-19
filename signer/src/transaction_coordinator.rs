@@ -1589,14 +1589,14 @@ where
         let sbtc_limits = self.context.state().get_current_limits();
 
         let context_window = self.context_window;
-        let threshold = self.threshold;
+        let accept_threshold = self.threshold;
 
         // Fetch eligible deposit requests.
         let pending_deposit_requests = storage
             .get_pending_accepted_deposit_requests(
                 bitcoin_chain_tip.as_ref(),
                 context_window,
-                threshold,
+                accept_threshold,
             )
             .await?;
 
@@ -1605,7 +1605,7 @@ where
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 context_window,
-                threshold,
+                accept_threshold,
             )
             .await?;
 
@@ -1636,7 +1636,7 @@ where
         }
 
         // Get the current signers' BTC state.
-        let signer_btc_state = self
+        let signer_state = self
             .get_btc_state(&bitcoin_chain_tip.block_hash, aggregate_key)
             .await?;
 
@@ -1652,8 +1652,8 @@ where
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: signer_btc_state,
-            accept_threshold: threshold,
+            signer_state,
+            accept_threshold,
             num_signers,
             sbtc_limits,
             max_deposits_per_bitcoin_tx,
