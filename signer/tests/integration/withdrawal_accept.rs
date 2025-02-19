@@ -16,6 +16,8 @@ use rand::SeedableRng;
 use signer::testing::context::*;
 
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::set_withdrawal_completed;
+use crate::setup::set_withdrawal_incomplete;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup2;
@@ -131,12 +133,15 @@ async fn accept_withdrawal_validation_happy_path() {
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
     // This should not return an Err.
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     accept_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
@@ -187,12 +192,15 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     accept_withdrawal_tx.deployer = StacksAddress::p2pkh(false, &setup.signers.keys[0].into());
     req_ctx.deployer = StacksAddress::p2pkh(false, &setup.signers.keys[1].into());
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -251,12 +259,15 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // increments by 1 for each withdrawal request generated.
     accept_withdrawal_tx.id.request_id = u32::MAX as u64;
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -315,12 +326,15 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -377,12 +391,15 @@ async fn accept_withdrawal_validation_invalid_amount() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -448,12 +465,15 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -514,12 +534,15 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     let fake_txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
     accept_withdrawal_tx.outpoint.txid = fake_txid.into();
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -588,12 +611,15 @@ async fn accept_withdrawal_validation_sweep_reorged() {
         block_height: 30000,
     };
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -655,12 +681,15 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // greater than 2 will do.
     accept_withdrawal_tx.outpoint = OutPoint::new(setup.sweep_tx_info.unwrap().tx_info.txid, 3);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -719,12 +748,15 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     let first_vote = *accept_withdrawal_tx.signer_bitmap.get(0).unwrap();
     accept_withdrawal_tx.signer_bitmap.set(0, !first_vote);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -783,12 +815,15 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // should be.
     accept_withdrawal_tx.tx_fee -= 1;
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -844,17 +879,86 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
 
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::InvalidSweep)
+        }
+        err => panic!("unexpected error during validation {err}"),
+    }
+
+    testing::storage::drop_db(db).await;
+}
+
+/// For this test we check that the `AcceptWithdrawalV1::validate` function
+/// returns a withdrawal validation error with a RequestCompleted message
+/// when smart contract returns that the withdrawal request has been
+/// completed.
+#[tokio::test]
+async fn accept_withdrawal_validation_request_completed() {
+    // Normal: this generates the blockchain as well as a transaction
+    // sweeping out the funds for a withdrawal request. This is just setup
+    // and should be essentially the same between tests.
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
+
+    // Normal: the signer follows the bitcoin blockchain and event observer
+    // should be getting new block events from bitcoin-core. We haven't
+    // hooked up our block observer, so we need to manually update the
+    // database with new bitcoin block headers.
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+
+    // Normal: we take the sweep transaction that we just submitted and
+    // store it in the database.
+    setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
+
+    // Normal: we need to store a row in the dkg_shares table so that we
+    // have a record of the scriptPubKey that the signers control.
+    setup.store_dkg_shares(&db).await;
+
+    // Normal: the request and how the signers voted needs to be added to
+    // the database. Here the bitmap in the withdrawal request object
+    // corresponds to how the signers voted.
+    setup.store_withdrawal_requests(&db).await;
+    setup.store_withdrawal_decisions(&db).await;
+
+    // Generate the transaction and corresponding request context.
+    let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
+
+    // This should not return an Err.
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    // Different: the request has been marked as completed in the smart
+    // contract.
+    set_withdrawal_completed(&mut ctx).await;
+
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
+    match validation_result.unwrap_err() {
+        Error::WithdrawalAcceptValidation(ref err) => {
+            assert_eq!(err.error, WithdrawalErrorMsg::RequestCompleted)
         }
         err => panic!("unexpected error during validation {err}"),
     }
