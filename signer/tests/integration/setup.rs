@@ -1055,14 +1055,6 @@ impl TestSweepSetup2 {
         }
     }
 
-    pub fn reject_withdrawal_request(&mut self) {
-        for withdrawal in self.withdrawals.iter_mut() {
-            for i in 0..self.signers.keys.len() {
-                withdrawal.request.signer_bitmap.replace(i, true);
-            }
-        }
-    }
-
     pub async fn store_withdrawal_requests(&self, db: &PgStore) {
         for stacks_block in self.stacks_blocks.iter() {
             db.write_stacks_block(stacks_block).await.unwrap();
