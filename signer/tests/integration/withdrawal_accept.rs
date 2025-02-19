@@ -42,7 +42,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
         // This is the assessed transaction fee for fulfilling the withdrawal
         // request.
         tx_fee: fee,
-        //
+        // Bitmap over how signers voted on the withdrawal request.
         signer_bitmap: data.withdrawal_request.signer_bitmap,
         // The deployer must match what is in the signers' context.
         deployer: StacksAddress::burn_address(false),
