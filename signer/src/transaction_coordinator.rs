@@ -351,7 +351,7 @@ where
         let aggregate_key = if should_coordinate_dkg {
             self.coordinate_dkg(&bitcoin_chain_tip.block_hash).await?
         } else {
-            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip))?
+            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
         };
 
         self.deploy_smart_contracts(&bitcoin_chain_tip.block_hash, &aggregate_key)
