@@ -73,15 +73,14 @@ CREATE TABLE sbtc_signer.withdrawal_requests (
     -- The id of the withdrawal request as assigned by the `sbtc-registry`
     -- contract. This is a serial id, but given that we need to account for
     -- forks in both bitcoin and stacks chains, it cannot itself be unique, so
-    -- the PK is on the `request_id` AND the stacks `block_hash`.
+    -- the primary key is on the `request_id` AND the stacks `block_hash`.
     request_id BIGINT NOT NULL,
     -- The stacks transaction id that the withdrawal request contract-call was
     -- executed in.
     txid BYTEA NOT NULL,
     -- The block hash of the stacks block which `txid` was included in.
     block_hash BYTEA NOT NULL,
-    -- The intended recipient on the bitcoin network if the withdrawal request
-    -- is successfully processed.
+    -- The `scriptPubKey` of the withdrawal UTXO when fulfilled on bitcoin.
     recipient BYTEA NOT NULL,
     -- The amount (in satoshis) to be withdrawn.
     amount BIGINT NOT NULL,
