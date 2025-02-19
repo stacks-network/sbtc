@@ -315,7 +315,10 @@ where
             .ok_or(Error::NoChainTip)?;
 
         let span = tracing::Span::current();
-        span.record("bitcoin_tip_hash", bitcoin_chain_tip.block_hash.to_string());
+        span.record(
+            "bitcoin_tip_hash",
+            tracing::field::display(bitcoin_chain_tip.block_hash.to_string()),
+        );
         span.record("bitcoin_tip_height", bitcoin_chain_tip.block_height);
 
         // We first need to determine if we are the coordinator, so we need
