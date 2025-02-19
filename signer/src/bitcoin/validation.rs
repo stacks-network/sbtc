@@ -1837,6 +1837,37 @@ mod tests {
                             block_hash: StacksBlockHash::from([1; 32]),
                         },
                         QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-withdrawal-request-ids-in-same-tx")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
                             request_id: 1,
                             txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([2; 32]),
@@ -1877,7 +1908,36 @@ mod tests {
         }, false; "basically-empty-package_requests")]
     #[test_case(
         BitcoinPreSignRequest {
-            request_package: vec![],
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
+                },
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+            ],
             fee_rate: 1.0,
             last_fees: None,
         }, false; "contains-empty-tx-requests")]
