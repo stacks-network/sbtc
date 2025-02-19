@@ -1014,6 +1014,28 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_stacks_anchor_block_ref(
+        &self,
+        stacks_block_hash: &model::StacksBlockHash,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        sqlx::query_as::<_, model::BitcoinBlockRef>(
+            r#"
+            SELECT
+                bb.block_hash
+              , bb.block_height
+            FROM sbtc_signer.stacks_blocks sb
+            INNER JOIN sbtc_signer.bitcoin_blocks bb
+                ON sb.bitcoin_anchor = bb.block_hash
+            WHERE
+                sb.block_hash = $1
+            "#,
+        )
+        .bind(stacks_block_hash)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
