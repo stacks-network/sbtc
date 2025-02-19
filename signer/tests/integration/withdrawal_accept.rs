@@ -51,7 +51,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup2) -> (AcceptWithdrawalV1, ReqCon
         // This is the assessed transaction fee for fulfilling the withdrawal
         // request.
         tx_fee: fee,
-        //
+        // The bitmap for how the signers voted.
         signer_bitmap: data.withdrawals[0].request.signer_bitmap,
         // The deployer must match what is in the signers' context.
         deployer: StacksAddress::burn_address(false),
@@ -430,7 +430,14 @@ async fn accept_withdrawal_validation_invalid_fee() {
 
     // Different: The fee cannot exceed the max fee. As usual, we still
     // need to store the withdrawal request and how the signers voted.
-    let assessed_fee = setup.sweep_tx_info.clone().unwrap().tx_info.assess_output_fee(2).unwrap().to_sat();
+    let assessed_fee = setup
+        .sweep_tx_info
+        .clone()
+        .unwrap()
+        .tx_info
+        .assess_output_fee(2)
+        .unwrap()
+        .to_sat();
     setup.withdrawals[0].request.max_fee = assessed_fee - 1;
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -547,7 +554,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;    
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.

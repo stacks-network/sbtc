@@ -740,11 +740,6 @@ impl AcceptWithdrawalV1 {
             .ok_or(Error::NoStacksChainTip)?;
 
         let signer_public_key = ctx.config().signer.public_key();
-        // 2. That the signer has a record of the withdrawal request in its
-        //    list of pending and accepted withdrawal requests.
-        //
-        // Check that this is actually a pending and accepted withdrawal
-        // request.
         let withdrawal_requests = db.get_withdrawal_request_report(
             &req_ctx.chain_tip.block_hash,
             &stacks_chain_tip.block_hash,
@@ -756,6 +751,8 @@ impl AcceptWithdrawalV1 {
             return Err(WithdrawalErrorMsg::RequestMissing.into_error(req_ctx, self));
         };
 
+        // 2. The signer thinks that the withdrawal request has been
+        //    fulfilled on the canonical bitcoin blockchain.
         let txid_ref = match report.status {
             WithdrawalRequestStatus::Fulfilled(txid) => txid,
             WithdrawalRequestStatus::Confirmed => {
