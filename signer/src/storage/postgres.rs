@@ -1014,28 +1014,6 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_stacks_anchor_block_ref(
-        &self,
-        stacks_block_hash: &model::StacksBlockHash,
-    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
-        sqlx::query_as::<_, model::BitcoinBlockRef>(
-            r#"
-            SELECT
-                bb.block_hash
-              , bb.block_height
-            FROM sbtc_signer.stacks_blocks sb
-            INNER JOIN sbtc_signer.bitcoin_blocks bb
-                ON sb.bitcoin_anchor = bb.block_hash
-            WHERE
-                sb.block_hash = $1
-            "#,
-        )
-        .bind(stacks_block_hash)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn get_pending_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -1517,20 +1495,8 @@ impl super::DbRead for PgStore {
             WITH RECURSIVE bitcoin_blockchain AS (
                 SELECT
                     block_hash
-                  , parent_hash
-                  , 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                SELECT
-                    parent.block_hash
-                  , parent.parent_hash
-                  , last.depth + 1
-                FROM sbtc_signer.bitcoin_blocks parent
-                JOIN bitcoin_blockchain last ON parent.block_hash = last.parent_hash
-                WHERE last.depth <= $3
+                  , block_height
+                FROM bitcoin_blockchain_of($1, $3)
             ),
             stacks_blockchain AS (
                 SELECT
@@ -1562,11 +1528,20 @@ impl super::DbRead for PgStore {
               , wr.sender_address
               , wr.bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests wr
-            JOIN stacks_blockchain sc ON wr.block_hash = sc.block_hash
+
+            -- Ensure the request is confirmed on the stacks chain
+            JOIN stacks_blockchain canonical_confirmed
+                ON wr.block_hash = canonical_confirmed.block_hash
+
+            -- Return a row for each signer vote, which is deduplicated later
+            -- in the group by clause.
             JOIN sbtc_signer.withdrawal_signers signers ON
-                wr.txid = signers.txid AND
-                wr.request_id = signers.request_id AND
-                wr.block_hash = signers.block_hash
+                wr.request_id = signers.request_id
+                AND wr.txid = signers.txid
+                AND wr.block_hash = signers.block_hash
+                AND signers.is_accepted = TRUE
+
+            -- Are there any confirmed sweep transactions?
             LEFT JOIN sbtc_signer.bitcoin_withdrawals_outputs bwo
                 ON bwo.request_id = wr.request_id
                 AND bwo.stacks_block_hash = wr.block_hash
@@ -1574,13 +1549,24 @@ impl super::DbRead for PgStore {
                 ON bt.txid = bwo.bitcoin_txid
             LEFT JOIN bitcoin_blockchain AS canonical_sweep
                 ON bt.block_hash = canonical_sweep.block_hash
-            WHERE
-                signers.is_accepted
-            GROUP BY wr.request_id, wr.block_hash, wr.txid
-            HAVING 
+
+            -- Are there any confirmed reject transactions?
+            LEFT JOIN sbtc_signer.withdrawal_reject_events AS wre
+                ON wre.request_id = wr.request_id
+            LEFT JOIN stacks_blockchain AS canonical_reject
+                ON wre.block_hash = canonical_reject.block_hash
+
+            GROUP BY 
+                wr.request_id, wr.block_hash, wr.txid
+            HAVING
+                -- Ensure there are enough 'yes' votes.
                 COUNT(wr.request_id) >= $4
+                -- Ensure there are no confirmed sweep transactions.
                 AND COUNT(canonical_sweep.block_hash) = 0
-            ORDER BY wr.request_id ASC
+                -- Ensure there are no confirmed reject contract-calls.
+                AND COUNT(canonical_reject.block_hash) = 0
+            ORDER BY 
+                wr.request_id ASC
             "#,
         )
         .bind(bitcoin_chain_tip)

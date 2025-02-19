@@ -58,14 +58,6 @@ pub trait DbRead {
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<Option<model::StacksBlock>, Error>> + Send;
 
-    /// Gets the Bitcoin anchor block height and hash for the given Stacks block
-    /// hash. Returns [`None`] if either the Stacks or Bitcoin block are not
-    /// found.
-    fn get_stacks_anchor_block_ref(
-        &self,
-        stacks_block_hash: &model::StacksBlockHash,
-    ) -> impl Future<Output = Result<Option<model::BitcoinBlockRef>, Error>> + Send;
-
     /// Get pending deposit requests
     ///
     /// These are deposit requests that have been added to our database but

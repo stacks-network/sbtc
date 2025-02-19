@@ -4920,70 +4920,6 @@ async fn pending_rejected_withdrawal_already_accepted() {
     signer::testing::storage::drop_db(db).await;
 }
 
-#[tokio::test]
-async fn get_stacks_anchor_block_ref_works() {
-    let db = testing::storage::new_test_database().await;
-
-    let bitcoin_genesis: BitcoinBlock = fake::Faker.fake();
-    db.write_bitcoin_block(&bitcoin_genesis).await.unwrap();
-    for _ in 0..100 {}
-
-    let anchor_block: BitcoinBlock = fake::Faker.fake();
-    let anchor_block_ref = anchor_block.clone().into();
-    let stacks_block = model::StacksBlock {
-        bitcoin_anchor: anchor_block.block_hash,
-        ..fake::Faker.fake()
-    };
-
-    db.write_bitcoin_block(&anchor_block).await.unwrap();
-    db.write_stacks_block(&stacks_block).await.unwrap();
-
-    let select = db
-        .get_stacks_anchor_block_ref(&stacks_block.block_hash)
-        .await
-        .expect("failed to query db");
-
-    assert_eq!(select, Some(anchor_block_ref));
-
-    signer::testing::storage::drop_db(db).await;
-}
-
-/// We have no FK constraint from `bitcoin_anchor` to
-/// `bitcoin_blocks.block_hash`, so we need to support this case.
-#[tokio::test]
-async fn get_stacks_anchor_block_ref_missing_anchor() {
-    let db = testing::storage::new_test_database().await;
-
-    let stacks_block = Faker.fake();
-
-    db.write_stacks_block(&stacks_block).await.unwrap();
-
-    let select = db
-        .get_stacks_anchor_block_ref(&stacks_block.block_hash)
-        .await
-        .expect("failed to query db");
-
-    assert_eq!(select, None);
-
-    signer::testing::storage::drop_db(db).await;
-}
-
-#[tokio::test]
-async fn get_stacks_anchor_block_ref_missing_stacks_block() {
-    let db = testing::storage::new_test_database().await;
-
-    let stacks_block_hash = Faker.fake();
-
-    let select = db
-        .get_stacks_anchor_block_ref(&stacks_block_hash)
-        .await
-        .expect("failed to query db");
-
-    assert_eq!(select, None);
-
-    signer::testing::storage::drop_db(db).await;
-}
-
 mod get_pending_accepted_withdrawal_requests {
     use signer::{
         bitcoin::validation::WithdrawalValidationResult,
@@ -5119,6 +5055,9 @@ mod get_pending_accepted_withdrawal_requests {
     async fn returns_empty_list_when_no_accepted_requests() {
         let db = signer::testing::storage::new_test_database().await;
 
+        let signature_threshold = 2;
+        let context_window = 1_000;
+
         // Bitcoin blocks:
         let bitcoin_block = BitcoinBlock::new_genesis();
         // Stacks blocks:
@@ -5143,8 +5082,8 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block.block_hash,
                 &stacks_block.block_hash,
-                1_000,
-                0,
+                context_window,
+                signature_threshold,
             )
             .await
             .expect("failed to query db");

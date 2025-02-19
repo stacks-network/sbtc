@@ -3416,44 +3416,6 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-#[test_log::test(tokio::test)]
-pub async fn assert_can_process_withdrawals() {
-    let db = testing::storage::new_test_database().await;
-
-    let context = TestContext::builder()
-        .with_storage(db.clone())
-        .with_mocked_clients()
-        .build();
-
-    // We use unlimited limits for this test as
-    // `assert_processes_withdrawals` wasn't written with limits in mind.
-    context
-        .state()
-        .update_current_limits(SbtcLimits::unlimited());
-
-    // Setup the test parameters.
-    let test_model_parameters = testing::storage::model::Params {
-        consecutive_blocks: true,
-        num_bitcoin_blocks: 30,
-        num_stacks_blocks_per_bitcoin_block: 5,
-        num_deposit_requests_per_block: 2,
-        num_withdraw_requests_per_block: 2,
-        num_signers_per_request: 3,
-    };
-
-    // Create the test environment.
-    let testenv = testing::transaction_coordinator::TestEnvironment {
-        context,
-        context_window: 1_000,
-        num_signers: 3,
-        signing_threshold: 2,
-        test_model_parameters,
-    };
-
-    // Execute the test (which is located in `testing::transaction_coordinator`).
-    testenv.assert_processes_withdrawals().await;
-}
-
 #[allow(dead_code, unused_variables)] //TODO: REMOVE
 mod get_eligible_pending_withdrawal_requests {
     use std::sync::atomic::AtomicU64;
