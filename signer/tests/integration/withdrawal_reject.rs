@@ -509,7 +509,6 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     testing::storage::drop_db(db).await;
 }
 
-
 /// For this test we check that the `RejectWithdrawalV1::validate` function
 /// returns a withdrawal validation error with a RequestCompleted message
 /// when the stacks node returns that the withdrawal request has been
