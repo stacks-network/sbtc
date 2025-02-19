@@ -3,7 +3,6 @@
 use std::future::Future;
 use std::time::Duration;
 
-use crate::error::Error;
 use crate::storage::model::{
     BitcoinBlock, BitcoinBlockHash, BitcoinBlockRef, StacksBlock, StacksBlockHash,
 };
@@ -152,8 +151,9 @@ pub async fn wait_for_dkg(db: &PgStore, count: u32) {
 
 /// Extension trait for [`DbWrite`] that provides additional methods for
 /// testing purposes.
-pub trait DbWriteExt {
-    /// Helper function to write multiple stacks blocks to the database.
+pub trait DbWriteTestExt {
+    /// Helper function to write multiple bitcoin blocks to the database and
+    /// panics if any errors are encountered.
     ///
     /// ## Examples:
     /// ```
@@ -164,17 +164,15 @@ pub trait DbWriteExt {
     /// db.write_bitcoin_blocks(
     ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
     /// )
-    /// .await?;
+    /// .await;
     /// ```
-    fn write_bitcoin_blocks<'a, I>(
-        &self,
-        blocks: I,
-    ) -> impl Future<Output = Result<(), Error>> + Send
+    fn write_bitcoin_blocks<'a, I>(&self, blocks: I) -> impl Future<Output = ()> + Send
     where
         I: IntoIterator<Item = &'a BitcoinBlock> + Send + Sync + 'a,
         I::IntoIter: Send + Sync;
 
-    /// Helper function to write multiple stacks blocks to the database.
+    /// Helper function to write multiple stacks blocks to the database and
+    /// panics if any errors are encountered.
     ///
     /// ## Examples:
     /// ```
@@ -185,18 +183,15 @@ pub trait DbWriteExt {
     /// db.write_stacks_blocks(
     ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
     /// )
-    /// .await?;
+    /// .await;
     /// ```
-    fn write_stacks_blocks<'a, I>(
-        &self,
-        blocks: I,
-    ) -> impl Future<Output = Result<(), Error>> + Send
+    fn write_stacks_blocks<'a, I>(&self, blocks: I) -> impl Future<Output = ()> + Send
     where
         I: IntoIterator<Item = &'a StacksBlock> + Send + Sync + 'a,
         I::IntoIter: Send + Sync;
 
     /// Helper function to write multiple bitcoin and stacks blocks to the
-    /// database.
+    /// database and panics if any errors are encountered.
     ///
     /// ## Examples:
     /// ```
@@ -208,35 +203,9 @@ pub trait DbWriteExt {
     ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
     ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
     /// )
-    /// .await?;
-    /// ```
-    fn write_blocks<'a, IB, IS>(
-        &self,
-        bitcoin_blocks: IB,
-        stacks_blocks: IS,
-    ) -> impl Future<Output = Result<(), Error>> + Send
-    where
-        IB: IntoIterator<Item = &'a BitcoinBlock> + Send + Sync + 'a,
-        IB::IntoIter: Send + Sync,
-        IS: IntoIterator<Item = &'a StacksBlock> + Send + Sync + 'a,
-        IS::IntoIter: Send + Sync;
-
-    /// Helper function to write multiple bitcoin blocks to the database and
-    /// panics on the first error.
-    ///
-    /// ## Examples:
-    /// ```
-    /// # use crate::testing::storage::DbWriteExt;
-    /// # use crate::storage::model::BitcoinBlock;
-    /// # use crate::storage::model::StacksBlock;
-    ///
-    /// db.write_blocks_unchecked(
-    ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
-    ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
-    /// )
     /// .await;
     /// ```
-    fn write_blocks_unchecked<'a, IB, IS>(
+    fn write_blocks<'a, IB, IS>(
         &self,
         bitcoin_blocks: IB,
         stacks_blocks: IS,
@@ -250,81 +219,64 @@ pub trait DbWriteExt {
 
 /// Extension trait for [`DbRead`] that provides additional methods for
 /// testing purposes.
-pub trait DbReadExt {
+pub trait DbReadTestExt {
     /// Helper function to get both bitcoin and stacks chain tips from the
-    /// database.
+    /// database and panics on error.
     ///
     /// ## Examples:
     /// ```
     /// # use crate::testing::storage::DbReadExt;
     ///
-    /// let (bitcoin_tip, stacks_tip) = db.get_chain_tips_unchecked().await;
+    /// let (bitcoin_tip, stacks_tip) = db.get_chain_tips().await;
     /// ```
-    fn get_chain_tips_unchecked(
-        &self,
-    ) -> impl Future<Output = (BitcoinBlockRef, StacksBlockHash)> + Send;
+    fn get_chain_tips(&self) -> impl Future<Output = (BitcoinBlockRef, StacksBlockHash)> + Send;
 }
 
 /// Implement the [`DbWriteExt`] trait for all types that implement [`DbWrite`].
-impl<T> DbWriteExt for T
+impl<T> DbWriteTestExt for T
 where
     T: DbWrite + DbRead + Send + Sync + 'static,
 {
-    async fn write_bitcoin_blocks<'a, I>(&self, blocks: I) -> Result<(), Error>
+    async fn write_bitcoin_blocks<'a, I>(&self, blocks: I)
     where
         I: IntoIterator<Item = &'a BitcoinBlock>,
     {
         for block in blocks {
-            self.write_bitcoin_block(block).await?;
+            self.write_bitcoin_block(block)
+                .await
+                .expect("failed to write bitcoin block");
         }
-        Ok(())
     }
 
-    async fn write_stacks_blocks<'a, I>(&self, blocks: I) -> Result<(), Error>
+    async fn write_stacks_blocks<'a, I>(&self, blocks: I)
     where
         I: IntoIterator<Item = &'a StacksBlock>,
     {
         for block in blocks {
-            self.write_stacks_block(block).await?;
+            self.write_stacks_block(block)
+                .await
+                .expect("failed to write stacks block");
         }
-        Ok(())
     }
 
-    async fn write_blocks<'a, IB, IS>(
-        &self,
-        bitcoin_blocks: IB,
-        stacks_blocks: IS,
-    ) -> Result<(), Error>
+    async fn write_blocks<'a, IB, IS>(&self, bitcoin_blocks: IB, stacks_blocks: IS)
     where
         IB: IntoIterator<Item = &'a BitcoinBlock> + Send + Sync + 'a,
         IB::IntoIter: Send + Sync,
         IS: IntoIterator<Item = &'a StacksBlock> + Send + Sync + 'a,
         IS::IntoIter: Send + Sync,
     {
-        self.write_bitcoin_blocks(bitcoin_blocks).await?;
-        self.write_stacks_blocks(stacks_blocks).await?;
-        Ok(())
-    }
-
-    async fn write_blocks_unchecked<'a, IB, IS>(&self, bitcoin_blocks: IB, stacks_blocks: IS)
-    where
-        IB: IntoIterator<Item = &'a BitcoinBlock> + Send + Sync + 'a,
-        IB::IntoIter: Send + Sync,
-        IS: IntoIterator<Item = &'a StacksBlock> + Send + Sync + 'a,
-        IS::IntoIter: Send + Sync,
-    {
-        self.write_blocks(bitcoin_blocks, stacks_blocks)
-            .await
-            .expect("failed to write blocks")
+        self.write_bitcoin_blocks(bitcoin_blocks).await;
+        self.write_stacks_blocks(stacks_blocks).await;
     }
 }
 
 /// Implement the [`DbReadExt`] trait for all types that implement [`DbRead`].
-impl<T> DbReadExt for T
+impl<T> DbReadTestExt for T
 where
     T: DbRead + Send + Sync + 'static,
 {
-    async fn get_chain_tips_unchecked(&self) -> (BitcoinBlockRef, StacksBlockHash) {
+    async fn get_chain_tips(&self) -> (BitcoinBlockRef, StacksBlockHash) {
         let bitcoin_tip = self
             .get_bitcoin_canonical_chain_tip_ref()
             .await
