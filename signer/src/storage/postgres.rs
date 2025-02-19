@@ -1482,13 +1482,6 @@ impl super::DbRead for PgStore {
         context_window: u16,
         signature_threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
-        dbg!(
-            &bitcoin_chain_tip,
-            &stacks_chain_tip,
-            context_window,
-            signature_threshold
-        );
-
         sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
             -- get_pending_accepted_withdrawal_requests
