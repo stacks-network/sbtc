@@ -349,6 +349,8 @@ pub struct SignerConfig {
     /// The number of bitcoin blocks after a DKG start where we attempt to
     /// verify the shares. After this many blocks, we mark the shares as failed.
     pub dkg_verification_window: u16,
+    /// The maximum stacks fee in microSTX that the signer will accept for any stacks transaction.
+    pub stx_fee_max_micro_stx: u64,
 }
 
 impl Validatable for SignerConfig {
@@ -415,6 +417,13 @@ impl Validatable for SignerConfig {
                 SignerConfigError::ZeroDurationForbidden("signer_round_max_duration").to_string(),
             ));
         }
+
+        if cfg.signer.stx_fee_max_micro_stx == 0 {
+            return Err(ConfigError::Message(
+                SignerConfigError::ZeroValueForbidden("stx_fee_max_micro_stx").to_string(),
+            ));
+        }
+
         // db_endpoint note: we don't validate the host because we will never
         // get here; the URL deserializer will fail if the host is empty.
         Ok(())
@@ -507,6 +516,7 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
         cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 15)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
+        cfg_builder = cfg_builder.set_default("signer.stx_fee_max_micro_stx", 2000000)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -989,6 +999,34 @@ mod tests {
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
 
         assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn stx_fee_max_micro_stx_can_be_loaded_from_environment() {
+        clear_env();
+        let expected_stx_fee_max_micro_stx = 1234;
+        std::env::set_var(
+            "SIGNER_SIGNER__STX_FEE_MAX_MICRO_STX",
+            format!("{expected_stx_fee_max_micro_stx}"),
+        );
+        assert_eq!(
+            Settings::new_from_default_config()
+                .unwrap()
+                .signer
+                .stx_fee_max_micro_stx,
+            expected_stx_fee_max_micro_stx,
+        );
+    }
+
+    #[test]
+    fn zero_values_for_nonzero_fields_fail_in_signer_config() {
+        fn test_one(field: &str) {
+            clear_env();
+            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+            let _ = Settings::new_from_default_config()
+                .expect_err(&format!("Value for {field} must be non zero"));
+        }
+        test_one("stx_fee_max_micro_stx");
     }
 
     #[test]

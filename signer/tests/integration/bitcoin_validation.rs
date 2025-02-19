@@ -142,6 +142,7 @@ async fn one_tx_per_request_set() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
     };
 
     let validation_data = request
@@ -247,6 +248,7 @@ async fn one_invalid_deposit_invalidates_tx() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
     };
 
     let validation_data = request
@@ -300,6 +302,93 @@ async fn one_invalid_deposit_invalidates_tx() {
     assert_eq!(deposit2.prevout_output_index, outpoint.vout);
     assert!(!deposit2.will_sign);
     assert!(!deposit2.is_valid_tx);
+
+    testing::storage::drop_db(db).await;
+}
+
+#[test_case(5.0, true; "coordinator-txn-fee-is-valid")]
+#[test_case(5.1, false; "coordinator-txn-fee-is-too-high")]
+#[tokio::test]
+async fn transaction_is_rejected_if_fee_provided_by_coordinator_is_too_high(
+    times_larger_fee: f64,
+    should_sign: bool,
+) {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+    ctx.state().update_current_limits(SbtcLimits::unlimited());
+
+    let signers = TestSignerSet::new(&mut rng);
+    let amounts = [SweepAmounts {
+        amount: 1_000_000,
+        max_fee: 500_000,
+        is_deposit: true,
+    }];
+
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
+    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+
+    setup.store_stacks_genesis_block(&db).await;
+    setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
+    setup.store_deposit_txs(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_deposit_decisions(&db).await;
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    let chain_tip_block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
+
+    let aggregate_key = setup.signers.signer.keypair.public_key().into();
+
+    let request = BitcoinPreSignRequest {
+        request_package: vec![TxRequestIds {
+            deposits: setup.deposit_outpoints(),
+            withdrawals: Vec::new(),
+        }],
+        fee_rate: TEST_FEE_RATE * times_larger_fee,
+        last_fees: None,
+    };
+
+    let btc_ctx = BitcoinTxContext {
+        chain_tip: chain_tip_block.block_hash,
+        chain_tip_height: chain_tip_block.block_height,
+        signer_public_key: setup.signers.keys[0],
+        aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
+    };
+
+    let validation_data = request
+        .construct_package_sighashes(&ctx, &btc_ctx)
+        .await
+        .unwrap();
+    // There are a few invariants that we uphold for our validation data.
+    // These are things like "the transaction ID per package must be the
+    // same", we check for them here.
+    validation_data.assert_invariants();
+    // We only had a package with one set of requests that were being
+    // handled.
+    assert_eq!(validation_data.len(), 1);
+
+    // We didn't give any withdrawals so the outputs vector should be
+    // empty (it only has signer outputs).
+    let set = &validation_data[0];
+    assert!(set.to_withdrawal_rows().is_empty());
+
+    // This transaction package
+    let input_rows = set.to_input_rows();
+    let [signer, deposit] = input_rows.last_chunk().unwrap();
+    assert_eq!(signer.will_sign, should_sign);
+    assert_eq!(signer.is_valid_tx, should_sign);
+    assert_eq!(deposit.will_sign, should_sign);
+    assert_eq!(deposit.is_valid_tx, should_sign);
 
     testing::storage::drop_db(db).await;
 }
@@ -413,6 +502,7 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
         chain_tip_height: chain_tip_ref.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
     };
 
     let validation_data = request
@@ -519,6 +609,7 @@ async fn swept_withdrawals_fail_validation() {
         chain_tip_height: chain_tip_ref.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
     };
 
     let validation_data = request
@@ -641,6 +732,7 @@ async fn cannot_sign_deposit_is_ok() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
     };
 
     let validation_data = request
@@ -779,6 +871,7 @@ async fn sighashes_match_from_sbtc_requests_object() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
     };
 
     let validation_data = request
@@ -923,6 +1016,7 @@ async fn outcome_is_independent_of_input_order() {
         chain_tip_height: chain_tip_block.block_height,
         signer_public_key: setup.signers.keys[0],
         aggregate_key,
+        estimated_fee_rate: TEST_FEE_RATE,
     };
 
     let validation_data1 = request

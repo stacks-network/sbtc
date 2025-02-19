@@ -77,4 +77,8 @@ pub enum SignerConfigError {
     /// An error returned for duration parameters that must be positive.
     #[error("Duration for {0} must be nonzero")]
     ZeroDurationForbidden(&'static str),
+
+    /// An error returned for value parameters that must be positive.
+    #[error("Value for {0} must be nonzero")]
+    ZeroValueForbidden(&'static str),
 }

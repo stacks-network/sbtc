@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::validation::BitcoinTxContext;
+use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::SignerCommand;
@@ -398,12 +399,18 @@ where
                     .aggregate_key
             }
         };
+        let estimated_fee_rate = self
+            .context
+            .get_bitcoin_client()
+            .estimate_fee_rate()
+            .await?;
 
         let btc_ctx = BitcoinTxContext {
             chain_tip: chain_tip.block_hash,
             chain_tip_height: chain_tip.block_height,
             signer_public_key: self.signer_public_key(),
             aggregate_key,
+            estimated_fee_rate,
         };
 
         tracing::debug!("validating bitcoin transaction pre-sign");
@@ -487,6 +494,12 @@ where
         chain_tip: &model::BitcoinBlockRef,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
+        // Ensure that the Stacks fee is within the acceptable range.
+        let highest_acceptable_fee = self.context.config().signer.stx_fee_max_micro_stx;
+        if highest_acceptable_fee < request.tx_fee {
+            return Err(Error::StacksTxFee(request.tx_fee, highest_acceptable_fee));
+        }
+
         let db = self.context.get_storage();
         let public_key = self.signer_public_key();
 
