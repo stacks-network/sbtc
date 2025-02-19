@@ -1,0 +1,23 @@
+name: Release Drafter
+
+on:
+  push:
+    tags:
+      - "v*"  # Triggers only when a new tag (e.g., v1.2.3) is pushed
+
+permissions:
+  contents: write
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Release Drafter
+        uses: release-drafter/release-drafter@v6
+        with:
+          config-name: release-drafter.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
