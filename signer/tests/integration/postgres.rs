@@ -181,7 +181,11 @@ impl AsContractCall for InitiateWithdrawalRequest {
     sweep_block_height: 7,
 }); "accept-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
-    request_id: 0,
+    id: QualifiedRequestId {
+	request_id: 0,
+	txid: StacksTxId::from([0; 32]),
+	block_hash: StacksBlockHash::from([0; 32]),
+    },
     signer_bitmap: BitArray::ZERO,
     deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
