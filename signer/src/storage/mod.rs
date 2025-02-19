@@ -168,7 +168,7 @@ pub trait DbRead {
 
     /// This function returns withdrawal requests filtered by a portion of the
     /// consensus critera defined in #741.
-    /// 
+    ///
     /// ## Filter Criteria
     ///
     /// 1. The withdrawal request transaction (`create-withdrawal-request`
@@ -183,9 +183,9 @@ pub trait DbRead {
     ///    to a canonical bitcoin block older than the given `context_window`.
     /// 5. There is no canonically confirmed withdrawal request rejection event
     ///    (`reject-withdrawal-request` contract call) for the request.
-    /// 
+    ///
     /// ## Notes
-    /// 
+    ///
     /// -  This does does not filter `signature_threshold` on that the approving
     ///    signers are part of the current signer set and this parameter is only
     ///    used as a pre-filter as the votes themselves are generally also
