@@ -148,7 +148,8 @@ export class EmilyStackUtils {
         return this.getStageName() === Constants.DEV_STAGE_NAME
             || this.getStageName() === Constants.LOCAL_STAGE_NAME
             || this.getStageName() === Constants.UNIT_TEST_STAGE_NAME
-            || this.getStageName() === Constants.TEMP_STAGE_NAME;
+            || this.getStageName() === Constants.TEMP_STAGE_NAME
+            || this.getStageName() === Constants.PRIVATE_MAINNET_STAGE_NAME;
     }
 
     /*

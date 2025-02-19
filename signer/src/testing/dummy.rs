@@ -704,7 +704,7 @@ impl fake::Dummy<fake::Faker> for RejectWithdrawalV1 {
         let address = StacksAddress::p2pkh(false, &pubkey);
 
         RejectWithdrawalV1 {
-            request_id: config.fake_with_rng(rng),
+            id: config.fake_with_rng(rng),
             signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
             deployer: address,
         }
