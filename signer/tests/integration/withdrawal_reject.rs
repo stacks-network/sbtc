@@ -534,6 +534,8 @@ async fn reject_withdrawal_validation_request_completed() {
         .with_mocked_emily_client()
         .build();
 
+    // Different: the request has been marked as completed in the smart
+    // contract.
     set_withdrawal_completed(&mut ctx).await;
 
     let public_keys = test_signer_set
