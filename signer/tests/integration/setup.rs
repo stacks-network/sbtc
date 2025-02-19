@@ -571,10 +571,6 @@ impl TestSignerSet {
         self.signer.keypair.public_key().into()
     }
 
-    pub fn signer_keys_btree(&self) -> BTreeSet<PublicKey> {
-        self.keys.iter().copied().collect()
-    }
-
     pub fn private_key(&self) -> PrivateKey {
         self.signer.keypair.secret_key().into()
     }

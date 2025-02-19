@@ -3658,7 +3658,7 @@ mod get_eligible_pending_withdrawal_requests {
         // Things we'll need later.
         let signatures_required = 2;
         let signer_set = TestSignerSet::new(&mut rng);
-        let signer_keys = signer_set.signer_keys_btree();
+        let signer_keys = signer_set.keys.iter().copied().collect();
         let coordinator_private_key = signer_set.private_key();
 
         // Create a new bitcoin chain with 31 blocks and a sibling stacks chain
