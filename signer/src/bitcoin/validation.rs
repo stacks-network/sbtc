@@ -1688,7 +1688,7 @@ mod tests {
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
-                        request_id: 0,
+                        request_id: 1,
                         txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
