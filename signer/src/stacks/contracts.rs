@@ -661,12 +661,13 @@ impl AsContractCall for AcceptWithdrawalV1 {
 
         vec![
             ClarityValue::UInt(self.id.request_id as u128),
-            ClarityValue::Sequence(SequenceData::Buffer(txid)),
+            ClarityValue::Sequence(SequenceData::Buffer(txid.clone())),
             ClarityValue::UInt(self.signer_bitmap.load_le()),
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
             ClarityValue::UInt(self.sweep_block_height as u128),
+            ClarityValue::Sequence(SequenceData::Buffer(txid)),
         ]
     }
     /// Validates that the accept-withdrawal-request satisfies the
@@ -732,45 +733,64 @@ impl AcceptWithdrawalV1 {
         if self.deployer != req_ctx.deployer {
             return Err(WithdrawalErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
+        let stacks_chain_tip = ctx
+            .get_storage()
+            .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
+            .await?
+            .ok_or(Error::NoStacksChainTip)?;
+
+        let signer_public_key = ctx.config().signer.public_key();
         // 2. That the signer has a record of the withdrawal request in its
         //    list of pending and accepted withdrawal requests.
         //
         // Check that this is actually a pending and accepted withdrawal
         // request.
-        let withdrawal_requests = db
-            .get_pending_accepted_withdrawal_requests(
-                &req_ctx.chain_tip.block_hash,
-                req_ctx.context_window,
-                req_ctx.signatures_required,
-            )
-            .await?;
+        let withdrawal_requests = db.get_withdrawal_request_report(
+            &req_ctx.chain_tip.block_hash,
+            &stacks_chain_tip.block_hash,
+            &self.id,
+            &signer_public_key,
+        );
 
-        let request = withdrawal_requests
-            .into_iter()
-            .find(|req| req.request_id == self.request_id)
-            .ok_or_else(|| WithdrawalErrorMsg::RequestMissing.into_error(req_ctx, self))?;
+        let Some(report) = withdrawal_requests.await? else {
+            return Err(WithdrawalErrorMsg::RequestMissing.into_error(req_ctx, self));
+        };
+
+        let txid_ref = match report.status {
+            WithdrawalRequestStatus::Fulfilled(txid) => txid,
+            WithdrawalRequestStatus::Confirmed => {
+                return Err(WithdrawalErrorMsg::SweepTransactionMissing.into_error(req_ctx, self));
+            }
+            WithdrawalRequestStatus::Unconfirmed => {
+                return Err(WithdrawalErrorMsg::SweepTransactionMissing.into_error(req_ctx, self));
+            }
+        };
+
+        if txid_ref.txid.deref() != &self.outpoint.txid {
+            return Err(WithdrawalErrorMsg::IncorrectSweepTx.into_error(req_ctx, self));
+        }
 
         // 5. The `scriptPubKey` of the UTXO matches the one in the withdrawal
         //    request.
-        if &tx_out.script_pubkey != request.recipient.deref() {
+        if &tx_out.script_pubkey != report.recipient.deref() {
             return Err(WithdrawalErrorMsg::RecipientMismatch.into_error(req_ctx, self));
         }
         // 6. The `amount` of the UTXO matches the one in the withdrawal
         //    request.
-        if tx_out.value.to_sat() != request.amount {
+        if tx_out.value.to_sat() != report.amount {
             return Err(WithdrawalErrorMsg::InvalidAmount.into_error(req_ctx, self));
         }
         // 7. Check that the fee is less than the desired max-fee.
         //
         // The smart contract cannot check if we exceed the max fee, so we
         // do a check ourselves.
-        if self.tx_fee > request.max_fee {
+        if self.tx_fee > report.max_fee {
             return Err(WithdrawalErrorMsg::FeeTooHigh.into_error(req_ctx, self));
         }
         // 10. That the signer bitmap matches the bitmap formed from our
         //     records.
         let votes = db
-            .get_withdrawal_request_signer_votes(&request.qualified_id(), &req_ctx.aggregate_key)
+            .get_withdrawal_request_signer_votes(&self.id, &req_ctx.aggregate_key)
             .await?;
         if self.signer_bitmap != BitArray::from(votes) {
             return Err(WithdrawalErrorMsg::BitmapMismatch.into_error(req_ctx, self));
@@ -933,6 +953,10 @@ pub enum WithdrawalErrorMsg {
     /// The supplied fee does not match what is expected.
     #[error("the supplied fee does not match what is expected")]
     IncorrectFee,
+    /// The transaction that swept in the funds must match the one in our
+    /// records.
+    #[error("the transaction that swept the funds was not one that matched our records")]
+    IncorrectSweepTx,
     /// The amount to withdraw must equal the amount in the withdrawal
     /// request.
     #[error("amount to withdrawn exceeded the amount in the withdrawal request")]
@@ -1077,9 +1101,8 @@ impl AsContractCall for RejectWithdrawalV1 {
         let stacks_chain_tip = ctx
             .get_storage()
             .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
-            .await
-            .unwrap()
-            .unwrap();
+            .await?
+            .ok_or(Error::NoStacksChainTip)?;
         let maybe_report = ctx
             .get_storage()
             .get_withdrawal_request_report(
