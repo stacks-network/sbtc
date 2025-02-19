@@ -380,7 +380,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
@@ -530,7 +530,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
