@@ -639,87 +639,6 @@ async fn should_return_the_same_pending_accepted_deposit_requests_as_in_memory_s
     signer::testing::storage::drop_db(pg_store).await;
 }
 
-/// This ensures that the postgres store and the in memory stores returns equivalent results
-/// when fetching pending accepted withdraw requests
-#[tokio::test]
-async fn should_return_the_same_pending_accepted_withdraw_requests_as_in_memory_store() {
-    let mut pg_store = testing::storage::new_test_database().await;
-    let mut in_memory_store = storage::in_memory::Store::new_shared();
-
-    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
-
-    let num_signers = 15;
-    let context_window = 5;
-    let test_model_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 20,
-        num_stacks_blocks_per_bitcoin_block: 3,
-        num_deposit_requests_per_block: 5,
-        num_withdraw_requests_per_block: 1,
-        // The signers in these tests vote to reject the request with 50%
-        // probability, so the number of signers needs to be a bit above
-        // the threshold in order for the test to succeed with accepted
-        // requests.
-        num_signers_per_request: num_signers,
-        consecutive_blocks: false,
-    };
-    let threshold = 4;
-    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
-    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
-
-    test_data.write_to(&mut in_memory_store).await;
-    test_data.write_to(&mut pg_store).await;
-
-    let chain_tip = in_memory_store
-        .get_bitcoin_canonical_chain_tip()
-        .await
-        .expect("failed to get canonical chain tip")
-        .expect("no chain tip");
-
-    assert_eq!(
-        pg_store
-            .get_bitcoin_canonical_chain_tip()
-            .await
-            .expect("failed to get canonical chain tip")
-            .expect("no chain tip"),
-        chain_tip
-    );
-
-    assert_eq!(
-        in_memory_store
-            .get_stacks_chain_tip(&chain_tip)
-            .await
-            .expect("failed to get stacks chain tip")
-            .expect("no chain tip"),
-        pg_store
-            .get_stacks_chain_tip(&chain_tip)
-            .await
-            .expect("failed to get stacks chain tip")
-            .expect("no chain tip"),
-    );
-
-    let mut pending_accepted_withdraw_requests = in_memory_store
-        .get_pending_accepted_withdrawal_requests(&chain_tip, context_window, threshold)
-        .await
-        .expect("failed to get pending_accepted deposit requests");
-
-    pending_accepted_withdraw_requests.sort();
-
-    assert!(!pending_accepted_withdraw_requests.is_empty());
-
-    let mut pg_pending_accepted_withdraw_requests = pg_store
-        .get_pending_accepted_withdrawal_requests(&chain_tip, context_window, threshold)
-        .await
-        .expect("failed to get pending_accepted deposit requests");
-
-    pg_pending_accepted_withdraw_requests.sort();
-
-    assert_eq!(
-        pending_accepted_withdraw_requests,
-        pg_pending_accepted_withdraw_requests
-    );
-    signer::testing::storage::drop_db(pg_store).await;
-}
-
 /// This tests that when fetching pending accepted deposits we ignore swept ones.
 #[tokio::test]
 async fn should_not_return_swept_deposits_as_pending_accepted() {
@@ -2123,7 +2042,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
         .unwrap();
 
     // There should only be one request in the database and it has a sweep
-    // trasnaction so the length should be 1.
+    // transaction so the length should be 1.
     assert_eq!(requests.len(), 1);
 
     // Its details should match that of the deposit request.

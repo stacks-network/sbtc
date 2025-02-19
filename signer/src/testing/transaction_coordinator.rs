@@ -181,6 +181,8 @@ where
         // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
+        let context = self.context.clone();
+        let storage = context.get_storage();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
         let mut testing_signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -217,8 +219,8 @@ where
             .await;
 
         // Create the coordinator
-        self.context.state().set_sbtc_contracts_deployed();
-        let signer_network = SignerNetwork::single(&self.context);
+        context.state().set_sbtc_contracts_deployed();
+        let signer_network = SignerNetwork::single(&context);
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
@@ -231,25 +233,21 @@ where
             is_epoch3: true,
         };
 
+        let signer_public_keys = &signer_info
+            .last()
+            .expect("Empty signer set!")
+            .signer_public_keys;
+
         // Get pending withdrawals from coordinator
         let pending_requests = coordinator
-            .get_pending_requests(
-                &bitcoin_chain_tip.block_hash,
-                &aggregate_key,
-                &signer_info
-                    .last()
-                    .expect("Empty signer set!")
-                    .signer_public_keys,
-            )
+            .get_pending_requests(&bitcoin_chain_tip, &aggregate_key, signer_public_keys)
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
         // Get pending withdrawals from storage
-        let withdrawals_in_storage = coordinator
-            .context
-            .get_storage()
+        let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_chain_tip.block_hash,
                 self.context_window,
@@ -267,7 +265,7 @@ where
         }
     }
 
-    /// Assert that a coordinator should be able to coordiante a signing round
+    /// Assert that a coordinator should be able to coordinate a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(
         mut self,
         delay_to_process_new_blocks: Duration,
@@ -338,7 +336,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
@@ -488,7 +486,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
