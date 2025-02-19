@@ -2042,7 +2042,7 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
         .unwrap();
 
     // There should only be one request in the database and it has a sweep
-    // trasnaction so the length should be 1.
+    // transaction so the length should be 1.
     assert_eq!(requests.len(), 1);
 
     // Its details should match that of the deposit request.
