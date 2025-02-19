@@ -3416,7 +3416,6 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-#[allow(dead_code, unused_variables)] //TODO: REMOVE
 mod get_eligible_pending_withdrawal_requests {
     use std::sync::atomic::AtomicU64;
 
@@ -3431,7 +3430,7 @@ mod get_eligible_pending_withdrawal_requests {
             TxPrevout, TxPrevoutType, WithdrawalRequest,
         },
         testing::{
-            blocks::BitcoinChain,
+            blocks::{BitcoinChain, StacksChain},
             storage::{DbReadTestExt as _, DbWriteTestExt as _},
         },
         transaction_coordinator::GetPendingRequestsParams,
@@ -3557,53 +3556,6 @@ mod get_eligible_pending_withdrawal_requests {
         withdrawal_request
     }
 
-    /// Creates a simulated sweep transaction in the specified bitcoin block
-    /// that includes the specified withdrawal request. The sweep transaction is
-    /// written to the database and the transaction ID is returned.
-    async fn sweep_withdrawal_request(
-        db: &PgStore,
-        request: &WithdrawalRequest,
-        at_bitcoin_block: &BitcoinBlockHash,
-    ) -> BitcoinTxId {
-        // For `sbtc_signer.transactions`:
-        let transaction = model::Transaction {
-            txid: Faker.fake(),
-            block_hash: at_bitcoin_block.into_bytes(),
-            tx_type: model::TransactionType::SbtcTransaction,
-            tx: Vec::new(),
-        };
-        // For `sbtc_signer.bitcoin_transactions`:
-        let bitcoin_sweep_tx = model::BitcoinTxRef {
-            txid: transaction.txid.into(),
-            block_hash: *at_bitcoin_block,
-        };
-
-        // Write the transaction entities to the database.
-        db.write_transaction(&transaction)
-            .await
-            .expect("failed to write transaction");
-        db.write_bitcoin_transaction(&bitcoin_sweep_tx)
-            .await
-            .expect("failed to write bitcoin transaction");
-
-        // Write a fully validated withdrawal output for the request.
-        db.write_bitcoin_withdrawals_outputs(&[model::BitcoinWithdrawalOutput {
-            bitcoin_txid: bitcoin_sweep_tx.txid,
-            bitcoin_chain_tip: *at_bitcoin_block,
-            is_valid_tx: true,
-            stacks_txid: request.txid,
-            stacks_block_hash: request.block_hash,
-            request_id: request.request_id,
-            validation_result: WithdrawalValidationResult::Ok,
-            output_index: 2,
-        }])
-        .await
-        .expect("failed to write bitcoin withdrawal output");
-
-        // Return our transaction id.
-        transaction.txid.into()
-    }
-
     /// Gets the next withdrawal request ID to use for testing.
     fn next_request_id() -> u64 {
         static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(0);
@@ -3621,12 +3573,11 @@ mod get_eligible_pending_withdrawal_requests {
         let signatures_required = 2;
         let signer_set = TestSignerSet::new(&mut rng);
         let signer_keys = signer_set.keys.iter().copied().collect();
-        let coordinator_private_key = signer_set.private_key();
 
         // Create a new bitcoin chain with 31 blocks and a sibling stacks chain
         // anchored starting at block 1.
         let bitcoin_chain = BitcoinChain::new_with_length(30);
-        let stacks_chain = StacksBlock::new_anchored_chain(&bitcoin_chain);
+        let stacks_chain = StacksChain::new_anchored(&bitcoin_chain);
 
         // Write the blocks to the database.
         db.write_blocks(&bitcoin_chain, &stacks_chain).await;
@@ -3637,7 +3588,7 @@ mod get_eligible_pending_withdrawal_requests {
             bitcoin_chain_tip.block_hash,
             bitcoin_chain.chain_tip().block_hash
         );
-        assert_eq!(stacks_chain_tip, stacks_chain.last().unwrap().block_hash);
+        assert_eq!(stacks_chain_tip, stacks_chain.chain_tip().block_hash);
 
         // Create DKG shares and write them to the database.
         let dkg_shares = model::EncryptedDkgShares {
@@ -3655,7 +3606,6 @@ mod get_eligible_pending_withdrawal_requests {
             .with_mocked_emily_client()
             .with_mocked_stacks_client()
             .build();
-        let network = SignerNetwork::single(&context);
 
         // Update the state with unlimited caps/limits.
         let state = context.state();
@@ -3678,11 +3628,6 @@ mod get_eligible_pending_withdrawal_requests {
             100_000_000,
         )
         .await;
-
-        let signer_btc_state = SignerBtcState {
-            public_key: dkg_shares.aggregate_key.into(),
-            ..signer_set.keys.as_slice().fake()
-        };
 
         // Define the parameters for the
         // get_eligible_pending_withdrawal_requests call.
@@ -3718,7 +3663,7 @@ mod get_eligible_pending_withdrawal_requests {
         assert!(pending_withdrawals.is_empty());
 
         // Create a withdrawal request
-        let stacks_block = &stacks_chain[10];
+        let stacks_block = stacks_chain.nth_block(10);
         let withdrawal_1 = utxo::WithdrawalRequest {
             request_id: next_request_id(),
             txid: Faker.fake(),
