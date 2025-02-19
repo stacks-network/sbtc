@@ -93,11 +93,13 @@ impl From<&Requests<'_>> for TxRequestIds {
 /// Check that this does not contain duplicate deposits or withdrawals.
 pub fn is_unique(package: &[TxRequestIds]) -> bool {
     let mut deposits_set = HashSet::new();
-    let mut withdrawals_set = HashSet::new();
+    let mut withdrawal_request_id_set = HashSet::new();
+    
     package.iter().all(|reqs| {
         let deposits = reqs.deposits.iter().all(|out| deposits_set.insert(out));
-        let withdrawals = reqs.withdrawals.iter().all(|id| withdrawals_set.insert(id));
-        deposits && withdrawals
+        let withdrawal_requests = reqs.withdrawals.iter().all(|id| withdrawal_request_id_set.insert(id.request_id));
+            
+        deposits && withdrawal_requests
     })
 }
 
