@@ -126,7 +126,7 @@ devenv-up:
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
 
 devenv-clean-headers:
-	docker run --rm -v docker_stacks-node-data:/data busybox rm /data/nakamoto-neon/headers.sqlite
+	docker run --rm -v docker_stacks-node-data:/data busybox rm -f /data/nakamoto-neon/headers.sqlite
 
 devenv-up-fast: devenv-clean-headers
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
