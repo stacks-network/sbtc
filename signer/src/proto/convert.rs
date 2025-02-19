@@ -412,7 +412,7 @@ impl TryFrom<proto::CompleteDeposit> for CompleteDepositV1 {
 impl From<AcceptWithdrawalV1> for proto::AcceptWithdrawal {
     fn from(value: AcceptWithdrawalV1) -> Self {
         proto::AcceptWithdrawal {
-            request_id: value.request_id,
+            id: Some(value.id.into()),
             outpoint: Some(value.outpoint.into()),
             tx_fee: value.tx_fee,
             signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
@@ -440,7 +440,7 @@ impl TryFrom<proto::AcceptWithdrawal> for AcceptWithdrawalV1 {
             });
 
         Ok(AcceptWithdrawalV1 {
-            request_id: value.request_id,
+            id: value.id.required()?.try_into()?,
             outpoint: value.outpoint.required()?.try_into()?,
             tx_fee: value.tx_fee,
             signer_bitmap,
