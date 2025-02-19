@@ -189,16 +189,10 @@ pub struct GetPendingRequestsParams<'a> {
     pub signer_public_keys: &'a BTreeSet<PublicKey>,
     /// The current sBTC limits.
     pub sbtc_limits: &'a SbtcLimits,
-    /// The maximum number of bitcoin blocks back from the chain tip to look for
-    /// requests.
-    pub context_window: u16,
     /// The threshold for the minimum number of 'accept' votes required for a
     /// request to be considered for the sweep transaction package, and the
     /// number of signatures required for each transaction.
     pub signature_threshold: u16,
-    /// The number of bitcoin confirmations (blocks) after which a withdrawal
-    /// request shall be considered expired.
-    pub withdrawal_blocks_expiry: u64,
 }
 
 /// This function defines which messages this event loop is interested
@@ -1628,6 +1622,7 @@ where
     #[tracing::instrument(skip_all)]
     pub async fn get_eligible_pending_withdrawal_requests<DB>(
         storage: &DB,
+        withdrawal_blocks_expiry: u16,
         params: &GetPendingRequestsParams<'_>,
     ) -> Result<Vec<utxo::WithdrawalRequest>, Error>
     where
@@ -1646,10 +1641,7 @@ where
         // number of blocks that the withdrawal request is considered
         // valid (not expired). This limits the number of blocks the query will
         // consider when fetching pending withdrawal requests.
-        let context_window = params
-            .withdrawal_blocks_expiry
-            .try_into()
-            .map_err(|_| Error::TypeConversion)?;
+        let context_window = withdrawal_blocks_expiry;
 
         // Fetch pending withdrawal requests from storage. This method performs
         // the following filtering according to consensus rules:
@@ -1683,7 +1675,7 @@ where
                     request_id = req.request_id,
                     amount = req.amount,
                     reason = SKIP_REASON_AMOUNT_IS_DUST,
-                    REQUEST_SKIPPED_MESSAGE
+                    message = REQUEST_SKIPPED_MESSAGE
                 );
                 continue;
             }
@@ -1697,7 +1689,7 @@ where
                     amount = req.amount,
                     per_withdrawal_cap = per_withdrawal_cap,
                     reason = SKIP_REASON_PER_WITHDRAWAL_CAP_EXCEEDED,
-                    REQUEST_SKIPPED_MESSAGE
+                    message = REQUEST_SKIPPED_MESSAGE
                 );
                 continue;
             }
@@ -1718,7 +1710,7 @@ where
                     num_confirmations,
                     required_confirmations = WITHDRAWAL_MIN_CONFIRMATIONS,
                     reason = SKIP_REASON_INSUFFICIENT_CONFIRMATIONS,
-                    REQUEST_SKIPPED_MESSAGE
+                    message = REQUEST_SKIPPED_MESSAGE
                 );
                 continue;
             }
@@ -1757,7 +1749,7 @@ where
                     num_votes_missing,
                     required_votes = params.signature_threshold,
                     reason = SKIP_REASON_INSUFFICIENT_VOTES,
-                    REQUEST_SKIPPED_MESSAGE
+                    message = REQUEST_SKIPPED_MESSAGE
                 );
                 continue;
             }
@@ -1776,6 +1768,7 @@ where
     #[tracing::instrument(skip_all)]
     pub async fn get_eligible_pending_deposit_requests<DB>(
         storage: &DB,
+        context_window: u16,
         params: &GetPendingRequestsParams<'_>,
     ) -> Result<Vec<utxo::DepositRequest>, Error>
     where
@@ -1789,7 +1782,7 @@ where
         let pending_deposit_requests = storage
             .get_pending_accepted_deposit_requests(
                 params.bitcoin_chain_tip.as_ref(),
-                params.context_window,
+                context_window,
                 params.signature_threshold,
             )
             .await?;
@@ -1841,18 +1834,26 @@ where
                 stacks_chain_tip,
                 aggregate_key,
                 signer_public_keys,
-                context_window: self.context_window,
                 signature_threshold: self.threshold,
                 sbtc_limits: &sbtc_limits,
-                withdrawal_blocks_expiry: WITHDRAWAL_BLOCKS_EXPIRY,
             };
 
             // Fetch eligible deposit requests.
-            let deposits = Self::get_eligible_pending_deposit_requests(&storage, &params).await?;
+            let deposits =
+                Self::get_eligible_pending_deposit_requests(&storage, self.context_window, &params)
+                    .await?;
 
             // Fetch eligible withdrawal requests.
-            let withdrawals =
-                Self::get_eligible_pending_withdrawal_requests(&storage, &params).await?;
+            let withdrawal_expiry_window = WITHDRAWAL_BLOCKS_EXPIRY
+                .try_into()
+                .map_err(|_| Error::TypeConversion)?;
+
+            let withdrawals = Self::get_eligible_pending_withdrawal_requests(
+                &storage,
+                withdrawal_expiry_window,
+                &params,
+            )
+            .await?;
 
             // Return the deposit and withdrawal requests we've gotten.
             (deposits, withdrawals)

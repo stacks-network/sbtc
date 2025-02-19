@@ -16,7 +16,6 @@ use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::Transaction;
 use bitcoincore_rpc::RpcApi as _;
-use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
@@ -45,7 +44,6 @@ use sbtc::testing::regtest::AsUtxo as _;
 use sbtc::testing::regtest::Recipient;
 use secp256k1::Keypair;
 use signer::bitcoin::rpc::BitcoinCoreClient;
-use signer::bitcoin::utxo;
 use signer::bitcoin::utxo::BitcoinInputsOutputs;
 use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::BitcoinInteract as _;
@@ -3416,19 +3414,17 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
+/// Module containing a test suite and helpers specific to
+/// [`TxCoordinatorEventLoop::get_eligible_pending_withdrawal_requests`].
 mod get_eligible_pending_withdrawal_requests {
     use std::sync::atomic::AtomicU64;
+    use test_case::test_case;
 
     use signer::{
-        bitcoin::{
-            utxo::SignerBtcState, validation::WithdrawalValidationResult, MockBitcoinInteract,
-        },
+        bitcoin::MockBitcoinInteract,
         emily_client::MockEmilyInteract,
         network::in_memory2::SignerNetworkInstance,
-        storage::model::{
-            BitcoinBlock, BitcoinTxId, ScriptPubKey, StacksBlock, TransactionType, TxOutputType,
-            TxPrevout, TxPrevoutType, WithdrawalRequest,
-        },
+        storage::model::{BitcoinBlock, StacksBlock, WithdrawalRequest},
         testing::{
             blocks::{BitcoinChain, StacksChain},
             storage::{DbReadTestExt as _, DbWriteTestExt as _},
@@ -3450,72 +3446,23 @@ mod get_eligible_pending_withdrawal_requests {
         SignerNetworkInstance,
     >;
 
-    /// Creates a new "dummy" UTXO (in all necessary tables) for the coordinator
-    /// to use in its tests.
-    async fn store_dummy_utxo(
+    /// Creates [`WithdrawalSigner`]s for each vote in the provided slice,
+    /// zipped together with the signer keys from the provided
+    /// [`TestSignerSet`], and stores them in the database.
+    async fn store_votes(
         db: &PgStore,
-        bitcoin_block: &BitcoinBlock,
-        signers_script_pubkey: &ScriptPubKey,
-        amount: u64,
-    ) -> BitcoinTxId {
-        // Generate a random transaction id.
-        let txid: BitcoinTxId = Faker.fake();
-
-        // Create our entities.
-        let tx = model::Transaction {
-            txid: txid.into_bytes(),
-            block_hash: bitcoin_block.block_hash.into_bytes(),
-            tx: Vec::new(),
-            tx_type: TransactionType::SbtcTransaction,
-        };
-        let bitcoin_tx = model::BitcoinTxRef {
-            txid,
-            block_hash: bitcoin_block.block_hash,
-        };
-        let signers_prevout = TxPrevout {
-            txid,
-            prevout_txid: Faker.fake(),
-            prevout_output_index: 0,
-            prevout_type: TxPrevoutType::SignersInput,
-            script_pubkey: signers_script_pubkey.clone(),
-            amount,
-        };
-        let signers_output = model::TxOutput {
-            txid,
-            output_index: 0,
-            output_type: TxOutputType::SignersOutput,
-            script_pubkey: signers_script_pubkey.clone(),
-            amount,
-        };
-
-        // Write the entities to the database.
-        db.write_transaction(&tx)
-            .await
-            .expect("failed to write utxo transaction");
-        db.write_bitcoin_transaction(&bitcoin_tx)
-            .await
-            .expect("failed to write bitcoin transaction");
-        db.write_tx_prevout(&signers_prevout)
-            .await
-            .expect("failed to write utxo prevout");
-        db.write_tx_output(&signers_output)
-            .await
-            .expect("failed to write utxo output");
-
-        // Return the transaction id.
-        txid
-    }
-
-    /// Creates [`WithdrawalSigner`]s for each vote in the provided slice and
-    /// stores them in the database. The signer public key is randomized.
-    async fn store_votes(db: &PgStore, request: &WithdrawalRequest, votes: &[bool]) {
-        for vote in votes {
+        request: &WithdrawalRequest,
+        signer_set: &TestSignerSet,
+        votes: &[bool],
+    ) {
+        let signer_votes = signer_set.signer_keys().iter().zip(votes.iter());
+        for vote in signer_votes {
             let signer = model::WithdrawalSigner {
                 request_id: request.request_id,
                 block_hash: request.block_hash,
                 txid: request.txid,
-                signer_pub_key: Faker.fake(),
-                is_accepted: *vote,
+                signer_pub_key: *vote.0,
+                is_accepted: *vote.1,
             };
             db.write_withdrawal_signer_decision(&signer)
                 .await
@@ -3525,21 +3472,15 @@ mod get_eligible_pending_withdrawal_requests {
 
     /// Creates and stores a withdrawal request, confirmed in the specified
     /// bitcoin & stacks blocks.
-    ///
-    /// If votes are provided, signer vote entries are created and stored as
-    /// well (with the same number of votes as the length of the `votes` slice).
-    /// The votes are stored under random signer public keys.
     async fn store_withdrawal_request(
         db: &PgStore,
-        request_id: u64,
         bitcoin_block: &BitcoinBlock,
         stacks_block: &StacksBlock,
         amount: u64,
         max_fee: u64,
-        votes: &[bool],
     ) -> WithdrawalRequest {
         let withdrawal_request = WithdrawalRequest {
-            request_id,
+            request_id: next_request_id(),
             block_hash: stacks_block.block_hash,
             bitcoin_block_height: bitcoin_block.block_height,
             amount,
@@ -3551,8 +3492,6 @@ mod get_eligible_pending_withdrawal_requests {
             .await
             .expect("failed to write withdrawal request");
 
-        store_votes(db, &withdrawal_request, votes).await;
-
         withdrawal_request
     }
 
@@ -3562,21 +3501,23 @@ mod get_eligible_pending_withdrawal_requests {
         NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed)
     }
 
-    /// Asserts that TxCoordinatorEventLoop::get_pending_requests processes
-    /// withdrawals
-    #[test_log::test(tokio::test)]
-    pub async fn test_coordinator_withdrawal_filtering() {
-        let db = testing::storage::new_test_database().await;
-        let mut rng = rand::rngs::StdRng::seed_from_u64(56);
-
-        // Things we'll need later.
-        let signatures_required = 2;
-        let signer_set = TestSignerSet::new(&mut rng);
+    /// Helper function to set up the database with bitcoin and stacks chains,
+    /// a set of signers and their DKG shares.
+    async fn test_setup<'a>(
+        db: &PgStore,
+        chains_length: u64,
+    ) -> (
+        BitcoinChain,
+        StacksChain,
+        TestSignerSet,
+        BTreeSet<PublicKey>,
+    ) {
+        let signer_set = TestSignerSet::new(&mut OsRng);
         let signer_keys = signer_set.keys.iter().copied().collect();
 
         // Create a new bitcoin chain with 31 blocks and a sibling stacks chain
         // anchored starting at block 1.
-        let bitcoin_chain = BitcoinChain::new_with_length(30);
+        let bitcoin_chain = BitcoinChain::new_with_length(chains_length as usize);
         let stacks_chain = StacksChain::new_anchored(&bitcoin_chain);
 
         // Write the blocks to the database.
@@ -3592,97 +3533,119 @@ mod get_eligible_pending_withdrawal_requests {
 
         // Create DKG shares and write them to the database.
         let dkg_shares = model::EncryptedDkgShares {
+            aggregate_key: signer_set.aggregate_key(),
             started_at_bitcoin_block_hash: bitcoin_chain_tip.block_hash,
             started_at_bitcoin_block_height: bitcoin_chain_tip.block_height,
             signer_set_public_keys: signer_set.signer_keys().to_vec(),
+            dkg_shares_status: DkgSharesStatus::Verified,
             ..Faker.fake()
         };
         db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
 
-        // Create the context and network (needed for the coordinator).
-        let mut context = TestContext::builder()
-            .with_storage(db.clone())
-            .with_mocked_bitcoin_client()
-            .with_mocked_emily_client()
-            .with_mocked_stacks_client()
-            .build();
+        (bitcoin_chain, stacks_chain, signer_set, signer_keys)
+    }
 
-        // Update the state with unlimited caps/limits.
-        let state = context.state();
-        state.update_current_limits(SbtcLimits::unlimited());
+    struct TestParams {
+        chain_length: u64,
+        signature_threshold: u16,
+        sbtc_limits: SbtcLimits,
+        amount: u64,
+        num_approves: usize,
+        num_expected_results: usize,
+        at_block_height: usize,
+    }
 
-        // We need a few methods on the bitcoin mock to work.
-        context
-            .with_bitcoin_client(|client| {
-                client
-                    .expect_estimate_fee_rate()
-                    .returning(|| Box::pin(async { Ok(15.0) }));
-            })
-            .await;
+    /// Asserts that TxCoordinatorEventLoop::get_pending_requests processes
+    /// withdrawals
+    #[test_case(TestParams {
+        signature_threshold: 2,
+        num_approves: 3,
+        amount: 1_000,
+        sbtc_limits: SbtcLimits::unlimited(),
+        chain_length: 8,
+        at_block_height: 2,
+        num_expected_results: 1,
+    }; "should_pass_all_validations")]
+    #[test_case(TestParams {
+        signature_threshold: 2,
+        num_approves: 3,
+        amount: 100,
+        sbtc_limits: SbtcLimits::unlimited(),
+        chain_length: 8,
+        at_block_height: 2,
+        num_expected_results: 0,
+    }; "below_dust_limit")]
+    #[test_case(TestParams {
+        signature_threshold: 2,
+        num_approves: 3,
+        amount: 1_000,
+        sbtc_limits: SbtcLimits::zero(),
+        chain_length: 8,
+        at_block_height: 2,
+        num_expected_results: 0,
+    }; "amount_over_per_withdrawal_limit")]
+    #[test_case(TestParams {
+        signature_threshold: 2,
+        num_approves: 3,
+        amount: 1_000,
+        sbtc_limits: SbtcLimits::unlimited(),
+        chain_length: 5,
+        at_block_height: 0,
+        num_expected_results: 0,
+    }; "insufficient_confirmations")]
+    #[test_case(TestParams {
+        signature_threshold: 2,
+        num_approves: 1,
+        amount: 1_000,
+        sbtc_limits: SbtcLimits::unlimited(),
+        chain_length: 8,
+        at_block_height: 2,
+        num_expected_results: 0,
+    }; "insufficient_votes")]
+    #[test_log::test(tokio::test)]
+    async fn test_validations(params: TestParams) {
+        let db = testing::storage::new_test_database().await;
+        let expiry_blocks = 1_000;
 
-        // Give the signers a UTXO.
-        store_dummy_utxo(
+        let (bitcoin_chain, stacks_chain, signer_set, signer_keys) =
+            test_setup(&db, params.chain_length + 1).await;
+
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Define the parameters for the pending requests call.
+        let get_requests_params = GetPendingRequestsParams {
+            aggregate_key: &signer_set.aggregate_key(),
+            bitcoin_chain_tip: &bitcoin_chain_tip,
+            stacks_chain_tip: &stacks_chain_tip,
+            signature_threshold: params.signature_threshold,
+            sbtc_limits: &params.sbtc_limits,
+            signer_public_keys: &signer_keys,
+        };
+
+        // Create a request below the dust limit.
+        let request = store_withdrawal_request(
             &db,
-            bitcoin_chain.first_block(),
-            &dkg_shares.script_pubkey,
-            100_000_000,
+            bitcoin_chain.nth_block(params.at_block_height),
+            stacks_chain.nth_block(params.at_block_height),
+            params.amount,
+            1_000, // Max fee isn't validated here.
         )
         .await;
 
-        // Define the parameters for the
-        // get_eligible_pending_withdrawal_requests call.
-        let get_requests_params = GetPendingRequestsParams {
-            aggregate_key: &dkg_shares.aggregate_key,
-            bitcoin_chain_tip: &bitcoin_chain_tip,
-            stacks_chain_tip: &stacks_chain_tip,
-            context_window: signer::WITHDRAWAL_MIN_CONFIRMATIONS as u16,
-            signature_threshold: signatures_required,
-            sbtc_limits: &SbtcLimits::unlimited(),
-            signer_public_keys: &signer_keys,
-            withdrawal_blocks_expiry: signer::WITHDRAWAL_BLOCKS_EXPIRY,
-        };
+        let votes = vec![true; params.num_approves];
+        store_votes(&db, &request, &signer_set, &votes).await;
 
         //Get pending withdrawals from coordinator
-        let pending_withdrawals =
-            MockedCoordinator::get_eligible_pending_withdrawal_requests(&db, &get_requests_params)
-                .await
-                .expect("failed to fetch eligible pending withdrawal requests");
+        let pending_withdrawals = MockedCoordinator::get_eligible_pending_withdrawal_requests(
+            &db,
+            expiry_blocks,
+            &get_requests_params,
+        )
+        .await
+        .expect("failed to fetch eligible pending withdrawal requests");
 
-        // There shouldn't be any pending withdrawals (we haven't added any),
-        // but it shouldn't error error, so it should be an empty vec.
-        assert!(pending_withdrawals.is_empty());
+        assert_eq!(pending_withdrawals.len(), params.num_expected_results);
 
-        //store_withdrawal_request(&db, 1, bitcoin_chain.nth_block_unchecked(1).unwrap(), stacks_chain.nth, votes)
-
-        //Get pending withdrawals from coordinator
-        let pending_withdrawals =
-            MockedCoordinator::get_eligible_pending_withdrawal_requests(&db, &get_requests_params)
-                .await
-                .expect("failed to fetch eligible pending withdrawal requests");
-
-        assert!(pending_withdrawals.is_empty());
-
-        // Create a withdrawal request
-        let stacks_block = stacks_chain.nth_block(10);
-        let withdrawal_1 = utxo::WithdrawalRequest {
-            request_id: next_request_id(),
-            txid: Faker.fake(),
-            block_hash: stacks_block.block_hash.into(),
-            amount: 100_000,
-            max_fee: 1_000,
-            script_pubkey: Recipient::new(AddressType::P2pkh)
-                .address
-                .script_pubkey()
-                .into(),
-            signer_bitmap: BitArray::new([0; 16]),
-        };
-
-        //Get pending withdrawals from coordinator
-        let pending_withdrawals =
-            MockedCoordinator::get_eligible_pending_withdrawal_requests(&db, &get_requests_params)
-                .await
-                .expect("failed to fetch eligible pending withdrawal requests");
-
-        //testing::storage::drop_db(db).await;
+        testing::storage::drop_db(db).await;
     }
 }
