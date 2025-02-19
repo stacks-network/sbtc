@@ -82,7 +82,6 @@ pub async fn get_deposit_entries(
 }
 
 /// Get deposit entries by recipient.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_by_recipient(
     context: &EmilyContext,
     recipient: &String,
@@ -99,7 +98,6 @@ pub async fn get_deposit_entries_by_recipient(
 }
 
 /// Get deposit entries by reclaim pubkey.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_by_reclaim_pubkeys_hash(
     context: &EmilyContext,
     reclaim_pubkeys_hash: &String,
@@ -165,7 +163,6 @@ pub async fn get_all_deposit_entries_modified_from_height_with_status(
 }
 
 /// Get deposit entries for a given transaction.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_for_transaction(
     context: &EmilyContext,
     bitcoin_txid: &String,
@@ -716,7 +713,6 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
 }
 
 /// Get the limit for a specific account.
-#[allow(clippy::ptr_arg)]
 pub async fn get_limit_for_account(
     context: &EmilyContext,
     account: &String,
