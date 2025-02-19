@@ -37,6 +37,8 @@ use signer::stacks::api::SubmitTxResponse;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::wallet::MultisigTx;
 use signer::storage::in_memory::Store;
+use signer::storage::model::QualifiedRequestId;
+use signer::storage::model::StacksBlockHash;
 use signer::storage::postgres;
 use signer::testing;
 use signer::testing::wallet::InitiateWithdrawalRequest;
@@ -178,7 +180,11 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     deployer: *testing::wallet::WALLET.0.address(),
 }); "create-withdrawal")]
 #[test_case(ContractCallWrapper(RejectWithdrawalV1 {
-    request_id: 1,
+    id: QualifiedRequestId {
+	    request_id: 2,
+	    txid: StacksTxId::from([0; 32]),
+	    block_hash: StacksBlockHash::from([0; 32]),
+    },
     signer_bitmap: BitArray::ZERO,
     deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
@@ -366,7 +372,11 @@ async fn is_withdrawal_completed_rejection_works() {
     assert!(!is_completed);
 
     let reject_withdrawal = ContractCallWrapper(RejectWithdrawalV1 {
-        request_id: 1,
+        id: QualifiedRequestId {
+            request_id: 1,
+            block_hash: StacksBlockHash::from([0; 32]),
+            txid: StacksTxId::from([0; 32]),
+        },
         signer_bitmap: BitArray::ZERO,
         deployer: *testing::wallet::WALLET.0.address(),
     });
