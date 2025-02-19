@@ -166,10 +166,10 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
-    /// This function returns withdrawal requests meeting the following
-    /// criteria, with the assumption that the canonical bitcoin chain tip is
-    /// the given `bitcoin_chain_tip` and the canonical stacks chain tip is the
-    /// given `stacks_chain_tip`:
+    /// This function returns withdrawal requests filtered by a portion of the
+    /// consensus critera defined in #741.
+    /// 
+    /// ## Filter Criteria
     ///
     /// 1. The withdrawal request transaction (`create-withdrawal-request`
     ///    contract call) is confirmed in a stacks block anchored to the
@@ -178,9 +178,20 @@ pub trait DbRead {
     ///    that has been confirmed in a block on the canonical bitcoin
     ///    blockchain.
     /// 3. The withdrawal request has been approved by at least
-    ///    `signature_threshold` signers. **NOTE:** This does does not currently
-    ///    verify that the approving signers are part of the current signer set;
-    ///    you need to check this separately.
+    ///    `signature_threshold` signers.
+    /// 4. The withdrawal request was not confirmed in a stacks block anchored
+    ///    to a canonical bitcoin block older than the given `context_window`.
+    /// 5. There is no canonically confirmed withdrawal request rejection event
+    ///    (`reject-withdrawal-request` contract call) for the request.
+    /// 
+    /// ## Notes
+    /// 
+    /// -  This does does not filter `signature_threshold` on that the approving
+    ///    signers are part of the current signer set and this parameter is only
+    ///    used as a pre-filter as the votes themselves are generally also
+    ///    needed separately. Use
+    ///    [`DbRead::get_withdrawal_request_signer_votes`] to fetch the votes
+    ///    and perform this verification separately.
     fn get_pending_accepted_withdrawal_requests(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,

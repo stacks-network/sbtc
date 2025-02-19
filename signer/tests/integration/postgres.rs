@@ -4920,6 +4920,8 @@ async fn pending_rejected_withdrawal_already_accepted() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// Module containing a test suite and helpers specific to
+/// `DbRead::get_pending_accepted_withdrawal_requests`.
 mod get_pending_accepted_withdrawal_requests {
     use signer::{
         bitcoin::validation::WithdrawalValidationResult,
@@ -4972,6 +4974,22 @@ mod get_pending_accepted_withdrawal_requests {
         store_votes(db, &withdrawal_request, votes).await;
 
         withdrawal_request
+    }
+
+    /// Creates a withdrawal rejection event in the database at the specified
+    /// stacks block.
+    async fn reject_withdrawal_request(
+        db: &PgStore,
+        request: &WithdrawalRequest,
+        stacks_block: &StacksBlock,
+    ) {
+        db.write_withdrawal_reject_event(&WithdrawalRejectEvent {
+            request_id: request.request_id,
+            block_id: stacks_block.block_hash,
+            ..Faker.fake()
+        })
+        .await
+        .expect("failed to write withdrawal reject event");
     }
 
     /// Creates a sweep transaction that includes the specified withdrawal
@@ -5028,14 +5046,231 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(&Faker.fake(), &Faker.fake(), 1_000, 0)
             .await
             .expect("failed to query db");
-
         assert!(requests.is_empty());
 
         signer::testing::storage::drop_db(db).await;
     }
 
-    // TODO:
-    // - Expired requests
+    /// Asserts that requests with a confirmed rejection event are not returned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐
+    /// Bitcoin: │   B1 ✖ │
+    ///          └─▲──────┘  We both confirm and reject the
+    ///          ┌─┴──────┐  request in B1.
+    /// Stacks:  │   S1   │
+    ///          └────────┘
+    /// ```
+    #[tokio::test]
+    async fn request_with_confirmed_rejection_not_returned() {
+        let db = signer::testing::storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let context_window = 1_000;
+
+        // Bitcoin blocks:
+        let bitcoin_block = BitcoinBlock::new_genesis();
+        // Stacks blocks:
+        let stacks_block = StacksBlock::new_genesis().anchored_to(&bitcoin_block);
+
+        // Write our blocks.
+        db.write_blocks([&bitcoin_block], [&stacks_block]).await;
+
+        // Store a withdrawal request.
+        let request =
+            store_withdrawal_request(&db, 1, &bitcoin_block, &stacks_block, &[true, true]).await;
+
+        // We should get the request as pending accepted.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block.block_hash,
+                &stacks_block.block_hash,
+                context_window,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Now reject the request.
+        reject_withdrawal_request(&db, &request, &stacks_block).await;
+
+        // It should no longer be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block.block_hash,
+                &stacks_block.block_hash,
+                context_window,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty());
+    }
+
+    /// Asserts that a withdrawal request is returned when it has been confirmed
+    /// and has a rejection event, but the rejection event has been orphaned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
+    ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
+    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed in B1 and
+    ///            ┊  └──────► ┊B2b ✖ │    ┊  rejected in B2b, but that block
+    ///            ┊         └─┊────▲─┘    ┊  later gets orphaned by B3a.
+    ///            ┊           ┊    ┊      ┊  
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
+    /// Stacks:  │   S1   ├──►  S2a   ├──►  S3a   │
+    ///          └────┬───┘  └────────┘  └────────┘
+    ///               │      ┌──────┴─┐
+    ///               └─────>│  S2b ✖ │
+    ///                      └────────┘
+    /// ```
+    #[tokio::test]
+    async fn request_with_orphaned_rejection_is_returned() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let context_window = 1_000;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2a = bitcoin_1.new_child();
+        let bitcoin_2b = bitcoin_1.new_child();
+        let bitcoin_3a = bitcoin_2a.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2a = stacks_1.new_child().anchored_to(&bitcoin_2a);
+        let stacks_2b = stacks_1.new_child().anchored_to(&bitcoin_2b);
+        let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
+
+        // Write our bitcoin + stacks blocks.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+            [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+        )
+        .await;
+
+        // Get our chain tips.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Assert that the chain tips are what we expect.
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
+
+        // Store a withdrawal request, confirmed in B1/S1.
+        let request = store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+
+        // Reject the withdrawal request in B2b/S2b.
+        reject_withdrawal_request(&db, &request, &stacks_2b).await;
+
+        // The request should be returned as the rejection has been orphaned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                context_window,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+    }
+
+    /// Asserts that a withdrawal request is not returned when it has been
+    /// confirmed and has both confirmed and orphaned rejection events. This
+    /// test is to ensure that an orphaned rejection event does not
+    /// "accidentally" override a confirmed rejection event.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►  B2a ✖ ├──►  B3a   │
+    ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
+    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed in B1 and
+    ///            ┊  └──────► ┊B2b ✖ │    ┊  rejected in both B2a and B2b. B2b
+    ///            ┊         └─┊────▲─┘    ┊  is orphaned by B3a, but B2a is
+    ///            ┊           ┊    ┊      ┊  still confirming the rejection.
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
+    /// Stacks:  │   S1   ├──►  S2a ✖ ├──►  S3a   │
+    ///          └────┬───┘  └────────┘  └────────┘
+    ///               │      ┌──────┴─┐
+    ///               └─────>│  S2b ✖ │
+    ///                      └────────┘
+    /// ```
+    #[tokio::test]
+    async fn request_with_both_confirmed_and_orphaned_rejection_not_returned() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let context_window = 1_000;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2a = bitcoin_1.new_child();
+        let bitcoin_2b = bitcoin_1.new_child();
+        let bitcoin_3a = bitcoin_2a.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2a = stacks_1.new_child().anchored_to(&bitcoin_2a);
+        let stacks_2b = stacks_1.new_child().anchored_to(&bitcoin_2b);
+        let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
+
+        // Write our bitcoin + stacks blocks.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+            [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+        )
+        .await;
+
+        // Get our chain tips.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Assert that the chain tips are what we expect.
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
+
+        // Store a withdrawal request, confirmed in B1/S1.
+        let request = store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+
+        // We should get the request as pending accepted.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                context_window,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Reject the withdrawal request in B2a/S2a (canonical).
+        reject_withdrawal_request(&db, &request, &stacks_2a).await;
+        // Reject the withdrawal request in B2b/S2b (orphaned).
+        reject_withdrawal_request(&db, &request, &stacks_2b).await;
+
+        // The request should not be returned as there is a confirmed rejection
+        // on the canonical chain.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                context_window,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty());
+    }
+
+    #[tokio::test]
+    async fn expired_request_not_returned() {}
 
     /// Asserts that we only return requests that have been accepted by the
     /// required number of signers. This test creates one valid withdrawal
