@@ -1063,7 +1063,7 @@ impl TestSweepSetup2 {
         }
     }
 
-    pub async fn store_withdrawal_request(&self, db: &PgStore) {
+    pub async fn store_withdrawal_requests(&self, db: &PgStore) {
         for stacks_block in self.stacks_blocks.iter() {
             db.write_stacks_block(stacks_block).await.unwrap();
         }

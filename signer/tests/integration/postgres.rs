@@ -478,7 +478,7 @@ async fn get_pending_withdrawal_requests_only_pending() {
 
     // Now let's store a withdrawal request with no votes.
     // `get_pending_withdrawal_requests` should return it now.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
 
     let pending_requests = db
         .get_pending_withdrawal_requests(&chain_tip, 1000, &signer_public_key)

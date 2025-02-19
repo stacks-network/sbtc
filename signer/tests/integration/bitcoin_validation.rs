@@ -380,7 +380,7 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
     // For the withdrawal
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     let chain_tip = faucet
@@ -480,7 +480,7 @@ async fn swept_withdrawals_fail_validation() {
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
     // For the withdrawal
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Let's confirm a sweep transaction
