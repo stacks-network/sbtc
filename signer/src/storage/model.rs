@@ -887,6 +887,13 @@ pub struct BitcoinBlockRef {
     pub block_hash: BitcoinBlockHash,
 }
 
+impl Deref for BitcoinBlockRef {
+    type Target = bitcoin::BlockHash;
+    fn deref(&self) -> &Self::Target {
+        &self.block_hash
+    }
+}
+
 impl From<BitcoinBlock> for BitcoinBlockRef {
     fn from(value: BitcoinBlock) -> Self {
         Self::from(&value)
