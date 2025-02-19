@@ -1477,34 +1477,21 @@ impl super::DbRead for PgStore {
 
     async fn get_pending_accepted_withdrawal_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
         context_window: u16,
-        threshold: u16,
+        signature_threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
-        let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
-            return Ok(Vec::new());
-        };
         sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
-            WITH RECURSIVE extended_context_window AS (
+            -- get_pending_accepted_withdrawal_requests
+            WITH RECURSIVE bitcoin_blockchain AS (
                 SELECT
                     block_hash
-                  , parent_hash
-                  , 1 AS depth
-                FROM sbtc_signer.bitcoin_blocks
-                WHERE block_hash = $1
-
-                UNION ALL
-
-                SELECT
-                    parent.block_hash
-                  , parent.parent_hash
-                  , last.depth + 1
-                FROM sbtc_signer.bitcoin_blocks parent
-                JOIN extended_context_window last ON parent.block_hash = last.parent_hash
-                WHERE last.depth <= $3
+                  , block_height
+                FROM bitcoin_blockchain_of($1, $3)
             ),
-            stacks_context_window AS (
+            stacks_blockchain AS (
                 SELECT
                     stacks_blocks.block_hash
                   , stacks_blocks.block_height
@@ -1519,10 +1506,10 @@ impl super::DbRead for PgStore {
                   , parent.block_height
                   , parent.parent_hash
                 FROM sbtc_signer.stacks_blocks parent
-                JOIN stacks_context_window last
-                        ON parent.block_hash = last.parent_hash
-                JOIN extended_context_window block
-                        ON block.block_hash = parent.bitcoin_anchor
+                JOIN stacks_blockchain last
+                    ON parent.block_hash = last.parent_hash
+                JOIN bitcoin_blockchain block
+                    ON block.block_hash = parent.bitcoin_anchor
             )
             SELECT
                 wr.request_id
@@ -1534,21 +1521,51 @@ impl super::DbRead for PgStore {
               , wr.sender_address
               , wr.bitcoin_block_height
             FROM sbtc_signer.withdrawal_requests wr
-            JOIN stacks_context_window sc ON wr.block_hash = sc.block_hash
+
+            -- Ensure the request is confirmed on the stacks chain
+            JOIN stacks_blockchain canonical_confirmed
+                ON wr.block_hash = canonical_confirmed.block_hash
+
+            -- Return a row for each signer vote, which is deduplicated later
+            -- in the group by clause.
             JOIN sbtc_signer.withdrawal_signers signers ON
-                wr.txid = signers.txid AND
-                wr.request_id = signers.request_id AND
-                wr.block_hash = signers.block_hash
-            WHERE
-                signers.is_accepted
-            GROUP BY wr.request_id, wr.block_hash, wr.txid
-            HAVING COUNT(wr.request_id) >= $4
+                wr.request_id = signers.request_id
+                AND wr.txid = signers.txid
+                AND wr.block_hash = signers.block_hash
+                AND signers.is_accepted = TRUE
+
+            -- Are there any confirmed sweep transactions?
+            LEFT JOIN sbtc_signer.bitcoin_withdrawals_outputs bwo
+                ON bwo.request_id = wr.request_id
+                AND bwo.stacks_block_hash = wr.block_hash
+            LEFT JOIN sbtc_signer.bitcoin_transactions bt
+                ON bt.txid = bwo.bitcoin_txid
+            LEFT JOIN bitcoin_blockchain AS canonical_sweep
+                ON bt.block_hash = canonical_sweep.block_hash
+
+            -- Are there any confirmed reject transactions?
+            LEFT JOIN sbtc_signer.withdrawal_reject_events AS wre
+                ON wre.request_id = wr.request_id
+            LEFT JOIN stacks_blockchain AS canonical_reject
+                ON wre.block_hash = canonical_reject.block_hash
+
+            GROUP BY 
+                wr.request_id, wr.block_hash, wr.txid
+            HAVING
+                -- Ensure there are enough 'yes' votes.
+                COUNT(wr.request_id) >= $4
+                -- Ensure there are no confirmed sweep transactions.
+                AND COUNT(canonical_sweep.block_hash) = 0
+                -- Ensure there are no confirmed reject contract-calls.
+                AND COUNT(canonical_reject.block_hash) = 0
+            ORDER BY 
+                wr.request_id ASC
             "#,
         )
-        .bind(chain_tip)
-        .bind(stacks_chain_tip.block_hash)
+        .bind(bitcoin_chain_tip)
+        .bind(stacks_chain_tip)
         .bind(i32::from(context_window))
-        .bind(i64::from(threshold))
+        .bind(i64::from(signature_threshold))
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
