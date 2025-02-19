@@ -1634,6 +1634,7 @@ where
         if deposits.is_empty() && withdrawals.is_empty() {
             return Ok(None);
         }
+        
         // Get the current signers' BTC state.
         let signer_btc_state = self
             .get_btc_state(&bitcoin_chain_tip.block_hash, aggregate_key)
