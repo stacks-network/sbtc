@@ -350,7 +350,7 @@ where
         let aggregate_key = if should_coordinate_dkg {
             self.coordinate_dkg(&bitcoin_chain_tip.block_hash).await?
         } else {
-            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
+            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip))?
         };
 
         self.deploy_smart_contracts(&bitcoin_chain_tip.block_hash, &aggregate_key)
@@ -1568,7 +1568,11 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> bool {
-        given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
+        given_key_is_coordinator(
+            self.signer_public_key(),
+            bitcoin_chain_tip,
+            signer_public_keys,
+        )
     }
 
     /// Constructs a new [`utxo::SignerBtcState`] based on the current market
@@ -1886,16 +1890,11 @@ where
         }))
     }
 
-    /// Helper method to get this signer's public key from its private key.
-    fn pub_key(&self) -> PublicKey {
-        PublicKey::from_private_key(&self.private_key)
-    }
-
     /// This function provides a deterministic 32-byte identifier for the
     /// signer.
     fn coordinator_id(&self, chain_tip: &model::BitcoinBlockHash) -> [u8; 32] {
         sha2::Sha256::new_with_prefix("SIGNER_COORDINATOR_ID")
-            .chain_update(self.pub_key().serialize())
+            .chain_update(self.signer_public_key().serialize())
             .chain_update(chain_tip.into_bytes())
             .finalize()
             .into()
@@ -2062,7 +2061,7 @@ where
         Ok(wallet)
     }
 
-    /// Gets this signer's public key.
+    /// Helper method to get this signer's public key from its private key.
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
     }
