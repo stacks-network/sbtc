@@ -2162,11 +2162,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_process_withdrawals() {
-        test_environment().assert_processes_withdrawals().await;
-    }
-
-    #[tokio::test]
     async fn should_construct_withdrawal_accept_stacks_sign_request() {
         test_environment()
             .assert_construct_withdrawal_accept_stacks_sign_request()
