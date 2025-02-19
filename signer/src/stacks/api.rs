@@ -33,6 +33,7 @@ use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
+use reqwest::StatusCode;
 use serde::{Deserialize, Deserializer};
 use url::Url;
 
@@ -57,6 +58,10 @@ const TX_FEE_TX_SIZE_MULTIPLIER: u64 = 2 * MINIMUM_TX_FEE_RATE_PER_BYTE;
 /// The max fee in microSTX for a stacks transaction. Used as a backstop in
 /// case the stacks node returns wonky values. This is 10 STX.
 const MAX_TX_FEE: u64 = 10_000_000;
+
+/// This is the name of the MAP in the sbtc-registry smart contract that
+/// stores the status of a withdrawal request.
+const WITHDRAWAL_STATUS_MAP_NAME: &str = "withdrawal-status";
 
 /// This is the name of the read-only function in the sbtc-registry smart
 /// contract that returns the status of a deposit request.
@@ -151,11 +156,24 @@ pub trait StacksInteract: Send + Sync {
     /// Retrieve a boolean value from the stacks node indicating whether
     /// sBTC has been minted for the deposit request.
     ///
-    /// The request is made to `POST /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`.
+    /// The request is made to `POST
+    /// /v2/contracts/call-read/<contract-principal>/sbtc-registry/get-deposit-status`.
     fn is_deposit_completed(
         &self,
         contract_principal: &StacksAddress,
         outpoint: &OutPoint,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
+    /// Retrieve a boolean value from the stacks node indicating whether
+    /// the withdrawal request has a response transaction either accepting
+    /// or rejecting the request.
+    ///
+    /// The request is made to `POST
+    /// /v2/map_entry/<contract-principal>/<contract-name>/<map-name>`
+    fn is_withdrawal_completed(
+        &self,
+        contract_principal: &StacksAddress,
+        request_id: u64,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Get the latest account info for the given address.
@@ -607,6 +625,66 @@ impl StacksClient {
             .await
             .map_err(Error::UnexpectedStacksResponse)
             .map(|x| x.data)
+    }
+
+    /// Retrieve the value of a map entry from the specified contract.
+    ///
+    /// This is done by making a `POST
+    /// /v2/map_entry/<contract-principal>/<contract-name>/<map-name>`
+    /// request. In the request we specify that the proof should not be
+    /// included in the response.
+    ///
+    /// See here for the source handler of this endpoint:
+    /// https://github.com/stacks-network/stacks-core/blob/c1a1f50fddcbc11054fae537103423e21221665a/stackslib/src/net/api/getmapentry.rs#L82-L97
+    #[tracing::instrument(skip_all)]
+    pub async fn get_map_entry(
+        &self,
+        contract_principal: &StacksAddress,
+        contract_name: &ContractName,
+        map_name: &ClarityName,
+        map_entry: &Value,
+    ) -> Result<Option<Value>, Error> {
+        let path = format!("/v2/map_entry/{contract_principal}/{contract_name}/{map_name}?proof=0");
+
+        let url = self
+            .endpoint
+            .join(&path)
+            .map_err(|err| Error::PathJoin(err, self.endpoint.clone(), Cow::Owned(path)))?;
+
+        tracing::debug!(
+            %contract_principal,
+            %contract_name,
+            %map_name,
+            "fetching contract map entry"
+        );
+
+        let body = map_entry
+            .serialize_to_hex()
+            .map_err(Error::ClarityValueSerialization)?;
+
+        let response = self
+            .client
+            .post(url)
+            .timeout(REQUEST_TIMEOUT)
+            .json(&serde_json::Value::String(body))
+            .send()
+            .await
+            .map_err(Error::StacksNodeRequest)?;
+
+        // It looks like the stacks node returns a 404 if the data is not
+        // available, see
+        // https://github.com/stacks-network/stacks-core/blob/c1a1f50fddcbc11054fae537103423e21221665a/stackslib/src/net/api/getmapentry.rs#L223-L225C22
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+
+        response
+            .error_for_status()
+            .map_err(Error::StacksNodeResponse)?
+            .json::<DataVarResponse>()
+            .await
+            .map_err(Error::UnexpectedStacksResponse)
+            .map(|x| Some(x.data))
     }
 
     /// Get the latest account info for the given address.
@@ -1200,6 +1278,33 @@ impl StacksInteract for StacksClient {
         }
     }
 
+    async fn is_withdrawal_completed(
+        &self,
+        deployer: &StacksAddress,
+        request_id: u64,
+    ) -> Result<bool, Error> {
+        // Both ContractName::from and ClarityName::from can panic when
+        // given the "wrong" strings. These particular strings do not
+        // panic, and we test this fact in our unit tests.
+        let contract_name = ContractName::from(SmartContract::SbtcRegistry.contract_name());
+        let map_name = ClarityName::from(WITHDRAWAL_STATUS_MAP_NAME);
+
+        let map_entry = Value::UInt(request_id as u128);
+        let result = self
+            .get_map_entry(deployer, &contract_name, &map_name, &map_entry)
+            .await?;
+
+        // This map `withdrawal-status` in the smart contract stores
+        // boolean values, setting them to `true` when a withdrawal is
+        // accepted and `false` when rejected. Either value means the
+        // request has been completed, while a missing value implicitly
+        // means that the request has not been completed.
+        match result {
+            Some(Value::Optional(OptionalData { data })) => Ok(data.is_some()),
+            _ => Err(Error::InvalidStacksResponse("did not get optional data")),
+        }
+    }
+
     async fn get_account(&self, address: &StacksAddress) -> Result<AccountInfo, Error> {
         self.get_account(address).await
     }
@@ -1404,6 +1509,21 @@ impl StacksInteract for ApiFallbackClient<StacksClient> {
         self.exec(|client, retry| async move {
             let result = client
                 .is_deposit_completed(contract_principal, outpoint)
+                .await;
+            retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
+            result
+        })
+        .await
+    }
+
+    async fn is_withdrawal_completed(
+        &self,
+        contract_principal: &StacksAddress,
+        request_id: u64,
+    ) -> Result<bool, Error> {
+        self.exec(|client, retry| async move {
+            let result = client
+                .is_withdrawal_completed(contract_principal, request_id)
                 .await;
             retry.abort_if(|| matches!(result, Err(Error::InvalidStacksResponse(_))));
             result
@@ -2014,6 +2134,43 @@ mod tests {
             .unwrap();
 
         assert_eq!(response, expected_response.unwrap_or(false));
+        mock.assert();
+    }
+
+    #[test_case(Some(true); "accepted-withdrawal")]
+    #[test_case(Some(false); "rejected-withdrawal")]
+    #[test_case(None; "incomplete-withdrawal")]
+    #[tokio::test]
+    async fn is_withdrawal_completed_works(expected_response: Option<bool>) {
+        // Create our simulated response JSON.
+        let data = expected_response.map(|x| Box::new(Value::Bool(x)));
+        let clarity_value = Value::Optional(OptionalData { data });
+        let json_response = serde_json::json!({
+            "data": format!("0x{}", clarity_value.serialize_to_hex().unwrap()),
+        });
+        let raw_json_response = serde_json::to_string(&json_response).unwrap();
+
+        // Setup our mock server
+        // POST /v2/map_entry/<contract-principal>/sbtc-registry/withdrawal-status
+        let mut stacks_node_server = mockito::Server::new_async().await;
+        let mock = stacks_node_server
+            .mock("POST", "/v2/map_entry/ST000000000000000000002AMW42H/sbtc-registry/withdrawal-status?proof=0")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(&raw_json_response)
+            .expect(1)
+            .create();
+
+        let client =
+            StacksClient::new(url::Url::parse(stacks_node_server.url().as_str()).unwrap()).unwrap();
+
+        // Make the request to the mock server
+        let response = client
+            .is_withdrawal_completed(&StacksAddress::burn_address(false), 1)
+            .await
+            .unwrap();
+
+        assert_eq!(response, expected_response.is_some());
         mock.assert();
     }
 
