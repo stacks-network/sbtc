@@ -61,8 +61,7 @@ impl BitcoinChain {
     /// Returns a vector of references to the newly generated blocks.
     pub fn generate_blocks(&mut self, length: usize) -> Vec<&BitcoinBlock> {
         for _ in 0..length {
-            let last_block = self.0.last().unwrap();
-            let new_block = last_block.new_child();
+            let new_block = self.chain_tip().new_child();
             self.0.push(new_block);
         }
 
@@ -80,12 +79,12 @@ impl BitcoinChain {
     }
 
     /// Gets the nth block in the chain, if it exists.
-    pub fn nth_block(&self) -> Option<&BitcoinBlock> {
+    pub fn nth_block_checked(&self) -> Option<&BitcoinBlock> {
         self.0.get(1)
     }
 
     /// Gets the nth block in the chain, panicking if it does not exist.
-    pub fn nth_block_unchecked(&self) -> &BitcoinBlock {
+    pub fn nth_block(&self) -> &BitcoinBlock {
         self.0
             .get(1)
             .expect("no nth bitcoin block (index out of range)")
@@ -115,6 +114,72 @@ impl BitcoinBlock {
             block_height: self.block_height + 1,
             parent_hash: self.block_hash,
         }
+    }
+}
+
+/// Represents a naive, sequential chain of stacks blocks and provides basic
+/// functionality for manipulation.
+pub struct StacksChain(Vec<StacksBlock>);
+
+impl<'a> IntoIterator for &'a StacksChain {
+    type Item = &'a StacksBlock;
+    type IntoIter = std::slice::Iter<'a, StacksBlock>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl StacksChain {
+    /// Generates a new chain of stacks blocks where each block is anchored to
+    /// the corresponding bitcoin block in the provided bitcoin block list. Does
+    /// not handle forks/branches.
+    pub fn new_anchored<I, B>(anchors: I) -> Self
+    where
+        I: IntoIterator<Item = B>,
+        B: AsRef<BitcoinBlockHash>,
+    {
+        let mut chain = Self(vec![]);
+        for anchor in anchors {
+            chain.new_block(anchor);
+        }
+        chain
+    }
+
+    /// Adds a new block to the chain, anchored to the given bitcoin block.
+    pub fn new_block<B>(&mut self, anchor: B) -> &StacksBlock
+    where
+        B: AsRef<BitcoinBlockHash>,
+    {
+        if self.0.is_empty() {
+            self.0.push(StacksBlock::new_genesis().anchored_to(anchor));
+        } else {
+            let new_block = self.0.last().unwrap().new_child().anchored_to(anchor);
+            self.0.push(new_block);
+        }
+        self.0.last().unwrap()
+    }
+
+    /// Gets the first block in the chain.
+    pub fn first_block(&self) -> &StacksBlock {
+        self.0.first().unwrap()
+    }
+
+    /// Gets the last block in the chain.
+    pub fn chain_tip(&self) -> &StacksBlock {
+        self.0.last().unwrap()
+    }
+
+    /// Gets the nth block in the chain, if it exists.
+    pub fn nth_block_checked(&self) -> Option<&StacksBlock> {
+        self.0.get(1)
+    }
+
+    /// Gets the nth block in the chain, panicking if it does not exist.
+    pub fn nth_block(&self) -> &StacksBlock {
+        self.0
+            .get(1)
+            .expect("no nth bitcoin block (index out of range)")
     }
 }
 

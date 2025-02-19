@@ -5057,10 +5057,10 @@ mod get_pending_accepted_withdrawal_requests {
     ///
     /// ```text
     ///          ┌────────┐
-    /// Bitcoin: │   B1 ✖ │
+    /// Bitcoin: │   B1   │
     ///          └─▲──────┘  We both confirm and reject the
-    ///          ┌─┴──────┐  request in B1.
-    /// Stacks:  │   S1   │
+    ///          ┌─┴──────┐  request in S1.
+    /// Stacks:  │  S1 ✔✖ │
     ///          └────────┘
     /// ```
     #[tokio::test]
@@ -5119,12 +5119,12 @@ mod get_pending_accepted_withdrawal_requests {
     ///          ┌────────┐  ┌────────┐  ┌────────┐
     /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
     ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
-    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed in B1 and
-    ///            ┊  └──────► ┊B2b ✖ │    ┊  rejected in B2b, but that block
+    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed in S1 and
+    ///            ┊  └──────► ┊ B2b  │    ┊  rejected in S2b, but its anchor
     ///            ┊         └─┊────▲─┘    ┊  later gets orphaned by B3a.
     ///            ┊           ┊    ┊      ┊  
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
-    /// Stacks:  │   S1   ├──►  S2a   ├──►  S3a   │
+    /// Stacks:  │   S1 ✔ ├──►  S2a   ├──►  S3a   │
     ///          └────┬───┘  └────────┘  └────────┘
     ///               │      ┌──────┴─┐
     ///               └─────>│  S2b ✖ │
@@ -5190,14 +5190,14 @@ mod get_pending_accepted_withdrawal_requests {
     ///
     /// ```text
     ///          ┌────────┐  ┌────────┐  ┌────────┐
-    /// Bitcoin: │   B1   ├──►  B2a ✖ ├──►  B3a   │
+    /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
     ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
-    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed in B1 and
-    ///            ┊  └──────► ┊B2b ✖ │    ┊  rejected in both B2a and B2b. B2b
+    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed in S1 and
+    ///            ┊  └──────► ┊ B2b  │    ┊  rejected in both S2a and S2b. B2b
     ///            ┊         └─┊────▲─┘    ┊  is orphaned by B3a, but B2a is
     ///            ┊           ┊    ┊      ┊  still confirming the rejection.
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
-    /// Stacks:  │   S1   ├──►  S2a ✖ ├──►  S3a   │
+    /// Stacks:  │   S1 ✔ ├──►  S2a ✖ ├──►  S3a   │
     ///          └────┬───┘  └────────┘  └────────┘
     ///               │      ┌──────┴─┐
     ///               └─────>│  S2b ✖ │
@@ -5281,9 +5281,9 @@ mod get_pending_accepted_withdrawal_requests {
     /// ```text
     ///          ┌────────┐
     /// Bitcoin: │   B1 ◆ │
-    ///          └─▲──────┘  We both confirm and sweep (◆) the
+    ///          └─▲──────┘  We both confirm (✔) and sweep (◆) the
     ///          ┌─┴──────┐  request in B1.
-    /// Stacks:  │   S1   │
+    /// Stacks:  │   S1 ✔ │
     ///          └────────┘
     /// ```
     #[tokio::test]
@@ -5337,9 +5337,9 @@ mod get_pending_accepted_withdrawal_requests {
     /// ```text
     ///          ┌────────┐
     /// Bitcoin: │   B1 ◆ │
-    ///          └─▲──────┘  We both confirm and sweep (◆) the
+    ///          └─▲──────┘  We both confirm (✔) and sweep (◆) the
     ///          ┌─┴──────┐  request in B1.
-    /// Stacks:  │   S1   │
+    /// Stacks:  │   S1 ✔ │
     ///          └────────┘
     /// ```
     #[tokio::test]
@@ -5403,10 +5403,10 @@ mod get_pending_accepted_withdrawal_requests {
     ///            ┊         └─┊────▲─┘    ┊  thus S2b) will be orphaned by
     ///            ┊           ┊    ┊      ┊  B3a+S3a.
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
-    /// Stacks:  │   S1   ├──►  S2a   ├──►  S3a   │
+    /// Stacks:  │   S1 ✔ ├──►  S2a ✔ ├──►  S3a ✔ │
     ///          └────┬───┘  └────────┘  └────────┘
     ///               │      ┌──────┴─┐
-    ///               └─────>│  S2b   │
+    ///               └─────>│  S2b ✔ │
     ///                      └────────┘
     /// ```
     #[tokio::test]
@@ -5488,9 +5488,9 @@ mod get_pending_accepted_withdrawal_requests {
     /// ```text
     ///          ┌────────┐
     /// Bitcoin: │   B1 ◆ │
-    ///          └─▲──────┘  We both confirm and sweep (◆) the
-    ///          ┌─┴──────┐  request in B1.
-    /// Stacks:  │   S1   │
+    ///          └─▲──────┘  We both confirm (✔) and sweep (◆) the
+    ///          ┌─┴──────┐  request in S1.
+    /// Stacks:  │   S1 ✔ │
     ///          └────────┘
     /// ```
     #[tokio::test]
@@ -5563,7 +5563,7 @@ mod get_pending_accepted_withdrawal_requests {
     ///            ┊  └──────►  B2b ◆ │  which is orphaned by B3a.
     ///            ┊         └────────┘
     ///          ┌─┴──────┐
-    /// Stacks:  │   S1   │  The request is confirmed in S1.
+    /// Stacks:  │   S1 ✔ │  The request is confirmed in S1.
     ///          └────────┘
     /// ```
     #[tokio::test]
@@ -5642,7 +5642,7 @@ mod get_pending_accepted_withdrawal_requests {
     ///            ┊         └─┊────▲─┘    ┊  orphaned by B3a.
     ///            ┊           ┊    ┊      ┊
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
-    /// Stacks:  │   S1   ├──►  S2a   ├──►  S3a   │
+    /// Stacks:  │   S1 ✔ ├──►  S2a   ├──►  S3a   │
     ///          └────┬───┘  └────────┘  └────────┘
     ///               │      ┌──────┴─┐
     ///               └──────►  S2b   │  We confirm the request in S1.
@@ -5715,10 +5715,10 @@ mod get_pending_accepted_withdrawal_requests {
     ///          └─▲───────────▲────▲──────▲──────┘
     ///            ┊           ┊    ┊      ┊
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
-    /// Stacks:  │   S1   ├──►  S2a   ├──►  S3a   │
+    /// Stacks:  │   S1   ├──►  S2a ✔ ├──►  S3a   │
     ///          └────┬───┘  └────────┘  └────────┘
     ///               │      ┌──────┴─┐  We confirm a withdrawal request in
-    ///               └──────►  S2b   │  both S2a and S2b with the same id.
+    ///               └──────►  S2b ✔ │  both S2a and S2b with the same id.
     ///                      └────────┘
     /// ```
     #[tokio::test]
