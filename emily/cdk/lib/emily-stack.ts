@@ -181,7 +181,30 @@ export class EmilyStack extends cdk.Stack {
             ]
         });
 
-        // TODO(388): Add an additional GSI for querying by user; not required for MVP.
+        // Index to efficiently query deposits that comes from a specific address
+        const byReclaimPubkeysHashIndexName: string = "DepositReclaimPubkeysHashIndex";
+        table.addGlobalSecondaryIndex({
+            indexName: byReclaimPubkeysHashIndexName,
+            partitionKey: {
+                name: 'ReclaimPubkeysHash',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "BitcoinTxid",
+                "BitcoinTxOutputIndex",
+                "Recipient",
+                "OpStatus",
+                "Amount",
+                "LastUpdateBlockHash",
+                "ReclaimScript",
+                "DepositScript",
+            ]
+        });
         return table;
     }
 
