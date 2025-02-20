@@ -8,7 +8,9 @@ on:
       - "*"
 
 permissions:
+  actions: write
   contents: write
+  issues: write
 
 jobs:
   create_release:
@@ -21,12 +23,82 @@ jobs:
         id: tag
         run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
-      - name: Run Release Drafter
-        uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 #6.1.0
-        with:
-          config-name: release-drafter.yml
-          tag: ${{ env.TAG_NAME }}
-          name: "Release ${{ env.TAG_NAME }}"
-          version: ${{ env.TAG_NAME }}
+      # - name: Run Release Drafter
+      #   uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 #6.1.0
+      #   with:
+      #     config-name: release-drafter.yml
+      #     tag: ${{ env.TAG_NAME }}
+      #     name: "Release ${{ env.TAG_NAME }}"
+      #     version: ${{ env.TAG_NAME }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get Previous Release Tag
+        id: previous-release
+        run: |
+          PREV_TAG=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=2" | jq -r '.[1].tag_name')
+          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
+
+      - name: Generate Release Notes
+        id: generate-release-notes
+        run: |
+          CHANGES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/compare/$PREV_TAG...${{ github.event.release.tag_name }}" \
+            | jq -r '.commits[] | "- \(.commit.message) (\(.sha | .[0:7])) by @\(.author.login // "unknown")"')
+
+          cat <<EOF > release_notes.md
+          # sBTC v${{ github.event.release.tag_name }}
+
+          <A manual one-liner with changes>.
+
+          ## ✨ Highlights
+
+          <A manual one-liner with changes>.
+
+          ## 🔗 Links
+
+          ### 🐳 Images
+
+          - [\`blockstack/sbtc:signer-${{ github.event.release.tag_name }}@sha256:<SignerDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ github.event.release.tag_name }}/images/sha256-<SignerDigest>)
+          - [\`blockstack/sbtc:blocklist-client-${{ github.event.release.tag_name }}@sha256:<BlocklistDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ github.event.release.tag_name }}/images/sha256-<BlocklistDigest>)
+
+          ⚠️ Always use [immutable image tags](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier).
+
+          🔎 Verify the attestation of these images using [this guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
+
+          ### 📙 Database migrations
+
+          Here: [\`signer/migrations\`](https://github.com/stacks-network/sbtc/tree/${{ github.event.release.tag_name }}/signer/migrations).
+
+          ## 🛠️ Upgrade Instructions:
+
+          1. Stop your sBTC signer
+          2. Backup your database
+          3. Edit your configuration as instructed
+          4. Apply database migrations (only if not running with the \`--migrate-db\` flag)
+          5. Update your sBTC images as specified above
+          6. Restart your sBTC signer and blocklist client
+
+          ## What's Changed
+
+          $CHANGES
+
+          **Full Changelog**: https://github.com/stacks-network/sbtc/compare/$PREV_TAG...${{ github.event.release.tag_name }}
+          EOF
+
+      - name: Update Release Notes
+        uses: actions/github-script@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const fs = require('fs');
+            const releaseNotes = fs.readFileSync('release_notes.md', 'utf8');
+
+            await github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+              body: releaseNotes,
+            });
