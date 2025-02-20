@@ -568,6 +568,15 @@ fn vec_diff<T: std::cmp::Eq + std::hash::Hash>(subtrahend: &mut Vec<T>, minuend:
     subtrahend.retain(|v| !minuend_set.contains(v));
 }
 
+impl From<&bitcoin::Block> for crate::storage::model::BitcoinBlockRef {
+    fn from(value: &bitcoin::Block) -> Self {
+        Self {
+            block_hash: value.block_hash().into(),
+            block_height: value.bip34_block_height().unwrap(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use more_asserts::assert_ge;

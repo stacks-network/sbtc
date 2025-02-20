@@ -11,6 +11,7 @@ use bitcoin::ScriptBuf;
 use bitcoin::TapSighash;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
+use bitcoin::XOnlyPublicKey;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use clarity::util::secp256k1::Secp256k1PublicKey;
@@ -52,6 +53,8 @@ use wsts::traits::PartyState;
 use wsts::traits::SignerState;
 
 use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::utxo::SignerBtcState;
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::TxRequestIds;
 use crate::codec::Encode;
 use crate::ecdsa::Signed;
@@ -437,6 +440,28 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
     }
 }
 
+impl fake::Dummy<&[PublicKey]> for SignerBtcState {
+    fn dummy_with_rng<R: Rng + ?Sized>(signer_set_public_keys: &&[PublicKey], rng: &mut R) -> Self {
+        let aggregate_key = PublicKey::combine_keys(*signer_set_public_keys).unwrap();
+        let aggregate_key_x_only: XOnlyPublicKey = aggregate_key.into();
+
+        Self {
+            fee_rate: Faker.fake_with_rng(rng),
+            last_fees: Faker.fake_with_rng(rng),
+            magic_bytes: [1, 2],
+            public_key: aggregate_key_x_only,
+            utxo: SignerUtxo {
+                amount: Faker.fake_with_rng(rng),
+                outpoint: OutPoint {
+                    txid: txid(&Faker, rng),
+                    vout: Faker.fake_with_rng(rng),
+                },
+                public_key: aggregate_key_x_only,
+            },
+        }
+    }
+}
+
 impl fake::Dummy<fake::Faker> for BitcoinTxId {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         From::<[u8; 32]>::from(config.fake_with_rng(rng))
@@ -704,7 +729,7 @@ impl fake::Dummy<fake::Faker> for RejectWithdrawalV1 {
         let address = StacksAddress::p2pkh(false, &pubkey);
 
         RejectWithdrawalV1 {
-            request_id: config.fake_with_rng(rng),
+            id: config.fake_with_rng(rng),
             signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
             deployer: address,
         }

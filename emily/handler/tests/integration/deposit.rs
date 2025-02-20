@@ -1,4 +1,6 @@
 use bitcoin::consensus::encode::serialize_hex;
+use bitcoin::opcodes::all as opcodes;
+use bitcoin::ScriptBuf;
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
 use stacks_common::codec::StacksMessageCodec as _;
@@ -110,6 +112,20 @@ impl DepositTxnData {
         Self::from_tx_setup(tx_setup)
     }
 
+    pub fn new_with_reclaim_user_script(
+        lock_time: u32,
+        max_fee: u64,
+        amounts: &[u64],
+        reclaim_user_script: &ScriptBuf,
+    ) -> Self {
+        let tx_setup = testing::deposits::tx_setup_with_reclaim_user_script(
+            lock_time,
+            max_fee,
+            amounts,
+            reclaim_user_script,
+        );
+        Self::from_tx_setup(tx_setup)
+    }
     pub fn new(lock_time: u32, max_fee: u64, amounts: &[u64]) -> Self {
         let tx_setup = testing::deposits::tx_setup(lock_time, max_fee, amounts);
         Self::from_tx_setup(tx_setup)
@@ -380,23 +396,23 @@ async fn get_deposits() {
     batch_create_deposits(&configuration, create_requests).await;
 
     let status = testing_emily_client::models::Status::Pending;
-    let mut next_token: Option<Option<String>> = None;
+    let mut next_token: Option<String> = None;
     let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
     loop {
         let response = apis::deposit_api::get_deposits(
             &configuration,
             status,
-            next_token.as_ref().and_then(|o| o.as_deref()),
+            next_token.as_deref(),
             Some(chunksize as u32),
         )
         .await
         .expect("Received an error after making a valid get deposits api call.");
         gotten_deposit_info_chunks.push(response.deposits);
         // If there's no next token then break.
-        next_token = response.next_token;
-        if !next_token.as_ref().is_some_and(|inner| inner.is_some()) {
-            break;
-        }
+        next_token = match response.next_token.flatten() {
+            Some(token) => Some(token),
+            None => break,
+        };
     }
 
     // Assert.
@@ -494,29 +510,27 @@ async fn get_deposits_for_recipient() {
     for recipient in expected_recipient_data.keys() {
         // Loop over the api calls to get all the deposits for the recipient.
         let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
-        let mut next_token: Option<Option<String>> = None;
+        let mut next_token: Option<String> = None;
         loop {
             let response = apis::deposit_api::get_deposits_for_recipient(
                 &configuration,
                 recipient,
-                next_token.as_ref().and_then(|o| o.as_deref()),
+                next_token.as_deref(),
                 Some(chunksize),
             )
             .await
             .expect("Received an error after making a valid get deposits for recipient api call.");
             gotten_deposit_info_chunks.push(response.deposits);
-            next_token = response.next_token;
-            if !next_token.as_ref().is_some_and(|inner| inner.is_some()) {
-                break;
-            }
+            // If there's no next token then break.
+            next_token = match response.next_token.flatten() {
+                Some(token) => Some(token),
+                None => break,
+            };
         }
         // Store the actual data received from the api.
         actual_recipient_data.insert(
             recipient.clone(),
-            gotten_deposit_info_chunks
-                .into_iter()
-                .flatten()
-                .collect::<Vec<_>>(),
+            gotten_deposit_info_chunks.into_iter().flatten().collect(),
         );
     }
 
@@ -528,6 +542,149 @@ async fn get_deposits_for_recipient() {
         let mut actual_deposit_infos = actual_recipient_data.get(recipient).unwrap().clone();
         actual_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
         // Assert that the expected and actual deposit infos are the same.
+        assert_eq!(expected_deposit_infos, actual_deposit_infos);
+    }
+}
+
+#[tokio::test]
+async fn get_deposits_for_reclaim_pubkeys() {
+    let configuration = clean_setup().await;
+    // Arrange.
+    // --------
+
+    // Setup the test information that we'll use to arrange the test.
+    let deposits_per_transaction = vec![3, 4, 0];
+    let reclaim_pubkeys = vec![
+        vec![[1u8; 32]],
+        vec![[2u8; 32]],
+        vec![[1u8; 32], [2u8; 32]],
+        (0u8..16u8).map(|i| [i; 32]).collect(), // 16 reclaim pubkeys.
+    ];
+
+    let mut expected_pubkey_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    let mut create_requests: Vec<CreateDepositRequestBody> = Vec::new();
+    for pubkeys in reclaim_pubkeys.iter() {
+        let mut iter = pubkeys.iter();
+        let pubkey = iter.next().unwrap();
+        let mut reclaim_user_script = ScriptBuf::builder()
+            .push_opcode(opcodes::OP_DROP)
+            .push_slice(pubkey)
+            .push_opcode(opcodes::OP_CHECKSIG);
+
+        // Asigna reclaim script
+        if pubkeys.len() > 1 {
+            for pubkey in iter {
+                reclaim_user_script = reclaim_user_script
+                    .push_slice(pubkey)
+                    .push_opcode(opcodes::OP_CHECKSIGADD);
+            }
+            reclaim_user_script = reclaim_user_script
+                .push_int(pubkeys.len() as i64)
+                .push_opcode(opcodes::OP_NUMEQUAL);
+        }
+
+        let reclaim_user_script = reclaim_user_script.into_script();
+        let pubkey = pubkeys
+            .iter()
+            .map(|p| hex::encode(p))
+            .collect::<Vec<String>>()
+            .join("-");
+        // Make create requests.
+        let mut expected_deposit_infos: Vec<DepositInfo> = Vec::new();
+        for num_deposits in deposits_per_transaction.iter() {
+            let amounts = vec![DEPOSIT_AMOUNT_SATS; *num_deposits as usize];
+            // Setup test deposit transaction.
+            let DepositTxnData {
+                recipients,
+                reclaim_scripts,
+                deposit_scripts,
+                bitcoin_txid,
+                transaction_hex,
+            } = DepositTxnData::new_with_reclaim_user_script(
+                DEPOSIT_LOCK_TIME,
+                DEPOSIT_MAX_FEE,
+                &amounts,
+                &reclaim_user_script,
+            );
+
+            for bitcoin_tx_output_index in 0..*num_deposits {
+                let tx_output_index = bitcoin_tx_output_index as usize;
+                let recipient = recipients[tx_output_index].clone();
+                let reclaim_script = reclaim_scripts[tx_output_index].clone();
+                let deposit_script = deposit_scripts[tx_output_index].clone();
+                // Make the create request.
+                let request = CreateDepositRequestBody {
+                    bitcoin_tx_output_index,
+                    bitcoin_txid: bitcoin_txid.clone(),
+                    deposit_script: deposit_script.clone(),
+                    reclaim_script: reclaim_script.clone(),
+                    transaction_hex: transaction_hex.clone(),
+                };
+                create_requests.push(request);
+                // Store the expected deposit info that should come from it.
+                let expected_deposit_info = DepositInfo {
+                    amount: DEPOSIT_AMOUNT_SATS,
+                    bitcoin_tx_output_index,
+                    bitcoin_txid: bitcoin_txid.clone(),
+                    last_update_block_hash: BLOCK_HASH.into(),
+                    last_update_height: BLOCK_HEIGHT,
+                    recipient: recipient.clone(),
+                    status: testing_emily_client::models::Status::Pending,
+                    reclaim_script: reclaim_script,
+                    deposit_script: deposit_script,
+                };
+                expected_deposit_infos.push(expected_deposit_info);
+            }
+        }
+        // Add the pubkey data to the pubkey data hashmap that stores what
+        // we expect to see from the pubkey.
+        expected_pubkey_data.insert(pubkey, expected_deposit_infos.clone());
+    }
+
+    // The size of the chunks to grab from the api.
+    let chunksize = 2;
+
+    // Act.
+    // ----
+    batch_create_deposits(&configuration, create_requests).await;
+
+    let mut actual_pubkey_data: HashMap<String, Vec<DepositInfo>> = HashMap::new();
+    for pubkey in expected_pubkey_data.keys() {
+        // Loop over the api calls to get all the deposits for the pubkey.
+        let mut gotten_deposit_info_chunks: Vec<Vec<DepositInfo>> = Vec::new();
+        let mut next_token: Option<String> = None;
+        loop {
+            let response = apis::deposit_api::get_deposits_for_reclaim_pubkeys(
+                &configuration,
+                pubkey,
+                next_token.as_deref(),
+                Some(chunksize),
+            )
+            .await
+            .expect("Received an error after making a valid get deposits for pubkey api call.");
+            gotten_deposit_info_chunks.push(response.deposits);
+            // If there's no next token then break.
+            next_token = match response.next_token.flatten() {
+                Some(token) => Some(token),
+                None => break,
+            };
+        }
+        // Store the actual data received from the api.
+        actual_pubkey_data.insert(
+            pubkey.clone(),
+            gotten_deposit_info_chunks.into_iter().flatten().collect(),
+        );
+    }
+
+    // Assert.
+    // -------
+    for pubkey in expected_pubkey_data.keys() {
+        let mut expected_deposit_infos = expected_pubkey_data.get(pubkey).unwrap().clone();
+        expected_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
+        let mut actual_deposit_infos = actual_pubkey_data.get(pubkey).unwrap().clone();
+        actual_deposit_infos.sort_by(arbitrary_deposit_info_partial_cmp);
+        // Assert that the expected and actual deposit infos are the same.
+        assert_eq!(expected_deposit_infos.len(), actual_deposit_infos.len());
         assert_eq!(expected_deposit_infos, actual_deposit_infos);
     }
 }

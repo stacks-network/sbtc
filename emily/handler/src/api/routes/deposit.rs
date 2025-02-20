@@ -13,6 +13,7 @@ pub fn routes(
         .or(get_deposits_for_transaction(context.clone()))
         .or(get_deposits(context.clone()))
         .or(get_deposits_for_recipient(context.clone()))
+        .or(get_deposits_for_reclaim_pubkeys(context.clone()))
         .or(create_deposit(context.clone()))
         .or(update_deposits(context))
 }
@@ -52,7 +53,7 @@ fn get_deposits(
         .then(handlers::deposit::get_deposits)
 }
 
-/// Get deposits endpoint.
+/// Get deposits for recipient endpoint.
 fn get_deposits_for_recipient(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
@@ -62,6 +63,18 @@ fn get_deposits_for_recipient(
         .and(warp::get())
         .and(warp::query())
         .then(handlers::deposit::get_deposits_for_recipient)
+}
+
+/// Get deposits for reclaim pubkey endpoint.
+fn get_deposits_for_reclaim_pubkeys(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!("deposit" / "reclaim-pubkeys" / String))
+        .and(warp::get())
+        .and(warp::query())
+        .then(handlers::deposit::get_deposits_for_reclaim_pubkeys)
 }
 
 /// Create deposit endpoint.

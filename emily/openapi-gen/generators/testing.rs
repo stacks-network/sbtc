@@ -17,6 +17,7 @@ use super::CorsSupport;
         api::handlers::deposit::get_deposit,
         api::handlers::deposit::get_deposits_for_transaction,
         api::handlers::deposit::get_deposits_for_recipient,
+        api::handlers::deposit::get_deposits_for_reclaim_pubkeys,
         api::handlers::deposit::get_deposits,
         api::handlers::deposit::create_deposit,
         api::handlers::deposit::update_deposits,
