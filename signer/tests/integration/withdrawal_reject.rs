@@ -547,7 +547,14 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // database with new bitcoin block headers.
     backfill_bitcoin_blockchain(&db, rpc).await;
 
-    //Different
+    // Normal: we need to store a row in the dkg_shares table so that we
+    // have a record of the scriptPubKey that the signers control. We need
+    // this so that the donation get's picked up correctly below.
+    setup.store_dkg_shares(&db).await;
+
+    // Different: We submit a sweep transaction into the mempool. We also
+    // write rows to the database about the transaction. We use these rows
+    // to figure out if something is indeed in the mempool.
     setup.submit_sweep_tx(rpc, faucet);
 
     let sweep = setup.sweep_tx_info.as_ref().unwrap();
@@ -562,18 +569,14 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
         prevout_output_index: setup.donation.vout,
         validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
         aggregate_key: setup.signers.aggregate_key().into(),
-        is_valid_tx: true,
-        will_sign: true,
+        is_valid_tx: false,
+        will_sign: false,
         chain_tip: rpc.get_blockchain_info().unwrap().best_block_hash.into(),
         sighash: bitcoin::TapSighash::from_byte_array([23; 32]).into(),
     };
     db.write_bitcoin_txs_sighashes(&[signer_tx_sighash])
         .await
         .unwrap();
-
-    // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
-    setup.store_dkg_shares(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
