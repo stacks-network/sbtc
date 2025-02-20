@@ -282,7 +282,7 @@ impl EntryTrait for WithdrawalEntry {
     }
 }
 
-/// Primary index struct.
+/// Secondary index struct.
 pub struct WithdrawalTablePrimaryIndexInner;
 /// Withdrawal table primary index type.
 pub type WithdrawalTablePrimaryIndex = PrimaryIndex<WithdrawalTablePrimaryIndexInner>;
@@ -368,11 +368,11 @@ impl EntryTrait for WithdrawalInfoEntry {
     }
 }
 
-/// Primary index struct.
+/// Secondary index struct.
 pub struct WithdrawalTableSecondaryIndexInner;
-/// Withdrawal table primary index type.
+/// Withdrawal table secondary index type.
 pub type WithdrawalTableSecondaryIndex = SecondaryIndex<WithdrawalTableSecondaryIndexInner>;
-/// Definition of Primary index trait.
+/// Definition of secondary index trait.
 impl SecondaryIndexTrait for WithdrawalTableSecondaryIndexInner {
     type PrimaryIndex = WithdrawalTablePrimaryIndex;
     type Entry = WithdrawalInfoEntry;
@@ -467,12 +467,12 @@ impl EntryTrait for WithdrawalInfoByRecipientEntry {
     }
 }
 
-/// Primary index struct.
+/// Secondary index struct.
 pub struct WithdrawalTableByRecipientSecondaryIndexInner;
-/// Withdrawal table primary index type.
+/// Withdrawal table secondary index type.
 pub type WithdrawalTableByRecipientSecondaryIndex =
     SecondaryIndex<WithdrawalTableByRecipientSecondaryIndexInner>;
-/// Definition of Primary index trait.
+/// Definition of secondary index trait.
 impl SecondaryIndexTrait for WithdrawalTableByRecipientSecondaryIndexInner {
     type PrimaryIndex = WithdrawalTablePrimaryIndex;
     type Entry = WithdrawalInfoByRecipientEntry;

@@ -263,9 +263,6 @@ async fn test_new_blocks_sends_withdrawal_reject_update() {
     });
 
     let pubkey = PublicKey::from_slice(&[0x02; 33]).unwrap();
-    println!("{:?}", ScriptBuf::new_p2pk(&pubkey).to_hex_string());
-    println!("{:?}", ScriptBuf::new_p2pk(&pubkey).to_hex_string());
-    println!("{:?}", ScriptBuf::new_p2pk(&pubkey).to_hex_string());
     // Add the withdrawal request to Emily
     let withdrawal_request = CreateWithdrawalRequestBody {
         amount: 100,

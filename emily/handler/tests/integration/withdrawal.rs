@@ -9,7 +9,7 @@ use testing_emily_client::models::{
     WithdrawalInfo, WithdrawalParameters, WithdrawalUpdate,
 };
 
-const RECIPIENT: &'static str = "1";
+const RECIPIENT: &'static str = "TEST_RECIPIENT";
 const BLOCK_HASH: &'static str = "TEST_BLOCK_HASH";
 const BLOCK_HEIGHT: u64 = 0;
 const INITIAL_WITHDRAWAL_STATUS_MESSAGE: &'static str = "Just received withdrawal";
