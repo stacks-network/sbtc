@@ -418,7 +418,9 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
 /// Fetch all block headers from bitcoin-core and store it in the database.
 pub async fn backfill_bitcoin_blockchain(db: &PgStore, rpc: &Client) {
     let chain_tip_info = rpc.get_blockchain_info().unwrap();
-    let mut block_header = rpc.get_block_header_info(&chain_tip_info.best_block_hash).unwrap();
+    let mut block_header = rpc
+        .get_block_header_info(&chain_tip_info.best_block_hash)
+        .unwrap();
 
     // There are no non-coinbase transactions below this height.
     while block_header.height as u64 >= regtest::MIN_BLOCKCHAIN_HEIGHT {

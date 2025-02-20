@@ -310,7 +310,6 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
 
-    
     let test_signer_set = TestSignerSet::new(&mut rng);
     let setup = new_sweep_setup(&test_signer_set, &faucet);
     // Normal: the signer follows the bitcoin blockchain and event observer
@@ -508,10 +507,69 @@ async fn reject_withdrawal_validation_request_completed() {
     testing::storage::drop_db(db).await;
 }
 
+/// For this test we check that the `RejectWithdrawalV1::validate` function
+/// returns a withdrawal validation error with a RequestBeingFulfilled
+/// message when the stacks node returns that the withdrawal request has
+/// been completed.
+#[tokio::test]
+async fn reject_withdrawal_validation_request_being_fulfilled() {
+    // Normal: this generates the blockchain as well as a transaction
+    // sweeping out the funds for a withdrawal request. This is just setup
+    // and should be essentially the same between tests.
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let (rpc, faucet) = regtest::initialize_blockchain();
 
-    // Normal: we take the sweep transaction as is from the test setup and
-    // store it in the database.
-    setup.store_sweep_tx(&db).await;
+    let test_signer_set = TestSignerSet::new(&mut rng);
+    let mut setup = new_sweep_setup(&test_signer_set, &faucet);
+
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    // Normal: the request has not been marked as completed in the smart
+    // contract.
+    set_withdrawal_incomplete(&mut ctx).await;
+
+    let public_keys = test_signer_set
+        .keys
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<PublicKey>>();
+    ctx.state().update_current_signer_set(public_keys);
+
+    // Normal: the signer follows the bitcoin blockchain and event observer
+    // should be getting new block events from bitcoin-core. We haven't
+    // hooked up our block observer, so we need to manually update the
+    // database with new bitcoin block headers.
+    backfill_bitcoin_blockchain(&db, rpc).await;
+
+    //Different
+    setup.submit_sweep_tx(rpc, faucet);
+
+    let sweep = setup.sweep_tx_info.as_ref().unwrap();
+
+    setup.store_donation(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
+
+    let signer_tx_sighash = BitcoinTxSigHash {
+        txid: sweep.tx_info.txid.into(),
+        prevout_type: model::TxPrevoutType::SignersInput,
+        prevout_txid: setup.donation.txid.into(),
+        prevout_output_index: setup.donation.vout,
+        validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+        aggregate_key: setup.signers.aggregate_key().into(),
+        is_valid_tx: true,
+        will_sign: true,
+        chain_tip: rpc.get_blockchain_info().unwrap().best_block_hash.into(),
+        sighash: bitcoin::TapSighash::from_byte_array([23; 32]).into(),
+    };
+    db.write_bitcoin_txs_sighashes(&[signer_tx_sighash])
+        .await
+        .unwrap();
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -523,18 +581,19 @@ async fn reject_withdrawal_validation_request_completed() {
     setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
-    // Generate more blocks then backfill the DB
-    let mut hashes = faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY);
-    let last = hashes.pop().unwrap();
-    backfill_bitcoin_blocks(&db, rpc, &last).await;
+    // Normal: We do not reject a withdrawal requests until more than
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // contract that created the withdrawal request has bene observed.
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
+    backfill_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
-    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject2(&setup, &db).await;
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
 
     let validation_result = reject_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalRejectValidation(ref err) => {
-            assert_eq!(err.error, WithdrawalRejectErrorMsg::RequestCompleted)
+            assert_eq!(err.error, WithdrawalRejectErrorMsg::RequestBeingFulfilled)
         }
         err => panic!("unexpected error during validation {err}"),
     }
