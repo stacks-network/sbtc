@@ -1169,10 +1169,12 @@ impl AsContractCall for RejectWithdrawalV1 {
         }
 
         // 6. Check whether the withdrawal request has expired.
-        let request_block_height = report.bitcoin_block_height;
-        let blocks_observed = req_ctx.chain_tip.block_height - request_block_height;
+        let blocks_observed = req_ctx
+            .chain_tip
+            .block_height
+            .saturating_sub(report.bitcoin_block_height);
 
-        if blocks_observed < WITHDRAWAL_BLOCKS_EXPIRY {
+        if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 
