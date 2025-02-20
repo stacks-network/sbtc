@@ -2116,7 +2116,7 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: stacks_block.block_height,
+        bitcoin_block_height: bitcoin_block.block_height,
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
@@ -2246,7 +2246,7 @@ async fn get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_reques
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: stacks_block.block_height,
+        bitcoin_block_height: bitcoin_block.block_height,
     };
 
     // Now write all the data to the database.
@@ -2514,7 +2514,7 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: stacks_block.block_height,
+        bitcoin_block_height: bitcoin_block.block_height,
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
@@ -2787,7 +2787,7 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
         amount: 1_000,
         max_fee: 1_000,
         sender_address: fake::Faker.fake_with_rng(&mut rng),
-        block_height: stacks_block.block_height,
+        bitcoin_block_height: bitcoin_block.block_height,
     };
     let swept_output = BitcoinWithdrawalOutput {
         request_id: withdrawal_request.request_id,
