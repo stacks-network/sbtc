@@ -342,31 +342,6 @@ impl TestSweepSetup {
         }
     }
 
-    /// Use the bitmap in the `self.withdrawal_request.signer_bitmap` field to
-    /// generate the corresponding deposit signer votes and store these
-    /// decisions in the database.
-    pub async fn store_withdrawal_decisions(&self, db: &PgStore) {
-        let withdrawal_signers: Vec<model::WithdrawalSigner> = self
-            .signer_keys
-            .iter()
-            .copied()
-            .zip(self.withdrawal_request.signer_bitmap)
-            .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
-                request_id: self.withdrawal_request.request_id,
-                block_hash: self.withdrawal_request.block_hash,
-                txid: self.withdrawal_request.txid,
-                signer_pub_key,
-                is_accepted: !is_rejected,
-            })
-            .collect();
-
-        for decision in withdrawal_signers {
-            db.write_withdrawal_signer_decision(&decision)
-                .await
-                .unwrap();
-        }
-    }
-
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
         let block = model::StacksBlock {
             block_hash: self.withdrawal_request.block_hash,
@@ -425,6 +400,25 @@ impl TestSweepSetup {
 /// Fetch all block headers from bitcoin-core and store it in the database.
 pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bitcoin::BlockHash) {
     let mut block_header = rpc.get_block_header_info(&chain_tip).unwrap();
+
+    // There are no non-coinbase transactions below this height.
+    while block_header.height as u64 >= regtest::MIN_BLOCKCHAIN_HEIGHT {
+        let parent_header_hash = block_header.previous_block_hash.unwrap();
+        let bitcoin_block = BitcoinBlock {
+            block_hash: block_header.hash.into(),
+            block_height: block_header.height as u64,
+            parent_hash: parent_header_hash.into(),
+        };
+
+        db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+        block_header = rpc.get_block_header_info(&parent_header_hash).unwrap();
+    }
+}
+
+/// Fetch all block headers from bitcoin-core and store it in the database.
+pub async fn backfill_bitcoin_blockchain(db: &PgStore, rpc: &Client) {
+    let chain_tip_info = rpc.get_blockchain_info().unwrap();
+    let mut block_header = rpc.get_block_header_info(&chain_tip_info.best_block_hash).unwrap();
 
     // There are no non-coinbase transactions below this height.
     while block_header.height as u64 >= regtest::MIN_BLOCKCHAIN_HEIGHT {
