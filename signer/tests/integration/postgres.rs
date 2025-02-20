@@ -5354,9 +5354,6 @@ mod get_pending_accepted_withdrawal_requests {
         assert!(requests.is_empty());
     }
 
-    #[tokio::test]
-    async fn expired_request_not_returned() {}
-
     /// Asserts that we only return requests that have been accepted by the
     /// required number of signers. This test creates one valid withdrawal
     /// request with no votes.
