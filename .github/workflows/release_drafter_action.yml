@@ -2,10 +2,8 @@ name: Release workflow - Create release notes
 
 on:
   push:
-    branches:
-      - feat/improve_release_notes
     tags:
-      - "*"
+      - '*'
 
 permissions:
   actions: write
@@ -39,8 +37,8 @@ jobs:
 
           ### 🐳 Images <a id="images">
 
-          - [\`blockstack/sbtc:signer-${{ github.event.release.tag_name }}@sha256:<SignerDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ github.event.release.tag_name }}/images/sha256-<SignerDigest>)
-          - [\`blockstack/sbtc:blocklist-client-${{ github.event.release.tag_name }}@sha256:<BlocklistDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ github.event.release.tag_name }}/images/sha256-<BlocklistDigest>)
+          - [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@sha256:<SignerDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/sha256-<SignerDigest>)
+          - [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}}@sha256:<BlocklistDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/sha256-<BlocklistDigest>)
 
           ⚠️ Always use [immutable image tags](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier).
 
@@ -48,7 +46,7 @@ jobs:
 
           ### 📙 Database migrations
 
-          Here: [\`signer/migrations\`](https://github.com/stacks-network/sbtc/tree/${{ github.event.release.tag_name }}/signer/migrations).
+          Here: [\`signer/migrations\`](https://github.com/stacks-network/sbtc/tree/${{ env.TAG_NAME }}/signer/migrations).
 
           ## 🛠️ Upgrade Instructions: <a id="upgrade-instructions">
 
@@ -72,7 +70,7 @@ jobs:
             const release = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: 'test-docker-release',
+              tag_name: '${{ env.TAG_NAME }}',
               name: '${{ env.TAG_NAME }}',
               body: releaseNotes,
               draft: true,
