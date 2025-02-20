@@ -103,8 +103,8 @@ jobs:
             const release = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: test-docker-release,
-              name: test-docker-release,
+              tag_name: 'test-docker-release',
+              name: ${{ env.TAG_NAME }},
               body: releaseNotes,
               draft: true
             });
