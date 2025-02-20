@@ -319,6 +319,16 @@ pub trait DbRead {
         script: &model::ScriptPubKey,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
+    /// Check whether it is possible that the withdrawal identified by the
+    /// given request identifier is currently in the mempool, assuming that
+    /// we have processed all recent pre-sign requests and stored the
+    /// results into our database.
+    fn is_withdrawal_in_mempool(
+        &self,
+        id: &model::QualifiedRequestId,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Fetch the bitcoin transaction that is included in the block
     /// identified by the block hash.
     fn get_bitcoin_tx(
