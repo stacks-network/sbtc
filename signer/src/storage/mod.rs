@@ -320,10 +320,10 @@ pub trait DbRead {
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Check whether it is possible that the withdrawal identified by the
-    /// given request identifier is currently in the mempool, assuming that
-    /// we have processed all recent pre-sign requests and stored the
+    /// given request identifier live in the bitcoin mempool. This assumes
+    /// that we have processed all recent pre-sign requests and stored the
     /// results into our database.
-    fn is_withdrawal_in_mempool(
+    fn is_withdrawal_live(
         &self,
         id: &model::QualifiedRequestId,
         bitcoin_chain_tip: &model::BitcoinBlockHash,

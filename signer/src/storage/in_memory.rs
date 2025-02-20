@@ -814,7 +814,7 @@ impl super::DbRead for SharedStore {
             .any(|(_, share)| &share.script_pubkey == script))
     }
 
-    async fn is_withdrawal_in_mempool(
+    async fn is_withdrawal_live(
         &self,
         _: &model::QualifiedRequestId,
         _: &model::BitcoinBlockHash,

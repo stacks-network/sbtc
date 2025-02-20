@@ -2070,7 +2070,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn is_withdrawal_in_mempool(
+    async fn is_withdrawal_live(
         &self,
         id: &model::QualifiedRequestId,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
