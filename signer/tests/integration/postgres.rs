@@ -2565,7 +2565,22 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
     db.write_withdrawal_accept_event(&event).await.unwrap();
 
     // Since we have corresponding withdrawal accept event query should return nothing
-    let context_window = 20;
+    let requests = db
+        .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
+        .await
+        .unwrap();
+    assert!(requests.is_empty());
+
+    // It should remain accepted even if we have an unconfirmed accept event in
+    // some fork
+    let forked_event = WithdrawalAcceptEvent {
+        request_id: withdrawal_request.request_id,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    db.write_withdrawal_accept_event(&forked_event)
+        .await
+        .unwrap();
+
     let requests = db
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await
