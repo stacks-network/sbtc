@@ -649,8 +649,16 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        self.construct_and_sign_stacks_sbtc_depost_response_transactions(chain_tip, bitcoin_aggregate_key).await?;
-        self.construct_and_sign_stacks_sbtc_withdrawal_response_transactions(chain_tip, bitcoin_aggregate_key).await?;
+        self.construct_and_sign_stacks_sbtc_depost_response_transactions(
+            chain_tip,
+            bitcoin_aggregate_key,
+        )
+        .await?;
+        self.construct_and_sign_stacks_sbtc_withdrawal_response_transactions(
+            chain_tip,
+            bitcoin_aggregate_key,
+        )
+        .await?;
         Ok(())
     }
 
@@ -783,12 +791,14 @@ where
         wallet.set_nonce(account.nonce);
 
         for req in withdrawal_requests {
-
             let request_id = req.request_id;
             let sweep_txid = req.sweep_txid;
 
-            let sign_request_fut = 
-                self.construct_withdrawal_accept_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
+            let sign_request_fut = self.construct_withdrawal_accept_stacks_sign_request(
+                req,
+                bitcoin_aggregate_key,
+                &wallet,
+            );
 
             let (sign_request, multi_tx) = match sign_request_fut.await {
                 Ok(res) => res,
