@@ -1612,8 +1612,14 @@ where
     ///       pre-filter in the query, any signer),
     ///     - [x] And by the required number of signers _in the current signer
     ///       set_.
-    /// 5. [ ] The request has been approved by this signer (this shouldn't be
-    ///    applicable to the coordinator).
+    /// 5. [ ] The request has been approved by this signer. **Note:** This rule
+    ///        does not apply within the coordinator module. The decision to
+    ///        include a request is made collectively by all signers based on
+    ///        the same consensus rules, not the coordinator alone. While the
+    ///        coordinator module should not influence the decision on whether a
+    ///        request should be included in a sweep transaction based on its
+    ///        own approval, its signer module will still process the request as
+    ///        part of the collective and will apply this rule.
     /// 6. [ ] The assessed fees will be within the constraints of the request's
     ///    specified maximum fee (this is handled during packaging).
     /// 7. [x] The request must not have expired (handled in the query).
@@ -1637,24 +1643,24 @@ where
 
         let mut eligible_withdrawals = Vec::new();
 
+        // Fetch pending withdrawal requests from storage. This method, with
+        // the given inputs, performs the following filtering according to
+        // consensus rules:
+        //
+        // - [1]  The request has not been swept in the canonical bitcoin chain,
+        // - [2]  Is confirmed in a canonical stacks block,
+        // - [4a] Is accepted by >= `threshold` signers (pre-filter),
+        // - [7]  Is not older than the provided withdrawal expiry threshold.
+        //
         // We set the context window for the pending-accepted query below to the
         // number of blocks that the withdrawal request is considered
         // valid (not expired). This limits the number of blocks the query will
         // consider when fetching pending withdrawal requests.
-        let context_window = withdrawal_blocks_expiry;
-
-        // Fetch pending withdrawal requests from storage. This method performs
-        // the following filtering according to consensus rules:
-        //
-        // [1]  The request has not been swept,
-        // [2]  Is confirmed in a canonical Stacks block,
-        // [4a] Is accepted by >= `threshold` signers (pre-filter),
-        // [7]  Is not expired.
         let pending_withdraw_requests = storage
             .get_pending_accepted_withdrawal_requests(
                 params.bitcoin_chain_tip.as_ref(),
                 params.stacks_chain_tip,
-                context_window,
+                withdrawal_blocks_expiry,
                 params.signature_threshold,
             )
             .await?;
