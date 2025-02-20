@@ -3424,12 +3424,13 @@ mod get_eligible_pending_withdrawal_requests {
         bitcoin::MockBitcoinInteract,
         emily_client::MockEmilyInteract,
         network::in_memory2::SignerNetworkInstance,
-        storage::model::{BitcoinBlock, StacksBlock, WithdrawalRequest},
+        storage::model::{BitcoinBlock, StacksBlock, WithdrawalRequest, WithdrawalSigner},
         testing::{
             blocks::{BitcoinChain, StacksChain},
             storage::{DbReadTestExt as _, DbWriteTestExt as _},
         },
         transaction_coordinator::GetPendingRequestsParams,
+        transaction_coordinator::TxCoordinatorEventLoop,
     };
 
     use super::*;
@@ -3455,15 +3456,23 @@ mod get_eligible_pending_withdrawal_requests {
         signer_set: &TestSignerSet,
         votes: &[bool],
     ) {
-        let signer_votes = signer_set.signer_keys().iter().zip(votes.iter());
-        for vote in signer_votes {
-            let signer = model::WithdrawalSigner {
+        // Create an iterator of signer keys and their corresponding votes.
+        let signer_votes = signer_set
+            .signer_keys()
+            .into_iter()
+            .cloned()
+            .zip(votes.into_iter().cloned());
+
+        for (signer_pub_key, is_accepted) in signer_votes {
+            let signer = WithdrawalSigner {
                 request_id: request.request_id,
                 block_hash: request.block_hash,
                 txid: request.txid,
-                signer_pub_key: *vote.0,
-                is_accepted: *vote.1,
+                signer_pub_key,
+                is_accepted,
             };
+
+            // Write the decision to the database.
             db.write_withdrawal_signer_decision(&signer)
                 .await
                 .expect("failed to write signer decision");
@@ -3555,8 +3564,9 @@ mod get_eligible_pending_withdrawal_requests {
         at_block_height: usize,
     }
 
-    /// Asserts that TxCoordinatorEventLoop::get_pending_requests processes
-    /// withdrawals
+    /// Asserts that
+    /// [`TxCoordinatorEventLoop::get_eligible_pending_withdrawal_requests`]
+    /// correctly filters requests based on its parameters.
     #[test_case(TestParams {
         signature_threshold: 2,
         num_approves: 3,
@@ -3632,6 +3642,7 @@ mod get_eligible_pending_withdrawal_requests {
         )
         .await;
 
+        // Create and store votes for the request.
         let votes = vec![true; params.num_approves];
         store_votes(&db, &request, &signer_set, &votes).await;
 
