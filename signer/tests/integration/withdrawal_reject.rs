@@ -48,6 +48,7 @@ fn make_withdrawal_reject(data: &TestSweepSetup) -> (RejectWithdrawalV1, ReqCont
             block_hash: data.sweep_block_hash.into(),
             block_height: data.sweep_block_height,
         },
+        stacks_chain_tip: data.withdrawal_request.block_hash,
         // This value means that the signer will go back 20 blocks when
         // looking for pending and rejected withdrawal requests.
         context_window: 20,
@@ -96,6 +97,7 @@ async fn make_withdrawal_reject2(
     // This is what the current signer thinks is the state of things.
     let req_ctx = ReqContext {
         chain_tip,
+        stacks_chain_tip: data.withdrawals[0].request.block_hash,
         // This value means that the signer will go back 20 blocks when
         // looking for pending and rejected withdrawal requests.
         context_window: 20,

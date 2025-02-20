@@ -500,8 +500,14 @@ where
             return Err(Error::ValidationSignerSet(request.aggregate_key));
         }
 
+        let stacks_chain_tip = db
+            .get_stacks_chain_tip(&chain_tip.block_hash)
+            .await?
+            .ok_or(Error::NoStacksChainTip)?;
+
         let req_ctx = ReqContext {
             chain_tip: *chain_tip,
+            stacks_chain_tip: stacks_chain_tip.block_hash,
             context_window: self.context_window,
             origin: *origin_public_key,
             aggregate_key: request.aggregate_key,

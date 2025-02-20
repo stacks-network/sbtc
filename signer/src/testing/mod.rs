@@ -4,6 +4,7 @@
 
 pub mod api_clients;
 pub mod block_observer;
+pub mod blocks;
 pub mod btc;
 pub mod context;
 pub mod dummy;

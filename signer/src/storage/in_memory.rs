@@ -509,7 +509,8 @@ impl super::DbRead for SharedStore {
 
     async fn get_pending_accepted_withdrawal_requests(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
+        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+        _stacks_chain_tip: &model::StacksBlockHash,
         _context_window: u16,
         _threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {

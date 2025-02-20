@@ -160,6 +160,8 @@ fn make_rotate_key(setup: &TestRotateKeySetup) -> (RotateKeysV1, ReqContext) {
     // This is what the current signer thinks is the state of things.
     let req_ctx = ReqContext {
         chain_tip: setup.chain_tip.clone().into(),
+        // This is not used for rotate-key tests.
+        stacks_chain_tip: signer::storage::model::StacksBlockHash::from([0; 32]),
         context_window: 10,
         origin: fake::Faker.fake_with_rng(&mut OsRng),
         aggregate_key: setup.aggregate_key(),
