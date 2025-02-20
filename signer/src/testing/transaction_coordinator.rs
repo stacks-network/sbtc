@@ -256,9 +256,6 @@ where
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
-        // Get the chain tips from storage.
-        let (bitcoin_chain_tip_ref, stacks_chain_tip) = storage.get_chain_tips().await;
-
         // Get pending withdrawals from storage.
         let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
@@ -270,10 +267,13 @@ where
             .await
             .expect("Error extracting withdrawals from db");
 
-        let max_processable_height =
-            bitcoin_chain_tip_ref.block_height - crate::WITHDRAWAL_MIN_CONFIRMATIONS;
-        let min_processable_height =
-            bitcoin_chain_tip.block_height - crate::WITHDRAWAL_BLOCKS_EXPIRY;
+        let max_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_MIN_CONFIRMATIONS);
+        let min_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY)
+            .saturating_sub(crate::WITHDRAWAL_EXPIRY_BUFFER);
 
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
         assert!(!withdrawals_in_storage.is_empty());
