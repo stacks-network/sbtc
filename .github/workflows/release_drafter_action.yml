@@ -43,14 +43,6 @@ jobs:
       - name: Generate Release Notes
         id: generate-release-notes
         run: |
-          # CHANGES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          #   "https://api.github.com/repos/${{ github.repository }}/compare/$PREV_TAG...${{ github.event.release.tag_name }}" \
-          #   | jq -r '.commits[] | "- \(.commit.message) (\(.sha | .[0:7])) by @\(.author.login // "unknown")"')
-
-          CHANGES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/compare/$PREV_TAG...$PREV_TAG" \
-            | jq -r '.commits[] | "- \(.commit.message) (\(.sha | .[0:7])) by @\(.author.login // "unknown")"')
-
           cat <<EOF > release_notes.md
           # sBTC v${{ github.event.release.tag_name }}
 
@@ -83,12 +75,6 @@ jobs:
           4. Apply database migrations (only if not running with the \`--migrate-db\` flag)
           5. Update your sBTC images as specified above
           6. Restart your sBTC signer and blocklist client
-
-          ## What's Changed
-
-          $CHANGES
-
-          **Full Changelog**: https://github.com/stacks-network/sbtc/compare/$PREV_TAG...${{ github.event.release.tag_name }}
           EOF
 
       - name: Create GitHub Release
