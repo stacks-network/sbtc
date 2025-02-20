@@ -2,6 +2,8 @@ name: Release workflow - Create release notes
 
 on:
   push:
+    branches:
+      - feat/improve_release_notes
     tags:
       - "*"
 
