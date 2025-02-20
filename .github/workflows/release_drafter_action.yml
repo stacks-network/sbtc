@@ -106,7 +106,8 @@ jobs:
               tag_name: 'test-docker-release',
               name: '${{ env.TAG_NAME }}',
               body: releaseNotes,
-              draft: true
+              draft: true,
+              generate_release_notes: true
             });
   
             console.log(`Created release: ${release.data.html_url}`);
