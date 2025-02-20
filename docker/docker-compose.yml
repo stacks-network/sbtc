@@ -268,7 +268,7 @@ services:
       - bitcoin-mempool
 
   bitcoin-miner:
-    build: bitcoin
+    image: bitcoin/bitcoin:25.2
     depends_on:
       bitcoin:
         condition: service_healthy
@@ -286,6 +286,7 @@ services:
       - /bin/bash
       - -c
       - |
+        apt-get update && apt-get install -y jq
         set -e
         trap "exit" INT TERM
         trap "kill 0" EXIT

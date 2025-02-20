@@ -69,6 +69,11 @@ pub struct DepositEntry {
     pub fulfillment: Option<Fulfillment>,
     /// History of this deposit transaction.
     pub history: Vec<DepositEvent>,
+    /// The ordered SHA-256 hash of x-only pubkeys used to create
+    /// the reclaim script of the deposit.
+    /// If the reclaim script is in unknown format, this field will be None.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reclaim_pubkeys_hash: Option<String>,
 }
 
 /// Implements versioned entry trait for the deposit entry.
@@ -523,6 +528,111 @@ impl From<DepositInfoByRecipientEntry> for DepositInfo {
     }
 }
 
+/// Search token for reclaim pubkey GSI.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct DepositInfoByReclaimPubkeysEntrySearchToken {
+    /// Primary index key.
+    #[serde(flatten)]
+    pub primary_index_key: DepositEntryKey,
+    /// Global secondary index key.
+    #[serde(flatten)]
+    pub secondary_index_key: DepositInfoByReclaimPubkeysEntryKey,
+}
+
+/// Key for deposit info entry that's indexed by reclaim pubkeys hash.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct DepositInfoByReclaimPubkeysEntryKey {
+    /// The hashed reclaim pubkeys of the deposit.
+    pub reclaim_pubkeys_hash: String,
+    /// The most recent Stacks block height the API was aware of when the deposit was last
+    /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
+    /// then this height is the Stacks block height that contains that artifact.
+    pub last_update_height: u64,
+}
+
+/// Reduced version of the deposit data that is indexed by reclaim_pubkeys_hash.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct DepositInfoByReclaimPubkeysEntry {
+    /// Gsi key data.
+    #[serde(flatten)]
+    pub key: DepositInfoByReclaimPubkeysEntryKey,
+    /// Primary index key data.
+    #[serde(flatten)]
+    pub primary_index_key: DepositEntryKey,
+    /// The status of the entry.
+    #[serde(rename = "OpStatus")]
+    pub status: Status,
+    /// The recipient of the deposit encoded in hex.
+    pub recipient: String,
+    /// Amount of BTC being deposited in satoshis.
+    pub amount: u64,
+    /// The raw reclaim script.
+    pub reclaim_script: String,
+    /// The raw deposit script.
+    pub deposit_script: String,
+    /// The most recent Stacks block hash the API was aware of when the deposit was last
+    /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
+    /// then this hash is the Stacks block hash that contains that artifact.
+    pub last_update_block_hash: String,
+}
+
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for DepositInfoByReclaimPubkeysEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = String;
+    /// the type of the sort key.
+    type SortKey = u64;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "ReclaimPubkeysHash";
+    /// The table field name of the sort key.
+    const SORT_KEY_NAME: &'static str = "LastUpdateHeight";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for DepositInfoByReclaimPubkeysEntry {
+    /// The type of the key for this entry type.
+    type Key = DepositInfoByReclaimPubkeysEntryKey;
+    /// Extract the key from the deposit info entry.
+    fn key(&self) -> Self::Key {
+        DepositInfoByReclaimPubkeysEntryKey {
+            reclaim_pubkeys_hash: self.key.reclaim_pubkeys_hash.clone(),
+            last_update_height: self.key.last_update_height,
+        }
+    }
+}
+
+/// Primary index struct.
+pub struct DepositTableByReclaimPubkeysSecondaryIndexInner;
+/// Deposit table primary index type.
+pub type DepositTableByReclaimPubkeysSecondaryIndex =
+    SecondaryIndex<DepositTableByReclaimPubkeysSecondaryIndexInner>;
+/// Definition of Primary index trait.
+impl SecondaryIndexTrait for DepositTableByReclaimPubkeysSecondaryIndexInner {
+    type PrimaryIndex = DepositTablePrimaryIndex;
+    type Entry = DepositInfoByReclaimPubkeysEntry;
+    const INDEX_NAME: &'static str = "DepositReclaimPubkeysHashIndex";
+}
+
+impl From<DepositInfoByReclaimPubkeysEntry> for DepositInfo {
+    fn from(deposit_info_entry: DepositInfoByReclaimPubkeysEntry) -> Self {
+        // Create deposit info resource from deposit info table entry.
+        DepositInfo {
+            bitcoin_txid: deposit_info_entry.primary_index_key.bitcoin_txid,
+            bitcoin_tx_output_index: deposit_info_entry.primary_index_key.bitcoin_tx_output_index,
+            recipient: deposit_info_entry.recipient,
+            amount: deposit_info_entry.amount,
+            last_update_height: deposit_info_entry.key.last_update_height,
+            last_update_block_hash: deposit_info_entry.last_update_block_hash,
+            status: deposit_info_entry.status,
+            reclaim_script: deposit_info_entry.reclaim_script,
+            deposit_script: deposit_info_entry.deposit_script,
+        }
+    }
+}
+
 // -----------------------------------------------------------------------------
 
 /// Validated version of the update deposit request.
@@ -706,6 +816,7 @@ mod tests {
             last_update_block_hash: "".to_string(),
             fulfillment: None,
             history: vec![pending, accepted.clone()],
+            reclaim_pubkeys_hash: None,
         };
 
         let update = ValidatedDepositUpdate {
@@ -745,6 +856,7 @@ mod tests {
             last_update_block_hash: "".to_string(),
             fulfillment: None,
             history: vec![pending.clone()],
+            reclaim_pubkeys_hash: None,
         };
 
         let update = ValidatedDepositUpdate {
@@ -802,6 +914,7 @@ mod tests {
             last_update_block_hash: "hash6".to_string(),
             fulfillment: Some(fulfillment.clone()),
             history: vec![pending.clone(), accepted.clone(), confirmed.clone()],
+            reclaim_pubkeys_hash: Some(hex::encode([1u8; 32])),
         };
 
         // Ensure the deposit is valid.

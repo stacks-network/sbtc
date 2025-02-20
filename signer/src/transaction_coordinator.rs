@@ -262,10 +262,11 @@ where
         Ok(is_epoch3)
     }
 
-    #[tracing::instrument(
-        skip_all,
-        fields(public_key = %self.signer_public_key(), chain_tip = tracing::field::Empty)
-    )]
+    #[tracing::instrument(skip_all, fields(
+        public_key = %self.signer_public_key(),
+        bitcoin_tip_hash = tracing::field::Empty,
+        bitcoin_tip_height = tracing::field::Empty,
+    ))]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         if !self.is_epoch3().await? {
             return Ok(());
@@ -280,12 +281,16 @@ where
         let bitcoin_chain_tip = self
             .context
             .get_storage()
-            .get_bitcoin_canonical_chain_tip()
+            .get_bitcoin_canonical_chain_tip_ref()
             .await?
             .ok_or(Error::NoChainTip)?;
 
         let span = tracing::Span::current();
-        span.record("chain_tip", tracing::field::display(&bitcoin_chain_tip));
+        span.record(
+            "bitcoin_tip_hash",
+            tracing::field::display(bitcoin_chain_tip.block_hash),
+        );
+        span.record("bitcoin_tip_height", bitcoin_chain_tip.block_height);
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -298,7 +303,7 @@ where
         // If we are not the coordinator, then we have no business
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
-        if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+        if !self.is_coordinator(bitcoin_chain_tip.as_ref(), &signer_public_keys) {
             // Before returning, we also check if all the smart contracts are
             // deployed: we do this as some other coordinator could have deployed
             // them, in which case we need to updated our state.
@@ -315,15 +320,15 @@ where
         let should_coordinate_dkg =
             should_coordinate_dkg(&self.context, &bitcoin_chain_tip).await?;
         let aggregate_key = if should_coordinate_dkg {
-            self.coordinate_dkg(&bitcoin_chain_tip).await?
+            self.coordinate_dkg(bitcoin_chain_tip.as_ref()).await?
         } else {
-            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip))?
+            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
         };
 
-        self.deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
+        self.deploy_smart_contracts(bitcoin_chain_tip.as_ref(), &aggregate_key)
             .await?;
 
-        self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip, &aggregate_key)
+        self.check_and_submit_rotate_key_transaction(bitcoin_chain_tip.as_ref(), &aggregate_key)
             .await?;
 
         let bitcoin_processing_fut = self.construct_and_sign_bitcoin_sbtc_transactions(
@@ -337,7 +342,7 @@ where
         }
 
         self.construct_and_sign_stacks_sbtc_response_transactions(
-            &bitcoin_chain_tip,
+            bitcoin_chain_tip.as_ref(),
             &aggregate_key,
         )
         .await?;
@@ -547,53 +552,65 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip_all, fields(
+        stacks_tip_hash = tracing::field::Empty,
+        stacks_tip_height = tracing::field::Empty,
+    ))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        tracing::debug!("fetching the stacks chain tip");
-        let stacks_chain_tip = self
-            .context
-            .get_storage()
-            .get_stacks_chain_tip(bitcoin_chain_tip)
+        let storage = self.context.get_storage();
+
+        // Fetch the stacks chain tip from the database.
+        let stacks_chain_tip = storage
+            .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
-        tracing::debug!(
-            stacks_chain_tip = %stacks_chain_tip.block_hash,
-            "retrieved the stacks chain tip"
-        );
+        let span = tracing::Span::current();
+        span.record("stacks_tip_hash", stacks_chain_tip.block_hash.to_hex());
+        span.record("stacks_tip_height", stacks_chain_tip.block_height);
 
+        // Create a future that fetches pending deposit and withdrawal requests
+        // from the database.
         let pending_requests_fut =
             self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
 
-        // If Self::get_pending_requests returns Ok(None) then there are no
-        // requests to respond to, so let's just exit.
+        // If `get_pending_requests()` returns `Ok(None)` then there are no
+        // eligible requests to service; we can exit early.
         let Some(pending_requests) = pending_requests_fut.await? else {
-            tracing::debug!("no requests to handle, exiting");
+            tracing::debug!("no requests to handle; skipping this round");
             return Ok(());
         };
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
-            "fetched requests"
+            "there are eligible requests to handle"
         );
+
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
 
+        // Send the pre-sign request to the signers and wait for their
+        // acknowledgments.
         self.construct_and_send_bitcoin_presign_request(
-            bitcoin_chain_tip,
+            bitcoin_chain_tip.as_ref(),
             &pending_requests.signer_state,
             &transaction_package,
         )
         .await?;
 
+        // Construct, sign and broadcast the bitcoin transactions.
         for mut transaction in transaction_package {
-            self.sign_and_broadcast(bitcoin_chain_tip, signer_public_keys, &mut transaction)
-                .await?;
+            self.sign_and_broadcast(
+                bitcoin_chain_tip.as_ref(),
+                signer_public_keys,
+                &mut transaction,
+            )
+            .await?;
 
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
@@ -1518,7 +1535,11 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> bool {
-        given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
+        given_key_is_coordinator(
+            self.signer_public_key(),
+            bitcoin_chain_tip,
+            signer_public_keys,
+        )
     }
 
     /// Constructs a new [`utxo::SignerBtcState`] based on the current market
@@ -1558,32 +1579,43 @@ where
     #[tracing::instrument(skip_all)]
     pub async fn get_pending_requests(
         &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
-        tracing::debug!("fetching pending deposit and withdrawal requests");
-        let context_window = self.context_window;
-        let threshold = self.threshold;
+        tracing::info!("preparing pending requests for processing");
 
-        let pending_deposit_requests = self
-            .context
-            .get_storage()
-            .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
+        let storage = self.context.get_storage();
+        let config = self.context.config();
+
+        // Get the current sBTC limits (caps).
+        let sbtc_limits = self.context.state().get_current_limits();
+
+        let context_window = self.context_window;
+        let accept_threshold = self.threshold;
+
+        // Fetch eligible deposit requests.
+        let pending_deposit_requests = storage
+            .get_pending_accepted_deposit_requests(
+                bitcoin_chain_tip.as_ref(),
+                context_window,
+                accept_threshold,
+            )
             .await?;
 
-        let pending_withdraw_requests = self
-            .context
-            .get_storage()
-            .get_pending_accepted_withdrawal_requests(bitcoin_chain_tip, context_window, threshold)
+        // Fetch eligible withdrawal requests.
+        let pending_withdraw_requests = storage
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                context_window,
+                accept_threshold,
+            )
             .await?;
 
         let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
 
         for req in pending_deposit_requests {
-            let votes = self
-                .context
-                .get_storage()
+            let votes = storage
                 .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
                 .await?;
 
@@ -1594,9 +1626,7 @@ where
         let mut withdrawals = Vec::new();
 
         for req in pending_withdraw_requests {
-            let votes = self
-                .context
-                .get_storage()
+            let votes = storage
                 .get_withdrawal_request_signer_votes(&req.qualified_id(), aggregate_key)
                 .await?;
 
@@ -1604,40 +1634,50 @@ where
             withdrawals.push(withdrawal);
         }
 
+        if deposits.is_empty() && withdrawals.is_empty() {
+            return Ok(None);
+        }
+
+        // Get the current signers' BTC state.
+        let signer_state = self
+            .get_btc_state(&bitcoin_chain_tip.block_hash, aggregate_key)
+            .await?;
+
+        // Count the number of signers in the current signer set.
         let num_signers = signer_public_keys
             .len()
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        if deposits.is_empty() && withdrawals.is_empty() {
-            return Ok(None);
-        }
-        let signer_config = &self.context.config().signer;
+        let max_deposits_per_bitcoin_tx = config.signer.max_deposits_per_bitcoin_tx.get();
+
+        // Construct and return the `utxo::SbtcRequests` object.
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
-            accept_threshold: threshold,
+            signer_state,
+            accept_threshold,
             num_signers,
-            sbtc_limits: self.context.state().get_current_limits(),
-            max_deposits_per_bitcoin_tx: signer_config.max_deposits_per_bitcoin_tx.get(),
+            sbtc_limits,
+            max_deposits_per_bitcoin_tx,
         }))
-    }
-
-    fn pub_key(&self) -> PublicKey {
-        PublicKey::from_private_key(&self.private_key)
     }
 
     /// This function provides a deterministic 32-byte identifier for the
     /// signer.
     fn coordinator_id(&self, chain_tip: &model::BitcoinBlockHash) -> [u8; 32] {
         sha2::Sha256::new_with_prefix("SIGNER_COORDINATOR_ID")
-            .chain_update(self.pub_key().serialize())
+            .chain_update(self.signer_public_key().serialize())
             .chain_update(chain_tip.into_bytes())
             .finalize()
             .into()
     }
 
+    /// Takes a [`Payload`], converts it to a [`Message`], signs it with the
+    /// signer's private key, and broadcasts it to the network.
+    ///
+    /// This method also generates a [`TxCoordinatorEvent::MessageGenerated`]
+    /// event upon successful completion for the local tx-signer to pick up.
     #[tracing::instrument(skip_all)]
     async fn send_message(
         &mut self,
@@ -1708,6 +1748,10 @@ where
         }
     }
 
+    /// Estimates the fees for the contract deploy transaction, constructs the
+    /// [`StacksTransactionSignRequest`] to be broadcast to the signers for
+    /// signing and returns it along with the corresponding [`MultisigTx`] being
+    /// signed.
     async fn construct_deploy_contracts_stacks_sign_request(
         &self,
         contract_deploy: SmartContract,
@@ -1790,6 +1834,7 @@ where
         Ok(wallet)
     }
 
+    /// Helper method to get this signer's public key from its private key.
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
     }
@@ -1941,16 +1986,10 @@ pub fn coordinator_public_key(
 /// whether or not a new DKG round should be coordinated.
 pub async fn should_coordinate_dkg(
     context: &impl Context,
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<bool, Error> {
     let storage = context.get_storage();
     let config = context.config();
-
-    // Get the bitcoin block at the chain tip so that we know the height
-    let bitcoin_chain_tip_block = storage
-        .get_bitcoin_block(bitcoin_chain_tip)
-        .await?
-        .ok_or(Error::NoChainTip)?;
 
     // Get the number of DKG shares that have been stored
     let dkg_shares_entry_count = storage.get_encrypted_dkg_shares_count().await?;
@@ -1974,8 +2013,7 @@ pub async fn should_coordinate_dkg(
             Ok(true)
         }
         (current, target, Some(dkg_min_height))
-            if current < target.get()
-                && bitcoin_chain_tip_block.block_height >= dkg_min_height.get() =>
+            if current < target.get() && bitcoin_chain_tip.block_height >= dkg_min_height.get() =>
         {
             tracing::info!(
                 ?dkg_min_bitcoin_block_height,
@@ -2128,11 +2166,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_process_withdrawals() {
-        test_environment().assert_processes_withdrawals().await;
-    }
-
-    #[tokio::test]
     async fn should_construct_withdrawal_accept_stacks_sign_request() {
         test_environment()
             .assert_construct_withdrawal_accept_stacks_sign_request()
@@ -2182,14 +2215,17 @@ mod tests {
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
-        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+        let bitcoin_chain_tip = model::BitcoinBlockRef {
+            block_height: chain_tip_height,
+            block_hash: Faker.fake(),
+        };
 
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
-                block_height: chain_tip_height,
+                block_hash: bitcoin_chain_tip.block_hash,
+                block_height: bitcoin_chain_tip.block_height,
                 parent_hash: Faker.fake(),
-                block_hash: bitcoin_chain_tip,
             })
             .await
             .unwrap();

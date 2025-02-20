@@ -30,6 +30,7 @@ Class | Method | HTTP request | Description
 *CorsApi* | [**chainstate_options**](docs/CorsApi.md#chainstate_options) | **OPTIONS** /chainstate | CORS support
 *CorsApi* | [**deposit_options**](docs/CorsApi.md#deposit_options) | **OPTIONS** /deposit | CORS support
 *CorsApi* | [**deposit_recipient_recipient_options**](docs/CorsApi.md#deposit_recipient_recipient_options) | **OPTIONS** /deposit/recipient/{recipient} | CORS support
+*CorsApi* | [**deposit_reclaim_pubkeys_reclaim_pubkeys_options**](docs/CorsApi.md#deposit_reclaim_pubkeys_reclaim_pubkeys_options) | **OPTIONS** /deposit/reclaim-pubkeys/{reclaimPubkeys} | CORS support
 *CorsApi* | [**deposit_txid_index_options**](docs/CorsApi.md#deposit_txid_index_options) | **OPTIONS** /deposit/{txid}/{index} | CORS support
 *CorsApi* | [**deposit_txid_options**](docs/CorsApi.md#deposit_txid_options) | **OPTIONS** /deposit/{txid} | CORS support
 *CorsApi* | [**health_options**](docs/CorsApi.md#health_options) | **OPTIONS** /health | CORS support
@@ -45,6 +46,7 @@ Class | Method | HTTP request | Description
 *DepositApi* | [**get_deposit**](docs/DepositApi.md#get_deposit) | **GET** /deposit/{txid}/{index} | Get deposit handler.
 *DepositApi* | [**get_deposits**](docs/DepositApi.md#get_deposits) | **GET** /deposit | Get deposits handler.
 *DepositApi* | [**get_deposits_for_recipient**](docs/DepositApi.md#get_deposits_for_recipient) | **GET** /deposit/recipient/{recipient} | Get deposits by recipient handler.
+*DepositApi* | [**get_deposits_for_reclaim_pubkeys**](docs/DepositApi.md#get_deposits_for_reclaim_pubkeys) | **GET** /deposit/reclaim-pubkeys/{reclaimPubkeys} | Get deposits by recipient handler.
 *DepositApi* | [**get_deposits_for_transaction**](docs/DepositApi.md#get_deposits_for_transaction) | **GET** /deposit/{txid} | Get deposits for transaction handler.
 *DepositApi* | [**update_deposits**](docs/DepositApi.md#update_deposits) | **PUT** /deposit | Update deposits handler.
 *HealthApi* | [**check_health**](docs/HealthApi.md#check_health) | **GET** /health | Get health handler.
