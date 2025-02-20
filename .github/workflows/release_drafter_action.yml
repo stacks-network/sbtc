@@ -43,8 +43,12 @@ jobs:
       - name: Generate Release Notes
         id: generate-release-notes
         run: |
+          # CHANGES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          #   "https://api.github.com/repos/${{ github.repository }}/compare/$PREV_TAG...${{ github.event.release.tag_name }}" \
+          #   | jq -r '.commits[] | "- \(.commit.message) (\(.sha | .[0:7])) by @\(.author.login // "unknown")"')
+
           CHANGES=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/compare/$PREV_TAG...${{ github.event.release.tag_name }}" \
+            "https://api.github.com/repos/${{ github.repository }}/compare/$PREV_TAG...$PREV_TAG" \
             | jq -r '.commits[] | "- \(.commit.message) (\(.sha | .[0:7])) by @\(.author.login // "unknown")"')
 
           cat <<EOF > release_notes.md
