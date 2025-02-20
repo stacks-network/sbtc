@@ -814,6 +814,9 @@ where
             rotate_key_aggregate_key,
         ));
 
+        // Get the configured max Stacks transaction fee in microSTX.
+        let stx_fee_max_micro_stx = self.context.config().signer.stx_fee_max_micro_stx.get();
+
         // Rotate key transactions should be done as soon as possible, so
         // we set the fee rate to the high priority fee. We also require
         // signatures from all signers, so we specify the total signer count
@@ -823,7 +826,8 @@ where
             .context
             .get_stacks_client()
             .estimate_fees(wallet, &contract_call, FeePriority::High)
-            .await?;
+            .await?
+            .min(stx_fee_max_micro_stx);
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
@@ -926,13 +930,17 @@ where
             sweep_block_height: req.sweep_block_height,
         });
 
+        // Get the configured max Stacks transaction fee in microSTX.
+        let stx_fee_max_micro_stx = self.context.config().signer.stx_fee_max_micro_stx.get();
+
         // Complete deposit requests should be done as soon as possible, so
         // we set the fee rate to the high priority fee.
         let tx_fee = self
             .context
             .get_stacks_client()
             .estimate_fees(wallet, &contract_call, FeePriority::High)
-            .await?;
+            .await?
+            .min(stx_fee_max_micro_stx);
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
@@ -996,12 +1004,16 @@ where
             sweep_block_height: req.sweep_block_height,
         });
 
+        // Get the configured max Stacks transaction fee in microSTX.
+        let stx_fee_max_micro_stx = self.context.config().signer.stx_fee_max_micro_stx.get();
+
         // Estimate the fee for the stacks transaction
         let tx_fee = self
             .context
             .get_stacks_client()
             .estimate_fees(wallet, &contract_call, FeePriority::Medium)
-            .await?;
+            .await?
+            .min(stx_fee_max_micro_stx);
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
@@ -1037,12 +1049,16 @@ where
             deployer: self.context.config().signer.deployer,
         });
 
+        // Get the configured max Stacks transaction fee in microSTX.
+        let stx_fee_max_micro_stx = self.context.config().signer.stx_fee_max_micro_stx.get();
+
         // Estimate the fee for the stacks transaction
         let tx_fee = self
             .context
             .get_stacks_client()
             .estimate_fees(wallet, &contract_call, FeePriority::High)
-            .await?;
+            .await?
+            .min(stx_fee_max_micro_stx);
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
@@ -1714,11 +1730,16 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        // Get the configured max Stacks transaction fee in microSTX.
+        let stx_fee_max_micro_stx = self.context.config().signer.stx_fee_max_micro_stx.get();
+
         let tx_fee = self
             .context
             .get_stacks_client()
             .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
-            .await?;
+            .await?
+            .min(stx_fee_max_micro_stx);
+
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();
 
