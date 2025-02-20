@@ -495,7 +495,7 @@ where
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
         // Ensure that the Stacks fee is within the acceptable range.
-        let highest_acceptable_fee = self.context.config().signer.stx_fee_max_micro_stx;
+        let highest_acceptable_fee = self.context.config().signer.stx_fee_max_micro_stx.get();
         if highest_acceptable_fee < request.tx_fee {
             return Err(Error::StacksTxFee(request.tx_fee, highest_acceptable_fee));
         }

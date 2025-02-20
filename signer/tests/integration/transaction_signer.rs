@@ -202,7 +202,7 @@ async fn signer_rejects_stacks_txns_with_too_high_a_fee() {
     // Setup the transaction fee to be the maximum fee configured plus one, so that it
     // exceeds the configured value.
     let stx_fee_max_micro_stx = ctx.config().signer.stx_fee_max_micro_stx;
-    let tx_fee = stx_fee_max_micro_stx + 1;
+    let tx_fee = stx_fee_max_micro_stx.get() + 1;
 
     // Let's create a proper sign request.
     let request = StacksTransactionSignRequest {

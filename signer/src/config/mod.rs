@@ -350,7 +350,7 @@ pub struct SignerConfig {
     /// verify the shares. After this many blocks, we mark the shares as failed.
     pub dkg_verification_window: u16,
     /// The maximum stacks fee in microSTX that the signer will accept for any stacks transaction.
-    pub stx_fee_max_micro_stx: u64,
+    pub stx_fee_max_micro_stx: NonZeroU64,
 }
 
 impl Validatable for SignerConfig {
@@ -415,12 +415,6 @@ impl Validatable for SignerConfig {
         if cfg.signer.signer_round_max_duration == zero {
             return Err(ConfigError::Message(
                 SignerConfigError::ZeroDurationForbidden("signer_round_max_duration").to_string(),
-            ));
-        }
-
-        if cfg.signer.stx_fee_max_micro_stx == 0 {
-            return Err(ConfigError::Message(
-                SignerConfigError::ZeroValueForbidden("stx_fee_max_micro_stx").to_string(),
             ));
         }
 
@@ -1004,7 +998,7 @@ mod tests {
     #[test]
     fn stx_fee_max_micro_stx_can_be_loaded_from_environment() {
         clear_env();
-        let expected_stx_fee_max_micro_stx = 1234;
+        let expected_stx_fee_max_micro_stx = NonZeroU64::new(1234).unwrap();
         std::env::set_var(
             "SIGNER_SIGNER__STX_FEE_MAX_MICRO_STX",
             format!("{expected_stx_fee_max_micro_stx}"),
