@@ -23,38 +23,21 @@ jobs:
         id: tag
         run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
 
-      # - name: Run Release Drafter
-      #   uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 #6.1.0
-      #   with:
-      #     config-name: release-drafter.yml
-      #     tag: ${{ env.TAG_NAME }}
-      #     name: "Release ${{ env.TAG_NAME }}"
-      #     version: ${{ env.TAG_NAME }}
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get Previous Release Tag
-        id: previous-release
-        run: |
-          PREV_TAG=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=2" | jq -r '.[1].tag_name')
-          echo "PREV_TAG=$PREV_TAG" >> $GITHUB_ENV
-
       - name: Generate Release Notes
         id: generate-release-notes
         run: |
           cat <<EOF > release_notes.md
-          # sBTC v${{ github.event.release.tag_name }}
-
           <A manual one-liner with changes>.
 
-          ## ✨ Highlights
+          [Highlights](#highlights) • [Images](#images) • [Upgrade Instructions](#upgrade-instructions)
+
+          ## ✨ Highlights <a id="highlights">
 
           <A manual one-liner with changes>.
 
           ## 🔗 Links
 
-          ### 🐳 Images
+          ### 🐳 Images <a id="images">
 
           - [\`blockstack/sbtc:signer-${{ github.event.release.tag_name }}@sha256:<SignerDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ github.event.release.tag_name }}/images/sha256-<SignerDigest>)
           - [\`blockstack/sbtc:blocklist-client-${{ github.event.release.tag_name }}@sha256:<BlocklistDigest>\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ github.event.release.tag_name }}/images/sha256-<BlocklistDigest>)
@@ -67,7 +50,7 @@ jobs:
 
           Here: [\`signer/migrations\`](https://github.com/stacks-network/sbtc/tree/${{ github.event.release.tag_name }}/signer/migrations).
 
-          ## 🛠️ Upgrade Instructions:
+          ## 🛠️ Upgrade Instructions: <a id="upgrade-instructions">
 
           1. Stop your sBTC signer
           2. Backup your database
