@@ -649,19 +649,27 @@ where
         chain_tip: &model::BitcoinBlockHash,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
+        self.construct_and_sign_stacks_sbtc_depost_response_transactions(chain_tip, bitcoin_aggregate_key).await?;
+        self.construct_and_sign_stacks_sbtc_withdrawal_response_transactions(chain_tip, bitcoin_aggregate_key).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_sign_stacks_sbtc_depost_response_transactions(
+        &mut self,
+        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
         let wallet = SignerWallet::load(&self.context, chain_tip).await?;
         let stacks = self.context.get_stacks_client();
 
-        // Fetch deposit and withdrawal requests from the database where
+        // Fetch deposit requests from the database where
         // there has been a confirmed bitcoin transaction associated with
         // the request.
         //
         // For deposits, there will be at most one such bitcoin transaction
         // on the blockchain identified by the chain tip, where an input is
         // the deposit UTXO.
-        //
-        // For withdrawals, we need to have a record of the `request_id`
-        // associated with the bitcoin transaction's outputs.
 
         let deposit_requests = self
             .context
@@ -718,6 +726,97 @@ where
                         txid = %outpoint.txid,
                         vout = %outpoint.vout,
                         "could not process the stacks sign request for a deposit"
+                    );
+                    wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                    "failure"
+                }
+            };
+
+            metrics::counter!(
+                Metrics::TransactionsSubmittedTotal,
+                "blockchain" => STACKS_BLOCKCHAIN,
+                "status" => status,
+            )
+            .increment(1);
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_sign_stacks_sbtc_withdrawal_response_transactions(
+        &mut self,
+        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
+        let stacks = self.context.get_stacks_client();
+
+        // Fetch withdrawal requests from the database where
+        // there has been a confirmed bitcoin transaction associated with
+        // the request.
+        //
+        // For withdrawals, we need to have a record of the `request_id`
+        // associated with the bitcoin transaction's outputs.
+
+        let withdrawal_requests = self
+            .context
+            .get_storage()
+            .get_swept_withdrawal_requests(chain_tip, self.context_window)
+            .await?;
+
+        if withdrawal_requests.is_empty() {
+            tracing::debug!("no stacks transactions to create, exiting");
+            return Ok(());
+        }
+
+        tracing::debug!(
+            num_withdrawals = %withdrawal_requests.len(),
+            "we have withdrawals requests that have been swept that may need fullfillment"
+        );
+        // We need to know the nonce to use, so we reach out to our stacks
+        // node for the account information for our multi-sig address.
+        //
+        // Note that the wallet object will automatically increment the
+        // nonce for each transaction that it creates.
+        let account = stacks.get_account(wallet.address()).await?;
+        wallet.set_nonce(account.nonce);
+
+        for req in withdrawal_requests {
+
+            let request_id = req.request_id;
+            let sweep_txid = req.sweep_txid;
+
+            let sign_request_fut = 
+                self.construct_withdrawal_accept_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
+
+            let (sign_request, multi_tx) = match sign_request_fut.await {
+                Ok(res) => res,
+                Err(error) => {
+                    tracing::error!(%error, "could not construct a transaction accepting the withdrawal request");
+                    continue;
+                }
+            };
+
+            // If we fail to sign the transaction for some reason, we
+            // decrement the nonce by one, and try the next transaction.
+            // This is not a fatal error, since we could fail to sign the
+            // transaction because someone else is now the coordinator, and
+            // all the signers are now ignoring us.
+            let process_request_fut =
+                self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
+
+            let status = match process_request_fut.await {
+                Ok(txid) => {
+                    tracing::info!(%txid, "successfully submitted accept_withdrawal transaction");
+                    "success"
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        sweep_txid = %request_id,
+                        request_id = %sweep_txid,
+                        "could not process the stacks sign request for a withdrawal"
                     );
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
                     "failure"
