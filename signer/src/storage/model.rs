@@ -1126,7 +1126,7 @@ pub struct BitcoinTxSigHash {
 }
 
 /// An output that was created due to a withdrawal request.
-#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct BitcoinWithdrawalOutput {
     /// The ID of the transaction that includes this withdrawal output.
@@ -1136,12 +1136,14 @@ pub struct BitcoinWithdrawalOutput {
     /// containing inputs
     pub bitcoin_chain_tip: BitcoinBlockHash,
     /// The index of the referenced output in the transaction's outputs.
+    #[sqlx(try_from = "i32")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
     pub output_index: u32,
     /// The request ID of the withdrawal request. These increment for each
     /// withdrawal, but there can be duplicates if there is a reorg that
     /// affects a transaction that calls the `initiate-withdrawal-request`
     /// public function.
+    #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub request_id: u64,
     /// The stacks transaction ID that lead to the creation of the
