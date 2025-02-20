@@ -172,8 +172,8 @@ pub trait DbRead {
     /// ## Filter Criteria
     ///
     /// 1. The withdrawal request transaction (`create-withdrawal-request`
-    ///    contract call) is confirmed in a stacks block anchored to the
-    ///    canonical bitcoin blockchain.
+    ///    contract call) is confirmed in a block on the canonical stacks
+    ///    blockchain.
     /// 2. The withdrawal request has not been included in a sweep transaction
     ///    that has been confirmed in a block on the canonical bitcoin
     ///    blockchain.
