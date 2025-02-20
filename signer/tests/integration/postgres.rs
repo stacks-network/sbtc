@@ -5205,7 +5205,7 @@ mod get_pending_accepted_withdrawal_requests {
     /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
     ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
     ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed (✔) in S1
-    ///            ┊  └──────► ┊ B2b  │    ┊  and rejected in S2b, but its
+    ///            ┊  └──────► ┊ B2b  │    ┊  and rejected (✖) in S2b, but its
     ///            ┊         └─┊────▲─┘    ┊  anchor later gets orphaned by B3a.
     ///            ┊           ┊    ┊      ┊  
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
@@ -5278,7 +5278,7 @@ mod get_pending_accepted_withdrawal_requests {
     /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
     ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
     ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed (✔) in S1
-    ///            ┊  └──────► ┊ B2b  │    ┊  and rejected in both S2a and S2b.
+    ///            ┊  └──────► ┊ B2b  │    ┊  and rejected (✖) in both S2a and S2b.
     ///            ┊         └─┊────▲─┘    ┊  B2b is orphaned by B3a, but B2a is
     ///            ┊           ┊    ┊      ┊  still confirming the rejection.
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
