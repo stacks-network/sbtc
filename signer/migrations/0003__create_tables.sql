@@ -46,8 +46,12 @@ CREATE TABLE sbtc_signer.deposit_requests (
 );
 
 CREATE TABLE sbtc_signer.deposit_signers (
+    -- The bitcoin transaction containing the deposit UTXO.
     txid BYTEA NOT NULL,
+    -- The output index of the deposit UTXO within the transaction identified by
+    -- `txid`.
     output_index INTEGER NOT NULL,
+    -- The public key of the signer whose decision this is.
     signer_pub_key BYTEA NOT NULL,
     -- this specifies whether the signer is a part of the signer set
     -- associated with the deposit_request.signers_public_key
@@ -56,7 +60,9 @@ CREATE TABLE sbtc_signer.deposit_signers (
     -- the deposit request. `true` here means the blocklist client did not
     -- block the request.
     can_accept BOOLEAN NOT NULL,
+    -- The timestamp at which this record was created (database-assigned).
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
     PRIMARY KEY (txid, output_index, signer_pub_key),
     FOREIGN KEY (txid, output_index) REFERENCES sbtc_signer.deposit_requests(txid, output_index) ON DELETE CASCADE
 );
@@ -64,33 +70,64 @@ CREATE TABLE sbtc_signer.deposit_signers (
 CREATE INDEX ix_deposit_signers_signer_pub_key ON sbtc_signer.deposit_signers(signer_pub_key);
 
 CREATE TABLE sbtc_signer.withdrawal_requests (
+    -- The id of the withdrawal request as assigned by the `sbtc-registry`
+    -- contract. This is a serial id, but given that we need to account for
+    -- forks in both bitcoin and stacks chains, it cannot itself be unique, so
+    -- the primary key is on the `request_id` AND the stacks `block_hash`.
     request_id BIGINT NOT NULL,
+    -- The stacks transaction id that the withdrawal request contract-call was
+    -- executed in.
     txid BYTEA NOT NULL,
+    -- The block hash of the stacks block which `txid` was included in.
     block_hash BYTEA NOT NULL,
+    -- The `scriptPubKey` of the withdrawal UTXO when fulfilled on bitcoin.
     recipient BYTEA NOT NULL,
+    -- The amount (in satoshis) to be withdrawn.
     amount BIGINT NOT NULL,
+    -- The maximum fee that the user is willing to pay (in satoshis) for the
+    -- withdrawal.
     max_fee BIGINT NOT NULL,
+    -- The sender's stacks address.
     sender_address TEXT NOT NULL,
+    -- The timestamp at which this record was created (database-assigned).
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
     PRIMARY KEY (request_id, block_hash),
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.stacks_blocks(block_hash) ON DELETE CASCADE
 );
 
 CREATE TABLE sbtc_signer.withdrawal_signers (
+    -- The id of the withdrawal request.
     request_id BIGINT NOT NULL,
+    -- The stacks transaction id of the withdrawal request.
     txid BYTEA NOT NULL,
+    -- The block hash of the stacks block which `txid` was included in.
     block_hash BYTEA NOT NULL,
+    -- The public key of the signer whose decision this is.
     signer_pub_key BYTEA NOT NULL,
+    -- Whether the signer has accepted the withdrawal request or not.
     is_accepted BOOLEAN NOT NULL,
+    -- The timestamp at which this record was created (database-assigned).
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
     PRIMARY KEY (request_id, block_hash, signer_pub_key),
     FOREIGN KEY (request_id, block_hash) REFERENCES sbtc_signer.withdrawal_requests(request_id, block_hash) ON DELETE CASCADE
 );
 
 CREATE TABLE sbtc_signer.transactions (
+    -- The id of the transaction on either bitcoin or stacks. These are both
+    -- 32-byte hashes, so we use BYTEA to store them. Which chain the
+    -- transaction belongs to is derived from the `tx_type` field.
     txid BYTEA PRIMARY KEY,
+    -- The raw bytes of the transaction, consensus serialized by the respective
+    -- chain's rules.
     tx BYTEA NOT NULL,
+    -- The type of the transaction, which can be one of the values in the
+    -- `sbtc_signer.transaction_type` enum. Depending on this value, the
+    -- transaction can be found in one of the `bitcoin_transactions` or
+    -- `stacks_transactions` tables.
     tx_type sbtc_signer.transaction_type NOT NULL,
+    -- The timestamp at which this record was created (database-assigned).
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 -- Index to serve queries filtering on `tx_type`.
@@ -116,7 +153,7 @@ CREATE TABLE sbtc_signer.bitcoin_transactions (
     FOREIGN KEY (txid) REFERENCES sbtc_signer.transactions(txid) ON DELETE CASCADE,
     FOREIGN KEY (block_hash) REFERENCES sbtc_signer.bitcoin_blocks(block_hash) ON DELETE CASCADE
 );
--- Index to serve queries which filter transactions soley on `block_hash`. The
+-- Index to serve queries which filter transactions solely on `block_hash`. The
 -- PK won't help here as it is a compound key where `block_hash` is a 2nd level.
 CREATE INDEX ix_bitcoin_transactions_block_hash ON sbtc_signer.bitcoin_transactions(block_hash);
 

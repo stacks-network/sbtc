@@ -34,6 +34,7 @@ use signer::block_observer::Deposit;
 use signer::codec::Encode as _;
 use signer::config::Settings;
 use signer::context::SbtcLimits;
+use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 use signer::stacks::api::MockStacksInteract;
@@ -589,6 +590,10 @@ impl TestSignerSet {
     pub fn aggregate_key(&self) -> PublicKey {
         self.signer.keypair.public_key().into()
     }
+
+    pub fn private_key(&self) -> PrivateKey {
+        self.signer.keypair.secret_key().into()
+    }
 }
 
 /// Set the dkg_shares_status of the shares associated with the given
@@ -1117,7 +1122,7 @@ impl TestSweepSetup2 {
             parties: vec![Unit.fake_with_rng(&mut OsRng)],
         };
         let encoded = private_shares.encode_to_vec();
-        let signer_private_key = self.signers.signer.keypair.secret_bytes();
+        let signer_private_key = self.signers.private_key().to_bytes();
 
         let encrypted_private_shares =
             wsts::util::encrypt(&signer_private_key, &encoded, &mut OsRng)

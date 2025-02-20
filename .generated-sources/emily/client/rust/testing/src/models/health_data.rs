@@ -14,14 +14,14 @@ use serde::{Deserialize, Serialize};
 /// HealthData : Struct that represents the current status of the API.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HealthData {
-    /// Whether the API is okay.
-    #[serde(rename = "is_okay")]
-    pub is_okay: bool,
+    /// The version of the API.
+    #[serde(rename = "version")]
+    pub version: String,
 }
 
 impl HealthData {
     /// Struct that represents the current status of the API.
-    pub fn new(is_okay: bool) -> HealthData {
-        HealthData { is_okay }
+    pub fn new(version: String) -> HealthData {
+        HealthData { version }
     }
 }
