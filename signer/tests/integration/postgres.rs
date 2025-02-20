@@ -2145,13 +2145,14 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     let test_data = TestData::generate(&mut rng, &signer_set, &test_params);
     test_data.write_to(&db).await;
 
-    let bitcoin_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-    let bitcoin_tip_height = db
-        .get_bitcoin_block(&bitcoin_tip)
+    let bitcoin_tip_ref = db
+        .get_bitcoin_canonical_chain_tip_ref()
         .await
         .unwrap()
-        .unwrap()
-        .block_height;
+        .unwrap();
+    let bitcoin_tip = bitcoin_tip_ref.block_hash;
+    let bitcoin_tip_height = bitcoin_tip_ref.block_height;
+
     let stacks_tip = db
         .get_stacks_chain_tip(&bitcoin_tip)
         .await
@@ -2220,7 +2221,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
 
     // There should only be one request in the database and it has a sweep
     // trasnaction so the length should be 1.
-    let context_window = 20;
     let mut requests = db
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await
