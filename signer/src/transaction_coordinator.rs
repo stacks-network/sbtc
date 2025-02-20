@@ -1100,7 +1100,7 @@ where
             .await?;
 
         let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
-            request_id: req.request_id,
+            id: req_id,
             outpoint: req.withdrawal_outpoint(),
             tx_fee: assessed_bitcoin_fee.to_sat(),
             signer_bitmap: votes.into(),

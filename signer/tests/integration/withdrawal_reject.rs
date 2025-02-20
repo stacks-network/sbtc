@@ -184,8 +184,7 @@ async fn reject_withdrawal_validation_happy_path() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.reject_withdrawal_request();
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate more blocks then backfill the DB
@@ -248,7 +247,7 @@ async fn reject_withdrawal_validation_not_final() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate more blocks then backfill the DB
@@ -471,8 +470,7 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.reject_withdrawal_request();
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate more blocks then backfill the DB
