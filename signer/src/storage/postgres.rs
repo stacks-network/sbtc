@@ -1530,7 +1530,6 @@ impl super::DbRead for PgStore {
             -- in the group by clause.
             JOIN sbtc_signer.withdrawal_signers signers ON
                 wr.request_id = signers.request_id
-                AND wr.txid = signers.txid
                 AND wr.block_hash = signers.block_hash
                 AND signers.is_accepted = TRUE
 
@@ -1550,7 +1549,7 @@ impl super::DbRead for PgStore {
                 ON wre.block_hash = canonical_reject.block_hash
 
             GROUP BY 
-                wr.request_id, wr.block_hash, wr.txid
+                wr.request_id, wr.block_hash
             HAVING
                 -- Ensure there are enough 'yes' votes.
                 COUNT(wr.request_id) >= $4
