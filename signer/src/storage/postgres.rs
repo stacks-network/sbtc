@@ -2242,7 +2242,6 @@ impl super::DbRead for PgStore {
                     ON wae.request_id = wr.request_id
                 LEFT JOIN stacks_blockchain AS sb
                     ON sb.block_hash = wae.block_hash
-                WHERE sb.block_hash IS NULL
 
                 GROUP BY
                     bwo.bitcoin_txid
