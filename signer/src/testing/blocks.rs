@@ -1,5 +1,5 @@
-//! Helper types for generating and manipulating chains of bitcoin and stacks
-//! blocks for testing purposes.
+//! Various utilities for generating and manipulating chains of bitcoin and
+//! stacks blocks for testing purposes.
 
 use std::borrow::Cow;
 
