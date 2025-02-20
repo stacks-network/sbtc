@@ -1,23 +1,15 @@
 name-template: 'v$NEXT_PATCH_VERSION'
 tag-template: 'v$NEXT_PATCH_VERSION'
 categories:
-  - title: "✨ Highlights"
+  - title: Protocol Breaking Changes 🚨
     labels:
-      - "feature"
-      - "enhancement"
-  - title: "🚨 Protocol Breaking Changes"
+      - breaking-protocol
+  - title: Local Breaking Changes ⚠️
     labels:
-      - "breaking-change-protocol"
-  - title: "⚠️ Local Breaking Changes"
+      - breaking-local
+  - title: Other Changes
     labels:
-      - "breaking-change-local"
-  - title: "🛠 Other Changes"
-    labels:
-      - "bug"
-      - "chore"
-      - "docs"
-      - "refactor"
-      - "test"
+      - "*"
 
 change-template: '- $TITLE (#$NUMBER by @$AUTHOR)'
 template: |
@@ -25,13 +17,11 @@ template: |
 
   ## ✨ Highlights: 
 
-  $CHANGES
+  <A manual one-liner with changes>.
 
   ## 🔗 Links
 
   ### 🐳 Images: 
-
-  > The following need to be pointing at the correct image tag for both the signer and the blocklist client, and include the digests.
 
   On [DockerHub](https://hub.docker.com/r/blockstack/sbtc/tags?name=$NEXT_PATCH_VERSION):
 
@@ -43,8 +33,6 @@ template: |
   🔎 Verify the attestation of these images using this [guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
 
   ### 📙 Database migrations
-
-  > This needs to point to the correct branch.
 
   Here: [`signer/migrations`](https://github.com/stacks-network/sbtc/tree/$NEXT_PATCH_VERSION/signer/migrations).
 

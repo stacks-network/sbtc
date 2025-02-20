@@ -38,26 +38,32 @@ jobs:
         run: |
           DOCKER_REPO="blockstack/sbtc"
           TAG=${{ github.event.release.tag_name }}
-          DIGEST=$(curl -s https://hub.docker.com/v2/repositories/$DOCKER_REPO/tags/signer-$TAG | jq -r '.images[0].digest')
-          echo "link=hub.docker.com/layers/$DOCKER_REPO/signer-$TAG/images/$DIGEST" >> $GITHUB_ENV
+          SIGNER_DIGEST=$(curl -s https://hub.docker.com/v2/repositories/$DOCKER_REPO/tags/signer-$TAG | jq -r '.images[0].digest')
+          BLOCKLIST_CLIENT_DIGEST=$(curl -s https://hub.docker.com/v2/repositories/$DOCKER_REPO/tags/blocklist-client-$TAG | jq -r '.images[0].digest')
+          echo SIGNER_DIGEST >> $GITHUB_ENV
+          echo BLOCKLIST_CLIENT_DIGEST >> $GITHUB_ENV
 
       - name: Update Release with Docker Image Link
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea #v7.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNER_DIGEST: ${{ env.SIGNER_DIGEST }}
+          BLOCKLIST_CLIENT_DIGEST: ${{ env.BLOCKLIST_CLIENT_DIGEST }}
         with:
           script: |
-            const link = process.env.link;
-            const releaseBody = context.payload.release.body.trim();
+            const release = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id,
+            });
+
+            const updatedBody = release.data.body
+              .replace(/<SignerDigest>/g, process.env.SIGNER_DIGEST)
+              .replace(/<BlocklistDigest>/g, process.env.BLOCKLIST_CLIENT_DIGEST);
 
             await github.rest.repos.updateRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: context.payload.release.id,
-              body: 
-                `${releaseBody}
-                
-                **Release Docker Image:** [https://${link}](https://${link})
-
-                You can verify the attestation using this [guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).`.trim()
+              body: updatedBody,
             });
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
