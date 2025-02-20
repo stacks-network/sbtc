@@ -344,6 +344,7 @@ export class EmilyStack extends cdk.Stack {
                 IS_LOCAL: "false",
                 TRUSTED_REORG_API_KEY: props.trustedReorgApiKey,
                 IS_MAINNET: props.stageName == Constants.PROD_STAGE_NAME || props.stageName == Constants.PRIVATE_MAINNET_STAGE_NAME ? "true" : "false",
+                VERSION: EmilyStackUtils.getLambdaGitIdentifier(),
             },
             description: `Emily Api Handler. ${EmilyStackUtils.getLambdaGitIdentifier()}`,
             currentVersionOptions: {
