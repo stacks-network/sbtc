@@ -69,6 +69,7 @@ use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 use crate::WITHDRAWAL_DUST_LIMIT;
+use crate::WITHDRAWAL_EXPIRY_BUFFER;
 use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use bitcoin::hashes::Hash as _;
@@ -1849,11 +1850,18 @@ where
                 Self::get_eligible_pending_deposit_requests(&storage, self.context_window, &params)
                     .await?;
 
-            // Fetch eligible withdrawal requests.
+            // Calculate the withdrawal expiry window, which is effectively how
+            // many canonical bitcoin blocks back in time we will look for
+            // eligible requests. We subtract the withdrawal expiry buffer from
+            // the withdrawal expiry period to ensure that we don't include
+            // requests that are about to expire. See the constant descriptions
+            // for more details.
             let withdrawal_expiry_window = WITHDRAWAL_BLOCKS_EXPIRY
+                .saturating_sub(WITHDRAWAL_EXPIRY_BUFFER)
                 .try_into()
                 .map_err(|_| Error::TypeConversion)?;
 
+            // Fetch eligible withdrawal requests.
             let withdrawals = Self::get_eligible_pending_withdrawal_requests(
                 &storage,
                 withdrawal_expiry_window,
