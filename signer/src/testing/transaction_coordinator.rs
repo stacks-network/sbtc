@@ -25,6 +25,7 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::StacksBlock;
@@ -180,6 +181,8 @@ where
         // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
+        let context = self.context.clone();
+        let storage = context.get_storage();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
         let mut testing_signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -216,8 +219,8 @@ where
             .await;
 
         // Create the coordinator
-        self.context.state().set_sbtc_contracts_deployed();
-        let signer_network = SignerNetwork::single(&self.context);
+        context.state().set_sbtc_contracts_deployed();
+        let signer_network = SignerNetwork::single(&context);
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
@@ -230,25 +233,21 @@ where
             is_epoch3: true,
         };
 
+        let signer_public_keys = &signer_info
+            .last()
+            .expect("Empty signer set!")
+            .signer_public_keys;
+
         // Get pending withdrawals from coordinator
         let pending_requests = coordinator
-            .get_pending_requests(
-                &bitcoin_chain_tip.block_hash,
-                &aggregate_key,
-                &signer_info
-                    .last()
-                    .expect("Empty signer set!")
-                    .signer_public_keys,
-            )
+            .get_pending_requests(&bitcoin_chain_tip, &aggregate_key, signer_public_keys)
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
         // Get pending withdrawals from storage
-        let withdrawals_in_storage = coordinator
-            .context
-            .get_storage()
+        let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_chain_tip.block_hash,
                 self.context_window,
@@ -266,7 +265,7 @@ where
         }
     }
 
-    /// Assert that a coordinator should be able to coordiante a signing round
+    /// Assert that a coordinator should be able to coordinate a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(
         mut self,
         delay_to_process_new_blocks: Duration,
@@ -337,7 +336,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
@@ -487,7 +486,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
@@ -758,6 +757,96 @@ where
         } else {
             panic!("Expected TransactionPayload::ContractCall(TransactionContractCall)");
         }
+    }
+
+    /// Assert we get a withdrawal reject tx
+    pub async fn assert_construct_withdrawal_reject_stacks_sign_request(mut self) {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let signer_network = SignerNetwork::single(&self.context);
+        let private_key = PrivateKey::new(&mut rng);
+        let bitcoin_aggregate_key = PublicKey::from_private_key(&private_key);
+
+        // Create test data for the withdrawal request
+        let stacks_block: StacksBlock = fake::Faker.fake_with_rng(&mut rng);
+        let withdrawal_req = model::WithdrawalRequest {
+            block_hash: stacks_block.block_hash,
+            ..fake::Faker.fake_with_rng(&mut rng)
+        };
+
+        let store = self.context.get_storage_mut();
+        store.write_stacks_block(&stacks_block).await.unwrap();
+        store
+            .write_withdrawal_request(&withdrawal_req)
+            .await
+            .unwrap();
+
+        // Add estimate_fee_rate
+        self.context
+            .with_stacks_client(|client| {
+                client
+                    .expect_estimate_fees()
+                    .times(1)
+                    .returning(|_, _, _| Box::pin(async { Ok(123000) }));
+            })
+            .await;
+
+        let coordinator = TxCoordinatorEventLoop {
+            context: self.context,
+            network: signer_network.spawn(),
+            private_key,
+            threshold: self.signing_threshold,
+            context_window: self.context_window,
+            signing_round_max_duration: Duration::from_millis(500),
+            bitcoin_presign_request_max_duration: Duration::from_millis(500),
+            dkg_max_duration: Duration::from_millis(500),
+            is_epoch3: true,
+        };
+
+        let (sign_request, multi_tx) = coordinator
+            .construct_withdrawal_reject_stacks_sign_request(
+                withdrawal_req.clone(),
+                &bitcoin_aggregate_key,
+                &WALLET.0,
+            )
+            .await
+            .expect("Failed to construct withdrawal reject stacks sign request");
+
+        // We are not storing the decisions in the db, so we will get all zeros
+        let signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
+        assert_eq!(sign_request.tx_fee, 123000);
+        assert_eq!(sign_request.aggregate_key, bitcoin_aggregate_key);
+        assert_eq!(sign_request.txid, multi_tx.tx().txid());
+        assert_eq!(sign_request.nonce, multi_tx.tx().get_origin_nonce());
+
+        let StacksTx::ContractCall(ContractCall::RejectWithdrawalV1(call)) =
+            sign_request.contract_tx
+        else {
+            panic!("Expected ContractCall::RejectWithdrawalV1");
+        };
+
+        assert_eq!(call.id, withdrawal_req.qualified_id());
+        assert_eq!(call.signer_bitmap, signer_bitmap);
+
+        let TransactionPayload::ContractCall(TransactionContractCall {
+            address,
+            contract_name,
+            function_name,
+            function_args,
+        }) = &multi_tx.tx().payload
+        else {
+            panic!("Expected TransactionPayload::ContractCall(TransactionContractCall)");
+        };
+
+        assert_eq!(*address, *WALLET.0.address());
+        assert_eq!(contract_name.to_string(), RejectWithdrawalV1::CONTRACT_NAME);
+        assert_eq!(function_name.to_string(), RejectWithdrawalV1::FUNCTION_NAME);
+        assert_eq!(
+            *function_args,
+            vec![
+                Value::UInt(withdrawal_req.request_id as u128),
+                Value::UInt(signer_bitmap.load_le()),
+            ]
+        );
     }
 }
 

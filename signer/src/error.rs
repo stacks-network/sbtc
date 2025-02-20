@@ -12,6 +12,7 @@ use crate::keys::PublicKeyXOnly;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
+use crate::stacks::contracts::WithdrawalRejectValidationError;
 use crate::storage::model::SigHash;
 use crate::wsts_state_machine::StateMachineId;
 
@@ -240,6 +241,13 @@ pub enum Error {
     /// Could not receive a message from the channel.
     #[error("receive error: {0}")]
     ChannelReceive(#[source] tokio::sync::broadcast::error::RecvError),
+
+    /// Could not serialize the clarity value to bytes.
+    ///
+    /// For some reason, InterpreterError does not implement
+    /// std::fmt::Display or std::error::Error, hence the debug log.
+    #[error("receive error: {0:?}")]
+    ClarityValueSerialization(clarity::vm::errors::InterpreterError),
 
     /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
     /// inserting a value into the database. This only happens if the value
@@ -574,6 +582,11 @@ pub enum Error {
     /// transaction fails at the validation step.
     #[error("withdrawal accept validation error: {0}")]
     WithdrawalAcceptValidation(#[source] Box<WithdrawalAcceptValidationError>),
+
+    /// The error for when the request to sign a withdrawal-reject
+    /// transaction fails at the validation step.
+    #[error("withdrawal reject validation error: {0}")]
+    WithdrawalRejectValidation(#[source] Box<WithdrawalRejectValidationError>),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]

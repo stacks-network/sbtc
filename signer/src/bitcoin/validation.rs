@@ -93,11 +93,16 @@ impl From<&Requests<'_>> for TxRequestIds {
 /// Check that this does not contain duplicate deposits or withdrawals.
 pub fn is_unique(package: &[TxRequestIds]) -> bool {
     let mut deposits_set = HashSet::new();
-    let mut withdrawals_set = HashSet::new();
+    let mut withdrawal_request_id_set = HashSet::new();
+
     package.iter().all(|reqs| {
         let deposits = reqs.deposits.iter().all(|out| deposits_set.insert(out));
-        let withdrawals = reqs.withdrawals.iter().all(|id| withdrawals_set.insert(id));
-        deposits && withdrawals
+        let withdrawal_requests = reqs
+            .withdrawals
+            .iter()
+            .all(|id| withdrawal_request_id_set.insert(id.request_id));
+
+        deposits && withdrawal_requests
     })
 }
 
@@ -1686,7 +1691,7 @@ mod tests {
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
-                        request_id: 0,
+                        request_id: 1,
                         txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
@@ -1715,7 +1720,7 @@ mod tests {
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
-                        request_id: 0,
+                        request_id: 1,
                         txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
@@ -1744,7 +1749,7 @@ mod tests {
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
-                        request_id: 0,
+                        request_id: 1,
                         txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
@@ -1773,7 +1778,7 @@ mod tests {
                         block_hash: StacksBlockHash::from([1; 32]),
                     },
                     QualifiedRequestId {
-                        request_id: 0,
+                        request_id: 1,
                         txid: StacksTxId::from([1; 32]),
                         block_hash: StacksBlockHash::from([2; 32]),
                     },
@@ -1832,6 +1837,37 @@ mod tests {
                             block_hash: StacksBlockHash::from([1; 32]),
                         },
                         QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-withdrawal-request-ids-in-same-tx")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
                             request_id: 1,
                             txid: StacksTxId::from([1; 32]),
                             block_hash: StacksBlockHash::from([2; 32]),
@@ -1841,7 +1877,7 @@ mod tests {
                 TxRequestIds {
                     deposits: vec![OutPoint {
                         txid: Txid::from_byte_array([1; 32]),
-                        vout: 1,
+                        vout: 0,
                     }],
                     withdrawals: vec![],
                 },

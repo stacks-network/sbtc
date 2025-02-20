@@ -509,26 +509,11 @@ impl super::DbRead for SharedStore {
 
     async fn get_pending_accepted_withdrawal_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        threshold: u16,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+        _threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
-        let store = self.lock().await;
-        let withdraw_requests = store.get_withdrawal_requests(chain_tip, context_window);
-        let threshold = threshold as usize;
-
-        Ok(withdraw_requests
-            .into_iter()
-            .filter(|withdraw_request| {
-                store
-                    .withdrawal_request_to_signers
-                    .get(&(withdraw_request.request_id, withdraw_request.block_hash))
-                    .map(|signers| {
-                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
-                    })
-                    .unwrap_or_default()
-            })
-            .collect())
+        unimplemented!();
     }
 
     async fn get_pending_rejected_withdrawal_requests(

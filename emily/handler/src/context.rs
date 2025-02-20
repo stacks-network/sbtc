@@ -35,6 +35,8 @@ pub struct Settings {
     pub trusted_reorg_api_key: String,
     /// Whether the lambda is expecting transactions on mainnet.
     pub is_mainnet: bool,
+    /// The version of the lambda.
+    pub version: String,
 }
 
 /// Emily Context
@@ -91,6 +93,7 @@ impl Settings {
             },
             trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?,
             is_mainnet: env::var("IS_MAINNET")?.to_lowercase() == "true",
+            version: env::var("VERSION")?,
         })
     }
 }
@@ -178,6 +181,7 @@ impl EmilyContext {
                 default_limits: AccountLimits::default(),
                 trusted_reorg_api_key: "testApiKey".to_string(),
                 is_mainnet: false,
+                version: "local-instance".to_string(),
             },
             dynamodb_client,
         })

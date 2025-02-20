@@ -34,6 +34,7 @@ use signer::block_observer::Deposit;
 use signer::codec::Encode as _;
 use signer::config::Settings;
 use signer::context::SbtcLimits;
+use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
 use signer::storage::model;
@@ -541,6 +542,7 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
 }
 
 /// The information about a sweep transaction that has been confirmed.
+#[derive(Clone)]
 pub struct TestSignerSet {
     /// The signer object. It's public key represents the group of signers'
     /// public keys, allowing us to abstract away the fact that there are
@@ -567,6 +569,10 @@ impl TestSignerSet {
 
     pub fn aggregate_key(&self) -> PublicKey {
         self.signer.keypair.public_key().into()
+    }
+
+    pub fn private_key(&self) -> PrivateKey {
+        self.signer.keypair.secret_key().into()
     }
 }
 
@@ -1054,11 +1060,18 @@ impl TestSweepSetup2 {
         }
     }
 
+    pub fn reject_withdrawal_request(&mut self) {
+        for withdrawal in self.withdrawals.iter_mut() {
+            for i in 0..self.signers.keys.len() {
+                withdrawal.request.signer_bitmap.replace(i, true);
+            }
+        }
+    }
+
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
         for stacks_block in self.stacks_blocks.iter() {
             db.write_stacks_block(stacks_block).await.unwrap();
         }
-
         for withdrawal in self.withdrawals.iter() {
             let withdrawal_request = model::WithdrawalRequest {
                 request_id: withdrawal.request.request_id,
@@ -1097,7 +1110,7 @@ impl TestSweepSetup2 {
             parties: vec![Unit.fake_with_rng(&mut OsRng)],
         };
         let encoded = private_shares.encode_to_vec();
-        let signer_private_key = self.signers.signer.keypair.secret_bytes();
+        let signer_private_key = self.signers.private_key().to_bytes();
 
         let encrypted_private_shares =
             wsts::util::encrypt(&signer_private_key, &encoded, &mut OsRng)
