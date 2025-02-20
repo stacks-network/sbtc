@@ -37,6 +37,7 @@ use signer::context::SbtcLimits;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
+use signer::stacks::api::MockStacksInteract;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
@@ -539,6 +540,25 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
     .unwrap();
     db.write_tx_prevout(&utxo_input).await.unwrap();
     db.write_tx_output(&utxo_output).await.unwrap();
+}
+
+type MockedStacksContext<S, B, E> = TestContext<S, B, WrappedMock<MockStacksInteract>, E>;
+
+pub async fn set_withdrawal_incomplete<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>) {
+    set_withdrawal_status(ctx, false).await;
+}
+
+pub async fn set_withdrawal_completed<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>) {
+    set_withdrawal_status(ctx, true).await;
+}
+
+pub async fn set_withdrawal_status<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>, status: bool) {
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_is_withdrawal_completed()
+            .returning(move |_, _| Box::pin(std::future::ready(Ok(status))));
+    })
+    .await;
 }
 
 /// The information about a sweep transaction that has been confirmed.

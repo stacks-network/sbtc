@@ -690,14 +690,25 @@ impl AsContractCall for AcceptWithdrawalV1 {
     ///  9. That the first input into the sweep transaction is the signers'
     ///     UTXO.
     /// 10. That the signer bitmap matches the bitmap from our records.
-    async fn validate<C>(&self, db: &C, req_ctx: &ReqContext) -> Result<(), Error>
+    /// 11. That the withdrawal request is not already completed.
+    async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
+        // 11. Check whether the withdrawal request is already completed.
+        let withdrawal_completed = ctx
+            .get_stacks_client()
+            .is_withdrawal_completed(&req_ctx.deployer, self.id.request_id)
+            .await?;
+
+        if withdrawal_completed {
+            return Err(WithdrawalErrorMsg::RequestCompleted.into_error(req_ctx, self));
+        }
+
         // Covers points 3-4 & 8-9
-        let tx_out = self.validate_sweep(db, req_ctx).await?;
+        let tx_out = self.validate_sweep(ctx, req_ctx).await?;
         // Covers points 1-2 & 5-7, & 10
-        self.validate_utxo(db, req_ctx, tx_out).await
+        self.validate_utxo(ctx, req_ctx, tx_out).await
     }
 }
 
@@ -966,6 +977,11 @@ pub enum WithdrawalErrorMsg {
     /// records.
     #[error("recipient did not match the recipient in our withdrawal request")]
     RecipientMismatch,
+    /// We have checked the smart contract for the status of the
+    /// withdrawal's request ID and it has indicated that the request has
+    /// been either accepted or rejected already.
+    #[error("the smart contract has been updated to indicate that the request has been completed")]
+    RequestCompleted,
     /// We do not have a record of the withdrawal request in our list of
     /// pending and accepted withdrawal requests.
     #[error("no record of withdrawal request in pending and accepted withdrawal requests")]
@@ -1005,6 +1021,11 @@ pub enum WithdrawalRejectErrorMsg {
     /// The smart contract deployer is fixed, so this should always match.
     #[error("the deployer in the transaction does not match the expected deployer")]
     DeployerMismatch,
+    /// We have checked the smart contract for the status of the
+    /// withdrawal's request ID and it has indicated that the request has
+    /// been either accepted or rejected already.
+    #[error("the smart contract has been updated to indicate that the request has been completed")]
+    RequestCompleted,
     /// We do not have a record of the withdrawal request in our list of
     /// pending and accepted withdrawal requests.
     #[error("no record of withdrawal request in pending and accepted withdrawal requests")]
@@ -1074,27 +1095,38 @@ impl AsContractCall for RejectWithdrawalV1 {
     /// Validates that the reject-withdrawal-request satisfies the
     /// following criteria:
     ///
-    /// 1. That the transaction with the associated request_id is stored as
-    ///    an event on the canonical Stacks blockchain.
-    /// 2. That the signer bitmap matches the signer decisions stored in
-    ///    this signer's database.
+    /// 1. That the withdrawal request is not already completed.
+    /// 2. Whether the smart contract deployer matches the deployer in our
+    ///    context.
+    /// 3. Whether the associated withdrawal request transaction is
+    ///    confirmed on the canonical stacks blockchain. Fail if it is not
+    ///    on the canonical stacks blockchain.
+    /// 4. Whether the request has been fulfilled. Fail if it has.
+    /// 5. Whether the signer bitmap matches the bitmap from our records.
+    /// 6. Whether the withdrawal request has expired. Fail if it hasn't.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
+        // 1. Check whether the withdrawal request is already completed.
+        let withdrawal_completed = ctx
+            .get_stacks_client()
+            .is_withdrawal_completed(&req_ctx.deployer, self.id.request_id)
+            .await?;
+
+        if withdrawal_completed {
+            return Err(WithdrawalRejectErrorMsg::RequestCompleted.into_error(req_ctx, self));
+        }
+
+        // 2. Whether the smart contract deployer matches the deployer in
+        //    our context.
         if self.deployer != req_ctx.deployer {
             return Err(WithdrawalRejectErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
 
-        // 1. The request exists. Check whether the associated withdrawal request transaction
-        //    is confirmed on the canonical stacks blockchain. Fail the withdrawal request if
-        //    it is not on the canonical stacks blockchain.
-        //
-        // 2. The double spend check. Check whether the qualified request ID is in the
-        //    bitcoin_withdrawals_outputs table, and that any of the associated txids are
-        //    confirmed on the canonical bitcoin blockchain. Fail the withdrawal request if
-        //    such a transaction was found.
-
+        // 3. Whether the associated withdrawal request transaction is
+        //    confirmed on the canonical stacks blockchain.
+        // 4. Whether the request has been fulfilled.
         let stacks_chain_tip = ctx
             .get_storage()
             .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
@@ -1117,15 +1149,15 @@ impl AsContractCall for RejectWithdrawalV1 {
         match report.status {
             WithdrawalRequestStatus::Confirmed => (),
             WithdrawalRequestStatus::Fulfilled(_txid) => {
-                // fails #2
                 return Err(WithdrawalRejectErrorMsg::RequestFulfilled.into_error(req_ctx, self));
             }
             WithdrawalRequestStatus::Unconfirmed => {
-                // fails #1
                 return Err(WithdrawalRejectErrorMsg::RequestUnconfirmed.into_error(req_ctx, self));
             }
         }
 
+        // 5. Whether the signer bitmap matches the bitmap from our
+        //    records.
         let signer_votes = ctx
             .get_storage()
             .get_withdrawal_request_signer_votes(&self.id, &req_ctx.aggregate_key)
@@ -1136,11 +1168,13 @@ impl AsContractCall for RejectWithdrawalV1 {
             return Err(WithdrawalRejectErrorMsg::BitmapMismatch.into_error(req_ctx, self));
         }
 
-        let request_block_height = report.bitcoin_block_height;
-        let blocks_observed = req_ctx.chain_tip.block_height - request_block_height;
+        // 6. Check whether the withdrawal request has expired.
+        let blocks_observed = req_ctx
+            .chain_tip
+            .block_height
+            .saturating_sub(report.bitcoin_block_height);
 
-        // 4. The request is expired.
-        if blocks_observed < WITHDRAWAL_BLOCKS_EXPIRY {
+        if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 
