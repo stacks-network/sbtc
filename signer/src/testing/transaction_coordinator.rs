@@ -804,7 +804,7 @@ where
 
         let (sign_request, multi_tx) = coordinator
             .construct_withdrawal_reject_stacks_sign_request(
-                withdrawal_req.clone(),
+                &withdrawal_req,
                 &bitcoin_aggregate_key,
                 &WALLET.0,
             )
