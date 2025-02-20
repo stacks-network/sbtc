@@ -1,7 +1,8 @@
 //! Handlers for withdrawal endpoints.
-use tracing::instrument;
+use tracing::{debug, instrument};
 use warp::reply::{json, with_status, Reply};
 
+use crate::api::models::common::requests::BasicPaginationQuery;
 use crate::api::models::common::Status;
 use crate::api::models::withdrawal::{
     requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
@@ -62,7 +63,7 @@ pub async fn get_withdrawal(context: EmilyContext, request_id: u64) -> impl warp
     operation_id = "getWithdrawals",
     path = "/withdrawal",
     params(
-        ("status" = Status, Query, description = "the status to search by when getting all deposits."),
+        ("status" = Status, Query, description = "the status to search by when getting all withdrawals."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
@@ -103,6 +104,59 @@ pub async fn get_withdrawals(
     }
     // Handle and respond.
     handler(context, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Get withdrawals by recipient handler.
+#[utoipa::path(
+    get,
+    operation_id = "getWithdrawalsForRecipient",
+    path = "/withdrawal/recipient/{recipient}",
+    params(
+        ("recipient" = String, Path, description = "the recpieint to search by when getting all withdrawals."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
+    ),
+    tag = "withdrawal",
+    responses(
+        (status = 200, description = "Withdrawals retrieved successfully", body = GetWithdrawalsResponse),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+#[instrument(skip(context))]
+pub async fn get_withdrawals_for_recipient(
+    context: EmilyContext,
+    recipient: String,
+    query: BasicPaginationQuery,
+) -> impl warp::reply::Reply {
+    debug!("in get_withdrawals_for_recipient: {recipient}");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        recipient: String,
+        query: BasicPaginationQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        let (entries, next_token) = accessors::get_withdrawal_entries_by_recipient(
+            &context,
+            &recipient,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into resource types.
+        let withdrawals: Vec<WithdrawalInfo> =
+            entries.into_iter().map(|entry| entry.into()).collect();
+        // Create response.
+        let response = GetWithdrawalsResponse { withdrawals, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, recipient, query)
         .await
         .map_or_else(Reply::into_response, Reply::into_response)
 }
@@ -224,7 +278,7 @@ pub async fn update_withdrawals(
         // Validate request.
         let validated_request: ValidatedUpdateWithdrawalRequest = body.try_into()?;
 
-        // Infer the new chainstates that would come from these deposit updates and then
+        // Infer the new chainstates that would come from these withdrawal updates and then
         // attempt to update the chainstates.
         let inferred_chainstates = validated_request.inferred_chainstates()?;
         let can_reorg = context.settings.trusted_reorg_api_key == api_key;

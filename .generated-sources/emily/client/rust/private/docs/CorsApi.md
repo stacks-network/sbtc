@@ -16,6 +16,7 @@ Method | HTTP request | Description
 [**limits_options**](CorsApi.md#limits_options) | **OPTIONS** /limits | CORS support
 [**withdrawal_id_options**](CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
 [**withdrawal_options**](CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
+[**withdrawal_recipient_recipient_options**](CorsApi.md#withdrawal_recipient_recipient_options) | **OPTIONS** /withdrawal/recipient/{recipient} | CORS support
 
 
 
@@ -348,6 +349,36 @@ Handles CORS preflight requests
 ### Parameters
 
 This endpoint does not need any parameter.
+
+### Return type
+
+ (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+
+## withdrawal_recipient_recipient_options
+
+> withdrawal_recipient_recipient_options(recipient)
+CORS support
+
+Handles CORS preflight requests
+
+### Parameters
+
+
+Name | Type | Description  | Required | Notes
+------------- | ------------- | ------------- | ------------- | -------------
+**recipient** | **String** | the recpieint to search by when getting all withdrawals. | [required] |
 
 ### Return type
 

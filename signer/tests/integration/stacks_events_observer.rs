@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use bitcoin::PublicKey;
 use bitcoin::ScriptBuf;
 use core::panic;
 use emily_client::apis::deposit_api::create_deposit;
@@ -216,12 +217,12 @@ async fn test_new_blocks_sends_withdrawal_accept_update() {
         RegistryEvent::WithdrawalAccept(event) => Some(event),
         _ => panic!("Expected WithdrawalAccept event"),
     });
-
+    let pubkey = PublicKey::from_slice(&[0x02; 33]).unwrap();
     // Add the withdrawal request to Emily
     let withdrawal_request = CreateWithdrawalRequestBody {
         amount: 100,
         parameters: Box::new(WithdrawalParameters { max_fee: 10 }),
-        recipient: ScriptBuf::default().to_hex_string(),
+        recipient: ScriptBuf::new_p2pk(&pubkey).to_hex_string(),
         request_id: withdrawal_accept_event.request_id,
         stacks_block_hash: withdrawal_accept_event.block_id.to_hex(),
         stacks_block_height: new_block_event.block_height,
@@ -261,16 +262,20 @@ async fn test_new_blocks_sends_withdrawal_reject_update() {
         _ => panic!("Expected WithdrawalReject event"),
     });
 
+    let pubkey = PublicKey::from_slice(&[0x02; 33]).unwrap();
     // Add the withdrawal request to Emily
     let withdrawal_request = CreateWithdrawalRequestBody {
         amount: 100,
         parameters: Box::new(WithdrawalParameters { max_fee: 10 }),
-        recipient: ScriptBuf::default().to_hex_string(),
+        recipient: ScriptBuf::new_p2pk(&pubkey).to_hex_string(),
         request_id: withdrawal_reject_event.request_id,
         stacks_block_hash: withdrawal_reject_event.block_id.to_hex(),
         stacks_block_height: new_block_event.block_height,
     };
-    let resp = create_withdrawal(&emily_context, withdrawal_request).await;
+    let resp: Result<
+        emily_client::models::Withdrawal,
+        emily_client::apis::Error<emily_client::apis::withdrawal_api::CreateWithdrawalError>,
+    > = create_withdrawal(&emily_context, withdrawal_request).await;
     assert!(resp.is_ok());
 
     let resp = new_block_handler(state.clone(), body).await;

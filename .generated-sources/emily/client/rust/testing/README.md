@@ -39,6 +39,7 @@ Class | Method | HTTP request | Description
 *CorsApi* | [**testing_wipe_options**](docs/CorsApi.md#testing_wipe_options) | **OPTIONS** /testing/wipe | CORS support
 *CorsApi* | [**withdrawal_id_options**](docs/CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
 *CorsApi* | [**withdrawal_options**](docs/CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
+*CorsApi* | [**withdrawal_recipient_recipient_options**](docs/CorsApi.md#withdrawal_recipient_recipient_options) | **OPTIONS** /withdrawal/recipient/{recipient} | CORS support
 *ChainstateApi* | [**get_chain_tip**](docs/ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
 *ChainstateApi* | [**get_chainstate_at_height**](docs/ChainstateApi.md#get_chainstate_at_height) | **GET** /chainstate/{height} | Get chainstate handler.
 *ChainstateApi* | [**set_chainstate**](docs/ChainstateApi.md#set_chainstate) | **POST** /chainstate | Set chainstate handler.
@@ -59,6 +60,7 @@ Class | Method | HTTP request | Description
 *WithdrawalApi* | [**create_withdrawal**](docs/WithdrawalApi.md#create_withdrawal) | **POST** /withdrawal | Create withdrawal handler.
 *WithdrawalApi* | [**get_withdrawal**](docs/WithdrawalApi.md#get_withdrawal) | **GET** /withdrawal/{id} | Get withdrawal handler.
 *WithdrawalApi* | [**get_withdrawals**](docs/WithdrawalApi.md#get_withdrawals) | **GET** /withdrawal | Get withdrawals handler.
+*WithdrawalApi* | [**get_withdrawals_for_recipient**](docs/WithdrawalApi.md#get_withdrawals_for_recipient) | **GET** /withdrawal/recipient/{recipient} | Get withdrawals by recipient handler.
 *WithdrawalApi* | [**update_withdrawals**](docs/WithdrawalApi.md#update_withdrawals) | **PUT** /withdrawal | Update withdrawals handler.
 
 

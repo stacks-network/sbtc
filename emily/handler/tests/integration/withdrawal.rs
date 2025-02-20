@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashMap;
 
 use crate::common::clean_setup;
 use testing_emily_client::apis;
@@ -8,7 +9,7 @@ use testing_emily_client::models::{
     WithdrawalInfo, WithdrawalParameters, WithdrawalUpdate,
 };
 
-const RECIPIENT: &'static str = "";
+const RECIPIENT: &'static str = "TEST_RECIPIENT";
 const BLOCK_HASH: &'static str = "TEST_BLOCK_HASH";
 const BLOCK_HEIGHT: u64 = 0;
 const INITIAL_WITHDRAWAL_STATUS_MESSAGE: &'static str = "Just received withdrawal";
@@ -150,23 +151,23 @@ async fn get_withdrawals() {
     batch_create_withdrawals(&configuration, create_requests).await;
 
     let status = testing_emily_client::models::Status::Pending;
-    let mut next_token: Option<Option<String>> = None;
+    let mut next_token: Option<String> = None;
     let mut gotten_withdrawal_info_chunks: Vec<Vec<WithdrawalInfo>> = Vec::new();
     loop {
         let response = apis::withdrawal_api::get_withdrawals(
             &configuration,
             status,
-            next_token.as_ref().and_then(|o| o.as_deref()),
+            next_token.as_deref(),
             Some(chunksize as u32),
         )
         .await
         .expect("Received an error after making a valid get withdrawal api call.");
         gotten_withdrawal_info_chunks.push(response.withdrawals);
         // If there's no next token then break.
-        next_token = response.next_token;
-        if !next_token.as_ref().is_some_and(|inner| inner.is_some()) {
-            break;
-        }
+        next_token = match response.next_token.flatten() {
+            Some(token) => Some(token),
+            None => break,
+        };
     }
 
     // Assert.
@@ -187,6 +188,101 @@ async fn get_withdrawals() {
     expected_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
     gotten_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
     assert_eq!(expected_withdrawal_infos, gotten_withdrawal_infos);
+}
+
+#[tokio::test]
+async fn get_withdrawals_by_recipient() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+    let recipients = vec!["recipient_1", "recipient_2", "recipient_3"];
+    let withdrawals_per_recipient = 5;
+    let mut create_requests: Vec<CreateWithdrawalRequestBody> = Vec::new();
+    let mut expected_recipient_data: HashMap<String, Vec<WithdrawalInfo>> = HashMap::new();
+
+    let amount = 0;
+    let parameters = WithdrawalParameters { max_fee: 123 };
+
+    let mut request_id = 1;
+    for recipient in recipients {
+        let mut expected_withdrawal_infos: Vec<WithdrawalInfo> = Vec::new();
+        for _ in 1..=withdrawals_per_recipient {
+            let request = CreateWithdrawalRequestBody {
+                amount,
+                parameters: Box::new(parameters.clone()),
+                recipient: recipient.into(),
+                request_id,
+                stacks_block_hash: BLOCK_HASH.into(),
+                stacks_block_height: BLOCK_HEIGHT,
+            };
+            create_requests.push(request);
+
+            let expected_withdrawal_info = WithdrawalInfo {
+                amount,
+                last_update_block_hash: BLOCK_HASH.into(),
+                last_update_height: BLOCK_HEIGHT,
+                recipient: recipient.into(),
+                request_id,
+                stacks_block_hash: BLOCK_HASH.into(),
+                stacks_block_height: BLOCK_HEIGHT,
+                status: Status::Pending,
+            };
+            request_id += 1;
+            expected_withdrawal_infos.push(expected_withdrawal_info);
+        }
+        // Add the recipient data to the recipient data hashmap that stores what
+        // we expect to see from the recipient.
+        expected_recipient_data.insert(recipient.to_string(), expected_withdrawal_infos.clone());
+    }
+
+    let chunksize = 2;
+
+    // Act.
+    // ----
+    batch_create_withdrawals(&configuration, create_requests).await;
+
+    let mut actual_recipient_data: HashMap<String, Vec<WithdrawalInfo>> = HashMap::new();
+    for recipient in expected_recipient_data.keys() {
+        let mut gotten_withdrawal_info_chunks: Vec<Vec<WithdrawalInfo>> = Vec::new();
+        let mut next_token: Option<String> = None;
+
+        loop {
+            let response = apis::withdrawal_api::get_withdrawals_for_recipient(
+                &configuration,
+                recipient,
+                next_token.as_deref(),
+                Some(chunksize as u32),
+            )
+            .await
+            .expect("Received an error after making a valid get withdrawal api call.");
+            gotten_withdrawal_info_chunks.push(response.withdrawals);
+            // If there's no next token then break.
+            next_token = match response.next_token.flatten() {
+                Some(token) => Some(token),
+                None => break,
+            };
+        }
+        // Store the actual data received from the api.
+        actual_recipient_data.insert(
+            recipient.clone(),
+            gotten_withdrawal_info_chunks
+                .into_iter()
+                .flatten()
+                .collect(),
+        );
+    }
+
+    // Assert.
+    // -------
+    for recipient in expected_recipient_data.keys() {
+        let mut expected_withdrawal_infos = expected_recipient_data.get(recipient).unwrap().clone();
+        expected_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
+        let mut actual_withdrawal_infos = actual_recipient_data.get(recipient).unwrap().clone();
+        actual_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
+        // Assert that the expected and actual deposit infos are the same.
+        assert_eq!(expected_withdrawal_infos, actual_withdrawal_infos);
+    }
 }
 
 #[tokio::test]
