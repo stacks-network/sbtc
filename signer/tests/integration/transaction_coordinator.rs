@@ -3421,11 +3421,12 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-#[test_case(false, false; "rejectable")]
-#[test_case(true, false; "completed")]
-#[test_case(false, true; "in mempool")]
+#[test_case(false, false, false; "rejectable")]
+#[test_case(true, false, false; "completed")]
+#[test_case(false, true, false; "in mempool")]
+#[test_case(false, false, true; "submitted")]
 #[tokio::test]
-async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
+async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is_submitted: bool) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -3437,7 +3438,7 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
         .with_mocked_emily_client()
         .build();
 
-    let expect_tx = !is_completed && !is_in_mempool;
+    let expect_tx = !is_completed && !is_in_mempool && !is_submitted;
 
     let nonce = 12;
     // Mock required stacks client functions
@@ -3538,27 +3539,33 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
         request
     );
 
-    // If we are testing the mempool scenario, we need to fake it: we add an
-    // output for both cases, chaning the validation result
-    let output_validation_result = if is_in_mempool {
-        WithdrawalValidationResult::Ok
-    } else {
-        WithdrawalValidationResult::NoVote // random one
-    };
-    let outpoint = faucet.send_to(1000, &faucet.address);
-    let withdrawal_output = model::BitcoinWithdrawalOutput {
-        bitcoin_txid: outpoint.txid.into(),
-        bitcoin_chain_tip: bitcoin_chain_tip.block_hash,
-        output_index: outpoint.vout,
-        request_id: request.request_id,
-        stacks_txid: request.txid,
-        stacks_block_hash: request.block_hash,
-        validation_result: output_validation_result,
-        is_valid_tx: true,
-    };
-    db.write_bitcoin_withdrawals_outputs(&[withdrawal_output])
-        .await
-        .unwrap();
+    if is_in_mempool || is_submitted {
+        // If we are testing the mempool/submitted scenario, we need to fake it
+        let outpoint = faucet.send_to(1000, &faucet.address);
+        let withdrawal_output = model::BitcoinWithdrawalOutput {
+            bitcoin_txid: outpoint.txid.into(),
+            bitcoin_chain_tip: bitcoin_chain_tip.block_hash,
+            output_index: outpoint.vout,
+            request_id: request.request_id,
+            stacks_txid: request.txid,
+            stacks_block_hash: request.block_hash,
+            // We don't care about validation, as the majority of signers may
+            // have validated it, so we err towards checking more rather than
+            // less txids.
+            validation_result: WithdrawalValidationResult::NoVote,
+            is_valid_tx: false,
+        };
+        db.write_bitcoin_withdrawals_outputs(&[withdrawal_output])
+            .await
+            .unwrap();
+
+        if is_submitted {
+            // We don't want to backfill this block, as we are testing the case
+            // where the tx is no longer in the mempool but we are still missing
+            // the block processing.
+            faucet.generate_block();
+        }
+    }
 
     let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
         tokio::sync::broadcast::channel(1);

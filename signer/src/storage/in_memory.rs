@@ -946,7 +946,7 @@ impl super::DbRead for SharedStore {
         Ok(result)
     }
 
-    async fn get_valid_withdrawal_outputs(
+    async fn get_withdrawal_outputs(
         &self,
         _id: &model::QualifiedRequestId,
     ) -> Result<Vec<model::BitcoinWithdrawalOutput>, Error> {

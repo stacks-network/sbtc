@@ -778,16 +778,14 @@ where
             return Ok(());
         }
 
-        let valid_outputs = db
-            .get_valid_withdrawal_outputs(&request.qualified_id())
-            .await?;
+        let valid_outputs = db.get_withdrawal_outputs(&request.qualified_id()).await?;
 
         for output in valid_outputs {
-            let mempool_entry = bitcoin
-                .get_mempool_entry(&output.bitcoin_txid.into())
-                .await?;
-            if mempool_entry.is_some() {
-                // There's an output for this request in the mempool, let's wait
+            // We get a tx if it's either confirmed or in the mempool
+            let maybe_tx = bitcoin.get_tx(&output.bitcoin_txid.into()).await?;
+            if maybe_tx.is_some() {
+                // There's an output for this request that may still be valid,
+                // so we skip the rejection for now.
                 return Ok(());
             }
         }

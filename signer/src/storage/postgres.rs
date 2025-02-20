@@ -2269,7 +2269,7 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn get_valid_withdrawal_outputs(
+    async fn get_withdrawal_outputs(
         &self,
         id: &model::QualifiedRequestId,
     ) -> Result<Vec<model::BitcoinWithdrawalOutput>, Error> {
@@ -2287,8 +2287,6 @@ impl super::DbRead for PgStore {
             FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
             WHERE bwo.request_id = $1
               AND bwo.stacks_block_hash = $2
-              AND bwo.validation_result = 'ok'
-              AND bwo.is_valid_tx = true
             "#,
         )
         .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
