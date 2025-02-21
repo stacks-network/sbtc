@@ -152,7 +152,7 @@ impl StacksChain {
         if self.0.is_empty() {
             self.0.push(StacksBlock::new_genesis().anchored_to(anchor));
         } else {
-            let new_block = self.0.last().unwrap().new_child().anchored_to(anchor);
+            let new_block = self.chain_tip().new_child().anchored_to(anchor);
             self.0.push(new_block);
         }
         self.chain_tip()
