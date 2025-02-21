@@ -1663,16 +1663,10 @@ mod tests {
         // should never happen, and is a programming error whenever we
         // observe it.
         let output_index = tx.output.len();
-        let bitcoin_chain_tip_height = WITHDRAWAL_MIN_CONFIRMATIONS;
+        let bitcoin_chain_tip_height = WITHDRAWAL_MIN_CONFIRMATIONS.into();
         let limits = &SbtcLimits::unlimited();
 
-        let status = report.validate(
-            bitcoin_chain_tip_height.into(),
-            output_index,
-            &tx,
-            TX_FEE,
-            limits,
-        );
+        let status = report.validate(bitcoin_chain_tip_height, output_index, &tx, TX_FEE, limits);
 
         assert_eq!(status, WithdrawalValidationResult::Unknown);
     }
