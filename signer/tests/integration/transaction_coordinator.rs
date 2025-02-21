@@ -3625,20 +3625,10 @@ async fn process_withdrawal(
                     parent_hash: stacks_tip.block_hash,
                     bitcoin_anchor: bitcoin_block.block_hash,
                 };
-                let withdrawal_request = model::WithdrawalRequest {
-                    request_id: 1,
-                    txid: fake::Faker.fake_with_rng(&mut rng),
-                    block_hash: stacks_block.block_hash,
-                    recipient: fake::Faker.fake_with_rng(&mut rng),
-                    amount: 1_000,
-                    max_fee: 1_000,
-                    sender_address: fake::Faker.fake_with_rng(&mut rng),
-                    bitcoin_block_height: bitcoin_block.block_height,
-                };
                 let swept_output = BitcoinWithdrawalOutput {
-                    request_id: withdrawal_request.request_id,
-                    stacks_txid: withdrawal_request.txid,
-                    stacks_block_hash: withdrawal_request.block_hash,
+                    request_id: request.request_id,
+                    stacks_txid: request.txid,
+                    stacks_block_hash: request.block_hash,
                     bitcoin_chain_tip: bitcoin_block.block_hash,
                     ..Faker.fake_with_rng(&mut rng)
                 };
@@ -3664,7 +3654,7 @@ async fn process_withdrawal(
                 // Now write all the data to the database.
                 db.write_bitcoin_block(&bitcoin_block).await.unwrap();
                 db.write_stacks_block(&stacks_block).await.unwrap();
-                db.write_withdrawal_request(&withdrawal_request)
+                db.write_withdrawal_request(&request)
                     .await
                     .unwrap();
 
@@ -3777,6 +3767,8 @@ async fn process_withdrawal(
 
     // Await for tenure completion
     let tenure_completed_signal = TxCoordinatorEvent::TenureCompleted.into();
+
+    println!("Waiting for tenure completion");
     context
         .wait_for_signal(Duration::from_secs(5), |signal| {
             signal == &tenure_completed_signal
