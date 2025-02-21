@@ -3828,7 +3828,6 @@ async fn process_withdrawal_accept(is_completed: bool, is_in_mempool: bool, is_s
     testing::storage::drop_db(db).await;
 }
 
-
 #[test_case(false, false; "rejectable")]
 #[test_case(true, false; "completed")]
 #[test_case(false, true; "in mempool")]
