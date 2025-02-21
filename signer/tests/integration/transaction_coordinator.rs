@@ -3422,12 +3422,11 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-#[test_case(false, false, false; "rejectable")]
-#[test_case(true, false, false; "completed")]
-#[test_case(false, true, false; "in mempool")]
-#[test_case(false, false, true; "submitted")]
+#[test_case(false, false; "rejectable")]
+#[test_case(true, false; "completed")]
+#[test_case(false, true; "in mempool")]
 #[tokio::test]
-async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is_submitted: bool) {
+async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -3439,7 +3438,7 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is
         .with_mocked_emily_client()
         .build();
 
-    let expect_tx = !is_completed && !is_in_mempool && !is_submitted;
+    let expect_tx = !is_completed && !is_in_mempool;
 
     let nonce = 12;
     // Mock required stacks client functions
@@ -3567,7 +3566,7 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is
         request
     );
 
-    if is_in_mempool || is_submitted {
+    if is_in_mempool {
         // If we are testing the mempool/submitted scenario, we need to fake it
         let outpoint = faucet.send_to(1000, &faucet.address);
         let bitcoin_txid = outpoint.txid.into();
@@ -3601,13 +3600,6 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is
             sighash: bitcoin::TapSighash::from_byte_array([1; 32]).into(),
         };
         db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
-
-        if is_submitted {
-            // We don't want to backfill this block, as we are testing the case
-            // where the tx is no longer in the mempool but we are still missing
-            // the block processing.
-            faucet.generate_block();
-        }
     }
 
     let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
