@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use bitcoin::absolute::Height;
 use bitcoin::transaction::Version;
 use bitcoin::Amount;
 use bitcoin::Block;
