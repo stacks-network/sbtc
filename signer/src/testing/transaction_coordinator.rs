@@ -35,6 +35,7 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
+use crate::testing::storage::DbReadTestExt as _;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 use crate::transaction_coordinator::coordinator_public_key;
@@ -238,19 +239,33 @@ where
             .expect("Empty signer set!")
             .signer_public_keys;
 
+        // Get the chain tips from storage.
+        let (bitcoin_chain_tip, stacks_chain_tip) = storage.get_chain_tips().await;
+
         // Get pending withdrawals from coordinator
         let pending_requests = coordinator
-            .get_pending_requests(&bitcoin_chain_tip, &aggregate_key, signer_public_keys)
+            .get_pending_requests(
+                &bitcoin_chain_tip,
+                &stacks_chain_tip,
+                &aggregate_key,
+                signer_public_keys,
+            )
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
+        // Calculate the minimum processable block height for withdrawals.
+        let min_withdrawal_block_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY);
+
         // Get pending withdrawals from storage
         let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip.block_hash,
-                self.context_window,
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_withdrawal_block_height,
                 self.signing_threshold,
             )
             .await

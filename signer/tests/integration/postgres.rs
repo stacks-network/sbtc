@@ -5580,3 +5580,1183 @@ async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
 
     assert!(db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
 }
+
+/// Module containing a test suite and helpers specific to
+/// `DbRead::get_pending_accepted_withdrawal_requests`.
+mod get_pending_accepted_withdrawal_requests {
+    use signer::{
+        bitcoin::validation::WithdrawalValidationResult,
+        testing::storage::{self, DbReadTestExt as _, DbWriteTestExt as _},
+    };
+
+    use super::*;
+
+    /// Creates [`WithdrawalSigner`]s for each vote in the provided slice and
+    /// stores them in the database. The signer public key is randomized.
+    async fn store_votes(db: &PgStore, request: &WithdrawalRequest, votes: &[bool]) {
+        for vote in votes {
+            let signer = model::WithdrawalSigner {
+                request_id: request.request_id,
+                block_hash: request.block_hash,
+                txid: request.txid,
+                signer_pub_key: Faker.fake(),
+                is_accepted: *vote,
+            };
+            db.write_withdrawal_signer_decision(&signer)
+                .await
+                .expect("failed to write signer decision");
+        }
+    }
+
+    /// Creates and stores a withdrawal request, confirmed in the specified
+    /// bitcoin & stacks blocks.
+    ///
+    /// If votes are provided, signer vote entries are created and stored as
+    /// well (with the same number of votes as the length of the `votes` slice).
+    /// The votes are stored under random signer public keys.
+    async fn store_withdrawal_request(
+        db: &PgStore,
+        request_id: u64,
+        bitcoin_block: &BitcoinBlock,
+        stacks_block: &StacksBlock,
+        votes: &[bool],
+    ) -> WithdrawalRequest {
+        let withdrawal_request = WithdrawalRequest {
+            request_id,
+            block_hash: stacks_block.block_hash,
+            bitcoin_block_height: bitcoin_block.block_height,
+            ..Faker.fake()
+        };
+
+        db.write_withdrawal_request(&withdrawal_request)
+            .await
+            .expect("failed to write withdrawal request");
+
+        store_votes(db, &withdrawal_request, votes).await;
+
+        withdrawal_request
+    }
+
+    /// Creates a withdrawal rejection event in the database at the specified
+    /// stacks block.
+    async fn reject_withdrawal_request(
+        db: &PgStore,
+        request: &WithdrawalRequest,
+        stacks_block: &StacksBlock,
+    ) {
+        db.write_withdrawal_reject_event(&WithdrawalRejectEvent {
+            request_id: request.request_id,
+            block_id: stacks_block.block_hash,
+            ..Faker.fake()
+        })
+        .await
+        .expect("failed to write withdrawal reject event");
+    }
+
+    /// Creates a sweep transaction that includes the specified withdrawal
+    /// request. The sweep transaction is written to the database in the
+    /// provided bitcoin block and the transaction ID is returned.
+    async fn sweep_withdrawal_request(
+        db: &PgStore,
+        request: &WithdrawalRequest,
+        at_bitcoin_block: &BitcoinBlockHash,
+    ) -> BitcoinTxId {
+        // Simulate a sweep transaction on the canonical chain which will
+        // include the withdrawal request.
+        let transaction = model::Transaction {
+            txid: Faker.fake(),
+            block_hash: at_bitcoin_block.into_bytes(),
+            tx_type: model::TransactionType::SbtcTransaction,
+            tx: Vec::new(),
+        };
+        let bitcoin_sweep_tx = model::BitcoinTxRef {
+            txid: transaction.txid.into(),
+            block_hash: *at_bitcoin_block,
+        };
+        db.write_transaction(&transaction)
+            .await
+            .expect("failed to write transaction");
+        db.write_bitcoin_transaction(&bitcoin_sweep_tx)
+            .await
+            .expect("failed to write bitcoin transaction");
+
+        // Write a fully validated withdrawal output for the request.
+        db.write_bitcoin_withdrawals_outputs(&[model::BitcoinWithdrawalOutput {
+            bitcoin_txid: bitcoin_sweep_tx.txid,
+            bitcoin_chain_tip: *at_bitcoin_block,
+            is_valid_tx: true,
+            stacks_txid: request.txid,
+            stacks_block_hash: request.block_hash,
+            request_id: request.request_id,
+            validation_result: WithdrawalValidationResult::Ok,
+            output_index: 2,
+        }])
+        .await
+        .expect("failed to write bitcoin withdrawal output");
+
+        transaction.txid.into()
+    }
+
+    /// Asserts that when there are no withdrawal requests, we return an empty
+    /// list (just to make sure we don't error anywhere).
+    #[test_log::test(tokio::test)]
+    async fn returns_empty_list_when_no_requests() {
+        let db = signer::testing::storage::new_test_database().await;
+
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(&Faker.fake(), &Faker.fake(), 1_000, 0)
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty());
+
+        signer::testing::storage::drop_db(db).await;
+    }
+
+    /// Asserts that requests which are confirmed in stacks blocks whose anchor
+    /// block is, while in the canonical bitcoin chain, too old to be considered
+    /// accepted and are not returned.
+    ///
+    /// The signature threshold/min height we are testing is _inclusive_.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    /// Height:      0           1           2
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │ The request is confirmed (✔)
+    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘ in S2 and we test different
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐ min heights.
+    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3   │
+    ///          └────────┘  └────────┘  └────────┘
+    /// ```
+    #[tokio::test]
+    async fn expired_requests_not_returned() {
+        let db = signer::testing::storage::new_test_database().await;
+        let signature_threshold = 2;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2 = bitcoin_1.new_child();
+        let bitcoin_3 = bitcoin_2.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2 = stacks_1.new_child().anchored_to(&bitcoin_2);
+        let stacks_3 = stacks_2.new_child().anchored_to(&bitcoin_3);
+
+        // Write our bitcoin + stacks blocks.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2, &bitcoin_2, &bitcoin_3],
+            [&stacks_1, &stacks_2, &stacks_2, &stacks_3],
+        )
+        .await;
+
+        // Get our chain tips.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Assert that the chain tips are what we expect.
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
+
+        // Store a withdrawal request, confirmed in B2/S2.
+        store_withdrawal_request(&db, 1, &bitcoin_2, &stacks_2, &[true, true]).await;
+
+        // NOTE: The bitcoin block heights are 0-indexed, so these have a height
+        // of `1`.
+        assert_eq!(bitcoin_2.block_height, 1);
+        assert_eq!(stacks_2.block_height, 1);
+
+        // Min bitcoin height = 0, we should get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                0,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1, "min height: 0");
+
+        // Min bitcoin height = 1, we should get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                1,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1, "min height: 1");
+
+        // Min bitcoin height = 2, the request should NOT be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                2,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty(), "min height: 2");
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that requests with a confirmed rejection event are not returned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐
+    /// Bitcoin: │   B1   │
+    ///          └─▲──────┘  We both confirm (✔) and reject (✖) the
+    ///          ┌─┴──────┐  request in S1.
+    /// Stacks:  │  S1 ✔✖ │
+    ///          └────────┘
+    /// ```
+    #[tokio::test]
+    async fn request_with_confirmed_rejection_not_returned() {
+        let db = signer::testing::storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_block = BitcoinBlock::new_genesis();
+        // Stacks blocks:
+        let stacks_block = StacksBlock::new_genesis().anchored_to(&bitcoin_block);
+
+        // Write our blocks.
+        db.write_blocks([&bitcoin_block], [&stacks_block]).await;
+
+        // Store a withdrawal request.
+        let request =
+            store_withdrawal_request(&db, 1, &bitcoin_block, &stacks_block, &[true, true]).await;
+
+        // We should get the request as pending accepted.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block.block_hash,
+                &stacks_block.block_hash,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Now reject the request.
+        reject_withdrawal_request(&db, &request, &stacks_block).await;
+
+        // It should no longer be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block.block_hash,
+                &stacks_block.block_hash,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty());
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that a withdrawal request is returned when it has been confirmed
+    /// and has a rejection event, but the rejection event has been orphaned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
+    ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
+    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed (✔) in S1
+    ///            ┊  └──────► ┊ B2b  │    ┊  and rejected (✖) in S2b, but its
+    ///            ┊         └─┊────▲─┘    ┊  anchor later gets orphaned by B3a.
+    ///            ┊           ┊    ┊      ┊  
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
+    /// Stacks:  │   S1 ✔ ├──►  S2a   ├──►  S3a   │
+    ///          └────┬───┘  └────────┘  └────────┘
+    ///               │      ┌──────┴─┐
+    ///               └─────>│  S2b ✖ │
+    ///                      └────────┘
+    /// ```
+    #[tokio::test]
+    async fn request_with_orphaned_rejection_is_returned() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2a = bitcoin_1.new_child();
+        let bitcoin_2b = bitcoin_1.new_child();
+        let bitcoin_3a = bitcoin_2a.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2a = stacks_1.new_child().anchored_to(&bitcoin_2a);
+        let stacks_2b = stacks_1.new_child().anchored_to(&bitcoin_2b);
+        let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
+
+        // Write our bitcoin + stacks blocks.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+            [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+        )
+        .await;
+
+        // Get our chain tips.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Assert that the chain tips are what we expect.
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
+
+        // Store a withdrawal request, confirmed in B1/S1.
+        let request = store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+
+        // Reject the withdrawal request in B2b/S2b.
+        reject_withdrawal_request(&db, &request, &stacks_2b).await;
+
+        // The request should be returned as the rejection has been orphaned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that a withdrawal request is not returned when it has been
+    /// confirmed and has both confirmed and orphaned rejection events. This
+    /// test is to ensure that an orphaned rejection event does not
+    /// "accidentally" override a confirmed rejection event.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
+    ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
+    ///            ┊  │      ┌─┊──────┐    ┊  The request is confirmed (✔) in S1
+    ///            ┊  └──────► ┊ B2b  │    ┊  and rejected (✖) in both S2a and S2b.
+    ///            ┊         └─┊────▲─┘    ┊  B2b is orphaned by B3a, but B2a is
+    ///            ┊           ┊    ┊      ┊  still confirming the rejection.
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
+    /// Stacks:  │   S1 ✔ ├──►  S2a ✖ ├──►  S3a   │
+    ///          └────┬───┘  └────────┘  └────────┘
+    ///               │      ┌──────┴─┐
+    ///               └─────>│  S2b ✖ │
+    ///                      └────────┘
+    /// ```
+    #[tokio::test]
+    async fn request_with_both_confirmed_and_orphaned_rejection_not_returned() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2a = bitcoin_1.new_child();
+        let bitcoin_2b = bitcoin_1.new_child();
+        let bitcoin_3a = bitcoin_2a.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2a = stacks_1.new_child().anchored_to(&bitcoin_2a);
+        let stacks_2b = stacks_1.new_child().anchored_to(&bitcoin_2b);
+        let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
+
+        // Write our bitcoin + stacks blocks.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+            [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+        )
+        .await;
+
+        // Get our chain tips.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Assert that the chain tips are what we expect.
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
+
+        // Store a withdrawal request, confirmed in B1/S1.
+        let request = store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+
+        // We should get the request as pending accepted.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Reject the withdrawal request in B2a/S2a (canonical).
+        reject_withdrawal_request(&db, &request, &stacks_2a).await;
+        // Reject the withdrawal request in B2b/S2b (orphaned).
+        reject_withdrawal_request(&db, &request, &stacks_2b).await;
+
+        // The request should not be returned as there is a confirmed rejection
+        // on the canonical chain.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty());
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that we only return requests that have been accepted by the
+    /// required number of signers. This test creates one valid withdrawal
+    /// request with no votes.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐
+    /// Bitcoin: │   B1 ◆ │
+    ///          └─▲──────┘  We both confirm (✔) and sweep (◆) the
+    ///          ┌─┴──────┐  request in B1.
+    /// Stacks:  │   S1 ✔ │
+    ///          └────────┘
+    /// ```
+    #[tokio::test]
+    async fn returns_empty_list_when_no_accepted_requests() {
+        let db = signer::testing::storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_block = BitcoinBlock::new_genesis();
+        // Stacks blocks:
+        let stacks_block = StacksBlock::new_genesis().anchored_to(&bitcoin_block);
+
+        // Write our blocks.
+        db.write_blocks([&bitcoin_block], [&stacks_block]).await;
+
+        // Store a withdrawal request.
+        store_withdrawal_request(&db, 1, &bitcoin_block, &stacks_block, &[]).await;
+
+        // Ensure that the request is considered "pending".
+        let requests = db
+            .get_pending_withdrawal_requests(&bitcoin_block.block_hash, 1_000, &Faker.fake())
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // But it should not be "pending accepted".
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block.block_hash,
+                &stacks_block.block_hash,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty());
+
+        signer::testing::storage::drop_db(db).await;
+    }
+
+    /// Asserts that we only return requests that have been accepted by the
+    /// required number of signers. This test uses an accept threshold of `2`.
+    /// We create two withdrawal requests, one with two yes votes and one with
+    /// one yes vote and one no vote and ensure that only the request with two
+    /// yes votes is returned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐
+    /// Bitcoin: │   B1 ◆ │
+    ///          └─▲──────┘  We both confirm (✔) and sweep (◆) the
+    ///          ┌─┴──────┐  request in B1.
+    /// Stacks:  │   S1 ✔ │
+    ///          └────────┘
+    /// ```
+    #[tokio::test]
+    async fn returns_only_withdrawals_accepted_by_threshold_signers() {
+        let db = signer::testing::storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_block = BitcoinBlock::new_genesis();
+        // Stacks blocks:
+        let stacks_block = StacksBlock::new_genesis().anchored_to(&bitcoin_block);
+
+        // Write our blocks.
+        db.write_blocks([&bitcoin_block], [&stacks_block]).await;
+
+        // Setup withdrawal request 1: no votes
+        store_withdrawal_request(&db, 1, &bitcoin_block, &stacks_block, &[]).await;
+        // Setup withdrawal request 2: two yes votes
+        let withdrawal_request_2 =
+            store_withdrawal_request(&db, 2, &bitcoin_block, &stacks_block, &[true, true]).await;
+        // Setup withdrawal request 3: one yes vote, one no vote
+        store_withdrawal_request(&db, 3, &bitcoin_block, &stacks_block, &[true, false]).await;
+
+        // Get the pending accepted withdrawal requests. We should only
+        // get withdrawal_request2.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block.block_hash,
+                &stacks_block.block_hash,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.single(), withdrawal_request_2);
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that we only return withdrawal requests that have been confirmed
+    /// in a stacks block which is anchored to a bitcoin block in the canonical
+    /// bitcoin blockchain.
+    ///
+    /// We achieve this by creating three withdrawal requests, one of which is
+    /// confirmed in a stacks block which is anchored to a bitcoin block which
+    /// is orphaned. We then ensure that only the requests confirmed in the
+    /// canonical chain are returned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
+    ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
+    ///            ┊  │      ┌─┊──────┐    ┊  We create requests in each
+    ///            ┊  └──────► ┊B2b   │    ┊  stacks block, however B2b (and
+    ///            ┊         └─┊────▲─┘    ┊  thus S2b) will be orphaned by
+    ///            ┊           ┊    ┊      ┊  B3a+S3a.
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
+    /// Stacks:  │   S1 ✔ ├──►  S2a ✔ ├──►  S3a ✔ │
+    ///          └────┬───┘  └────────┘  └────────┘
+    ///               │      ┌──────┴─┐  The requests are each confirmed (✔) in
+    ///               └─────>│  S2b ✔ │  their respective block.
+    ///                      └────────┘
+    /// ```
+    #[tokio::test]
+    async fn returns_only_requests_on_canonical_chains() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2a = bitcoin_1.new_child();
+        let bitcoin_2b = bitcoin_1.new_child();
+        let bitcoin_3a = bitcoin_2a.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2a = stacks_1.new_child().anchored_to(&bitcoin_2a);
+        let stacks_2b = stacks_1.new_child().anchored_to(&bitcoin_2b);
+        let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
+
+        // Write our bitcoin + stacks blocks.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+            [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+        )
+        .await;
+
+        // Get our chain tips.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Assert that the chain tips are what we expect.
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
+
+        // Give all requests enough 'yes' votes.
+        let votes = [true, true];
+
+        // Setup withdrawal request 1 (canonical: block 1)
+        let request_1 = store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &votes).await;
+        // Setup withdrawal request 2a (canonical: block 2a)
+        let request_2a = store_withdrawal_request(&db, 2, &bitcoin_2a, &stacks_2a, &votes).await;
+        // Setup withdrawal request 2b (orphaned fork: block 2b)
+        store_withdrawal_request(&db, 3, &bitcoin_2b, &stacks_2b, &votes).await;
+        // Setup withdrawal request 3a (canonical: block 3a)
+        let request_3a = store_withdrawal_request(&db, 4, &bitcoin_3a, &stacks_3a, &votes).await;
+
+        // Get the pending accepted withdrawal requests. We should only
+        // get requests on the canonical chains.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        // We expect to receive requests `1`, `2a`, and `3a`. `2b` should be
+        // orphaned.
+        assert_eq!(requests.len(), 3);
+        // We assert them in reverse order since we use `pop()` to remove them.
+        assert_eq!(requests, [request_1, request_2a, request_3a]);
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that requests which have been swept on the canonical chain are
+    /// not returned by the query.
+    ///
+    /// We achieve this by creating a withdrawal request and then simulating a
+    /// sweep transaction on the canonical chain which includes the request and
+    /// then ensuring that the request is not returned by the query.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐
+    /// Bitcoin: │   B1 ◆ │
+    ///          └─▲──────┘  We both confirm (✔) and sweep (◆) the
+    ///          ┌─┴──────┐  request in S1.
+    /// Stacks:  │   S1 ✔ │
+    ///          └────────┘
+    /// ```
+    #[tokio::test]
+    async fn requests_swept_on_canonical_chain_are_not_returned() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_block_1 = BitcoinBlock::new_genesis();
+        // Stacks blocks:
+        let stacks_block_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_block_1);
+
+        // Write our blocks to the database.
+        db.write_blocks([&bitcoin_block_1], [&stacks_block_1]).await;
+
+        // Create and store a withdrawal request confirmed in block 1 (both
+        // bitcoin and stacks) and give it enough 'yes' votes.
+        let request_1 =
+            store_withdrawal_request(&db, 1, &bitcoin_block_1, &stacks_block_1, &[true, true])
+                .await;
+
+        // The request hasn't been swept yet, so it should be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block_1.block_hash,
+                &stacks_block_1.block_hash,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Simulate a sweep transaction on the canonical chain which will
+        // include the withdrawal request.
+        sweep_withdrawal_request(&db, &request_1, &bitcoin_block_1.block_hash).await;
+
+        // The request should be considered swept now, so we should get empty
+        // results here.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                &bitcoin_block_1.block_hash,
+                &stacks_block_1.block_hash,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 0);
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that requests which have been swept in orphaned bitcoin blocks
+    /// are returned by the query.
+    ///
+    /// We achieve this by creating a withdrawal request, simulating the
+    /// request being serviced by a sweep transaction in an orphaned bitcoin
+    /// block and then ensuring that the request is returned by the query.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►  B2a   ├──►  B3a   │
+    ///          └─▲──┬───┘  └────────┘  └────────┘
+    ///            ┊  │      ┌────────┐  We sweep (◆) the request in B2b,
+    ///            ┊  └──────►  B2b ◆ │  which is orphaned by B3a.
+    ///            ┊         └────────┘
+    ///          ┌─┴──────┐
+    /// Stacks:  │   S1 ✔ │  The request is confirmed (✔) in S1.
+    ///          └────────┘
+    /// ```
+    #[tokio::test]
+    async fn returns_request_swept_in_orphaned_bitcoin_block() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2a = bitcoin_1.new_child();
+        let bitcoin_2b = bitcoin_1.new_child();
+        let bitcoin_3a = bitcoin_2a.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+
+        // Write the blocks to the database.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+            [&stacks_1],
+        )
+        .await;
+
+        // Get our chain tips and assert they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_1.block_hash);
+
+        // Create and store a withdrawal request confirmed in block 1 (both
+        // bitcoin and stacks).
+        let request = store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+
+        // The request confirmed in the canonical chain and not swept, so we
+        // should get it back here.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 1);
+
+        // Sweep the request on the orphaned chain (block 2b).
+        sweep_withdrawal_request(&db, &request, &bitcoin_2b.block_hash).await;
+
+        // The request confirmed in the canonical chain and swept in an
+        // orphaned bitcoin block, so we should get it back here.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.single(), request);
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that a single request is not returned if it is swept in any
+    /// canonical bitcoin block, despite also being swept in orphaned block(s).
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►  B2a ◆ ├──►  B3a   │
+    ///          └─▲──┬───┘  └─▲──────┘  └─▲──────┘
+    ///            ┊  │      ┌─┊──────┐    ┊  We sweep (◆) the request in
+    ///            ┊  └──────► ┊B2b ◆ │    ┊  both B2a and B2b, but B2b is
+    ///            ┊         └─┊────▲─┘    ┊  orphaned by B3a.
+    ///            ┊           ┊    ┊      ┊
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
+    /// Stacks:  │   S1 ✔ ├──►  S2a   ├──►  S3a   │
+    ///          └────┬───┘  └────────┘  └────────┘
+    ///               │      ┌──────┴─┐
+    ///               └──────►  S2b   │  We confirm (✔) the request in S1.
+    ///                      └────────┘
+    /// ```
+    #[tokio::test]
+    async fn does_not_return_request_swept_in_both_canonical_and_orphaned_blocks() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2a = bitcoin_1.new_child();
+        let bitcoin_2b = bitcoin_1.new_child();
+        let bitcoin_3a = bitcoin_2a.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2a = stacks_1.new_child().anchored_to(&bitcoin_2a);
+        let stacks_2b = stacks_1.new_child().anchored_to(&bitcoin_2b);
+        let stacks_3a = stacks_2a.new_child().anchored_to(&bitcoin_3a);
+
+        // Write the blocks to the database.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+            [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+        )
+        .await;
+
+        // Get our chain tips and assert they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3a.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
+
+        // Create and store a withdrawal request confirmed in block 1 (both
+        // bitcoin and stacks).
+        let request = store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+
+        // Sweep the request on the canonical chain (B2a).
+        sweep_withdrawal_request(&db, &request, &bitcoin_2a.block_hash).await;
+        // Sweep the request on the orphaned chain (B2b).
+        sweep_withdrawal_request(&db, &request, &bitcoin_2b.block_hash).await;
+
+        // The request is both confirmed (B1) and swept (B2a) in the canonical
+        // bitcoin chain. It is also swept in an orphaned block (B2b). The query
+        // should not return the request as it is considered swept due to B2a.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.len(), 0);
+
+        storage::drop_db(db).await;
+    }
+
+    /// Asserts that, for two requests with the same `request_id` confirmed in
+    /// both a canonical and orphaned stacks block, that only the request
+    /// confirmed in the canonical stacks block is returned. Both stacks blocks
+    /// are anchored to the same bitcoin block in the canonical bitcoin chain.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///          ┌────────────────────────────────┐
+    /// Bitcoin: │                B1              │
+    ///          └─▲───────────▲────▲──────▲──────┘
+    ///            ┊           ┊    ┊      ┊
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐
+    /// Stacks:  │   S1   ├──►  S2a ✔ ├──►  S3a   │
+    ///          └────┬───┘  └────────┘  └────────┘
+    ///               │      ┌──────┴─┐  We confirm (✔) a withdrawal request in
+    ///               └──────►  S2b ✔ │  both S2a and S2b with the same id.
+    ///                      └────────┘
+    /// ```
+    #[tokio::test]
+    async fn requests_with_same_id_in_different_stacks_forks() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+        let min_block_height = 0;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2a = stacks_1.new_child();
+        let stacks_2b = stacks_1.new_child();
+        let stacks_3a = stacks_2a.new_child();
+
+        // Write our blocks.
+        db.write_blocks(
+            [&bitcoin_1],
+            [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+        )
+        .await;
+
+        // Get our chain tips and assert they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_1.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3a.block_hash);
+
+        // Create withdrawal requests in both stacks forks using the same `request_id`.
+        let expected =
+            store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_2a, &[true, true]).await;
+        store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_2b, &[true, true]).await;
+
+        // Get the pending requests. The requests are both in blocks anchored to
+        // the same canonical bitcoin block, but in different stacks forks. Only
+        // the request in the canonical chain should be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_block_height,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert_eq!(requests.single(), expected);
+
+        storage::drop_db(db).await;
+    }
+
+    /// In this test, the request is confirmed in S2, but the request's
+    /// specified bitcoin block height is `2`. We use the request's specified
+    /// bitcoin height as the actual block height. In this case, the
+    /// confirmation block height (1) is lower than the specified bitcoin block
+    /// height (2).
+    ///
+    /// The query will fetch the blockchains to a height of `min - 1`, so we
+    /// would expect the following results based on the minimum height:
+    ///
+    /// - `0`: confirmation and block height above the minimum, request
+    ///        returned.
+    /// - `1`: confirmation at minimum, block height above minimum, request
+    ///        returned..
+    /// - `2`: confirmation at minimum - 1, block height at minimum. Given that
+    ///        the blockchains will fetch to a height of `1` in this case, we
+    ///        expect the request to be returned.
+    /// - `3`: confirmation and block height below the minimum, nothing
+    ///        returned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    /// Height:       0           1           2          3
+    ///          ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  
+    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   ├──►   B4   │  We create a withdrawal
+    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  in S2, but we set its
+    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3 ⚠️ ├──►   S4   │  bitcoin height to 3.  
+    ///          └────────┘  └────────┘  └────────┘  └────────┘  
+    /// ```
+    #[tokio::test]
+    async fn test_confirmed_anchor_block_lower_than_block_height() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2 = bitcoin_1.new_child();
+        let bitcoin_3 = bitcoin_2.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2 = stacks_1.new_child().anchored_to(&bitcoin_2);
+        let stacks_3 = stacks_2.new_child().anchored_to(&bitcoin_3);
+
+        // Write the blocks to the database.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2, &bitcoin_3],
+            [&stacks_1, &stacks_2, &stacks_3],
+        )
+        .await;
+
+        // Get our chain tips and assert they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
+
+        // Create a withdrawal request that has a bitcoin block height of `2`,
+        // but is actually confirmed in S2 (which has a height of `1`).
+        let request = WithdrawalRequest {
+            request_id: 1,
+            block_hash: stacks_2.block_hash, // Anchored to B2 with height of 1.
+            bitcoin_block_height: 2,
+            ..Faker.fake()
+        };
+
+        // Store the request in the database and give it enough votes.
+        db.write_withdrawal_request(&request)
+            .await
+            .expect("failed to store request");
+        store_votes(&db, &request, &[true, true]).await;
+
+        // Min bitcoin height of `0`: both confirmation and block height above
+        // the minimum; the request should be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                0,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min bitcoin height of `1`: confirmation at minimum, block height
+        // above minimum; the request should be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                1,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min bitcoin height of `2`; confirmation at minimum - 1, block height
+        // at minimum; the request should be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                2,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min bitcoin height of `3`; both confirmation and block height below
+        // the minimum; the request should NOT be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                3,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 0);
+    }
+
+    /// In this test, the request is confirmed in S2, but the request's
+    /// specified bitcoin block height is `0`. We use the request's specified
+    /// bitcoin height as the actual block height. In this case, the
+    /// confirmation block height (1) is higher than the specified bitcoin block
+    /// height (0), so we would expect all fetches where the min bitcoin height
+    /// is greater than 0 to not return the request, however a min height of `0`
+    /// should as both the request height and confirmation block height meet the
+    /// criteria.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///
+    /// Height:       0           1           2     
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │  We create a withdrawal
+    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  (✔) in S2, but we set its
+    /// Stacks:  │   S1 ⚠️ ├──►   S2 ✔ ├──►   S3   │  bitcoin height (⚠️) to 0.
+    ///          └────────┘  └────────┘  └────────┘
+    /// ```
+    #[tokio::test]
+    async fn test_confirmed_anchor_block_higher_than_block_height() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2 = bitcoin_1.new_child();
+        let bitcoin_3 = bitcoin_2.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2 = stacks_1.new_child().anchored_to(&bitcoin_2);
+        let stacks_3 = stacks_2.new_child().anchored_to(&bitcoin_3);
+
+        // Write the blocks to the database.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2, &bitcoin_3],
+            [&stacks_1, &stacks_2, &stacks_3],
+        )
+        .await;
+
+        // Get our chain tips and assert they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
+
+        // Create a withdrawal request that has a bitcoin block height of `0`,
+        // but is actually confirmed in S2 (which has a height of `1`).
+        let request = WithdrawalRequest {
+            request_id: 1,
+            block_hash: stacks_2.block_hash, // Anchored to B2 with height of 1.
+            bitcoin_block_height: 0,
+            ..Faker.fake()
+        };
+
+        // Store the request in the database and give it enough votes.
+        db.write_withdrawal_request(&request)
+            .await
+            .expect("failed to store request");
+        store_votes(&db, &request, &[true, true]).await;
+
+        // Min height is 0, so we should get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                0,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min height is 1, which is above the request height, so we should not
+        // get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                1,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 0);
+
+        // Min height is 2, which is above the request height, so we should not
+        // get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                2,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 0);
+    }
+}

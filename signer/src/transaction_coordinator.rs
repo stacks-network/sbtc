@@ -66,6 +66,7 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
@@ -576,8 +577,12 @@ where
 
         // Create a future that fetches pending deposit and withdrawal requests
         // from the database.
-        let pending_requests_fut =
-            self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
+        let pending_requests_fut = self.get_pending_requests(
+            bitcoin_chain_tip,
+            &stacks_chain_tip.block_hash,
+            aggregate_key,
+            signer_public_keys,
+        );
 
         // If `get_pending_requests()` returns `Ok(None)` then there are no
         // eligible requests to service; we can exit early.
@@ -585,6 +590,7 @@ where
             tracing::debug!("no requests to handle; skipping this round");
             return Ok(());
         };
+
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
@@ -1674,6 +1680,7 @@ where
     pub async fn get_pending_requests(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockRef,
+        stacks_chain_tip: &model::StacksBlockHash,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<Option<utxo::SbtcRequests>, Error> {
@@ -1697,11 +1704,18 @@ where
             )
             .await?;
 
+        // Determine the minimum bitcoin block height we should consider for
+        // withdrawals.
+        let min_bitcoin_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(WITHDRAWAL_BLOCKS_EXPIRY);
+
         // Fetch eligible withdrawal requests.
         let pending_withdraw_requests = storage
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
-                context_window,
+                stacks_chain_tip,
+                min_bitcoin_height,
                 accept_threshold,
             )
             .await?;

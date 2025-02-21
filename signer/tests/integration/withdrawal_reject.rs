@@ -54,6 +54,7 @@ async fn make_withdrawal_reject(
     // This is what the current signer thinks is the state of things.
     let req_ctx = ReqContext {
         chain_tip,
+        stacks_chain_tip: data.withdrawals[0].request.block_hash,
         // This value means that the signer will go back 20 blocks when
         // looking for pending and rejected withdrawal requests.
         context_window: 20,

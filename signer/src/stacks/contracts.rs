@@ -55,6 +55,7 @@ use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::QualifiedRequestId;
+use crate::storage::model::StacksBlockHash;
 use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
@@ -86,6 +87,9 @@ pub struct ReqContext {
     /// the bitcoin blockchain with the greatest height. On ties, we sort
     /// by the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockRef,
+    /// This signer's current view of the chain tip of the canonical
+    /// stacks blockchain.
+    pub stacks_chain_tip: StacksBlockHash,
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
     pub context_window: u16,
@@ -744,21 +748,16 @@ impl AcceptWithdrawalV1 {
         if self.deployer != req_ctx.deployer {
             return Err(WithdrawalErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
-        let stacks_chain_tip = ctx
-            .get_storage()
-            .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
-            .await?
-            .ok_or(Error::NoStacksChainTip)?;
 
         let signer_public_key = ctx.config().signer.public_key();
-        let withdrawal_requests = db.get_withdrawal_request_report(
+        let withdrawal_request = db.get_withdrawal_request_report(
             &req_ctx.chain_tip.block_hash,
-            &stacks_chain_tip.block_hash,
+            &req_ctx.stacks_chain_tip,
             &self.id,
             &signer_public_key,
         );
 
-        let Some(report) = withdrawal_requests.await? else {
+        let Some(report) = withdrawal_request.await? else {
             return Err(WithdrawalErrorMsg::RequestMissing.into_error(req_ctx, self));
         };
 
