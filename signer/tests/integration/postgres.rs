@@ -5716,16 +5716,16 @@ mod get_pending_accepted_withdrawal_requests {
     /// block is, while in the canonical bitcoin chain, too old to be considered
     /// accepted and are not returned.
     ///
-    /// The signature threshold/context window we are testing is _inclusive_.
+    /// The signature threshold/min height we are testing is _inclusive_.
     ///
     /// This test creates blockchains with the following structure:
     ///
     /// ```text
-    /// Age:         3           2           1     
+    /// Height:      0           1           2
     ///          ┌────────┐  ┌────────┐  ┌────────┐
     /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │ The request is confirmed (✔)
     ///          └─▲──────┘  └─▲──────┘  └─▲──────┘ in S2 and we test different
-    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐ context windows.
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐ min heights.
     /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3   │
     ///          └────────┘  └────────┘  └────────┘
     /// ```
@@ -5800,18 +5800,6 @@ mod get_pending_accepted_withdrawal_requests {
             .await
             .expect("failed to query db");
         assert!(requests.is_empty(), "min height: 2");
-
-        // Min bitcoin height = 3, the request should NOT be returned.
-        let requests = db
-            .get_pending_accepted_withdrawal_requests(
-                bitcoin_chain_tip.as_ref(),
-                &stacks_chain_tip,
-                3,
-                signature_threshold,
-            )
-            .await
-            .expect("failed to query db");
-        assert!(requests.is_empty(), "min height: 1");
 
         storage::drop_db(db).await;
     }
@@ -6135,7 +6123,7 @@ mod get_pending_accepted_withdrawal_requests {
 
         // Get the pending accepted withdrawal requests. We should only
         // get withdrawal_request2.
-        let mut requests = db
+        let requests = db
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block.block_hash,
                 &stacks_block.block_hash,
@@ -6145,8 +6133,7 @@ mod get_pending_accepted_withdrawal_requests {
             .await
             .expect("failed to query db");
 
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests.pop().unwrap(), withdrawal_request_2);
+        assert_eq!(requests.single(), withdrawal_request_2);
 
         storage::drop_db(db).await;
     }
@@ -6223,7 +6210,7 @@ mod get_pending_accepted_withdrawal_requests {
 
         // Get the pending accepted withdrawal requests. We should only
         // get requests on the canonical chains.
-        let mut requests = db
+        let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
@@ -6237,9 +6224,7 @@ mod get_pending_accepted_withdrawal_requests {
         // orphaned.
         assert_eq!(requests.len(), 3);
         // We assert them in reverse order since we use `pop()` to remove them.
-        assert_eq!(requests.pop().unwrap(), request_3a);
-        assert_eq!(requests.pop().unwrap(), request_2a);
-        assert_eq!(requests.pop().unwrap(), request_1);
+        assert_eq!(requests, [request_1, request_2a, request_3a]);
 
         storage::drop_db(db).await;
     }
@@ -6383,7 +6368,7 @@ mod get_pending_accepted_withdrawal_requests {
 
         // The request confirmed in the canonical chain and swept in an
         // orphaned bitcoin block, so we should get it back here.
-        let mut requests = db
+        let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
@@ -6392,8 +6377,7 @@ mod get_pending_accepted_withdrawal_requests {
             )
             .await
             .expect("failed to query db");
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests.pop().unwrap(), request);
+        assert_eq!(requests.single(), request);
 
         storage::drop_db(db).await;
     }
@@ -6528,7 +6512,7 @@ mod get_pending_accepted_withdrawal_requests {
         // Get the pending requests. The requests are both in blocks anchored to
         // the same canonical bitcoin block, but in different stacks forks. Only
         // the request in the canonical chain should be returned.
-        let mut requests = db
+        let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
@@ -6537,8 +6521,7 @@ mod get_pending_accepted_withdrawal_requests {
             )
             .await
             .expect("failed to query db");
-        assert_eq!(requests.len(), 1);
-        assert_eq!(requests.pop().unwrap(), expected);
+        assert_eq!(requests.single(), expected);
 
         storage::drop_db(db).await;
     }
@@ -6720,7 +6703,7 @@ mod get_pending_accepted_withdrawal_requests {
         assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
 
-        // Create a withdrawal request that has a bitcoin block height of `2`,
+        // Create a withdrawal request that has a bitcoin block height of `0`,
         // but is actually confirmed in S2 (which has a height of `1`).
         let request = WithdrawalRequest {
             request_id: 1,
