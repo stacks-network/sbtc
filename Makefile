@@ -75,6 +75,9 @@ nextest-archive-clean:
 integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
+integration-env-up-fast: emily-cdk-synth
+	docker compose -f docker/docker-compose.test.fast.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
+
 integration-test:
 	cargo $(CARGO_FLAGS) nextest run $(CARGO_EXCLUDES) --test integration --no-fail-fast --test-threads 1
 
@@ -83,6 +86,9 @@ integration-test-build:
 
 integration-env-down:
 	docker compose --file docker/docker-compose.test.yml down -t 0 -v
+
+integration-env-down-fast:
+	docker compose -f docker/docker-compose.test.fast.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0
 
 integration-env-build:
 	docker compose --file docker/docker-compose.test.yml build
