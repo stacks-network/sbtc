@@ -1488,7 +1488,7 @@ impl super::DbRead for PgStore {
             WITH recursive
 
             -- Get all withdrawal requests which have a bitcoin block height 
-            -- greater than the minimum.
+            -- of at least minimum height provided.
             requests AS (
                 SELECT
                     wr.request_id
@@ -1528,8 +1528,8 @@ impl super::DbRead for PgStore {
             ),
 
             -- Fetch the canonical stacks blockchain from the chain tip back
-            -- to the anchor block with the lowest bitcoin block height of the
-            -- requests.
+            -- to the anchor block with the lowest bitcoin block height of all of
+            -- the requests.
             stacks_blockchain AS (
                 SELECT
                     stacks_blocks.block_hash
@@ -1572,7 +1572,7 @@ impl super::DbRead for PgStore {
                 AND wr.block_hash = signers.block_hash
                 AND signers.is_accepted = TRUE
 
-            -- Ensure the request is confirmed on the stacks chain
+            -- Ensure the request is confirmed on the canonical stacks chain
             JOIN stacks_blockchain canonical_confirmed
                 ON wr.block_hash = canonical_confirmed.block_hash
 

@@ -5099,8 +5099,6 @@ mod get_pending_accepted_withdrawal_requests {
         // Store a withdrawal request, confirmed in B2/S2.
         store_withdrawal_request(&db, 1, &bitcoin_2, &stacks_2, &[true, true]).await;
 
-        dbg!(&bitcoin_1.block_height);
-
         // Min bitcoin height = 0, we should get the request.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
