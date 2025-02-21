@@ -3662,7 +3662,8 @@ async fn process_withdrawal(
                     .unwrap();
                 context
                     .with_bitcoin_client(|client| {
-                        client.expect_get_tx_info().once().returning(move |_, _| {
+                        client.expect_get_tx_info().returning(move |_, _| {
+                            tracing::debug!("Getting tx info");
                             Box::pin({
                                 let mut rng = rand::rngs::StdRng::seed_from_u64(51);
                                 async move {

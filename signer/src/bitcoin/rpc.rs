@@ -2,6 +2,11 @@
 
 use std::sync::Arc;
 
+use bitcoin::TxOut;
+use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey;
+use bitcoincore_rpc_json::GetRawTransactionResultVout;
+use bitcoin::absolute::Height;
+use bitcoin::transaction::Version;
 use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::BlockHash;
@@ -137,9 +142,48 @@ pub struct BitcoinTxInfo {
 
 impl<T> fake::Dummy<T> for BitcoinTxInfo {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &T, rng: &mut R) -> Self {
+        tracing::debug!("Generating fake BitcoinTxInfo");
+        let tx = Transaction {
+            version: Version::TWO,
+            lock_time: bitcoin::absolute::LockTime::Blocks(bitcoin::absolute::Height::from_consensus(10).unwrap()),
+            input: vec![],
+            output: vec![TxOut {
+                value: Amount::from_sat(1000),
+                script_pubkey: ScriptBuf::default(),
+            }, TxOut {
+                value: Amount::from_sat(2000),
+                script_pubkey: ScriptBuf::default(),
+            }, TxOut {
+                value: Amount::from_sat(3000),
+                script_pubkey: ScriptBuf::default(),
+            }],
+
+        };
+        let vout1 = GetRawTransactionResultVout {
+            value: Amount::from_sat(4000),
+            n: 2,
+            script_pub_key: GetRawTransactionResultVoutScriptPubKey {
+                asm: fake::Faker.fake_with_rng(rng),
+                hex: fake::Faker.fake_with_rng(rng),
+                req_sigs: fake::Faker.fake_with_rng(rng),
+                type_: None,
+                addresses: vec![],
+                address: None,
+            },
+        };
         BitcoinTxInfo {
             block_hash: BlockHash::from_le_bytes(fake::Faker.fake_with_rng(rng)),
-            ..fake::Faker.fake_with_rng(rng)
+            in_active_chain: fake::Faker.fake_with_rng(rng),
+            fee: Amount::from_sat(100),
+            tx: tx.clone(),
+            txid: tx.compute_txid(),
+            hash: tx.compute_wtxid(),
+            size: fake::Faker.fake_with_rng(rng),
+            vsize: fake::Faker.fake_with_rng(rng),
+            vin: vec![],
+            vout: vec![vout1.clone(), vout1],
+            confirmations: fake::Faker.fake_with_rng(rng),
+            block_time: fake::Faker.fake_with_rng(rng),
         }
     }
 }
