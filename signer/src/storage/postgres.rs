@@ -2081,9 +2081,10 @@ impl super::DbRead for PgStore {
         let txid: model::BitcoinTxId = signer_utxo.outpoint.txid.into();
 
         // This should execute quite quickly, since the recursive part of
-        // this query should be is limited to 25 transactions for the
-        // actual bitcoin chain tip without any forks. In the case of
-        // forks, it is bounded by the fork length multiplied by 25.
+        // this query should be limited to 25 transactions when the most
+        // recent signer UTXO hasn't been reorged. When a reorg affects
+        // sweep transactions, this recursive part of the query is bounded
+        // by the reorg depth length multiplied by 25.
         sqlx::query_scalar::<_, bool>(
             r#"
             WITH RECURSIVE proposed_transactions AS (
