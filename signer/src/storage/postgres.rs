@@ -1479,18 +1479,57 @@ impl super::DbRead for PgStore {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         stacks_chain_tip: &model::StacksBlockHash,
-        context_window: u16,
+        min_bitcoin_height: u64,
         signature_threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"
             -- get_pending_accepted_withdrawal_requests
-            WITH RECURSIVE bitcoin_blockchain AS (
+            WITH recursive
+
+            -- Get all withdrawal requests which have a bitcoin block height 
+            -- of at least minimum height provided.
+            requests AS (
+                SELECT
+                    wr.request_id
+                  , wr.txid
+                  , wr.block_hash
+                  , wr.recipient
+                  , wr.amount
+                  , wr.max_fee
+                  , wr.sender_address
+                  , wr.bitcoin_block_height
+                  , bt.block_hash as sweep_block_hash
+                  , wre.block_hash as reject_block_hash
+                FROM sbtc_signer.withdrawal_requests wr
+
+                -- Join in any sweep transactions we know about.
+                LEFT JOIN sbtc_signer.bitcoin_withdrawals_outputs bwo
+                    ON bwo.request_id = wr.request_id
+                    AND bwo.stacks_block_hash = wr.block_hash
+                LEFT JOIN sbtc_signer.bitcoin_transactions bt
+                    ON bt.txid = bwo.bitcoin_txid
+
+                -- Join in any rejection events we know about.
+                LEFT JOIN sbtc_signer.withdrawal_reject_events AS wre
+                    ON wre.request_id = wr.request_id
+                
+                -- Only requests where the bitcoin height is greater than the minimum.
+                WHERE wr.bitcoin_block_height >= $3
+            ),
+
+            -- Fetch the canonical bitcoin blockchain from the chain tip back
+            -- to the lowest bitcoin block height of the requests.
+            bitcoin_blockchain AS (
                 SELECT
                     block_hash
                   , block_height
-                FROM bitcoin_blockchain_of($1, $3)
+                FROM bitcoin_blockchain_until($1, (SELECT MIN(bitcoin_block_height) FROM requests))
             ),
+
+            -- Fetch the canonical stacks blockchain from the chain tip back
+            -- to the anchor block with the lowest bitcoin block height of all of
+            -- the requests.
             stacks_blockchain AS (
                 SELECT
                     stacks_blocks.block_hash
@@ -1508,9 +1547,12 @@ impl super::DbRead for PgStore {
                 FROM sbtc_signer.stacks_blocks parent
                 JOIN stacks_blockchain last
                     ON parent.block_hash = last.parent_hash
-                JOIN bitcoin_blockchain block
-                    ON block.block_hash = parent.bitcoin_anchor
+                JOIN bitcoin_blockchain anchor
+                    ON anchor.block_hash = parent.bitcoin_anchor
+                    AND anchor.block_height >= (SELECT MIN(bitcoin_block_height) FROM requests)
             )
+            
+            -- Main select clause (what we're returning).
             SELECT
                 wr.request_id
               , wr.txid
@@ -1520,36 +1562,38 @@ impl super::DbRead for PgStore {
               , wr.max_fee
               , wr.sender_address
               , wr.bitcoin_block_height
-            FROM sbtc_signer.withdrawal_requests wr
 
-            -- Ensure the request is confirmed on the stacks chain
-            JOIN stacks_blockchain canonical_confirmed
-                ON wr.block_hash = canonical_confirmed.block_hash
+            -- We start the query from the `requests` CTE.
+            FROM requests wr
 
-            -- Return a row for each signer vote, which is deduplicated later
-            -- in the group by clause.
+            -- Return a row for each signer vote.
             JOIN sbtc_signer.withdrawal_signers signers ON
                 wr.request_id = signers.request_id
                 AND wr.block_hash = signers.block_hash
                 AND signers.is_accepted = TRUE
 
+            -- Ensure the request is confirmed on the canonical stacks chain
+            JOIN stacks_blockchain canonical_confirmed
+                ON wr.block_hash = canonical_confirmed.block_hash
+
             -- Are there any confirmed sweep transactions?
-            LEFT JOIN sbtc_signer.bitcoin_withdrawals_outputs bwo
-                ON bwo.request_id = wr.request_id
-                AND bwo.stacks_block_hash = wr.block_hash
-            LEFT JOIN sbtc_signer.bitcoin_transactions bt
-                ON bt.txid = bwo.bitcoin_txid
             LEFT JOIN bitcoin_blockchain AS canonical_sweep
-                ON bt.block_hash = canonical_sweep.block_hash
+                ON wr.sweep_block_hash = canonical_sweep.block_hash
 
             -- Are there any confirmed reject transactions?
-            LEFT JOIN sbtc_signer.withdrawal_reject_events AS wre
-                ON wre.request_id = wr.request_id
             LEFT JOIN stacks_blockchain AS canonical_reject
-                ON wre.block_hash = canonical_reject.block_hash
+                ON wr.reject_block_hash = canonical_reject.block_hash
 
             GROUP BY 
-                wr.request_id, wr.block_hash
+                wr.request_id
+              , wr.block_hash
+              , wr.txid
+              , wr.recipient
+              , wr.amount
+              , wr.max_fee
+              , wr.sender_address
+              , wr.bitcoin_block_height
+
             HAVING
                 -- Ensure there are enough 'yes' votes.
                 COUNT(wr.request_id) >= $4
@@ -1557,13 +1601,14 @@ impl super::DbRead for PgStore {
                 AND COUNT(canonical_sweep.block_hash) = 0
                 -- Ensure there are no confirmed reject contract-calls.
                 AND COUNT(canonical_reject.block_hash) = 0
+
             ORDER BY 
                 wr.request_id ASC
             "#,
         )
         .bind(bitcoin_chain_tip)
         .bind(stacks_chain_tip)
-        .bind(i32::from(context_window))
+        .bind(i64::try_from(min_bitcoin_height).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::from(signature_threshold))
         .fetch_all(&self.0)
         .await

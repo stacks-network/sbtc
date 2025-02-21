@@ -197,7 +197,7 @@ pub trait DbRead {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         stacks_chain_tip: &model::StacksBlockHash,
-        context_window: u16,
+        min_bitcoin_height: u64,
         signature_threshold: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 

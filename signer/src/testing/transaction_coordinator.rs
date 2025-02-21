@@ -255,12 +255,17 @@ where
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
+        // Calculate the minimum processable block height for withdrawals.
+        let min_withdrawal_block_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY);
+
         // Get pending withdrawals from storage
         let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                self.context_window,
+                min_withdrawal_block_height,
                 self.signing_threshold,
             )
             .await

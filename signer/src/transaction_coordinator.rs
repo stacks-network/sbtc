@@ -66,6 +66,7 @@ use crate::storage::DbRead as _;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
@@ -1609,12 +1610,18 @@ where
             )
             .await?;
 
+        // Determine the minimum bitcoin block height we should consider for
+        // withdrawals.
+        let min_bitcoin_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(WITHDRAWAL_BLOCKS_EXPIRY);
+
         // Fetch eligible withdrawal requests.
         let pending_withdraw_requests = storage
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 stacks_chain_tip,
-                context_window,
+                min_bitcoin_height,
                 accept_threshold,
             )
             .await?;
