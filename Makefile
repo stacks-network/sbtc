@@ -75,7 +75,7 @@ nextest-archive-clean:
 integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
-integration-env-up-fast: emily-cdk-synth
+integration-env-up-fast: emily-cdk-synth clean-nakamoto-headers
 	docker compose -f docker/docker-compose.test.fast.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
 
 integration-test:
@@ -101,6 +101,7 @@ integration-env-up-ci: emily-cdk-synth
 		INPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.template.json \
 		OUTPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.devenv.template.json \
 		LOCAL_LAMBDA_PATH=empty.zip \
+
 		TRUSTED_REORG_API_KEY=testApiKey \
 		python3 docker/sbtc/emily-aws-setup/initialize.py
 	cargo $(CARGO_FLAGS) build --bin emily-server
@@ -131,10 +132,10 @@ devenv-no-sbtc-down:
 devenv-up:
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
 
-devenv-clean-headers:
+clean-nakamoto-headers:
 	docker run --rm -v docker_stacks-node-data:/data busybox rm -f /data/nakamoto-neon/headers.sqlite
 
-devenv-up-fast: devenv-clean-headers
+devenv-up-fast: clean-nakamoto-headers
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
 
 devenv-down:
