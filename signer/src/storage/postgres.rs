@@ -2131,7 +2131,7 @@ impl super::DbRead for PgStore {
         bitcoin_chain_tip: &model::BitcoinBlockRef,
         min_confirmations: u64,
     ) -> Result<bool, Error> {
-        let min_block_height = sqlx::query_scalar::<_, i64>(
+        let min_block_height = sqlx::query_scalar::<_, Option<i64>>(
             r#"
             SELECT MAX(bb.block_height) + 1
             FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
@@ -2146,6 +2146,12 @@ impl super::DbRead for PgStore {
         .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
+
+        // This means that there are no rows associated with the ID in the
+        // `bitcoin_withdrawals_outputs` table.
+        let Some(min_block_height) = min_block_height else {
+            return Ok(false);
+        };
 
         let output_type = model::TxOutputType::SignersOutput;
         let chain_tip_hash = &bitcoin_chain_tip.block_hash;
