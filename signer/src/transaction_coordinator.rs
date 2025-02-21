@@ -1614,13 +1614,10 @@ where
     ///     - [x] And by the required number of signers _in the current signer
     ///       set_.
     /// 5. [ ] The request has been approved by this signer. **Note:** This rule
-    ///        does not apply within the coordinator module. The decision to
-    ///        include a request is made collectively by all signers based on
-    ///        the same consensus rules, not the coordinator alone. While the
-    ///        coordinator module should not influence the decision on whether a
-    ///        request should be included in a sweep transaction based on its
-    ///        own approval, its signer module will still process the request as
-    ///        part of the collective and will apply this rule.
+    ///     does not apply within the coordinator module, where decisions are
+    ///     made collectively based on consensus rules rather than an individual
+    ///     signer's approval. However, the coordinator's signer module still
+    ///     processes the request according to these same rules.
     /// 6. [ ] The assessed fees will be within the constraints of the request's
     ///    specified maximum fee (this is handled during packaging).
     /// 7. [x] The request must not have expired (handled in the query).
