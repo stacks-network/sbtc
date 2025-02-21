@@ -1185,7 +1185,10 @@ impl AsContractCall for RejectWithdrawalV1 {
 
         // 7. Check whether the withdrawal request may be serviced by a
         //    sweep transaction that may be in the mempool.
-        if db.is_withdrawal_live(&self.id, bitcoin_chain_tip).await? {
+        let withdrawal_is_inflight = db
+            .is_withdrawal_inflight(&self.id, bitcoin_chain_tip)
+            .await?;
+        if withdrawal_is_inflight {
             return Err(WithdrawalRejectErrorMsg::RequestBeingFulfilled.into_error(req_ctx, self));
         }
 

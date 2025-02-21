@@ -319,11 +319,15 @@ pub trait DbRead {
         script: &model::ScriptPubKey,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
-    /// Check whether it is possible that the withdrawal identified by the
-    /// given request identifier live in the bitcoin mempool. This assumes
-    /// that we have processed all recent pre-sign requests and stored the
-    /// results into our database.
-    fn is_withdrawal_live(
+    /// Returns whether the identified withdrawal may be included in a
+    /// sweep transaction that is in the bitcoin mempool.
+    ///
+    /// # Notes
+    ///
+    /// The tables that would be able to answer whether a withdrawal is
+    /// "live" in the mempool are populated during validation of pre-sign
+    /// requests.
+    fn is_withdrawal_inflight(
         &self,
         id: &model::QualifiedRequestId,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
