@@ -25,7 +25,7 @@ use signer::context::Context;
 use signer::testing::context::*;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 
-use crate::setup::backfill_bitcoin_blockchain;
+use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::set_withdrawal_completed;
 use crate::setup::set_withdrawal_incomplete;
 use crate::setup::SweepAmounts;
@@ -136,7 +136,7 @@ async fn reject_withdrawal_validation_happy_path() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -152,7 +152,7 @@ async fn reject_withdrawal_validation_happy_path() {
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -198,7 +198,7 @@ async fn reject_withdrawal_validation_not_final() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -215,7 +215,7 @@ async fn reject_withdrawal_validation_not_final() {
     // contract that created the withdrawal request has bene observed. We
     // are generating one too few blocks.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY);
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -230,7 +230,7 @@ async fn reject_withdrawal_validation_not_final() {
 
     // Generate more block then backfill the DB
     faucet.generate_blocks(1);
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -258,7 +258,7 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -316,7 +316,7 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -332,7 +332,7 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
     let (mut reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -400,7 +400,7 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -416,7 +416,7 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
     let (mut reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -475,7 +475,7 @@ async fn reject_withdrawal_validation_request_completed() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -491,7 +491,7 @@ async fn reject_withdrawal_validation_request_completed() {
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -545,7 +545,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. We need
@@ -588,7 +588,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
-    backfill_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
