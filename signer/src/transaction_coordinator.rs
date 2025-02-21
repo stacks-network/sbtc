@@ -346,7 +346,7 @@ where
             &aggregate_key,
         )
         .await?;
-    tracing::debug!("processed new blocks successfully");
+        tracing::debug!("processed new blocks successfully");
 
         Ok(())
     }

@@ -100,8 +100,8 @@ use signer::stacks::api::SubmitTxResponse;
 use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::SMART_CONTRACTS;
 use signer::storage::model;
-use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::BitcoinWithdrawalOutput;
+use signer::storage::model::EncryptedDkgShares;
 use signer::storage::DbRead as _;
 use signer::storage::DbWrite as _;
 use signer::testing;
@@ -3479,7 +3479,6 @@ async fn process_withdrawal(
         })
         .await;
 
-
     let num_signers = 7;
     let signing_threshold = 5;
     let context_window = 100;
@@ -3654,30 +3653,29 @@ async fn process_withdrawal(
                 // Now write all the data to the database.
                 db.write_bitcoin_block(&bitcoin_block).await.unwrap();
                 db.write_stacks_block(&stacks_block).await.unwrap();
-                db.write_withdrawal_request(&request)
-                    .await
-                    .unwrap();
+                db.write_withdrawal_request(&request).await.unwrap();
 
                 db.write_transaction(&sweep_tx_model).await.unwrap();
                 db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
                 db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
                     .await
                     .unwrap();
-                context.with_bitcoin_client(|client|
-                    {
+                context
+                    .with_bitcoin_client(|client| {
                         client.expect_get_tx_info().once().returning(move |_, _| {
                             Box::pin({
                                 let mut rng = rand::rngs::StdRng::seed_from_u64(51);
                                 async move {
-                                Ok(Some(BitcoinTxInfo {
-                                    block_hash: sweep_tx_ref.block_hash.into(),
-                                    txid: sweep_tx_ref.txid.into(),
-                                    ..fake::Faker.fake_with_rng(&mut rng)
+                                    Ok(Some(BitcoinTxInfo {
+                                        block_hash: sweep_tx_ref.block_hash.into(),
+                                        txid: sweep_tx_ref.txid.into(),
+                                        ..fake::Faker.fake_with_rng(&mut rng)
+                                    }))
                                 }
-                            ))
-                            }})
+                            })
                         });
-                    }).await;
+                    })
+                    .await;
             }
         }
     }
@@ -3714,7 +3712,11 @@ async fn process_withdrawal(
         })
         .await;
 
-    let bitcoin_chain_tip = db.get_bitcoin_canonical_chain_tip_ref().await.unwrap().unwrap();
+    let bitcoin_chain_tip = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
 
     // Get the private key of the coordinator of the signer set.
     let private_key = select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
