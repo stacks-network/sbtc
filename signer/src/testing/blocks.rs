@@ -84,8 +84,7 @@ impl BitcoinChain {
 
     /// Gets the nth block in the chain, panicking if it does not exist.
     pub fn nth_block(&self, height: usize) -> &BitcoinBlock {
-        self.0
-            .get(height)
+        self.nth_block_checked(height)
             .expect("no nth bitcoin block (index out of range)")
     }
 }
@@ -156,7 +155,7 @@ impl StacksChain {
             let new_block = self.0.last().unwrap().new_child().anchored_to(anchor);
             self.0.push(new_block);
         }
-        self.0.last().unwrap()
+        self.chain_tip()
     }
 
     /// Gets the first block in the chain.
