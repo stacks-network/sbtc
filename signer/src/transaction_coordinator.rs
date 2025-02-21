@@ -1629,7 +1629,9 @@ where
     #[tracing::instrument(skip_all)]
     pub async fn get_eligible_pending_withdrawal_requests<DB>(
         storage: &DB,
-        withdrawal_blocks_expiry: u16,
+        expiry_window: u16,
+        soft_expiry_window: u16,
+        min_confirmations: u16,
         params: &GetPendingRequestsParams<'_>,
     ) -> Result<Vec<utxo::WithdrawalRequest>, Error>
     where
@@ -1641,8 +1643,22 @@ where
         const SKIP_REASON_PER_WITHDRAWAL_CAP_EXCEEDED: &str = "per_withdrawal_cap_exceeded";
         const SKIP_REASON_INSUFFICIENT_CONFIRMATIONS: &str = "insufficient_confirmations";
         const SKIP_REASON_INSUFFICIENT_VOTES: &str = "insufficient_votes";
+        const SKIP_REASON_SOFT_EXPIRY: &str = "soft_expiry";
 
         let mut eligible_withdrawals = Vec::new();
+
+        // Determine the minimum bitcoin block height we should consider for
+        // withdrawals.
+        let min_bitcoin_height = params
+            .bitcoin_chain_tip
+            .block_height
+            .saturating_sub(expiry_window.into());
+
+        // We also calculate the minimum bitcoin block height for withdrawals
+        // that are considered valid (not expired) based on the soft expiry. We
+        // will not propose these withdrawals in the sweep transaction, but we
+        // will log them as skipped.
+        let min_soft_bitcoin_height = min_bitcoin_height.saturating_add(soft_expiry_window.into());
 
         // Fetch pending withdrawal requests from storage. This method, with
         // the given inputs, performs the following filtering according to
@@ -1661,7 +1677,7 @@ where
             .get_pending_accepted_withdrawal_requests(
                 params.bitcoin_chain_tip.as_ref(),
                 params.stacks_chain_tip,
-                withdrawal_blocks_expiry,
+                min_bitcoin_height,
                 params.signature_threshold,
             )
             .await?;
@@ -1675,6 +1691,17 @@ where
         // Iterate over the pending withdrawal requests we fetched above and
         // validate them against the remaining consensus rules.
         for req in pending_withdraw_requests {
+            if req.bitcoin_block_height < min_soft_bitcoin_height {
+                tracing::debug!(
+                    request_id = req.request_id,
+                    bitcoin_block_height = req.bitcoin_block_height,
+                    min_soft_bitcoin_height,
+                    reason = SKIP_REASON_SOFT_EXPIRY,
+                    message = REQUEST_SKIPPED_MESSAGE
+                );
+                continue;
+            }
+
             // [8] Ensure that the withdrawal request amount is above the dust
             // limit.
             if req.amount <= WITHDRAWAL_DUST_LIMIT {
@@ -1711,11 +1738,11 @@ where
 
             // [3] Ensure that we have the required number of confirmations for
             // the withdrawal request.
-            if num_confirmations < WITHDRAWAL_MIN_CONFIRMATIONS {
+            if num_confirmations < min_confirmations.into() {
                 tracing::debug!(
                     request_id = req.request_id,
                     num_confirmations,
-                    required_confirmations = WITHDRAWAL_MIN_CONFIRMATIONS,
+                    required_confirmations = min_confirmations,
                     reason = SKIP_REASON_INSUFFICIENT_CONFIRMATIONS,
                     message = REQUEST_SKIPPED_MESSAGE
                 );
@@ -1850,21 +1877,12 @@ where
                 Self::get_eligible_pending_deposit_requests(&storage, self.context_window, &params)
                     .await?;
 
-            // Calculate the withdrawal expiry window, which is effectively how
-            // many canonical bitcoin blocks back in time we will look for
-            // eligible requests. We subtract the withdrawal expiry buffer from
-            // the withdrawal expiry period to ensure that we don't include
-            // requests that are about to expire. See the constant descriptions
-            // for more details.
-            let withdrawal_expiry_window = WITHDRAWAL_BLOCKS_EXPIRY
-                .saturating_sub(WITHDRAWAL_EXPIRY_BUFFER)
-                .try_into()
-                .map_err(|_| Error::TypeConversion)?;
-
             // Fetch eligible withdrawal requests.
             let withdrawals = Self::get_eligible_pending_withdrawal_requests(
                 &storage,
-                withdrawal_expiry_window,
+                WITHDRAWAL_BLOCKS_EXPIRY,
+                WITHDRAWAL_EXPIRY_BUFFER,
+                WITHDRAWAL_MIN_CONFIRMATIONS,
                 &params,
             )
             .await?;

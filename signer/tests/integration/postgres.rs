@@ -4454,7 +4454,7 @@ async fn pending_rejected_withdrawal_no_events() {
 
     // Append some blocks to ensure we have expired requests; we expire the
     // requests in the first 5 canonical blocks, while keeping the others valid.
-    for _ in chain_depth..WITHDRAWAL_BLOCKS_EXPIRY + 5 {
+    for _ in chain_depth..WITHDRAWAL_BLOCKS_EXPIRY as u64 + 5 {
         let new_block = BitcoinBlock {
             block_hash: fake::Faker.fake_with_rng(&mut rng),
             block_height: bitcoin_chain_tip.block_height + 1,
@@ -4509,7 +4509,7 @@ async fn pending_rejected_withdrawal_no_events() {
         let confirmations = bitcoin_chain_tip.block_height - withdrawal.bitcoin_block_height;
         assert_eq!(
             pending_rejected.contains(&withdrawal),
-            confirmations > WITHDRAWAL_BLOCKS_EXPIRY
+            confirmations > WITHDRAWAL_BLOCKS_EXPIRY as u64
         );
         non_expired += 1;
     }
@@ -4578,7 +4578,7 @@ async fn pending_rejected_withdrawal_expiration() {
 
         assert_le!(
             new_block.block_height - request.bitcoin_block_height,
-            WITHDRAWAL_BLOCKS_EXPIRY
+            WITHDRAWAL_BLOCKS_EXPIRY as u64
         );
 
         // Check that now we do get it as rejected
@@ -4606,7 +4606,7 @@ async fn pending_rejected_withdrawal_expiration() {
 
     assert_gt!(
         new_block.block_height - request.bitcoin_block_height,
-        WITHDRAWAL_BLOCKS_EXPIRY
+        WITHDRAWAL_BLOCKS_EXPIRY as u64
     );
 
     // Check that now we do get it as rejected
@@ -5065,7 +5065,7 @@ mod get_pending_accepted_withdrawal_requests {
     /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │ The request is confirmed (✔)
     ///          └─▲──────┘  └─▲──────┘  └─▲──────┘ in S2 and we test different
     ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐ context windows.
-    /// Stacks:  │   S1 ✔ ├──►   S2   ├──►   S3   │
+    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3   │
     ///          └────────┘  └────────┘  └────────┘
     /// ```
     #[tokio::test]
@@ -5096,34 +5096,36 @@ mod get_pending_accepted_withdrawal_requests {
         assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
 
-        // Store a withdrawal request, confirmed in B1/S1.
-        store_withdrawal_request(&db, 1, &bitcoin_1, &stacks_1, &[true, true]).await;
+        // Store a withdrawal request, confirmed in B2/S2.
+        store_withdrawal_request(&db, 1, &bitcoin_2, &stacks_2, &[true, true]).await;
 
-        // Context window = 4, we should get the request.
+        dbg!(&bitcoin_1.block_height);
+
+        // Min bitcoin height = 0, we should get the request.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                4,
+                0,
                 signature_threshold,
             )
             .await
             .expect("failed to query db");
-        assert_eq!(requests.len(), 1);
+        assert_eq!(requests.len(), 1, "min height: 0");
 
-        // Context window 3, we should get the request.
+        // Min bitcoin height = 1, we should get the request.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                3,
+                1,
                 signature_threshold,
             )
             .await
             .expect("failed to query db");
-        assert_eq!(requests.len(), 1);
+        assert_eq!(requests.len(), 1, "min height: 1");
 
-        // Context window 2, the request should NOT be returned.
+        // Min bitcoin height = 2, the request should NOT be returned.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
@@ -5133,7 +5135,19 @@ mod get_pending_accepted_withdrawal_requests {
             )
             .await
             .expect("failed to query db");
-        assert!(requests.is_empty());
+        assert!(requests.is_empty(), "min height: 2");
+
+        // Min bitcoin height = 3, the request should NOT be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                3,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+        assert!(requests.is_empty(), "min height: 1");
     }
 
     /// Asserts that requests with a confirmed rejection event are not returned.
@@ -5153,7 +5167,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = signer::testing::storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_block = BitcoinBlock::new_genesis();
@@ -5172,7 +5186,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block.block_hash,
                 &stacks_block.block_hash,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5187,7 +5201,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block.block_hash,
                 &stacks_block.block_hash,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5220,7 +5234,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -5258,7 +5272,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5293,7 +5307,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -5328,7 +5342,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5346,7 +5360,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5373,7 +5387,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = signer::testing::storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_block = BitcoinBlock::new_genesis();
@@ -5398,7 +5412,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block.block_hash,
                 &stacks_block.block_hash,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5429,7 +5443,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = signer::testing::storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_block = BitcoinBlock::new_genesis();
@@ -5453,7 +5467,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block.block_hash,
                 &stacks_block.block_hash,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5496,7 +5510,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -5541,7 +5555,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5580,7 +5594,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_block_1 = BitcoinBlock::new_genesis();
@@ -5601,7 +5615,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block_1.block_hash,
                 &stacks_block_1.block_hash,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5618,7 +5632,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 &bitcoin_block_1.block_hash,
                 &stacks_block_1.block_hash,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5653,7 +5667,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -5685,7 +5699,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5701,7 +5715,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5735,7 +5749,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -5776,7 +5790,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await
@@ -5808,7 +5822,7 @@ mod get_pending_accepted_withdrawal_requests {
         let db = storage::new_test_database().await;
 
         let signature_threshold = 2;
-        let context_window = 1_000;
+        let min_block_height = 0;
 
         // Bitcoin blocks:
         let bitcoin_1 = BitcoinBlock::new_genesis();
@@ -5842,7 +5856,7 @@ mod get_pending_accepted_withdrawal_requests {
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
-                context_window,
+                min_block_height,
                 signature_threshold,
             )
             .await

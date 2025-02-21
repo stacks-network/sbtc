@@ -739,11 +739,15 @@ impl AcceptWithdrawalV1 {
         //
         // Check that this is actually a pending and accepted withdrawal
         // request.
+        let min_withdrawal_bitcoin_block_height = req_ctx
+            .chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_EXPIRY_BUFFER.into());
         let withdrawal_requests = db
             .get_pending_accepted_withdrawal_requests(
                 &req_ctx.chain_tip.block_hash,
                 &req_ctx.stacks_chain_tip,
-                req_ctx.context_window,
+                min_withdrawal_bitcoin_block_height,
                 req_ctx.signatures_required,
             )
             .await?;
@@ -1121,7 +1125,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         let blocks_observed = req_ctx.chain_tip.block_height - request_block_height;
 
         // 4. The request is expired.
-        if blocks_observed < WITHDRAWAL_BLOCKS_EXPIRY {
+        if blocks_observed < WITHDRAWAL_BLOCKS_EXPIRY.into() {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 

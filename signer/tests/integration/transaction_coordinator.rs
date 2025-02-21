@@ -3525,7 +3525,7 @@ mod get_eligible_pending_withdrawal_requests {
         let signer_keys = signer_set.keys.iter().copied().collect();
 
         // Create a new bitcoin chain with 31 blocks and a sibling stacks chain
-        // anchored starting at block 1.
+        // anchored starting at block 0.
         let bitcoin_chain = BitcoinChain::new_with_length(chains_length as usize);
         let stacks_chain = StacksChain::new_anchored(&bitcoin_chain);
 
@@ -3561,61 +3561,116 @@ mod get_eligible_pending_withdrawal_requests {
         amount: u64,
         num_approves: usize,
         num_expected_results: usize,
+        expiry_window: u16,
+        expiry_buffer: u16,
+        min_confirmations: u16,
         at_block_height: usize,
+    }
+
+    impl Default for TestParams {
+        fn default() -> Self {
+            Self {
+                chain_length: 8,
+                signature_threshold: 2,
+                sbtc_limits: SbtcLimits::unlimited(),
+                amount: 1_000,
+                num_approves: 3,
+                num_expected_results: 1,
+                expiry_window: 24,
+                expiry_buffer: 0,
+                min_confirmations: 0,
+                at_block_height: 0,
+            }
+        }
     }
 
     /// Asserts that
     /// [`TxCoordinatorEventLoop::get_eligible_pending_withdrawal_requests`]
     /// correctly filters requests based on its parameters.
+    #[test_case(TestParams::default(); "should_pass_all_validations")]
     #[test_case(TestParams {
-        signature_threshold: 2,
-        num_approves: 3,
-        amount: 1_000,
-        sbtc_limits: SbtcLimits::unlimited(),
-        chain_length: 8,
-        at_block_height: 2,
-        num_expected_results: 1,
-    }; "should_pass_all_validations")]
-    #[test_case(TestParams {
-        signature_threshold: 2,
-        num_approves: 3,
         amount: 100,
-        sbtc_limits: SbtcLimits::unlimited(),
-        chain_length: 8,
-        at_block_height: 2,
         num_expected_results: 0,
+        ..Default::default()
     }; "below_dust_limit")]
     #[test_case(TestParams {
-        signature_threshold: 2,
-        num_approves: 3,
         amount: 1_000,
         sbtc_limits: SbtcLimits::zero(),
-        chain_length: 8,
-        at_block_height: 2,
         num_expected_results: 0,
+        ..Default::default()
     }; "amount_over_per_withdrawal_limit")]
     #[test_case(TestParams {
-        signature_threshold: 2,
-        num_approves: 3,
-        amount: 1_000,
-        sbtc_limits: SbtcLimits::unlimited(),
-        chain_length: 5,
-        at_block_height: 0,
+        // This case will calculate the confirmations as:
+        // chain_length (10) - min_confirmations (4) = 4 (maximum block height),
+        // at_block_height (5) > 4 (maximum).
+        chain_length: 10,
+        at_block_height: 5,
+        min_confirmations: 6,
         num_expected_results: 0,
-    }; "insufficient_confirmations")]
+        ..Default::default()
+    }; "insufficient_confirmations_one_too_few")]
+    #[test_case(TestParams {
+        // This case will calculate the confirmations as:
+        // chain_length (10) - min_confirmations(6) = 4 (maximum block height), 
+        // at_block_height (4) <= 4.
+        chain_length: 10,
+        at_block_height: 4,
+        min_confirmations: 6,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "exact_number_of_confirmations_allowed")]
     #[test_case(TestParams {
         signature_threshold: 2,
         num_approves: 1,
-        amount: 1_000,
-        sbtc_limits: SbtcLimits::unlimited(),
-        chain_length: 8,
-        at_block_height: 2,
         num_expected_results: 0,
+        ..Default::default()
     }; "insufficient_votes")]
+    #[test_case(TestParams {
+        // This case will calculate the soft expiry as:
+        // chain_length - expiry_window + expiry_buffer = 4 and 3 < 4.
+        chain_length: 10,
+        expiry_window: 10,
+        expiry_buffer: 4,
+        at_block_height: 3,
+        num_expected_results: 0,
+        ..Default::default()
+    }; "soft_expiry_one_block_too_old")]
+    #[test_case(TestParams {
+        // This case will calculate the soft expiry as:
+        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4, 
+        // and at_block_height (4) == 4.
+        chain_length: 10,
+        expiry_window: 10,
+        expiry_buffer: 4,
+        at_block_height: 4,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "soft_expiry_exact_block_allowed")]
+    #[test_case(TestParams {
+        // This case will calculate the hard expiry as:
+        // chain_length (10) - expiry_window (5) = 5, 
+        // and at_block_height (5) == 5
+        chain_length: 10,
+        expiry_window: 5,
+        expiry_buffer: 0,
+        at_block_height: 5,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "hard_expiry_exact_block_allowed")]
+    #[test_case(TestParams {
+        // This case will calculate the hard expiry as:
+        // chain_length (10) - expiry_window (5) = 5, 
+        // and at_block_height (4) < 5
+        chain_length: 10,
+        expiry_window: 5,
+        expiry_buffer: 0,
+        at_block_height: 4,
+        num_expected_results: 0,
+        ..Default::default()
+    }; "hard_expiry_one_block_too_old")]
     #[test_log::test(tokio::test)]
     async fn test_validations(params: TestParams) {
         let db = testing::storage::new_test_database().await;
-        let expiry_blocks = 1_000;
 
         let (bitcoin_chain, stacks_chain, signer_set, signer_keys) =
             test_setup(&db, params.chain_length + 1).await;
@@ -3649,7 +3704,9 @@ mod get_eligible_pending_withdrawal_requests {
         //Get pending withdrawals from coordinator
         let pending_withdrawals = MockedCoordinator::get_eligible_pending_withdrawal_requests(
             &db,
-            expiry_blocks,
+            params.expiry_window,
+            params.expiry_buffer,
+            params.min_confirmations,
             &get_requests_params,
         )
         .await

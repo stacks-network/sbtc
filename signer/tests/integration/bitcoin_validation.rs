@@ -384,7 +384,7 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
     setup.store_withdrawal_decisions(&db).await;
 
     let chain_tip = faucet
-        .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS)
+        .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS.into())
         .pop()
         .unwrap();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
@@ -493,7 +493,7 @@ async fn swept_withdrawals_fail_validation() {
     // votes, it's possible that validation will fail for a reason that's
     // different from what we're expecting.
     let chain_tip = faucet
-        .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS)
+        .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS.into())
         .pop()
         .unwrap();
     backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;

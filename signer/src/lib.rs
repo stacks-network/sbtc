@@ -116,14 +116,14 @@ pub const WITHDRAWAL_DUST_LIMIT: u64 = 546;
 /// The value here was taken from the last paragraph of the opening comment
 /// of https://github.com/stacks-network/sbtc/discussions/12 and in the
 /// comments of https://github.com/stacks-network/sbtc/issues/16.
-pub const WITHDRAWAL_MIN_CONFIRMATIONS: u64 = 6;
+pub const WITHDRAWAL_MIN_CONFIRMATIONS: u16 = 6;
 
 /// This is the number of bitcoin blocks that a withdrawal request will
 /// remain live before it expires and is considered rejected.
 ///
 /// This is the value suggested in
 /// https://github.com/stacks-network/sbtc/issues/620.
-pub const WITHDRAWAL_BLOCKS_EXPIRY: u64 = 24;
+pub const WITHDRAWAL_BLOCKS_EXPIRY: u16 = 24;
 
 /// This is the number of bitcoin blocks prior to [`WITHDRAWAL_BLOCKS_EXPIRY`]
 /// in which the coordinator will cease to include a withdrawal request in sweep
@@ -131,7 +131,7 @@ pub const WITHDRAWAL_BLOCKS_EXPIRY: u64 = 24;
 ///
 /// This is the value in https://github.com/stacks-network/sbtc/issues/1363's
 /// proposed "buffer for expiring requests" section.
-pub const WITHDRAWAL_EXPIRY_BUFFER: u64 = 6;
+pub const WITHDRAWAL_EXPIRY_BUFFER: u16 = 6;
 
 /// This is the default maximum virtual size of a bitcoin transaction
 /// package. This value is the default limit set in bitcoin core, and

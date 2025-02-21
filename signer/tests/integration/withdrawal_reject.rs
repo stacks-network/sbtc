@@ -191,7 +191,7 @@ async fn reject_withdrawal_validation_happy_path() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate more blocks then backfill the DB
-    let mut hashes = faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY);
+    let mut hashes = faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY.into());
     let last = hashes.pop().unwrap();
     backfill_bitcoin_blocks(&db, rpc, &last).await;
 
@@ -254,7 +254,7 @@ async fn reject_withdrawal_validation_not_final() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate more blocks then backfill the DB
-    let mut hashes = faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY - 2);
+    let mut hashes = faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 - 2);
     let last = hashes.pop().unwrap();
     backfill_bitcoin_blocks(&db, rpc, &last).await;
 
