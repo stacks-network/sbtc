@@ -192,7 +192,7 @@ pub trait DbRead {
     ///    needed separately. Use
     ///    [`DbRead::get_withdrawal_request_signer_votes`] to fetch the votes
     ///    and perform this verification separately.
-    /// -  The `context_window` is _inclusive_.
+    /// -  The `min_bitcoin_height` is _inclusive_.
     fn get_pending_accepted_withdrawal_requests(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
