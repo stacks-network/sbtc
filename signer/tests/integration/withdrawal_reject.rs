@@ -113,10 +113,8 @@ async fn reject_withdrawal_validation_happy_path() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control. The
-    // signers normally have a UTXO, so we add one here too.
+    // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
-    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -134,6 +132,11 @@ async fn reject_withdrawal_validation_happy_path() {
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -169,10 +172,8 @@ async fn reject_withdrawal_validation_not_final() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control. The
-    // signers normally have a UTXO, so we add one here too.
+    // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
-    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -191,6 +192,11 @@ async fn reject_withdrawal_validation_not_final() {
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -241,10 +247,8 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control. The
-    // signers normally have a UTXO, so we add one here too.
+    // have a record of the scriptPubKey that the signers control. 
     setup.store_dkg_shares(&db).await;
-    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -262,6 +266,11 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (mut reject_withdrawal_tx, mut req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -307,10 +316,8 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control. The
-    // signers normally have a UTXO, so we add one here too.
+    // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
-    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -328,6 +335,11 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (mut reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -374,10 +386,8 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control. The
-    // signers normally have a UTXO, so we add one here too.
+    // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
-    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -395,6 +405,11 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (mut reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -443,10 +458,8 @@ async fn reject_withdrawal_validation_request_completed() {
     set_withdrawal_completed(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control. The
-    // signers normally have a UTXO, so we add one here too.
+    // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
-    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -464,6 +477,11 @@ async fn reject_withdrawal_validation_request_completed() {
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -517,6 +535,11 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // have a record of the scriptPubKey that the signers control. We need
     // this so that the donation gets picked up correctly below.
     setup.store_dkg_shares(&db).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
 
     // Different: We submit a sweep transaction into the mempool so that
     // the TestSweepSetup2 struct has the sweep_tx_info set. We also need
