@@ -2150,8 +2150,10 @@ impl super::DbRead for PgStore {
         let output_type = model::TxOutputType::SignersOutput;
         let chain_tip_hash = &bitcoin_chain_tip.block_hash;
         let signer_utxo_fut = self.get_utxo(chain_tip_hash, output_type, min_block_height);
+        // If this returns None, then the sweep itself could be in the
+        // mempool. If that's the case then this is definitely active.
         let Some(signer_utxo) = signer_utxo_fut.await? else {
-            return Ok(false);
+            return Ok(true);
         };
 
         Ok(signer_utxo.block_height + min_confirmations >= bitcoin_chain_tip.block_height)

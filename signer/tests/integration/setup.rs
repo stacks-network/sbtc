@@ -25,6 +25,7 @@ use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
 use signer::bitcoin::utxo;
+use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
@@ -854,6 +855,29 @@ impl TestSweepSetup2 {
         let aggregated_signer = &self.signers.signer;
         let signer_utxo = aggregated_signer.get_utxos(rpc, None).pop().unwrap();
 
+        // Well we want a BitcoinCoreClient, so we create one using the
+        // context. Not, the best thing to do, sorry. TODO: pass in a
+        // bitcoin core client object.
+        let ctx = TestContext::builder()
+            .with_first_bitcoin_core_client()
+            .with_in_memory_storage()
+            .with_mocked_emily_client()
+            .with_mocked_stacks_client()
+            .build();
+
+        let outpoint = OutPoint::new(signer_utxo.txid, signer_utxo.vout);
+        let btc = ctx.bitcoin_client;
+        let txids = btc.get_tx_spending_prevout(&outpoint).unwrap();
+
+        let last_fees = txids
+            .iter()
+            .filter_map(|txid| btc.get_mempool_entry(txid).unwrap())
+            .map(|entry| Fees {
+                total: entry.vsize,
+                rate: entry.fees.base.to_sat() as f64 / entry.vsize as f64,
+            })
+            .max_by(|fee1, fee2| fee1.rate.total_cmp(&fee2.rate));
+
         let withdrawals = self
             .withdrawals
             .iter()
@@ -875,7 +899,7 @@ impl TestSweepSetup2 {
                 },
                 fee_rate: 10.0,
                 public_key: aggregated_signer.keypair.x_only_public_key().0,
-                last_fees: None,
+                last_fees,
                 magic_bytes: [b'T', b'3'],
             },
             accept_threshold: 4,

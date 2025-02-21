@@ -19,6 +19,7 @@ use fake::Fake;
 use rand::SeedableRng;
 use signer::testing::context::*;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
+use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::set_withdrawal_completed;
@@ -600,6 +601,137 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
         }
         err => panic!("unexpected error during validation {err}"),
     }
+
+    testing::storage::drop_db(db).await;
+}
+
+/// For this test we check that the `RejectWithdrawalV1::validate` function
+/// returns a withdrawal validation error with a RequestStillActive
+/// message when the database indicates that it is possible that the
+/// withdrawal request is being fulfilled by a sweep transaction in the
+/// mempool.
+#[tokio::test]
+async fn reject_withdrawal_validation_request_still_active() {
+    // Normal: this generates the blockchain as well as a transaction
+    // sweeping out the funds for a withdrawal request. This is just setup
+    // and should be essentially the same between tests.
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let amount = 1_000_000;
+    let signers = TestSignerSet::new(&mut rng);
+    let amounts = [
+        SweepAmounts {
+            amount,
+            max_fee: amount / 2,
+            is_deposit: true,
+        },
+        SweepAmounts {
+            amount,
+            max_fee: amount / 2,
+            is_deposit: false,
+        },
+    ];
+
+    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
+
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    // Normal: the request has not been marked as completed in the smart
+    // contract.
+    set_withdrawal_incomplete(&mut ctx).await;
+
+    // Normal: the signer follows the bitcoin blockchain and event observer
+    // should be getting new block events from bitcoin-core. We haven't
+    // hooked up our block observer, so we need to manually update the
+    // database with new bitcoin block headers.
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Different: we need to store a row in the dkg_shares table so that we
+    // have a record of the scriptPubKey that the signers control. We need
+    // this so that the donation gets picked up correctly below.
+    setup.store_dkg_shares(&db).await;
+
+    // Normal: The signers normally have a UTXO, so we add one here too. It
+    // is necessary when checking for whether the withdrawal being
+    // fulfilled by a sweep transaction that is in the mempool.
+    setup.store_donation(&db).await;
+
+    // Different: We submit a sweep transaction into the mempool so that
+    // the TestSweepSetup2 struct has the sweep_tx_info set. We also need
+    // to submit the transaction in order for
+    // `TestSweepSetup2::store_bitcoin_withdrawals_outputs` to work as
+    // expected.
+    setup.submit_sweep_tx(rpc, faucet);
+
+    // Different: We're adding a row that let the signer know that someone
+    // may have tried to fulfill the withdrawal request. If that
+    // transaction is spending the current signer UTXO, then it could
+    // possibly be in the mempool. Since the signers' UTXO is a donation,
+    // we're saying that the coordinator may have tried to fulfill the
+    // withdrawal.
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
+
+    // Normal: the request and how the signers voted needs to be added to
+    // the database. Here the bitmap in the withdrawal request object
+    // corresponds to how the signers voted.
+    setup.store_withdrawal_requests(&db).await;
+    setup.store_withdrawal_decisions(&db).await;
+
+    // Normal: We do not reject a withdrawal requests until more than
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
+    // contract that created the withdrawal request has bene observed.
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
+
+    // Normal: the signer follows the bitcoin blockchain and event observer
+    // should be getting new block events from bitcoin-core. We haven't
+    // hooked up our block observer, so we need to manually update the
+    // database with new bitcoin block headers.
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Generate the transaction and corresponding request context.
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
+
+    let validation_result = reject_withdrawal_tx.validate(&ctx, &req_ctx).await;
+    match validation_result.unwrap_err() {
+        Error::WithdrawalRejectValidation(ref err) => {
+            assert_eq!(err.error, WithdrawalRejectErrorMsg::RequestStillActive)
+        }
+        err => panic!("unexpected error during validation {err}"),
+    }
+
+    let _withdrawals = setup.withdrawals.drain(..).collect::<Vec<_>>();
+    setup.submit_sweep_tx(rpc, faucet);
+
+    faucet.generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS - 1);
+
+    setup.store_sweep_tx(&db).await;
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
+
+    let validation_result = reject_withdrawal_tx.validate(&ctx, &req_ctx).await;
+    match validation_result.unwrap_err() {
+        Error::WithdrawalRejectValidation(ref err) => {
+            assert_eq!(err.error, WithdrawalRejectErrorMsg::RequestStillActive)
+        }
+        err => panic!("unexpected error during validation {err}"),
+    }
+
+    // Generate more blocks and backfill the DB
+    faucet.generate_blocks(1);
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    // Generate the transaction and corresponding request context.
+    let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
+
+    reject_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
     testing::storage::drop_db(db).await;
 }
