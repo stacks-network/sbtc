@@ -1,5 +1,4 @@
 use bitcoin::hashes::Hash;
-use bitcoincore_rpc::RpcApi;
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
 use sbtc::testing::regtest;
@@ -529,7 +528,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    let chain_tip = fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     // Different: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. We need
@@ -567,7 +566,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
         aggregate_key: setup.signers.aggregate_key().into(),
         is_valid_tx: false,
         will_sign: false,
-        chain_tip: rpc.get_blockchain_info().unwrap().best_block_hash.into(),
+        chain_tip,
         sighash: bitcoin::TapSighash::from_byte_array([23; 32]).into(),
     };
     db.write_bitcoin_txs_sighashes(&[signer_tx_sighash])
