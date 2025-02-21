@@ -2,9 +2,6 @@
 
 use std::sync::Arc;
 
-use bitcoin::TxOut;
-use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey;
-use bitcoincore_rpc_json::GetRawTransactionResultVout;
 use bitcoin::absolute::Height;
 use bitcoin::transaction::Version;
 use bitcoin::Amount;
@@ -14,6 +11,7 @@ use bitcoin::Denomination;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
+use bitcoin::TxOut;
 use bitcoin::Txid;
 use bitcoin::Wtxid;
 use bitcoincore_rpc::json::EstimateMode;
@@ -26,7 +24,9 @@ use bitcoincore_rpc_json::GetBlockchainInfoResult;
 use bitcoincore_rpc_json::GetMempoolEntryResult;
 use bitcoincore_rpc_json::GetNetworkInfoResult;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
+use bitcoincore_rpc_json::GetRawTransactionResultVout;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
+use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey;
 use bitcoincore_rpc_json::GetTxOutResult;
 use serde::Deserialize;
 use url::Url;
@@ -145,19 +145,24 @@ impl<T> fake::Dummy<T> for BitcoinTxInfo {
         tracing::debug!("Generating fake BitcoinTxInfo");
         let tx = Transaction {
             version: Version::TWO,
-            lock_time: bitcoin::absolute::LockTime::Blocks(bitcoin::absolute::Height::from_consensus(10).unwrap()),
+            lock_time: bitcoin::absolute::LockTime::Blocks(
+                bitcoin::absolute::Height::from_consensus(10).unwrap(),
+            ),
             input: vec![],
-            output: vec![TxOut {
-                value: Amount::from_sat(1000),
-                script_pubkey: ScriptBuf::default(),
-            }, TxOut {
-                value: Amount::from_sat(2000),
-                script_pubkey: ScriptBuf::default(),
-            }, TxOut {
-                value: Amount::from_sat(3000),
-                script_pubkey: ScriptBuf::default(),
-            }],
-
+            output: vec![
+                TxOut {
+                    value: Amount::from_sat(1000),
+                    script_pubkey: ScriptBuf::default(),
+                },
+                TxOut {
+                    value: Amount::from_sat(2000),
+                    script_pubkey: ScriptBuf::default(),
+                },
+                TxOut {
+                    value: Amount::from_sat(3000),
+                    script_pubkey: ScriptBuf::default(),
+                },
+            ],
         };
         let vout1 = GetRawTransactionResultVout {
             value: Amount::from_sat(4000),

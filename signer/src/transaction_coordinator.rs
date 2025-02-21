@@ -1093,9 +1093,7 @@ where
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
             .await;
 
-        tracing::debug!(
-            "signed sign request"
-        );
+        tracing::debug!("signed sign request");
 
         let status = if tx.is_ok() { "success" } else { "failure" };
 
@@ -1114,7 +1112,7 @@ where
         )
         .increment(1);
 
-    tracing::debug!("submitting tx result");
+        tracing::debug!("submitting tx result");
 
         // Submit the transaction to the Stacks node
         let submit_tx_result = self.context.get_stacks_client().submit_tx(&tx?).await;
@@ -1203,26 +1201,18 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
-        tracing::debug!(
-            "constructing withdrawal accept sign request"
-        );
+        tracing::debug!("constructing withdrawal accept sign request");
         // Retrieve the Bitcoin sweep transaction and compute the assessed fee
         // from the Bitcoin node
-        let btc_client = self
-            .context
-            .get_bitcoin_client();
-        tracing::debug!(
-            "getting tx info"
-        );
+        let btc_client = self.context.get_bitcoin_client();
+        tracing::debug!("getting tx info");
         let tx_info = btc_client
             .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
             .await?
             .ok_or_else(|| {
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
             })?;
-        tracing::debug!(
-            "got tx info"
-        );
+        tracing::debug!("got tx info");
         let outpoint = req.withdrawal_outpoint();
         tracing::debug!(
             outpoint = %outpoint,
@@ -1232,9 +1222,7 @@ where
             .assess_output_fee(outpoint.vout as usize)
             .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
 
-        tracing::debug!(
-            "assessed bitcoin fee"
-        );
+        tracing::debug!("assessed bitcoin fee");
 
         // TODO: Add the signer_bitmap to SweptWithdrawalRequest
         let req_id = QualifiedRequestId {
@@ -1243,18 +1231,14 @@ where
             block_hash: req.block_hash,
         };
 
-        tracing::debug!(
-            "getting votes"
-        );
+        tracing::debug!("getting votes");
         let votes = self
             .context
             .get_storage()
             .get_withdrawal_request_signer_votes(&req_id, bitcoin_aggregate_key)
             .await?;
 
-        tracing::debug!(
-            "got votes"
-        );
+        tracing::debug!("got votes");
         let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
             id: req_id,
             outpoint: req.withdrawal_outpoint(),
@@ -1265,10 +1249,7 @@ where
             sweep_block_height: req.sweep_block_height,
         });
 
-
-        tracing::debug!(
-            "contract call"
-        );
+        tracing::debug!("contract call");
         // Estimate the fee for the stacks transaction
         let tx_fee = self
             .context
@@ -1276,9 +1257,7 @@ where
             .estimate_fees(wallet, &contract_call, FeePriority::Medium)
             .await?;
 
-        tracing::debug!(
-            "tx fee"
-        );
+        tracing::debug!("tx fee");
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
         let tx = multi_tx.tx();
@@ -1291,9 +1270,7 @@ where
             txid: tx.txid(),
         };
 
-        tracing::debug!(
-            "sign request"
-        );
+        tracing::debug!("sign request");
 
         Ok((sign_request, multi_tx))
     }

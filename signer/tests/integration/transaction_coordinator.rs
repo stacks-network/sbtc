@@ -3660,16 +3660,68 @@ async fn process_withdrawal(
                 db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
                     .await
                     .unwrap();
+                let script = db
+                    .get_encrypted_dkg_shares(aggregate_key)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .script_pubkey
+                    .clone()
+                    .0;
+                let amount = request.amount;
+                let recipient = request.recipient.0.clone();
                 context
                     .with_bitcoin_client(|client| {
                         client.expect_get_tx_info().returning(move |_, _| {
+                            let recipient = recipient.clone();
                             tracing::debug!("Getting tx info");
                             Box::pin({
                                 let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+                                let vin1 = signer::bitcoin::rpc::BitcoinTxVin {
+                                    details: bitcoincore_rpc_json::GetRawTransactionResultVin {
+                                        sequence: 0,
+                                        coinbase: None,
+                                        txid: None,
+                                        script_sig: None,
+                                        vout: None,
+                                        txinwitness: None,
+                                    },
+                                    prevout: signer::bitcoin::rpc::BitcoinTxVinPrevout {
+                                        generated: false,
+                                        height: bitcoin_block.block_height - 1,
+                                        value: Amount::from_sat(amount),
+                                        script_pub_key: signer::bitcoin::rpc::PrevoutScriptPubKey {
+                                            script: script.clone(),
+                                        },
+                                    },
+                                };
                                 async move {
                                     Ok(Some(BitcoinTxInfo {
                                         block_hash: sweep_tx_ref.block_hash.into(),
                                         txid: sweep_tx_ref.txid.into(),
+                                        vin: vec![vin1],
+                                        tx: Transaction {
+                                            version: bitcoin::transaction::Version::TWO,
+                                            lock_time: bitcoin::absolute::LockTime::Blocks(
+                                                bitcoin::absolute::Height::from_consensus(10)
+                                                    .unwrap(),
+                                            ),
+                                            input: vec![],
+                                            output: vec![
+                                                bitcoin::TxOut {
+                                                    value: Amount::from_sat(amount),
+                                                    script_pubkey: recipient.clone(),
+                                                },
+                                                bitcoin::TxOut {
+                                                    value: Amount::from_sat(amount),
+                                                    script_pubkey: recipient.clone(),
+                                                },
+                                                bitcoin::TxOut {
+                                                    value: Amount::from_sat(amount),
+                                                    script_pubkey: recipient.clone(),
+                                                },
+                                            ],
+                                        },
                                         ..fake::Faker.fake_with_rng(&mut rng)
                                     }))
                                 }
