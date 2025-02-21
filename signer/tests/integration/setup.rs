@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::ops::Deref;
 
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
@@ -48,6 +49,7 @@ use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::postgres::PgStore;
+use signer::storage::DbRead;
 use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
@@ -342,31 +344,6 @@ impl TestSweepSetup {
         }
     }
 
-    /// Use the bitmap in the `self.withdrawal_request.signer_bitmap` field to
-    /// generate the corresponding deposit signer votes and store these
-    /// decisions in the database.
-    pub async fn store_withdrawal_decisions(&self, db: &PgStore) {
-        let withdrawal_signers: Vec<model::WithdrawalSigner> = self
-            .signer_keys
-            .iter()
-            .copied()
-            .zip(self.withdrawal_request.signer_bitmap)
-            .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
-                request_id: self.withdrawal_request.request_id,
-                block_hash: self.withdrawal_request.block_hash,
-                txid: self.withdrawal_request.txid,
-                signer_pub_key,
-                is_accepted: !is_rejected,
-            })
-            .collect();
-
-        for decision in withdrawal_signers {
-            db.write_withdrawal_signer_decision(&decision)
-                .await
-                .unwrap();
-        }
-    }
-
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
         let block = model::StacksBlock {
             block_hash: self.withdrawal_request.block_hash,
@@ -438,6 +415,18 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
         db.write_bitcoin_block(&bitcoin_block).await.unwrap();
         block_header = rpc.get_block_header_info(&parent_header_hash).unwrap();
     }
+
+    let block_hash = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    assert_eq!(block_hash.deref(), chain_tip);
+}
+
+/// Fetch all block headers from bitcoin-core and store it in the database.
+pub async fn fetch_canonical_bitcoin_blockchain(db: &PgStore, rpc: &Client) -> BitcoinBlockHash {
+    let chain_tip_info = rpc.get_blockchain_info().unwrap();
+
+    backfill_bitcoin_blocks(db, rpc, &chain_tip_info.best_block_hash).await;
+
+    chain_tip_info.best_block_hash.into()
 }
 
 pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
