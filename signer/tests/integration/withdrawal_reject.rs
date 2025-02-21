@@ -247,7 +247,7 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control. 
+    // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
