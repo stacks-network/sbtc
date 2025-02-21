@@ -646,7 +646,7 @@ where
     #[tracing::instrument(skip_all)]
     async fn construct_and_sign_stacks_sbtc_response_transactions(
         &mut self,
-        chain_tip: &model::BitcoinBlockHash,
+        chain_tip: &model::BitcoinBlockRef,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         self.construct_and_sign_stacks_sbtc_depost_response_transactions(
@@ -776,10 +776,10 @@ where
     #[tracing::instrument(skip_all)]
     async fn construct_and_sign_stacks_sbtc_withdrawal_response_transactions(
         &mut self,
-        chain_tip: &model::BitcoinBlockHash,
+        chain_tip: &model::BitcoinBlockRef,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
+        let wallet = SignerWallet::load(&self.context, &chain_tip.block_hash).await?;
         let stacks = self.context.get_stacks_client();
 
         // Fetch withdrawal requests from the database where
@@ -792,7 +792,7 @@ where
         let withdrawal_requests = self
             .context
             .get_storage()
-            .get_swept_withdrawal_requests(chain_tip, self.context_window)
+            .get_swept_withdrawal_requests(&chain_tip.block_hash, self.context_window)
             .await?;
 
         if withdrawal_requests.is_empty() {
@@ -836,7 +836,7 @@ where
             // transaction because someone else is now the coordinator, and
             // all the signers are now ignoring us.
             let process_request_fut =
-                self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
+                self.process_sign_request(sign_request, &chain_tip.block_hash, multi_tx, &wallet);
 
             let status = match process_request_fut.await {
                 Ok(txid) => {
