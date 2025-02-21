@@ -26,6 +26,9 @@ use bitcoincore_rpc_json::GetTxOutResult;
 use serde::Deserialize;
 use url::Url;
 
+use fake::Fake;
+use sbtc::events::FromLittleEndianOrder;
+
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
 
@@ -130,6 +133,15 @@ pub struct BitcoinTxInfo {
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
     pub block_time: u64,
+}
+
+impl<T> fake::Dummy<T> for BitcoinTxInfo {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &T, rng: &mut R) -> Self {
+        BitcoinTxInfo {
+            block_hash: BlockHash::from_le_bytes(fake::Faker.fake_with_rng(rng)),
+            ..fake::Faker.fake_with_rng(rng)
+        }
+    }
 }
 
 /// A slimmed down version of the `BitcoinTxInfo` struct which only contains the
