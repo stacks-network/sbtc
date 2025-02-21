@@ -53,6 +53,7 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::TapSighash;
 use futures::StreamExt;
 use lru::LruCache;
+use rand::rngs::OsRng;
 use wsts::net::DkgEnd;
 use wsts::net::DkgStatus;
 use wsts::net::Message as WstsNetMessage;
@@ -1403,6 +1404,8 @@ where
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        let mut rng = OsRng;
+
         // Validate that the sender is a valid member of the signing set and
         // has the correct id according to the signer state machine.
         if let Some(signer_id) = signer_id {
@@ -1411,7 +1414,7 @@ where
 
         // Process the message in the WSTS signer state machine.
         let outbound_messages = match self.wsts_state_machines.get_mut(state_machine_id) {
-            Some(state_machine) => state_machine.process(msg).map_err(Error::Wsts)?,
+            Some(state_machine) => state_machine.process(msg, &mut rng).map_err(Error::Wsts)?,
             None => {
                 tracing::warn!("missing signing round");
                 return Err(Error::MissingStateMachine(*state_machine_id));
@@ -1442,7 +1445,7 @@ where
             self.wsts_state_machines
                 .get_mut(state_machine_id)
                 .ok_or_else(|| Error::MissingStateMachine(*state_machine_id))?
-                .process(outbound_message)
+                .process(outbound_message, &mut rng)
                 .map_err(Error::Wsts)?;
 
             // If this is a DKG verification then we need to process the message

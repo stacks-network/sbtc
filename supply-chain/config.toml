@@ -7,9 +7,6 @@ version = "0.10"
 [policy.stacks-common]
 audit-as-crates-io = true
 
-[policy.wsts]
-audit-as-crates-io = true
-
 [[exemptions.addr2line]]
 version = "0.21.0"
 criteria = "safe-to-deploy"
