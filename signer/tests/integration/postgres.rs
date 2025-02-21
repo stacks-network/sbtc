@@ -6361,4 +6361,213 @@ mod get_pending_accepted_withdrawal_requests {
 
         storage::drop_db(db).await;
     }
+
+    /// In this test, the request is confirmed in S2, but the request's
+    /// specified bitcoin block height is `2`. We use the request's specified
+    /// bitcoin height as the actual block height. In this case, the
+    /// confirmation block height (1) is lower than the specified bitcoin block
+    /// height (2), so we would expect all fetches where the min bitcoin height
+    /// is < `2` to return the event.
+    ///
+    /// However, when the min bitcoin height is set to `2`, the confirming
+    /// block has fallen out of the range of the query. The request will then
+    /// not be seen as confirmed and thus not returned.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    /// Height:       0           1           2     
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │  We create a withdrawal
+    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  in S2, but we set its
+    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3 ⚠️ │  bitcoin height to 3.
+    ///          └────────┘  └────────┘  └────────┘
+    /// ```
+    #[tokio::test]
+    async fn test_confirmed_anchor_block_lower_than_block_height() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2 = bitcoin_1.new_child();
+        let bitcoin_3 = bitcoin_2.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2 = stacks_1.new_child().anchored_to(&bitcoin_2);
+        let stacks_3 = stacks_2.new_child().anchored_to(&bitcoin_3);
+
+        // Write the blocks to the database.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2, &bitcoin_3],
+            [&stacks_1, &stacks_2, &stacks_3],
+        )
+        .await;
+
+        // Get our chain tips and assert they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
+
+        // Create a withdrawal request that has a bitcoin block height of `2`,
+        // but is actually confirmed in S2 (which has a height of `1`).
+        let request = WithdrawalRequest {
+            request_id: 1,
+            block_hash: stacks_2.block_hash, // Anchored to B2 with height of 1.
+            bitcoin_block_height: 3,
+            ..Faker.fake()
+        };
+
+        // Store the request in the database and give it enough votes.
+        db.write_withdrawal_request(&request)
+            .await
+            .expect("failed to store request");
+        store_votes(&db, &request, &[true, true]).await;
+
+        // Min bitcoin height of `0`; the request should be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                0,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min bitcoin height of `1`; the request should be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                1,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min bitcoin height of `2`; the request is not returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                2,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 0);
+    }
+
+    /// In this test, the request is confirmed in S2, but the request's
+    /// specified bitcoin block height is `0`. We use the request's specified
+    /// bitcoin height as the actual block height. In this case, the
+    /// confirmation block height (1) is higher than the specified bitcoin block
+    /// height (0), so we would expect all fetches where the min bitcoin height
+    /// is greater than 0 to not return the request, however a min height of `0`
+    /// should as both the request height and confirmation block height meet the
+    /// criteria.
+    ///
+    /// This test creates blockchains with the following structure:
+    ///
+    /// ```text
+    ///
+    /// Height:       0           1           2     
+    ///          ┌────────┐  ┌────────┐  ┌────────┐
+    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │  We create a withdrawal
+    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  (✔) in S2, but we set its
+    /// Stacks:  │   S1 ⚠️ ├──►   S2 ✔ ├──►   S3   │  bitcoin height (⚠️) to 0.
+    ///          └────────┘  └────────┘  └────────┘
+    /// ```
+    #[tokio::test]
+    async fn test_confirmed_anchor_block_higher_than_block_height() {
+        let db = storage::new_test_database().await;
+
+        let signature_threshold = 2;
+
+        // Bitcoin blocks:
+        let bitcoin_1 = BitcoinBlock::new_genesis();
+        let bitcoin_2 = bitcoin_1.new_child();
+        let bitcoin_3 = bitcoin_2.new_child();
+        // Stacks blocks:
+        let stacks_1 = StacksBlock::new_genesis().anchored_to(&bitcoin_1);
+        let stacks_2 = stacks_1.new_child().anchored_to(&bitcoin_2);
+        let stacks_3 = stacks_2.new_child().anchored_to(&bitcoin_3);
+
+        // Write the blocks to the database.
+        db.write_blocks(
+            [&bitcoin_1, &bitcoin_2, &bitcoin_3],
+            [&stacks_1, &stacks_2, &stacks_3],
+        )
+        .await;
+
+        // Get our chain tips and assert they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
+        assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
+
+        // Create a withdrawal request that has a bitcoin block height of `2`,
+        // but is actually confirmed in S2 (which has a height of `1`).
+        let request = WithdrawalRequest {
+            request_id: 1,
+            block_hash: stacks_2.block_hash, // Anchored to B2 with height of 1.
+            bitcoin_block_height: 0,
+            ..Faker.fake()
+        };
+
+        // Store the request in the database and give it enough votes.
+        db.write_withdrawal_request(&request)
+            .await
+            .expect("failed to store request");
+        store_votes(&db, &request, &[true, true]).await;
+
+        // Min height is 0, so we should get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                0,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min height is 1, which is above the request height, so we should not
+        // get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                1,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 0);
+
+        // Min height is 2, which is above the request height, so we should not
+        // get the request.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                2,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 0);
+    }
 }

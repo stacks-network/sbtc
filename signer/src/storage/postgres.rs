@@ -1524,7 +1524,7 @@ impl super::DbRead for PgStore {
                 SELECT
                     block_hash
                   , block_height
-                FROM bitcoin_blockchain_until($1, (SELECT MIN(bitcoin_block_height) FROM requests))
+                FROM bitcoin_blockchain_until($1, $3)
             ),
 
             -- Fetch the canonical stacks blockchain from the chain tip back
@@ -1549,6 +1549,7 @@ impl super::DbRead for PgStore {
                     ON parent.block_hash = last.parent_hash
                 JOIN bitcoin_blockchain anchor
                     ON anchor.block_hash = parent.bitcoin_anchor
+                    AND anchor.block_height >= $3
             )
             
             -- Main select clause (what we're returning).
