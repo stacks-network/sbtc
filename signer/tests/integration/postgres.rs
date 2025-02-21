@@ -5482,7 +5482,7 @@ async fn is_withdrawal_live_catches_withdrawals_in_package() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
-    // We use TestSweepSetup2 to help setup the signers' UTXO, which needs
+    // We use TestSweepSetup2 to help set up the signers' UTXO, which needs
     // to be available for this test.
     let signers = TestSignerSet::new(&mut rng);
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[]);

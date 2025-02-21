@@ -78,22 +78,13 @@ async fn make_withdrawal_reject(
 
 fn new_sweep_setup(signers: &TestSignerSet, faucet: &Faucet) -> TestSweepSetup2 {
     let amount = 1_000_000;
-    let deposit_amounts = SweepAmounts {
-        amount,
-        max_fee: amount / 2,
-        is_deposit: true,
-    };
     let withdraw_amounts = SweepAmounts {
         amount,
         max_fee: amount / 2,
         is_deposit: false,
     };
 
-    TestSweepSetup2::new_setup(
-        signers.clone(),
-        &faucet,
-        &[deposit_amounts, withdraw_amounts],
-    )
+    TestSweepSetup2::new_setup(signers.clone(), &faucet, &[withdraw_amounts])
 }
 
 /// For this test we check that the `RejectWithdrawalV1::validate` function
@@ -132,7 +123,7 @@ async fn reject_withdrawal_validation_happy_path() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Normal: We do not reject a withdrawal requests until more than
-    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
@@ -186,7 +177,7 @@ async fn reject_withdrawal_validation_not_final() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Different: We do not reject a withdrawal requests until more than
-    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed. We
     // are generating one too few blocks.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY);
@@ -208,7 +199,7 @@ async fn reject_withdrawal_validation_not_final() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    // Generate more block then backfill the DB
+    // Generate more blocks and backfill the DB
     faucet.generate_blocks(1);
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
@@ -256,7 +247,7 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Normal: We do not reject a withdrawal requests until more than
-    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
@@ -320,7 +311,7 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Normal: We do not reject a withdrawal requests until more than
-    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
@@ -385,7 +376,7 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Normal: We do not reject a withdrawal requests until more than
-    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
@@ -452,7 +443,7 @@ async fn reject_withdrawal_validation_request_completed() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Normal: We do not reject a withdrawal requests until more than
-    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
@@ -510,18 +501,23 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
-    // Normal: we need to store a row in the dkg_shares table so that we
+    // Different: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. We need
-    // this so that the donation get's picked up correctly below.
+    // this so that the donation gets picked up correctly below.
     setup.store_dkg_shares(&db).await;
 
-    // Different: We submit a sweep transaction into the mempool. We also
-    // write rows to the database about the transaction. We use these rows
-    // to figure out if something is indeed in the mempool.
+    // Different: We submit a sweep transaction into the mempool so that
+    // the TestSweepSetup2 struct has the sweep_tx_info set. We also need
+    // to submit the transaction in order for
+    // `TestSweepSetup2::store_bitcoin_withdrawals_outputs` to work as
+    // expected.
     setup.submit_sweep_tx(rpc, faucet);
 
     let sweep = setup.sweep_tx_info.as_ref().unwrap();
 
+    // Different: The donation is necessary in order to have a signer UTXO,
+    // which is necessary for the query to correctly return whether the
+    // withdrawal is inflight.
     setup.store_donation(&db).await;
     setup.store_bitcoin_withdrawals_outputs(&db).await;
 
@@ -548,7 +544,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Normal: We do not reject a withdrawal requests until more than
-    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observered since the smart
+    // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
     faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
