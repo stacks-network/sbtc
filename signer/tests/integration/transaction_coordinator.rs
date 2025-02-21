@@ -63,6 +63,7 @@ use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTx;
+use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::WithdrawalRequest;
 use signer::storage::postgres::PgStore;
@@ -3421,12 +3422,11 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-#[test_case(false, false, false; "rejectable")]
-#[test_case(true, false, false; "completed")]
-#[test_case(false, true, false; "in mempool")]
-#[test_case(false, false, true; "submitted")]
+#[test_case(false, false; "rejectable")]
+#[test_case(true, false; "completed")]
+#[test_case(false, true; "in mempool")]
 #[tokio::test]
-async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is_submitted: bool) {
+async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -3438,7 +3438,7 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is
         .with_mocked_emily_client()
         .build();
 
-    let expect_tx = !is_completed && !is_in_mempool && !is_submitted;
+    let expect_tx = !is_completed && !is_in_mempool;
 
     let nonce = 12;
     // Mock required stacks client functions
@@ -3491,6 +3491,33 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is
 
     let (aggregate_key, _) = run_dkg(&context, &mut rng, &mut testing_signer_set).await;
 
+    // We need to set the signer's UTXO since that is necessary to know if
+    // there is a transaction sweeping out any withdrawals.
+    let script_pub_key = aggregate_key.signers_script_pubkey();
+    let bitcoin_network = bitcoin::Network::Regtest;
+    let address = Address::from_script(&script_pub_key, bitcoin_network).unwrap();
+    let donation = faucet.send_to(100_000, &address);
+
+    // Okay, the donation exists, but it's in the mempool. In order to get
+    // it into our database it needs to be confirmed. We also feed it
+    // through the block observer will consider since it handles all the
+    // logic for writing it to the database.
+    faucet.generate_block();
+
+    let bitcoin_chain_tip = rpc.get_blockchain_info().unwrap().best_block_hash;
+    backfill_bitcoin_blocks(&db, rpc, &bitcoin_chain_tip).await;
+
+    let block_observer = BlockObserver {
+        context: context.clone(),
+        bitcoin_blocks: (),
+    };
+
+    let tx = rpc.get_raw_transaction(&donation.txid, None).unwrap();
+    block_observer
+        .extract_sbtc_transactions(bitcoin_chain_tip, &[tx])
+        .await
+        .unwrap();
+
     // When the signer binary starts up in main(), it sets the current
     // signer set public keys in the context state using the values in the
     // bootstrap_signing_set configuration parameter. Later, the aggregate
@@ -3539,11 +3566,12 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is
         request
     );
 
-    if is_in_mempool || is_submitted {
+    if is_in_mempool {
         // If we are testing the mempool/submitted scenario, we need to fake it
         let outpoint = faucet.send_to(1000, &faucet.address);
+        let bitcoin_txid = outpoint.txid.into();
         let withdrawal_output = model::BitcoinWithdrawalOutput {
-            bitcoin_txid: outpoint.txid.into(),
+            bitcoin_txid,
             bitcoin_chain_tip: bitcoin_chain_tip.block_hash,
             output_index: outpoint.vout,
             request_id: request.request_id,
@@ -3559,12 +3587,19 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool, is
             .await
             .unwrap();
 
-        if is_submitted {
-            // We don't want to backfill this block, as we are testing the case
-            // where the tx is no longer in the mempool but we are still missing
-            // the block processing.
-            faucet.generate_block();
-        }
+        let sighash = BitcoinTxSigHash {
+            txid: bitcoin_txid,
+            prevout_type: model::TxPrevoutType::SignersInput,
+            prevout_txid: donation.txid.into(),
+            prevout_output_index: donation.vout,
+            validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+            aggregate_key: aggregate_key.into(),
+            is_valid_tx: false,
+            will_sign: false,
+            chain_tip: bitcoin_chain_tip.block_hash,
+            sighash: bitcoin::TapSighash::from_byte_array([1; 32]).into(),
+        };
+        db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
     }
 
     let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
