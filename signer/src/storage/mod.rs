@@ -336,6 +336,16 @@ pub trait DbRead {
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
+    /// Returns whether we can consider the withdrawal inactive. This means
+    /// that there is no risk of the withdrawal being confirmed from a fork
+    /// of blocks less than `min_wait_blocks`.
+    fn is_withdrawal_inactive(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
+        id: &model::QualifiedRequestId,
+        min_wait_blocks: u64,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Fetch the bitcoin transaction that is included in the block
     /// identified by the block hash.
     fn get_bitcoin_tx(
