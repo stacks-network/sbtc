@@ -133,6 +133,11 @@ pub const WITHDRAWAL_BLOCKS_EXPIRY: u16 = 24;
 /// proposed "buffer for expiring requests" section.
 pub const WITHDRAWAL_EXPIRY_BUFFER: u16 = 6;
 
+/// This is the number of bitcoin blocks that a withdrawal request will remain
+/// live before it is considered "soft expired". This is the point at which the
+/// coordinator will cease to include a withdrawal request in sweep proposals.
+pub const WITHDRAWAL_BLOCKS_SOFT_EXPIRY: u16 = WITHDRAWAL_BLOCKS_EXPIRY - WITHDRAWAL_EXPIRY_BUFFER;
+
 /// This is the default maximum virtual size of a bitcoin transaction
 /// package. This value is the default limit set in bitcoin core, and
 /// corresponds to the `limitancestorsize` and/or `limitdescendantsize`

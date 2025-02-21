@@ -742,7 +742,7 @@ impl AcceptWithdrawalV1 {
         let min_withdrawal_bitcoin_block_height = req_ctx
             .chain_tip
             .block_height
-            .saturating_sub(crate::WITHDRAWAL_EXPIRY_BUFFER.into());
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY.into());
         let withdrawal_requests = db
             .get_pending_accepted_withdrawal_requests(
                 &req_ctx.chain_tip.block_hash,
