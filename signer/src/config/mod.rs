@@ -510,7 +510,7 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
         cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 15)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
-        cfg_builder = cfg_builder.set_default("signer.stx_fee_max_micro_stx", 2000000)?;
+        cfg_builder = cfg_builder.set_default("signer.stx_fee_max_micro_stx", 1_500_000)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));

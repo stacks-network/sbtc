@@ -39,15 +39,15 @@ use super::utxo::SignatureHash;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
 
-/// The maximum acceptable percent fee difference between the signer and
+/// The maximum acceptable multiplier fee difference between the signer and
 /// coordinator estimates when the coordinator's estimate is greater than
 /// the signer's.
-const MAXIMUM_PERCENT_DIFFERENT_BETWEEN_SIGNER_AND_COORDINATOR_ESTIMATE: f64 = 400.0;
+const SIGNER_MAX_BITCOIN_FEE_MULTIPLIER: f64 = 5.0;
 
 /// A constant added to the maximum acceptable fee difference between the
 /// signer and coordinator estimates when the coordinator's estimate is
 /// greater than the signer's.
-const MAXIMUM_DIFFERENCE_BETWEEN_SIGNER_AND_COORDINATOR_ESTIMATE_OFFSET: f64 = 5.0;
+const SIGNER_MAX_BITCOIN_FEE_OFFSET: u64 = 5;
 
 /// Cached validation data to avoid repeated DB queries
 #[derive(Default)]
@@ -351,7 +351,7 @@ impl BitcoinPreSignRequest {
             tx: tx.tx.clone(),
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
-            estimated_fee: Amount::from_sat(estimated_fee),
+            signer_estimated_fee: Amount::from_sat(estimated_fee),
             chain_tip_height: btc_ctx.chain_tip_height,
             sbtc_limits: ctx.state().get_current_limits(),
         };
@@ -378,9 +378,9 @@ pub struct BitcoinTxValidationData {
     pub tx: bitcoin::Transaction,
     /// the transaction fee in sats
     pub tx_fee: Amount,
-    /// The estimated fee in sats that this Signer would have chosen to pay
+    /// The estimated fee in sats that this signer would have chosen to pay
     /// for this transaction.
-    pub estimated_fee: Amount,
+    pub signer_estimated_fee: Amount,
     /// the chain tip height.
     pub chain_tip_height: u64,
     /// The current sBTC limits.
@@ -503,7 +503,7 @@ impl BitcoinTxValidationData {
         let tx = &self.tx;
         let tx_fee = self.tx_fee;
         let sbtc_limits = &self.sbtc_limits;
-        let estimated_fee = self.estimated_fee;
+        let estimated_fee = self.signer_estimated_fee;
 
         if tx_fee.to_sat() > highest_acceptable_fee_sats(estimated_fee) {
             return false;
@@ -538,12 +538,8 @@ impl BitcoinTxValidationData {
 /// Helper function that takes the estimated fee and returns the highest fee that this
 /// signer is willing to pay for the transaction.
 fn highest_acceptable_fee_sats(estimated_fee: Amount) -> u64 {
-    let percent_of_fee: f64 =
-        MAXIMUM_PERCENT_DIFFERENT_BETWEEN_SIGNER_AND_COORDINATOR_ESTIMATE + 100.0;
-    let fraction_of_fee: f64 = percent_of_fee / 100.0;
-    let highest_acceptable_fee_sats = estimated_fee.to_sat() as f64 * fraction_of_fee
-        + MAXIMUM_DIFFERENCE_BETWEEN_SIGNER_AND_COORDINATOR_ESTIMATE_OFFSET;
-    highest_acceptable_fee_sats as u64
+    (estimated_fee.to_sat() as f64 * SIGNER_MAX_BITCOIN_FEE_MULTIPLIER) as u64
+        + SIGNER_MAX_BITCOIN_FEE_OFFSET
 }
 
 /// The set of sBTC requests with additional relevant

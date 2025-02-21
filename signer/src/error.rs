@@ -443,8 +443,8 @@ pub enum Error {
     StacksTxRejection(#[from] crate::stacks::api::TxRejection),
 
     /// The stacks fee was too high.
-    #[error("Coordinator made Stacks txn with too high a fee: {0}. Highest acceptable fee: {1}")]
-    StacksTxFee(u64, u64),
+    #[error("coordinator Stacks txn with fee too high: {0}. Highest acceptable fee: {1}")]
+    TooHighStacksTxFee(u64, u64),
 
     /// Reqwest error
     #[error("response from stacks node did not conform to the expected schema: {0}")]
