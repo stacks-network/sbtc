@@ -32,6 +32,8 @@ use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 use crate::WITHDRAWAL_DUST_LIMIT;
 use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
+use super::rpc::assess_mempool_sweep_transaction_fees;
+use super::utxo::compute_transaction_fee;
 use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
@@ -262,11 +264,18 @@ impl BitcoinPreSignRequest {
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
+        let bitcoin_client = ctx.get_bitcoin_client();
+
+        // Get the last fees from the mempool ourselves instead of using those provided by the
+        // the coordinator so that we assess whether the proposed fee is acceptable ourselves.
+        let last_fees =
+            assess_mempool_sweep_transaction_fees(&bitcoin_client, &signer_utxo).await?;
+
         let mut signer_state = SignerBtcState {
             fee_rate: self.fee_rate,
             utxo: signer_utxo,
             public_key: bitcoin::XOnlyPublicKey::from(btc_ctx.aggregate_key),
-            last_fees: self.last_fees,
+            last_fees,
             magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
         };
         let mut outputs = Vec::new();
@@ -333,16 +342,13 @@ impl BitcoinPreSignRequest {
         let sighashes = tx.construct_digests()?;
 
         signer_state.utxo = tx.new_signer_utxo();
-        // The first transaction is the only one whose input UTXOs that
-        // have all been confirmed. Moreover, the fees that it sets aside
-        // are enough to make up for the remaining transactions in the
-        // transaction package. With that in mind, we do not need to bump
-        // their fees anymore in order for them to be accepted by the
-        // network.
-        signer_state.last_fees = None;
 
         // The fee that our signer's estimate would have assigned the transaction in sats.
-        let estimated_fee = (tx.tx_vsize as f64 * btc_ctx.estimated_fee_rate) as u64;
+        let signer_estimated_fee = compute_transaction_fee(
+            tx.tx_vsize as f64,
+            btc_ctx.estimated_fee_rate,
+            signer_state.last_fees,
+        );
 
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
@@ -351,10 +357,18 @@ impl BitcoinPreSignRequest {
             tx: tx.tx.clone(),
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
-            signer_estimated_fee: Amount::from_sat(estimated_fee),
+            signer_estimated_fee: Amount::from_sat(signer_estimated_fee),
             chain_tip_height: btc_ctx.chain_tip_height,
             sbtc_limits: ctx.state().get_current_limits(),
         };
+
+        // The first transaction is the only one whose input UTXOs that
+        // have all been confirmed. Moreover, the fees that it sets aside
+        // are enough to make up for the remaining transactions in the
+        // transaction package. With that in mind, we do not need to bump
+        // their fees anymore in order for them to be accepted by the
+        // network.
+        signer_state.last_fees = None;
 
         Ok((out, signer_state))
     }
