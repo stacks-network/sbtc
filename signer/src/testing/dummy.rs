@@ -708,7 +708,7 @@ impl fake::Dummy<fake::Faker> for AcceptWithdrawalV1 {
         let address = StacksAddress::p2pkh(false, &pubkey);
 
         AcceptWithdrawalV1 {
-            request_id: config.fake_with_rng(rng),
+            id: config.fake_with_rng(rng),
             outpoint: OutPoint {
                 txid: txid(config, rng),
                 vout: rng.next_u32(),

@@ -40,7 +40,7 @@ where
 pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    health::routes()
+    health::routes(context.clone())
         .or(chainstate::routes(context.clone()))
         .or(deposit::routes(context.clone()))
         .or(withdrawal::routes(context.clone()))
