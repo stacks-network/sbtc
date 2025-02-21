@@ -814,6 +814,14 @@ impl super::DbRead for SharedStore {
             .any(|(_, share)| &share.script_pubkey == script))
     }
 
+    async fn is_withdrawal_inflight(
+        &self,
+        _: &model::QualifiedRequestId,
+        _: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
     async fn get_bitcoin_tx(
         &self,
         txid: &model::BitcoinTxId,

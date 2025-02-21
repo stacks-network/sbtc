@@ -1021,24 +1021,27 @@ pub enum WithdrawalRejectErrorMsg {
     /// The smart contract deployer is fixed, so this should always match.
     #[error("the deployer in the transaction does not match the expected deployer")]
     DeployerMismatch,
+    /// The withdrawal request is likely being fulfilled right now.
+    #[error("the withdrawal request may be fulfilled by a transaction in the mempool")]
+    RequestBeingFulfilled,
     /// We have checked the smart contract for the status of the
     /// withdrawal's request ID and it has indicated that the request has
     /// been either accepted or rejected already.
     #[error("the smart contract has been updated to indicate that the request has been completed")]
     RequestCompleted,
+    /// Withdrawal request fulfilled
+    #[error("Withdrawal request fulfilled")]
+    RequestFulfilled,
     /// We do not have a record of the withdrawal request in our list of
     /// pending and accepted withdrawal requests.
     #[error("no record of withdrawal request in pending and accepted withdrawal requests")]
     RequestMissing,
-    /// Withdrawal request fulfilled
-    #[error("Withdrawal request fulfilled")]
-    RequestFulfilled,
-    /// Withdrawal request unconfirmed
-    #[error("Withdrawal request unconfirmed")]
-    RequestUnconfirmed,
     /// Withdrawal request is not final
     #[error("Withdrawal request is not final")]
     RequestNotFinal,
+    /// Withdrawal request unconfirmed
+    #[error("Withdrawal request unconfirmed")]
+    RequestUnconfirmed,
 }
 
 impl WithdrawalRejectErrorMsg {
@@ -1104,10 +1107,13 @@ impl AsContractCall for RejectWithdrawalV1 {
     /// 4. Whether the request has been fulfilled. Fail if it has.
     /// 5. Whether the signer bitmap matches the bitmap from our records.
     /// 6. Whether the withdrawal request has expired. Fail if it hasn't.
+    /// 7. Whether the withdrawal request is being serviced by a sweep
+    ///    transaction that is in the mempool.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
+        let db = ctx.get_storage();
         // 1. Check whether the withdrawal request is already completed.
         let withdrawal_completed = ctx
             .get_stacks_client()
@@ -1127,13 +1133,11 @@ impl AsContractCall for RejectWithdrawalV1 {
         // 3. Whether the associated withdrawal request transaction is
         //    confirmed on the canonical stacks blockchain.
         // 4. Whether the request has been fulfilled.
-        let stacks_chain_tip = ctx
-            .get_storage()
+        let stacks_chain_tip = db
             .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
             .await?
             .ok_or(Error::NoStacksChainTip)?;
-        let maybe_report = ctx
-            .get_storage()
+        let maybe_report = db
             .get_withdrawal_request_report(
                 &req_ctx.chain_tip.block_hash,
                 &stacks_chain_tip.block_hash,
@@ -1176,6 +1180,15 @@ impl AsContractCall for RejectWithdrawalV1 {
 
         if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
+        }
+
+        // 7. Check whether the withdrawal request may be serviced by a
+        //    sweep transaction that may be in the mempool.
+        let withdrawal_is_inflight = db
+            .is_withdrawal_inflight(&self.id, &req_ctx.chain_tip.block_hash)
+            .await?;
+        if withdrawal_is_inflight {
+            return Err(WithdrawalRejectErrorMsg::RequestBeingFulfilled.into_error(req_ctx, self));
         }
 
         Ok(())

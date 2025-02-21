@@ -19,6 +19,7 @@ use more_asserts::assert_le;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 use signer::bitcoin::validation::WithdrawalRequestStatus;
+use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
@@ -76,6 +77,7 @@ use test_case::test_case;
 use test_log::test;
 
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
@@ -5398,4 +5400,183 @@ async fn pending_rejected_withdrawal_already_accepted() {
     assert!(pending_rejected.is_empty());
 
     signer::testing::storage::drop_db(db).await;
+}
+
+/// Check that is_withdrawal_inflight correctly picks up withdrawal
+/// requests that have rows associated with sweep transactions that have
+/// been proposed by the coordinator.
+#[tokio::test]
+async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    let signers = TestSignerSet::new(&mut rng);
+    let setup = TestSweepSetup2::new_setup(signers, faucet, &[]);
+
+    // Normal: the signer follows the bitcoin blockchain and event observer
+    // should be getting new block events from bitcoin-core. We haven't
+    // hooked up our block observer, so we need to manually update the
+    // database with new bitcoin block headers.
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+
+    // This is needed for the part of the query that fetches the signers'
+    // UTXO.
+    setup.store_dkg_shares(&db).await;
+
+    // This donation is currently the signers' UTXO, which is needed in the
+    // `is_withdrawal_inflight` implementation.
+    setup.store_donation(&db).await;
+
+    let id = QualifiedRequestId {
+        request_id: 234,
+        block_hash: Faker.fake_with_rng(&mut rng),
+        txid: Faker.fake_with_rng(&mut rng),
+    };
+
+    assert!(!db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+
+    let bitcoin_txid: model::BitcoinTxId = Faker.fake_with_rng(&mut rng);
+    let output = BitcoinWithdrawalOutput {
+        request_id: id.request_id,
+        stacks_txid: id.txid,
+        stacks_block_hash: id.block_hash,
+        bitcoin_chain_tip: chain_tip,
+        bitcoin_txid,
+        is_valid_tx: true,
+        validation_result: WithdrawalValidationResult::Ok,
+        output_index: 2,
+    };
+    db.write_bitcoin_withdrawals_outputs(&[output])
+        .await
+        .unwrap();
+
+    assert!(!db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+
+    let sighash = BitcoinTxSigHash {
+        txid: bitcoin_txid,
+        prevout_type: model::TxPrevoutType::SignersInput,
+        prevout_txid: setup.donation.txid.into(),
+        prevout_output_index: setup.donation.vout,
+        validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+        aggregate_key: setup.signers.aggregate_key().into(),
+        is_valid_tx: false,
+        will_sign: false,
+        chain_tip,
+        sighash: bitcoin::TapSighash::from_byte_array([88; 32]).into(),
+    };
+    db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
+
+    assert!(db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+}
+
+/// Check that is_withdrawal_inflight correctly picks up withdrawal
+/// requests that are fulfilled further down the chain of sweep
+/// transactions that have been proposed by a coordinator.
+#[tokio::test]
+async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    // We use TestSweepSetup2 to help set up the signers' UTXO, which needs
+    // to be available for this test.
+    let signers = TestSignerSet::new(&mut rng);
+    let setup = TestSweepSetup2::new_setup(signers, faucet, &[]);
+
+    // Normal: the signer follows the bitcoin blockchain and event observer
+    // should be getting new block events from bitcoin-core. We haven't
+    // hooked up our block observer, so we need to manually update the
+    // database with new bitcoin block headers.
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+
+    // This is needed for the part of the query that fetches the signers'
+    // UTXO.
+    setup.store_dkg_shares(&db).await;
+    // This donation is currently the signers' UTXO, which is needed in the
+    // `is_withdrawal_inflight` implementation.
+    setup.store_donation(&db).await;
+
+    let id = QualifiedRequestId {
+        request_id: 234,
+        block_hash: Faker.fake_with_rng(&mut rng),
+        txid: Faker.fake_with_rng(&mut rng),
+    };
+
+    assert!(!db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+
+    let bitcoin_txid1: model::BitcoinTxId = Faker.fake_with_rng(&mut rng);
+    let bitcoin_txid2: model::BitcoinTxId = Faker.fake_with_rng(&mut rng);
+    let bitcoin_txid3: model::BitcoinTxId = Faker.fake_with_rng(&mut rng);
+
+    let output = BitcoinWithdrawalOutput {
+        request_id: id.request_id,
+        stacks_txid: id.txid,
+        stacks_block_hash: id.block_hash,
+        bitcoin_chain_tip: chain_tip,
+        bitcoin_txid: bitcoin_txid3,
+        is_valid_tx: true,
+        validation_result: WithdrawalValidationResult::Ok,
+        output_index: 2,
+    };
+    db.write_bitcoin_withdrawals_outputs(&[output])
+        .await
+        .unwrap();
+
+    // This is the first input of the third transaction in the chain. We
+    // write it first to show that the transactions need to be chained in
+    // order for the query to pick up the above output.
+    let sighash3 = BitcoinTxSigHash {
+        txid: bitcoin_txid3,
+        prevout_type: model::TxPrevoutType::SignersInput,
+        prevout_txid: bitcoin_txid2,
+        prevout_output_index: 0,
+        validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+        aggregate_key: setup.signers.aggregate_key().into(),
+        is_valid_tx: false,
+        will_sign: false,
+        chain_tip,
+        sighash: bitcoin::TapSighash::from_byte_array([66; 32]).into(),
+    };
+    db.write_bitcoin_txs_sighashes(&[sighash3]).await.unwrap();
+
+    assert!(!db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+
+    let sighash2 = BitcoinTxSigHash {
+        txid: bitcoin_txid2,
+        prevout_type: model::TxPrevoutType::SignersInput,
+        prevout_txid: bitcoin_txid1,
+        prevout_output_index: 0,
+        validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+        aggregate_key: setup.signers.aggregate_key().into(),
+        is_valid_tx: false,
+        will_sign: false,
+        chain_tip,
+        sighash: bitcoin::TapSighash::from_byte_array([77; 32]).into(),
+    };
+    db.write_bitcoin_txs_sighashes(&[sighash2]).await.unwrap();
+
+    assert!(!db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+
+    // Okay now we add in the first input of the first transaction in the
+    // chain. The query should be able to find our output now.
+    let sighash1 = BitcoinTxSigHash {
+        txid: bitcoin_txid1,
+        prevout_type: model::TxPrevoutType::SignersInput,
+        prevout_txid: setup.donation.txid.into(),
+        prevout_output_index: setup.donation.vout,
+        validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+        aggregate_key: setup.signers.aggregate_key().into(),
+        is_valid_tx: false,
+        will_sign: false,
+        chain_tip,
+        sighash: bitcoin::TapSighash::from_byte_array([88; 32]).into(),
+    };
+    db.write_bitcoin_txs_sighashes(&[sighash1]).await.unwrap();
+
+    assert!(db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
 }

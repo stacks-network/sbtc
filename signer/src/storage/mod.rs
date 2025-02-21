@@ -319,6 +319,23 @@ pub trait DbRead {
         script: &model::ScriptPubKey,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
+    /// Returns whether the identified withdrawal may be included in a
+    /// sweep transaction that is in the bitcoin mempool.
+    ///
+    /// # Notes
+    ///
+    /// At this time, we cannot use the bitcoin mempool for this
+    /// information since we cannot match withdrawals with transaction
+    /// outputs without a lot of computational effort. Instead, we use our
+    /// database, where the query is straightforward. The tables that are
+    /// be able to answer whether a withdrawal is potentially in the
+    /// mempool are populated during validation of pre-sign requests.
+    fn is_withdrawal_inflight(
+        &self,
+        id: &model::QualifiedRequestId,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Fetch the bitcoin transaction that is included in the block
     /// identified by the block hash.
     fn get_bitcoin_tx(

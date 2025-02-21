@@ -2070,6 +2070,57 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn is_withdrawal_inflight(
+        &self,
+        id: &model::QualifiedRequestId,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        let Some(signer_utxo) = self.get_signer_utxo(bitcoin_chain_tip).await? else {
+            return Ok(false);
+        };
+        let txid: model::BitcoinTxId = signer_utxo.outpoint.txid.into();
+
+        // This should execute quite quickly, since the recursive part of
+        // this query should be limited to 25 transactions when the most
+        // recent signer UTXO hasn't been reorged. When a reorg affects
+        // sweep transactions, this recursive part of the query is bounded
+        // by the reorg depth length multiplied by 25.
+        sqlx::query_scalar::<_, bool>(
+            r#"
+            WITH RECURSIVE proposed_transactions AS (
+                SELECT
+                    bts.txid
+                  , bts.prevout_txid
+                FROM sbtc_signer.bitcoin_tx_sighashes AS bts
+                WHERE bts.prevout_txid = $1
+
+                UNION ALL
+
+                SELECT
+                    bts.txid
+                  , bts.prevout_txid
+                FROM sbtc_signer.bitcoin_tx_sighashes AS bts
+                JOIN proposed_transactions AS parent
+                  ON bts.prevout_txid = parent.txid
+                WHERE bts.prevout_type = 'signers_input'
+            )
+            SELECT EXISTS (
+                SELECT TRUE
+                FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
+                JOIN proposed_transactions AS pt
+                  ON pt.txid = bwo.bitcoin_txid
+                WHERE bwo.request_id = $2
+                  AND bwo.stacks_block_hash = $3
+            )"#,
+        )
+        .bind(txid)
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(id.block_hash)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_bitcoin_tx(
         &self,
         txid: &model::BitcoinTxId,
