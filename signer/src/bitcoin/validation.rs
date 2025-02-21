@@ -46,8 +46,8 @@ use super::utxo::WithdrawalRequest;
 /// the signer's.
 const SIGNER_MAX_BITCOIN_FEE_MULTIPLIER: f64 = 5.0;
 
-/// A constant added to the maximum acceptable fee difference between the
-/// signer and coordinator estimates when the coordinator's estimate is
+/// A constant added to the maximum acceptable fee difference in satoshis between
+/// the signer and coordinator estimates when the coordinator's estimate is
 /// greater than the signer's.
 const SIGNER_MAX_BITCOIN_FEE_OFFSET: u64 = 5;
 
