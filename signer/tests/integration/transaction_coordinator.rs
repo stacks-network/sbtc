@@ -3424,21 +3424,12 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-#[test_case(false, false, false, true; "rejected")]
-#[test_case(true, false, false, true; "confirmed")]
-#[test_case(false, true, false, true; "in mempool")]
-#[test_case(false, false, true, true; "submitted")]
-#[test_case(false, false, false, false; "accept: rejected")]
-#[test_case(true, false, false, false; "accept: confirmed")]
-#[test_case(false, true, false, false; "accept: in mempool")]
-#[test_case(false, false, true, false; "accept: submitted")]
+#[test_case(false, false, false; "accept: not submitted")]
+#[test_case(true, false, false; "accept: confirmed")]
+#[test_case(false, true, false; "accept: in mempool")]
+#[test_case(false, false, true; "accept: submitted")]
 #[test_log::test(tokio::test)]
-async fn process_withdrawal(
-    is_completed: bool,
-    is_in_mempool: bool,
-    is_submitted: bool,
-    is_reject: bool,
-) {
+async fn process_withdrawal_accept(is_completed: bool, is_in_mempool: bool, is_submitted: bool) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -3450,13 +3441,13 @@ async fn process_withdrawal(
         .with_mocked_emily_client()
         .build();
 
-    let expect_tx = !is_completed && !is_in_mempool && (is_submitted ^ is_reject);
+    let expect_tx = !is_completed && !is_in_mempool && is_submitted;
 
     let nonce = 12;
     // Mock required stacks client functions
     context
         .with_stacks_client(|client| {
-            client.expect_get_account().once().returning(move |_| {
+            client.expect_get_account().returning(move |_| {
                 Box::pin(async move {
                     Ok(AccountInfo {
                         balance: 0,
@@ -3533,43 +3524,12 @@ async fn process_withdrawal(
         .unwrap()
         .is_empty());
 
-    let blocks_count = if is_reject {
-        WITHDRAWAL_BLOCKS_EXPIRY + 1
-    } else {
-        WITHDRAWAL_BLOCKS_EXPIRY - 10
-    };
-
-    let new_tip = faucet.generate_blocks(blocks_count).pop().unwrap();
+    let new_tip = faucet
+        .generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY - 10)
+        .pop()
+        .unwrap();
     backfill_bitcoin_blocks(&db, rpc, &new_tip).await;
     let (bitcoin_chain_tip, _) = db.get_chain_tips().await;
-
-    // Now it should be pending tx
-    if is_reject {
-        assert_eq!(
-            context
-                .get_storage()
-                .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
-                .await
-                .unwrap()
-                .single(),
-            request
-        );
-    } else {
-        // let threshold = 1; // TODO: think what it should be
-        // assert_eq!(
-        //     context
-        //         .get_storage()
-        //         .get_pending_withdrawal_requests(
-        //             &bitcoin_chain_tip.block_hash,
-        //             context_window,
-        //             context.state().
-        //         )
-        //         .await
-        //         .unwrap()
-        //         .single(),
-        //     request
-        // );
-    }
 
     if is_in_mempool || is_submitted {
         // If we are testing the mempool/submitted scenario, we need to fake it
@@ -3585,151 +3545,143 @@ async fn process_withdrawal(
             // have validated it, so we err towards checking more rather than
             // less txids.
             validation_result: WithdrawalValidationResult::NoVote,
-            is_valid_tx: !is_reject,
+            is_valid_tx: true,
         };
         db.write_bitcoin_withdrawals_outputs(&[withdrawal_output])
             .await
             .unwrap();
 
         if is_submitted {
-            if is_reject {
-                // We don't want to backfill this block, as we are testing the case
-                // where the tx is no longer in the mempool but we are still missing
-                // the block processing.
-                faucet.generate_block();
-            } else {
-                let bitcoin_tip_ref = db
-                    .get_bitcoin_canonical_chain_tip_ref()
-                    .await
-                    .unwrap()
-                    .unwrap();
-                let bitcoin_tip = bitcoin_tip_ref.block_hash;
-                let bitcoin_tip_height = bitcoin_tip_ref.block_height;
+            let bitcoin_tip_ref = db
+                .get_bitcoin_canonical_chain_tip_ref()
+                .await
+                .unwrap()
+                .unwrap();
+            let bitcoin_tip = bitcoin_tip_ref.block_hash;
+            let bitcoin_tip_height = bitcoin_tip_ref.block_height;
 
-                let stacks_tip = db
-                    .get_stacks_chain_tip(&bitcoin_tip)
-                    .await
-                    .unwrap()
-                    .unwrap();
+            let stacks_tip = db
+                .get_stacks_chain_tip(&bitcoin_tip)
+                .await
+                .unwrap()
+                .unwrap();
 
-                // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
-                let bitcoin_block = model::BitcoinBlock {
-                    block_hash: fake::Faker.fake_with_rng(&mut rng),
-                    block_height: bitcoin_tip_height + 1,
-                    parent_hash: bitcoin_tip,
-                };
-                let stacks_block = model::StacksBlock {
-                    block_hash: fake::Faker.fake_with_rng(&mut rng),
-                    block_height: stacks_tip.block_height + 1,
-                    parent_hash: stacks_tip.block_hash,
-                    bitcoin_anchor: bitcoin_block.block_hash,
-                };
-                let swept_output = BitcoinWithdrawalOutput {
-                    request_id: request.request_id,
-                    stacks_txid: request.txid,
-                    stacks_block_hash: request.block_hash,
-                    bitcoin_chain_tip: bitcoin_block.block_hash,
-                    ..Faker.fake_with_rng(&mut rng)
-                };
-                let sweep_tx_model = model::Transaction {
-                    tx_type: model::TransactionType::SbtcTransaction,
-                    txid: swept_output.bitcoin_txid.to_byte_array(),
-                    tx: Vec::new(),
-                    block_hash: bitcoin_block.block_hash.to_byte_array(),
-                };
-                let sweep_tx_ref = model::BitcoinTxRef {
-                    txid: swept_output.bitcoin_txid,
-                    block_hash: bitcoin_block.block_hash,
-                };
+            // Prepare all data we want to insert into the database to see swept withdrawal requests in it.
+            let bitcoin_block = model::BitcoinBlock {
+                block_hash: fake::Faker.fake_with_rng(&mut rng),
+                block_height: bitcoin_tip_height + 1,
+                parent_hash: bitcoin_tip,
+            };
+            let stacks_block = model::StacksBlock {
+                block_hash: fake::Faker.fake_with_rng(&mut rng),
+                block_height: stacks_tip.block_height + 1,
+                parent_hash: stacks_tip.block_hash,
+                bitcoin_anchor: bitcoin_block.block_hash,
+            };
+            let swept_output = BitcoinWithdrawalOutput {
+                request_id: request.request_id,
+                stacks_txid: request.txid,
+                stacks_block_hash: request.block_hash,
+                bitcoin_chain_tip: bitcoin_block.block_hash,
+                ..Faker.fake_with_rng(&mut rng)
+            };
+            let sweep_tx_model = model::Transaction {
+                tx_type: model::TransactionType::SbtcTransaction,
+                txid: swept_output.bitcoin_txid.to_byte_array(),
+                tx: Vec::new(),
+                block_hash: bitcoin_block.block_hash.to_byte_array(),
+            };
+            let sweep_tx_ref = model::BitcoinTxRef {
+                txid: swept_output.bitcoin_txid,
+                block_hash: bitcoin_block.block_hash,
+            };
 
-                // There should no withdrawal request in the empty database
-                let context_window = 20;
-                let requests = db
-                    .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
-                    .await
-                    .unwrap();
-                assert!(requests.is_empty());
+            // There should no withdrawal request in the empty database
+            let context_window = 20;
+            let requests = db
+                .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
+                .await
+                .unwrap();
+            assert!(requests.is_empty());
 
-                // Now write all the data to the database.
-                db.write_bitcoin_block(&bitcoin_block).await.unwrap();
-                db.write_stacks_block(&stacks_block).await.unwrap();
-                db.write_withdrawal_request(&request).await.unwrap();
+            // Now write all the data to the database.
+            db.write_bitcoin_block(&bitcoin_block).await.unwrap();
+            db.write_stacks_block(&stacks_block).await.unwrap();
+            db.write_withdrawal_request(&request).await.unwrap();
 
-                db.write_transaction(&sweep_tx_model).await.unwrap();
-                db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
-                db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
-                    .await
-                    .unwrap();
-                let script = db
-                    .get_encrypted_dkg_shares(aggregate_key)
-                    .await
-                    .unwrap()
-                    .unwrap()
-                    .script_pubkey
-                    .clone()
-                    .0;
-                let amount = request.amount;
-                let recipient = request.recipient.0.clone();
-                context
-                    .with_bitcoin_client(|client| {
-                        client.expect_get_tx_info().returning(move |_, _| {
-                            let recipient = recipient.clone();
-                            tracing::debug!("Getting tx info");
-                            Box::pin({
-                                let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-                                let vin1 = signer::bitcoin::rpc::BitcoinTxVin {
-                                    details: bitcoincore_rpc_json::GetRawTransactionResultVin {
-                                        sequence: 0,
-                                        coinbase: None,
-                                        txid: None,
-                                        script_sig: None,
-                                        vout: None,
-                                        txinwitness: None,
+            db.write_transaction(&sweep_tx_model).await.unwrap();
+            db.write_bitcoin_transaction(&sweep_tx_ref).await.unwrap();
+            db.write_bitcoin_withdrawals_outputs(&[swept_output.clone()])
+                .await
+                .unwrap();
+            let script = db
+                .get_encrypted_dkg_shares(aggregate_key)
+                .await
+                .unwrap()
+                .unwrap()
+                .script_pubkey
+                .clone()
+                .0;
+            let amount = request.amount;
+            let recipient = request.recipient.0.clone();
+            context
+                .with_bitcoin_client(|client| {
+                    client.expect_get_tx_info().returning(move |_, _| {
+                        let recipient = recipient.clone();
+                        tracing::debug!("Getting tx info");
+                        Box::pin({
+                            let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+                            let vin1 = signer::bitcoin::rpc::BitcoinTxVin {
+                                details: bitcoincore_rpc_json::GetRawTransactionResultVin {
+                                    sequence: 0,
+                                    coinbase: None,
+                                    txid: None,
+                                    script_sig: None,
+                                    vout: None,
+                                    txinwitness: None,
+                                },
+                                prevout: signer::bitcoin::rpc::BitcoinTxVinPrevout {
+                                    generated: false,
+                                    height: bitcoin_block.block_height - 1,
+                                    value: Amount::from_sat(amount),
+                                    script_pub_key: signer::bitcoin::rpc::PrevoutScriptPubKey {
+                                        script: script.clone(),
                                     },
-                                    prevout: signer::bitcoin::rpc::BitcoinTxVinPrevout {
-                                        generated: false,
-                                        height: bitcoin_block.block_height - 1,
-                                        value: Amount::from_sat(amount),
-                                        script_pub_key: signer::bitcoin::rpc::PrevoutScriptPubKey {
-                                            script: script.clone(),
-                                        },
+                                },
+                            };
+                            async move {
+                                Ok(Some(BitcoinTxInfo {
+                                    block_hash: sweep_tx_ref.block_hash.into(),
+                                    txid: sweep_tx_ref.txid.into(),
+                                    vin: vec![vin1],
+                                    tx: Transaction {
+                                        version: bitcoin::transaction::Version::TWO,
+                                        lock_time: bitcoin::absolute::LockTime::Blocks(
+                                            bitcoin::absolute::Height::from_consensus(10).unwrap(),
+                                        ),
+                                        input: vec![],
+                                        output: vec![
+                                            bitcoin::TxOut {
+                                                value: Amount::from_sat(amount),
+                                                script_pubkey: recipient.clone(),
+                                            },
+                                            bitcoin::TxOut {
+                                                value: Amount::from_sat(amount),
+                                                script_pubkey: recipient.clone(),
+                                            },
+                                            bitcoin::TxOut {
+                                                value: Amount::from_sat(amount),
+                                                script_pubkey: recipient.clone(),
+                                            },
+                                        ],
                                     },
-                                };
-                                async move {
-                                    Ok(Some(BitcoinTxInfo {
-                                        block_hash: sweep_tx_ref.block_hash.into(),
-                                        txid: sweep_tx_ref.txid.into(),
-                                        vin: vec![vin1],
-                                        tx: Transaction {
-                                            version: bitcoin::transaction::Version::TWO,
-                                            lock_time: bitcoin::absolute::LockTime::Blocks(
-                                                bitcoin::absolute::Height::from_consensus(10)
-                                                    .unwrap(),
-                                            ),
-                                            input: vec![],
-                                            output: vec![
-                                                bitcoin::TxOut {
-                                                    value: Amount::from_sat(amount),
-                                                    script_pubkey: recipient.clone(),
-                                                },
-                                                bitcoin::TxOut {
-                                                    value: Amount::from_sat(amount),
-                                                    script_pubkey: recipient.clone(),
-                                                },
-                                                bitcoin::TxOut {
-                                                    value: Amount::from_sat(amount),
-                                                    script_pubkey: recipient.clone(),
-                                                },
-                                            ],
-                                        },
-                                        ..fake::Faker.fake_with_rng(&mut rng)
-                                    }))
-                                }
-                            })
-                        });
-                    })
-                    .await;
-            }
+                                    ..fake::Faker.fake_with_rng(&mut rng)
+                                }))
+                            }
+                        })
+                    });
+                })
+                .await;
         }
     }
 
@@ -3859,33 +3811,326 @@ async fn process_withdrawal(
     let TransactionPayload::ContractCall(contract_call) = broadcasted_tx.payload else {
         panic!("unexpected tx payload")
     };
-    if is_reject {
-        assert_eq!(
-            contract_call.contract_name.to_string(),
-            RejectWithdrawalV1::CONTRACT_NAME
-        );
-        assert_eq!(
-            contract_call.function_name.to_string(),
-            RejectWithdrawalV1::FUNCTION_NAME
-        );
-        assert_eq!(
-            contract_call.function_args[0],
-            ClarityValue::UInt(request.request_id as u128)
-        );
-    } else {
-        assert_eq!(
-            contract_call.contract_name.to_string(),
-            AcceptWithdrawalV1::CONTRACT_NAME
-        );
-        assert_eq!(
-            contract_call.function_name.to_string(),
-            AcceptWithdrawalV1::FUNCTION_NAME
-        );
-        assert_eq!(
-            contract_call.function_args[0],
-            ClarityValue::UInt(request.request_id as u128)
-        );
+
+    assert_eq!(
+        contract_call.contract_name.to_string(),
+        AcceptWithdrawalV1::CONTRACT_NAME
+    );
+    assert_eq!(
+        contract_call.function_name.to_string(),
+        AcceptWithdrawalV1::FUNCTION_NAME
+    );
+    assert_eq!(
+        contract_call.function_args[0],
+        ClarityValue::UInt(request.request_id as u128)
+    );
+
+    testing::storage::drop_db(db).await;
+}
+
+
+#[test_case(false, false; "rejectable")]
+#[test_case(true, false; "completed")]
+#[test_case(false, true; "in mempool")]
+#[tokio::test]
+async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let mut context = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    let expect_tx = !is_completed && !is_in_mempool;
+
+    let nonce = 12;
+    // Mock required stacks client functions
+    context
+        .with_stacks_client(|client| {
+            client.expect_get_account().once().returning(move |_| {
+                Box::pin(async move {
+                    Ok(AccountInfo {
+                        balance: 0,
+                        locked: 0,
+                        unlock_height: 0,
+                        // The nonce is used to create the stacks tx
+                        nonce,
+                    })
+                })
+            });
+
+            // Dummy value
+            client
+                .expect_estimate_fees()
+                .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
+
+            client
+                .expect_is_withdrawal_completed()
+                .returning(move |_, _| Box::pin(async move { Ok(is_completed) }));
+        })
+        .await;
+
+    let num_signers = 7;
+    let signing_threshold = 5;
+    let context_window = 100;
+
+    let network = network::in_memory::InMemoryNetwork::new();
+    let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
+
+    let mut testing_signer_set =
+        testing::wsts::SignerSet::new(&signer_info, signing_threshold, || network.connect());
+
+    let bitcoin_chain_tip = rpc.get_blockchain_info().unwrap().best_block_hash;
+    backfill_bitcoin_blocks(&db, rpc, &bitcoin_chain_tip).await;
+
+    // Ensure we have a stacks chain tip
+    let genesis_block = model::StacksBlock {
+        block_hash: Faker.fake_with_rng(&mut OsRng),
+        block_height: 0,
+        parent_hash: StacksBlockId::first_mined().into(),
+        bitcoin_anchor: bitcoin_chain_tip.into(),
+    };
+    db.write_stacks_blocks([&genesis_block]).await;
+
+    let (aggregate_key, _) = run_dkg(&context, &mut rng, &mut testing_signer_set).await;
+
+    // We need to set the signer's UTXO since that is necessary to know if
+    // there is a transaction sweeping out any withdrawals.
+    let script_pub_key = aggregate_key.signers_script_pubkey();
+    let bitcoin_network = bitcoin::Network::Regtest;
+    let address = Address::from_script(&script_pub_key, bitcoin_network).unwrap();
+    let donation = faucet.send_to(100_000, &address);
+
+    // Okay, the donation exists, but it's in the mempool. In order to get
+    // it into our database it needs to be confirmed. We also feed it
+    // through the block observer will consider since it handles all the
+    // logic for writing it to the database.
+    faucet.generate_block();
+
+    let bitcoin_chain_tip = rpc.get_blockchain_info().unwrap().best_block_hash;
+    backfill_bitcoin_blocks(&db, rpc, &bitcoin_chain_tip).await;
+
+    let block_observer = BlockObserver {
+        context: context.clone(),
+        bitcoin_blocks: (),
+    };
+
+    let tx = rpc.get_raw_transaction(&donation.txid, None).unwrap();
+    block_observer
+        .extract_sbtc_transactions(bitcoin_chain_tip, &[tx])
+        .await
+        .unwrap();
+
+    // When the signer binary starts up in main(), it sets the current
+    // signer set public keys in the context state using the values in the
+    // bootstrap_signing_set configuration parameter. Later, the aggregate
+    // key gets set in the block observer. We're not running a block
+    // observer in this test, nor are we going through main, so we manually
+    // update the state here.
+    let signer_set_public_keys = testing_signer_set.signer_keys().into_iter().collect();
+    let state = context.state();
+    state.update_current_signer_set(signer_set_public_keys);
+    state.set_current_aggregate_key(aggregate_key);
+
+    let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+    assert_eq!(stacks_chain_tip, genesis_block.block_hash);
+
+    // Now we create a withdrawal request (without voting for it)
+    let request = WithdrawalRequest {
+        block_hash: genesis_block.block_hash,
+        bitcoin_block_height: bitcoin_chain_tip.block_height,
+        ..fake::Faker.fake_with_rng(&mut rng)
+    };
+    db.write_withdrawal_request(&request).await.unwrap();
+
+    // The request should not be pending yet (missing enough confirmation)
+    assert!(context
+        .get_storage()
+        .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
+        .await
+        .unwrap()
+        .is_empty());
+
+    let new_tip = faucet
+        .generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1)
+        .pop()
+        .unwrap();
+    backfill_bitcoin_blocks(&db, rpc, &new_tip).await;
+    let (bitcoin_chain_tip, _) = db.get_chain_tips().await;
+
+    // Now it should be pending rejected
+    assert_eq!(
+        context
+            .get_storage()
+            .get_pending_rejected_withdrawal_requests(&bitcoin_chain_tip, context_window)
+            .await
+            .unwrap()
+            .single(),
+        request
+    );
+
+    if is_in_mempool {
+        // If we are testing the mempool/submitted scenario, we need to fake it
+        let outpoint = faucet.send_to(1000, &faucet.address);
+        let bitcoin_txid = outpoint.txid.into();
+        let withdrawal_output = model::BitcoinWithdrawalOutput {
+            bitcoin_txid,
+            bitcoin_chain_tip: bitcoin_chain_tip.block_hash,
+            output_index: outpoint.vout,
+            request_id: request.request_id,
+            stacks_txid: request.txid,
+            stacks_block_hash: request.block_hash,
+            // We don't care about validation, as the majority of signers may
+            // have validated it, so we err towards checking more rather than
+            // less txids.
+            validation_result: WithdrawalValidationResult::NoVote,
+            is_valid_tx: false,
+        };
+        db.write_bitcoin_withdrawals_outputs(&[withdrawal_output])
+            .await
+            .unwrap();
+
+        let sighash = BitcoinTxSigHash {
+            txid: bitcoin_txid,
+            prevout_type: model::TxPrevoutType::SignersInput,
+            prevout_txid: donation.txid.into(),
+            prevout_output_index: donation.vout,
+            validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+            aggregate_key: aggregate_key.into(),
+            is_valid_tx: false,
+            will_sign: false,
+            chain_tip: bitcoin_chain_tip.block_hash,
+            sighash: bitcoin::TapSighash::from_byte_array([1; 32]).into(),
+        };
+        db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
     }
+
+    let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        tokio::sync::broadcast::channel(1);
+
+    // This task gets all transactions broadcasted by the coordinator.
+    let mut wait_for_transaction_rx = broadcasted_transaction_tx.subscribe();
+    let wait_for_transaction_task =
+        tokio::spawn(async move { wait_for_transaction_rx.recv().await });
+
+    // Setup the stacks client mock to broadcast the transaction to our channel.
+    context
+        .with_stacks_client(|client| {
+            client
+                .expect_submit_tx()
+                .times(if expect_tx { 1 } else { 0 })
+                .returning(move |tx| {
+                    let tx = tx.clone();
+                    let txid = tx.txid();
+                    let broadcasted_transaction_tx = broadcasted_transaction_tx.clone();
+                    Box::pin(async move {
+                        broadcasted_transaction_tx
+                            .send(tx)
+                            .expect("Failed to send result");
+                        Ok(SubmitTxResponse::Acceptance(txid))
+                    })
+                });
+
+            client
+                .expect_get_current_signers_aggregate_key()
+                .returning(move |_| Box::pin(std::future::ready(Ok(Some(aggregate_key)))));
+        })
+        .await;
+
+    // Get the private key of the coordinator of the signer set.
+    let private_key = select_coordinator(&bitcoin_chain_tip.block_hash, &signer_info);
+
+    // Bootstrap the tx coordinator event loop
+    context.state().set_sbtc_contracts_deployed();
+    let tx_coordinator = transaction_coordinator::TxCoordinatorEventLoop {
+        context: context.clone(),
+        network: network.connect(),
+        private_key,
+        context_window,
+        threshold: signing_threshold as u16,
+        signing_round_max_duration: Duration::from_secs(5),
+        bitcoin_presign_request_max_duration: Duration::from_secs(5),
+        dkg_max_duration: Duration::from_secs(5),
+        is_epoch3: true,
+    };
+    let tx_coordinator_handle = tokio::spawn(async move { tx_coordinator.run().await });
+
+    // Here signers use all the same storage, but we don't care in this test
+    let _event_loop_handles: Vec<_> = signer_info
+        .clone()
+        .into_iter()
+        .map(|signer_info| {
+            let event_loop_harness = TxSignerEventLoopHarness::create(
+                context.clone(),
+                network.connect(),
+                context_window,
+                signer_info.signer_private_key,
+                signing_threshold,
+                rng.clone(),
+            );
+
+            event_loop_harness.start()
+        })
+        .collect();
+
+    // Yield to get signers ready
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Wake coordinator up
+    context
+        .signal(RequestDeciderEvent::NewRequestsHandled.into())
+        .expect("failed to signal");
+
+    // Await for tenure completion
+    let tenure_completed_signal = TxCoordinatorEvent::TenureCompleted.into();
+    context
+        .wait_for_signal(Duration::from_secs(5), |signal| {
+            signal == &tenure_completed_signal
+        })
+        .await
+        .unwrap();
+
+    // Await the `wait_for_tx_task` to receive the first transaction broadcasted.
+    let broadcasted_tx =
+        tokio::time::timeout(Duration::from_secs(1), wait_for_transaction_task).await;
+
+    // Stop event loops
+    tx_coordinator_handle.abort();
+
+    if !expect_tx {
+        assert!(broadcasted_tx.is_err());
+        testing::storage::drop_db(db).await;
+        return;
+    }
+
+    let broadcasted_tx = broadcasted_tx
+        .unwrap()
+        .expect("failed to receive message")
+        .expect("no message received");
+
+    broadcasted_tx.verify().unwrap();
+
+    assert_eq!(broadcasted_tx.get_origin_nonce(), nonce);
+
+    let TransactionPayload::ContractCall(contract_call) = broadcasted_tx.payload else {
+        panic!("unexpected tx payload")
+    };
+    assert_eq!(
+        contract_call.contract_name.to_string(),
+        RejectWithdrawalV1::CONTRACT_NAME
+    );
+    assert_eq!(
+        contract_call.function_name.to_string(),
+        RejectWithdrawalV1::FUNCTION_NAME
+    );
+    assert_eq!(
+        contract_call.function_args[0],
+        ClarityValue::UInt(request.request_id as u128)
+    );
 
     testing::storage::drop_db(db).await;
 }
