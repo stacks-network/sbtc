@@ -958,11 +958,11 @@ impl WithdrawalRequestReport {
         }
 
         let block_wait = bitcoin_chain_tip_height.saturating_sub(self.bitcoin_block_height);
-        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS.into() {
+        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS {
             return WithdrawalValidationResult::RequestNotFinal;
         }
 
-        if block_wait > WITHDRAWAL_BLOCKS_EXPIRY.into() {
+        if block_wait > WITHDRAWAL_BLOCKS_EXPIRY {
             return WithdrawalValidationResult::RequestExpired;
         }
 

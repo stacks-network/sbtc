@@ -1625,7 +1625,7 @@ impl super::DbRead for PgStore {
 
         let expiration_height = chain_tip
             .block_height
-            .saturating_sub(WITHDRAWAL_BLOCKS_EXPIRY.into());
+            .saturating_sub(WITHDRAWAL_BLOCKS_EXPIRY);
 
         sqlx::query_as::<_, model::WithdrawalRequest>(
             r#"

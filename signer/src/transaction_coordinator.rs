@@ -1720,9 +1720,9 @@ where
     #[tracing::instrument(skip_all)]
     pub async fn get_eligible_pending_withdrawal_requests<DB>(
         storage: &DB,
-        expiry_window: u16,
-        soft_expiry_window: u16,
-        min_confirmations: u16,
+        expiry_window: u64,
+        soft_expiry_window: u64,
+        min_confirmations: u64,
         params: &GetPendingRequestsParams<'_>,
     ) -> Result<Vec<utxo::WithdrawalRequest>, Error>
     where
@@ -1743,13 +1743,13 @@ where
         let min_bitcoin_height = params
             .bitcoin_chain_tip
             .block_height
-            .saturating_sub(expiry_window.into());
+            .saturating_sub(expiry_window);
 
         // We also calculate the minimum bitcoin block height for withdrawals
         // that are considered valid (not expired) based on the soft expiry. We
         // will not propose these withdrawals in the sweep transaction, but we
         // will log them as skipped.
-        let min_soft_bitcoin_height = min_bitcoin_height.saturating_add(soft_expiry_window.into());
+        let min_soft_bitcoin_height = min_bitcoin_height.saturating_add(soft_expiry_window);
 
         // Fetch pending withdrawal requests from storage. This method, with
         // the given inputs, performs the following filtering according to
@@ -1829,7 +1829,7 @@ where
 
             // [3] Ensure that we have the required number of confirmations for
             // the withdrawal request.
-            if num_confirmations < min_confirmations.into() {
+            if num_confirmations < min_confirmations {
                 tracing::debug!(
                     request_id = req.request_id,
                     num_confirmations,

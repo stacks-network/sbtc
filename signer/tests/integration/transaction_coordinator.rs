@@ -3875,9 +3875,9 @@ mod get_eligible_pending_withdrawal_requests {
         amount: u64,
         num_approves: usize,
         num_expected_results: usize,
-        expiry_window: u16,
-        expiry_buffer: u16,
-        min_confirmations: u16,
+        expiry_window: u64,
+        expiry_buffer: u64,
+        min_confirmations: u64,
         at_block_height: usize,
     }
 
