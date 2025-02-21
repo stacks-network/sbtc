@@ -2125,11 +2125,11 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
-    async fn is_withdrawal_inactive(
+    async fn is_withdrawal_active(
         &self,
-        chain_tip: &model::BitcoinBlockRef,
         id: &model::QualifiedRequestId,
-        min_wait_blocks: u64,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+        min_confirmations: u64,
     ) -> Result<bool, Error> {
         let min_block_height = sqlx::query_scalar::<_, i64>(
             r#"
@@ -2148,13 +2148,13 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)?;
 
         let output_type = model::TxOutputType::SignersOutput;
-        let chain_tip_hash = &chain_tip.block_hash;
+        let chain_tip_hash = &bitcoin_chain_tip.block_hash;
         let signer_utxo_fut = self.get_utxo(chain_tip_hash, output_type, min_block_height);
         let Some(signer_utxo) = signer_utxo_fut.await? else {
-            return Ok(true);
+            return Ok(false);
         };
 
-        Ok(signer_utxo.block_height + min_wait_blocks < chain_tip.block_height)
+        Ok(signer_utxo.block_height + min_confirmations >= bitcoin_chain_tip.block_height)
     }
 
     async fn get_bitcoin_tx(

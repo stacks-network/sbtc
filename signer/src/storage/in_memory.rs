@@ -822,10 +822,10 @@ impl super::DbRead for SharedStore {
         unimplemented!()
     }
 
-    async fn is_withdrawal_inactive(
+    async fn is_withdrawal_active(
         &self,
-        _: &model::BitcoinBlockRef,
         _: &model::QualifiedRequestId,
+        _: &model::BitcoinBlockRef,
         _: u64,
     ) -> Result<bool, Error> {
         unimplemented!()
