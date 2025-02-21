@@ -5582,7 +5582,7 @@ async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
 }
 
 /// Module containing a test suite and helpers specific to
-/// [`DbRead::get_pending_accepted_withdrawal_requests`].
+/// `DbRead::get_pending_accepted_withdrawal_requests`.
 mod get_pending_accepted_withdrawal_requests {
     use signer::{
         bitcoin::validation::WithdrawalValidationResult,

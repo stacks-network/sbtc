@@ -264,7 +264,7 @@ where
         // Get pending withdrawals from storage.
         let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip.block_hash,
+                bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
                 min_withdrawal_block_height,
                 self.signing_threshold,
