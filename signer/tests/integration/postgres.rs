@@ -6424,7 +6424,7 @@ mod get_pending_accepted_withdrawal_requests {
         let request = WithdrawalRequest {
             request_id: 1,
             block_hash: stacks_2.block_hash, // Anchored to B2 with height of 1.
-            bitcoin_block_height: 3,
+            bitcoin_block_height: 2,
             ..Faker.fake()
         };
 
