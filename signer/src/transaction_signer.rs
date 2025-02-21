@@ -1398,11 +1398,13 @@ where
         msg: &WstsNetMessage,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> Result<(), Error> {
+        let mut rng = OsRng;
+
         // Validate that the sender is a valid member of the signing set and
         // has the correct id according to the signer state machine.
         if let Some(signer_id) = signer_id {
             self.validate_sender(state_machine_id, signer_id, &sender)?;
-        let mut rng = OsRng;
+        }
 
         // Process the message in the WSTS signer state machine.
         let outbound_messages = match self.wsts_state_machines.get_mut(state_machine_id) {
