@@ -1114,7 +1114,6 @@ impl AsContractCall for RejectWithdrawalV1 {
         C: Context + Send + Sync,
     {
         let db = ctx.get_storage();
-        let bitcoin_chain_tip = &req_ctx.chain_tip.block_hash;
         // 1. Check whether the withdrawal request is already completed.
         let withdrawal_completed = ctx
             .get_stacks_client()
@@ -1135,12 +1134,12 @@ impl AsContractCall for RejectWithdrawalV1 {
         //    confirmed on the canonical stacks blockchain.
         // 4. Whether the request has been fulfilled.
         let stacks_chain_tip = db
-            .get_stacks_chain_tip(bitcoin_chain_tip)
+            .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
             .await?
             .ok_or(Error::NoStacksChainTip)?;
         let maybe_report = db
             .get_withdrawal_request_report(
-                bitcoin_chain_tip,
+                &req_ctx.chain_tip.block_hash,
                 &stacks_chain_tip.block_hash,
                 &self.id,
                 &ctx.config().signer.public_key(),
@@ -1186,7 +1185,7 @@ impl AsContractCall for RejectWithdrawalV1 {
         // 7. Check whether the withdrawal request may be serviced by a
         //    sweep transaction that may be in the mempool.
         let withdrawal_is_inflight = db
-            .is_withdrawal_inflight(&self.id, bitcoin_chain_tip)
+            .is_withdrawal_inflight(&self.id, &req_ctx.chain_tip.block_hash)
             .await?;
         if withdrawal_is_inflight {
             return Err(WithdrawalRejectErrorMsg::RequestBeingFulfilled.into_error(req_ctx, self));
