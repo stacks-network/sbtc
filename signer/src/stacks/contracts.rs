@@ -748,21 +748,16 @@ impl AcceptWithdrawalV1 {
         if self.deployer != req_ctx.deployer {
             return Err(WithdrawalErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
-        let stacks_chain_tip = ctx
-            .get_storage()
-            .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
-            .await?
-            .ok_or(Error::NoStacksChainTip)?;
 
         let signer_public_key = ctx.config().signer.public_key();
-        let withdrawal_requests = db.get_withdrawal_request_report(
+        let withdrawal_request = db.get_withdrawal_request_report(
             &req_ctx.chain_tip.block_hash,
-            &stacks_chain_tip.block_hash,
+            &req_ctx.stacks_chain_tip,
             &self.id,
             &signer_public_key,
         );
 
-        let Some(report) = withdrawal_requests.await? else {
+        let Some(report) = withdrawal_request.await? else {
             return Err(WithdrawalErrorMsg::RequestMissing.into_error(req_ctx, self));
         };
 

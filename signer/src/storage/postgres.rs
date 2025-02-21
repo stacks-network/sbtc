@@ -1514,7 +1514,7 @@ impl super::DbRead for PgStore {
                 LEFT JOIN sbtc_signer.withdrawal_reject_events AS wre
                     ON wre.request_id = wr.request_id
                 
-                -- Only requests where the bitcoin height is greater than the minimum.
+                -- Only requests where the bitcoin height is >= than the minimum.
                 WHERE wr.bitcoin_block_height >= $3
             ),
 
