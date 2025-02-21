@@ -2242,7 +2242,6 @@ impl super::DbRead for PgStore {
                     ON wae.request_id = wr.request_id
                 LEFT JOIN stacks_blockchain AS sb
                     ON sb.block_hash = wae.block_hash
-                WHERE sb.block_hash IS NULL
 
                 GROUP BY
                     bwo.bitcoin_txid
@@ -2345,6 +2344,33 @@ impl super::DbRead for PgStore {
         .bind(chain_tip)
         .bind(i32::from(context_window))
         .bind(signer_public_key)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
+    async fn get_withdrawal_outputs(
+        &self,
+        id: &model::QualifiedRequestId,
+    ) -> Result<Vec<model::BitcoinWithdrawalOutput>, Error> {
+        sqlx::query_as::<_, model::BitcoinWithdrawalOutput>(
+            r#"
+            SELECT
+                bwo.bitcoin_txid
+              , bwo.bitcoin_chain_tip
+              , bwo.output_index
+              , bwo.request_id
+              , bwo.stacks_txid
+              , bwo.stacks_block_hash
+              , bwo.validation_result
+              , bwo.is_valid_tx
+            FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
+            WHERE bwo.request_id = $1
+              AND bwo.stacks_block_hash = $2
+            "#,
+        )
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(id.block_hash)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)

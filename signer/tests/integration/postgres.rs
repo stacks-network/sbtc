@@ -173,7 +173,11 @@ impl AsContractCall for InitiateWithdrawalRequest {
     sweep_block_height: 7,
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
-    request_id: 0,
+    id: QualifiedRequestId {
+	    request_id: 0,
+	    txid: StacksTxId::from([0; 32]),
+	    block_hash: StacksBlockHash::from([0; 32]),
+    },
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
     signer_bitmap: BitArray::ZERO,
@@ -475,7 +479,7 @@ async fn get_pending_withdrawal_requests_only_pending() {
 
     // Now let's store a withdrawal request with no votes.
     // `get_pending_withdrawal_requests` should return it now.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
 
     let pending_requests = db
         .get_pending_withdrawal_requests(&chain_tip, 1000, &signer_public_key)
@@ -2565,7 +2569,22 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
     db.write_withdrawal_accept_event(&event).await.unwrap();
 
     // Since we have corresponding withdrawal accept event query should return nothing
-    let context_window = 20;
+    let requests = db
+        .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
+        .await
+        .unwrap();
+    assert!(requests.is_empty());
+
+    // It should remain accepted even if we have an unconfirmed accept event in
+    // some fork
+    let forked_event = WithdrawalAcceptEvent {
+        request_id: withdrawal_request.request_id,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+    db.write_withdrawal_accept_event(&forked_event)
+        .await
+        .unwrap();
+
     let requests = db
         .get_swept_withdrawal_requests(&bitcoin_block.block_hash, context_window)
         .await

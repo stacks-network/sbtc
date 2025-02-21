@@ -13,7 +13,9 @@ use crate::common::error::{Error, Inconsistency};
 use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::deposit::{
-    DepositInfoByRecipientEntry, DepositTableByRecipientSecondaryIndex, ValidatedDepositUpdate,
+    DepositInfoByRecipientEntry, DepositInfoByReclaimPubkeysEntry,
+    DepositTableByRecipientSecondaryIndex, DepositTableByReclaimPubkeysSecondaryIndex,
+    ValidatedDepositUpdate,
 };
 use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
@@ -80,7 +82,6 @@ pub async fn get_deposit_entries(
 }
 
 /// Get deposit entries by recipient.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_by_recipient(
     context: &EmilyContext,
     recipient: &String,
@@ -90,6 +91,22 @@ pub async fn get_deposit_entries_by_recipient(
     query_with_partition_key::<DepositTableByRecipientSecondaryIndex>(
         context,
         recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get deposit entries by reclaim pubkey.
+pub async fn get_deposit_entries_by_reclaim_pubkeys_hash(
+    context: &EmilyContext,
+    reclaim_pubkeys_hash: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<DepositInfoByReclaimPubkeysEntry>, Option<String>), Error> {
+    query_with_partition_key::<DepositTableByReclaimPubkeysSecondaryIndex>(
+        context,
+        reclaim_pubkeys_hash,
         maybe_next_token,
         maybe_page_size,
     )
@@ -146,7 +163,6 @@ pub async fn get_all_deposit_entries_modified_from_height_with_status(
 }
 
 /// Get deposit entries for a given transaction.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_for_transaction(
     context: &EmilyContext,
     bitcoin_txid: &String,
@@ -697,7 +713,6 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
 }
 
 /// Get the limit for a specific account.
-#[allow(clippy::ptr_arg)]
 pub async fn get_limit_for_account(
     context: &EmilyContext,
     account: &String,
