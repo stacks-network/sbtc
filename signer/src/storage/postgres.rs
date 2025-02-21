@@ -1524,7 +1524,7 @@ impl super::DbRead for PgStore {
                 SELECT
                     block_hash
                   , block_height
-                FROM bitcoin_blockchain_until($1, $3)
+                FROM bitcoin_blockchain_until($1, $3 - 1)
             ),
 
             -- Fetch the canonical stacks blockchain from the chain tip back

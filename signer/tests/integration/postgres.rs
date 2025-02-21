@@ -6366,23 +6366,31 @@ mod get_pending_accepted_withdrawal_requests {
     /// specified bitcoin block height is `2`. We use the request's specified
     /// bitcoin height as the actual block height. In this case, the
     /// confirmation block height (1) is lower than the specified bitcoin block
-    /// height (2), so we would expect all fetches where the min bitcoin height
-    /// is < `2` to return the event.
+    /// height (2).
     ///
-    /// However, when the min bitcoin height is set to `2`, the confirming
-    /// block has fallen out of the range of the query. The request will then
-    /// not be seen as confirmed and thus not returned.
+    /// The query will fetch the blockchains to a height of `min - 1`, so we
+    /// would expect the following results based on the minimum height:
+    ///
+    /// - `0`: confirmation and block height above the minimum, request
+    ///        returned.
+    /// - `1`: confirmation at minimum, block height above minimum, request
+    ///        returned..
+    /// - `2`: confirmation at minimum - 1, block height at minimum. Given that
+    ///        the blockchains will fetch to a height of `1` in this case, we
+    ///        expect the request to be returned.
+    /// - `3`: confirmation and block height below the minimum, nothing
+    ///        returned.
     ///
     /// This test creates blockchains with the following structure:
     ///
     /// ```text
-    /// Height:       0           1           2     
-    ///          ┌────────┐  ┌────────┐  ┌────────┐
-    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │  We create a withdrawal
-    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
-    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  in S2, but we set its
-    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3 ⚠️ │  bitcoin height to 3.
-    ///          └────────┘  └────────┘  └────────┘
+    /// Height:       0           1           2          3
+    ///          ┌────────┐  ┌────────┐  ┌────────┐  ┌────────┐  
+    /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   ├──►   B4   │  We create a withdrawal
+    ///          └─▲──────┘  └─▲──────┘  └─▲──────┘  └─▲──────┘  request which is confirmed
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐  in S2, but we set its
+    /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3 ⚠️ ├──►   S4   │  bitcoin height to 3.  
+    ///          └────────┘  └────────┘  └────────┘  └────────┘  
     /// ```
     #[tokio::test]
     async fn test_confirmed_anchor_block_lower_than_block_height() {
@@ -6426,7 +6434,8 @@ mod get_pending_accepted_withdrawal_requests {
             .expect("failed to store request");
         store_votes(&db, &request, &[true, true]).await;
 
-        // Min bitcoin height of `0`; the request should be returned.
+        // Min bitcoin height of `0`: both confirmation and block height above
+        // the minimum; the request should be returned.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
@@ -6439,7 +6448,8 @@ mod get_pending_accepted_withdrawal_requests {
 
         assert_eq!(requests.len(), 1);
 
-        // Min bitcoin height of `1`; the request should be returned.
+        // Min bitcoin height of `1`: confirmation at minimum, block height
+        // above minimum; the request should be returned.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
@@ -6452,12 +6462,27 @@ mod get_pending_accepted_withdrawal_requests {
 
         assert_eq!(requests.len(), 1);
 
-        // Min bitcoin height of `2`; the request is not returned.
+        // Min bitcoin height of `2`; confirmation at minimum - 1, block height
+        // at minimum; the request should be returned.
         let requests = db
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
                 &stacks_chain_tip,
                 2,
+                signature_threshold,
+            )
+            .await
+            .expect("failed to query db");
+
+        assert_eq!(requests.len(), 1);
+
+        // Min bitcoin height of `3`; both confirmation and block height below
+        // the minimum; the request should NOT be returned.
+        let requests = db
+            .get_pending_accepted_withdrawal_requests(
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                3,
                 signature_threshold,
             )
             .await
