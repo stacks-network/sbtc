@@ -1174,7 +1174,7 @@ impl AsContractCall for RejectWithdrawalV1 {
             .saturating_sub(report.bitcoin_block_height);
 
         // 4. The request is expired.
-        if blocks_observed < WITHDRAWAL_BLOCKS_EXPIRY.into() {
+        if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY.into() {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 
