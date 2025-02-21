@@ -37,7 +37,7 @@ private_neighbors = false
 # delete the file `event_observers.sqlite` in your chainstate folder
 # to prune old events not yet delivered.
 [[events_observer]]
-endpoint = "sbtc-signer:8801"
+endpoint = "sbtc-signer-1:8801"
 events_keys = [
     "SNGWPN3XDAQE673MXYXF81016M50NHF5X5PWWM70.sbtc-registry::print",
 ]
