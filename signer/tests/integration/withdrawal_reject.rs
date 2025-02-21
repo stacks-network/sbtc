@@ -663,21 +663,6 @@ async fn reject_withdrawal_validation_request_still_active() {
     // fulfilled by a sweep transaction that is in the mempool.
     setup.store_donation(&db).await;
 
-    // Different: We submit a sweep transaction into the mempool so that
-    // the TestSweepSetup2 struct has the sweep_tx_info set. We also need
-    // to submit the transaction in order for
-    // `TestSweepSetup2::store_bitcoin_withdrawals_outputs` to work as
-    // expected.
-    setup.submit_sweep_tx(rpc, faucet);
-
-    // Different: We're adding a row that let the signer know that someone
-    // may have tried to fulfill the withdrawal request. If that
-    // transaction is spending the current signer UTXO, then it could
-    // possibly be in the mempool. Since the signers' UTXO is a donation,
-    // we're saying that the coordinator may have tried to fulfill the
-    // withdrawal.
-    setup.store_bitcoin_withdrawals_outputs(&db).await;
-
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
@@ -695,6 +680,21 @@ async fn reject_withdrawal_validation_request_still_active() {
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
+    // Different: We submit a sweep transaction into the mempool so that
+    // the TestSweepSetup2 struct has the sweep_tx_info set. We also need
+    // to submit the transaction in order for
+    // `TestSweepSetup2::store_bitcoin_withdrawals_outputs` to work as
+    // expected.
+    setup.broadcast_sweep_tx(rpc);
+
+    // Different: We're adding a row that let the signer know that someone
+    // may have tried to fulfill the withdrawal request. If that
+    // transaction is spending the current signer UTXO, then it could
+    // possibly be in the mempool. Since the signers' UTXO is a donation,
+    // we're saying that the coordinator may have tried to fulfill the
+    // withdrawal.
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
+
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
 
@@ -706,12 +706,13 @@ async fn reject_withdrawal_validation_request_still_active() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    let _withdrawals = setup.withdrawals.drain(..).collect::<Vec<_>>();
+    let withdrawals = setup.withdrawals.drain(..).collect::<Vec<_>>();
     setup.submit_sweep_tx(rpc, faucet);
 
-    faucet.generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS - 1);
+    faucet.generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS);
 
     setup.store_sweep_tx(&db).await;
+    setup.withdrawals = withdrawals;
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;

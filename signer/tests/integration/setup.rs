@@ -622,6 +622,15 @@ pub struct SweepTxInfo {
     pub tx_info: BitcoinTxInfo,
 }
 
+#[derive(Debug, Clone)]
+pub struct BroadcastSweepTxInfo {
+    /// The block hash of the bitcoin chain tip when the sweep transaction
+    /// was broadcast
+    pub block_hash: bitcoin::BlockHash,
+    /// The transaction that swept in the deposit transaction.
+    pub txid: bitcoin::Txid,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct SweepAmounts {
     pub amount: u64,
@@ -656,6 +665,8 @@ pub struct TestSweepSetup2 {
     pub donation: OutPoint,
     /// The transaction that swept in the deposit transaction.
     pub sweep_tx_info: Option<SweepTxInfo>,
+    /// Information about the sweep transaction when it was broadcast.
+    pub broadcast_info: Option<BroadcastSweepTxInfo>,
     /// The stacks blocks confirming the withdrawal requests, along with a
     /// genesis block.
     pub stacks_blocks: Vec<model::StacksBlock>,
@@ -784,6 +795,7 @@ impl TestSweepSetup2 {
             deposit_block_hash,
             deposits,
             sweep_tx_info: None,
+            broadcast_info: None,
             donation,
             signers,
             stacks_blocks,
@@ -848,8 +860,9 @@ impl TestSweepSetup2 {
 
     /// This function generates a sweep transaction that sweeps in the
     /// deposited funds and sweeps out the withdrawal funds in a proper
-    /// sweep transaction, that is also confirmed on bitcoin.
-    pub fn submit_sweep_tx(&mut self, rpc: &Client, faucet: &Faucet) {
+    /// sweep transaction, it broadcasts this transaction to the bitcoin
+    /// network.
+    pub fn broadcast_sweep_tx(&mut self, rpc: &Client) {
         // Okay now we try to peg-in the deposit by making a transaction.
         // Let's start by getting the signer's sole UTXO.
         let aggregated_signer = &self.signers.signer;
@@ -858,22 +871,16 @@ impl TestSweepSetup2 {
         // Well we want a BitcoinCoreClient, so we create one using the
         // context. Not, the best thing to do, sorry. TODO: pass in a
         // bitcoin core client object.
-        let ctx = TestContext::builder()
-            .with_first_bitcoin_core_client()
-            .with_in_memory_storage()
-            .with_mocked_emily_client()
-            .with_mocked_stacks_client()
-            .build();
-
+        let settings = Settings::new_from_default_config().unwrap();
+        let btc = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
         let outpoint = OutPoint::new(signer_utxo.txid, signer_utxo.vout);
-        let btc = ctx.bitcoin_client;
         let txids = btc.get_tx_spending_prevout(&outpoint).unwrap();
 
         let last_fees = txids
             .iter()
             .filter_map(|txid| btc.get_mempool_entry(txid).unwrap())
             .map(|entry| Fees {
-                total: entry.vsize,
+                total: entry.fees.base.to_sat(),
                 rate: entry.fees.base.to_sat() as f64 / entry.vsize as f64,
             })
             .max_by(|fee1, fee2| fee1.rate.total_cmp(&fee2.rate));
@@ -922,7 +929,22 @@ impl TestSweepSetup2 {
             unsigned.tx.compute_txid()
         };
 
-        // Let's sweep in the transaction
+        let block_header = rpc.get_blockchain_info().unwrap();
+
+        self.broadcast_info = Some(BroadcastSweepTxInfo {
+            block_hash: block_header.best_block_hash,
+            txid,
+        });
+    }
+
+    /// This function generates a sweep transaction that sweeps in the
+    /// deposited funds and sweeps out the withdrawal funds in a proper
+    /// sweep transaction, that is also confirmed on bitcoin.
+    pub fn submit_sweep_tx(&mut self, rpc: &Client, faucet: &Faucet) {
+        self.broadcast_sweep_tx(rpc);
+        let txid = self.broadcast_info.as_ref().unwrap().txid;
+
+        // Let's confirm the sweep transaction
         let block_hash = faucet.generate_blocks(1).pop().unwrap();
         let block_header = rpc.get_block_header_info(&block_hash).unwrap();
 
@@ -965,18 +987,18 @@ impl TestSweepSetup2 {
     /// validation, where we write to the `bitcoin_withdrawals_outputs`
     /// table at the end.
     pub async fn store_bitcoin_withdrawals_outputs(&self, db: &PgStore) {
-        let sweep = self.sweep_tx_info.as_ref().expect("no sweep tx info set");
+        let sweep = self.broadcast_info.as_ref().expect("no sweep tx info set");
 
         for (index, withdrawal) in self.withdrawals.iter().enumerate() {
             let swept_output = BitcoinWithdrawalOutput {
                 request_id: withdrawal.request.request_id,
                 stacks_txid: withdrawal.request.txid,
                 stacks_block_hash: withdrawal.request.block_hash,
-                bitcoin_chain_tip: sweep.block_hash,
+                bitcoin_chain_tip: sweep.block_hash.into(),
                 is_valid_tx: true,
                 validation_result: WithdrawalValidationResult::Ok,
                 output_index: index as u32 + 2,
-                bitcoin_txid: sweep.tx_info.txid.into(),
+                bitcoin_txid: sweep.txid.into(),
             };
             db.write_bitcoin_withdrawals_outputs(&[swept_output])
                 .await
