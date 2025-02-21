@@ -5406,7 +5406,7 @@ async fn pending_rejected_withdrawal_already_accepted() {
 /// requests that have rows associated with sweep transactions that have
 /// been proposed by the coordinator.
 #[tokio::test]
-async fn is_withdrawal_live_catches_withdrawals_with_rows_in_table() {
+async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
 
@@ -5428,7 +5428,7 @@ async fn is_withdrawal_live_catches_withdrawals_with_rows_in_table() {
     setup.store_dkg_shares(&db).await;
 
     // This donation is currently the signers' UTXO, which is needed in the
-    // `is_withdrawal_live` implementation.
+    // `is_withdrawal_inflight` implementation.
     setup.store_donation(&db).await;
 
     let id = QualifiedRequestId {
@@ -5477,7 +5477,7 @@ async fn is_withdrawal_live_catches_withdrawals_with_rows_in_table() {
 /// requests that are fulfilled further down the chain of sweep
 /// transactions that have been proposed by a coordinator.
 #[tokio::test]
-async fn is_withdrawal_live_catches_withdrawals_in_package() {
+async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
@@ -5498,7 +5498,7 @@ async fn is_withdrawal_live_catches_withdrawals_in_package() {
     // UTXO.
     setup.store_dkg_shares(&db).await;
     // This donation is currently the signers' UTXO, which is needed in the
-    // `is_withdrawal_live` implementation.
+    // `is_withdrawal_inflight` implementation.
     setup.store_donation(&db).await;
 
     let id = QualifiedRequestId {
