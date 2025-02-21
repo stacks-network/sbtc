@@ -326,7 +326,7 @@ pub trait DbRead {
     ///
     /// At this time, we cannot use the bitcoin mempool for this
     /// information since we cannot match withdrawals with transaction
-    /// outputs unless a lot of computational effort. Instead, we use our
+    /// outputs without a lot of computational effort. Instead, we use our
     /// database, where the query is straightforward. The tables that are
     /// be able to answer whether a withdrawal is potentially in the
     /// mempool are populated during validation of pre-sign requests.
