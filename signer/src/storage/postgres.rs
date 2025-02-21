@@ -1549,7 +1549,6 @@ impl super::DbRead for PgStore {
                     ON parent.block_hash = last.parent_hash
                 JOIN bitcoin_blockchain anchor
                     ON anchor.block_hash = parent.bitcoin_anchor
-                    AND anchor.block_height >= (SELECT MIN(bitcoin_block_height) FROM requests)
             )
             
             -- Main select clause (what we're returning).

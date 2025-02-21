@@ -179,8 +179,8 @@ pub trait DbRead {
     ///    blockchain.
     /// 3. The withdrawal request has been approved by at least
     ///    `signature_threshold` signers.
-    /// 4. The withdrawal request was not confirmed in a stacks block anchored
-    ///    to a canonical bitcoin block older than the given `context_window`.
+    /// 4. The withdrawal request bitcoin block height is not older than the
+    ///    given `min_bitcoin_height` (_inclusive_).
     /// 5. There is no canonically confirmed withdrawal request rejection event
     ///    (`reject-withdrawal-request` contract call) for the request.
     ///
@@ -192,7 +192,6 @@ pub trait DbRead {
     ///    needed separately. Use
     ///    [`DbRead::get_withdrawal_request_signer_votes`] to fetch the votes
     ///    and perform this verification separately.
-    /// -  The `context_window` is _inclusive_.
     fn get_pending_accepted_withdrawal_requests(
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,

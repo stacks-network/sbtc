@@ -5631,6 +5631,8 @@ mod get_pending_accepted_withdrawal_requests {
             .await
             .expect("failed to query db");
         assert!(requests.is_empty(), "min height: 1");
+
+        storage::drop_db(db).await;
     }
 
     /// Asserts that requests with a confirmed rejection event are not returned.
@@ -5690,6 +5692,8 @@ mod get_pending_accepted_withdrawal_requests {
             .await
             .expect("failed to query db");
         assert!(requests.is_empty());
+
+        storage::drop_db(db).await;
     }
 
     /// Asserts that a withdrawal request is returned when it has been confirmed
@@ -5761,6 +5765,8 @@ mod get_pending_accepted_withdrawal_requests {
             .await
             .expect("failed to query db");
         assert_eq!(requests.len(), 1);
+
+        storage::drop_db(db).await;
     }
 
     /// Asserts that a withdrawal request is not returned when it has been
@@ -5849,6 +5855,8 @@ mod get_pending_accepted_withdrawal_requests {
             .await
             .expect("failed to query db");
         assert!(requests.is_empty());
+
+        storage::drop_db(db).await;
     }
 
     /// Asserts that we only return requests that have been accepted by the
@@ -6205,6 +6213,8 @@ mod get_pending_accepted_withdrawal_requests {
             .expect("failed to query db");
         assert_eq!(requests.len(), 1);
         assert_eq!(requests.pop().unwrap(), request);
+
+        storage::drop_db(db).await;
     }
 
     /// Asserts that a single request is not returned if it is swept in any
@@ -6279,6 +6289,8 @@ mod get_pending_accepted_withdrawal_requests {
             .await
             .expect("failed to query db");
         assert_eq!(requests.len(), 0);
+
+        storage::drop_db(db).await;
     }
 
     /// Asserts that, for two requests with the same `request_id` confirmed in
@@ -6346,5 +6358,7 @@ mod get_pending_accepted_withdrawal_requests {
             .expect("failed to query db");
         assert_eq!(requests.len(), 1);
         assert_eq!(requests.pop().unwrap(), expected);
+
+        storage::drop_db(db).await;
     }
 }
