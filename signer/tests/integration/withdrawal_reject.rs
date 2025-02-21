@@ -113,8 +113,10 @@ async fn reject_withdrawal_validation_happy_path() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
+    // have a record of the scriptPubKey that the signers control. The
+    // signers normally have a UTXO, so we add one here too.
     setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -167,8 +169,10 @@ async fn reject_withdrawal_validation_not_final() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
+    // have a record of the scriptPubKey that the signers control. The
+    // signers normally have a UTXO, so we add one here too.
     setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -237,8 +241,10 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
+    // have a record of the scriptPubKey that the signers control. The
+    // signers normally have a UTXO, so we add one here too.
     setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -301,8 +307,10 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
+    // have a record of the scriptPubKey that the signers control. The
+    // signers normally have a UTXO, so we add one here too.
     setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -366,8 +374,10 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     set_withdrawal_incomplete(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
+    // have a record of the scriptPubKey that the signers control. The
+    // signers normally have a UTXO, so we add one here too.
     setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -433,8 +443,10 @@ async fn reject_withdrawal_validation_request_completed() {
     set_withdrawal_completed(&mut ctx).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
+    // have a record of the scriptPubKey that the signers control. The
+    // signers normally have a UTXO, so we add one here too.
     setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
 
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
@@ -515,10 +527,12 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
 
     let sweep = setup.sweep_tx_info.as_ref().unwrap();
 
-    // Different: The donation is necessary in order to have a signer UTXO,
-    // which is necessary for the query to correctly return whether the
-    // withdrawal is inflight.
-    setup.store_donation(&db).await;
+    // Different: We're adding a row that let the signer know that someone
+    // may have tried to fulfill the withdrawal request. If that
+    // transaction is spending the current signer UTXO, then it could
+    // possibly be in the mempool. Since the signers' UTXO is a donation,
+    // we're saying that the coordinator may have tried to fulfill the
+    // withdrawal.
     setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     let signer_tx_sighash = BitcoinTxSigHash {
