@@ -20,7 +20,10 @@ use super::entries::deposit::{
 use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
-use super::entries::withdrawal::ValidatedWithdrawalUpdate;
+use super::entries::withdrawal::{
+    ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry,
+    WithdrawalTableByRecipientSecondaryIndex,
+};
 use super::entries::{
     chainstate::{
         ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
@@ -335,6 +338,23 @@ pub async fn get_withdrawal_entries(
     .await
 }
 
+/// Get withdrawal entries by recipient.
+#[allow(clippy::ptr_arg)]
+pub async fn get_withdrawal_entries_by_recipient(
+    context: &EmilyContext,
+    recipient: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<WithdrawalInfoByRecipientEntry>, Option<String>), Error> {
+    query_with_partition_key::<WithdrawalTableByRecipientSecondaryIndex>(
+        context,
+        recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
 /// Gets all withdrawal entries modified from (on or after) a given height.
 pub async fn get_all_withdrawal_entries_modified_from_height(
     context: &EmilyContext,
@@ -392,7 +412,7 @@ pub async fn pull_and_update_withdrawal_with_retry(
         }
         // Make the update package.
         let update_package = WithdrawalUpdatePackage::try_from(&entry, update.clone())?;
-        // Attempt to update the deposit.
+        // Attempt to update the withdrawal.
         match update_withdrawal(context, &update_package).await {
             Err(Error::VersionConflict) => {
                 // Retry.
