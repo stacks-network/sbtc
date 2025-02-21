@@ -1034,7 +1034,7 @@ impl PartialOrd for StacksPrincipal {
 
 /// A ScriptPubkey of a UTXO.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ScriptPubKey(bitcoin::ScriptBuf);
+pub struct ScriptPubKey(pub bitcoin::ScriptBuf);
 
 impl Deref for ScriptPubKey {
     type Target = bitcoin::ScriptBuf;
