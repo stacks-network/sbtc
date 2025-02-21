@@ -5716,7 +5716,7 @@ mod get_pending_accepted_withdrawal_requests {
     /// block is, while in the canonical bitcoin chain, too old to be considered
     /// accepted and are not returned.
     ///
-    /// The signature threshold/context window we are testing is _inclusive_.
+    /// The signature threshold/min height we are testing is _inclusive_.
     ///
     /// This test creates blockchains with the following structure:
     ///
@@ -5725,7 +5725,7 @@ mod get_pending_accepted_withdrawal_requests {
     ///          ┌────────┐  ┌────────┐  ┌────────┐
     /// Bitcoin: │   B1   ├──►   B2   ├──►   B3   │ The request is confirmed (✔)
     ///          └─▲──────┘  └─▲──────┘  └─▲──────┘ in S2 and we test different
-    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐ context windows.
+    ///          ┌─┴──────┐  ┌─┴──────┐  ┌─┴──────┐ min heights.
     /// Stacks:  │   S1   ├──►   S2 ✔ ├──►   S3   │
     ///          └────────┘  └────────┘  └────────┘
     /// ```
@@ -5811,7 +5811,7 @@ mod get_pending_accepted_withdrawal_requests {
             )
             .await
             .expect("failed to query db");
-        assert!(requests.is_empty(), "min height: 1");
+        assert!(requests.is_empty(), "min height: 3");
 
         storage::drop_db(db).await;
     }
@@ -6237,9 +6237,7 @@ mod get_pending_accepted_withdrawal_requests {
         // orphaned.
         assert_eq!(requests.len(), 3);
         // We assert them in reverse order since we use `pop()` to remove them.
-        assert_eq!(requests.pop().unwrap(), request_3a);
-        assert_eq!(requests.pop().unwrap(), request_2a);
-        assert_eq!(requests.pop().unwrap(), request_1);
+        assert_eq!(requests, [request_1, request_2a, request_3a]);
 
         storage::drop_db(db).await;
     }
@@ -6720,7 +6718,7 @@ mod get_pending_accepted_withdrawal_requests {
         assert_eq!(bitcoin_chain_tip.as_ref(), &bitcoin_3.block_hash);
         assert_eq!(&stacks_chain_tip, &stacks_3.block_hash);
 
-        // Create a withdrawal request that has a bitcoin block height of `2`,
+        // Create a withdrawal request that has a bitcoin block height of `0`,
         // but is actually confirmed in S2 (which has a height of `1`).
         let request = WithdrawalRequest {
             request_id: 1,
