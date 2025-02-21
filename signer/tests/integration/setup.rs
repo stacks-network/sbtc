@@ -416,24 +416,12 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
 }
 
 /// Fetch all block headers from bitcoin-core and store it in the database.
-pub async fn fetch_canonical_bitcoin_blockchain(db: &PgStore, rpc: &Client) {
+pub async fn fetch_canonical_bitcoin_blockchain(db: &PgStore, rpc: &Client) -> BitcoinBlockHash {
     let chain_tip_info = rpc.get_blockchain_info().unwrap();
-    let mut block_header = rpc
-        .get_block_header_info(&chain_tip_info.best_block_hash)
-        .unwrap();
 
-    // There are no non-coinbase transactions below this height.
-    while block_header.height as u64 >= regtest::MIN_BLOCKCHAIN_HEIGHT {
-        let parent_header_hash = block_header.previous_block_hash.unwrap();
-        let bitcoin_block = BitcoinBlock {
-            block_hash: block_header.hash.into(),
-            block_height: block_header.height as u64,
-            parent_hash: parent_header_hash.into(),
-        };
+    backfill_bitcoin_blocks(db, rpc, &chain_tip_info.best_block_hash).await;
 
-        db.write_bitcoin_block(&bitcoin_block).await.unwrap();
-        block_header = rpc.get_block_header_info(&parent_header_hash).unwrap();
-    }
+    chain_tip_info.best_block_hash.into()
 }
 
 pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
