@@ -33,6 +33,7 @@ fn build_deposit_reclaim_outputs(
     max_fee: u64,
     amounts: &[u64],
     recipient: Option<StacksAddress>,
+    reclaim_user_script: &ScriptBuf,
 ) -> (
     Vec<TxOut>,
     Vec<DepositScriptInputs>,
@@ -50,7 +51,7 @@ fn build_deposit_reclaim_outputs(
             recipient: PrincipalData::from(actual_recipient),
             max_fee,
         };
-        let reclaim = ReclaimScriptInputs::try_new(lock_time, ScriptBuf::new()).unwrap();
+        let reclaim = ReclaimScriptInputs::try_new(lock_time, reclaim_user_script.clone()).unwrap();
         let deposit_script = deposit.deposit_script();
         let reclaim_script = reclaim.reclaim_script();
 
@@ -69,7 +70,7 @@ fn build_deposit_reclaim_outputs(
 /// the deposit and reclaim scripts.
 pub fn tx_setup(lock_time: u32, max_fee: u64, amounts: &[u64]) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None);
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, &ScriptBuf::new());
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,
@@ -87,8 +88,32 @@ pub fn tx_setup_with_recipient(
     amounts: &[u64],
     recipient: StacksAddress,
 ) -> TxSetup {
+    let (tx_outs, deposits, reclaims) = build_deposit_reclaim_outputs(
+        lock_time,
+        max_fee,
+        amounts,
+        Some(recipient),
+        &ScriptBuf::new(),
+    );
+    let tx = Transaction {
+        version: Version::TWO,
+        lock_time: LockTime::ZERO,
+        input: Vec::new(),
+        output: tx_outs,
+    };
+    TxSetup { tx, reclaims, deposits }
+}
+
+/// The BTC transaction that is in this TxSetup is consistent with the deposit and
+/// reclaim scripts with a specific user script.
+pub fn tx_setup_with_reclaim_user_script(
+    lock_time: u32,
+    max_fee: u64,
+    amounts: &[u64],
+    reclaim_user_script: &ScriptBuf,
+) -> TxSetup {
     let (tx_outs, deposits, reclaims) =
-        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, Some(recipient));
+        build_deposit_reclaim_outputs(lock_time, max_fee, amounts, None, reclaim_user_script);
     let tx = Transaction {
         version: Version::TWO,
         lock_time: LockTime::ZERO,

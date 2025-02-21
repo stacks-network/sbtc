@@ -734,7 +734,7 @@ where
             sign_request.contract_tx
         {
             assert_eq!(call.tx_fee, withdrawal_fee);
-            assert_eq!(call.request_id, withdrawal_req.request_id);
+            assert_eq!(call.id.request_id, withdrawal_req.request_id);
             assert_eq!(call.outpoint, outpoint);
             assert_eq!(call.signer_bitmap, signer_bitmap);
             assert_eq!(call.sweep_block_hash, withdrawal_req.sweep_block_hash);
@@ -767,6 +767,9 @@ where
                         data: withdrawal_req.sweep_block_hash.to_le_bytes().to_vec()
                     })),
                     Value::UInt(withdrawal_req.sweep_block_height as u128),
+                    Value::Sequence(SequenceData::Buffer(BuffData {
+                        data: outpoint.txid.to_le_bytes().to_vec()
+                    })),
                 ]
             );
         } else {
@@ -819,7 +822,7 @@ where
 
         let (sign_request, multi_tx) = coordinator
             .construct_withdrawal_reject_stacks_sign_request(
-                withdrawal_req.clone(),
+                &withdrawal_req,
                 &bitcoin_aggregate_key,
                 &WALLET.0,
             )
