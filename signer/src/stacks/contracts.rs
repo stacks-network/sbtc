@@ -1132,14 +1132,10 @@ impl AsContractCall for RejectWithdrawalV1 {
         // 3. Whether the associated withdrawal request transaction is
         //    confirmed on the canonical stacks blockchain.
         // 4. Whether the request has been fulfilled.
-        let stacks_chain_tip = db
-            .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
-            .await?
-            .ok_or(Error::NoStacksChainTip)?;
         let maybe_report = db
             .get_withdrawal_request_report(
                 &req_ctx.chain_tip.block_hash,
-                &stacks_chain_tip.block_hash,
+                &req_ctx.stacks_chain_tip,
                 &self.id,
                 &ctx.config().signer.public_key(),
             )
