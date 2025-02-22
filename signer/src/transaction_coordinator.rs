@@ -61,7 +61,6 @@ use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead;
 use crate::wsts_state_machine::FireCoordinator;
@@ -1123,18 +1122,12 @@ where
         multi_tx: MultisigTx,
         wallet: &SignerWallet,
     ) -> Result<StacksTxId, Error> {
-        tracing::debug!(
-            txid = %sign_request.txid,
-            "signing sign request"
-        );
         let kind = sign_request.tx_kind();
 
         let instant = std::time::Instant::now();
         let tx = self
             .sign_stacks_transaction(sign_request, multi_tx, chain_tip, wallet)
             .await;
-
-        tracing::debug!("signed sign request");
 
         let status = if tx.is_ok() { "success" } else { "failure" };
 
@@ -1153,12 +1146,8 @@ where
         )
         .increment(1);
 
-        tracing::debug!("submitting tx result");
-
         // Submit the transaction to the Stacks node
         let submit_tx_result = self.context.get_stacks_client().submit_tx(&tx?).await;
-
-        tracing::debug!("submitted tx result");
 
         match submit_tx_result {
             Ok(SubmitTxResponse::Acceptance(txid)) => Ok(txid.into()),
@@ -1255,16 +1244,11 @@ where
             })?;
 
         let outpoint = req.withdrawal_outpoint();
+        let qualified_id = req.qualified_id();
 
         let assessed_bitcoin_fee = tx_info
             .assess_output_fee(outpoint.vout as usize)
             .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
-
-        let qualified_id = QualifiedRequestId {
-            request_id: req.request_id,
-            txid: req.txid,
-            block_hash: req.block_hash,
-        };
 
         let votes = self
             .context
@@ -1299,8 +1283,6 @@ where
             tx_fee: tx.get_tx_fee(),
             txid: tx.txid(),
         };
-
-        tracing::debug!("sign request");
 
         Ok((sign_request, multi_tx))
     }
