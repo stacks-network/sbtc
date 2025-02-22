@@ -1696,7 +1696,9 @@ where
     }
 
     /// Fetches pending withdrawal requests from storage and filters them based
-    /// on the remaining consensus rules as defined in #741:
+    /// on the remaining consensus rules as defined in #741.
+    ///
+    /// ## Consensus Rules Overview
     ///
     /// 1. [x] The request must not have been swept within the current canonical
     ///    Bitcoin chain.
@@ -1717,11 +1719,22 @@ where
     /// 7. [x] The request must not have expired (handled in the query).
     /// 8. [x] The request amount must be above the dust limit.
     /// 9. [x] The request must be within the current sBTC caps.
+    ///
+    /// ## Function Parameters
+    /// - `storage`: Reference to a `DbRead` implementation.
+    /// - `expiry_window`: The number of blocks which a withdrawal request is
+    ///   considered definitively expired and will not be returned (exclusive).
+    /// - `expiry_buffer`: The number of blocks _prior to_ the expiration of a
+    ///   withdrawal request that it is considered "soft expired" and will be
+    ///   skipped/logged (exclusive).
+    /// - `min_confirmations`: The minimum number of confirmations required for
+    ///   a withdrawal request to be considered valid (inclusive).
+    /// - `params`: A reference to a `GetPendingRequestsParams` struct.
     #[tracing::instrument(skip_all)]
     pub async fn get_eligible_pending_withdrawal_requests<DB>(
         storage: &DB,
         expiry_window: u64,
-        soft_expiry_window: u64,
+        expiry_buffer: u64,
         min_confirmations: u64,
         params: &GetPendingRequestsParams<'_>,
     ) -> Result<Vec<utxo::WithdrawalRequest>, Error>
@@ -1749,7 +1762,7 @@ where
         // that are considered valid (not expired) based on the soft expiry. We
         // will not propose these withdrawals in the sweep transaction, but we
         // will log them as skipped.
-        let min_soft_bitcoin_height = min_bitcoin_height.saturating_add(soft_expiry_window);
+        let min_soft_bitcoin_height = min_bitcoin_height.saturating_add(expiry_buffer);
 
         // Fetch pending withdrawal requests from storage. This method, with the
         // given inputs, performs the following filtering according to consensus
