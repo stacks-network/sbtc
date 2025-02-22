@@ -691,18 +691,24 @@ where
             .await?;
         wallet.set_nonce(account.nonce);
 
-        self.construct_and_sign_stacks_sbtc_depost_response_transactions(
+        let fut = self.construct_and_sign_stacks_sbtc_depost_response_transactions(
             chain_tip,
             &wallet,
             bitcoin_aggregate_key,
-        )
-        .await?;
-        self.construct_and_sign_stacks_sbtc_withdrawal_response_transactions(
+        );
+        if let Err(error) = fut.await {
+            tracing::error!(%error, "could not process deposit response transactions on stacks");
+        }
+
+        let fut = self.construct_and_sign_stacks_sbtc_withdrawal_response_transactions(
             chain_tip,
             &wallet,
             bitcoin_aggregate_key,
-        )
-        .await?;
+        );
+        if let Err(error) = fut.await {
+            tracing::error!(%error, "could not process withdrawal response transactions on stacks");
+        }
+
         Ok(())
     }
 
@@ -799,13 +805,17 @@ where
         // a confirmed bitcoin transaction associated with the request.
         let swept_withdrawals = db
             .get_swept_withdrawal_requests(&chain_tip.block_hash, self.context_window)
-            .await?;
+            .await
+            .inspect_err(|error| tracing::error!(%error, "could not fetch swept withdrawals"))
+            .unwrap_or_default();
 
         // Fetch withdrawal requests that have not been swept for quite
         // some time.
         let rejected_withdrawals = db
             .get_pending_rejected_withdrawal_requests(chain_tip, self.context_window)
-            .await?;
+            .await
+            .inspect_err(|error| tracing::error!(%error, "could not fetch rejected withdrawals"))
+            .unwrap_or_default();
 
         if swept_withdrawals.is_empty() && rejected_withdrawals.is_empty() {
             tracing::debug!("no withdrawal stacks transactions to create, exiting");
