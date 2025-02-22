@@ -5471,6 +5471,8 @@ async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
     db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
 
     assert!(db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+
+    signer::testing::storage::drop_db(db).await;
 }
 
 /// Check that is_withdrawal_inflight correctly picks up withdrawal
@@ -5579,4 +5581,6 @@ async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
     db.write_bitcoin_txs_sighashes(&[sighash1]).await.unwrap();
 
     assert!(db.is_withdrawal_inflight(&id, &chain_tip).await.unwrap());
+
+    signer::testing::storage::drop_db(db).await;
 }
