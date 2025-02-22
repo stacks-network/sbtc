@@ -238,9 +238,9 @@ export class EmilyStack extends cdk.Stack {
             pointInTimeRecovery: pointInTimeRecovery,
         });
 
-        const indexName: string = "WithdrawalStatus";
+        const byStatusIndexName: string = "WithdrawalStatus";
         table.addGlobalSecondaryIndex({
-            indexName: indexName,
+            indexName: byStatusIndexName,
             partitionKey: {
                 name: 'OpStatus',
                 type: dynamodb.AttributeType.STRING
@@ -255,6 +255,28 @@ export class EmilyStack extends cdk.Stack {
                 "StacksBlockHash",
                 "StacksBlockHeight",
                 "Recipient",
+                "Amount",
+                "LastUpdateBlockHash",
+            ]
+        });
+
+        const byRecipientIndexName: string = "WithdrawalRecipient";
+        table.addGlobalSecondaryIndex({
+            indexName: byRecipientIndexName,
+            partitionKey: {
+                name: 'Recipient',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "RequestId",
+                "StacksBlockHash",
+                "StacksBlockHeight",
+                "OpStatus",
                 "Amount",
                 "LastUpdateBlockHash",
             ]

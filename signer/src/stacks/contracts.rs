@@ -55,6 +55,7 @@ use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::QualifiedRequestId;
+use crate::storage::model::StacksBlockHash;
 use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
@@ -86,6 +87,9 @@ pub struct ReqContext {
     /// the bitcoin blockchain with the greatest height. On ties, we sort
     /// by the block hash descending and take the first one.
     pub chain_tip: BitcoinBlockRef,
+    /// This signer's current view of the chain tip of the canonical
+    /// stacks blockchain.
+    pub stacks_chain_tip: StacksBlockHash,
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
     pub context_window: u16,
@@ -744,21 +748,16 @@ impl AcceptWithdrawalV1 {
         if self.deployer != req_ctx.deployer {
             return Err(WithdrawalErrorMsg::DeployerMismatch.into_error(req_ctx, self));
         }
-        let stacks_chain_tip = ctx
-            .get_storage()
-            .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
-            .await?
-            .ok_or(Error::NoStacksChainTip)?;
 
         let signer_public_key = ctx.config().signer.public_key();
-        let withdrawal_requests = db.get_withdrawal_request_report(
+        let withdrawal_request = db.get_withdrawal_request_report(
             &req_ctx.chain_tip.block_hash,
-            &stacks_chain_tip.block_hash,
+            &req_ctx.stacks_chain_tip,
             &self.id,
             &signer_public_key,
         );
 
-        let Some(report) = withdrawal_requests.await? else {
+        let Some(report) = withdrawal_request.await? else {
             return Err(WithdrawalErrorMsg::RequestMissing.into_error(req_ctx, self));
         };
 
@@ -1021,24 +1020,27 @@ pub enum WithdrawalRejectErrorMsg {
     /// The smart contract deployer is fixed, so this should always match.
     #[error("the deployer in the transaction does not match the expected deployer")]
     DeployerMismatch,
+    /// The withdrawal request is likely being fulfilled right now.
+    #[error("the withdrawal request may be fulfilled by a transaction in the mempool")]
+    RequestBeingFulfilled,
     /// We have checked the smart contract for the status of the
     /// withdrawal's request ID and it has indicated that the request has
     /// been either accepted or rejected already.
     #[error("the smart contract has been updated to indicate that the request has been completed")]
     RequestCompleted,
+    /// Withdrawal request fulfilled
+    #[error("Withdrawal request fulfilled")]
+    RequestFulfilled,
     /// We do not have a record of the withdrawal request in our list of
     /// pending and accepted withdrawal requests.
     #[error("no record of withdrawal request in pending and accepted withdrawal requests")]
     RequestMissing,
-    /// Withdrawal request fulfilled
-    #[error("Withdrawal request fulfilled")]
-    RequestFulfilled,
-    /// Withdrawal request unconfirmed
-    #[error("Withdrawal request unconfirmed")]
-    RequestUnconfirmed,
     /// Withdrawal request is not final
     #[error("Withdrawal request is not final")]
     RequestNotFinal,
+    /// Withdrawal request unconfirmed
+    #[error("Withdrawal request unconfirmed")]
+    RequestUnconfirmed,
 }
 
 impl WithdrawalRejectErrorMsg {
@@ -1104,10 +1106,13 @@ impl AsContractCall for RejectWithdrawalV1 {
     /// 4. Whether the request has been fulfilled. Fail if it has.
     /// 5. Whether the signer bitmap matches the bitmap from our records.
     /// 6. Whether the withdrawal request has expired. Fail if it hasn't.
+    /// 7. Whether the withdrawal request is being serviced by a sweep
+    ///    transaction that is in the mempool.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
+        let db = ctx.get_storage();
         // 1. Check whether the withdrawal request is already completed.
         let withdrawal_completed = ctx
             .get_stacks_client()
@@ -1127,13 +1132,11 @@ impl AsContractCall for RejectWithdrawalV1 {
         // 3. Whether the associated withdrawal request transaction is
         //    confirmed on the canonical stacks blockchain.
         // 4. Whether the request has been fulfilled.
-        let stacks_chain_tip = ctx
-            .get_storage()
+        let stacks_chain_tip = db
             .get_stacks_chain_tip(&req_ctx.chain_tip.block_hash)
             .await?
             .ok_or(Error::NoStacksChainTip)?;
-        let maybe_report = ctx
-            .get_storage()
+        let maybe_report = db
             .get_withdrawal_request_report(
                 &req_ctx.chain_tip.block_hash,
                 &stacks_chain_tip.block_hash,
@@ -1176,6 +1179,15 @@ impl AsContractCall for RejectWithdrawalV1 {
 
         if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
+        }
+
+        // 7. Check whether the withdrawal request may be serviced by a
+        //    sweep transaction that may be in the mempool.
+        let withdrawal_is_inflight = db
+            .is_withdrawal_inflight(&self.id, &req_ctx.chain_tip.block_hash)
+            .await?;
+        if withdrawal_is_inflight {
+            return Err(WithdrawalRejectErrorMsg::RequestBeingFulfilled.into_error(req_ctx, self));
         }
 
         Ok(())

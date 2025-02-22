@@ -1384,7 +1384,7 @@
           {
             "name": "status",
             "in": "query",
-            "description": "the status to search by when getting all deposits.",
+            "description": "the status to search by when getting all withdrawals.",
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/Status"
@@ -1642,6 +1642,133 @@
         "summary": "CORS support",
         "description": "Handles CORS preflight requests",
         "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/withdrawal/recipient/{recipient}": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawals by recipient handler.",
+        "operationId": "getWithdrawalsForRecipient",
+        "parameters": [
+          {
+            "name": "recipient",
+            "in": "path",
+            "description": "the recpieint to search by when getting all withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWithdrawalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "recipient",
+            "in": "path",
+            "description": "the recpieint to search by when getting all withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {},
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",

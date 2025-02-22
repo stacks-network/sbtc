@@ -70,6 +70,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup2) -> (AcceptWithdrawalV1, ReqCon
             block_hash: sweep_tx_info.block_hash,
             block_height: sweep_tx_info.block_height,
         },
+        stacks_chain_tip: data.withdrawals[0].request.block_hash,
         // This value means that the signer will go back 20 blocks when
         // looking for pending and accepted withdrawal requests.
         context_window: 20,

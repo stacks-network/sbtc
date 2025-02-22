@@ -3425,12 +3425,11 @@ async fn test_conservative_initial_sbtc_limits() {
     }
 }
 
-#[test_case(false, false, false; "accept")]
-#[test_case(true, false, false; "completed")]
-#[test_case(false, true, false; "mempool")]
-#[test_case(false, false, true; "reject")]
-#[test_log::test(tokio::test)]
-async fn process_withdrawal_accept(is_completed: bool, is_in_mempool: bool, is_reject: bool) {
+#[test_case(false, false; "rejectable")]
+#[test_case(true, false; "completed")]
+#[test_case(false, true; "in mempool")]
+#[tokio::test]
+async fn process_accepted_withdrawal(is_completed: bool, is_in_mempool: bool) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
@@ -3442,7 +3441,7 @@ async fn process_withdrawal_accept(is_completed: bool, is_in_mempool: bool, is_r
         .with_mocked_emily_client()
         .build();
 
-    let expect_tx = !is_completed && !is_in_mempool && !is_reject;
+    let expect_tx = !is_completed && !is_in_mempool;
 
     let nonce = 12;
     // Mock required stacks client functions
@@ -3468,7 +3467,7 @@ async fn process_withdrawal_accept(is_completed: bool, is_in_mempool: bool, is_r
             client
                 .expect_is_withdrawal_completed()
                 .returning(move |_, _| Box::pin(async move { Ok(is_completed) }));
-            if is_reject {
+            if is_completed {
                 client.expect_submit_tx().returning(move |tx| {
                     let tx = tx.clone();
                     Box::pin(async move { Ok(SubmitTxResponse::Acceptance(tx.txid())) })
@@ -3501,6 +3500,33 @@ async fn process_withdrawal_accept(is_completed: bool, is_in_mempool: bool, is_r
 
     let (aggregate_key, _) = run_dkg(&context, &mut rng, &mut testing_signer_set).await;
 
+    // We need to set the signer's UTXO since that is necessary to know if
+    // there is a transaction sweeping out any withdrawals.
+    let script_pub_key = aggregate_key.signers_script_pubkey();
+    let bitcoin_network = bitcoin::Network::Regtest;
+    let address = Address::from_script(&script_pub_key, bitcoin_network).unwrap();
+    let donation = faucet.send_to(100_000, &address);
+
+    // Okay, the donation exists, but it's in the mempool. In order to get
+    // it into our database it needs to be confirmed. We also feed it
+    // through the block observer will consider since it handles all the
+    // logic for writing it to the database.
+    faucet.generate_block();
+
+    let bitcoin_chain_tip = rpc.get_blockchain_info().unwrap().best_block_hash;
+    backfill_bitcoin_blocks(&db, rpc, &bitcoin_chain_tip).await;
+
+    let block_observer = BlockObserver {
+        context: context.clone(),
+        bitcoin_blocks: (),
+    };
+
+    let tx = rpc.get_raw_transaction(&donation.txid, None).unwrap();
+    block_observer
+        .extract_sbtc_transactions(bitcoin_chain_tip, &[tx])
+        .await
+        .unwrap();
+
     // When the signer binary starts up in main(), it sets the current
     // signer set public keys in the context state using the values in the
     // bootstrap_signing_set configuration parameter. Later, the aggregate
@@ -3531,7 +3557,7 @@ async fn process_withdrawal_accept(is_completed: bool, is_in_mempool: bool, is_r
         .unwrap()
         .is_empty());
 
-    let blocks_count = if is_reject {
+    let blocks_count = if is_completed {
         WITHDRAWAL_BLOCKS_EXPIRY + 1
     } else {
         WITHDRAWAL_BLOCKS_EXPIRY - 10

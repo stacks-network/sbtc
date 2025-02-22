@@ -1,5 +1,4 @@
 //! Handlers for Deposit endpoints.
-
 use bitcoin::opcodes::all::{self as opcodes};
 use bitcoin::ScriptBuf;
 use sbtc::deposits::ReclaimScriptInputs;
@@ -9,8 +8,8 @@ use tracing::{debug, instrument, warn};
 use warp::http::StatusCode;
 use warp::reply::{json, with_status, Reply};
 
+use crate::api::models::common::requests::BasicPaginationQuery;
 use crate::api::models::common::Status;
-use crate::api::models::deposit::requests::BasicPaginationQuery;
 use crate::api::models::deposit::responses::{
     GetDepositsForTransactionResponse, UpdateDepositsResponse,
 };

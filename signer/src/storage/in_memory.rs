@@ -509,8 +509,9 @@ impl super::DbRead for SharedStore {
 
     async fn get_pending_accepted_withdrawal_requests(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _context_window: u16,
+        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+        _stacks_chain_tip: &model::StacksBlockHash,
+        _min_bitcoin_height: u64,
         _threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         unimplemented!();
@@ -812,6 +813,14 @@ impl super::DbRead for SharedStore {
             .encrypted_dkg_shares
             .values()
             .any(|(_, share)| &share.script_pubkey == script))
+    }
+
+    async fn is_withdrawal_inflight(
+        &self,
+        _: &model::QualifiedRequestId,
+        _: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        unimplemented!()
     }
 
     async fn get_bitcoin_tx(
