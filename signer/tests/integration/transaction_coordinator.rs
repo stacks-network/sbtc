@@ -3743,8 +3743,8 @@ mod get_eligible_pending_withdrawal_requests {
             blocks::{BitcoinChain, StacksChain},
             storage::{DbReadTestExt as _, DbWriteTestExt as _},
         },
-        transaction_coordinator::GetPendingRequestsParams,
-        transaction_coordinator::TxCoordinatorEventLoop,
+        transaction_coordinator::{GetPendingRequestsParams, TxCoordinatorEventLoop},
+        WITHDRAWAL_DUST_LIMIT,
     };
 
     use super::*;
@@ -3903,10 +3903,15 @@ mod get_eligible_pending_withdrawal_requests {
     /// correctly filters requests based on its parameters.
     #[test_case(TestParams::default(); "should_pass_all_validations")]
     #[test_case(TestParams {
-        amount: 100,
+        amount: WITHDRAWAL_DUST_LIMIT - 1,
         num_expected_results: 0,
         ..Default::default()
-    }; "below_dust_limit")]
+    }; "amount_below_dust_limit_skipped")]
+    #[test_case(TestParams {
+        amount: WITHDRAWAL_DUST_LIMIT,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "amount_at_dust_limit_allowed")]
     #[test_case(TestParams {
         amount: 1_000,
         sbtc_limits: SbtcLimits::zero(),

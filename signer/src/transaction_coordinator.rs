@@ -1789,9 +1789,9 @@ where
                 continue;
             }
 
-            // [8] Ensure that the withdrawal request amount is above the dust
-            // limit.
-            if req.amount <= WITHDRAWAL_DUST_LIMIT {
+            // [8] Ensure that the withdrawal request amount is at or above the
+            // dust limit specified in `WITHDRAWAL_DUST_LIMIT`.
+            if req.amount < WITHDRAWAL_DUST_LIMIT {
                 tracing::debug!(
                     request_id = req.request_id,
                     amount = req.amount,
