@@ -3824,8 +3824,10 @@ async fn sign_bitcoin_transaction_withdrawals() {
     assert_eq!(&tx_info.tx.output[0].script_pubkey, &script_pub_key);
 
     let recipient = &*withdrawal_request.recipient;
-    assert_eq!(tx_info.tx.output[2].value.to_sat(), withdrawal_request.amount);
     assert_eq!(&tx_info.tx.output[2].script_pubkey, recipient);
+
+    let withdrawal_amount = withdrawal_request.amount;
+    assert_eq!(tx_info.tx.output[2].value.to_sat(), withdrawal_amount);
 
     // Lastly we check that out database has the sweep transaction
     let tx = sqlx::query_scalar::<_, BitcoinTx>(
