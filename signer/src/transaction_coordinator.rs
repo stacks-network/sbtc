@@ -1948,36 +1948,30 @@ where
         // Get the current sBTC limits (caps).
         let sbtc_limits = self.context.state().get_current_limits();
 
-        // Fetch pending deposit and withdrawal requests from storage.
-        let (deposits, withdrawals) = {
-            // Setup the parameters for fetching pending requests.
-            let params = GetPendingRequestsParams {
-                bitcoin_chain_tip,
-                stacks_chain_tip,
-                aggregate_key,
-                signer_public_keys,
-                signature_threshold: self.threshold,
-                sbtc_limits: &sbtc_limits,
-            };
-
-            // Fetch eligible deposit requests.
-            let deposits =
-                Self::get_eligible_pending_deposit_requests(&storage, self.context_window, &params)
-                    .await?;
-
-            // Fetch eligible withdrawal requests.
-            let withdrawals = Self::get_eligible_pending_withdrawal_requests(
-                &storage,
-                WITHDRAWAL_BLOCKS_EXPIRY,
-                WITHDRAWAL_EXPIRY_BUFFER,
-                WITHDRAWAL_MIN_CONFIRMATIONS,
-                &params,
-            )
-            .await?;
-
-            // Return the deposit and withdrawal requests we've gotten.
-            (deposits, withdrawals)
+        // Setup the parameters for fetching pending requests.
+        let params = GetPendingRequestsParams {
+            bitcoin_chain_tip,
+            stacks_chain_tip,
+            aggregate_key,
+            signer_public_keys,
+            signature_threshold: self.threshold,
+            sbtc_limits: &sbtc_limits,
         };
+
+        // Fetch eligible deposit requests from storage.
+        let deposits =
+            Self::get_eligible_pending_deposit_requests(&storage, self.context_window, &params)
+                .await?;
+
+        // Fetch eligible withdrawal requests from storage.
+        let withdrawals = Self::get_eligible_pending_withdrawal_requests(
+            &storage,
+            WITHDRAWAL_BLOCKS_EXPIRY,
+            WITHDRAWAL_EXPIRY_BUFFER,
+            WITHDRAWAL_MIN_CONFIRMATIONS,
+            &params,
+        )
+        .await?;
 
         // If there are no pending deposit or withdrawal requests, we return
         // `None` to signal that there is no work to be done.
