@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use bitcoin::transaction::Version;
 use bitcoin::Amount;
 use bitcoin::Block;
 use bitcoin::BlockHash;
@@ -10,7 +9,6 @@ use bitcoin::Denomination;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
-use bitcoin::TxOut;
 use bitcoin::Txid;
 use bitcoin::Wtxid;
 use bitcoincore_rpc::json::EstimateMode;
@@ -23,15 +21,10 @@ use bitcoincore_rpc_json::GetBlockchainInfoResult;
 use bitcoincore_rpc_json::GetMempoolEntryResult;
 use bitcoincore_rpc_json::GetNetworkInfoResult;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
-use bitcoincore_rpc_json::GetRawTransactionResultVout;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
-use bitcoincore_rpc_json::GetRawTransactionResultVoutScriptPubKey;
 use bitcoincore_rpc_json::GetTxOutResult;
 use serde::Deserialize;
 use url::Url;
-
-use fake::Fake;
-use sbtc::events::FromLittleEndianOrder;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
@@ -137,59 +130,6 @@ pub struct BitcoinTxInfo {
     /// timestamp as recorded by the miner of the block.
     #[serde(rename = "blocktime")]
     pub block_time: u64,
-}
-
-impl<T> fake::Dummy<T> for BitcoinTxInfo {
-    fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &T, rng: &mut R) -> Self {
-        tracing::debug!("Generating fake BitcoinTxInfo");
-        let tx = Transaction {
-            version: Version::TWO,
-            lock_time: bitcoin::absolute::LockTime::Blocks(
-                bitcoin::absolute::Height::from_consensus(10).unwrap(),
-            ),
-            input: vec![],
-            output: vec![
-                TxOut {
-                    value: Amount::from_sat(1000),
-                    script_pubkey: ScriptBuf::default(),
-                },
-                TxOut {
-                    value: Amount::from_sat(2000),
-                    script_pubkey: ScriptBuf::default(),
-                },
-                TxOut {
-                    value: Amount::from_sat(3000),
-                    script_pubkey: ScriptBuf::default(),
-                },
-            ],
-        };
-        let vout1 = GetRawTransactionResultVout {
-            value: Amount::from_sat(4000),
-            n: 2,
-            script_pub_key: GetRawTransactionResultVoutScriptPubKey {
-                asm: fake::Faker.fake_with_rng(rng),
-                hex: fake::Faker.fake_with_rng(rng),
-                req_sigs: fake::Faker.fake_with_rng(rng),
-                type_: None,
-                addresses: vec![],
-                address: None,
-            },
-        };
-        BitcoinTxInfo {
-            block_hash: BlockHash::from_le_bytes(fake::Faker.fake_with_rng(rng)),
-            in_active_chain: fake::Faker.fake_with_rng(rng),
-            fee: Amount::from_sat(100),
-            tx: tx.clone(),
-            txid: tx.compute_txid(),
-            hash: tx.compute_wtxid(),
-            size: fake::Faker.fake_with_rng(rng),
-            vsize: fake::Faker.fake_with_rng(rng),
-            vin: vec![],
-            vout: vec![vout1.clone(), vout1],
-            confirmations: fake::Faker.fake_with_rng(rng),
-            block_time: fake::Faker.fake_with_rng(rng),
-        }
-    }
 }
 
 /// A slimmed down version of the `BitcoinTxInfo` struct which only contains the
