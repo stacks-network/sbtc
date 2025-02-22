@@ -67,10 +67,12 @@ use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::WithdrawalRequest;
 use signer::storage::postgres::PgStore;
+use signer::storage::DbRead;
+use signer::storage::DbWrite;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::DbReadTestExt;
-use signer::testing::storage::DbWriteTestExt as _;
+use signer::testing::storage::DbWriteTestExt;
 use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerInfo;
 use signer::testing::IterTestExt;
@@ -100,8 +102,6 @@ use signer::stacks::contracts::CompleteDepositV1;
 use signer::stacks::contracts::SMART_CONTRACTS;
 use signer::storage::model;
 use signer::storage::model::EncryptedDkgShares;
-use signer::storage::DbRead as _;
-use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::WrappedMock;
@@ -3602,7 +3602,7 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
         db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
     }
 
-    let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+    let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
         tokio::sync::broadcast::channel(1);
 
     // This task gets all transactions broadcasted by the coordinator.
@@ -3726,4 +3726,317 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     );
 
     testing::storage::drop_db(db).await;
+}
+
+/// Module containing a test suite and helpers specific to
+/// [`TxCoordinatorEventLoop::get_eligible_pending_withdrawal_requests`].
+mod get_eligible_pending_withdrawal_requests {
+    use std::sync::atomic::AtomicU64;
+    use test_case::test_case;
+
+    use signer::{
+        bitcoin::MockBitcoinInteract,
+        emily_client::MockEmilyInteract,
+        network::in_memory2::SignerNetworkInstance,
+        storage::model::{BitcoinBlock, StacksBlock, WithdrawalRequest, WithdrawalSigner},
+        testing::{
+            blocks::{BitcoinChain, StacksChain},
+            storage::{DbReadTestExt as _, DbWriteTestExt as _},
+        },
+        transaction_coordinator::{GetPendingRequestsParams, TxCoordinatorEventLoop},
+        WITHDRAWAL_DUST_LIMIT,
+    };
+
+    use super::*;
+
+    // A type alias for [`TxCoordinatorEventLoop`], typed with [`PgStore`] and
+    // mocked clients, which are what's used in this mod.
+    type MockedCoordinator = TxCoordinatorEventLoop<
+        TestContext<
+            PgStore,
+            WrappedMock<MockBitcoinInteract>,
+            WrappedMock<MockStacksInteract>,
+            WrappedMock<MockEmilyInteract>,
+        >,
+        SignerNetworkInstance,
+    >;
+
+    /// Creates [`WithdrawalSigner`]s for each vote in the provided slice,
+    /// zipped together with the signer keys from the provided
+    /// [`TestSignerSet`], and stores them in the database.
+    async fn store_votes(
+        db: &PgStore,
+        request: &WithdrawalRequest,
+        signer_set: &TestSignerSet,
+        votes: &[bool],
+    ) {
+        // Create an iterator of signer keys and their corresponding votes.
+        let signer_votes = signer_set
+            .signer_keys()
+            .into_iter()
+            .cloned()
+            .zip(votes.into_iter().cloned());
+
+        for (signer_pub_key, is_accepted) in signer_votes {
+            let signer = WithdrawalSigner {
+                request_id: request.request_id,
+                block_hash: request.block_hash,
+                txid: request.txid,
+                signer_pub_key,
+                is_accepted,
+            };
+
+            // Write the decision to the database.
+            db.write_withdrawal_signer_decision(&signer)
+                .await
+                .expect("failed to write signer decision");
+        }
+    }
+
+    /// Creates and stores a withdrawal request, confirmed in the specified
+    /// bitcoin & stacks blocks.
+    async fn store_withdrawal_request(
+        db: &PgStore,
+        bitcoin_block: &BitcoinBlock,
+        stacks_block: &StacksBlock,
+        amount: u64,
+        max_fee: u64,
+    ) -> WithdrawalRequest {
+        let withdrawal_request = WithdrawalRequest {
+            request_id: next_request_id(),
+            block_hash: stacks_block.block_hash,
+            bitcoin_block_height: bitcoin_block.block_height,
+            amount,
+            max_fee,
+            ..Faker.fake()
+        };
+
+        db.write_withdrawal_request(&withdrawal_request)
+            .await
+            .expect("failed to write withdrawal request");
+
+        withdrawal_request
+    }
+
+    /// Gets the next withdrawal request ID to use for testing.
+    fn next_request_id() -> u64 {
+        static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(0);
+        NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Helper function to set up the database with bitcoin and stacks chains,
+    /// a set of signers and their DKG shares.
+    async fn test_setup<'a>(
+        db: &PgStore,
+        chains_length: u64,
+    ) -> (
+        BitcoinChain,
+        StacksChain,
+        TestSignerSet,
+        BTreeSet<PublicKey>,
+    ) {
+        let signer_set = TestSignerSet::new(&mut OsRng);
+        let signer_keys = signer_set.keys.iter().copied().collect();
+
+        // Create a new bitcoin chain with 31 blocks and a sibling stacks chain
+        // anchored starting at block 0.
+        let bitcoin_chain = BitcoinChain::new_with_length(chains_length as usize);
+        let stacks_chain = StacksChain::new_anchored(&bitcoin_chain);
+
+        // Write the blocks to the database.
+        db.write_blocks(&bitcoin_chain, &stacks_chain).await;
+
+        // Get the chain tips and assert that they're what we expect.
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+        assert_eq!(
+            bitcoin_chain_tip.block_hash,
+            bitcoin_chain.chain_tip().block_hash
+        );
+        assert_eq!(stacks_chain_tip, stacks_chain.chain_tip().block_hash);
+
+        // Create DKG shares and write them to the database.
+        let dkg_shares = model::EncryptedDkgShares {
+            aggregate_key: signer_set.aggregate_key(),
+            started_at_bitcoin_block_hash: bitcoin_chain_tip.block_hash,
+            started_at_bitcoin_block_height: bitcoin_chain_tip.block_height,
+            signer_set_public_keys: signer_set.signer_keys().to_vec(),
+            dkg_shares_status: DkgSharesStatus::Verified,
+            ..Faker.fake()
+        };
+        db.write_encrypted_dkg_shares(&dkg_shares).await.unwrap();
+
+        (bitcoin_chain, stacks_chain, signer_set, signer_keys)
+    }
+
+    struct TestParams {
+        chain_length: u64,
+        signature_threshold: u16,
+        sbtc_limits: SbtcLimits,
+        amount: u64,
+        num_approves: usize,
+        num_expected_results: usize,
+        expiry_window: u64,
+        expiry_buffer: u64,
+        min_confirmations: u64,
+        at_block_height: usize,
+    }
+
+    impl Default for TestParams {
+        fn default() -> Self {
+            Self {
+                chain_length: 8,
+                signature_threshold: 2,
+                sbtc_limits: SbtcLimits::unlimited(),
+                amount: 1_000,
+                num_approves: 3,
+                num_expected_results: 1,
+                expiry_window: 24,
+                expiry_buffer: 0,
+                min_confirmations: 0,
+                at_block_height: 0,
+            }
+        }
+    }
+
+    /// Asserts that
+    /// [`TxCoordinatorEventLoop::get_eligible_pending_withdrawal_requests`]
+    /// correctly filters requests based on its parameters.
+    #[test_case(TestParams::default(); "should_pass_all_validations")]
+    #[test_case(TestParams {
+        amount: WITHDRAWAL_DUST_LIMIT - 1,
+        num_expected_results: 0,
+        ..Default::default()
+    }; "amount_below_dust_limit_skipped")]
+    #[test_case(TestParams {
+        amount: WITHDRAWAL_DUST_LIMIT,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "amount_at_dust_limit_allowed")]
+    #[test_case(TestParams {
+        amount: 1_000,
+        sbtc_limits: SbtcLimits::zero(),
+        num_expected_results: 0,
+        ..Default::default()
+    }; "amount_over_per_withdrawal_limit")]
+    #[test_case(TestParams {
+        // This case will calculate the confirmations as:
+        // chain_length (10) - min_confirmations (6) = 4 (maximum block height),
+        // at_block_height (5) > 4 (maximum).
+        chain_length: 10,
+        at_block_height: 5,
+        min_confirmations: 6,
+        num_expected_results: 0,
+        ..Default::default()
+    }; "insufficient_confirmations_one_too_few")]
+    #[test_case(TestParams {
+        // This case will calculate the confirmations as:
+        // chain_length (10) - min_confirmations(6) = 4 (maximum block height), 
+        // at_block_height (4) <= 4.
+        chain_length: 10,
+        at_block_height: 4,
+        min_confirmations: 6,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "exact_number_of_confirmations_allowed")]
+    #[test_case(TestParams {
+        signature_threshold: 2,
+        num_approves: 1,
+        num_expected_results: 0,
+        ..Default::default()
+    }; "insufficient_votes")]
+    #[test_case(TestParams {
+        // This case will calculate the soft expiry as:
+        // chain_length - expiry_window + expiry_buffer = 4 and 3 < 4.
+        chain_length: 10,
+        expiry_window: 10,
+        expiry_buffer: 4,
+        at_block_height: 3,
+        num_expected_results: 0,
+        ..Default::default()
+    }; "soft_expiry_one_block_too_old")]
+    #[test_case(TestParams {
+        // This case will calculate the soft expiry as:
+        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4, 
+        // and at_block_height (4) == 4.
+        chain_length: 10,
+        expiry_window: 10,
+        expiry_buffer: 4,
+        at_block_height: 4,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "soft_expiry_exact_block_allowed")]
+    #[test_case(TestParams {
+        // This case will calculate the hard expiry as:
+        // chain_length (10) - expiry_window (5) = 5, 
+        // and at_block_height (5) == 5
+        chain_length: 10,
+        expiry_window: 5,
+        expiry_buffer: 0,
+        at_block_height: 5,
+        num_expected_results: 1,
+        ..Default::default()
+    }; "hard_expiry_exact_block_allowed")]
+    #[test_case(TestParams {
+        // This case will calculate the hard expiry as:
+        // chain_length (10) - expiry_window (5) = 5, 
+        // and at_block_height (4) < 5
+        chain_length: 10,
+        expiry_window: 5,
+        expiry_buffer: 0,
+        at_block_height: 4,
+        num_expected_results: 0,
+        ..Default::default()
+    }; "hard_expiry_one_block_too_old")]
+    #[test_log::test(tokio::test)]
+    async fn test_validations(params: TestParams) {
+        let db = testing::storage::new_test_database().await;
+
+        // Note: we create the chains with a length of `chain_length + 1` to
+        // allow for 1-based indexing in the parameters above (the blockchain
+        // starts at block height 0, so the chain tip of a chain with 10 blocks
+        // has a height of 9).
+        let (bitcoin_chain, stacks_chain, signer_set, signer_keys) =
+            test_setup(&db, params.chain_length + 1).await;
+
+        let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
+
+        // Define the parameters for the pending requests call.
+        let get_requests_params = GetPendingRequestsParams {
+            aggregate_key: &signer_set.aggregate_key(),
+            bitcoin_chain_tip: &bitcoin_chain_tip,
+            stacks_chain_tip: &stacks_chain_tip,
+            signature_threshold: params.signature_threshold,
+            sbtc_limits: &params.sbtc_limits,
+            signer_public_keys: &signer_keys,
+        };
+
+        // Create a request below the dust limit.
+        let request = store_withdrawal_request(
+            &db,
+            bitcoin_chain.nth_block(params.at_block_height),
+            stacks_chain.nth_block(params.at_block_height),
+            params.amount,
+            1_000, // Max fee isn't validated here.
+        )
+        .await;
+
+        // Create and store votes for the request.
+        let votes = vec![true; params.num_approves];
+        store_votes(&db, &request, &signer_set, &votes).await;
+
+        //Get pending withdrawals from coordinator
+        let pending_withdrawals = MockedCoordinator::get_eligible_pending_withdrawal_requests(
+            &db,
+            params.expiry_window,
+            params.expiry_buffer,
+            params.min_confirmations,
+            &get_requests_params,
+        )
+        .await
+        .expect("failed to fetch eligible pending withdrawal requests");
+
+        assert_eq!(pending_withdrawals.len(), params.num_expected_results);
+
+        testing::storage::drop_db(db).await;
+    }
 }
