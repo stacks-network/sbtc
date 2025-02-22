@@ -3549,7 +3549,7 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
         .is_empty());
 
     let new_tip = faucet
-        .generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 + 1)
+        .generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1)
         .pop()
         .unwrap();
     backfill_bitcoin_blocks(&db, rpc, &new_tip).await;
@@ -3915,7 +3915,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "amount_over_per_withdrawal_limit")]
     #[test_case(TestParams {
         // This case will calculate the confirmations as:
-        // chain_length (10) - min_confirmations (4) = 4 (maximum block height),
+        // chain_length (10) - min_confirmations (6) = 4 (maximum block height),
         // at_block_height (5) > 4 (maximum).
         chain_length: 10,
         at_block_height: 5,

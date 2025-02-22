@@ -1751,19 +1751,15 @@ where
         // will log them as skipped.
         let min_soft_bitcoin_height = min_bitcoin_height.saturating_add(soft_expiry_window);
 
-        // Fetch pending withdrawal requests from storage. This method, with
-        // the given inputs, performs the following filtering according to
-        // consensus rules:
+        // Fetch pending withdrawal requests from storage. This method, with the
+        // given inputs, performs the following filtering according to consensus
+        // rules:
         //
         // - [1]  The request has not been swept in the canonical bitcoin chain,
         // - [2]  Is confirmed in a canonical stacks block,
         // - [4a] Is accepted by >= `threshold` signers (pre-filter),
-        // - [7]  Is not older than the provided withdrawal expiry threshold.
-        //
-        // We set the context window for the pending-accepted query below to the
-        // number of blocks that the withdrawal request is considered
-        // valid (not expired). This limits the number of blocks the query will
-        // consider when fetching pending withdrawal requests.
+        // - [7]  Is not expired; we only retrieve requests whose bitcoin block
+        //        height is greater than `min_bitcoin_height`.
         let pending_withdraw_requests = storage
             .get_pending_accepted_withdrawal_requests(
                 params.bitcoin_chain_tip.as_ref(),
@@ -1918,8 +1914,9 @@ where
             return Ok(eligible_deposits);
         }
 
-        // Iterate through each deposit request, fetch its _actual_ votes from
-        // storage and
+        // Iterate through each deposit request, fetch its votes from storage
+        // for the public keys of the signers in the current signing set, based
+        // on the current signers' aggregate key.
         for req in pending_deposit_requests {
             let votes = storage
                 .get_deposit_request_signer_votes(&req.txid, req.output_index, params.aggregate_key)
