@@ -35,6 +35,7 @@ use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 use super::rpc::assess_mempool_sweep_transaction_fees;
 use super::utxo::compute_transaction_fee;
 use super::utxo::DepositRequest;
+use super::utxo::Fees;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
 use super::utxo::SignatureHash;
@@ -268,21 +269,28 @@ impl BitcoinPreSignRequest {
 
         // Get the last fees from the mempool ourselves instead of using those provided by the
         // the coordinator so that we assess whether the proposed fee is acceptable ourselves.
-        let last_fees =
+        let mut signers_view_of_last_fees: Option<super::utxo::Fees> =
             assess_mempool_sweep_transaction_fees(&bitcoin_client, &signer_utxo).await?;
 
         let mut signer_state = SignerBtcState {
             fee_rate: self.fee_rate,
             utxo: signer_utxo,
             public_key: bitcoin::XOnlyPublicKey::from(btc_ctx.aggregate_key),
-            last_fees,
+            last_fees: self.last_fees,
             magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
         };
         let mut outputs = Vec::new();
 
         for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state, &cache)
+                .construct_tx_sighashes(
+                    ctx,
+                    btc_ctx,
+                    requests,
+                    signer_state,
+                    &mut signers_view_of_last_fees,
+                    &cache,
+                )
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -303,6 +311,7 @@ impl BitcoinPreSignRequest {
         btc_ctx: &BitcoinTxContext,
         requests: &'a TxRequestIds,
         signer_state: SignerBtcState,
+        signers_view_of_last_fees: &mut Option<Fees>,
         cache: &ValidationCache<'a>,
     ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
     where
@@ -347,7 +356,7 @@ impl BitcoinPreSignRequest {
         let signer_estimated_fee = compute_transaction_fee(
             tx.tx_vsize as f64,
             btc_ctx.estimated_fee_rate,
-            signer_state.last_fees,
+            *signers_view_of_last_fees,
         );
 
         let out = BitcoinTxValidationData {
@@ -369,6 +378,7 @@ impl BitcoinPreSignRequest {
         // their fees anymore in order for them to be accepted by the
         // network.
         signer_state.last_fees = None;
+        *signers_view_of_last_fees = None;
 
         Ok((out, signer_state))
     }
