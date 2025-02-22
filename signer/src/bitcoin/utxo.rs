@@ -1330,17 +1330,11 @@ pub trait FeeAssessment: BitcoinInputsOutputs {
         if vout < 2 {
             return None;
         }
-        println!("outputs: {:#?}", self.outputs());
         let request_weight = self.request_weight().to_wu();
         let output_weight = self.outputs().get(vout)?.weight().to_wu();
 
         // This computation follows the logic laid out in
         // <https://github.com/stacks-network/sbtc/issues/182>.
-        tracing::debug!(
-            output_weight = output_weight,
-            tx_fee = tx_fee.to_sat(),
-            "Assessing output fee"
-        );
         let fee_sats = (output_weight * tx_fee.to_sat()).div_ceil(request_weight);
         Some(Amount::from_sat(fee_sats))
     }
