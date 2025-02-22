@@ -448,7 +448,7 @@ impl PgStore {
     /// This function returns the bitcoin block height of the first
     /// confirmed sweep that happened on or after the given minimum block
     /// height.
-    pub async fn get_least_txo_height(
+    async fn get_least_txo_height(
         &self,
         chain_tip: &model::BitcoinBlockHash,
         min_block_height: i64,

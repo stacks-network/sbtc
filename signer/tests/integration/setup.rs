@@ -869,7 +869,7 @@ impl TestSweepSetup2 {
         let signer_utxo = aggregated_signer.get_utxos(rpc, None).pop().unwrap();
 
         // Well we want a BitcoinCoreClient, so we create one using the
-        // context. Not, the best thing to do, sorry. TODO: pass in a
+        // settings. Not, the best thing to do, sorry. TODO: pass in a
         // bitcoin core client object.
         let settings = Settings::new_from_default_config().unwrap();
         let btc = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
@@ -883,7 +883,7 @@ impl TestSweepSetup2 {
                 total: entry.fees.base.to_sat(),
                 rate: entry.fees.base.to_sat() as f64 / entry.vsize as f64,
             })
-            .max_by(|fee1, fee2| fee1.rate.total_cmp(&fee2.rate));
+            .max_by_key(|fees| fees.total);
 
         let withdrawals = self
             .withdrawals

@@ -5584,3 +5584,21 @@ async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
 
     signer::testing::storage::drop_db(db).await;
 }
+
+/// Check that is_withdrawal_active correctly returns false for unknown
+/// withdrawal requests.
+#[tokio::test]
+async fn is_withdrawal_active_unknown_withdrawal() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+
+    let chain_tip = Faker.fake_with_rng(&mut rng);
+    let qualified_id: QualifiedRequestId = Faker.fake_with_rng(&mut rng);
+    let active = db
+        .is_withdrawal_active(&qualified_id, &chain_tip, 1)
+        .await
+        .unwrap();
+    assert!(!active);
+
+    signer::testing::storage::drop_db(db).await;
+}
