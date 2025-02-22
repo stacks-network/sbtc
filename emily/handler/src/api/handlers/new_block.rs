@@ -20,15 +20,13 @@ use crate::api::models::chainstate::Chainstate;
 use crate::api::models::common::Fulfillment;
 use crate::api::models::common::Status;
 use crate::api::models::deposit::requests::{DepositUpdate, UpdateDepositsRequestBody};
+use crate::api::models::new_block::NewBlockEventRaw;
 use crate::api::models::withdrawal::requests::{
     CreateWithdrawalRequestBody, UpdateWithdrawalsRequestBody, WithdrawalUpdate,
 };
 use crate::api::models::withdrawal::WithdrawalParameters;
 use crate::database::entries::deposit::DepositEntryKey;
-use crate::{
-    api::models::new_block::requests::NewBlockEvent, common::error::Error, context::EmilyContext,
-    database::accessors,
-};
+use crate::{common::error::Error, context::EmilyContext, database::accessors};
 
 /// The name of the sbtc registry smart contract.
 const SBTC_REGISTRY_CONTRACT_NAME: &str = "sbtc-registry";
@@ -65,7 +63,7 @@ struct StacksBlock {
     operation_id = "newBlock",
     path = "/new_block",
     tag = "new_block",
-    request_body = NewBlockEvent,
+    request_body = NewBlockEventRaw,
     responses(
         (status = 200, description = "New Block event received successfully"),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
@@ -78,13 +76,14 @@ struct StacksBlock {
 #[instrument(skip(context))]
 pub async fn new_block(
     context: EmilyContext,
-    new_block_event: NewBlockEvent,
+    new_block_event: NewBlockEventRaw,
 ) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
-        new_block_event: NewBlockEvent,
+        new_block_event: NewBlockEventRaw,
     ) -> Result<impl warp::reply::Reply, Error> {
+        let new_block_event = new_block_event.deserialize()?;
         // Set the global limits.
         let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
             // Although the following line can panic, our unit tests hit this
