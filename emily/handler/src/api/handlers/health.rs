@@ -17,7 +17,6 @@ use crate::{api::models::health::responses::HealthData, context::EmilyContext};
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    security(("ApiGatewayKey" = []))
 )]
 pub async fn get_health(context: EmilyContext) -> impl warp::reply::Reply {
     // Handle and respond.
