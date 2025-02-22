@@ -222,6 +222,7 @@ where
         // Create the coordinator
         context.state().set_sbtc_contracts_deployed();
         let signer_network = SignerNetwork::single(&context);
+
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
@@ -260,7 +261,7 @@ where
             .block_height
             .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY);
 
-        // Get pending withdrawals from storage
+        // Get pending withdrawals from storage.
         let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
                 bitcoin_chain_tip.as_ref(),
@@ -271,9 +272,46 @@ where
             .await
             .expect("Error extracting withdrawals from db");
 
+        let max_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_MIN_CONFIRMATIONS);
+        let min_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY)
+            .saturating_add(crate::WITHDRAWAL_EXPIRY_BUFFER);
+
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
         assert!(!withdrawals_in_storage.is_empty());
         for withdrawal in withdrawals_in_storage {
+            if withdrawal.bitcoin_block_height > max_processable_height {
+                assert!(!withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %max_processable_height,
+                    "skipping asserting withdrawal exists as it doesn't have enough confirmations");
+                continue;
+            }
+
+            if withdrawal.bitcoin_block_height <= min_processable_height {
+                assert!(!withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %min_processable_height,
+                    "skipping asserting withdrawal exists as it is expired");
+                continue;
+            }
+
+            tracing::info!(
+                request_id = %withdrawal.request_id,
+                block_height = %withdrawal.bitcoin_block_height,
+                %max_processable_height,
+                "checking withdrawal");
             assert!(withdrawals
                 .iter()
                 .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
