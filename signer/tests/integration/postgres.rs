@@ -4936,7 +4936,7 @@ async fn pending_rejected_withdrawal_no_events() {
 
     // Append some blocks to ensure we have expired requests; we expire the
     // requests in the first 5 canonical blocks, while keeping the others valid.
-    for _ in chain_depth..WITHDRAWAL_BLOCKS_EXPIRY as u64 + 5 {
+    for _ in chain_depth..WITHDRAWAL_BLOCKS_EXPIRY + 5 {
         let new_block = BitcoinBlock {
             block_hash: fake::Faker.fake_with_rng(&mut rng),
             block_height: bitcoin_chain_tip.block_height + 1,
@@ -4991,7 +4991,7 @@ async fn pending_rejected_withdrawal_no_events() {
         let confirmations = bitcoin_chain_tip.block_height - withdrawal.bitcoin_block_height;
         assert_eq!(
             pending_rejected.contains(&withdrawal),
-            confirmations > WITHDRAWAL_BLOCKS_EXPIRY as u64
+            confirmations > WITHDRAWAL_BLOCKS_EXPIRY
         );
         non_expired += 1;
     }
@@ -5060,7 +5060,7 @@ async fn pending_rejected_withdrawal_expiration() {
 
         assert_le!(
             new_block.block_height - request.bitcoin_block_height,
-            WITHDRAWAL_BLOCKS_EXPIRY as u64
+            WITHDRAWAL_BLOCKS_EXPIRY
         );
 
         // Check that now we do get it as rejected
@@ -5088,7 +5088,7 @@ async fn pending_rejected_withdrawal_expiration() {
 
     assert_gt!(
         new_block.block_height - request.bitcoin_block_height,
-        WITHDRAWAL_BLOCKS_EXPIRY as u64
+        WITHDRAWAL_BLOCKS_EXPIRY
     );
 
     // Check that now we do get it as rejected

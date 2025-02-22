@@ -277,7 +277,8 @@ where
             .saturating_sub(crate::WITHDRAWAL_MIN_CONFIRMATIONS);
         let min_processable_height = bitcoin_chain_tip
             .block_height
-            .saturating_sub(crate::WITHDRAWAL_BLOCKS_SOFT_EXPIRY);
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY)
+            .saturating_add(crate::WITHDRAWAL_EXPIRY_BUFFER);
 
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
         assert!(!withdrawals_in_storage.is_empty());

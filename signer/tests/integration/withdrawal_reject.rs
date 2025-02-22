@@ -121,7 +121,7 @@ async fn reject_withdrawal_validation_happy_path() {
     // Normal: We do not reject a withdrawal requests until more than
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
-    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 + 1);
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
@@ -181,7 +181,7 @@ async fn reject_withdrawal_validation_not_final() {
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed. We
     // are generating one too few blocks.
-    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64);
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
@@ -255,7 +255,7 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     // Normal: We do not reject a withdrawal requests until more than
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
-    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 + 1);
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
@@ -324,7 +324,7 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     // Normal: We do not reject a withdrawal requests until more than
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
-    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 + 1);
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
@@ -394,7 +394,7 @@ async fn reject_withdrawal_validation_bitmap_mismatch() {
     // Normal: We do not reject a withdrawal requests until more than
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
-    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 + 1);
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
@@ -466,7 +466,7 @@ async fn reject_withdrawal_validation_request_completed() {
     // Normal: We do not reject a withdrawal requests until more than
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
-    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 + 1);
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
@@ -579,7 +579,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // Normal: We do not reject a withdrawal requests until more than
     // WITHDRAWAL_BLOCKS_EXPIRY blocks have been observed since the smart
     // contract that created the withdrawal request has bene observed.
-    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY as u64 + 1);
+    faucet.generate_blocks(WITHDRAWAL_BLOCKS_EXPIRY + 1);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
