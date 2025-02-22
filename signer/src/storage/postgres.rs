@@ -171,8 +171,6 @@ struct PgSignerUtxo {
     #[sqlx(try_from = "i64")]
     amount: u64,
     aggregate_key: PublicKey,
-    #[sqlx(try_from = "i64")]
-    block_height: u64,
 }
 
 impl From<PgSignerUtxo> for SignerUtxo {
@@ -403,13 +401,11 @@ impl PgStore {
         chain_tip: &model::BitcoinBlockHash,
         output_type: model::TxOutputType,
         min_block_height: i64,
-    ) -> Result<Option<PgSignerUtxo>, Error> {
-        sqlx::query_as::<_, PgSignerUtxo>(
+    ) -> Result<Option<SignerUtxo>, Error> {
+        let pg_utxo = sqlx::query_as::<_, PgSignerUtxo>(
             r#"
             WITH bitcoin_blockchain AS (
-                SELECT 
-                    block_hash
-                  , block_height
+                SELECT block_hash
                 FROM bitcoin_blockchain_until($1, $2)
             ),
             confirmed_sweeps AS (
@@ -426,7 +422,6 @@ impl PgStore {
               , bo.output_index
               , bo.amount
               , ds.aggregate_key
-              , bb.block_height
             FROM sbtc_signer.bitcoin_tx_outputs AS bo
             JOIN sbtc_signer.bitcoin_transactions AS bt USING (txid)
             JOIN bitcoin_blockchain AS bb USING (block_hash)
@@ -443,6 +438,39 @@ impl PgStore {
         .bind(chain_tip)
         .bind(min_block_height)
         .bind(output_type)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(pg_utxo.map(SignerUtxo::from))
+    }
+
+    /// This function returns the bitcoin block height of the first
+    /// confirmed sweep that happened on or after the given minimum block
+    /// height.
+    pub async fn get_least_txo_height(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        min_block_height: i64,
+    ) -> Result<Option<i64>, Error> {
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT bb.block_height
+            FROM sbtc_signer.bitcoin_tx_inputs AS bi
+            JOIN sbtc_signer.bitcoin_tx_outputs AS bo
+              ON bo.txid = bi.txid
+            JOIN sbtc_signer.bitcoin_transactions AS bt
+              ON bt.txid = bi.txid
+            JOIN bitcoin_blockchain_until($1, $2) AS bb 
+              ON bb.block_hash = bt.block_hash
+            WHERE bo.output_type = 'signers_output'
+              AND bi.prevout_type = 'signers_input'
+            ORDER BY bb.block_height ASC
+            LIMIT 1;
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(min_block_height)
         .fetch_optional(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -483,7 +511,6 @@ impl PgStore {
         let output_type = model::TxOutputType::Donation;
         self.get_utxo(chain_tip, output_type, min_block_height)
             .await
-            .map(|pg_utxo| pg_utxo.map(SignerUtxo::from))
     }
     /// Return a block height that is less than or equal to the block that
     /// confirms the signers' UTXO.
@@ -1984,7 +2011,7 @@ impl super::DbRead for PgStore {
         // happens we try searching for a donation.
         let output_type = model::TxOutputType::SignersOutput;
         let fut = self.get_utxo(chain_tip, output_type, min_block_height);
-        match fut.await?.map(SignerUtxo::from) {
+        match fut.await? {
             res @ Some(_) => Ok(res),
             None => self.get_donation_utxo(chain_tip).await,
         }
@@ -2153,16 +2180,20 @@ impl super::DbRead for PgStore {
             return Ok(false);
         };
 
-        let output_type = model::TxOutputType::SignersOutput;
         let chain_tip_hash = &bitcoin_chain_tip.block_hash;
-        let signer_utxo_fut = self.get_utxo(chain_tip_hash, output_type, min_block_height);
+        let least_txo_height = self
+            .get_least_txo_height(chain_tip_hash, min_block_height)
+            .await?
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| Error::TypeConversion)?;
         // If this returns None, then the sweep itself could be in the
         // mempool. If that's the case then this is definitely active.
-        let Some(signer_utxo) = signer_utxo_fut.await? else {
+        let Some(least_txo_height) = least_txo_height else {
             return Ok(true);
         };
 
-        Ok(signer_utxo.block_height + min_confirmations >= bitcoin_chain_tip.block_height)
+        Ok(least_txo_height + min_confirmations >= bitcoin_chain_tip.block_height)
     }
 
     async fn get_bitcoin_tx(
