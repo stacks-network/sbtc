@@ -14,6 +14,8 @@ mod deposit;
 mod health;
 /// Limit routes.
 mod limits;
+/// NewBlock routes.
+mod new_block;
 /// Testing routes.
 #[cfg(feature = "testing")]
 mod testing;
@@ -41,6 +43,7 @@ pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     health::routes(context.clone())
+        .or(new_block::routes(context.clone()))
         .or(chainstate::routes(context.clone()))
         .or(deposit::routes(context.clone()))
         .or(withdrawal::routes(context.clone()))
@@ -57,10 +60,11 @@ pub fn routes(
 pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    health::routes()
+    health::routes(context.clone())
+        .or(new_block::routes(context.clone()))
         .or(chainstate::routes(context.clone()))
         .or(deposit::routes(context.clone()))
-        .or(withdrawal::routes(context))
+        .or(withdrawal::routes(context.clone()))
         .or(limits::routes(context.clone()))
         // Convert reply to tuple to that more routes can be added to the returned filter.
         .map(|reply| (reply,))

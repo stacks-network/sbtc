@@ -28,7 +28,7 @@ This file is referenced within the cdk and deployed to the lambda.
 
 ### Lambda Configuration
 
-The emily lambda takes in config values via the environment it's deployed on. As of writing this there are 6 environment values that are passed to emily during deployment. This can be found within the cdk definition.
+The emily lambda takes in config values via the environment it's deployed on. As of writing this there are 8 environment values that are passed to emily during deployment. This can be found within the cdk definition.
 
 ```javascript
 environment: {
@@ -39,6 +39,7 @@ environment: {
     IS_LOCAL: "true" | "false",
     TRUSTED_REORG_API_KEY: trustedReorgApiKey,
     IS_MAINNET: "true" | "false",
+    DEPLOYER_ADDRESS: "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"  // Substitute with the real address
 },
 ```
 
