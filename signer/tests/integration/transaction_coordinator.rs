@@ -3991,6 +3991,10 @@ mod get_eligible_pending_withdrawal_requests {
     async fn test_validations(params: TestParams) {
         let db = testing::storage::new_test_database().await;
 
+        // Note: we create the chains with a length of `chain_length + 1` to
+        // allow for 1-based indexing in the parameters above (the blockchain
+        // starts at block height 0, so the chain tip of a chain with 10 blocks
+        // has a height of 9).
         let (bitcoin_chain, stacks_chain, signer_set, signer_keys) =
             test_setup(&db, params.chain_length + 1).await;
 
