@@ -60,6 +60,7 @@ use crate::storage::model::ToLittleEndianOrder as _;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::api::StacksInteract;
 
@@ -1028,6 +1029,10 @@ pub enum WithdrawalRejectErrorMsg {
     /// been either accepted or rejected already.
     #[error("the smart contract has been updated to indicate that the request has been completed")]
     RequestCompleted,
+    /// A withdrawal request is still active if it's reasonably possible
+    /// for the request to be fulfilled by a sweep transaction on bitcoin.
+    #[error("the withdrawal request is still active, we cannot reject it yet")]
+    RequestStillActive,
     /// Withdrawal request fulfilled
     #[error("Withdrawal request fulfilled")]
     RequestFulfilled,
@@ -1108,6 +1113,9 @@ impl AsContractCall for RejectWithdrawalV1 {
     /// 6. Whether the withdrawal request has expired. Fail if it hasn't.
     /// 7. Whether the withdrawal request is being serviced by a sweep
     ///    transaction that is in the mempool.
+    /// 8. Whether we need to worry about forks causing the withdrawal to
+    ///    be confirmed by a sweep that was broadcast changing the status
+    ///    of the request from rejected to accepted.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
@@ -1185,6 +1193,16 @@ impl AsContractCall for RejectWithdrawalV1 {
             .await?;
         if withdrawal_is_inflight {
             return Err(WithdrawalRejectErrorMsg::RequestBeingFulfilled.into_error(req_ctx, self));
+        }
+
+        // 8. Check whether the withdrawal request is still active, as in
+        //    it could still be fulfilled.
+        let withdrawal_is_active = db
+            .is_withdrawal_active(&self.id, &req_ctx.chain_tip, WITHDRAWAL_MIN_CONFIRMATIONS)
+            .await?;
+
+        if withdrawal_is_active {
+            return Err(WithdrawalRejectErrorMsg::RequestStillActive.into_error(req_ctx, self));
         }
 
         Ok(())

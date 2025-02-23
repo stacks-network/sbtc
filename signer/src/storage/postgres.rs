@@ -445,6 +445,37 @@ impl PgStore {
         Ok(pg_utxo.map(SignerUtxo::from))
     }
 
+    /// This function returns the bitcoin block height of the first
+    /// confirmed sweep that happened on or after the given minimum block
+    /// height.
+    async fn get_least_txo_height(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        min_block_height: i64,
+    ) -> Result<Option<i64>, Error> {
+        sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT bb.block_height
+            FROM sbtc_signer.bitcoin_tx_inputs AS bi
+            JOIN sbtc_signer.bitcoin_tx_outputs AS bo
+              ON bo.txid = bi.txid
+            JOIN sbtc_signer.bitcoin_transactions AS bt
+              ON bt.txid = bi.txid
+            JOIN bitcoin_blockchain_until($1, $2) AS bb 
+              ON bb.block_hash = bt.block_hash
+            WHERE bo.output_type = 'signers_output'
+              AND bi.prevout_type = 'signers_input'
+            ORDER BY bb.block_height ASC
+            LIMIT 1;
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(min_block_height)
+        .fetch_optional(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     /// Return the height of the earliest block in which a donation UTXO
     /// has been confirmed.
     ///
@@ -2179,6 +2210,69 @@ impl super::DbRead for PgStore {
         .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)
+    }
+
+    async fn is_withdrawal_active(
+        &self,
+        id: &model::QualifiedRequestId,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+        min_confirmations: u64,
+    ) -> Result<bool, Error> {
+        // We want to find the first sweep transaction that happened
+        // *after* the last time the signers considered sweeping the
+        // withdrawal request. We do this in two stages:
+        // 1. Find the block height of the last time that the signers
+        //    considered the withdrawal request (the query right below this
+        //    comment).
+        // 2. Find the least height of any sweep transaction confirmed in a
+        //    block with height greater than the height returned from (1).
+        let last_considered_height = sqlx::query_scalar::<_, Option<i64>>(
+            r#"
+            SELECT MAX(bb.block_height)
+            FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
+            JOIN sbtc_signer.bitcoin_blocks AS bb
+              ON bb.block_hash = bwo.bitcoin_chain_tip
+            WHERE bwo.request_id = $1
+              AND bwo.stacks_block_hash = $2
+            "#,
+        )
+        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .bind(id.block_hash)
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // We add one because we are interested in sweeps that were
+        // confirmed after the signers last considered the withdrawal.
+        let Some(min_block_height) = last_considered_height.map(|x| x + 1) else {
+            // This means that there are no rows associated with the ID in the
+            // `bitcoin_withdrawals_outputs` table.
+            return Ok(false);
+        };
+
+        // We now know that the signers considered this withdrawal request
+        // at least once. We now try to find the height of the oldest
+        // signer TXO whose height is greater than the height from above.
+        let chain_tip_hash = &bitcoin_chain_tip.block_hash;
+        let least_txo_height = self
+            .get_least_txo_height(chain_tip_hash, min_block_height)
+            .await?
+            .map(u64::try_from)
+            .transpose()
+            .map_err(|_| Error::TypeConversion)?;
+        // If this returns None, then the sweep itself could be in the
+        // mempool. If that's the case then this is definitely active.
+        let Some(least_txo_height) = least_txo_height else {
+            return Ok(true);
+        };
+        // We test whether the TXO height has a minimum number of
+        // confirmations. If it doesn't have enough confirmations, then it
+        // is considered active since a fork could put it into the mempool
+        // again.
+        let txo_confirmations = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(least_txo_height);
+        Ok(txo_confirmations <= min_confirmations)
     }
 
     async fn get_bitcoin_tx(

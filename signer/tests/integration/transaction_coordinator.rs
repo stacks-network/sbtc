@@ -3060,6 +3060,7 @@ fn create_test_setup(
         deposit_block_hash,
         deposits: vec![(deposit_info, deposit_request, tx_info)],
         sweep_tx_info: None,
+        broadcast_info: None,
         donation,
         stacks_blocks: vec![stacks_block],
         signers: test_signers,

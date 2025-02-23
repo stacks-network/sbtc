@@ -948,10 +948,22 @@ where
         // the given withdrawal has been included in a sweep transaction
         // that could have been submitted. With this check we are more
         // confident that it is safe to reject the withdrawal.
+        let qualified_id = request.qualified_id();
         let withdrawal_inflight = db
-            .is_withdrawal_inflight(&request.qualified_id(), &chain_tip.block_hash)
+            .is_withdrawal_inflight(&qualified_id, &chain_tip.block_hash)
             .await?;
         if withdrawal_inflight {
+            return Ok(());
+        }
+
+        // The `DbRead::is_withdrawal_inflight` function considers whether
+        // we need to worry about a fork making a sweep fulfilling
+        // withdrawal active in the mempool.
+        let withdrawal_is_active = db
+            .is_withdrawal_active(&qualified_id, chain_tip, WITHDRAWAL_MIN_CONFIRMATIONS)
+            .await?;
+
+        if withdrawal_is_active {
             return Ok(());
         }
 
