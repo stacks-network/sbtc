@@ -5630,7 +5630,7 @@ async fn is_withdrawal_active_for_considered_withdrawal() {
     db.write_bitcoin_block(&chain_tip).await.unwrap();
 
     let chain_tip_ref = chain_tip.into();
-        
+
     let active = db
         .is_withdrawal_active(&qualified_id, &chain_tip_ref, 1)
         .await
