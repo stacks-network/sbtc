@@ -2158,9 +2158,17 @@ impl super::DbRead for PgStore {
         bitcoin_chain_tip: &model::BitcoinBlockRef,
         min_confirmations: u64,
     ) -> Result<bool, Error> {
-        let min_block_height = sqlx::query_scalar::<_, Option<i64>>(
+        // We want to find the first sweep transaction that happened
+        // *after* the last time the signers considered sweeping the
+        // withdrawal request. We do this in two stages:
+        // 1. Find the block height of the last time that the signers
+        //    considered the withdrawal request (the query right below this
+        //    comment).
+        // 2. Find the least height of any sweep transaction confirmed in a
+        //    block with height greater than the height returned from (1).
+        let last_considered_height = sqlx::query_scalar::<_, Option<i64>>(
             r#"
-            SELECT MAX(bb.block_height) + 1
+            SELECT MAX(bb.block_height)
             FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
             JOIN sbtc_signer.bitcoin_blocks AS bb
               ON bb.block_hash = bwo.bitcoin_chain_tip
@@ -2174,12 +2182,17 @@ impl super::DbRead for PgStore {
         .await
         .map_err(Error::SqlxQuery)?;
 
-        // This means that there are no rows associated with the ID in the
-        // `bitcoin_withdrawals_outputs` table.
-        let Some(min_block_height) = min_block_height else {
+        // We add one because we are interested in sweeps that were
+        // confirmed after the signers last considered the withdrawal.
+        let Some(min_block_height) = last_considered_height.map(|x| x + 1) else {
+            // This means that there are no rows associated with the ID in the
+            // `bitcoin_withdrawals_outputs` table.
             return Ok(false);
         };
 
+        // We now know that the signers considered this withdrawal request
+        // at least once. We now try to find the height of the oldest
+        // signer TXO whose height is greater than the height from above.
         let chain_tip_hash = &bitcoin_chain_tip.block_hash;
         let least_txo_height = self
             .get_least_txo_height(chain_tip_hash, min_block_height)
@@ -2192,8 +2205,14 @@ impl super::DbRead for PgStore {
         let Some(least_txo_height) = least_txo_height else {
             return Ok(true);
         };
-
-        Ok(least_txo_height + min_confirmations >= bitcoin_chain_tip.block_height)
+        // We test whether the TXO height has a minimum number of
+        // confirmations. If it doesn't have enough confirmations, then it
+        // is considered active since a fork could put it into the mempool
+        // again.
+        let txo_confirmations = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(least_txo_height);
+        Ok(txo_confirmations <= min_confirmations)
     }
 
     async fn get_bitcoin_tx(
