@@ -165,7 +165,11 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     sweep_block_height: 7,
 }); "complete-deposit contract recipient")]
 #[test_case(ContractCallWrapper(AcceptWithdrawalV1 {
-    request_id: 1,
+    id: QualifiedRequestId {
+	    request_id: 2,
+	    txid: StacksTxId::from([0; 32]),
+	    block_hash: StacksBlockHash::from([0; 32]),
+    },
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 2500,
     signer_bitmap: BitArray::ZERO,

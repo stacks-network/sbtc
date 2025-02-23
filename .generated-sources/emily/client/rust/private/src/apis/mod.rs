@@ -97,6 +97,7 @@ pub mod cors_api;
 pub mod deposit_api;
 pub mod health_api;
 pub mod limits_api;
+pub mod new_block_api;
 pub mod withdrawal_api;
 
 pub mod configuration;

@@ -35,6 +35,7 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
+use crate::testing::storage::DbReadTestExt as _;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 use crate::transaction_coordinator::coordinator_public_key;
@@ -181,6 +182,8 @@ where
         // Setup network and signer info
         let mut rng = rand::rngs::StdRng::seed_from_u64(46);
         let network = network::InMemoryNetwork::new();
+        let context = self.context.clone();
+        let storage = context.get_storage();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers as usize);
         let mut testing_signer_set =
             testing::wsts::SignerSet::new(&signer_info, self.signing_threshold as u32, || {
@@ -217,8 +220,9 @@ where
             .await;
 
         // Create the coordinator
-        self.context.state().set_sbtc_contracts_deployed();
-        let signer_network = SignerNetwork::single(&self.context);
+        context.state().set_sbtc_contracts_deployed();
+        let signer_network = SignerNetwork::single(&context);
+
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
@@ -231,43 +235,90 @@ where
             is_epoch3: true,
         };
 
+        let signer_public_keys = &signer_info
+            .last()
+            .expect("Empty signer set!")
+            .signer_public_keys;
+
+        // Get the chain tips from storage.
+        let (bitcoin_chain_tip, stacks_chain_tip) = storage.get_chain_tips().await;
+
         // Get pending withdrawals from coordinator
         let pending_requests = coordinator
             .get_pending_requests(
-                &bitcoin_chain_tip.block_hash,
+                &bitcoin_chain_tip,
+                &stacks_chain_tip,
                 &aggregate_key,
-                &signer_info
-                    .last()
-                    .expect("Empty signer set!")
-                    .signer_public_keys,
+                signer_public_keys,
             )
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
-        // Get pending withdrawals from storage
-        let withdrawals_in_storage = coordinator
-            .context
-            .get_storage()
+        // Calculate the minimum processable block height for withdrawals.
+        let min_withdrawal_block_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY);
+
+        // Get pending withdrawals from storage.
+        let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip.block_hash,
-                self.context_window,
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_withdrawal_block_height,
                 self.signing_threshold,
             )
             .await
             .expect("Error extracting withdrawals from db");
 
+        let max_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_MIN_CONFIRMATIONS);
+        let min_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY)
+            .saturating_add(crate::WITHDRAWAL_EXPIRY_BUFFER);
+
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
         assert!(!withdrawals_in_storage.is_empty());
         for withdrawal in withdrawals_in_storage {
+            if withdrawal.bitcoin_block_height > max_processable_height {
+                assert!(!withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %max_processable_height,
+                    "skipping asserting withdrawal exists as it doesn't have enough confirmations");
+                continue;
+            }
+
+            if withdrawal.bitcoin_block_height <= min_processable_height {
+                assert!(!withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %min_processable_height,
+                    "skipping asserting withdrawal exists as it is expired");
+                continue;
+            }
+
+            tracing::info!(
+                request_id = %withdrawal.request_id,
+                block_height = %withdrawal.bitcoin_block_height,
+                %max_processable_height,
+                "checking withdrawal");
             assert!(withdrawals
                 .iter()
                 .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
         }
     }
 
-    /// Assert that a coordinator should be able to coordiante a signing round
+    /// Assert that a coordinator should be able to coordinate a signing round
     pub async fn assert_should_be_able_to_coordinate_signing_rounds(
         mut self,
         delay_to_process_new_blocks: Duration,
@@ -338,7 +389,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
@@ -488,7 +539,7 @@ where
         // This is because the coordinator will produce multiple transactions after
         // the first, and it will panic trying to send to the channel if it is closed
         // (even though we don't use those transactions).
-        let (broadcasted_transaction_tx, _broadcasted_transaction_rxeiver) =
+        let (broadcasted_transaction_tx, _broadcasted_transaction_rx) =
             tokio::sync::broadcast::channel(1);
 
         // This task logs all transactions broadcasted by the coordinator.
@@ -721,7 +772,7 @@ where
             sign_request.contract_tx
         {
             assert_eq!(call.tx_fee, withdrawal_fee);
-            assert_eq!(call.request_id, withdrawal_req.request_id);
+            assert_eq!(call.id.request_id, withdrawal_req.request_id);
             assert_eq!(call.outpoint, outpoint);
             assert_eq!(call.signer_bitmap, signer_bitmap);
             assert_eq!(call.sweep_block_hash, withdrawal_req.sweep_block_hash);
@@ -754,6 +805,9 @@ where
                         data: withdrawal_req.sweep_block_hash.to_le_bytes().to_vec()
                     })),
                     Value::UInt(withdrawal_req.sweep_block_height as u128),
+                    Value::Sequence(SequenceData::Buffer(BuffData {
+                        data: outpoint.txid.to_le_bytes().to_vec()
+                    })),
                 ]
             );
         } else {
@@ -806,7 +860,7 @@ where
 
         let (sign_request, multi_tx) = coordinator
             .construct_withdrawal_reject_stacks_sign_request(
-                withdrawal_req.clone(),
+                &withdrawal_req,
                 &bitcoin_aggregate_key,
                 &WALLET.0,
             )

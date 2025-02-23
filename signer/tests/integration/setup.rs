@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::HashSet;
+use std::ops::Deref;
 
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
@@ -34,8 +35,10 @@ use signer::block_observer::Deposit;
 use signer::codec::Encode as _;
 use signer::config::Settings;
 use signer::context::SbtcLimits;
+use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey;
+use signer::stacks::api::MockStacksInteract;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
@@ -46,6 +49,7 @@ use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::QualifiedRequestId;
 use signer::storage::postgres::PgStore;
+use signer::storage::DbRead;
 use signer::storage::DbWrite as _;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
@@ -340,31 +344,6 @@ impl TestSweepSetup {
         }
     }
 
-    /// Use the bitmap in the `self.withdrawal_request.signer_bitmap` field to
-    /// generate the corresponding deposit signer votes and store these
-    /// decisions in the database.
-    pub async fn store_withdrawal_decisions(&self, db: &PgStore) {
-        let withdrawal_signers: Vec<model::WithdrawalSigner> = self
-            .signer_keys
-            .iter()
-            .copied()
-            .zip(self.withdrawal_request.signer_bitmap)
-            .map(|(signer_pub_key, is_rejected)| model::WithdrawalSigner {
-                request_id: self.withdrawal_request.request_id,
-                block_hash: self.withdrawal_request.block_hash,
-                txid: self.withdrawal_request.txid,
-                signer_pub_key,
-                is_accepted: !is_rejected,
-            })
-            .collect();
-
-        for decision in withdrawal_signers {
-            db.write_withdrawal_signer_decision(&decision)
-                .await
-                .unwrap();
-        }
-    }
-
     pub async fn store_withdrawal_request(&self, db: &PgStore) {
         let block = model::StacksBlock {
             block_hash: self.withdrawal_request.block_hash,
@@ -436,6 +415,18 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
         db.write_bitcoin_block(&bitcoin_block).await.unwrap();
         block_header = rpc.get_block_header_info(&parent_header_hash).unwrap();
     }
+
+    let block_hash = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+    assert_eq!(block_hash.deref(), chain_tip);
+}
+
+/// Fetch all block headers from bitcoin-core and store it in the database.
+pub async fn fetch_canonical_bitcoin_blockchain(db: &PgStore, rpc: &Client) -> BitcoinBlockHash {
+    let chain_tip_info = rpc.get_blockchain_info().unwrap();
+
+    backfill_bitcoin_blocks(db, rpc, &chain_tip_info.best_block_hash).await;
+
+    chain_tip_info.best_block_hash.into()
 }
 
 pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
@@ -540,6 +531,25 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
     db.write_tx_output(&utxo_output).await.unwrap();
 }
 
+type MockedStacksContext<S, B, E> = TestContext<S, B, WrappedMock<MockStacksInteract>, E>;
+
+pub async fn set_withdrawal_incomplete<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>) {
+    set_withdrawal_status(ctx, false).await;
+}
+
+pub async fn set_withdrawal_completed<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>) {
+    set_withdrawal_status(ctx, true).await;
+}
+
+pub async fn set_withdrawal_status<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>, status: bool) {
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_is_withdrawal_completed()
+            .returning(move |_, _| Box::pin(std::future::ready(Ok(status))));
+    })
+    .await;
+}
+
 /// The information about a sweep transaction that has been confirmed.
 #[derive(Clone)]
 pub struct TestSignerSet {
@@ -568,6 +578,10 @@ impl TestSignerSet {
 
     pub fn aggregate_key(&self) -> PublicKey {
         self.signer.keypair.public_key().into()
+    }
+
+    pub fn private_key(&self) -> PrivateKey {
+        self.signer.keypair.secret_key().into()
     }
 }
 
@@ -1055,15 +1069,7 @@ impl TestSweepSetup2 {
         }
     }
 
-    pub fn reject_withdrawal_request(&mut self) {
-        for withdrawal in self.withdrawals.iter_mut() {
-            for i in 0..self.signers.keys.len() {
-                withdrawal.request.signer_bitmap.replace(i, true);
-            }
-        }
-    }
-
-    pub async fn store_withdrawal_request(&self, db: &PgStore) {
+    pub async fn store_withdrawal_requests(&self, db: &PgStore) {
         for stacks_block in self.stacks_blocks.iter() {
             db.write_stacks_block(stacks_block).await.unwrap();
         }
@@ -1105,7 +1111,7 @@ impl TestSweepSetup2 {
             parties: vec![Unit.fake_with_rng(&mut OsRng)],
         };
         let encoded = private_shares.encode_to_vec();
-        let signer_private_key = self.signers.signer.keypair.secret_bytes();
+        let signer_private_key = self.signers.private_key().to_bytes();
 
         let encrypted_private_shares =
             wsts::util::encrypt(&signer_private_key, &encoded, &mut OsRng)

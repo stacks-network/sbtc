@@ -59,6 +59,8 @@ pub fn make_complete_deposit(data: &TestSweepSetup) -> (CompleteDepositV1, ReqCo
             block_hash: data.sweep_block_hash.into(),
             block_height: data.sweep_block_height,
         },
+        // This is not used for deposit tests.
+        stacks_chain_tip: signer::storage::model::StacksBlockHash::from([0; 32]),
         // This value means that the signer will go back 10 blocks when
         // looking for pending and accepted deposit requests.
         context_window: 10,
@@ -119,6 +121,8 @@ pub fn make_complete_deposit2(data: &TestSweepSetup2) -> (CompleteDepositV1, Req
             block_hash: sweep_tx_info.block_hash,
             block_height: sweep_tx_info.block_height,
         },
+        // This is not used for deposit tests.
+        stacks_chain_tip: signer::storage::model::StacksBlockHash::from([0; 32]),
         // This value means that the signer will go back 10 blocks when
         // looking for pending and accepted deposit requests.
         context_window: 10,

@@ -110,6 +110,10 @@ pub enum Error {
     /// Bad request
     #[error("Bad request {0}")]
     BadRequest(String),
+
+    /// Deserialization error
+    #[error("Deserialization error: {0}")]
+    Deserialization(String),
 }
 
 /// Error implementation.
@@ -135,6 +139,7 @@ impl Error {
             Error::Reorganizing(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::BadRequest(_) => StatusCode::BAD_REQUEST,
             Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Deserialization(_) => StatusCode::BAD_REQUEST,
         }
     }
     /// Converts the error into a warp response.
