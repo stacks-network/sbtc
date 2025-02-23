@@ -776,6 +776,7 @@ where
                 Metrics::TransactionsSubmittedTotal,
                 "blockchain" => STACKS_BLOCKCHAIN,
                 "status" => status,
+                "kind" => "complete-deposit"
             )
             .increment(1);
         }
@@ -913,6 +914,7 @@ where
             Metrics::TransactionsSubmittedTotal,
             "blockchain" => STACKS_BLOCKCHAIN,
             "status" => status,
+            "kind" => "complete-withdrawal-accept",
         )
         .increment(1);
 
@@ -985,6 +987,7 @@ where
             Metrics::TransactionsSubmittedTotal,
             "blockchain" => STACKS_BLOCKCHAIN,
             "status" => status,
+            "kind" => "complete-withdrawal-reject",
         )
         .increment(1);
 
