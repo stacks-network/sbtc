@@ -369,7 +369,7 @@ where
             tracing::error!(%error, "failed to construct and sign bitcoin transactions");
         }
 
-        self.construct_and_sign_stacks_sbtc_response_transactions(
+        self.construct_and_sign_stacks_response_transactions(
             &bitcoin_chain_tip,
             &wallet,
             &aggregate_key,
@@ -676,13 +676,13 @@ where
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
     #[tracing::instrument(skip_all)]
-    async fn construct_and_sign_stacks_sbtc_response_transactions(
+    async fn construct_and_sign_stacks_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockRef,
         wallet: &SignerWallet,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        let fut = self.construct_and_sign_stacks_sbtc_depost_response_transactions(
+        let fut = self.construct_and_sign_stacks_deposit_response_transactions(
             chain_tip,
             wallet,
             bitcoin_aggregate_key,
@@ -691,7 +691,7 @@ where
             tracing::error!(%error, "could not process deposit response transactions on stacks");
         }
 
-        let fut = self.construct_and_sign_stacks_sbtc_withdrawal_response_transactions(
+        let fut = self.construct_and_sign_stacks_withdrawal_response_transactions(
             chain_tip,
             wallet,
             bitcoin_aggregate_key,
@@ -704,7 +704,7 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn construct_and_sign_stacks_sbtc_depost_response_transactions(
+    async fn construct_and_sign_stacks_deposit_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockRef,
         wallet: &SignerWallet,
@@ -784,7 +784,7 @@ where
     }
 
     #[tracing::instrument(skip_all)]
-    async fn construct_and_sign_stacks_sbtc_withdrawal_response_transactions(
+    async fn construct_and_sign_stacks_withdrawal_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockRef,
         wallet: &SignerWallet,
