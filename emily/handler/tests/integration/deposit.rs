@@ -893,7 +893,7 @@ async fn update_deposits_updates_chainstate() {
 #[test_case(Status::Confirmed; "confirmed")]
 #[test_case(Status::Failed; "failed")]
 #[test_case(Status::Accepted; "accepted")]
-async fn overwrite_deposit(status: Status) {
+async fn create_deposit_handles_duplicates(status: Status) {
     let configuration = clean_setup().await;
     // Arrange.
     // --------
