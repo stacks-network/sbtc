@@ -49,7 +49,6 @@ services:
     environment:
       EMILY_API_KEY: testApiKey
       EMILY_ENDPOINT: http://emily-server:3031
-      DEPLOYER_ADDRESS: SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     depends_on:
       - emily-server
 
