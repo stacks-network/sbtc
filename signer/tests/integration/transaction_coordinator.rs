@@ -3558,15 +3558,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
                 let response = Ok(SortitionInfo {
                     burn_block_hash: BurnchainHeaderHash::from(chain_tip),
                     burn_block_height: chain_tip_info.height,
-                    burn_header_timestamp: 0,
-                    sortition_id: SortitionId([0; 32]),
-                    parent_sortition_id: SortitionId([0; 32]),
-                    consensus_hash: ConsensusHash([0; 20]),
-                    was_sortition: true,
-                    miner_pk_hash160: None,
-                    stacks_parent_ch: None,
-                    last_sortition_ch: None,
-                    committed_block_hash: None,
+                    ..DUMMY_SORTITION_INFO.clone()
                 });
                 Box::pin(std::future::ready(response))
             });
@@ -3691,7 +3683,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     // - After they have the same view of the canonical bitcoin blockchain,
     //   the signers should all participate in DKG.
     // =========================================================================
-    let chain_tip: BitcoinBlockHash = faucet.generate_blocks(1).pop().unwrap().into();
+    let chain_tip: BitcoinBlockHash = faucet.generate_block().into();
 
     // We first need to wait for bitcoin-core to send us all the
     // notifications so that we are up-to-date with the chain tip.
@@ -3763,16 +3755,24 @@ async fn sign_bitcoin_transaction_withdrawals() {
     // - The coordinator should submit a sweep transaction with an output
     //   fulfilling the withdrawal request.
     // =========================================================================
-    for _ in 0..WITHDRAWAL_MIN_CONFIRMATIONS {
-        faucet.generate_blocks(1);
+    let (ctx, _, _, _) = signers.first().unwrap();
+    for _ in 0..WITHDRAWAL_MIN_CONFIRMATIONS - 1 {
+        faucet.generate_block();
         wait_for_signers(&signers).await;
+        // The mempool should be empty, since the signers do not act on the
+        // withdrawal unless they've observed WITHDRAWAL_MIN_CONFIRMATIONS
+        // from the chain tip of when the withdrawal request was created.
+        let txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
+        assert!(txids.is_empty());
     }
 
-    let (ctx, _, _, _) = signers.first().unwrap();
+    faucet.generate_block();
+    wait_for_signers(&signers).await;
+
     let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
     assert_eq!(txids.len(), 1);
 
-    let block_hash = faucet.generate_blocks(1).pop().unwrap();
+    let block_hash = faucet.generate_block();
 
     wait_for_signers(&signers).await;
 
@@ -3804,8 +3804,8 @@ async fn sign_bitcoin_transaction_withdrawals() {
     for tx in broadcast_stacks_txs.iter().take(rotate_keys_count) {
         assert_stacks_transaction_kind::<RotateKeysV1>(tx);
     }
-    // Check that the Nth transaction is the complete-deposit contract
-    // call.
+    // Check that the Nth transaction is the accept-withdrawal-request
+    // contract call.
     let tx = broadcast_stacks_txs.last().unwrap();
     assert_stacks_transaction_kind::<AcceptWithdrawalV1>(tx);
 
