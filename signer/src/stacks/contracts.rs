@@ -1115,8 +1115,8 @@ impl AsContractCall for RejectWithdrawalV1 {
     /// 7. Whether the withdrawal request is being serviced by a sweep
     ///    transaction that is in the mempool.
     /// 8. Whether we need to worry about forks causing the withdrawal to
-    ///    be confirmed by a sweep that was broadcst changing the status of
-    ///    the request from rejected to accepted.
+    ///    be confirmed by a sweep that was broadcast changing the status
+    ///    of the request from rejected to accepted.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
