@@ -5602,3 +5602,40 @@ async fn is_withdrawal_active_unknown_withdrawal() {
 
     signer::testing::storage::drop_db(db).await;
 }
+
+/// Check that is_withdrawal_active correctly returns true when there is a
+/// sweep fulfilling a withdrawal request that might be in the mempool.
+#[tokio::test]
+async fn is_withdrawal_active_for_considered_withdrawal() {
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(4);
+
+    let chain_tip: model::BitcoinBlock = Faker.fake_with_rng(&mut rng);
+    let qualified_id: QualifiedRequestId = Faker.fake_with_rng(&mut rng);
+
+    let output = BitcoinWithdrawalOutput {
+        request_id: qualified_id.request_id,
+        stacks_txid: qualified_id.txid,
+        stacks_block_hash: qualified_id.block_hash,
+        bitcoin_chain_tip: chain_tip.block_hash,
+        is_valid_tx: true,
+        validation_result: WithdrawalValidationResult::Ok,
+        output_index: 2,
+        bitcoin_txid: Faker.fake_with_rng(&mut rng),
+    };
+    db.write_bitcoin_withdrawals_outputs(&[output])
+        .await
+        .unwrap();
+
+    db.write_bitcoin_block(&chain_tip).await.unwrap();
+
+    let chain_tip_ref = chain_tip.into();
+        
+    let active = db
+        .is_withdrawal_active(&qualified_id, &chain_tip_ref, 1)
+        .await
+        .unwrap();
+    assert!(active);
+
+    signer::testing::storage::drop_db(db).await;
+}
