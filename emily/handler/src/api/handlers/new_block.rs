@@ -83,7 +83,13 @@ pub async fn new_block(
         context: EmilyContext,
         new_block_event: NewBlockEventRaw,
     ) -> Result<impl warp::reply::Reply, Error> {
-        let new_block_event = new_block_event.deserialize()?;
+        let new_block_event = match new_block_event.deserialize() {
+            Ok(event) => event,
+            Err(error) => {
+                tracing::error!(%error, "failed to deserialize new block event");
+                return Err(error.into());
+            }
+        };
         // Set the global limits.
         let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
             // Although the following line can panic, our unit tests hit this
@@ -138,7 +144,7 @@ pub async fn new_block(
                         Err(error) => {
                             // If we fail to process a deposit, we log the error and continue.
                             // We don't want the sidecar to retry the webhook because this error
-                            // is likely to be persistent.
+                            // is likely to be persistent. This should never happen.
                             tracing::error!(%error, %txid, "failed to handle completed deposit event");
                             continue;
                         }
@@ -159,7 +165,7 @@ pub async fn new_block(
                         Err(error) => {
                             // If we fail to create a withdrawal, we log the error and continue.
                             // We don't want the sidecar to retry the webhook because this error
-                            // is likely to be persistent.
+                            // is likely to be persistent. This should never happen.
                             tracing::error!(%error, %txid, "failed to handle withdrawal create event");
                             continue;
                         }
