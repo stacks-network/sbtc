@@ -375,7 +375,7 @@ where
             &aggregate_key,
         )
         .await?;
-        tracing::debug!("processed new blocks successfully");
+        tracing::debug!("coordinator tenure completed successfully");
 
         Ok(())
     }
@@ -816,7 +816,7 @@ where
         tracing::debug!(
             swept_withdrawals = %swept_withdrawals.len(),
             rejected_withdrawals = %rejected_withdrawals.len(),
-            "we have withdrawals requests that have been swept that may need fullfillment"
+            "we have withdrawals requests that may need completion"
         );
 
         for swept_request in swept_withdrawals {
