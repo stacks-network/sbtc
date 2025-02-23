@@ -348,8 +348,9 @@ where
             maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
         };
 
-        tracing::debug!("loading the signer stacks wallet");
         let chain_tip_hash = &bitcoin_chain_tip.block_hash;
+
+        tracing::debug!("loading the signer stacks wallet");
         let wallet = self.get_signer_wallet(chain_tip_hash).await?;
 
         self.deploy_smart_contracts(chain_tip_hash, &wallet, &aggregate_key)
