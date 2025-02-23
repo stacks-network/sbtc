@@ -187,15 +187,32 @@ pub async fn new_block(
         )
         .await?;
 
-        handle_internal_call(
-            update_deposits(
-                context.clone(),
-                context.settings.trusted_reorg_api_key.clone(),
-                UpdateDepositsRequestBody { deposits: completed_deposits },
-            ),
-            "failed to update deposits in Emily",
-        )
-        .await?;
+        if completed_deposits.is_empty()
+            && updated_withdrawals.is_empty()
+            && created_withdrawals.is_empty()
+        {
+            tracing::debug!("no sBTC events to process");
+            return Ok(warp::reply());
+        } else {
+            tracing::debug!(
+                num_completed_deposits = %completed_deposits.len(),
+                num_created_withdrawals = %created_withdrawals.len(),
+                num_updated_withdrawals = %updated_withdrawals.len(),
+                "there are sBTC events to process"
+            );
+        }
+
+        if !completed_deposits.is_empty() {
+            handle_internal_call(
+                update_deposits(
+                    context.clone(),
+                    context.settings.trusted_reorg_api_key.clone(),
+                    UpdateDepositsRequestBody { deposits: completed_deposits },
+                ),
+                "failed to update deposits in Emily",
+            )
+            .await?;
+        }
 
         // Create any new withdrawal instances. We do this before performing any updates
         // because a withdrawal needs to exist in the Emily API database in order for it
@@ -208,17 +225,19 @@ pub async fn new_block(
             .await?;
         }
 
-        handle_internal_call(
-            update_withdrawals(
-                context.clone(),
-                context.settings.trusted_reorg_api_key.clone(),
-                UpdateWithdrawalsRequestBody {
-                    withdrawals: updated_withdrawals,
-                },
-            ),
-            "failed to update withdrawals in Emily",
-        )
-        .await?;
+        if !updated_withdrawals.is_empty() {
+            handle_internal_call(
+                update_withdrawals(
+                    context.clone(),
+                    context.settings.trusted_reorg_api_key.clone(),
+                    UpdateWithdrawalsRequestBody {
+                        withdrawals: updated_withdrawals,
+                    },
+                ),
+                "failed to update withdrawals in Emily",
+            )
+            .await?;
+        }
 
         // Respond.
         Ok(warp::reply())
