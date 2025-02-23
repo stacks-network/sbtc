@@ -653,7 +653,7 @@ async fn reject_withdrawal_validation_request_still_active() {
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
-    // Different: we need to store a row in the dkg_shares table so that we
+    // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. We need
     // this so that the donation gets picked up correctly below.
     setup.store_dkg_shares(&db).await;
@@ -680,11 +680,9 @@ async fn reject_withdrawal_validation_request_still_active() {
     // database with new bitcoin block headers.
     fetch_canonical_bitcoin_blockchain(&db, rpc).await;
 
-    // Different: We submit a sweep transaction into the mempool so that
-    // the TestSweepSetup2 struct has the sweep_tx_info set. We also need
-    // to submit the transaction in order for
-    // `TestSweepSetup2::store_bitcoin_withdrawals_outputs` to work as
-    // expected.
+    // Different: We broadcast a sweep transaction into the mempool so that
+    // the TestSweepSetup2 struct has the `broadcast_info` is set, which is
+    // required for `TestSweepSetup2::store_bitcoin_withdrawals_outputs`.
     setup.broadcast_sweep_tx(rpc);
 
     // Different: We're adding a row that let the signer know that someone
@@ -698,6 +696,9 @@ async fn reject_withdrawal_validation_request_still_active() {
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
 
+    // Right now the withdrawal request is expired, but there is a
+    // transaction in the mempool that is trying to fulfill it, so
+    // validation must fail.
     let validation_result = reject_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalRejectValidation(ref err) => {
@@ -706,6 +707,14 @@ async fn reject_withdrawal_validation_request_still_active() {
         err => panic!("unexpected error during validation {err}"),
     }
 
+    // We want to "replace" the transaction in the mempool with another
+    // transaction that is not fulfilling the request. If we didn't remove
+    // the withdrawal, RejectWithdrawalV1 would fail validation for the
+    // wrong reason after the sweep has been confirmed, since the
+    // withdrawal would be fulfilled.
+    //
+    // So we remove the withdrawals from the TestSweepSetup2 object so
+    // that they do not get included in the sweep transaction.
     let withdrawals = setup.withdrawals.drain(..).collect::<Vec<_>>();
     setup.submit_sweep_tx(rpc, faucet);
 
