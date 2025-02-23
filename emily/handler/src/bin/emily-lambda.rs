@@ -1,7 +1,5 @@
 //! Emily API entrypoint.
 
-#![recursion_limit = "256"]
-
 use emily_handler::context::EmilyContext;
 use tracing::info;
 

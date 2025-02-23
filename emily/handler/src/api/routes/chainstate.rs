@@ -12,8 +12,11 @@ pub fn routes(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_chainstate_at_height(context.clone())
         .or(set_chainstate(context.clone()))
+        .boxed()
         .or(update_chainstate(context.clone()))
+        .boxed()
         .or(get_chain_tip(context))
+        .boxed()
 }
 
 /// Get chain tip endpoint.
