@@ -941,7 +941,9 @@ impl TestSweepSetup2 {
     /// deposited funds and sweeps out the withdrawal funds in a proper
     /// sweep transaction, that is also confirmed on bitcoin.
     pub fn submit_sweep_tx(&mut self, rpc: &Client, faucet: &Faucet) {
-        self.broadcast_sweep_tx(rpc);
+        if self.broadcast_info.is_none() {
+            self.broadcast_sweep_tx(rpc);
+        }
         let txid = self.broadcast_info.as_ref().unwrap().txid;
 
         // Let's confirm the sweep transaction
