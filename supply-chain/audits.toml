@@ -27,3 +27,13 @@ version = "0.25.4"
 who = "cylewitruk <cyle.witruk@outlook.com>"
 criteria = "safe-to-deploy"
 version = "10.0.0"
+
+[[audits.wsts]]
+who = "xoloki <xoloki@gmail.com>"
+criteria = "safe-to-deploy"
+version = "13.0.0"
+
+[[audits.wsts]]
+who = "xoloki <xoloki@gmail.com>"
+criteria = "safe-to-deploy"
+version = "13.0.1"
