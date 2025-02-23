@@ -35,6 +35,7 @@ use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
+use crate::testing::storage::DbReadTestExt as _;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
 use crate::transaction_coordinator::coordinator_public_key;
@@ -221,6 +222,7 @@ where
         // Create the coordinator
         context.state().set_sbtc_contracts_deployed();
         let signer_network = SignerNetwork::single(&context);
+
         let coordinator = TxCoordinatorEventLoop {
             context: self.context,
             network: signer_network.spawn(),
@@ -238,27 +240,78 @@ where
             .expect("Empty signer set!")
             .signer_public_keys;
 
+        // Get the chain tips from storage.
+        let (bitcoin_chain_tip, stacks_chain_tip) = storage.get_chain_tips().await;
+
         // Get pending withdrawals from coordinator
         let pending_requests = coordinator
-            .get_pending_requests(&bitcoin_chain_tip, &aggregate_key, signer_public_keys)
+            .get_pending_requests(
+                &bitcoin_chain_tip,
+                &stacks_chain_tip,
+                &aggregate_key,
+                signer_public_keys,
+            )
             .await
             .expect("Error getting pending requests")
             .expect("Empty pending requests");
         let withdrawals = pending_requests.withdrawals;
 
-        // Get pending withdrawals from storage
+        // Calculate the minimum processable block height for withdrawals.
+        let min_withdrawal_block_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY);
+
+        // Get pending withdrawals from storage.
         let withdrawals_in_storage = storage
             .get_pending_accepted_withdrawal_requests(
-                &bitcoin_chain_tip.block_hash,
-                self.context_window,
+                bitcoin_chain_tip.as_ref(),
+                &stacks_chain_tip,
+                min_withdrawal_block_height,
                 self.signing_threshold,
             )
             .await
             .expect("Error extracting withdrawals from db");
 
+        let max_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_MIN_CONFIRMATIONS);
+        let min_processable_height = bitcoin_chain_tip
+            .block_height
+            .saturating_sub(crate::WITHDRAWAL_BLOCKS_EXPIRY)
+            .saturating_add(crate::WITHDRAWAL_EXPIRY_BUFFER);
+
         // Assert that there are some withdrawals in storage while get_pending_requests return 0 withdrawals
         assert!(!withdrawals_in_storage.is_empty());
         for withdrawal in withdrawals_in_storage {
+            if withdrawal.bitcoin_block_height > max_processable_height {
+                assert!(!withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %max_processable_height,
+                    "skipping asserting withdrawal exists as it doesn't have enough confirmations");
+                continue;
+            }
+
+            if withdrawal.bitcoin_block_height <= min_processable_height {
+                assert!(!withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+                tracing::info!(
+                    request_id = %withdrawal.request_id,
+                    block_height = %withdrawal.bitcoin_block_height,
+                    %min_processable_height,
+                    "skipping asserting withdrawal exists as it is expired");
+                continue;
+            }
+
+            tracing::info!(
+                request_id = %withdrawal.request_id,
+                block_height = %withdrawal.bitcoin_block_height,
+                %max_processable_height,
+                "checking withdrawal");
             assert!(withdrawals
                 .iter()
                 .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));

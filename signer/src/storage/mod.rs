@@ -166,13 +166,38 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
-    /// Get pending withdrawal requests that have been accepted by at least
-    /// `threshold` signers and has no responses
+    /// This function returns withdrawal requests filtered by a portion of the
+    /// consensus critera defined in #741.
+    ///
+    /// ## Filter Criteria
+    ///
+    /// 1. The withdrawal request transaction (`create-withdrawal-request`
+    ///    contract call) is confirmed in a block on the canonical stacks
+    ///    blockchain.
+    /// 2. The withdrawal request has not been included in a sweep transaction
+    ///    that has been confirmed in a block on the canonical bitcoin
+    ///    blockchain.
+    /// 3. The withdrawal request has been approved by at least
+    ///    `signature_threshold` signers.
+    /// 4. The withdrawal request bitcoin block height is not older than the
+    ///    given `min_bitcoin_height` (_inclusive_).
+    /// 5. There is no canonically confirmed withdrawal request rejection event
+    ///    (`reject-withdrawal-request` contract call) for the request.
+    ///
+    /// ## Notes
+    ///
+    /// -  This does does not filter `signature_threshold` on that the approving
+    ///    signers are part of the current signer set and this parameter is only
+    ///    used as a pre-filter as the votes themselves are generally also
+    ///    needed separately. Use
+    ///    [`DbRead::get_withdrawal_request_signer_votes`] to fetch the votes
+    ///    and perform this verification separately.
     fn get_pending_accepted_withdrawal_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        threshold: u16,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
+        min_bitcoin_height: u64,
+        signature_threshold: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
     /// Get pending rejected withdrawal requests that have failed but are not
