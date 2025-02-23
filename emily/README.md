@@ -82,6 +82,9 @@ TRUSTED_REORG_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 # Whether to deploy only the dynamodb tables - helpful for testing.
 TABLES_ONLY=false
+
+# The address of the deployer of the sBTC smart contracts
+DEPLOYER_ADDRESS=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 > **Caution:** when deploying to a stage that's deemed to be for an active development stack (`dev`, `local`, `unit-test`) all persistent resources will be set to be deleted when the stack is redeployed or deleted. It's not recommended to use any of these environments for anything you want to be remotely persistent.

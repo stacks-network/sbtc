@@ -6,14 +6,14 @@ use crate::context::EmilyContext;
 
 use super::handlers;
 
-/// Limits routes.
+/// New block routes.
 pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     new_block(context.clone())
 }
 
-/// Set limits endpoint.
+/// New block endpoint.
 fn new_block(
     context: EmilyContext,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
