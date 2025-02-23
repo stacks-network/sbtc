@@ -61,7 +61,6 @@ use crate::stacks::contracts::SMART_CONTRACTS;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
-use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksTxId;
 use crate::storage::DbRead;
 use crate::wsts_state_machine::FireCoordinator;
@@ -349,10 +348,15 @@ where
             maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
         };
 
-        self.deploy_smart_contracts(bitcoin_chain_tip.as_ref(), &aggregate_key)
+        let chain_tip_hash = &bitcoin_chain_tip.block_hash;
+
+        tracing::debug!("loading the signer stacks wallet");
+        let wallet = self.get_signer_wallet(chain_tip_hash).await?;
+
+        self.deploy_smart_contracts(chain_tip_hash, &wallet, &aggregate_key)
             .await?;
 
-        self.check_and_submit_rotate_key_transaction(bitcoin_chain_tip.as_ref(), &aggregate_key)
+        self.check_and_submit_rotate_key_transaction(chain_tip_hash, &wallet, &aggregate_key)
             .await?;
 
         let bitcoin_processing_fut = self.construct_and_sign_bitcoin_sbtc_transactions(
@@ -365,11 +369,13 @@ where
             tracing::error!(%error, "failed to construct and sign bitcoin transactions");
         }
 
-        self.construct_and_sign_stacks_sbtc_response_transactions(
+        self.construct_and_sign_stacks_response_transactions(
             &bitcoin_chain_tip,
+            &wallet,
             &aggregate_key,
         )
         .await?;
+        tracing::debug!("coordinator tenure completed successfully");
 
         Ok(())
     }
@@ -380,6 +386,7 @@ where
     async fn check_and_submit_rotate_key_transaction(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        wallet: &SignerWallet,
         aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         if !self.all_smart_contracts_deployed().await? {
@@ -411,16 +418,12 @@ where
         }
         tracing::info!(%needs_verification, %needs_rotate_key, "DKG verification and/or key rotation needed");
 
-        // Load the Stacks wallet.
-        tracing::debug!("loading the signer stacks wallet");
-        let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
-
         if needs_verification {
             // Perform DKG verification before submitting the rotate key transaction.
             tracing::info!(
                 "🔐 beginning DKG verification before submitting rotate-key transaction"
             );
-            self.perform_dkg_verification(bitcoin_chain_tip, &last_dkg.aggregate_key, &wallet)
+            self.perform_dkg_verification(bitcoin_chain_tip, &last_dkg.aggregate_key, wallet)
                 .await?;
             tracing::info!("🔐 DKG verification successful");
         }
@@ -440,7 +443,7 @@ where
                     bitcoin_chain_tip,
                     signing_key,
                     &last_dkg.aggregate_key,
-                    &wallet,
+                    wallet,
                 )
                 .await
                 .inspect_err(
@@ -673,57 +676,68 @@ where
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
     #[tracing::instrument(skip_all)]
-    async fn construct_and_sign_stacks_sbtc_response_transactions(
+    async fn construct_and_sign_stacks_response_transactions(
         &mut self,
         chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let fut = self.construct_and_sign_stacks_deposit_response_transactions(
+            chain_tip,
+            wallet,
+            bitcoin_aggregate_key,
+        );
+        if let Err(error) = fut.await {
+            tracing::error!(%error, "could not process deposit response transactions on stacks");
+        }
+
+        let fut = self.construct_and_sign_stacks_withdrawal_response_transactions(
+            chain_tip,
+            wallet,
+            bitcoin_aggregate_key,
+        );
+        if let Err(error) = fut.await {
+            tracing::error!(%error, "could not process withdrawal response transactions on stacks");
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_sign_stacks_deposit_response_transactions(
+        &mut self,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         let db = self.context.get_storage();
-        let wallet = SignerWallet::load(&self.context, chain_tip.as_ref()).await?;
-        let stacks = self.context.get_stacks_client();
 
-        // Fetch deposit and withdrawal requests from the database where
+        // Fetch deposit requests from the database where
         // there has been a confirmed bitcoin transaction associated with
         // the request.
         //
         // For deposits, there will be at most one such bitcoin transaction
         // on the blockchain identified by the chain tip, where an input is
         // the deposit UTXO.
-        //
-        // For withdrawals, we need to have a record of the `request_id`
-        // associated with the bitcoin transaction's outputs.
 
         let swept_deposits = db
             .get_swept_deposit_requests(chain_tip.as_ref(), self.context_window)
             .await?;
 
-        let rejected_withdrawals = db
-            .get_pending_rejected_withdrawal_requests(chain_tip, self.context_window)
-            .await?;
-
-        if swept_deposits.is_empty() && rejected_withdrawals.is_empty() {
+        if swept_deposits.is_empty() {
             tracing::debug!("no stacks transactions to create, exiting");
             return Ok(());
         }
 
         tracing::debug!(
             swept_deposits = %swept_deposits.len(),
-            rejected_withdrawals = %rejected_withdrawals.len(),
-            "we have requests that may need a response on stacks"
+            "we have deposit requests that may need a response on stacks"
         );
-
-        // We need to know the nonce to use, so we reach out to our stacks
-        // node for the account information for our multi-sig address.
-        //
-        // Note that the wallet object will automatically increment the
-        // nonce for each transaction that it creates.
-        let account = stacks.get_account(wallet.address()).await?;
-        wallet.set_nonce(account.nonce);
 
         for req in swept_deposits {
             let outpoint = req.deposit_outpoint();
             let sign_request_fut =
-                self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
+                self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, wallet);
 
             let (sign_request, multi_tx) = match sign_request_fut.await {
                 Ok(res) => res,
@@ -739,7 +753,7 @@ where
             // transaction because someone else is now the coordinator, and
             // all the signers are now ignoring us.
             let process_request_fut =
-                self.process_sign_request(sign_request, chain_tip.as_ref(), multi_tx, &wallet);
+                self.process_sign_request(sign_request, chain_tip.as_ref(), multi_tx, wallet);
 
             let status = match process_request_fut.await {
                 Ok(txid) => {
@@ -762,22 +776,80 @@ where
                 Metrics::TransactionsSubmittedTotal,
                 "blockchain" => STACKS_BLOCKCHAIN,
                 "status" => status,
+                "kind" => "complete-deposit"
             )
             .increment(1);
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_sign_stacks_withdrawal_response_transactions(
+        &mut self,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let db = self.context.get_storage();
+
+        // Fetch withdrawal requests from the database where there has been
+        // a confirmed bitcoin transaction associated with the request.
+        let swept_withdrawals = db
+            .get_swept_withdrawal_requests(&chain_tip.block_hash, self.context_window)
+            .await
+            .inspect_err(|error| tracing::error!(%error, "could not fetch swept withdrawals"))
+            .unwrap_or_default();
+
+        // Fetch withdrawal requests that have not been swept for quite
+        // some time.
+        let rejected_withdrawals = db
+            .get_pending_rejected_withdrawal_requests(chain_tip, self.context_window)
+            .await
+            .inspect_err(|error| tracing::error!(%error, "could not fetch rejected withdrawals"))
+            .unwrap_or_default();
+
+        if swept_withdrawals.is_empty() && rejected_withdrawals.is_empty() {
+            tracing::debug!("no withdrawal stacks transactions to create, exiting");
+            return Ok(());
+        }
+
+        tracing::debug!(
+            swept_withdrawals = %swept_withdrawals.len(),
+            rejected_withdrawals = %rejected_withdrawals.len(),
+            "we have withdrawals requests that may need completion"
+        );
+
+        for swept_request in swept_withdrawals {
+            let withdrawal_id = swept_request.qualified_id();
+            let fut = self.construct_and_sign_withdrawal_accept(
+                chain_tip,
+                wallet,
+                bitcoin_aggregate_key,
+                swept_request,
+            );
+
+            if let Err(error) = fut.await {
+                tracing::warn!(
+                    %error,
+                    %withdrawal_id,
+                    "could not construct and sign withdrawal accept"
+                );
+            }
         }
 
         for withdrawal in rejected_withdrawals {
             let withdrawal_id = withdrawal.qualified_id();
             let fut = self.construct_and_sign_withdrawal_reject(
                 chain_tip,
-                &wallet,
+                wallet,
                 bitcoin_aggregate_key,
                 withdrawal,
             );
             if let Err(error) = fut.await {
                 tracing::warn!(
                     %error,
-                    ?withdrawal_id,
+                    %withdrawal_id,
                     "could not construct and sign withdrawal reject"
                 );
             }
@@ -786,6 +858,72 @@ where
         Ok(())
     }
 
+    #[tracing::instrument(skip_all, fields(withdrawal_id = %request.qualified_id()))]
+    async fn construct_and_sign_withdrawal_accept(
+        &mut self,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
+        bitcoin_aggregate_key: &PublicKey,
+        request: model::SweptWithdrawalRequest,
+    ) -> Result<(), Error> {
+        let stacks = self.context.get_stacks_client();
+        let deployer = self.context.config().signer.deployer;
+
+        let is_completed = stacks
+            .is_withdrawal_completed(&deployer, request.request_id)
+            .await?;
+
+        if is_completed {
+            tracing::warn!("swept withdrawal request already processed");
+            return Ok(());
+        }
+
+        tracing::debug!("processing withdrawal request");
+        let sign_request_fut = self.construct_withdrawal_accept_stacks_sign_request(
+            request,
+            bitcoin_aggregate_key,
+            wallet,
+        );
+
+        let (sign_request, multi_tx) = sign_request_fut.await?;
+        tracing::debug!("constructed withdrawal accept sign request");
+
+        // If we fail to sign the transaction for some reason, we
+        // decrement the nonce by one, and try the next transaction.
+        // This is not a fatal error, since we could fail to sign the
+        // transaction because someone else is now the coordinator, and
+        // all the signers are now ignoring us.
+        let process_request_fut =
+            self.process_sign_request(sign_request, &chain_tip.block_hash, multi_tx, wallet);
+
+        tracing::debug!("processed withdrawal request");
+
+        let status = match process_request_fut.await {
+            Ok(txid) => {
+                tracing::info!(%txid, "successfully submitted accept-withdrawal transaction");
+                "success"
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not process the stacks sign request for a withdrawal");
+                wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                "failure"
+            }
+        };
+
+        metrics::counter!(
+            Metrics::TransactionsSubmittedTotal,
+            "blockchain" => STACKS_BLOCKCHAIN,
+            "status" => status,
+            "kind" => "complete-withdrawal-accept",
+        )
+        .increment(1);
+
+        tracing::debug!("processed withdrawal requests successfully");
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all, fields(withdrawal_id = %request.qualified_id()))]
     async fn construct_and_sign_withdrawal_reject(
         &mut self,
         chain_tip: &model::BitcoinBlockRef,
@@ -839,11 +977,7 @@ where
                 "success"
             }
             Err(error) => {
-                tracing::warn!(
-                    %error,
-                    qualified_id = ?request.qualified_id(),
-                    "could not process the stacks sign request for a withdrawal reject"
-                );
+                tracing::warn!(%error, "could not process the stacks sign request for a withdrawal reject");
                 wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
                 "failure"
             }
@@ -853,11 +987,13 @@ where
             Metrics::TransactionsSubmittedTotal,
             "blockchain" => STACKS_BLOCKCHAIN,
             "status" => status,
+            "kind" => "complete-withdrawal-reject",
         )
         .increment(1);
 
         Ok(())
     }
+
     /// Performs verification of the DKG process by running a FROST signing
     /// round using the new key. This is done to assert that all signers have
     /// successfully signed with the new aggregate key before proceeding with
@@ -1099,36 +1235,34 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        tracing::debug!("constructing withdrawal accept sign request");
         // Retrieve the Bitcoin sweep transaction and compute the assessed fee
         // from the Bitcoin node
-        let tx_info = self
-            .context
-            .get_bitcoin_client()
+        let btc_client = self.context.get_bitcoin_client();
+
+        let tx_info = btc_client
             .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
             .await?
             .ok_or_else(|| {
                 Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
             })?;
+
         let outpoint = req.withdrawal_outpoint();
+        let qualified_id = req.qualified_id();
+
         let assessed_bitcoin_fee = tx_info
             .assess_output_fee(outpoint.vout as usize)
             .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
 
-        // TODO: Add the signer_bitmap to SweptWithdrawalRequest
-        let req_id = QualifiedRequestId {
-            request_id: req.request_id,
-            txid: req.txid,
-            block_hash: req.block_hash,
-        };
         let votes = self
             .context
             .get_storage()
-            .get_withdrawal_request_signer_votes(&req_id, bitcoin_aggregate_key)
+            .get_withdrawal_request_signer_votes(&qualified_id, bitcoin_aggregate_key)
             .await?;
 
         let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
-            id: req_id,
-            outpoint: req.withdrawal_outpoint(),
+            id: qualified_id,
+            outpoint,
             tx_fee: assessed_bitcoin_fee.to_sat(),
             signer_bitmap: votes.into(),
             deployer: self.context.config().signer.deployer,
@@ -2137,15 +2271,15 @@ where
     pub async fn deploy_smart_contracts(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
+        wallet: &SignerWallet,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         if self.all_smart_contracts_deployed().await? {
             return Ok(());
         }
 
-        let wallet = self.get_signer_wallet(chain_tip).await?;
         for contract in SMART_CONTRACTS {
-            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
+            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, wallet)
                 .await?;
         }
 
