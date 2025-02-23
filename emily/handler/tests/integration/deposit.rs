@@ -201,6 +201,81 @@ async fn create_and_get_deposit_happy_path() {
 }
 
 #[tokio::test]
+async fn create_deposit_handles_duplicates() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+    let bitcoin_tx_output_index = 0;
+
+    // Setup test deposit transaction.
+    let DepositTxnData {
+        recipients,
+        reclaim_scripts,
+        deposit_scripts,
+        bitcoin_txid,
+        transaction_hex,
+    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, &[DEPOSIT_AMOUNT_SATS]);
+
+    let recipient = recipients.first().unwrap().clone();
+    let reclaim_script = reclaim_scripts.first().unwrap().clone();
+    let deposit_script = deposit_scripts.first().unwrap().clone();
+
+    let request = CreateDepositRequestBody {
+        bitcoin_tx_output_index,
+        bitcoin_txid: bitcoin_txid.clone().into(),
+        reclaim_script: reclaim_script.clone(),
+        deposit_script: deposit_script.clone(),
+        transaction_hex: transaction_hex.clone(),
+    };
+
+    let expected_deposit = Deposit {
+        amount: DEPOSIT_AMOUNT_SATS,
+        bitcoin_tx_output_index,
+        bitcoin_txid: bitcoin_txid.clone().into(),
+        fulfillment: None,
+        last_update_block_hash: BLOCK_HASH.into(),
+        last_update_height: BLOCK_HEIGHT,
+        reclaim_script: reclaim_script.clone(),
+        deposit_script: deposit_script.clone(),
+        parameters: Box::new(DepositParameters {
+            lock_time: DEPOSIT_LOCK_TIME,
+            max_fee: DEPOSIT_MAX_FEE,
+        }),
+        recipient,
+        status: testing_emily_client::models::Status::Pending,
+        status_message: INITIAL_DEPOSIT_STATUS_MESSAGE.into(),
+    };
+
+    // Act.
+    // ----
+    apis::deposit_api::create_deposit(&configuration, request.clone())
+        .await
+        .expect("Received an error after making a valid create deposit request api call.");
+
+    let created_deposit = apis::deposit_api::create_deposit(&configuration, request).await;
+
+    match created_deposit {
+        Ok(_) => panic!("Expected an error when creating a duplicate deposit."),
+        Err(err) => {
+            let standard_error: StandardError = err.into();
+            assert_eq!(standard_error.status_code, 409);
+        }
+    }
+
+    let bitcoin_tx_output_index_string = bitcoin_tx_output_index.to_string();
+    let gotten_deposit = apis::deposit_api::get_deposit(
+        &configuration,
+        &bitcoin_txid,
+        &bitcoin_tx_output_index_string,
+    )
+    .await
+    .expect("Received an error after making a valid get deposit request api call.");
+
+    assert_eq!(expected_deposit, gotten_deposit);
+}
+
+#[tokio::test]
 async fn wipe_databases_test() {
     let configuration = clean_setup().await;
 
