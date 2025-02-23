@@ -83,7 +83,13 @@ pub async fn new_block(
         context: EmilyContext,
         new_block_event: NewBlockEventRaw,
     ) -> Result<impl warp::reply::Reply, Error> {
-        let new_block_event = new_block_event.deserialize()?;
+        let new_block_event = match new_block_event.deserialize() {
+            Ok(event) => event,
+            Err(error) => {
+                tracing::error!(%error, "failed to deserialize new block event");
+                return Err(error.into());
+            }
+        };
         // Set the global limits.
         let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
             // Although the following line can panic, our unit tests hit this
@@ -138,7 +144,7 @@ pub async fn new_block(
                         Err(error) => {
                             // If we fail to process a deposit, we log the error and continue.
                             // We don't want the sidecar to retry the webhook because this error
-                            // is likely to be persistent.
+                            // is likely to be persistent. This should never happen.
                             tracing::error!(%error, %txid, "failed to handle completed deposit event");
                             continue;
                         }
@@ -159,7 +165,7 @@ pub async fn new_block(
                         Err(error) => {
                             // If we fail to create a withdrawal, we log the error and continue.
                             // We don't want the sidecar to retry the webhook because this error
-                            // is likely to be persistent.
+                            // is likely to be persistent. This should never happen.
                             tracing::error!(%error, %txid, "failed to handle withdrawal create event");
                             continue;
                         }
@@ -187,15 +193,32 @@ pub async fn new_block(
         )
         .await?;
 
-        handle_internal_call(
-            update_deposits(
-                context.clone(),
-                context.settings.trusted_reorg_api_key.clone(),
-                UpdateDepositsRequestBody { deposits: completed_deposits },
-            ),
-            "failed to update deposits in Emily",
-        )
-        .await?;
+        if completed_deposits.is_empty()
+            && updated_withdrawals.is_empty()
+            && created_withdrawals.is_empty()
+        {
+            tracing::debug!("no sBTC events to process");
+            return Ok(warp::reply());
+        } else {
+            tracing::debug!(
+                num_completed_deposits = %completed_deposits.len(),
+                num_created_withdrawals = %created_withdrawals.len(),
+                num_updated_withdrawals = %updated_withdrawals.len(),
+                "there are sBTC events to process"
+            );
+        }
+
+        if !completed_deposits.is_empty() {
+            handle_internal_call(
+                update_deposits(
+                    context.clone(),
+                    context.settings.trusted_reorg_api_key.clone(),
+                    UpdateDepositsRequestBody { deposits: completed_deposits },
+                ),
+                "failed to update deposits in Emily",
+            )
+            .await?;
+        }
 
         // Create any new withdrawal instances. We do this before performing any updates
         // because a withdrawal needs to exist in the Emily API database in order for it
@@ -208,17 +231,19 @@ pub async fn new_block(
             .await?;
         }
 
-        handle_internal_call(
-            update_withdrawals(
-                context.clone(),
-                context.settings.trusted_reorg_api_key.clone(),
-                UpdateWithdrawalsRequestBody {
-                    withdrawals: updated_withdrawals,
-                },
-            ),
-            "failed to update withdrawals in Emily",
-        )
-        .await?;
+        if !updated_withdrawals.is_empty() {
+            handle_internal_call(
+                update_withdrawals(
+                    context.clone(),
+                    context.settings.trusted_reorg_api_key.clone(),
+                    UpdateWithdrawalsRequestBody {
+                        withdrawals: updated_withdrawals,
+                    },
+                ),
+                "failed to update withdrawals in Emily",
+            )
+            .await?;
+        }
 
         // Respond.
         Ok(warp::reply())
