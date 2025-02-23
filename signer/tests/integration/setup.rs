@@ -45,6 +45,7 @@ use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::BitcoinTxRef;
+use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::model::BitcoinWithdrawalOutput;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
@@ -979,6 +980,45 @@ impl TestSweepSetup2 {
 
             db.write_transaction(&deposit_tx).await.unwrap();
             db.write_bitcoin_transaction(&bitcoin_tx_ref).await.unwrap();
+        }
+    }
+
+    /// Store the rows in the `bitcoin_tx_sighashes` for the sweep.
+    ///
+    /// This simulates the sweep transaction successfully going through
+    /// validation, where we write to the `bitcoin_tx_sighashes` table at
+    /// the end.
+    pub async fn store_bitcoin_tx_sighashes(&self, db: &PgStore) {
+        let sweep = self.broadcast_info.as_ref().expect("no sweep tx info set");
+
+        let sighash = BitcoinTxSigHash {
+            txid: sweep.txid.into(),
+            chain_tip: sweep.block_hash.into(),
+            prevout_txid: self.donation.txid.into(),
+            prevout_output_index: self.donation.vout,
+            aggregate_key: self.signers.aggregate_key().into(),
+            will_sign: true,
+            is_valid_tx: true,
+            validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+            prevout_type: model::TxPrevoutType::SignersInput,
+            sighash: Faker.fake_with_rng(&mut OsRng),
+        };
+        db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
+
+        for (_, request, _) in self.deposits.iter() {
+            let sighash = BitcoinTxSigHash {
+                txid: sweep.txid.into(),
+                chain_tip: sweep.block_hash.into(),
+                prevout_txid: request.outpoint.txid.into(),
+                prevout_output_index: request.outpoint.vout,
+                aggregate_key: request.signers_public_key.into(),
+                will_sign: true,
+                is_valid_tx: true,
+                validation_result: signer::bitcoin::validation::InputValidationResult::Ok,
+                prevout_type: model::TxPrevoutType::SignersInput,
+                sighash: Faker.fake_with_rng(&mut OsRng),
+            };
+            db.write_bitcoin_txs_sighashes(&[sighash]).await.unwrap();
         }
     }
 
