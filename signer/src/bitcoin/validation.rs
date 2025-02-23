@@ -269,7 +269,7 @@ impl BitcoinPreSignRequest {
 
         // Get the last fees from the mempool ourselves instead of using those provided by the
         // the coordinator so that we assess whether the proposed fee is acceptable ourselves.
-        let mut signers_view_of_last_fees: Option<super::utxo::Fees> =
+        let mut signers_view_of_last_fees: Option<Fees> =
             assess_mempool_sweep_transaction_fees(&bitcoin_client, &signer_utxo).await?;
 
         let mut signer_state = SignerBtcState {
