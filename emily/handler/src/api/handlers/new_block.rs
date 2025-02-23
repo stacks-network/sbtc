@@ -126,7 +126,7 @@ pub async fn new_block(
 
         for (ev, txid) in events {
             let tx_info = TxInfo {
-                txid: sbtc::events::StacksTxid(txid.as_bytes().try_into().unwrap()),
+                txid: sbtc::events::StacksTxid(txid.0),
                 block_id: new_block_event.index_block_hash,
             };
             match RegistryEvent::try_new(ev.value, tx_info) {

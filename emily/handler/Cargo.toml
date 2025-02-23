@@ -21,7 +21,7 @@ clarity.workspace = true
 config.workspace = true
 hex.workspace = true
 reqwest.workspace = true
-sbtc.workspace = true
+sbtc = { workspace = true, features = ["webhooks"] }
 serde.workspace = true
 serde_dynamo.workspace = true
 serde_json.workspace = true
