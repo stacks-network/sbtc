@@ -343,8 +343,11 @@ async fn transaction_is_rejected_if_fee_provided_by_coordinator_is_too_high(
     setup.store_deposit_request(&db).await;
     setup.store_deposit_decisions(&db).await;
 
-    let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
-    let chain_tip_block = db.get_bitcoin_block(&chain_tip).await.unwrap().unwrap();
+    let chain_tip_block = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
 
     let aggregate_key = setup.signers.signer.keypair.public_key().into();
 

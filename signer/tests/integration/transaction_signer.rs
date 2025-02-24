@@ -154,8 +154,13 @@ async fn signing_set_validation_check_for_stacks_transactions() {
     testing::storage::drop_db(db).await;
 }
 
+#[test_case(1, false ; "fee-too-high")]
+#[test_case(0, true ; "fee-okay")]
 #[tokio::test]
-async fn signer_rejects_stacks_txns_with_too_high_a_fee() {
+async fn signer_rejects_stacks_txns_with_too_high_a_fee(
+    fee_relative_to_configured_limit: u64,
+    should_accept: bool,
+) {
     let db = testing::storage::new_test_database().await;
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
@@ -202,14 +207,13 @@ async fn signer_rejects_stacks_txns_with_too_high_a_fee() {
     // Setup the transaction fee to be the maximum fee configured plus one, so that it
     // exceeds the configured value.
     let stx_fee_max_micro_stx = ctx.config().signer.stx_fee_max_micro_stx;
-    let tx_fee = stx_fee_max_micro_stx.get() + 1;
+    let tx_fee = stx_fee_max_micro_stx.get() + fee_relative_to_configured_limit;
 
     // Let's create a proper sign request.
     let request = StacksTransactionSignRequest {
         aggregate_key: setup.aggregated_signer.keypair.public_key().into(),
         contract_tx: ContractCall::CompleteDepositV1(req).into(),
-        // The nonce and tx_fee aren't really validated against anything at
-        // the moment.
+        // The nonce isn't really validated against anything at the moment.
         nonce: 1,
         tx_fee,
         txid: Faker.fake_with_rng::<StacksTxId, _>(&mut rng).into(),
@@ -219,12 +223,18 @@ async fn signer_rejects_stacks_txns_with_too_high_a_fee() {
     // the signer set, so the origin doesn't matter much for this function
     // call.
     let origin_public_key: PublicKey = Faker.fake_with_rng(&mut rng);
-    tx_signer
+    let result = tx_signer
         .assert_valid_stacks_tx_sign_request(&request, &chain_tip, &origin_public_key)
-        .await
-        .expect_err("Signer should fail to sign tx with too high a fee");
+        .await;
 
-    testing::storage::drop_db(db).await;
+    if should_accept {
+        assert!(matches!(result, Ok(())));
+    } else {
+        // We cannot enable partial eq for the error type because it contains many
+        // internal types that don't implement it, so we have to match on the error
+        // and ensure that it is the correct one.
+        assert!(matches!(result, Err(Error::TooHighStacksTxFee(_, _))));
+    }
 }
 
 #[tokio::test]
