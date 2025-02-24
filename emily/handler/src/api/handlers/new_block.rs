@@ -120,6 +120,22 @@ pub async fn new_block(
             .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print")
             .collect::<Vec<_>>();
 
+        tracing::debug!(block = %events.len(), "received events from stacks-core");
+
+        // Set the chainstate
+        handle_internal_call(
+            set_chainstate(
+                context.clone(),
+                context.settings.trusted_reorg_api_key.clone(),
+                Chainstate {
+                    stacks_block_height: stacks_chaintip.block_height,
+                    stacks_block_hash: stacks_chaintip.block_hash.clone(),
+                },
+            ),
+            "failed to update chainstate in Emily",
+        )
+        .await?;
+
         if events.is_empty() {
             // If there are no events to process, we return early with a 200 OK
             // status code so that the node does not retry the webhook.
@@ -181,20 +197,6 @@ pub async fn new_block(
                 }
             };
         }
-
-        // Set the chainstate
-        handle_internal_call(
-            set_chainstate(
-                context.clone(),
-                context.settings.trusted_reorg_api_key.clone(),
-                Chainstate {
-                    stacks_block_height: stacks_chaintip.block_height,
-                    stacks_block_hash: stacks_chaintip.block_hash.clone(),
-                },
-            ),
-            "failed to update chainstate in Emily",
-        )
-        .await?;
 
         if completed_deposits.is_empty()
             && updated_withdrawals.is_empty()
