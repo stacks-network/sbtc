@@ -73,7 +73,7 @@ struct StacksBlock {
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context))]
+#[instrument(skip_all, name = "new-block")]
 pub async fn new_block(
     context: EmilyContext,
     new_block_event: NewBlockEventRaw,
@@ -104,7 +104,10 @@ pub async fn new_block(
             block_height: new_block_event.block_height,
         };
 
-        tracing::debug!("received a new block event from stacks-core");
+        tracing::debug!(
+            block_height = stacks_chaintip.block_height,
+            block_hash = %stacks_chaintip.block_hash,
+            "received a new block event from stacks-core");
 
         // Although transactions can fail, only successful transactions emit
         // sBTC print events, since those events are emitted at the very end of
@@ -201,9 +204,9 @@ pub async fn new_block(
             return Ok(warp::reply());
         } else {
             tracing::debug!(
-                num_completed_deposits = %completed_deposits.len(),
-                num_created_withdrawals = %created_withdrawals.len(),
-                num_updated_withdrawals = %updated_withdrawals.len(),
+                num_completed_deposits = completed_deposits.len(),
+                num_created_withdrawals = created_withdrawals.len(),
+                num_updated_withdrawals = updated_withdrawals.len(),
                 "there are sBTC events to process"
             );
         }
