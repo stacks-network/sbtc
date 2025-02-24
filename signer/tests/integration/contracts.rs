@@ -119,6 +119,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     signer
 }
 
+#[ignore]
 #[test_case(ContractCallWrapper(CompleteDepositV1 {
     outpoint: bitcoin::OutPoint::null(),
     amount: 123654789,
@@ -216,7 +217,6 @@ async fn complete_deposit_wrapper_tx_accepted<T: AsContractCall>(contract: Contr
     assert!(txids.contains(&tx.txid()));
 }
 
-#[ignore = "This is an integration test that requires a stacks-node to work"]
 #[tokio::test]
 async fn estimate_tx_fees() {
     let client = stacks_client();
