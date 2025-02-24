@@ -2446,12 +2446,13 @@ where
     where
         T: AsTxPayload + Send + Sync,
     {
+        let stacks_fees_max_ustx = self.context.config().signer.stacks_fees_max_ustx.get();
         let tx_fee = self
             .context
             .get_stacks_client()
             .estimate_fees(wallet, contract_call, fee_priority)
             .await?
-            .min(self.context.config().signer.stacks_fees_max_ustx.get());
+            .min(stacks_fees_max_ustx);
         Ok(tx_fee)
     }
 }
