@@ -2453,7 +2453,7 @@ where
             .estimate_fees(wallet, contract_call, fee_priority)
             .await?
             .min(stacks_fees_max_ustx);
-        
+
         Ok(tx_fee)
     }
 }
