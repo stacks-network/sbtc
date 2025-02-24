@@ -10,16 +10,14 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
-use futures::future::try_join_all;
 use futures::Stream;
 use futures::StreamExt as _;
 use sha2::Digest;
 
+use crate::bitcoin::rpc::assess_mempool_sweep_transaction_fees;
 use crate::bitcoin::utxo;
-use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::BitcoinInteract;
-use crate::bitcoin::TransactionLookupHint;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::RequestDeciderEvent;
@@ -1830,7 +1828,7 @@ where
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
-        let last_fees = self.assess_mempool_sweep_transaction_fees(&utxo).await?;
+        let last_fees = assess_mempool_sweep_transaction_fees(&bitcoin_client, &utxo).await?;
 
         Ok(utxo::SignerBtcState {
             fee_rate,
@@ -2337,109 +2335,6 @@ where
     /// Helper method to get this signer's public key from its private key.
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
-    }
-
-    /// Assesses the total fees paid for any outstanding sweep transactions in
-    /// the mempool which may need to be RBF'd. If there are no sweep
-    /// transactions which are spending the signer's UTXO, then this function
-    /// will return [`None`].
-    ///
-    /// TODO: This method currently blindly assumes that the mempool transactions
-    /// are correct. Maybe we need some validation?
-    #[tracing::instrument(skip_all, fields(signer_utxo = %signer_utxo.outpoint))]
-    pub async fn assess_mempool_sweep_transaction_fees(
-        &self,
-        signer_utxo: &utxo::SignerUtxo,
-    ) -> Result<Option<Fees>, Error> {
-        let bitcoin_client = self.context.get_bitcoin_client();
-
-        // Find the mempool transactions that are spending the provided UTXO.
-        let mempool_txs_spending_utxo = bitcoin_client
-            .find_mempool_transactions_spending_output(&signer_utxo.outpoint)
-            .await?;
-
-        // If no transactions are found, we have nothing to do.
-        if mempool_txs_spending_utxo.is_empty() {
-            tracing::debug!(
-                outpoint = %signer_utxo.outpoint,
-                "no mempool transactions found spending signer output; nothing to do"
-            );
-            return Ok(None);
-        }
-
-        tracing::debug!(
-            outpoint = %signer_utxo.outpoint,
-            "found mempool transactions spending signer output; assessing fees"
-        );
-
-        // If we have some transactions, we need to find the one that pays the
-        // highest fee. This is the transaction that we will use as the root of
-        // the sweep package. Note that even if only one transaction was
-        // returned above, we still need to get the fee for it, which is why
-        // there's no special logic for one vs multiple.
-        //
-        // This can technically error if the mempool transactions are not found,
-        // but it shouldn't happen since we got the transaction ids from
-        // bitcoin-core itself.
-        let best_sweep_root = try_join_all(mempool_txs_spending_utxo.iter().map(|txid| {
-            let bitcoin_client = bitcoin_client.clone();
-            async move {
-                bitcoin_client
-                    .get_transaction_fee(txid, Some(TransactionLookupHint::Mempool))
-                    .await
-                    .map(|fee| (txid, fee))
-            }
-        }))
-        .await?
-        .into_iter()
-        .max_by_key(|(_, fees)| fees.fee);
-
-        // Since we got the transaction ids from bitcoin-core, these should
-        // not be missing, but we double-check here just in case (it could
-        // happen that the client has failed-over to the next node which isn't
-        // in sync with the previous one, for example).
-        let Some((best_sweep_root_txid, fees)) = best_sweep_root else {
-            tracing::warn!(
-                outpoint = %signer_utxo.outpoint,
-                "no fees found for mempool transactions spending signer output"
-            );
-            return Ok(None);
-        };
-
-        // Retrieve all descendant transactions of the best sweep root.
-        let descendant_txids = bitcoin_client
-            .find_mempool_descendants(best_sweep_root_txid)
-            .await?;
-
-        // Retrieve fees for all descendant transactions. If there were no
-        // descendants then this will just result in an empty list.
-        let descendant_fees = try_join_all(descendant_txids.iter().map(|txid| {
-            let bitcoin_client = bitcoin_client.clone();
-            async move {
-                bitcoin_client
-                    .get_transaction_fee(txid, Some(TransactionLookupHint::Mempool))
-                    .await
-            }
-        }))
-        .await?;
-
-        // Sum the fees of the best sweep root and its descendants, while also
-        // summing the vsize of the transactions for fee-rate calculation later.
-        // If there were no descendants then this will just be the fee and size
-        // from the best root sweep transaction.
-        let (total_fees, total_vsize) = descendant_fees
-            .into_iter()
-            .fold((fees.fee, fees.vsize), |acc, fees| {
-                (acc.0 + fees.fee, acc.1 + fees.vsize)
-            });
-
-        // Calculate the fee rate based on the total fees and vsizes of the
-        // transactions which we've found. Since this is returning transactions
-        // from bitcoin-core, we should have valid fees and sizes, so we don't
-        // need to check for division by zero.
-        let rate = total_fees as f64 / total_vsize as f64;
-
-        Ok(Some(Fees { total: total_fees, rate }))
     }
 }
 

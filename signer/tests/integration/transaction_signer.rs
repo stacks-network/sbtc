@@ -161,12 +161,21 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let fee_rate = 1.3;
     // Build the test context with mocked clients
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_mocked_bitcoin_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+
+    ctx.with_bitcoin_client(|client| {
+        client
+            .expect_estimate_fee_rate()
+            .times(1)
+            .returning(|| Box::pin(async { Ok(1.3) }));
+    })
+    .await;
+
     ctx.state().update_current_limits(SbtcLimits::unlimited());
 
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
@@ -300,12 +309,24 @@ pub async fn presign_requests_with_dkg_shares_status(status: DkgSharesStatus, is
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     // Build the test context with mocked clients
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_mocked_bitcoin_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+
+    // In the case here the DKG shares are verified and okay we'll get the estimated fee rate
+    // from the Bitcoin client.
+    if is_ok {
+        ctx.with_bitcoin_client(|client| {
+            client
+                .expect_estimate_fee_rate()
+                .times(1)
+                .returning(|| Box::pin(async { Ok(1.3) }));
+        })
+        .await;
+    }
 
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
@@ -318,6 +339,7 @@ pub async fn presign_requests_with_dkg_shares_status(status: DkgSharesStatus, is
         max_fee: 10000,
         is_deposit: true,
     };
+
     let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
 
     let block_header = rpc
