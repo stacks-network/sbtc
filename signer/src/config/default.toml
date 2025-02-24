@@ -249,8 +249,8 @@ sbtc_bitcoin_start_height = 101
 # signer will reject it.
 #
 # Required: false
-# Environment: SIGNER_SIGNER__STX_FEE_MAX_MICRO_STX
-# stx_fee_max_micro_stx = 2000000
+# Environment: SIGNER_SIGNER__STACKS_FEES_MAX_USTX
+# stacks_fees_max_ustx = 1500000
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration

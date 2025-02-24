@@ -206,8 +206,8 @@ async fn signer_rejects_stacks_txns_with_too_high_a_fee(
 
     // Setup the transaction fee to be the maximum fee configured plus one, so that it
     // exceeds the configured value.
-    let stx_fee_max_micro_stx = ctx.config().signer.stx_fee_max_micro_stx;
-    let tx_fee = stx_fee_max_micro_stx.get() + fee_relative_to_configured_limit;
+    let stacks_fees_max_ustx = ctx.config().signer.stacks_fees_max_ustx;
+    let tx_fee = stacks_fees_max_ustx.get() + fee_relative_to_configured_limit;
 
     // Let's create a proper sign request.
     let request = StacksTransactionSignRequest {
@@ -233,7 +233,7 @@ async fn signer_rejects_stacks_txns_with_too_high_a_fee(
         // We cannot enable partial eq for the error type because it contains many
         // internal types that don't implement it, so we have to match on the error
         // and ensure that it is the correct one.
-        assert!(matches!(result, Err(Error::TooHighStacksTxFee(_, _))));
+        assert!(matches!(result, Err(Error::StacksFeeLimitExceeded(_, _))));
     }
 }
 

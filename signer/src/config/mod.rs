@@ -350,7 +350,7 @@ pub struct SignerConfig {
     /// verify the shares. After this many blocks, we mark the shares as failed.
     pub dkg_verification_window: u16,
     /// The maximum stacks fee in microSTX that the signer will accept for any stacks transaction.
-    pub stx_fee_max_micro_stx: NonZeroU64,
+    pub stacks_fees_max_ustx: NonZeroU64,
 }
 
 impl Validatable for SignerConfig {
@@ -509,7 +509,7 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
         cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 15)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
-        cfg_builder = cfg_builder.set_default("signer.stx_fee_max_micro_stx", 1_500_000)?;
+        cfg_builder = cfg_builder.set_default("signer.stacks_fees_max_ustx", 1_500_000)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -995,19 +995,19 @@ mod tests {
     }
 
     #[test]
-    fn stx_fee_max_micro_stx_can_be_loaded_from_environment() {
+    fn stacks_fees_max_ustx_can_be_loaded_from_environment() {
         clear_env();
-        let expected_stx_fee_max_micro_stx = NonZeroU64::new(1234).unwrap();
+        let expected_stacks_fees_max_ustx = NonZeroU64::new(1234).unwrap();
         std::env::set_var(
-            "SIGNER_SIGNER__STX_FEE_MAX_MICRO_STX",
-            format!("{expected_stx_fee_max_micro_stx}"),
+            "SIGNER_SIGNER__STACKS_FEES_MAX_USTX",
+            format!("{expected_stacks_fees_max_ustx}"),
         );
         assert_eq!(
             Settings::new_from_default_config()
                 .unwrap()
                 .signer
-                .stx_fee_max_micro_stx,
-            expected_stx_fee_max_micro_stx,
+                .stacks_fees_max_ustx,
+            expected_stacks_fees_max_ustx,
         );
     }
 
@@ -1019,7 +1019,7 @@ mod tests {
             let _ = Settings::new_from_default_config()
                 .expect_err(&format!("Value for {field} must be non zero"));
         }
-        test_one("stx_fee_max_micro_stx");
+        test_one("stacks_fees_max_ustx");
     }
 
     #[test]

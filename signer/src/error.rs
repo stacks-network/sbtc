@@ -444,7 +444,7 @@ pub enum Error {
 
     /// The stacks fee was too high.
     #[error("coordinator Stacks txn with fee too high: {0}. Highest acceptable fee: {1}")]
-    TooHighStacksTxFee(u64, u64),
+    StacksFeeLimitExceeded(u64, u64),
 
     /// Reqwest error
     #[error("response from stacks node did not conform to the expected schema: {0}")]
