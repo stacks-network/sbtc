@@ -52,7 +52,7 @@ x-sbtc-signer: &sbtc-signer
     context: ../
     dockerfile: docker/sbtc/Dockerfile
     target: signer
-  entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
+  entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db --output-format json'"
   environment: &sbtc-signer-environment
     RUST_LOG: info
     SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
@@ -610,7 +610,7 @@ services:
       - bitcoin-mempool
 
   prometheus:
-    image: prom/prometheus:v3.0.1
+    image: prom/prometheus:v3.2.0
     restart: always
     volumes:
       - ./local-prometheus.yml:/etc/prometheus/prometheus.yml
@@ -627,22 +627,33 @@ services:
     profiles:
       - observability
 
+  loki:
+    image: grafana/loki:3.4.2
+    ports:
+      - 3100:3100
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml:ro
+
   grafana:
-    image: grafana/grafana:11.4.0-ubuntu
+    image: grafana/grafana:11.5.2-ubuntu
     user: '472'
     restart: always
     environment:
       GF_INSTALL_PLUGINS: 'grafana-clock-panel,grafana-simple-json-datasource'
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_BASIC_ENABLED: false
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
     volumes:
-      - grafana-data:/var/lib/grafana
+      # - grafana-data:/var/lib/grafana
       - ./grafana/:/etc/grafana/provisioning/
     ports:
       - 3040:3000
     depends_on:
       - prometheus
+      - loki
     profiles:
       - observability
 
@@ -654,6 +665,7 @@ services:
       - 9598
     volumes: 
       - ./vector.toml:/etc/vector/vector.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     # This is needed for localhost networking
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -14,9 +14,6 @@ includes = ["/dev/root", "nvme*", "tmpfs"]
 [sources.app]
 type = "prometheus_scrape"
 endpoints = [
-    "http://host.docker.internal:9181",
-    "http://host.docker.internal:9182",
-    "http://host.docker.internal:9183",
     "http://sbtc-signer-1:9181",
     "http://sbtc-signer-2:9182",
     "http://sbtc-signer-3:9183",
@@ -28,3 +25,44 @@ endpoints = [
 type = "prometheus_exporter"
 inputs = ["host_metrics", "app"]
 address = "0.0.0.0:9598"
+
+
+## App Logs
+
+[sources.docker_logs]
+type = "docker_logs"
+include_containers = [
+    "sbtc-signer-1",
+    "sbtc-signer-2",
+    "sbtc-signer-3",
+]
+
+[transforms.json_messages]
+type = "remap"
+inputs = ["docker_logs"]
+drop_on_error = true
+source = '''
+item = parse_json(.message) ?? {}
+if item == {} {
+  item.message = to_string!(.message)
+}
+
+item.container_name = .container_name
+item.host = .host
+item.image = .image
+item.label = .label
+. = item
+'''
+
+[sinks.loki]
+type = "loki"
+inputs = [ "json_messages"]
+endpoint = "http://loki:3100"
+out_of_order_action = "accept"
+
+  [sinks.loki.encoding]
+  codec = "json"
+
+  [sinks.loki.labels]
+  app = "{{ container_name }}"
+  host = "{{ host }}"
