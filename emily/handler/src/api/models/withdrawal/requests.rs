@@ -17,7 +17,7 @@ pub struct GetWithdrawalsQuery {
     pub next_token: Option<String>,
     /// Maximum number of results to show.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub page_size: Option<i32>,
+    pub page_size: Option<u16>,
 }
 
 /// Request structure for the create withdrawal request.
@@ -38,7 +38,7 @@ pub struct CreateWithdrawalRequestBody {
     pub parameters: WithdrawalParameters,
 }
 
-/// A singlular Withdrawal update that contains only the fields pertinent
+/// A singular Withdrawal update that contains only the fields pertinent
 /// to updating the status of a withdrawal. This includes the key related
 /// data in addition to status history related data.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]

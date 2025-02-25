@@ -13,17 +13,24 @@ use bitcoin::XOnlyPublicKey;
 use crate::bitcoin::utxo::FeeAssessment;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::context::Context;
+use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::BitcoinTxRef;
 use crate::storage::model::BitcoinTxSigHash;
 use crate::storage::model::BitcoinWithdrawalOutput;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
 use crate::storage::DbRead;
+use crate::DEPOSIT_DUST_LIMIT;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_DUST_LIMIT;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::utxo::DepositRequest;
 use super::utxo::RequestRef;
@@ -50,12 +57,11 @@ pub struct BitcoinTxContext {
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
     pub chain_tip_height: u64,
-    /// How many bitcoin blocks back from the chain tip the signer will
-    /// look for the signer UTXO.
-    pub context_window: u16,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
-    /// The current aggregate key that was the output of DKG.
+    /// The current aggregate key that was the output of DKG. The DKG
+    /// shares associated with this aggregate key must have passed
+    /// verification.
     pub aggregate_key: PublicKey,
 }
 
@@ -87,24 +93,43 @@ impl From<&Requests<'_>> for TxRequestIds {
 /// Check that this does not contain duplicate deposits or withdrawals.
 pub fn is_unique(package: &[TxRequestIds]) -> bool {
     let mut deposits_set = HashSet::new();
-    let mut withdrawals_set = HashSet::new();
+    let mut withdrawal_request_id_set = HashSet::new();
+
     package.iter().all(|reqs| {
         let deposits = reqs.deposits.iter().all(|out| deposits_set.insert(out));
-        let withdrawals = reqs.withdrawals.iter().all(|id| withdrawals_set.insert(id));
-        deposits && withdrawals
+        let withdrawal_requests = reqs
+            .withdrawals
+            .iter()
+            .all(|id| withdrawal_request_id_set.insert(id.request_id));
+
+        deposits && withdrawal_requests
     })
 }
 
 impl BitcoinPreSignRequest {
-    /// Validate the current bitcoin transaction.
-    async fn pre_validation<'a, C>(&self, ctx: &C, cache: &ValidationCache<'a>) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
+    /// Check that the request object is valid
+    // TODO: Have the type system do these checks. Perhaps TxRequestIds
+    // should really be a wrapper around something like a (frozen)
+    // NonEmptySet<Either<OutPoint, QualifiedRequestId>> with the
+    // `request_package` field being a NonEmptySlice<TxRequestIds>.
+    fn pre_validation(&self) -> Result<(), Error> {
+        let no_requests = self
+            .request_package
+            .iter()
+            .any(|x| x.deposits.is_empty() && x.withdrawals.is_empty());
+
+        if no_requests || self.request_package.is_empty() {
+            return Err(Error::PreSignContainsNoRequests);
+        }
+
         if !is_unique(&self.request_package) {
             return Err(Error::DuplicateRequests);
         }
-        self.validate_max_mintable(ctx, cache).await?;
+
+        if self.fee_rate <= 0.0 {
+            return Err(Error::PreSignInvalidFeeRate(self.fee_rate));
+        }
+
         Ok(())
     }
 
@@ -118,14 +143,20 @@ impl BitcoinPreSignRequest {
     {
         let mut cache = ValidationCache::default();
 
-        // Fetch all deposit reports and votes
+        let bitcoin_chain_tip = &btc_ctx.chain_tip;
+        let maybe_stacks_chain_tip = db.get_stacks_chain_tip(bitcoin_chain_tip).await?;
+        let Some(stacks_chain_tip) = maybe_stacks_chain_tip.map(|b| b.block_hash) else {
+            return Err(Error::NoStacksChainTip);
+        };
+
         for requests in &self.request_package {
+            // Fetch all deposit reports and votes
             for outpoint in &requests.deposits {
                 let txid = outpoint.txid.into();
                 let output_index = outpoint.vout;
 
                 let report_future = db.get_deposit_request_report(
-                    &btc_ctx.chain_tip,
+                    bitcoin_chain_tip,
                     &txid,
                     output_index,
                     &btc_ctx.signer_public_key,
@@ -144,10 +175,11 @@ impl BitcoinPreSignRequest {
             }
 
             // Fetch all withdrawal reports and votes
-            for id in &requests.withdrawals {
+            for qualified_id in &requests.withdrawals {
                 let report = db.get_withdrawal_request_report(
-                    &btc_ctx.chain_tip,
-                    id,
+                    bitcoin_chain_tip,
+                    &stacks_chain_tip,
+                    qualified_id,
                     &btc_ctx.signer_public_key,
                 );
                 let Some(report) = report.await? else {
@@ -155,19 +187,21 @@ impl BitcoinPreSignRequest {
                 };
 
                 let votes = db
-                    .get_withdrawal_request_signer_votes(id, &btc_ctx.aggregate_key)
+                    .get_withdrawal_request_signer_votes(qualified_id, &btc_ctx.aggregate_key)
                     .await?;
 
-                cache.withdrawal_reports.insert(id, (report, votes));
+                cache
+                    .withdrawal_reports
+                    .insert(qualified_id, (report, votes));
             }
         }
         Ok(cache)
     }
 
-    async fn validate_max_mintable<'a, C>(
+    async fn validate_max_mintable<C>(
         &self,
         ctx: &C,
-        cache: &ValidationCache<'a>,
+        cache: &ValidationCache<'_>,
     ) -> Result<(), Error>
     where
         C: Context + Send + Sync,
@@ -208,9 +242,11 @@ impl BitcoinPreSignRequest {
     where
         C: Context + Send + Sync,
     {
+        // Let's do basic validation of the request object itself.
+        self.pre_validation()?;
         let cache = self.fetch_all_reports(&ctx.get_storage(), btc_ctx).await?;
 
-        self.pre_validation(ctx, &cache).await?;
+        self.validate_max_mintable(ctx, &cache).await?;
 
         let signer_utxo = ctx
             .get_storage()
@@ -264,7 +300,7 @@ impl BitcoinPreSignRequest {
                 .deposit_reports
                 .get(&key)
                 // This should never happen because we have already validated that we have all the reports.
-                .ok_or(InputValidationResult::Unknown.into_error(btc_ctx))?;
+                .ok_or_else(|| InputValidationResult::Unknown.into_error(btc_ctx))?;
             deposits.push((report.to_deposit_request(votes), report.clone()));
         }
 
@@ -273,7 +309,7 @@ impl BitcoinPreSignRequest {
                 .withdrawal_reports
                 .get(id)
                 // This should never happen because we have already validated that we have all the reports.
-                .ok_or(WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
+                .ok_or_else(|| WithdrawalValidationResult::Unknown.into_error(btc_ctx))?;
             withdrawals.push((report.to_withdrawal_request(votes), report.clone()));
         }
 
@@ -296,7 +332,6 @@ impl BitcoinPreSignRequest {
         // their fees anymore in order for them to be accepted by the
         // network.
         signer_state.last_fees = None;
-        let sbtc_limits = ctx.state().get_current_limits();
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
@@ -305,9 +340,7 @@ impl BitcoinPreSignRequest {
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
             chain_tip_height: btc_ctx.chain_tip_height,
-            // If the cap is None, then we assume that it is unlimited.
-            max_deposit_amount: sbtc_limits.per_deposit_cap(),
-            max_withdrawal_amount: sbtc_limits.per_withdrawal_cap(),
+            sbtc_limits: ctx.state().get_current_limits(),
         };
 
         Ok((out, signer_state))
@@ -317,6 +350,7 @@ impl BitcoinPreSignRequest {
 /// An intermediate struct to aid in computing validation of deposits and
 /// withdrawals and transforming the computed sighash into a
 /// [`BitcoinTxSigHash`].
+#[derive(Debug)]
 pub struct BitcoinTxValidationData {
     /// The sighash of the signers' prevout
     pub signer_sighash: SignatureHash,
@@ -333,10 +367,8 @@ pub struct BitcoinTxValidationData {
     pub tx_fee: Amount,
     /// the chain tip height.
     pub chain_tip_height: u64,
-    /// Maximum amount of BTC allowed to be pegged-in per transaction.
-    pub max_deposit_amount: Amount,
-    /// Maximum amount of BTC allowed to be pegged-out per transaction.
-    pub max_withdrawal_amount: Amount,
+    /// The current sBTC limits.
+    pub sbtc_limits: SbtcLimits,
 }
 
 impl BitcoinTxValidationData {
@@ -365,7 +397,7 @@ impl BitcoinTxValidationData {
                 self.chain_tip_height,
                 &self.tx,
                 self.tx_fee,
-                self.max_deposit_amount,
+                &self.sbtc_limits,
             )
         });
 
@@ -390,6 +422,7 @@ impl BitcoinTxValidationData {
                 txid: sighash.txid.into(),
                 sighash: sighash.sighash.into(),
                 chain_tip: self.chain_tip,
+                aggregate_key: sighash.aggregate_key.into(),
                 prevout_txid: sighash.outpoint.txid.into(),
                 prevout_output_index: sighash.outpoint.vout,
                 prevout_type: sighash.prevout_type,
@@ -417,15 +450,16 @@ impl BitcoinTxValidationData {
             .map(|(output_index, (_, report))| BitcoinWithdrawalOutput {
                 bitcoin_txid,
                 bitcoin_chain_tip: self.chain_tip,
-                output_index: output_index as u32,
+                output_index: output_index as u32 + 2,
                 request_id: report.id.request_id,
                 stacks_txid: report.id.txid,
                 stacks_block_hash: report.id.block_hash,
                 validation_result: report.validate(
                     self.chain_tip_height,
+                    output_index + 2,
                     &self.tx,
                     self.tx_fee,
-                    self.max_withdrawal_amount,
+                    &self.sbtc_limits,
                 ),
                 is_valid_tx,
             })
@@ -437,33 +471,44 @@ impl BitcoinTxValidationData {
     ///
     /// This checks that all deposits and withdrawals pass validation. Note
     /// that the transaction can still pass validation if this signer is
-    /// not a part of the signing set locking one or more deposits. In such
-    /// a case, it will just sign for the deposits that it can.
+    /// not a part of the signing set locking one or more deposits, or if
+    /// the DKG shares locking one of the deposit inputs have not passed
+    /// verification for the signer. In such cases, it will just sign for
+    /// the deposits that it can.
     pub fn is_valid_tx(&self) -> bool {
+        // A transaction is invalid if it is not servicing any deposit or
+        // withdrawal requests. Doing so costs fees and the signers do not
+        // gain anything by permitting such a transaction.
+        if self.reports.deposits.is_empty() && self.reports.withdrawals.is_empty() {
+            return false;
+        }
+
+        let chain_tip_height = self.chain_tip_height;
+        let tx = &self.tx;
+        let tx_fee = self.tx_fee;
+        let sbtc_limits = &self.sbtc_limits;
+
         let deposit_validation_results = self.reports.deposits.iter().all(|(_, report)| {
             matches!(
-                report.validate(
-                    self.chain_tip_height,
-                    &self.tx,
-                    self.tx_fee,
-                    self.max_deposit_amount
-                ),
-                InputValidationResult::Ok | InputValidationResult::CannotSignUtxo
+                report.validate(chain_tip_height, tx, tx_fee, sbtc_limits),
+                InputValidationResult::Ok
+                    | InputValidationResult::CannotSignUtxo
+                    | InputValidationResult::DkgSharesUnverified
+                    | InputValidationResult::DkgSharesVerifyFailed
             )
         });
 
-        let withdrawal_validation_results = self.reports.withdrawals.iter().all(|(_, report)| {
-            match report.validate(
-                self.chain_tip_height,
-                &self.tx,
-                self.tx_fee,
-                self.max_withdrawal_amount,
-            ) {
-                WithdrawalValidationResult::Unsupported
-                | WithdrawalValidationResult::Unknown
-                | WithdrawalValidationResult::AmountTooHigh => false,
-            }
-        });
+        let withdrawal_validation_results =
+            self.reports
+                .withdrawals
+                .iter()
+                .enumerate()
+                .all(|(index, (_, report))| {
+                    let output_index = index + 2;
+                    let result =
+                        report.validate(chain_tip_height, output_index, tx, tx_fee, sbtc_limits);
+                    result == WithdrawalValidationResult::Ok
+                });
 
         deposit_validation_results && withdrawal_validation_results
     }
@@ -508,6 +553,11 @@ impl SbtcReports {
 pub enum InputValidationResult {
     /// The deposit request passed validation
     Ok,
+    /// The deposit request amount is below the allowed per-deposit minimum.
+    AmountTooLow,
+    /// The deposit request amount, less the fees, would be rejected from
+    /// the smart contract during the complete-deposit contract call.
+    MintAmountBelowDustLimit,
     /// The deposit request amount exceeds the allowed per-deposit cap.
     AmountTooHigh,
     /// The assessed fee exceeds the max-fee in the deposit request.
@@ -526,6 +576,13 @@ pub enum InputValidationResult {
     TxNotOnBestChain,
     /// The deposit UTXO has already been spent.
     DepositUtxoSpent,
+    /// The DKG shares associated with the aggregate key locking the
+    /// deposit spend path of the deposit UTXO has failed verification.
+    DkgSharesVerifyFailed,
+    /// The DKG shares associated with the aggregate key locking the
+    /// deposit spend path has not been verified. We are not sure whether
+    /// the signers can produce a signature for these shares.
+    DkgSharesUnverified,
     /// Given the current time and block height, it would be imprudent to
     /// attempt to sweep in a deposit request with the given lock-time.
     LockTimeExpiry,
@@ -558,14 +615,40 @@ impl InputValidationResult {
 #[sqlx(type_name = "TEXT", rename_all = "snake_case")]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub enum WithdrawalValidationResult {
+    /// The withdrawal request passed validation
+    Ok,
     /// The withdrawal request amount exceeds the allowed per-withdrawal cap
     AmountTooHigh,
+    /// The withdrawal request amount is below the bitcoin dust amount.
+    AmountIsDust,
+    /// The assessed fee exceeds the max-fee in the withdrawal request.
+    FeeTooHigh,
+    /// The signer does not have a record of their vote on the withdrawal
+    /// request in their database.
+    NoVote,
+    /// The withdrawal request has expired. This means that too many
+    /// bitcoin blocks have been observed since observing the Stacks
+    /// block that confirmed the transaction creating the withdrawal
+    /// request.
+    RequestExpired,
+    /// The withdrawal request has already been fulfilled by a sweep
+    /// transaction that has been confirmed on the canonical bitcoin
+    /// blockchain.
+    RequestFulfilled,
+    /// The withdrawal request is not deemed final. This means that not
+    /// enough bitcoin blocks have been observed since observing the Stacks
+    /// block that confirmed the transaction creating the withdrawal
+    /// request.
+    RequestNotFinal,
+    /// The signer has rejected the withdrawal request.
+    RequestRejected,
+    /// The transaction that created the withdrawal request has been
+    /// confirmed by a stacks block that is not part of the canonical
+    /// Stacks blockchain.
+    TxNotOnBestChain,
     /// The signer does not have a record of the withdrawal request in
     /// their database.
     Unknown,
-    /// We do not support withdrawals at the moment so this is always
-    /// returned.
-    Unsupported,
 }
 
 impl WithdrawalValidationResult {
@@ -669,6 +752,9 @@ pub struct DepositRequestReport {
     pub reclaim_script: ScriptBuf,
     /// The public key used in the deposit script.
     pub signers_public_key: XOnlyPublicKey,
+    /// The status of the DKG shares associated with the above
+    /// `signers_public_key`.
+    pub dkg_shares_status: Option<DkgSharesStatus>,
 }
 
 impl DepositRequestReport {
@@ -678,7 +764,7 @@ impl DepositRequestReport {
         chain_tip_height: u64,
         tx: &F,
         tx_fee: Amount,
-        max_deposit_amount: Amount,
+        sbtc_limits: &SbtcLimits,
     ) -> InputValidationResult
     where
         F: FeeAssessment,
@@ -702,7 +788,11 @@ impl DepositRequestReport {
             DepositConfirmationStatus::Confirmed(block_height, _) => block_height,
         };
 
-        if self.amount > max_deposit_amount.to_sat() {
+        if self.amount < sbtc_limits.per_deposit_minimum().to_sat() {
+            return InputValidationResult::AmountTooLow;
+        }
+
+        if self.amount > sbtc_limits.per_deposit_cap().to_sat() {
             return InputValidationResult::AmountTooHigh;
         }
 
@@ -730,6 +820,10 @@ impl DepositRequestReport {
             return InputValidationResult::FeeTooHigh;
         }
 
+        if self.amount.saturating_sub(assessed_fee.to_sat()) < DEPOSIT_DUST_LIMIT {
+            return InputValidationResult::MintAmountBelowDustLimit;
+        }
+
         // Let's check whether we rejected this deposit.
         match self.can_accept {
             Some(true) => (),
@@ -752,6 +846,16 @@ impl DepositRequestReport {
             None => return InputValidationResult::NoVote,
         }
 
+        // We do not sign for inputs where we have not verified the
+        // aggregate key locking the UTXO. If our shares have not been
+        // verified then sending signature shares could be harmful overall.
+        match self.dkg_shares_status {
+            Some(DkgSharesStatus::Verified) => {}
+            Some(DkgSharesStatus::Unverified) => return InputValidationResult::DkgSharesUnverified,
+            Some(DkgSharesStatus::Failed) => return InputValidationResult::DkgSharesVerifyFailed,
+            None => return InputValidationResult::CannotSignUtxo,
+        }
+
         InputValidationResult::Ok
     }
 
@@ -772,27 +876,17 @@ impl DepositRequestReport {
 /// An enum for the confirmation status of a withdrawal request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WithdrawalRequestStatus {
-    /// We have a record of the withdrawal request transaction, and it has
-    /// been confirmed on the canonical Stacks blockchain. We have not
-    /// fulfilled the request. The integer is the height of the bitcoin
-    /// block anchoring the Stacks block that confirmed the withdrawal
-    /// request, and the block hash is the associated block hash of that
-    /// bitcoin block.
-    Confirmed(u64, BitcoinBlockHash),
+    /// We have a record of the withdrawal request transaction, and it is
+    /// confirmed by a block on the canonical Stacks blockchain. We have
+    /// not fulfilled the request.
+    Confirmed,
     /// We have a record of the withdrawal request being included as an
     /// output in another bitcoin transaction that has been confirmed on
     /// the canonical bitcoin blockchain.
-    Fulfilled(BitcoinTxId),
-    /// We have a record of the withdrawal request transaction, and it has
-    /// not been confirmed on the canonical Stacks blockchain.
-    ///
-    /// Usually we will almost certainly have a record of a withdrawal
-    /// request, and we require that the withdrawal transaction be
-    /// confirmed before we write it to our database. But the withdrawal
-    /// transaction can be affected by a bitcoin reorg, where it is no
-    /// longer confirmed on the canonical bitcoin blockchain. If this
-    /// happens when we query for the status then it will come back as
-    /// unconfirmed.
+    Fulfilled(BitcoinTxRef),
+    /// We have a record of the transaction that created the withdrawal
+    /// request, but it is not confirmed on the canonical Stacks blockchain
+    /// and the withdrawal request has not been fulfilled.
     Unconfirmed,
 }
 
@@ -813,22 +907,75 @@ pub struct WithdrawalRequestReport {
     /// the funds.
     pub max_fee: u64,
     /// The script_pubkey of the output.
-    pub script_pubkey: ScriptBuf,
+    pub recipient: ScriptBuf,
+    /// Whether this signers' blocklist client accepted the withdrawal
+    /// request or not. This should only be `None` if we do not have a
+    /// record of the withdrawal request.
+    pub is_accepted: Option<bool>,
+    /// The height of the bitcoin chain tip during the execution of the
+    /// contract call that generated the withdrawal request.
+    pub bitcoin_block_height: u64,
 }
 
 impl WithdrawalRequestReport {
     /// Validate that the withdrawal request is okay given the report.
+    ///
+    /// See https://github.com/stacks-network/sbtc/issues/741 for the
+    /// validation rules for withdrawal requests.
     pub fn validate<F>(
         &self,
-        _: u64,
-        _: &F,
-        _: Amount,
-        _max_withdrawal_amount: Amount,
+        bitcoin_chain_tip_height: u64,
+        output_index: usize,
+        tx: &F,
+        tx_fee: Amount,
+        sbtc_limits: &SbtcLimits,
     ) -> WithdrawalValidationResult
     where
         F: FeeAssessment,
     {
-        WithdrawalValidationResult::Unsupported
+        match self.status {
+            WithdrawalRequestStatus::Confirmed => {}
+            WithdrawalRequestStatus::Unconfirmed => {
+                return WithdrawalValidationResult::TxNotOnBestChain
+            }
+            WithdrawalRequestStatus::Fulfilled(_) => {
+                return WithdrawalValidationResult::RequestFulfilled
+            }
+        }
+
+        match self.is_accepted {
+            Some(true) => (),
+            None => return WithdrawalValidationResult::NoVote,
+            Some(false) => return WithdrawalValidationResult::RequestRejected,
+        }
+
+        if self.amount > sbtc_limits.per_withdrawal_cap().to_sat() {
+            return WithdrawalValidationResult::AmountTooHigh;
+        }
+
+        if self.amount < WITHDRAWAL_DUST_LIMIT {
+            return WithdrawalValidationResult::AmountIsDust;
+        }
+
+        let block_wait = bitcoin_chain_tip_height.saturating_sub(self.bitcoin_block_height);
+        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS {
+            return WithdrawalValidationResult::RequestNotFinal;
+        }
+
+        if block_wait > WITHDRAWAL_BLOCKS_EXPIRY {
+            return WithdrawalValidationResult::RequestExpired;
+        }
+
+        let Some(assessed_fee) = tx.assess_output_fee(output_index, tx_fee) else {
+            // If we hit this, then there is a programming error somewhere
+            return WithdrawalValidationResult::Unknown;
+        };
+
+        if assessed_fee.to_sat() > self.max_fee {
+            return WithdrawalValidationResult::FeeTooHigh;
+        }
+
+        WithdrawalValidationResult::Ok
     }
 
     fn to_withdrawal_request(&self, votes: &SignerVotes) -> WithdrawalRequest {
@@ -838,7 +985,7 @@ impl WithdrawalRequestReport {
             block_hash: self.id.block_hash,
             amount: self.amount,
             max_fee: self.max_fee,
-            script_pubkey: self.script_pubkey.clone().into(),
+            script_pubkey: self.recipient.clone().into(),
             signer_bitmap: votes.into(),
         }
     }
@@ -850,6 +997,7 @@ mod tests {
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
     use bitcoin::TxIn;
+    use bitcoin::TxOut;
     use bitcoin::Txid;
     use bitcoin::Witness;
     use test_case::test_case;
@@ -867,6 +1015,7 @@ mod tests {
         report: DepositRequestReport,
         status: InputValidationResult,
         chain_tip_height: u64,
+        limits: SbtcLimits,
     }
 
     const TX_FEE: Amount = Amount::from_sat(10000);
@@ -883,10 +1032,12 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::TxNotOnBestChain,
         chain_tip_height: 2,
-    } ; "deposit-reorged")]
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    }; "deposit-reorged")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Spent(BitcoinTxId::from([1; 32])),
@@ -899,10 +1050,12 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::DepositUtxoSpent,
         chain_tip_height: 2,
-    } ; "deposit-spent")]
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    }; "deposit-spent")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -915,9 +1068,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::NoVote,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "deposit-no-vote")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -931,9 +1086,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::CannotSignUtxo,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "cannot-sign-for-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -947,9 +1104,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::RejectedRequest,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "rejected-deposit")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -963,9 +1122,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "lock-time-expires-soon-1")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -979,9 +1140,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::LockTimeExpiry,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "lock-time-expires-soon-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -995,9 +1158,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::UnsupportedLockTime,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "lock-time-in-time-units-2")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -1011,9 +1176,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::Ok,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "happy-path")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -1027,9 +1194,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::Unknown,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "unknown-prevout")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -1043,9 +1212,11 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::Ok,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "at-the-border")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
@@ -1059,10 +1230,48 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::FeeTooHigh,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "one-sat-too-high-fee-amount")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: TX_FEE.to_sat() + DEPOSIT_DUST_LIMIT - 1,
+            max_fee: TX_FEE.to_sat(),
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
+        },
+        status: InputValidationResult::MintAmountBelowDustLimit,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    } ; "one-sat-under-dust-amount")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: TX_FEE.to_sat() + DEPOSIT_DUST_LIMIT,
+            max_fee: TX_FEE.to_sat(),
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
+        },
+        status: InputValidationResult::Ok,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    } ; "at-dust-amount")]
     #[test_case(DepositReportErrorMapping {
         report: DepositRequestReport {
             status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
@@ -1075,10 +1284,102 @@ mod tests {
             deposit_script: ScriptBuf::new(),
             reclaim_script: ScriptBuf::new(),
             signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
         },
         status: InputValidationResult::FeeTooHigh,
         chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
     } ; "one-sat-too-high-fee")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 100_000_000,
+            max_fee: u64::MAX,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
+        },
+        status: InputValidationResult::AmountTooHigh,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, 99_999_999),
+    } ; "amount-too-high")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 99_999_999,
+            max_fee: u64::MAX,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Verified),
+        },
+        status: InputValidationResult::AmountTooLow,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(100_000_000, u64::MAX),
+    } ; "amount-too-low")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 100_000_000,
+            max_fee: u64::MAX,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Unverified),
+        },
+        status: InputValidationResult::DkgSharesUnverified,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    } ; "unverified-dkg-shares")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 100_000_000,
+            max_fee: u64::MAX,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: Some(DkgSharesStatus::Failed),
+        },
+        status: InputValidationResult::DkgSharesVerifyFailed,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    } ; "dkg-shares-failed-verification")]
+    #[test_case(DepositReportErrorMapping {
+        report: DepositRequestReport {
+            status: DepositConfirmationStatus::Confirmed(0, BitcoinBlockHash::from([0; 32])),
+            can_sign: Some(true),
+            can_accept: Some(true),
+            amount: 100_000_000,
+            max_fee: u64::MAX,
+            lock_time: LockTime::from_height(DEPOSIT_LOCKTIME_BLOCK_BUFFER + 3),
+            outpoint: OutPoint::null(),
+            deposit_script: ScriptBuf::new(),
+            reclaim_script: ScriptBuf::new(),
+            signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+            dkg_shares_status: None,
+        },
+        status: InputValidationResult::CannotSignUtxo,
+        chain_tip_height: 2,
+        limits: SbtcLimits::new_per_deposit(0, u64::MAX),
+    } ; "no-dkg-shares-status")]
     fn deposit_report_validation(mapping: DepositReportErrorMapping) {
         let mut tx = crate::testing::btc::base_signer_transaction();
         tx.input.push(TxIn {
@@ -1091,91 +1392,557 @@ mod tests {
         let status =
             mapping
                 .report
-                .validate(mapping.chain_tip_height, &tx, TX_FEE, Amount::MAX_MONEY);
+                .validate(mapping.chain_tip_height, &tx, TX_FEE, &mapping.limits);
 
         assert_eq!(status, mapping.status);
     }
 
+    /// A helper struct to aid in testing of deposit validation.
+    #[derive(Debug)]
+    struct WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport,
+        status: WithdrawalValidationResult,
+        chain_tip_height: u64,
+        limits: SbtcLimits,
+    }
+
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            // This is the only acceptable status.
+            status: WithdrawalRequestStatus::Confirmed,
+            // This does not matter during validation.
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            // This is the only acceptable value.
+            is_accepted: Some(true),
+            // This just needs to be under the sBTC withdrawal maximum in
+            // the SbtcLimits.
+            amount: Amount::ONE_BTC.to_sat(),
+            // The max fee just needs to be greater than or equal to the
+            // assessed fee.
+            max_fee: TX_FEE.to_sat(),
+            // This does not matter during validation.
+            recipient: ScriptBuf::new(),
+            // This needs to be WITHDRAWAL_MIN_CONFIRMATIONS less than the
+            // chain_tip_height.
+            bitcoin_block_height: 0,
+        },
+        // This is part of sBTC consensus.
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        // This is set by Emily.
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::Ok,
+    } ; "happy-path-ok")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat() + 1,
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        status: WithdrawalValidationResult::AmountTooHigh,
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+    } ; "amount-too-high")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: WITHDRAWAL_DUST_LIMIT - 1,
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::AmountIsDust,
+    } ; "amount-is-dust")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: TX_FEE.to_sat() - 1,
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::Ok,
+    } ; "amount-and-fee-divorced")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: TX_FEE.to_sat() - 1,
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::FeeTooHigh,
+    } ; "fee-too-high")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: None,
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::NoVote,
+    } ; "no-vote")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_BLOCKS_EXPIRY + 1,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestExpired,
+    } ; "request-expired")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Fulfilled(BitcoinTxRef {
+                txid: BitcoinTxId::from([0; 32]),
+                block_hash: BitcoinBlockHash::from([0; 32]),
+            }),
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestFulfilled,
+    } ; "request-fulfilled")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS - 1,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestNotFinal,
+    } ; "request-not-final")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(false),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::RequestRejected,
+    } ; "request-rejected")]
+    #[test_case(WithdrawalReportErrorMapping {
+        report: WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Unconfirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: TX_FEE.to_sat(),
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        },
+        chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
+        limits: SbtcLimits::new_per_withdrawal(Amount::ONE_BTC.to_sat()),
+        status: WithdrawalValidationResult::TxNotOnBestChain,
+    } ; "tx-not-on-best-chain")]
+    fn withdrawal_report_validation(mapping: WithdrawalReportErrorMapping) {
+        let mut tx = crate::testing::btc::base_signer_transaction();
+        tx.output.push(TxOut {
+            value: Amount::from_sat(mapping.report.amount),
+            script_pubkey: mapping.report.recipient.clone(),
+        });
+
+        let output_index = tx.output.len() - 1;
+        let chain_tip_height = mapping.chain_tip_height;
+        let limits = &mapping.limits;
+
+        let status = mapping
+            .report
+            .validate(chain_tip_height, output_index, &tx, TX_FEE, limits);
+
+        assert_eq!(status, mapping.status);
+    }
+
+    #[test]
+    fn withdrawal_report_validation_unknown() {
+        let report = WithdrawalRequestReport {
+            status: WithdrawalRequestStatus::Confirmed,
+            id: QualifiedRequestId {
+                request_id: 0,
+                txid: StacksTxId::from([0; 32]),
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            is_accepted: Some(true),
+            amount: Amount::ONE_BTC.to_sat(),
+            max_fee: u64::MAX,
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        };
+        let mut tx = crate::testing::btc::base_signer_transaction();
+        tx.output.push(TxOut {
+            value: Amount::from_sat(report.amount),
+            script_pubkey: report.recipient.clone(),
+        });
+
+        // This output_index is out of bounds, and is not the index for the
+        // withdrawal output, so we won't know the assessed fee. This
+        // should never happen, and is a programming error whenever we
+        // observe it.
+        let output_index = tx.output.len();
+        let bitcoin_chain_tip_height = WITHDRAWAL_MIN_CONFIRMATIONS;
+        let limits = &SbtcLimits::unlimited();
+
+        let status = report.validate(bitcoin_chain_tip_height, output_index, &tx, TX_FEE, limits);
+
+        assert_eq!(status, WithdrawalValidationResult::Unknown);
+    }
+
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                },
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([2; 32]),
-                }
-        ]}], true; "unique-requests")]
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 1,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, true; "unique-requests")]
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                },
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([2; 32]),
-                }
-        ]}], false; "duplicate-deposits-in-same-tx")]
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 1,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 0.0,
+            last_fees: None,
+        }, false; "unique-requests-zero-fee-rate")]
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                },
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
-                }
-        ]}], false; "duplicate-withdrawals-in-same-tx")]
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 1,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: -1.0,
+            last_fees: None,
+        }, false; "unique-requests-negative-fee-rate")]
     #[test_case(
-        vec![TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 0 },
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
-            ],
-            withdrawals: vec![
-                QualifiedRequestId {
-                    request_id: 0,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([1; 32]),
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 1,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([2; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-deposits-in-same-tx")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![TxRequestIds {
+                deposits: vec![
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    },
+                    OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 1,
+                    },
+                ],
+                withdrawals: vec![
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                    QualifiedRequestId {
+                        request_id: 0,
+                        txid: StacksTxId::from([1; 32]),
+                        block_hash: StacksBlockHash::from([1; 32]),
+                    },
+                ],
+            }],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-withdrawals-in-same-tx")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
                 },
-                QualifiedRequestId {
-                    request_id: 1,
-                    txid: StacksTxId::from([1; 32]),
-                    block_hash: StacksBlockHash::from([2; 32]),
-                }
-        ]},
-        TxRequestIds {
-            deposits: vec![
-                OutPoint { txid: Txid::from_byte_array([1; 32]), vout: 1 }
             ],
-            withdrawals: vec![]
-        }], false; "duplicate-requests-in-different-txs")]
-    fn test_is_unique(requests: Vec<TxRequestIds>, result: bool) {
-        assert_eq!(is_unique(&requests), result);
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-withdrawal-request-ids-in-same-tx")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
+                            request_id: 1,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
+                },
+                TxRequestIds {
+                    deposits: vec![OutPoint {
+                        txid: Txid::from_byte_array([1; 32]),
+                        vout: 0,
+                    }],
+                    withdrawals: vec![],
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "duplicate-requests-in-different-txs")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: Vec::new(),
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "empty-package_requests")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "basically-empty-package_requests")]
+    #[test_case(
+        BitcoinPreSignRequest {
+            request_package: vec![
+                TxRequestIds {
+                    deposits: vec![
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 0,
+                        },
+                        OutPoint {
+                            txid: Txid::from_byte_array([1; 32]),
+                            vout: 1,
+                        },
+                    ],
+                    withdrawals: vec![
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([1; 32]),
+                        },
+                        QualifiedRequestId {
+                            request_id: 0,
+                            txid: StacksTxId::from([1; 32]),
+                            block_hash: StacksBlockHash::from([2; 32]),
+                        },
+                    ],
+                },
+                TxRequestIds {
+                    deposits: Vec::new(),
+                    withdrawals: Vec::new(),
+                },
+            ],
+            fee_rate: 1.0,
+            last_fees: None,
+        }, false; "contains-empty-tx-requests")]
+    fn test_pre_validation(requests: BitcoinPreSignRequest, result: bool) {
+        assert_eq!(requests.pre_validation().is_ok(), result);
     }
 
     fn create_test_report(idx: u8, amount: u64) -> (DepositRequestReport, SignerVotes) {
@@ -1191,6 +1958,7 @@ mod tests {
                 deposit_script: ScriptBuf::new(),
                 reclaim_script: ScriptBuf::new(),
                 signers_public_key: *sbtc::UNSPENDABLE_TAPROOT_KEY,
+                dkg_shares_status: Some(DkgSharesStatus::Verified),
             },
             SignerVotes::from(Vec::new()),
         )
@@ -1248,6 +2016,7 @@ mod tests {
         let context = TestContext::default_mocked();
         context.state().update_current_limits(SbtcLimits::new(
             Some(total_cap),
+            None,
             None,
             None,
             Some(total_cap - sbtc_supply),

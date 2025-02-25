@@ -10,8 +10,7 @@ use tracing_subscriber::EnvFilter;
 ///
 /// # Arguments
 ///
-/// * `pretty` - A boolean that determines if the logging format should be pretty or JSON
-
+/// - `pretty` - A boolean that determines if the logging format should be pretty or JSON
 pub fn setup_logging(pretty: bool) {
     match pretty {
         true => setup_logging_pretty(),

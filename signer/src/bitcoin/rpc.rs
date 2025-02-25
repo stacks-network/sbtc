@@ -17,7 +17,9 @@ use bitcoincore_rpc::jsonrpc::error::RpcError;
 use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi as _;
+use bitcoincore_rpc_json::GetBlockchainInfoResult;
 use bitcoincore_rpc_json::GetMempoolEntryResult;
+use bitcoincore_rpc_json::GetNetworkInfoResult;
 use bitcoincore_rpc_json::GetRawTransactionResultVin;
 use bitcoincore_rpc_json::GetRawTransactionResultVout as BitcoinTxInfoVout;
 use bitcoincore_rpc_json::GetTxOutResult;
@@ -567,6 +569,18 @@ impl BitcoinCoreClient {
             Err(err) => Err(Error::BitcoinCoreRpc(err)),
         }
     }
+
+    /// Gets the blockchain info from the Bitcoin node.
+    pub fn get_blockchain_info(&self) -> Result<GetBlockchainInfoResult, Error> {
+        self.inner
+            .get_blockchain_info()
+            .map_err(Error::BitcoinCoreRpc)
+    }
+
+    /// Gets the network info from the Bitcoin node.
+    pub fn get_network_info(&self) -> Result<GetNetworkInfoResult, Error> {
+        self.inner.get_network_info().map_err(Error::BitcoinCoreRpc)
+    }
 }
 
 impl BitcoinInteract for BitcoinCoreClient {
@@ -705,5 +719,15 @@ impl BitcoinInteract for BitcoinCoreClient {
 
     async fn get_mempool_entry(&self, txid: &Txid) -> Result<Option<GetMempoolEntryResult>, Error> {
         self.get_mempool_entry(txid)
+    }
+
+    async fn get_blockchain_info(
+        &self,
+    ) -> Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error> {
+        self.get_blockchain_info()
+    }
+
+    async fn get_network_info(&self) -> Result<bitcoincore_rpc_json::GetNetworkInfoResult, Error> {
+        self.get_network_info()
     }
 }

@@ -1,0 +1,380 @@
+{
+    "anchored_cost": {
+        "read_count": 20,
+        "read_length": 25282,
+        "runtime": 180360,
+        "write_count": 6,
+        "write_length": 266
+    },
+    "block_hash": "0x628838c7167591943eb6eeb88949b13c0ae6e7a323de6f4217101bd5028ebcca",
+    "block_height": 47,
+    "block_time": 1730980672,
+    "burn_block_hash": "0x094f2504beaff25578ce059dc7a780c205f901f889483ab0b350bfebc1bc48b5",
+    "burn_block_height": 237,
+    "burn_block_time": 1730980669,
+    "confirmed_microblocks_cost": {
+        "read_count": 0,
+        "read_length": 0,
+        "runtime": 0,
+        "write_count": 0,
+        "write_length": 0
+    },
+    "cycle_number": null,
+    "events": [
+        {
+            "committed": true,
+            "contract_event": {
+                "contract_identifier": "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry",
+                "raw_value": "0x",
+                "topic": "print",
+                "value": { "UInt": 42 }
+            },
+            "event_index": 0,
+            "txid": "0xa9a493ccd6186b61f72fff3a106522ea008bb95fc415c70a1e9e2fc299b09eac",
+            "type": "contract_event"
+        },
+        {
+            "committed": true,
+            "contract_event": {
+                "contract_identifier": "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry",
+                "raw_value": "0x0c000000050b6e65772d616464726573730515f08277fe51877c890918bb778e0192309b307c39146e65772d6167677265676174652d7075626b6579020000002102e77bbc2ff7d6a0bb53d0a736a1a95032c6251b9e54a2187d7fc9405ce330e943086e65772d6b6579730b00000003020000002102007311430123d4cad97f4f7e86e023b28143130a18099ecf094d36fef0f6135c0200000021031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e63800200000021035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46176e65772d7369676e61747572652d7468726573686f6c64010000000000000000000000000000000205746f7069630d0000000c6b65792d726f746174696f6e",
+                "topic": "print",
+                "value": {
+                    "Tuple": {
+                        "data_map": {
+                            "new-address": {
+                                "Principal": {
+                                    "Standard": [
+                                        21,
+                                        [
+                                            240,
+                                            130,
+                                            119,
+                                            254,
+                                            81,
+                                            135,
+                                            124,
+                                            137,
+                                            9,
+                                            24,
+                                            187,
+                                            119,
+                                            142,
+                                            1,
+                                            146,
+                                            48,
+                                            155,
+                                            48,
+                                            124,
+                                            57
+                                        ]
+                                    ]
+                                }
+                            },
+                            "new-aggregate-pubkey": {
+                                "Sequence": {
+                                    "Buffer": {
+                                        "data": [
+                                            2,
+                                            231,
+                                            123,
+                                            188,
+                                            47,
+                                            247,
+                                            214,
+                                            160,
+                                            187,
+                                            83,
+                                            208,
+                                            167,
+                                            54,
+                                            161,
+                                            169,
+                                            80,
+                                            50,
+                                            198,
+                                            37,
+                                            27,
+                                            158,
+                                            84,
+                                            162,
+                                            24,
+                                            125,
+                                            127,
+                                            201,
+                                            64,
+                                            92,
+                                            227,
+                                            48,
+                                            233,
+                                            67
+                                        ]
+                                    }
+                                }
+                            },
+                            "new-keys": {
+                                "Sequence": {
+                                    "List": {
+                                        "data": [
+                                            {
+                                                "Sequence": {
+                                                    "Buffer": {
+                                                        "data": [
+                                                            2,
+                                                            0,
+                                                            115,
+                                                            17,
+                                                            67,
+                                                            1,
+                                                            35,
+                                                            212,
+                                                            202,
+                                                            217,
+                                                            127,
+                                                            79,
+                                                            126,
+                                                            134,
+                                                            224,
+                                                            35,
+                                                            178,
+                                                            129,
+                                                            67,
+                                                            19,
+                                                            10,
+                                                            24,
+                                                            9,
+                                                            158,
+                                                            207,
+                                                            9,
+                                                            77,
+                                                            54,
+                                                            254,
+                                                            240,
+                                                            246,
+                                                            19,
+                                                            92
+                                                        ]
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "Sequence": {
+                                                    "Buffer": {
+                                                        "data": [
+                                                            3,
+                                                            26,
+                                                            77,
+                                                            159,
+                                                            73,
+                                                            3,
+                                                            218,
+                                                            151,
+                                                            73,
+                                                            137,
+                                                            69,
+                                                            164,
+                                                            224,
+                                                            26,
+                                                            80,
+                                                            35,
+                                                            161,
+                                                            213,
+                                                            59,
+                                                            201,
+                                                            106,
+                                                            214,
+                                                            112,
+                                                            191,
+                                                            224,
+                                                            58,
+                                                            223,
+                                                            138,
+                                                            6,
+                                                            197,
+                                                            46,
+                                                            99,
+                                                            128
+                                                        ]
+                                                    }
+                                                }
+                                            },
+                                            {
+                                                "Sequence": {
+                                                    "Buffer": {
+                                                        "data": [
+                                                            3,
+                                                            82,
+                                                            73,
+                                                            19,
+                                                            114,
+                                                            134,
+                                                            192,
+                                                            119,
+                                                            204,
+                                                            238,
+                                                            101,
+                                                            236,
+                                                            196,
+                                                            62,
+                                                            114,
+                                                            75,
+                                                            155,
+                                                            158,
+                                                            90,
+                                                            88,
+                                                            142,
+                                                            61,
+                                                            127,
+                                                            81,
+                                                            227,
+                                                            182,
+                                                            47,
+                                                            150,
+                                                            36,
+                                                            194,
+                                                            164,
+                                                            158,
+                                                            70
+                                                        ]
+                                                    }
+                                                }
+                                            }
+                                        ],
+                                        "type_signature": {
+                                            "entry_type": {
+                                                "SequenceType": {
+                                                    "BufferType": 33
+                                                }
+                                            },
+                                            "max_len": 3
+                                        }
+                                    }
+                                }
+                            },
+                            "new-signature-threshold": {
+                                "UInt": 2
+                            },
+                            "topic": {
+                                "Sequence": {
+                                    "String": {
+                                        "ASCII": {
+                                            "data": [
+                                                107,
+                                                101,
+                                                121,
+                                                45,
+                                                114,
+                                                111,
+                                                116,
+                                                97,
+                                                116,
+                                                105,
+                                                111,
+                                                110
+                                            ]
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "type_signature": {
+                            "type_map": {
+                                "new-address": "PrincipalType",
+                                "new-aggregate-pubkey": {
+                                    "SequenceType": {
+                                        "BufferType": 33
+                                    }
+                                },
+                                "new-keys": {
+                                    "SequenceType": {
+                                        "ListType": {
+                                            "entry_type": {
+                                                "SequenceType": {
+                                                    "BufferType": 33
+                                                }
+                                            },
+                                            "max_len": 3
+                                        }
+                                    }
+                                },
+                                "new-signature-threshold": "UIntType",
+                                "topic": {
+                                    "SequenceType": {
+                                        "StringType": {
+                                            "ASCII": 12
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "event_index": 1,
+            "txid": "0xa9a493ccd6186b61f72fff3a106522ea008bb95fc415c70a1e9e2fc299b09eac",
+            "type": "contract_event"
+        }
+    ],
+    "index_block_hash": "0x7afdfc0be0557dae593f7c7fd6f0df8cd344ee8b579110062d1f4e3946aa41eb",
+    "matured_miner_rewards": [],
+    "miner_signature": "0x00f0d0eb6937c08a66334237b2458bd19d0ae0ad70c08f66bf2be586c22034a1954b87e97d732bf9c5782a8e3a48aa177a24cf006deac06784734bd2a7742cabe4",
+    "miner_txid": "0x08b60476a8549ef7b04a9210b2ece88207caefcd71654be7ed2a97218f05022b",
+    "parent_block_hash": "0xee15ba694fad86493b7ac36bbed2b0051098467bb6514e8f415e8f0c9dcd0855",
+    "parent_burn_block_hash": "0x094f2504beaff25578ce059dc7a780c205f901f889483ab0b350bfebc1bc48b5",
+    "parent_burn_block_height": 237,
+    "parent_burn_block_timestamp": 1730980669,
+    "parent_index_block_hash": "0xb586080b47665ca1e64fb390c36286fc7d3b4789f0ab1e399f1ea6bfe8b87c16",
+    "parent_microblock": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "parent_microblock_sequence": 0,
+    "pox_v1_unlock_height": 205,
+    "pox_v2_unlock_height": 207,
+    "pox_v3_unlock_height": 210,
+    "reward_set": null,
+    "signer_bitvec": "000800000001ff",
+    "signer_signature": [
+        "0065f05966e576587a63464a3cd185d028c7ed8474b74791e2b74b81a6fe8245b5056f4b628ea8ae24b88f6de6e981ed761220b57bd5f33cb36e05f28d60107e12",
+        "002fd875c9831056c325d13ab5805c61da612dcaaede0ac0a1e1952fb3064d0e26683e3b17163af2eb9b3379b1920e08fd6544a667202b806adcb8388a0d5a645b"
+    ],
+    "signer_signature_hash": "0x628838c7167591943eb6eeb88949b13c0ae6e7a323de6f4217101bd5028ebcca",
+    "tenure_height": 32,
+    "transactions": [
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 20,
+                "read_length": 25282,
+                "runtime": 180360,
+                "write_count": 6,
+                "write_length": 266
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x80800000000405f08277fe51877c890918bb778e0192309b307c3900000000000000050000000000002ccf000000030002007311430123d4cad97f4f7e86e023b28143130a18099ecf094d36fef0f6135c0200973520ac9d2d5db93bddcb789b7b17e6020382cd3b97e6247994516f88cfff5f4d2d8d584d50443e19ef5ae0c9313956b33d4d6be701321bc40425aea449ccf20200d488848e9bdff4c47564ba8e91fc5edb09a8860d9412361d03e9c0ad1049f0600858b19f7caca776b37bd57cc3968e2a9e9d932e0cb501f3a9932ca285cfaf4600020301000000000215f08277fe51877c890918bb778e0192309b307c3916736274632d626f6f7473747261702d7369676e65727313726f746174652d6b6579732d77726170706572000000030b00000003020000002102007311430123d4cad97f4f7e86e023b28143130a18099ecf094d36fef0f6135c0200000021031a4d9f4903da97498945a4e01a5023a1d53bc96ad670bfe03adf8a06c52e63800200000021035249137286c077ccee65ecc43e724b9b9e5a588e3d7f51e3b62f9624c2a49e46020000002102e77bbc2ff7d6a0bb53d0a736a1a95032c6251b9e54a2187d7fc9405ce330e9430100000000000000000000000000000002",
+            "status": "success",
+            "tx_index": 0,
+            "txid": "0xa9a493ccd6186b61f72fff3a106522ea008bb95fc415c70a1e9e2fc299b09eac"
+        },
+        {
+            "burnchain_op": null,
+            "contract_abi": null,
+            "execution_cost": {
+                "read_count": 0,
+                "read_length": 0,
+                "runtime": 0,
+                "write_count": 0,
+                "write_length": 0
+            },
+            "microblock_hash": null,
+            "microblock_parent_hash": null,
+            "microblock_sequence": null,
+            "raw_result": "0x0703",
+            "raw_tx": "0x8080000000040068de2dbb6c14aaba2900031876ea3771599edd3a0000000000000004000000000000012c0001cf853ab98e69ca34c8386bf85782871c301ea98a5a174fd97d8fff2aa6a1804404b56e23f7c38e4ed80067f4d9665bc6563d20fa7a321bfcf0a9ca726bab51e303020000000000051a7ce8e31e9120f4b3cb7bea0fed9de8556cadceb900000000000003e800000000000000000000000000000000000000000000000000000000000000000000",
+            "status": "success",
+            "tx_index": 1,
+            "txid": "0xe77dba0e1ba5f08a400a530d01f499885d5bb7e782a91174be6ac4494771044f"
+        }
+    ]
+}

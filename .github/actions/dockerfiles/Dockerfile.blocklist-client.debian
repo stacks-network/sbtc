@@ -1,4 +1,6 @@
-FROM rust:1.81.0-slim-bookworm AS build
+FROM rust:1.84.0-slim-bookworm AS build
+
+ARG CARGO_BUILD_ARGS="--release --locked"
 
 # Install dependencies.
 RUN apt-get update
@@ -20,11 +22,11 @@ RUN npm install -g @openapitools/openapi-generator-cli
 WORKDIR /code/sbtc
 COPY . .
 RUN make install && make build
-RUN cargo build --bin blocklist-client
+RUN cargo build --bin blocklist-client ${CARGO_BUILD_ARGS}
 
 # Create Docker image to run the signer.
 FROM debian:bookworm-slim AS blocklist-client
-COPY --from=build /code/sbtc/target/debug/blocklist-client /usr/local/bin/blocklist-client
+COPY --from=build /code/sbtc/target/release/blocklist-client /usr/local/bin/blocklist-client
 
 # ca-certificates is required to establish TLS connections.
 # gettext provides envsubst

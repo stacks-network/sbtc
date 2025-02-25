@@ -103,7 +103,7 @@ impl TestHarness {
             vout: Vec::new(),
             block_hash: response
                 .block_hash
-                .unwrap_or(bitcoin::BlockHash::all_zeros()),
+                .unwrap_or_else(bitcoin::BlockHash::all_zeros),
             confirmations: 0,
             block_time: 0,
         };
@@ -296,6 +296,16 @@ impl BitcoinInteract for TestHarness {
     ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
+
+    async fn get_blockchain_info(
+        &self,
+    ) -> Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error> {
+        unimplemented!()
+    }
+
+    async fn get_network_info(&self) -> Result<bitcoincore_rpc_json::GetNetworkInfoResult, Error> {
+        unimplemented!()
+    }
 }
 
 impl StacksInteract for TestHarness {
@@ -312,6 +322,16 @@ impl StacksInteract for TestHarness {
     ) -> Result<Option<PublicKey>, Error> {
         // issue #118
         todo!()
+    }
+    async fn is_deposit_completed(
+        &self,
+        _: &StacksAddress,
+        _: &bitcoin::OutPoint,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+    async fn is_withdrawal_completed(&self, _: &StacksAddress, _: u64) -> Result<bool, Error> {
+        unimplemented!()
     }
     async fn get_account(&self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
         // issue #118
@@ -514,7 +534,7 @@ impl EmilyInteract for TestHarness {
     }
 
     async fn get_limits(&self) -> Result<SbtcLimits, Error> {
-        Ok(SbtcLimits::default())
+        Ok(SbtcLimits::unlimited())
     }
 }
 

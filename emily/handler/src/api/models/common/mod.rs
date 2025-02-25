@@ -33,13 +33,13 @@ pub enum Status {
     Reprocessing,
     /// Transaction has been seen and accepted by the sBTC Signers, but is not
     /// yet included in any on chain artifact. The transaction can still fail
-    /// at this point if the Signers fail to include the transaciton in an on
+    /// at this point if the Signers fail to include the transaction in an on
     /// chain artifact.
     ///
     /// For example, a deposit or withdrawal that has specified too low of a
     /// BTC fee may fail after being accepted.
     Accepted,
-    /// The articacts that fulill the operation have been observed in a valid fork of
+    /// The artifacts that fulfill the operation have been observed in a valid fork of
     /// both the Stacks blockchain and the Bitcoin blockchain by at least one signer.
     ///
     /// Note that if the signers detect a conflicting chainstate in which the operation

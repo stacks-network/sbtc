@@ -179,7 +179,7 @@ impl ApiStateEntry {
     /// Create the appropriate error if the API is reorganizing.
     pub fn error_if_reorganizing(&self) -> Result<(), Error> {
         if let ApiStatus::Reorg(chaintip) = &self.api_status {
-            Err(Error::Reorganzing(chaintip.clone().into()))
+            Err(Error::Reorganizing(chaintip.clone().into()))
         } else {
             Ok(())
         }

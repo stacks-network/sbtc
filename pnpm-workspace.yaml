@@ -1,6 +1,6 @@
 packages:
   - 'contracts'
   - 'emily/cdk'
-  - '.generated-sources/blocklist-openapi-gen'
-  - '.generated-sources/emily/openapi'
+  - 'blocklist-openapi-gen'
+  - 'emily/openapi-gen'
   - 'devenv/local/docker-compose/stacking'

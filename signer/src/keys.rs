@@ -284,9 +284,21 @@ impl From<PublicKey> for PublicKeyXOnly {
     }
 }
 
+impl From<(secp256k1::XOnlyPublicKey, secp256k1::Parity)> for PublicKeyXOnly {
+    fn from(value: (bitcoin::XOnlyPublicKey, secp256k1::Parity)) -> Self {
+        Self(value.0)
+    }
+}
+
 impl From<&PublicKey> for PublicKeyXOnly {
     fn from(value: &PublicKey) -> Self {
         Self(secp256k1::XOnlyPublicKey::from(value))
+    }
+}
+
+impl std::fmt::Display for PublicKeyXOnly {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
     }
 }
 
@@ -447,7 +459,9 @@ impl SignerScriptPubKey for secp256k1::XOnlyPublicKey {
             .add_tweak(SECP256K1, &tweak)
             .map_err(Error::InvalidPublicKeyTweak)?;
 
-        debug_assert!(self.tweak_add_check(SECP256K1, &output_key, parity, tweak));
+        if !self.tweak_add_check(SECP256K1, &output_key, parity, tweak) {
+            return Err(Error::InvalidPublicKeyTweakCheck);
+        }
         let pk = secp256k1::PublicKey::from_x_only_public_key(output_key, parity);
         Ok(PublicKey(pk))
     }

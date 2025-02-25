@@ -4,11 +4,17 @@ name: Docker Image (Binary)
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * *'
+  # schedule:
+  #   - cron: '0 2 * * *'
   push:
     tags:
       - '*'
+
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+  packages: write
 
 ## Define which docker arch to build for
 env:
@@ -39,11 +45,12 @@ jobs:
           - blocklist-client
 
     runs-on: ubuntu-latest
+    environment: "Push to Docker"
     steps:
       ## Setup Docker for the builds
       - name: Docker setup
         id: docker_setup
-        uses: stacks-network/actions/docker@main
+        uses: stacks-network/actions/docker@922078e86a42551502809ac517fd2837840433e6
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
@@ -96,3 +103,12 @@ jobs:
           labels: ${{ steps.docker_metadata.outputs.labels }}
           target: ${{ matrix.docker_target }}
           push: true
+          build-args: |
+            GIT_COMMIT=${{ github.ref_name }}
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb #v2.1.0
+        with:
+          subject-name: index.docker.io/${{ env.docker-org }}/sbtc
+          subject-digest: ${{ steps.docker_build.outputs.digest }}
+          push-to-registry: true

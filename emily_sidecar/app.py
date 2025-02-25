@@ -62,7 +62,7 @@ def handle_new_block():
 
     chainstate = {
         "stacksBlockHeight": validated_data["block_height"],
-        "stacksBlockHash": validated_data["index_block_hash"].lstrip("0x"),
+        "stacksBlockHash": validated_data["index_block_hash"].removeprefix("0x"),
     }
 
     try:

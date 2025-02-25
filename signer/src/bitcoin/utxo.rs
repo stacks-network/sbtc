@@ -2,8 +2,10 @@
 
 use std::collections::HashSet;
 use std::ops::Deref as _;
+use std::sync::LazyLock;
 
 use bitcoin::absolute::LockTime;
+use bitcoin::consensus::Encodable;
 use bitcoin::hashes::Hash as _;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
@@ -26,8 +28,7 @@ use bitcoin::Txid;
 use bitcoin::Weight;
 use bitcoin::Witness;
 use bitvec::array::BitArray;
-use secp256k1::Keypair;
-use secp256k1::Message;
+use bitvec::field::BitField;
 use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
 use serde::Deserialize;
@@ -51,6 +52,8 @@ use crate::storage::model::TxOutput;
 use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
+use crate::DEPOSIT_DUST_LIMIT;
+use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -67,9 +70,13 @@ const SOLO_DEPOSIT_TX_VSIZE: f64 = 267.0;
 /// This constant represents the virtual size (in vBytes) of a BTC
 /// transaction servicing only one withdrawal request, except the
 /// withdrawal output is not in the transaction. This way the sweep
-/// transaction's OP_RETURN output is the right size and we can handle the
+/// transaction's OP_RETURN output is the right size, and we can handle the
 /// variability of output sizes.
-const BASE_WITHDRAWAL_TX_VSIZE: f64 = 164.0;
+const BASE_WITHDRAWAL_TX_VSIZE: f64 = MAX_BASE_TX_VSIZE as f64;
+
+/// This constant represents the maximum virtual size (in vBytes) of a BTC
+/// transaction excluding withdrawals outputs and deposit inputs.
+pub const MAX_BASE_TX_VSIZE: u64 = 164;
 
 /// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
 /// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
@@ -81,12 +88,11 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 /// transactions.
 const OP_RETURN_VERSION: u8 = 0;
 
-/// The maximum number of transactions that can be included in a single
-/// transaction package.
-const MEMPOOL_MAX_NUM_TX_PER_PACKAGE: u32 = 25;
-
-/// The maximum virtual size of a transaction package in v-bytes.
-const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
+/// A dummy Schnorr signature.
+static DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
+    signature: secp256k1::schnorr::Signature::from_slice(&[0; 64]).unwrap(),
+    sighash_type: TapSighashType::All,
+});
 
 /// Describes the fees for a transaction.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -107,6 +113,66 @@ pub trait GetFees {
     /// Get the [`Fees`] for this instance. If the basis for fee calculation is
     /// not available, this function should return `None`.
     fn get_fees(&self) -> Result<Option<Fees>, Error>;
+}
+
+/// Filter out the deposit requests that do not meet the amount or fee requirements.
+pub struct SbtcRequestsFilter<'a> {
+    sbtc_limits: &'a SbtcLimits,
+    minimum_fee: u64,
+}
+
+impl<'a> SbtcRequestsFilter<'a> {
+    /// Create a new [`DepositFilter`] instance.
+    pub fn new(sbtc_limits: &'a SbtcLimits, minimum_fee: u64) -> Self {
+        Self { sbtc_limits, minimum_fee }
+    }
+
+    /// Validate deposit requests based on four constraints:
+    /// 1. The user's max fee must be >= our minimum required fee for deposits
+    ///     (based on fixed deposit tx size)
+    /// 2. The deposit amount must be greater than or equal to the per-deposit minimum
+    /// 3. The deposit amount must be less than or equal to the per-deposit cap
+    /// 4. The total amount being minted must stay under the maximum allowed mintable amount
+    fn validate_deposit_amount(
+        &self,
+        amount_to_mint: &mut Amount,
+        req: &'a DepositRequest,
+    ) -> Option<RequestRef<'a>> {
+        let is_fee_valid = req.max_fee.min(req.amount) >= self.minimum_fee;
+        let is_above_dust = req.amount.saturating_sub(self.minimum_fee) >= DEPOSIT_DUST_LIMIT;
+        let req_amount = Amount::from_sat(req.amount);
+        let is_above_per_deposit_minimum = req_amount >= self.sbtc_limits.per_deposit_minimum();
+        let is_within_per_deposit_cap = req_amount <= self.sbtc_limits.per_deposit_cap();
+        let is_within_max_mintable_cap =
+            if let Some(new_amount) = amount_to_mint.checked_add(req_amount) {
+                new_amount <= self.sbtc_limits.max_mintable_cap()
+            } else {
+                false
+            };
+
+        if is_fee_valid
+            && is_above_dust
+            && is_above_per_deposit_minimum
+            && is_within_per_deposit_cap
+            && is_within_max_mintable_cap
+        {
+            *amount_to_mint += req_amount;
+            Some(RequestRef::Deposit(req))
+        } else {
+            None
+        }
+    }
+
+    /// Filter sbtc deposits that don't meet the validation criteria.
+    pub fn filter_deposits(&self, deposits: &'a [DepositRequest]) -> Vec<RequestRef<'a>> {
+        deposits
+            .iter()
+            .scan(Amount::from_sat(0), |amount_to_mint, deposit| {
+                Some(self.validate_deposit_amount(amount_to_mint, deposit))
+            })
+            .flatten()
+            .collect()
+    }
 }
 
 /// Summary of the Signers' UTXO and information necessary for
@@ -144,6 +210,12 @@ pub struct SbtcRequests {
     pub num_signers: u16,
     /// The maximum amount of sBTC that can be minted in sats.
     pub sbtc_limits: SbtcLimits,
+    /// The maximum number of deposit request inputs that can be included
+    /// in a single bitcoin transaction. The purpose of this constant is to
+    /// ensure that each sweep transaction is constructed in such a way
+    /// that there is enough time for the signers to sign all the inputs
+    /// during the tenure of a single bitcoin block.
+    pub max_deposits_per_bitcoin_tx: u16,
 }
 
 impl SbtcRequests {
@@ -172,36 +244,18 @@ impl SbtcRequests {
             })
             .map(RequestRef::Withdrawal);
 
-        // Filter deposit requests based on two constraints:
-        // 1. The user's max fee must be >= our minimum required fee for deposits
-        //     (based on fixed deposit tx size)
-        // 2. The deposit amount must be less than the per-deposit limit
-        // 3. The total amount being minted must stay under the maximum allowed mintable amount
-        let minimum_deposit_fee = self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE);
-        let max_mintable_cap = self.sbtc_limits.max_mintable_cap().to_sat();
-        let per_deposit_cap = self.sbtc_limits.per_deposit_cap().to_sat();
+        let request_filter = SbtcRequestsFilter::new(
+            &self.sbtc_limits,
+            self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE),
+        );
+        let deposits = request_filter.filter_deposits(&self.deposits);
 
-        let mut amount_to_mint: u64 = 0;
-        let deposits = self.deposits.iter().filter_map(|req| {
-            let is_fee_valid = req.max_fee.min(req.amount) >= minimum_deposit_fee;
-            let is_within_per_deposit_cap = req.amount <= per_deposit_cap;
-            let is_within_max_mintable_cap =
-                if let Some(new_amount) = amount_to_mint.checked_add(req.amount) {
-                    new_amount <= max_mintable_cap
-                } else {
-                    false
-                };
-            if is_fee_valid && is_within_per_deposit_cap && is_within_max_mintable_cap {
-                amount_to_mint += req.amount;
-                Some(RequestRef::Deposit(req))
-            } else {
-                None
-            }
-        });
         // Create a list of requests where each request can be approved on its own.
-        let items = deposits.chain(withdrawals);
+        let items = deposits.into_iter().chain(withdrawals);
 
-        compute_optimal_packages(items, self.reject_capacity())
+        let max_votes_against = self.reject_capacity();
+        let max_needs_signature = self.max_deposits_per_bitcoin_tx;
+        compute_optimal_packages(items, max_votes_against, max_needs_signature)
             .scan(self.signer_state, |state, request_refs| {
                 let requests = Requests::new(request_refs);
                 let tx = UnsignedTransaction::new(requests, state);
@@ -218,21 +272,7 @@ impl SbtcRequests {
                 }
                 Some(tx)
             })
-            // This check prevents the transaction from exceeding mempool ancestor/descendant limits
-            .scan((0, 0), |(num_txs, total_size), tx| match tx {
-                Ok(tx) => {
-                    if *num_txs < MEMPOOL_MAX_NUM_TX_PER_PACKAGE
-                        && *total_size + tx.tx_vsize <= MEMPOOL_MAX_PACKAGE_SIZE
-                    {
-                        *num_txs += 1;
-                        *total_size += tx.tx_vsize;
-                        Some(Ok(tx))
-                    } else {
-                        None
-                    }
-                }
-                Err(e) => Some(Err(e)),
-            })
+            .take(MAX_MEMPOOL_PACKAGE_TX_COUNT as usize)
             .collect()
     }
 
@@ -324,11 +364,6 @@ pub struct DepositRequest {
 }
 
 impl DepositRequest {
-    /// Returns the number of signers who voted against this request.
-    fn votes_against(&self) -> u32 {
-        self.signer_bitmap.count_ones() as u32
-    }
-
     /// Create a TxIn object with witness data for the deposit script of
     /// the given request. Only a valid signature is needed to satisfy the
     /// deposit script.
@@ -421,7 +456,21 @@ impl DepositRequest {
     }
 }
 
-/// An accepted or pending withdraw request.
+impl Weighted for DepositRequest {
+    fn needs_signature(&self) -> bool {
+        true
+    }
+    fn votes(&self) -> u128 {
+        self.signer_bitmap.load_le()
+    }
+    fn vsize(&self) -> u64 {
+        self.as_tx_input(*DUMMY_SIGNATURE)
+            .segwit_weight()
+            .to_vbytes_ceil()
+    }
+}
+
+/// An accepted or pending withdrawal request.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WithdrawalRequest {
     /// The request id generated by the smart contract when the
@@ -446,11 +495,6 @@ pub struct WithdrawalRequest {
 }
 
 impl WithdrawalRequest {
-    /// Returns the number of signers who voted against this request.
-    fn votes_against(&self) -> u32 {
-        self.signer_bitmap.count_ones() as u32
-    }
-
     /// Withdrawal UTXOs pay to the given address
     fn as_tx_output(&self) -> TxOut {
         TxOut {
@@ -509,6 +553,18 @@ impl WithdrawalRequest {
     }
 }
 
+impl Weighted for WithdrawalRequest {
+    fn needs_signature(&self) -> bool {
+        false
+    }
+    fn votes(&self) -> u128 {
+        self.signer_bitmap.load_le()
+    }
+    fn vsize(&self) -> u64 {
+        self.as_tx_output().weight().to_vbytes_ceil()
+    }
+}
+
 /// A reference to either a deposit or withdraw request
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RequestRef<'a> {
@@ -544,11 +600,23 @@ impl<'a> RequestRef<'a> {
     }
 }
 
-impl<'a> Weighted for RequestRef<'a> {
-    fn weight(&self) -> u32 {
+impl Weighted for RequestRef<'_> {
+    fn needs_signature(&self) -> bool {
         match self {
-            Self::Deposit(req) => req.votes_against(),
-            Self::Withdrawal(req) => req.votes_against(),
+            Self::Deposit(req) => req.needs_signature(),
+            Self::Withdrawal(req) => req.needs_signature(),
+        }
+    }
+    fn votes(&self) -> u128 {
+        match self {
+            Self::Deposit(req) => req.votes(),
+            Self::Withdrawal(req) => req.votes(),
+        }
+    }
+    fn vsize(&self) -> u64 {
+        match self {
+            Self::Deposit(req) => req.vsize(),
+            Self::Withdrawal(req) => req.vsize(),
         }
     }
 }
@@ -559,9 +627,6 @@ impl<'a> Weighted for RequestRef<'a> {
 pub struct Requests<'a> {
     /// A sorted list of requests.
     request_refs: Vec<RequestRef<'a>>,
-    /// This is a dummy signature here only to simplify the creation of
-    /// TxIns that have the correct weight with a proper signature.
-    signature: Signature,
 }
 
 impl<'a> std::ops::Deref for Requests<'a> {
@@ -578,8 +643,7 @@ impl<'a> Requests<'a> {
         // We sort them so that we are guaranteed to create the same
         // bitcoin transaction with the same input requests.
         request_refs.sort();
-        let signature = UnsignedTransaction::generate_dummy_signature();
-        Self { request_refs, signature }
+        Self { request_refs }
     }
 
     /// Return an iterator for the transaction inputs for the deposit
@@ -588,7 +652,7 @@ impl<'a> Requests<'a> {
     pub fn tx_ins(&'a self) -> impl Iterator<Item = TxIn> + 'a {
         self.request_refs
             .iter()
-            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(self.signature)))
+            .filter_map(|req| Some(req.as_deposit()?.as_tx_input(*DUMMY_SIGNATURE)))
     }
 
     /// Return an iterator for the transaction outputs for the withdrawal
@@ -649,6 +713,21 @@ impl SignerUtxo {
     }
 }
 
+/// A struct for constructing a mock transaction that can be signed. This is
+/// used as part of the verification process after a new DKG round has been
+/// completed.
+///
+/// The Bitcoin transaction has the following layout:
+/// 1. The first input is spending the signers' UTXO.
+/// 2. There is only one output which is an OP_RETURN and an amount equal to 0.
+#[derive(Debug)]
+pub struct UnsignedMockTransaction {
+    /// The Bitcoin transaction that needs to be signed.
+    tx: Transaction,
+    /// The signers' UTXO used as an input to this transaction.
+    utxo: SignerUtxo,
+}
+
 /// Given a set of requests, create a BTC transaction that can be signed.
 ///
 /// This BTC transaction in this struct has correct amounts but no witness
@@ -686,6 +765,9 @@ pub struct SignatureHashes<'a> {
     pub signer_outpoint: OutPoint,
     /// The sighash of the signers' input UTXO for the transaction.
     pub signers: TapSighash,
+    /// The aggregate key associated with the signers' UTXO that is being
+    /// spent in the transaction.
+    pub signers_aggregate_key: XOnlyPublicKey,
     /// Each deposit request is associated with a UTXO input for the peg-in
     /// transaction. This field contains digests/signature hashes that need
     /// Schnorr signatures and the associated deposit request for each hash.
@@ -703,9 +785,12 @@ pub struct SignatureHash {
     pub sighash: TapSighash,
     /// The type of prevout that we are referring to.
     pub prevout_type: TxPrevoutType,
+    /// The aggregate key that is locking the output associated with this
+    /// signature hash.
+    pub aggregate_key: XOnlyPublicKey,
 }
 
-impl<'a> SignatureHashes<'a> {
+impl SignatureHashes<'_> {
     /// Get deposit sighashes
     pub fn deposit_sighashes(mut self) -> Vec<SignatureHash> {
         self.deposits.sort_by_key(|(x, _)| x.outpoint);
@@ -716,6 +801,7 @@ impl<'a> SignatureHashes<'a> {
                 outpoint: deposit.outpoint,
                 sighash,
                 prevout_type: TxPrevoutType::Deposit,
+                aggregate_key: deposit.signers_public_key,
             })
             .collect()
     }
@@ -727,7 +813,96 @@ impl<'a> SignatureHashes<'a> {
             outpoint: self.signer_outpoint,
             sighash: self.signers,
             prevout_type: TxPrevoutType::SignersInput,
+            aggregate_key: self.signers_aggregate_key,
         }
+    }
+}
+
+impl UnsignedMockTransaction {
+    const AMOUNT: u64 = 0;
+
+    /// Construct an unsigned mock transaction.
+    ///
+    /// This will use the provided `aggregate_key` to construct
+    /// a [`Transaction`] with a single input and output with value 0.
+    pub fn new(signer_public_key: XOnlyPublicKey) -> Self {
+        let utxo = SignerUtxo {
+            outpoint: OutPoint::null(),
+            amount: Self::AMOUNT,
+            public_key: signer_public_key,
+        };
+
+        let tx = Transaction {
+            version: Version::TWO,
+            lock_time: LockTime::ZERO,
+            input: vec![utxo.as_tx_input(&DUMMY_SIGNATURE)],
+            output: vec![TxOut {
+                value: Amount::from_sat(Self::AMOUNT),
+                script_pubkey: ScriptBuf::new_op_return([]),
+            }],
+        };
+
+        Self { tx, utxo }
+    }
+
+    /// Gets the sighash for the signers' input UTXO which needs to be signed
+    /// before the transaction can be broadcast.
+    pub fn compute_sighash(&self) -> Result<TapSighash, Error> {
+        let prevouts = [self.utxo.as_tx_output()];
+        let mut sighasher = SighashCache::new(&self.tx);
+
+        sighasher
+            .taproot_key_spend_signature_hash(0, &Prevouts::All(&prevouts), TapSighashType::All)
+            .map_err(Into::into)
+    }
+
+    /// Tests if the provided taproot [`Signature`] is valid for spending the
+    /// signers' UTXO. This function will return  [`Error::BitcoinConsensus`]
+    /// error if the signature fails verification, passing the underlying error
+    /// from [`bitcoinconsensus`].
+    pub fn verify_signature(&self, signature: &Signature) -> Result<(), Error> {
+        // Create a copy of the transaction so that we don't modify the
+        // transaction stored in the struct.
+        let mut tx = self.tx.clone();
+
+        // Set the witness data on the input from the provided signature.
+        tx.input[0].witness = Witness::p2tr_key_spend(signature);
+
+        // Encode the transaction to bytes (needed by the bitcoinconsensus
+        // library).
+        let mut tx_bytes: Vec<u8> = Vec::new();
+        tx.consensus_encode(&mut tx_bytes)
+            .map_err(Error::BitcoinIo)?;
+
+        // Get the prevout for the signers' UTXO.
+        let prevout = self.utxo.as_tx_output();
+        let prevout_script_bytes = prevout.script_pubkey.as_script().as_bytes();
+
+        // Create the bitcoinconsensus UTXO object.
+        let prevout_utxo = bitcoinconsensus::Utxo {
+            script_pubkey: prevout_script_bytes.as_ptr(),
+            script_pubkey_len: prevout_script_bytes.len() as u32,
+            value: Self::AMOUNT as i64,
+        };
+
+        // We specify the flags to include all pre-taproot and taproot
+        // verifications explicitly.
+        // https://github.com/rust-bitcoin/rust-bitcoinconsensus/blob/master/src/lib.rs
+        let flags = bitcoinconsensus::VERIFY_ALL_PRE_TAPROOT | bitcoinconsensus::VERIFY_TAPROOT;
+
+        // Verify that the transaction updated with the provided signature can
+        // successfully spend the signers' UTXO. Note that the amount is not
+        // used in the verification process for taproot spends, only the
+        // signature.
+        bitcoinconsensus::verify_with_flags(
+            prevout_script_bytes,
+            Self::AMOUNT,
+            &tx_bytes,
+            Some(&[prevout_utxo]),
+            0,
+            flags,
+        )
+        .map_err(Error::BitcoinConsensus)
     }
 }
 
@@ -735,7 +910,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// Construct an unsigned transaction.
     ///
     /// This function can fail if the output amounts are greater than the
-    /// input amounts.
+    /// input amounts or if the [`Requests`] object is empty.
     ///
     /// The returned BTC transaction has the following properties:
     ///   1. The amounts for each output has taken fees into consideration.
@@ -759,7 +934,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// Construct a transaction with stub witness data.
     ///
     /// This function can fail if the output amounts are greater than the
-    /// input amounts.
+    /// input amounts or if the [`Requests`] object is empty.
     ///
     /// The returned BTC transaction has the following properties:
     ///   1. The amounts for each output has taken fees into consideration.
@@ -770,6 +945,9 @@ impl<'a> UnsignedTransaction<'a> {
     ///   5. All witness data is correctly set, except for the fake
     ///      signatures from (4).
     pub fn new_stub(requests: Requests<'a>, state: &SignerBtcState) -> Result<Self, Error> {
+        if requests.is_empty() {
+            return Err(Error::BitcoinNoRequests);
+        }
         // Construct a transaction base. This transaction's inputs have
         // witness data with dummy signatures so that our virtual size
         // estimates are accurate. Later we will update the fees.
@@ -845,6 +1023,7 @@ impl<'a> UnsignedTransaction<'a> {
         Ok(SignatureHashes {
             txid: self.tx.compute_txid(),
             signer_outpoint: self.signer_utxo.utxo.outpoint,
+            signers_aggregate_key: self.signer_utxo.utxo.public_key,
             signers: signer_sighash,
             deposits: deposit_sighashes,
         })
@@ -874,7 +1053,7 @@ impl<'a> UnsignedTransaction<'a> {
     /// An Err is returned if the amounts withdrawn is greater than the sum
     /// of all the input amounts.
     fn new_transaction(reqs: &Requests, state: &SignerBtcState) -> Result<Transaction, Error> {
-        let signature = Self::generate_dummy_signature();
+        let signature = *DUMMY_SIGNATURE;
 
         let signer_input = state.utxo.as_tx_input(&signature);
         let signer_output_sats = Self::compute_signer_amount(reqs, state)?;
@@ -1058,16 +1237,6 @@ impl<'a> UnsignedTransaction<'a> {
         }
     }
 
-    /// Helper function for generating dummy Schnorr signatures.
-    fn generate_dummy_signature() -> Signature {
-        let key_pair = Keypair::new_global(&mut rand::rngs::OsRng);
-
-        Signature {
-            signature: key_pair.sign_schnorr(Message::from_digest([0; 32])),
-            sighash_type: TapSighashType::All,
-        }
-    }
-
     /// We originally populated the witness with dummy data to get an
     /// accurate estimate of the "virtual size" of the transaction. This
     /// function resets the witness data to be empty.
@@ -1192,7 +1361,7 @@ impl BitcoinInputsOutputs for Transaction {
     }
 }
 
-impl<'a> BitcoinInputsOutputs for UnsignedTransaction<'a> {
+impl BitcoinInputsOutputs for UnsignedTransaction<'_> {
     fn tx_ref(&self) -> &Transaction {
         &self.tx
     }
@@ -1392,6 +1561,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use bitcoin::key::TapTweak;
     use bitcoin::BlockHash;
     use bitcoin::CompressedPublicKey;
     use bitcoin::Txid;
@@ -1405,6 +1575,7 @@ mod tests {
     use rand::SeedableRng as _;
     use ripemd::Ripemd160;
     use sbtc::deposits::DepositScriptInputs;
+    use secp256k1::Keypair;
     use secp256k1::SecretKey;
     use sha2::Digest as _;
     use sha2::Sha256;
@@ -1413,6 +1584,11 @@ mod tests {
 
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
+    use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
+    use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
+
+    /// The maximum virtual size of a transaction package in v-bytes.
+    const MEMPOOL_MAX_PACKAGE_SIZE: u32 = 101000;
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
@@ -1451,11 +1627,23 @@ mod tests {
         OutPoint { txid: tx.compute_txid(), vout }
     }
 
+    fn create_limits_for_deposits_and_max_mintable(
+        per_deposit_minimum: u64,
+        per_deposit_cap: u64,
+        max_mintable_cap: u64,
+    ) -> SbtcLimits {
+        SbtcLimits::new(
+            None,
+            Some(Amount::from_sat(per_deposit_minimum)),
+            Some(Amount::from_sat(per_deposit_cap)),
+            None,
+            Some(Amount::from_sat(max_mintable_cap)),
+        )
+    }
+
     /// Create a new deposit request depositing from a random public key.
-    fn create_deposit(amount: u64, max_fee: u64, votes_against: usize) -> DepositRequest {
+    fn create_deposit(amount: u64, max_fee: u64, signer_bitmap: u128) -> DepositRequest {
         let signers_public_key = generate_x_only_public_key();
-        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-        signer_bitmap[..votes_against].fill(true);
 
         let contract_name = std::iter::repeat('a').take(128).collect::<String>();
         let principal_str = format!("{}.{contract_name}", StacksAddress::burn_address(false));
@@ -1469,7 +1657,7 @@ mod tests {
         DepositRequest {
             outpoint: generate_outpoint(amount, 1),
             max_fee,
-            signer_bitmap,
+            signer_bitmap: BitArray::new(signer_bitmap.to_le_bytes()),
             amount,
             deposit_script: deposit_inputs.deposit_script(),
             reclaim_script: ScriptBuf::new(),
@@ -1478,13 +1666,10 @@ mod tests {
     }
 
     /// Create a new withdrawal request withdrawing to a random address.
-    fn create_withdrawal(amount: u64, max_fee: u64, votes_against: usize) -> WithdrawalRequest {
-        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-        signer_bitmap[..votes_against].fill(true);
-
+    fn create_withdrawal(amount: u64, max_fee: u64, signer_bitmap: u128) -> WithdrawalRequest {
         WithdrawalRequest {
             max_fee,
-            signer_bitmap,
+            signer_bitmap: BitArray::new(signer_bitmap.to_le_bytes()),
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
@@ -1572,6 +1757,88 @@ mod tests {
         }
     }
 
+    /// This test verifies that our implementation of Bitcoin script
+    /// verification using [`bitcoinconsensus`] works as expected. This
+    /// functionality is used in the verification of WSTS signing after a new
+    /// DKG round has completed.
+    #[test]
+    fn mock_signer_utxo_signing_and_spending_verification() {
+        let secp = secp256k1::Secp256k1::new();
+
+        // Generate a key pair which will serve as the signers' aggregate key.
+        let secret_key = SecretKey::new(&mut OsRng);
+        let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
+        let tweaked = keypair.tap_tweak(&secp, None);
+        let (aggregate_key, _) = keypair.x_only_public_key();
+
+        // Create a new transaction using the aggregate key.
+        let unsigned = UnsignedMockTransaction::new(aggregate_key);
+
+        let tapsig = unsigned
+            .compute_sighash()
+            .expect("failed to compute taproot sighash");
+
+        // Sign the taproot sighash.
+        let message = secp256k1::Message::from_digest_slice(tapsig.as_byte_array())
+            .expect("Failed to create message");
+
+        // [1] Verify the correct signature, which should succeed.
+        let schnorr_sig = secp.sign_schnorr(&message, &tweaked.to_inner());
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect("signature verification failed");
+
+        // [2] Verify the correct signature, but with a different sighash type,
+        // which should fail.
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::None,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [3] Verify an incorrect signature with the correct sighash type,
+        // which should fail. In this case we've created the signature using
+        // the untweaked keypair.
+        let schnorr_sig = secp.sign_schnorr(&message, &keypair);
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [4] Verify an incorrect signature with the correct sighash type, which
+        // should fail. In this case we use a completely newly generated keypair.
+        let secret_key = SecretKey::new(&mut OsRng);
+        let keypair = secp256k1::Keypair::from_secret_key(&secp, &secret_key);
+        let schnorr_sig = secp.sign_schnorr(&message, &keypair);
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+
+        // [5] Same as [4], but using its tweaked key.
+        let tweaked = keypair.tap_tweak(&secp, None);
+        let schnorr_sig = secp.sign_schnorr(&message, &tweaked.to_inner());
+        let taproot_sig = bitcoin::taproot::Signature {
+            signature: schnorr_sig,
+            sighash_type: TapSighashType::All,
+        };
+        unsigned
+            .verify_signature(&taproot_sig)
+            .expect_err("signature verification should have failed");
+    }
+
     #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
     #[test]
     fn create_deposit_only_tx() {
@@ -1592,7 +1859,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 2,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let keypair = Keypair::new_global(&mut OsRng);
 
@@ -1623,6 +1891,20 @@ mod tests {
         println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
     }
 
+    #[ignore = "this is for generating the MIN_BITCOIN_INPUT_VSIZE constant"]
+    #[test]
+    fn create_taproot_utxo_min_size() {
+        // This generates a UTXO with the same vsize as the signers input
+        // or donation. This is smaller than the min deposit vsize.
+        let utxo = TxIn {
+            previous_output: OutPoint::null(),
+            sequence: Sequence::ZERO,
+            witness: Witness::p2tr_key_spend(&DUMMY_SIGNATURE),
+            script_sig: ScriptBuf::new(),
+        };
+        println!("Min input vsize: {}", utxo.segwit_weight().to_vbytes_ceil());
+    }
+
     #[test_case(&[true, true, false, true, false, false, false], 3; "case 1")]
     #[test_case(&[true, true, false, false, false, false, false], 2; "case 2")]
     #[test_case(&[false, false, false, false, false, false, false], 0; "case 3")]
@@ -1642,7 +1924,7 @@ mod tests {
             signers_public_key: XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap(),
         };
 
-        assert_eq!(deposit.votes_against(), expected);
+        assert_eq!(deposit.votes().count_ones(), expected);
     }
 
     /// Some functions call functions that "could" panic. Check that they
@@ -1663,7 +1945,7 @@ mod tests {
         let witness = deposit.construct_witness_data(sig);
         assert!(witness.tapscript().is_some());
 
-        let sig = UnsignedTransaction::generate_dummy_signature();
+        let sig = *DUMMY_SIGNATURE;
         let tx_in = deposit.as_tx_input(sig);
 
         // The deposits are taproot spend and do not have a script. The
@@ -1691,7 +1973,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -1736,10 +2019,9 @@ mod tests {
         assert_eq!(new_utxo.public_key, requests.signer_state.public_key);
     }
 
-    /// Transactions that do not service requests do not have the OP_RETURN
-    /// output.
+    /// You cannot create sweep transactions that do not service requests.
     #[test]
-    fn no_requests_no_op_return() {
+    fn no_requests_no_sweep() {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let signer_state = SignerBtcState {
             utxo: SignerUtxo {
@@ -1753,14 +2035,9 @@ mod tests {
             magic_bytes: [0; 2],
         };
 
-        // No requests so the first output should be the signers UTXO and
-        // that's it. No OP_RETURN output.
         let requests = Requests::new(Vec::new());
-        let unsigned = UnsignedTransaction::new(requests, &signer_state).unwrap();
-        assert_eq!(unsigned.tx.output.len(), 1);
-
-        // There is only one output and it's a P2TR output
-        assert!(unsigned.tx.output[0].script_pubkey.is_p2tr());
+        let sweep = UnsignedTransaction::new(requests, &signer_state);
+        assert!(sweep.is_err());
     }
 
     /// We aggregate the bitmaps to form a single one at the end. Check
@@ -1786,7 +2063,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // We'll have the deposit get two vote against, and the withdrawals
@@ -1894,7 +2172,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -1979,7 +2258,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -2023,7 +2303,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         // This should all be in one transaction since there are no votes
@@ -2073,7 +2354,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2097,15 +2379,15 @@ mod tests {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
-                create_deposit(1234, 0, 1),
-                create_deposit(5678, 0, 1),
-                create_deposit(9012, 0, 2),
+                create_deposit(1234, 0, 1 << 1),
+                create_deposit(5678, 0, 1 << 2),
+                create_deposit(9012, 0, 1 << 3 | 1 << 4),
             ],
             withdrawals: vec![
-                create_withdrawal(1000, 0, 1),
-                create_withdrawal(2000, 0, 1),
-                create_withdrawal(3000, 0, 1),
-                create_withdrawal(4000, 0, 2),
+                create_withdrawal(1000, 0, 1 << 5),
+                create_withdrawal(2000, 0, 1 << 6),
+                create_withdrawal(3000, 0, 1 << 7),
+                create_withdrawal(4000, 0, 1 << 8 | 1 << 9),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2120,7 +2402,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2151,17 +2434,17 @@ mod tests {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let requests = SbtcRequests {
             deposits: vec![
-                create_deposit(1234, 0, 1),
-                create_deposit(5678, 0, 1),
-                create_deposit(9012, 0, 2),
-                create_deposit(3456, 0, 1),
+                create_deposit(1234, 0, 1 << 1),
+                create_deposit(5678, 0, 1 << 2),
+                create_deposit(9012, 0, 1 << 3 | 1 << 4),
+                create_deposit(3456, 0, 1 << 5),
                 create_deposit(7890, 0, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(1000, 0, 1),
-                create_withdrawal(2000, 0, 1),
-                create_withdrawal(3000, 0, 1),
-                create_withdrawal(4000, 0, 2),
+                create_withdrawal(1000, 0, 1 << 6),
+                create_withdrawal(2000, 0, 1 << 7),
+                create_withdrawal(3000, 0, 1 << 8),
+                create_withdrawal(4000, 0, 1 << 9 | 1 << 10),
                 create_withdrawal(5000, 0, 0),
                 create_withdrawal(6000, 0, 0),
                 create_withdrawal(7000, 0, 0),
@@ -2179,7 +2462,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
@@ -2250,17 +2534,17 @@ mod tests {
 
         let requests = SbtcRequests {
             deposits: vec![
-                create_deposit(12340, 100_000, 1),
-                create_deposit(56780, 100_000, 1),
-                create_deposit(90120, 100_000, 2),
-                create_deposit(34560, 100_000, 1),
+                create_deposit(12340, 100_000, 1 << 1),
+                create_deposit(56780, 100_000, 1 << 2),
+                create_deposit(90120, 100_000, 1 << 3 | 1 << 4),
+                create_deposit(34560, 100_000, 1 << 5),
                 create_deposit(78900, 100_000, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(10000, 100_000, 1),
-                create_withdrawal(20000, 100_000, 1),
-                create_withdrawal(30000, 100_000, 1),
-                create_withdrawal(40000, 100_000, 2),
+                create_withdrawal(10000, 100_000, 1 << 6),
+                create_withdrawal(20000, 100_000, 1 << 7),
+                create_withdrawal(30000, 100_000, 1 << 8),
+                create_withdrawal(40000, 100_000, 1 << 9 | 1 << 10),
                 create_withdrawal(50000, 100_000, 0),
                 create_withdrawal(60000, 100_000, 0),
                 create_withdrawal(70000, 100_000, 0),
@@ -2278,7 +2562,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2343,7 +2628,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let (old_fee_total, old_fee_rate) = {
@@ -2422,7 +2708,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -2458,7 +2745,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 0,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions();
@@ -2515,7 +2803,8 @@ mod tests {
             },
             num_signers: 10,
             accept_threshold: 8,
-            sbtc_limits: SbtcLimits::default(),
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let mut transactions = requests.construct_transactions().unwrap();
@@ -2574,7 +2863,7 @@ mod tests {
         let deposit_request = DepositRequest::from_model(request, votes.clone());
 
         // One explicit vote against and one implicit vote against.
-        assert_eq!(deposit_request.votes_against(), 2);
+        assert_eq!(deposit_request.votes().count_ones(), 2);
         // An appropriately named function ...
         votes.iter().enumerate().for_each(|(index, vote)| {
             let vote_against = *deposit_request.signer_bitmap.get(index).unwrap();
@@ -2617,7 +2906,7 @@ mod tests {
         let withdrawal_request = WithdrawalRequest::from_model(request, votes.clone());
 
         // One explicit vote against and one implicit vote against.
-        assert_eq!(withdrawal_request.votes_against(), 3);
+        assert_eq!(withdrawal_request.votes().count_ones(), 3);
         // An appropriately named function ...
         votes.iter().enumerate().for_each(|(index, vote)| {
             let vote_against = *withdrawal_request.signer_bitmap.get(index).unwrap();
@@ -2776,43 +3065,33 @@ mod tests {
         assert!(combined_fee <= (fee + Amount::from_sat(3u64)));
     }
 
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-    ], 3, 30_000, 10_000, 30_000; "should_accept_deposits_until_max_mintable_reached")]
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-        create_deposit(10_000, 10_000, 0),
-    ], 1, 10_000, 10_000, 15_000; "should_accept_all_deposits_when_under_max_mintable")]
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-    ], 0, 0, 0, 0; "should_handle_empty_deposit_list")]
-    #[test_case(vec![
-        create_deposit(10_000, 0, 0),
-        create_deposit(11_000, 10_000, 0),
-        create_deposit(9_000, 10_000, 0),
-    ], 1, 9_000, 10_000, 10_000; "should_skip_invalid_fee_and_accept_valid_deposits")]
-    #[test_case(vec![
-        create_deposit(10_001, 10_000, 0),
-    ], 0, 0, 10_001, 10_000; "should_reject_single_deposit_exceeding_max_mintable")]
-    #[test_case(vec![
-        create_deposit(10_000, 10_000, 0),
-    ], 0, 0, 8_000, 10_000; "should_reject_single_deposit_exceeding_per_deposit_cap")]
-    #[tokio::test]
-    async fn test_construct_transactions_filters_deposits_over_max_mintable(
-        deposits: Vec<DepositRequest>,
-        num_accepted_requests: usize,
-        accepted_amount: u64,
-        per_deposit_cap: u64,
-        max_mintable: u64,
-    ) {
-        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+    #[test_case(
+        create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64,
+            10_000,
+            0
+        ),
+        true; "deposit amounts over the dust limit accepted")]
+    #[test_case(
+        create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1,
+            10_000,
+            0
+        ),
+        false; "deposit amounts under the dust limit rejected")]
+    fn deposit_requests_respect_dust_limits(req: DepositRequest, is_included: bool) {
+        let outpoint = req.outpoint;
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+
+        // We use a fee rate of 1 to simplify the computation. The
+        // filtering done here uses a heuristic where we take the maximum
+        // fee that the user could pay, and subtract that amount from the
+        // deposit amount. The maximum fee that a user could pay is the
+        // SOLO_DEPOSIT_TX_VSIZE times the fee rate so with a fee rate of 1
+        // we should filter the request if the deposit amount is less than
+        // SOLO_DEPOSIT_TX_VSIZE + DEPOSIT_DUST_LIMIT.
         let requests = SbtcRequests {
-            deposits: deposits,
+            deposits: vec![create_deposit(2500000, 100000, 0), req],
             withdrawals: vec![],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2820,43 +3099,42 @@ mod tests {
                     amount: 300_000_000,
                     public_key,
                 },
-                fee_rate: 25.0,
+                fee_rate: 1.0,
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
             },
-            num_signers: 10,
-            accept_threshold: 8,
-            sbtc_limits: SbtcLimits::new(
-                None,
-                Some(Amount::from_sat(per_deposit_cap)),
-                None,
-                Some(Amount::from_sat(max_mintable)),
-            ),
+            num_signers: 11,
+            accept_threshold: 6,
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
-        let txs = requests.construct_transactions().unwrap();
-        let nr_requests = txs.iter().map(|tx| tx.requests.len()).sum::<usize>();
-        let total_amount: u64 = txs
+
+        // Let's construct the unsigned transaction and check to see if we
+        // include it in the deposit requests in the transaction.
+        let tx = requests.construct_transactions().unwrap().pop().unwrap();
+        let request_is_included = tx
+            .requests
             .iter()
-            .map(|tx| {
-                tx.requests
-                    .iter()
-                    .map(|req| req.as_deposit().unwrap().amount)
-            })
-            .flatten()
-            .sum();
-        assert_eq!(nr_requests, num_accepted_requests);
-        assert_eq!(total_amount, accepted_amount);
+            .filter_map(RequestRef::as_deposit)
+            .find(|req| req.outpoint == outpoint)
+            .is_some();
+
+        assert_eq!(request_is_included, is_included);
     }
 
     #[test]
-    fn test_construct_transactions_capped_by_number() {
-        // with 30 deposits and 30 withdrawals with 4 votes against each, we should generate 60 distinct transactions
-        // but we should cap the number of transactions to 25
-        let deposits: Vec<DepositRequest> =
-            (0..30).map(|_| create_deposit(10_000, 10_000, 4)).collect();
+    fn construct_transactions_limits_transaction_count() {
+        // With 30 deposits and 30 withdrawals each with one nonoverlapping
+        // vote against, we should generate 60 distinct transactions since
+        // each transaction can tolerate a max of one vote against. But we
+        // should cap the number of transactions returned to
+        // MAX_MEMPOOL_PACKAGE_TX_COUNT.
+        let deposits: Vec<DepositRequest> = (0..30)
+            .map(|shift| create_deposit(10_000, 10_000, 1 << shift))
+            .collect();
         let withdrawals: Vec<WithdrawalRequest> = (0..30)
-            .map(|_| create_withdrawal(10_000, 10_000, 4))
+            .map(|shift| create_withdrawal(10_000, 10_000, 1 << shift + 30))
             .collect();
 
         let requests = SbtcRequests {
@@ -2873,37 +3151,55 @@ mod tests {
                 last_fees: None,
                 magic_bytes: [0; 2],
             },
-            accept_threshold: 11,
-            num_signers: 15,
-            sbtc_limits: SbtcLimits::default(),
+            accept_threshold: 127,
+            num_signers: 128,
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
         let transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 25);
+        assert_eq!(transactions.len(), MAX_MEMPOOL_PACKAGE_TX_COUNT as usize);
         let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
-        assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
+        more_asserts::assert_le!(total_size, MEMPOOL_MAX_PACKAGE_SIZE);
     }
 
     #[test]
-    fn test_construct_transactions_capped_by_size() {
-        // This will generate a single tx of 100922 vbytes. Almost at the limit.
-        let deposits: Vec<DepositRequest> = (0..816)
-            .map(|_| create_deposit(10_000, 10_000, 0))
+    fn construct_transactions_limits_package_vsize() {
+        const NUM_DEPOSITS: usize =
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX as usize * MAX_MEMPOOL_PACKAGE_TX_COUNT as usize;
+        // We set the signer bitmap to 3, so that each deposit is
+        // interpreted as having two votes against (two bits are one in the
+        // binary representation of 3). Since the withdrawals all have one
+        // vote against, the packager will place all deposits in the
+        // transaction package because we use a variant of the best-fit
+        // decreasing algorithm when packaging requests.
+        let deposits: Vec<DepositRequest> =
+            std::iter::repeat_with(|| create_deposit(10_000, 10_000, 3))
+                .take(NUM_DEPOSITS)
+                .collect();
+        // Each withdrawal request weighs about 31 vbytes (with the first
+        // adding 51 vbytes). So, this would add about 124000 vbytes to the
+        // transaction size, putting it over the bitcoin limit. This means
+        // many of these should be excluded from the transaction package,
+        // respecting the bitcoin limit.
+        //
+        // The packager is supposed to make sure that the transaction
+        // package vsize is under the bitcoin limit. It gets closest to
+        // that limit when the transaction package comprises 25 different
+        // transactions. We create a package with 25 transactions by
+        // ensuring lots of votes against the set of request.
+        const MAX_WITHDRAWALS: usize = 4000;
+        let withdrawals: Vec<WithdrawalRequest> = (0..MAX_WITHDRAWALS)
+            .map(|shift| create_withdrawal(1000, 10_000, 1 << (shift % 14)))
             .collect();
-        // With 4 votes against, the first withdrawal request will be included
-        // in the first transaction (+52 vbytes, totaling 100973 vbytes).
-        // The next 4 withdrawals will be included in separate transactions of
-        // 195 vbytes each, which would exceed the limit.
-        let withdrawals: Vec<WithdrawalRequest> = (0..5)
-            .map(|_| create_withdrawal(10_000, 10_000, 4))
-            .collect();
+
         let requests = SbtcRequests {
             deposits,
             withdrawals,
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
                     outpoint: OutPoint::null(),
-                    amount: 1000000,
+                    amount: 100000000,
                     public_key: generate_x_only_public_key(),
                 },
                 fee_rate: 1.0,
@@ -2911,15 +3207,161 @@ mod tests {
                 last_fees: None,
                 magic_bytes: [0; 2],
             },
-            accept_threshold: 11,
-            num_signers: 15,
-            sbtc_limits: SbtcLimits::default(),
+            accept_threshold: 10,
+            num_signers: 14,
+            sbtc_limits: SbtcLimits::unlimited(),
+            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
-        let transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 1);
-        let total_size: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
-        assert!(total_size <= MEMPOOL_MAX_PACKAGE_SIZE);
-        assert_eq!(transactions[0].requests.len(), 817);
+        let mut transactions = requests.construct_transactions().unwrap();
+        assert_eq!(transactions.len(), MAX_MEMPOOL_PACKAGE_TX_COUNT as usize);
+        // Let's check that each transaction has the maximum allowed number
+        // of deposit inputs. We add one in the check because the signers
+        // UTXO is always included as an input.
+        let expected_input_count = DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX as usize + 1;
+        transactions
+            .iter()
+            .for_each(|unsigned| assert_eq!(unsigned.tx.input.len(), expected_input_count));
+
+        // Now for the actual check of this test.
+        let total_vsize: u32 = transactions.iter().map(|tx| tx.tx_vsize).sum();
+        more_asserts::assert_le!(total_vsize, MEMPOOL_MAX_PACKAGE_SIZE);
+
+        // Now we double-check that some withdrawal requests were excluded,
+        // while other were included.
+        let num_requests = transactions
+            .iter()
+            .map(|tx| tx.requests.len())
+            .sum::<usize>();
+        more_asserts::assert_gt!(num_requests, NUM_DEPOSITS);
+        more_asserts::assert_lt!(num_requests, MAX_WITHDRAWALS);
+
+        // As a sanity check, we sign each transaction input to get "full"
+        // transactions. We then make sure that we are below the limit and
+        // that our earlier total_vsize value is accurate.
+        let keypair = secp256k1::Keypair::new_global(&mut OsRng);
+        let package_vsize = transactions
+            .iter_mut()
+            .map(|unsigned| {
+                testing::set_witness_data(unsigned, keypair);
+                unsigned.tx.vsize() as u32
+            })
+            .sum::<u32>();
+
+        assert_eq!(package_vsize, total_vsize);
+    }
+
+    #[test_case(
+        &vec![create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64, 10_000, 0
+        )],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        SOLO_DEPOSIT_TX_VSIZE as u64,
+        1, DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64; "deposit_amounts_over_the_dust_limit_accepted")]
+    #[test_case(
+        &vec![create_deposit(
+            DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1, 10_000, 0
+        )],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        SOLO_DEPOSIT_TX_VSIZE as u64,
+        0, 0; "should_reject_deposits_under_dust_limit")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 1_000, 0),
+            create_deposit(11_000, 100, 0),
+            create_deposit(12_000, 2_000, 0),
+            create_deposit(13_000, 0, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
+        1_000,
+        2, 22_000; "should_accept_all_deposits_above_or_equal_min_fee")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_000, 30_000),
+        1_000,
+        3, 30_000; "should_accept_deposits_until_max_mintable_reached")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0),
+            create_deposit(10_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_000, 15_000),
+        1_000,
+        1, 10_000; "should_accept_all_deposits_when_under_max_mintable")]
+    #[test_case(
+        &vec![create_deposit(10_000, 10_000, 0),],
+        &create_limits_for_deposits_and_max_mintable(0, 0, 0),
+        1_000,
+        0, 0; "should_handle_empty_deposit_list")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 0, 0),
+            create_deposit(11_000, 10_000, 0),
+            create_deposit(9_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_000, 10_000),
+        1_000,
+        1, 9_000; "should_skip_invalid_fee_and_accept_valid_deposits")]
+    #[test_case(
+        &vec![
+            create_deposit(10_001, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 10_001, 10_000),
+        1_000,
+        0, 0; "should_reject_single_deposit_exceeding_max_mintable")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(0, 8_000, 10_000),
+        1_000,
+        0, 0; "should_reject_single_deposit_exceeding_per_deposit_cap")]
+    #[test_case(
+        &vec![
+            create_deposit(5_000, 2_000, 0),
+            create_deposit(15_000, 2_000, 0),
+        ],
+        &create_limits_for_deposits_and_max_mintable(10_000, 20_000, 30_000),
+        1_000,
+        1, 15_000; "should_reject_deposits_below_per_deposit_minimum")]
+    #[test_case(
+        &vec![
+            create_deposit(10_000, 10_000, 0), // accepted
+            create_deposit(DEPOSIT_DUST_LIMIT + 999, 10_000, 0), // rejected (1 below dust limit) min_fee is 1_000
+            create_deposit(9_000, 10_000, 0),  // rejected (below per_deposit_minimum)
+            create_deposit(21_000, 10_000, 0), // rejected (above per_deposit_cap)
+            create_deposit(20_000, 10_000, 0), // accepted
+            create_deposit(20_000, 10_000, 0), // rejected (above max_mintable)
+            create_deposit(5_000, 500, 0),     // rejected (below minimum_fee)
+        ],
+        &create_limits_for_deposits_and_max_mintable(10_000, 20_000, 40_000),
+        1_000,
+        2, 30_000; "should_respect_all_limits")]
+    #[tokio::test]
+    async fn test_deposit_filter_filters_deposits_over_limits(
+        deposits: &Vec<DepositRequest>,
+        sbtc_limits: &SbtcLimits,
+        minimum_fee: u64,
+        num_accepted_deposits: usize,
+        accepted_amount: u64,
+    ) {
+        let filter = SbtcRequestsFilter::new(sbtc_limits, minimum_fee);
+
+        let deposits = filter.filter_deposits(deposits);
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        // let txs = requests.construct_transactions().unwrap();
+        let total_amount: u64 = deposits
+            .iter()
+            .map(|req| req.as_deposit().unwrap().amount)
+            .sum();
+
+        assert_eq!(deposits.len(), num_accepted_deposits);
+        assert_eq!(total_amount, accepted_amount);
     }
 }

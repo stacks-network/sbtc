@@ -1,22 +1,19 @@
 //! Test utilities for the `storage` module
 
-use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
+use std::future::Future;
 use std::time::Duration;
 
-use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::{
+    BitcoinBlock, BitcoinBlockHash, BitcoinBlockRef, StacksBlock, StacksBlockHash,
+};
 use crate::storage::postgres::PgStore;
-use crate::storage::DbRead;
+use crate::storage::{DbRead, DbWrite};
 
 pub mod model;
 pub mod postgres;
 
 /// The postgres connection string to the test database.
-pub const DATABASE_URL: &str = "postgres://postgres:postgres@localhost:5432/signer";
-
-/// This is needed to make sure that each test has as many isolated
-/// databases as it needs.
-pub static DATABASE_NUM: AtomicU16 = AtomicU16::new(0);
-static INITIAL_MIGRATIONS_APPLIED: AtomicBool = AtomicBool::new(false);
+pub const DATABASE_URL_BASE: &str = "postgres://postgres:postgres@localhost:5432";
 
 /// It's better to create a new pool for each test since there is some
 /// weird bug in sqlx. The issue that can crop up with pool reuse is
@@ -44,53 +41,33 @@ fn get_connection_pool(url: &str) -> sqlx::PgPool {
 /// 2. Do the above, but have each transaction connect to its own
 ///    database. This actually works, and it's not clear why.
 /// 3. Have each test use a new pool to a new database. This works as well.
-pub async fn new_test_database(db_num: u16, apply_migrations: bool) -> PgStore {
-    let db_name = format!("test_db_{db_num}");
-
+pub async fn new_test_database() -> PgStore {
     // We create a new connection to the default database each time this
     // function is called, because we depend on all connections to this
     // database being closed before it begins.
-    let pool = get_connection_pool(DATABASE_URL);
+    let postgres_url = format!("{}/postgres", DATABASE_URL_BASE);
+    let pool = get_connection_pool(&postgres_url);
 
-    // We only need to apply the initial migrations to the `signer` database
-    // once. This is because the `signer` database is the template for all
-    // other databases.
-    if !INITIAL_MIGRATIONS_APPLIED.load(Ordering::SeqCst) {
-        PgStore::connect(DATABASE_URL)
-            .await
-            .expect("failed to apply initial migrations")
-            .apply_migrations()
-            .await
-            .expect("failed to apply db migrations");
-        INITIAL_MIGRATIONS_APPLIED.store(true, Ordering::SeqCst);
-    }
+    sqlx::query("CREATE SEQUENCE IF NOT EXISTS db_num_seq;")
+        .execute(&pool)
+        .await
+        .unwrap();
 
-    // We need to manually check if it exists and drop it if it does.
-    let db_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS (SELECT TRUE FROM pg_database WHERE datname = $1);",
-    )
-    .bind(&db_name)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
+    let db_num: i64 = sqlx::query_scalar("SELECT nextval('db_num_seq');")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
 
-    if db_exists {
-        // FORCE closes all connections to the database if there are any
-        // and then drops the database.
-        let drop_db = format!("DROP DATABASE \"{db_name}\" WITH (FORCE);");
-        sqlx::query(&drop_db)
-            .execute(&pool)
-            .await
-            .expect("failed to create test database");
-    }
-    let create_db = format!("CREATE DATABASE \"{db_name}\" TEMPLATE signer;");
+    let db_name = format!("signer_test_{}", db_num);
+
+    let create_db = format!("CREATE DATABASE \"{db_name}\" WITH OWNER = 'postgres';");
 
     sqlx::query(&create_db)
         .execute(&pool)
         .await
         .expect("failed to create test database");
 
-    let test_db_url = DATABASE_URL.replace("signer", &db_name);
+    let test_db_url = format!("{}/{}", DATABASE_URL_BASE, db_name);
     // In order to create a new database from another database, there
     // cannot exist any other connections to that database. So we
     // explicitly close this connection. See the notes section in the docs
@@ -98,12 +75,10 @@ pub async fn new_test_database(db_num: u16, apply_migrations: bool) -> PgStore {
     pool.close().await;
 
     let store = PgStore::connect(&test_db_url).await.unwrap();
-    if apply_migrations {
-        store
-            .apply_migrations()
-            .await
-            .expect("failed to apply db migrations");
-    }
+    store
+        .apply_migrations()
+        .await
+        .expect("failed to apply db migrations");
     store
 }
 
@@ -113,12 +88,12 @@ pub async fn new_test_database(db_num: u16, apply_migrations: bool) -> PgStore {
 pub async fn drop_db(store: PgStore) {
     if let Some(db_name) = store.pool().connect_options().get_database() {
         // This is not a test database, we should not close it
-        if db_name == "signer" {
+        if db_name == "postgres" {
             return;
         }
-        // Might as well.
-        store.pool().close().await;
-        let pool = get_connection_pool(DATABASE_URL);
+
+        let postgres_url = format!("{}/postgres", DATABASE_URL_BASE);
+        let pool = get_connection_pool(&postgres_url);
 
         // FORCE closes all connections to the database if there are any
         // and then drops the database.
@@ -161,17 +136,160 @@ where
 
 /// This is a helper function for waiting for the database to have a row in
 /// the dkg_shares, signaling that DKG has finished successfully.
-pub async fn wait_for_dkg(db: &PgStore) {
-    let mut db_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
+pub async fn wait_for_dkg(db: &PgStore, count: u32) {
     let waiting_fut = async {
         let db = db.clone();
-        while db_shares.is_none() {
+        while db.get_encrypted_dkg_shares_count().await.unwrap() < count {
             tokio::time::sleep(Duration::from_millis(100)).await;
-            db_shares = db.get_latest_encrypted_dkg_shares().await.unwrap();
         }
     };
 
     tokio::time::timeout(Duration::from_secs(10), waiting_fut)
         .await
         .unwrap();
+}
+
+/// Extension trait for [`DbWrite`] that provides additional methods for
+/// testing purposes.
+pub trait DbWriteTestExt {
+    /// Helper function to write multiple bitcoin blocks to the database and
+    /// panics if any errors are encountered.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbWriteExt;
+    /// # use crate::storage::model::BitcoinBlock;
+    /// # use crate::storage::model::StacksBlock;
+    ///
+    /// db.write_bitcoin_blocks(
+    ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+    /// )
+    /// .await;
+    /// ```
+    fn write_bitcoin_blocks<'a, I>(&self, blocks: I) -> impl Future<Output = ()> + Send
+    where
+        I: IntoIterator<Item = &'a BitcoinBlock> + Send + Sync + 'a,
+        I::IntoIter: Send + Sync;
+
+    /// Helper function to write multiple stacks blocks to the database and
+    /// panics if any errors are encountered.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbWriteExt;
+    /// # use crate::storage::model::BitcoinBlock;
+    /// # use crate::storage::model::StacksBlock;
+    ///
+    /// db.write_stacks_blocks(
+    ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+    /// )
+    /// .await;
+    /// ```
+    fn write_stacks_blocks<'a, I>(&self, blocks: I) -> impl Future<Output = ()> + Send
+    where
+        I: IntoIterator<Item = &'a StacksBlock> + Send + Sync + 'a,
+        I::IntoIter: Send + Sync;
+
+    /// Helper function to write multiple bitcoin and stacks blocks to the
+    /// database and panics if any errors are encountered.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbWriteExt;
+    /// # use crate::storage::model::BitcoinBlock;
+    /// # use crate::storage::model::StacksBlock;
+    ///
+    /// db.write_blocks(
+    ///     [&bitcoin_1, &bitcoin_2a, &bitcoin_2b, &bitcoin_3a],
+    ///     [&stacks_1, &stacks_2a, &stacks_2b, &stacks_3a],
+    /// )
+    /// .await;
+    /// ```
+    fn write_blocks<'a, IB, IS>(
+        &self,
+        bitcoin_blocks: IB,
+        stacks_blocks: IS,
+    ) -> impl Future<Output = ()> + Send
+    where
+        IB: IntoIterator<Item = &'a BitcoinBlock> + Send + Sync + 'a,
+        IB::IntoIter: Send + Sync,
+        IS: IntoIterator<Item = &'a StacksBlock> + Send + Sync + 'a,
+        IS::IntoIter: Send + Sync;
+}
+
+/// Extension trait for [`DbRead`] that provides additional methods for
+/// testing purposes.
+pub trait DbReadTestExt {
+    /// Helper function to get both bitcoin and stacks chain tips from the
+    /// database and panics on error.
+    ///
+    /// ## Examples:
+    /// ```
+    /// # use crate::testing::storage::DbReadExt;
+    ///
+    /// let (bitcoin_tip, stacks_tip) = db.get_chain_tips().await;
+    /// ```
+    fn get_chain_tips(&self) -> impl Future<Output = (BitcoinBlockRef, StacksBlockHash)> + Send;
+}
+
+/// Implement the [`DbWriteExt`] trait for all types that implement [`DbWrite`].
+impl<T> DbWriteTestExt for T
+where
+    T: DbWrite + DbRead + Send + Sync + 'static,
+{
+    async fn write_bitcoin_blocks<'a, I>(&self, blocks: I)
+    where
+        I: IntoIterator<Item = &'a BitcoinBlock>,
+    {
+        for block in blocks {
+            self.write_bitcoin_block(block)
+                .await
+                .expect("failed to write bitcoin block");
+        }
+    }
+
+    async fn write_stacks_blocks<'a, I>(&self, blocks: I)
+    where
+        I: IntoIterator<Item = &'a StacksBlock>,
+    {
+        for block in blocks {
+            self.write_stacks_block(block)
+                .await
+                .expect("failed to write stacks block");
+        }
+    }
+
+    async fn write_blocks<'a, IB, IS>(&self, bitcoin_blocks: IB, stacks_blocks: IS)
+    where
+        IB: IntoIterator<Item = &'a BitcoinBlock> + Send + Sync + 'a,
+        IB::IntoIter: Send + Sync,
+        IS: IntoIterator<Item = &'a StacksBlock> + Send + Sync + 'a,
+        IS::IntoIter: Send + Sync,
+    {
+        self.write_bitcoin_blocks(bitcoin_blocks).await;
+        self.write_stacks_blocks(stacks_blocks).await;
+    }
+}
+
+/// Implement the [`DbReadExt`] trait for all types that implement [`DbRead`].
+impl<T> DbReadTestExt for T
+where
+    T: DbRead + Send + Sync + 'static,
+{
+    async fn get_chain_tips(&self) -> (BitcoinBlockRef, StacksBlockHash) {
+        let bitcoin_tip = self
+            .get_bitcoin_canonical_chain_tip_ref()
+            .await
+            .expect("db error: error when retrieving bitcoin chain tip")
+            .expect("no bitcoin chain tip found");
+
+        let stacks_tip = self
+            .get_stacks_chain_tip(&bitcoin_tip.block_hash)
+            .await
+            .expect("db error: error when retrieving stacks chain tip")
+            .expect("no stacks chain tip found")
+            .block_hash;
+
+        (bitcoin_tip, stacks_tip)
+    }
 }

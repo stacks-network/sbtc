@@ -42,6 +42,10 @@ pub enum Error {
     /// Could not parse the Stacks principal address.
     #[error("could not parse the stacks principal address: {0}")]
     ParseStacksAddress(#[source] stacks_common::codec::Error),
+    /// The network of the recipient address does not match the expected
+    /// network.
+    #[error("incorrect network of the recipient address: {0}")]
+    RecipientNetworkMismatch(clarity::vm::types::PrincipalData),
     /// This happens when the lock-time is given in time units instead of
     /// block units.
     #[error("lock-time given in time units, but only block units are supported: {0}")]
@@ -64,4 +68,14 @@ pub enum Error {
         /// This is the transaction ID of from the request
         from_request: Txid,
     },
+
+    /// This is thrown when failing to parse a hex string into bytes.
+    #[cfg(feature = "webhooks")]
+    #[error("could not decode the hex string into bytes: {0}")]
+    DecodeHexBytes(#[source] hex::FromHexError),
+    /// An error when attempting to generically decode bytes using the
+    /// trait implementation.
+    #[cfg(feature = "webhooks")]
+    #[error("got an error when attempting to call StacksMessageCodec::consensus_deserialize {0}")]
+    StacksCodec(#[source] blockstack_lib::codec::Error),
 }

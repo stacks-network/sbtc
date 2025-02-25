@@ -12,11 +12,18 @@ use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
-use super::entries::deposit::ValidatedDepositUpdate;
+use super::entries::deposit::{
+    DepositInfoByRecipientEntry, DepositInfoByReclaimPubkeysEntry,
+    DepositTableByRecipientSecondaryIndex, DepositTableByReclaimPubkeysSecondaryIndex,
+    ValidatedDepositUpdate,
+};
 use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
-use super::entries::withdrawal::ValidatedWithdrawalUpdate;
+use super::entries::withdrawal::{
+    ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry,
+    WithdrawalTableByRecipientSecondaryIndex,
+};
 use super::entries::{
     chainstate::{
         ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
@@ -66,7 +73,7 @@ pub async fn get_deposit_entries(
     context: &EmilyContext,
     status: &Status,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<DepositInfoEntry>, Option<String>), Error> {
     query_with_partition_key::<DepositTableSecondaryIndex>(
         context,
@@ -77,7 +84,39 @@ pub async fn get_deposit_entries(
     .await
 }
 
-/// Hacky exhasutive list of all statuses that we will iterate over in order to
+/// Get deposit entries by recipient.
+pub async fn get_deposit_entries_by_recipient(
+    context: &EmilyContext,
+    recipient: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<DepositInfoByRecipientEntry>, Option<String>), Error> {
+    query_with_partition_key::<DepositTableByRecipientSecondaryIndex>(
+        context,
+        recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get deposit entries by reclaim pubkey.
+pub async fn get_deposit_entries_by_reclaim_pubkeys_hash(
+    context: &EmilyContext,
+    reclaim_pubkeys_hash: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<DepositInfoByReclaimPubkeysEntry>, Option<String>), Error> {
+    query_with_partition_key::<DepositTableByReclaimPubkeysSecondaryIndex>(
+        context,
+        reclaim_pubkeys_hash,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Hacky exhaustive list of all statuses that we will iterate over in order to
 /// get every deposit present.
 const ALL_STATUSES: &[Status] = &[
     Status::Accepted,
@@ -91,7 +130,7 @@ const ALL_STATUSES: &[Status] = &[
 pub async fn get_all_deposit_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<DepositInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
@@ -113,7 +152,7 @@ pub async fn get_all_deposit_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<DepositInfoEntry>, Error> {
     // Make the query.
     query_all_with_partition_and_sort_key::<DepositTableSecondaryIndex>(
@@ -127,12 +166,11 @@ pub async fn get_all_deposit_entries_modified_from_height_with_status(
 }
 
 /// Get deposit entries for a given transaction.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_for_transaction(
     context: &EmilyContext,
     bitcoin_txid: &String,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<DepositEntry>, Option<String>), Error> {
     query_with_partition_key::<DepositTablePrimaryIndex>(
         context,
@@ -289,7 +327,7 @@ pub async fn get_withdrawal_entries(
     context: &EmilyContext,
     status: &Status,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<WithdrawalInfoEntry>, Option<String>), Error> {
     query_with_partition_key::<WithdrawalTableSecondaryIndex>(
         context,
@@ -300,11 +338,28 @@ pub async fn get_withdrawal_entries(
     .await
 }
 
+/// Get withdrawal entries by recipient.
+#[allow(clippy::ptr_arg)]
+pub async fn get_withdrawal_entries_by_recipient(
+    context: &EmilyContext,
+    recipient: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<WithdrawalInfoByRecipientEntry>, Option<String>), Error> {
+    query_with_partition_key::<WithdrawalTableByRecipientSecondaryIndex>(
+        context,
+        recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
 /// Gets all withdrawal entries modified from (on or after) a given height.
 pub async fn get_all_withdrawal_entries_modified_from_height(
     context: &EmilyContext,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<WithdrawalInfoEntry>, Error> {
     let mut all = Vec::new();
     for status in ALL_STATUSES {
@@ -326,7 +381,7 @@ pub async fn get_all_withdrawal_entries_modified_from_height_with_status(
     context: &EmilyContext,
     status: &Status,
     minimum_height: u64,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<WithdrawalInfoEntry>, Error> {
     // Make the query.
     query_all_with_partition_and_sort_key::<WithdrawalTableSecondaryIndex>(
@@ -357,7 +412,7 @@ pub async fn pull_and_update_withdrawal_with_retry(
         }
         // Make the update package.
         let update_package = WithdrawalUpdatePackage::try_from(&entry, update.clone())?;
-        // Attempt to update the deposit.
+        // Attempt to update the withdrawal.
         match update_withdrawal(context, &update_package).await {
             Err(Error::VersionConflict) => {
                 // Retry.
@@ -576,7 +631,7 @@ pub async fn get_chainstate_entries_for_height(
     context: &EmilyContext,
     height: &u64,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<ChainstateEntry>, Option<String>), Error> {
     query_with_partition_key::<ChainstateTablePrimaryIndex>(
         context,
@@ -615,7 +670,7 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 /// Note, this function provides the direct output structure for the api call
 /// to get the limits for the full sbtc system, and therefore is breaching the
 /// typical contract for these accessor functions. We do this here because the
-/// data for this sigular entry is spread across the entire table in a way that
+/// data for this singular entry is spread across the entire table in a way that
 /// needs to be first gathered, then filtered. It does not neatly fit into a
 /// return type that is within the table as an entry.
 pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
@@ -633,6 +688,7 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
             timestamp: 0,
         },
         peg_cap: default_global_cap.peg_cap,
+        per_deposit_minimum: default_global_cap.per_deposit_minimum,
         per_deposit_cap: default_global_cap.per_deposit_cap,
         per_withdrawal_cap: default_global_cap.per_withdrawal_cap,
     };
@@ -669,6 +725,7 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
     // Get the global limit for the whole thing.
     Ok(Limits {
         peg_cap: global_cap.peg_cap,
+        per_deposit_minimum: global_cap.per_deposit_minimum,
         per_deposit_cap: global_cap.per_deposit_cap,
         per_withdrawal_cap: global_cap.per_withdrawal_cap,
         account_caps,
@@ -676,7 +733,6 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
 }
 
 /// Get the limit for a specific account.
-#[allow(clippy::ptr_arg)]
 pub async fn get_limit_for_account(
     context: &EmilyContext,
     account: &String,
@@ -783,14 +839,14 @@ async fn delete_entry<T: TableIndexTrait>(
 
 async fn query_with_partition_key<T: TableIndexTrait>(
     context: &EmilyContext,
-    parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
+    partition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
     maybe_next_token: Option<String>,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<(Vec<<T as TableIndexTrait>::Entry>, Option<String>), Error> {
     <T as TableIndexTrait>::query_with_partition_key(
         &context.dynamodb_client,
         &context.settings,
-        parition_key,
+        partition_key,
         maybe_next_token,
         maybe_page_size,
     )
@@ -799,10 +855,10 @@ async fn query_with_partition_key<T: TableIndexTrait>(
 
 async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
     context: &EmilyContext,
-    parition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
+    partition_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
     sort_key: &<<<T as TableIndexTrait>::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
     sort_key_operator: &str,
-    maybe_page_size: Option<i32>,
+    maybe_page_size: Option<u16>,
 ) -> Result<Vec<<T as TableIndexTrait>::Entry>, Error> {
     // item aggregator.
     let mut items: Vec<<T as TableIndexTrait>::Entry> = Vec::new();
@@ -814,7 +870,7 @@ async fn query_all_with_partition_and_sort_key<T: TableIndexTrait>(
         (new_items, next_token) = <T as TableIndexTrait>::query_with_partition_and_sort_key(
             &context.dynamodb_client,
             &context.settings,
-            parition_key,
+            partition_key,
             sort_key,
             sort_key_operator,
             next_token,

@@ -83,13 +83,13 @@ pub enum StatusEntry {
     Reprocessing,
     /// Transaction has been seen and accepted by the sBTC Signers, but is not
     /// yet included in any on chain artifact. The transaction can still fail
-    /// at this point if the Signers fail to include the transaciton in an on
+    /// at this point if the Signers fail to include the transaction in an on
     /// chain artifact.
     ///
     /// For example, a deposit or withdrawal that has specified too low of a
     /// BTC fee may fail after being accepted.
     Accepted,
-    /// The articacts that fulill the operation have been observed in a valid fork of
+    /// The artifacts that fulfill the operation have been observed in a valid fork of
     /// both the Stacks blockchain and the Bitcoin blockchain by at least one signer.
     ///
     /// Note that if the signers detect a conflicting chainstate in which the operation
@@ -138,7 +138,7 @@ pub trait KeyTrait: serde::Serialize + for<'de> serde::Deserialize<'de> {
     type PartitionKey: serde::Serialize + for<'de> serde::Deserialize<'de>;
     /// Sort key type.
     type SortKey: serde::Serialize + for<'de> serde::Deserialize<'de>;
-    /// Parition key name.
+    /// Partition key name.
     const PARTITION_KEY_NAME: &'static str;
     /// Sort key name.
     const SORT_KEY_NAME: &'static str;
@@ -241,7 +241,7 @@ pub(crate) trait TableIndexTrait {
         settings: &Settings,
         partition_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::PartitionKey,
         maybe_next_token: Option<String>,
-        maybe_page_size: Option<i32>,
+        maybe_page_size: Option<u16>,
     ) -> Result<(Vec<Self::Entry>, Option<String>), Error> {
         // Convert inputs into the types needed for querying.
         let exclusive_start_key =
@@ -252,7 +252,7 @@ pub(crate) trait TableIndexTrait {
             .table_name(Self::table_name(settings))
             .set_index_name(Self::INDEX_NAME_IF_GSI.map(|s| s.to_string()))
             .set_exclusive_start_key(exclusive_start_key)
-            .set_limit(maybe_page_size)
+            .set_limit(maybe_page_size.map(|u| u as i32))
             .key_condition_expression("#pk = :v")
             .expression_attribute_names(
                 "#pk",
@@ -280,7 +280,7 @@ pub(crate) trait TableIndexTrait {
         sort_key: &<<Self::Entry as EntryTrait>::Key as KeyTrait>::SortKey,
         sort_key_operator: &str,
         maybe_next_token: Option<String>,
-        maybe_page_size: Option<i32>,
+        maybe_page_size: Option<u16>,
     ) -> Result<(Vec<Self::Entry>, Option<String>), Error> {
         // Convert inputs into the types needed for querying.
         let exclusive_start_key =
@@ -292,7 +292,7 @@ pub(crate) trait TableIndexTrait {
             .table_name(Self::table_name(settings))
             .set_index_name(Self::INDEX_NAME_IF_GSI.map(|s| s.to_string()))
             .set_exclusive_start_key(exclusive_start_key)
-            .set_limit(maybe_page_size)
+            .set_limit(maybe_page_size.map(|u| u as i32))
             .key_condition_expression(format!("#pk = :pk AND #sk {sort_key_operator} :sk"))
             .expression_attribute_names(
                 "#pk",
@@ -560,8 +560,8 @@ fn tokenize<T>(key: T) -> Result<String, Error>
 where
     T: Serialize,
 {
-    let serialied = serde_json::to_string(&key)?;
-    let encoded: String = URL_SAFE_NO_PAD.encode(serialied);
+    let serialized = serde_json::to_string(&key)?;
+    let encoded: String = URL_SAFE_NO_PAD.encode(serialized);
     Ok(encoded)
 }
 

@@ -24,7 +24,7 @@ use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 
-/// For the [`ScriptPubKey`]
+// For the [`ScriptPubKey`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for ScriptPubKey {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
@@ -52,7 +52,7 @@ impl sqlx::postgres::PgHasArrayType for ScriptPubKey {
     }
 }
 
-/// For the [`BitcoinBlockHash`]
+// For the [`BitcoinBlockHash`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinBlockHash {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
@@ -80,7 +80,7 @@ impl sqlx::postgres::PgHasArrayType for BitcoinBlockHash {
     }
 }
 
-/// For the [`BitcoinTx`]
+// For the [`BitcoinTx`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinTx {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
@@ -111,7 +111,7 @@ impl sqlx::postgres::PgHasArrayType for BitcoinTx {
     }
 }
 
-/// For the [`BitcoinTxId`]
+// For the [`BitcoinTxId`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinTxId {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
@@ -139,7 +139,7 @@ impl sqlx::postgres::PgHasArrayType for BitcoinTxId {
     }
 }
 
-/// For the [`PublicKey`]
+// For the [`PublicKey`]
 
 /// We expect the compressed public key bytes from the database
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for PublicKey {
@@ -169,7 +169,7 @@ impl sqlx::postgres::PgHasArrayType for PublicKey {
     }
 }
 
-/// For the [`PublicKeyXOnly`]
+// For the [`PublicKeyXOnly`]
 
 /// We expect the compressed public key bytes from the database
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for PublicKeyXOnly {
@@ -199,7 +199,7 @@ impl sqlx::postgres::PgHasArrayType for PublicKeyXOnly {
     }
 }
 
-/// For the [`StacksBlockHash`]
+// For the [`StacksBlockHash`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksBlockHash {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
@@ -226,7 +226,7 @@ impl sqlx::postgres::PgHasArrayType for StacksBlockHash {
     }
 }
 
-/// For the [`StacksPrincipal`]
+// For the [`StacksPrincipal`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksPrincipal {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
@@ -253,7 +253,7 @@ impl sqlx::postgres::PgHasArrayType for StacksPrincipal {
     }
 }
 
-/// For the [`StacksTxId`]
+// For the [`StacksTxId`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksTxId {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
@@ -280,7 +280,7 @@ impl sqlx::postgres::PgHasArrayType for StacksTxId {
     }
 }
 
-/// For the [`SigHash`]
+// For the [`SigHash`]
 
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for SigHash {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {

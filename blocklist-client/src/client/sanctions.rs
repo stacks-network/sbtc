@@ -143,38 +143,23 @@ async fn check_api_response(response: Response) -> Result<Response, Error> {
 mod tests {
     use super::*;
     use crate::common::RiskSeverity::{Low, Severe};
-    use mockito::{mock, server_url, Mock};
+    use mockito::{Server, ServerGuard};
 
     const TEST_ADDRESS: &str = "test_address";
-    const ADDRESS_REGISTRATION_BODY: &str = r#"{"address": "test_address"}"#;
 
     // Setup function for common client and configuration
-    fn setup_client() -> (Client, RiskAnalysisConfig) {
+    fn setup_client(server: &ServerGuard) -> (Client, RiskAnalysisConfig) {
         let client = Client::new();
         let config = RiskAnalysisConfig {
-            api_url: server_url(),
+            api_url: server.url(),
             api_key: "dummy_api_key".to_string(),
         };
         (client, config)
     }
 
-    // Helper function to setup a mock API response
-    fn setup_mock(method: &str, path: &str, status: u16, body: &str) -> Mock {
-        return mock(method, path)
-            .with_status(status.into())
-            .with_header("X-API-Key", "dummy_api_key")
-            .with_header("Accept", "application/json")
-            .with_body(body)
-            .create();
-    }
-
     #[tokio::test]
     async fn test_get_risk_assessment_high_risk() {
-        let _m = setup_mock(
-            "GET",
-            format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
-            200,
-            r#"{
+        let response_json = r#"{
    "identifications": [
        {
            "category": "sanctions",
@@ -183,50 +168,54 @@ mod tests {
            "url": "https://home.treasury.gov/news/press-releases/jy0126"
        }
    ]
-}"#,
-        );
-        let (client, config) = setup_client();
+}"#;
+
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "GET",
+                format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
+            )
+            .with_status(200)
+            .with_body(response_json)
+            .create();
+
+        let (client, config) = setup_client(&server);
 
         let result = get_risk_assessment(&client, &config, TEST_ADDRESS).await;
 
-        match result {
-            Ok(risk) => assert_eq!(risk.severity, Severe),
-            Err(e) => {
-                panic!("Expected RiskSeverity::Severe, got error: {:?}", e)
-            }
-        }
+        mock.assert();
+
+        assert!(matches!(
+            result,
+            Ok(RiskAssessment { severity: Severe, .. })
+        ));
     }
 
     #[tokio::test]
     async fn test_get_risk_assessment_invalid_response() {
-        let _m = setup_mock(
-            "GET",
-            format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
-            200,
-            r#"{"risky": "Severe"}"#,
-        );
-        let (client, config) = setup_client();
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock(
+                "GET",
+                format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
+            )
+            .with_status(200)
+            .with_body(r#"{"risky": "Severe"}"#)
+            .create();
+
+        let (client, config) = setup_client(&server);
 
         let result = get_risk_assessment(&client, &config, TEST_ADDRESS).await;
-        match result {
-            Ok(_) => panic!("Test failed: Expected an Error::InvalidApiResponse, but got Ok"),
-            Err(e) => match e {
-                Error::InvalidApiResponse => {
-                    assert!(true, "Received the expected Error::InvalidApiResponse");
-                }
-                _ => panic!("Test failed: Expected Error::InvalidApiResponse, got {e:?}"),
-            },
-        }
+
+        mock.assert();
+
+        assert!(matches!(result, Err(Error::InvalidApiResponse)));
     }
 
     #[tokio::test]
     async fn test_check_address_blocklisted_for_high_risk() {
-        let _reg_mock = setup_mock("POST", API_BASE_PATH, 200, ADDRESS_REGISTRATION_BODY);
-        let _risk_mock = setup_mock(
-            "GET",
-            format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
-            200,
-            r#"{
+        let response_json = r#"{
    "identifications": [
        {
            "category": "sanctions",
@@ -235,11 +224,23 @@ mod tests {
            "url": "https://home.treasury.gov/news/press-releases/jy0126"
        }
    ]
-}"#,
-        );
-        let (client, config) = setup_client();
+}"#;
+        let mut server = Server::new_async().await;
+        let risk_mock = server
+            .mock(
+                "GET",
+                format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
+            )
+            .with_status(200)
+            .with_body(response_json)
+            .create();
+
+        let (client, config) = setup_client(&server);
 
         let result = check_address(&client, &config, TEST_ADDRESS).await;
+
+        risk_mock.assert();
+
         assert!(result.is_ok());
         let status = result.unwrap();
         assert!(status.is_blocklisted);
@@ -250,16 +251,22 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_address_not_blocklisted_for_low_risk() {
-        let _reg_mock = setup_mock("POST", API_BASE_PATH, 200, ADDRESS_REGISTRATION_BODY);
-        let _risk_mock = setup_mock(
-            "GET",
-            format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
-            200,
-            r#"{"identifications": []}"#,
-        );
-        let (client, config) = setup_client();
+        let mut server = Server::new_async().await;
+        let risk_mock = server
+            .mock(
+                "GET",
+                format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
+            )
+            .with_status(200)
+            .with_body(r#"{"identifications": []}"#)
+            .create();
+
+        let (client, config) = setup_client(&server);
 
         let result = check_address(&client, &config, TEST_ADDRESS).await;
+
+        risk_mock.assert();
+
         assert!(result.is_ok());
         let status = result.unwrap();
         assert!(!status.is_blocklisted);
@@ -270,40 +277,41 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_address_registration_fails() {
-        let _reg_mock = setup_mock(
-            "POST",
-            API_BASE_PATH,
-            400,
-            r#"{"message": "Invalid address"}"#,
-        );
-        let (client, config) = setup_client();
+        let mut server = Server::new_async().await;
+        server
+            .mock("POST", API_BASE_PATH)
+            .with_status(400)
+            .with_body(r#"{"message": "Invalid address"}"#)
+            .create();
+
+        let (client, config) = setup_client(&server);
 
         let result = check_address(&client, &config, TEST_ADDRESS).await;
-        assert!(result.is_err());
-        match result {
-            Err(Error::HttpRequest(code, _)) => assert_eq!(code, StatusCode::NOT_IMPLEMENTED),
-            _ => panic!("Expected HttpRequest for bad registration"),
-        }
+
+        assert!(matches!(
+            result,
+            Err(Error::HttpRequest(StatusCode::NOT_IMPLEMENTED, _))
+        ));
     }
 
     #[tokio::test]
     async fn test_check_address_risk_assessment_fails() {
-        let _reg_mock = setup_mock("POST", API_BASE_PATH, 200, ADDRESS_REGISTRATION_BODY);
-        let _risk_mock = setup_mock(
-            "GET",
-            format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
-            500,
-            r#"{}"#,
-        );
-        let (client, config) = setup_client();
+        let mut server = Server::new_async().await;
+        let risk_mock = server
+            .mock(
+                "GET",
+                format!("{}/{}", API_BASE_PATH, TEST_ADDRESS).as_str(),
+            )
+            .with_status(500)
+            .with_body("{}")
+            .create();
+
+        let (client, config) = setup_client(&server);
 
         let result = check_address(&client, &config, TEST_ADDRESS).await;
-        assert!(result.is_err());
-        match result {
-            Err(Error::InternalServer) => {
-                assert!(true, "Received expected internal server error")
-            }
-            _ => panic!("Expected InternalServer for failed risk assessment"),
-        }
+
+        risk_mock.assert();
+
+        assert!(matches!(result, Err(Error::InternalServer)));
     }
 }

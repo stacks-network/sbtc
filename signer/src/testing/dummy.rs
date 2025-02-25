@@ -11,11 +11,16 @@ use bitcoin::ScriptBuf;
 use bitcoin::TapSighash;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
+use bitcoin::XOnlyPublicKey;
 use bitvec::array::BitArray;
-use blockstack_lib::burnchains::Txid as StacksTxid;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use clarity::util::secp256k1::Secp256k1PublicKey;
+use fake::Dummy;
 use fake::Fake;
+use fake::Faker;
+use p256k1::point::Point;
+use p256k1::scalar::Scalar;
+use polynomial::Polynomial;
 use rand::seq::IteratorRandom as _;
 use rand::Rng;
 use sbtc::deposits::DepositScriptInputs;
@@ -25,9 +30,33 @@ use secp256k1::SECP256K1;
 use stacks_common::address::AddressHashMode;
 use stacks_common::address::C32_ADDRESS_VERSION_TESTNET_MULTISIG;
 use stacks_common::types::chainstate::StacksAddress;
+use wsts::common::Nonce;
+use wsts::common::PolyCommitment;
+use wsts::common::PublicNonce;
+use wsts::common::SignatureShare;
+use wsts::common::TupleProof;
+use wsts::net::BadPrivateShare;
+use wsts::net::DkgBegin;
+use wsts::net::DkgEnd;
+use wsts::net::DkgEndBegin;
+use wsts::net::DkgFailure;
+use wsts::net::DkgPrivateBegin;
+use wsts::net::DkgPrivateShares;
+use wsts::net::DkgPublicShares;
+use wsts::net::DkgStatus;
+use wsts::net::NonceRequest;
+use wsts::net::NonceResponse;
+use wsts::net::SignatureShareRequest;
+use wsts::net::SignatureShareResponse;
+use wsts::net::SignatureType;
+use wsts::traits::PartyState;
+use wsts::traits::SignerState;
 
 use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::utxo::SignerBtcState;
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::TxRequestIds;
+use crate::codec::Encode;
 use crate::ecdsa::Signed;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
@@ -40,16 +69,12 @@ use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
-use crate::stacks::events::CompletedDepositEvent;
-use crate::stacks::events::WithdrawalAcceptEvent;
-use crate::stacks::events::WithdrawalCreateEvent;
-use crate::stacks::events::WithdrawalRejectEvent;
 use crate::storage::model;
-
-use crate::codec::Encode;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
+use crate::storage::model::CompletedDepositEvent;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::RotateKeysTransaction;
@@ -58,6 +83,8 @@ use crate::storage::model::SigHash;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::WithdrawalAcceptEvent;
+use crate::storage::model::WithdrawalRejectEvent;
 
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(
@@ -216,6 +243,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
     rng: &mut R,
     signer_private_key: &[u8; 32],
     group_key: PublicKey,
+    status: DkgSharesStatus,
 ) -> model::EncryptedDkgShares {
     let party_state = wsts::traits::PartyState {
         polynomial: None,
@@ -248,6 +276,9 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         script_pubkey: group_key.signers_script_pubkey().into(),
         signer_set_public_keys: vec![fake::Faker.fake_with_rng(rng)],
         signature_share_threshold: 1,
+        dkg_shares_status: status,
+        started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
+        started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
     }
 }
 
@@ -303,8 +334,8 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalAcceptEvent {
-            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng(rng),
+            block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
             outpoint: OutPoint {
@@ -312,9 +343,9 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
                 vout: rng.next_u32(),
             },
             fee: rng.next_u32() as u64,
-            sweep_block_hash: block_hash(config, rng),
+            sweep_block_hash: config.fake_with_rng(rng),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: txid(config, rng),
+            sweep_txid: config.fake_with_rng(rng),
         }
     }
 }
@@ -323,25 +354,10 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let bitmap = rng.next_u64() as u128;
         WithdrawalRejectEvent {
-            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng(rng),
+            block_id: config.fake_with_rng(rng),
             request_id: rng.next_u32() as u64,
             signer_bitmap: BitArray::new(bitmap.to_le_bytes()),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        WithdrawalCreateEvent {
-            txid: StacksTxid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
-            request_id: rng.next_u32() as u64,
-            amount: rng.next_u32() as u64,
-            sender: config.fake_with_rng::<StacksPrincipal, _>(rng).into(),
-            recipient: config.fake_with_rng::<ScriptPubKey, _>(rng).into(),
-            max_fee: rng.next_u32() as u64,
-            block_height: rng.next_u32() as u64,
         }
     }
 }
@@ -349,16 +365,16 @@ impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
 impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
-            txid: blockstack_lib::burnchains::Txid(config.fake_with_rng(rng)),
-            block_id: stacks_common::types::chainstate::StacksBlockId(config.fake_with_rng(rng)),
+            txid: config.fake_with_rng(rng),
+            block_id: config.fake_with_rng(rng),
             outpoint: OutPoint {
                 txid: txid(config, rng),
                 vout: rng.next_u32(),
             },
             amount: rng.next_u32() as u64,
-            sweep_block_hash: block_hash(config, rng),
+            sweep_block_hash: config.fake_with_rng(rng),
             sweep_block_height: rng.next_u32() as u64,
-            sweep_txid: txid(config, rng),
+            sweep_txid: config.fake_with_rng(rng),
         }
     }
 }
@@ -417,6 +433,31 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
             public_shares: Vec::new(),
             signer_set_public_keys,
             signature_share_threshold: config.signatures_required,
+            dkg_shares_status: DkgSharesStatus::Verified,
+            started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
+            started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
+        }
+    }
+}
+
+impl fake::Dummy<&[PublicKey]> for SignerBtcState {
+    fn dummy_with_rng<R: Rng + ?Sized>(signer_set_public_keys: &&[PublicKey], rng: &mut R) -> Self {
+        let aggregate_key = PublicKey::combine_keys(*signer_set_public_keys).unwrap();
+        let aggregate_key_x_only: XOnlyPublicKey = aggregate_key.into();
+
+        Self {
+            fee_rate: Faker.fake_with_rng(rng),
+            last_fees: Faker.fake_with_rng(rng),
+            magic_bytes: [1, 2],
+            public_key: aggregate_key_x_only,
+            utxo: SignerUtxo {
+                amount: Faker.fake_with_rng(rng),
+                outpoint: OutPoint {
+                    txid: txid(&Faker, rng),
+                    vout: Faker.fake_with_rng(rng),
+                },
+                public_key: aggregate_key_x_only,
+            },
         }
     }
 }
@@ -667,7 +708,7 @@ impl fake::Dummy<fake::Faker> for AcceptWithdrawalV1 {
         let address = StacksAddress::p2pkh(false, &pubkey);
 
         AcceptWithdrawalV1 {
-            request_id: config.fake_with_rng(rng),
+            id: config.fake_with_rng(rng),
             outpoint: OutPoint {
                 txid: txid(config, rng),
                 vout: rng.next_u32(),
@@ -688,7 +729,7 @@ impl fake::Dummy<fake::Faker> for RejectWithdrawalV1 {
         let address = StacksAddress::p2pkh(false, &pubkey);
 
         RejectWithdrawalV1 {
-            request_id: config.fake_with_rng(rng),
+            id: config.fake_with_rng(rng),
             signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
             deployer: address,
         }
@@ -713,7 +754,7 @@ impl fake::Dummy<fake::Faker> for RotateKeysV1 {
 impl fake::Dummy<fake::Faker> for QualifiedRequestId {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         QualifiedRequestId {
-            request_id: config.fake_with_rng(rng),
+            request_id: config.fake_with_rng::<u32, _>(rng) as u64,
             txid: config.fake_with_rng(rng),
             block_hash: config.fake_with_rng(rng),
         }
@@ -759,5 +800,361 @@ impl fake::Dummy<fake::Faker> for BitcoinPreSignRequest {
 impl fake::Dummy<fake::Faker> for BitcoinPreSignAck {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(_config: &fake::Faker, _rng: &mut R) -> Self {
         BitcoinPreSignAck {}
+    }
+}
+/// A struct to help with creating dummy values for testing
+pub struct Unit;
+
+impl Dummy<Unit> for bitcoin::OutPoint {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        let bytes: [u8; 32] = Faker.fake_with_rng(rng);
+        let txid = bitcoin::Txid::from_byte_array(bytes);
+        let vout: u32 = Faker.fake_with_rng(rng);
+        bitcoin::OutPoint { txid, vout }
+    }
+}
+
+impl Dummy<Unit> for RecoverableSignature {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        let private_key = PrivateKey::new(rng);
+        let msg = secp256k1::Message::from_digest([0; 32]);
+        private_key.sign_ecdsa_recoverable(&msg)
+    }
+}
+
+impl Dummy<Unit> for secp256k1::ecdsa::Signature {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        let private_key = PrivateKey::new(rng);
+        let msg = secp256k1::Message::from_digest([0; 32]);
+        private_key.sign_ecdsa(&msg)
+    }
+}
+
+impl Dummy<Unit> for StacksAddress {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        let public_key: PublicKey = Faker.fake_with_rng(rng);
+        let pubkey = public_key.into();
+        let mainnet: bool = Faker.fake_with_rng(rng);
+        StacksAddress::p2pkh(mainnet, &pubkey)
+    }
+}
+
+impl Dummy<Unit> for Scalar {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        let number: [u8; 32] = Faker.fake_with_rng(rng);
+        p256k1::scalar::Scalar::from(number)
+    }
+}
+
+impl Dummy<Unit> for Point {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        Point::from(config.fake_with_rng::<Scalar, R>(rng))
+    }
+}
+
+impl Dummy<Unit> for Polynomial<Scalar> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+        Polynomial::new(
+            fake::vec![[u8; 32]; 0..=15]
+                .into_iter()
+                .map(p256k1::scalar::Scalar::from)
+                .collect(),
+        )
+    }
+}
+
+impl Dummy<Unit> for (u32, Scalar) {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        (Faker.fake_with_rng(rng), config.fake_with_rng(rng))
+    }
+}
+
+impl Dummy<Unit> for DkgBegin {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        DkgBegin {
+            dkg_id: Faker.fake_with_rng(rng),
+        }
+    }
+}
+impl Dummy<Unit> for DkgPrivateBegin {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        DkgPrivateBegin {
+            dkg_id: Faker.fake_with_rng(rng),
+            signer_ids: Faker.fake_with_rng(rng),
+            key_ids: Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for Vec<(u32, hashbrown::HashMap<u32, Vec<u8>>)> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+        fake::vec![u32; 0..16]
+            .into_iter()
+            .map(|v| (v, fake::vec![(u32, Vec<u8>); 0..16].into_iter().collect()))
+            .collect()
+    }
+}
+
+impl Dummy<Unit> for DkgPrivateShares {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        DkgPrivateShares {
+            dkg_id: Faker.fake_with_rng(rng),
+            signer_id: Faker.fake_with_rng(rng),
+            shares: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for DkgEndBegin {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        DkgEndBegin {
+            dkg_id: Faker.fake_with_rng(rng),
+            signer_ids: Faker.fake_with_rng(rng),
+            key_ids: Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for TupleProof {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        TupleProof {
+            R: config.fake_with_rng(rng),
+            rB: config.fake_with_rng(rng),
+            z: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for BadPrivateShare {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        BadPrivateShare {
+            shared_key: config.fake_with_rng(rng),
+            tuple_proof: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for hashbrown::HashMap<u32, BadPrivateShare> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        fake::vec![u32; 0..20]
+            .into_iter()
+            .map(|v| (v, config.fake_with_rng(rng)))
+            .collect()
+    }
+}
+
+impl Dummy<Unit> for hashbrown::HashSet<u32> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, _: &mut R) -> Self {
+        fake::vec![u32; 0..20].into_iter().collect()
+    }
+}
+
+impl Dummy<Unit> for DkgStatus {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        match rng.gen_range(0..6usize) {
+            0 => DkgStatus::Success,
+            1 => DkgStatus::Failure(DkgFailure::BadState),
+            2 => DkgStatus::Failure(DkgFailure::MissingPublicShares(config.fake_with_rng(rng))),
+            3 => DkgStatus::Failure(DkgFailure::BadPublicShares(config.fake_with_rng(rng))),
+            4 => DkgStatus::Failure(DkgFailure::MissingPrivateShares(config.fake_with_rng(rng))),
+            5 => DkgStatus::Failure(DkgFailure::BadPrivateShares(config.fake_with_rng(rng))),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Dummy<Unit> for DkgEnd {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        DkgEnd {
+            dkg_id: Faker.fake_with_rng(rng),
+            signer_id: Faker.fake_with_rng(rng),
+            status: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for SignatureType {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_: &Unit, rng: &mut R) -> Self {
+        match rng.gen_range(0..3usize) {
+            0 => SignatureType::Frost,
+            1 => SignatureType::Schnorr,
+            2 => SignatureType::Taproot(if rng.gen_bool(0.5) {
+                None
+            } else {
+                Some(Faker.fake_with_rng(rng))
+            }),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl Dummy<Unit> for NonceRequest {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        NonceRequest {
+            dkg_id: Faker.fake_with_rng(rng),
+            sign_id: Faker.fake_with_rng(rng),
+            sign_iter_id: Faker.fake_with_rng(rng),
+            message: Faker.fake_with_rng(rng),
+            signature_type: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for PublicNonce {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        PublicNonce {
+            D: config.fake_with_rng(rng),
+            E: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for NonceResponse {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        NonceResponse {
+            dkg_id: Faker.fake_with_rng(rng),
+            sign_id: Faker.fake_with_rng(rng),
+            sign_iter_id: Faker.fake_with_rng(rng),
+            signer_id: Faker.fake_with_rng(rng),
+            key_ids: Faker.fake_with_rng(rng),
+            nonces: fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| config.fake_with_rng(rng))
+                .collect(),
+            message: Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for SignatureShareRequest {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        SignatureShareRequest {
+            dkg_id: Faker.fake_with_rng(rng),
+            sign_id: Faker.fake_with_rng(rng),
+            sign_iter_id: Faker.fake_with_rng(rng),
+            nonce_responses: fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| config.fake_with_rng(rng))
+                .collect(),
+            signature_type: config.fake_with_rng(rng),
+            message: Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for SignatureShare {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        SignatureShare {
+            id: Faker.fake_with_rng(rng),
+            z_i: config.fake_with_rng(rng),
+            key_ids: Faker.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for SignatureShareResponse {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        SignatureShareResponse {
+            dkg_id: Faker.fake_with_rng(rng),
+            sign_id: Faker.fake_with_rng(rng),
+            sign_iter_id: Faker.fake_with_rng(rng),
+            signer_id: Faker.fake_with_rng(rng),
+            signature_shares: fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| config.fake_with_rng(rng))
+                .collect(),
+        }
+    }
+}
+
+impl Dummy<Unit> for Nonce {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        Nonce {
+            d: config.fake_with_rng(rng),
+            e: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for (u32, PartyState) {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        (
+            Faker.fake_with_rng(rng),
+            PartyState {
+                polynomial: config.fake_with_rng(rng),
+                private_keys: fake::vec![(); 0..20]
+                    .into_iter()
+                    .map(|_| config.fake_with_rng(rng))
+                    .collect(),
+                nonce: config.fake_with_rng(rng),
+            },
+        )
+    }
+}
+
+impl Dummy<Unit> for SignerState {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        SignerState {
+            id: Faker.fake_with_rng(rng),
+            key_ids: Faker.fake_with_rng(rng),
+            num_keys: Faker.fake_with_rng(rng),
+            num_parties: Faker.fake_with_rng(rng),
+            threshold: Faker.fake_with_rng(rng),
+            group_key: config.fake_with_rng(rng),
+            parties: fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| config.fake_with_rng(rng))
+                .collect(),
+        }
+    }
+}
+
+impl Dummy<Unit> for wsts::schnorr::ID {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        wsts::schnorr::ID {
+            id: config.fake_with_rng(rng),
+            kG: config.fake_with_rng(rng),
+            kca: config.fake_with_rng(rng),
+        }
+    }
+}
+
+impl Dummy<Unit> for PolyCommitment {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        PolyCommitment {
+            id: config.fake_with_rng(rng),
+            poly: fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| config.fake_with_rng(rng))
+                .collect(),
+        }
+    }
+}
+
+impl Dummy<Unit> for (u32, PolyCommitment) {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        (Faker.fake_with_rng(rng), config.fake_with_rng(rng))
+    }
+}
+
+impl Dummy<Unit> for DkgPublicShares {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        DkgPublicShares {
+            dkg_id: Faker.fake_with_rng(rng),
+            signer_id: Faker.fake_with_rng(rng),
+            comms: fake::vec![(); 0..20]
+                .into_iter()
+                .map(|_| config.fake_with_rng(rng))
+                .collect(),
+        }
+    }
+}
+
+impl Dummy<Unit> for BTreeMap<u32, DkgPublicShares> {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(config: &Unit, rng: &mut R) -> Self {
+        fake::vec![(); 0..20]
+            .into_iter()
+            .map(|_| (Faker.fake_with_rng(rng), config.fake_with_rng(rng)))
+            .collect()
     }
 }

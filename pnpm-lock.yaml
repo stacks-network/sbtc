@@ -11,13 +11,7 @@ importers:
 
   .: {}
 
-  .generated-sources/blocklist-openapi-gen:
-    devDependencies:
-      '@openapitools/openapi-generator-cli':
-        specifier: ^2.13.2
-        version: 2.13.4
-
-  .generated-sources/emily/openapi:
+  blocklist-openapi-gen:
     devDependencies:
       '@openapitools/openapi-generator-cli':
         specifier: ^2.13.2
@@ -120,6 +114,12 @@ importers:
       typescript:
         specifier: ~5.0.4
         version: 5.0.4
+
+  emily/openapi-gen:
+    devDependencies:
+      '@openapitools/openapi-generator-cli':
+        specifier: ^2.13.2
+        version: 2.13.4
 
 packages:
 

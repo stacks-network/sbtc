@@ -57,6 +57,8 @@ bootstrap_signatures_required = 11
 
 bitcoin_processing_delay = 30
 
+requests_processing_delay = 15
+
 [signer.event_observer]
 bind = "0.0.0.0:8801"
 
@@ -65,3 +67,4 @@ seeds = [
     "tcp://176.34.190.109:4122" # Bitcoin L2 Labs testnet signer
 ]
 listen_on = ["tcp://0.0.0.0:4122"]
+public_endpoints = []

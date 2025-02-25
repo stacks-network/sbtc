@@ -21,7 +21,6 @@ use warp::reply::{json, with_status, Reply};
     path = "/chainstate",
     tag = "chainstate",
     responses(
-        // TODO(271): Add success body.
         (status = 200, description = "Chain tip retrieved successfully", body = Chainstate),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
@@ -54,7 +53,6 @@ pub async fn get_chain_tip(context: EmilyContext) -> impl warp::reply::Reply {
     ),
     tag = "chainstate",
     responses(
-        // TODO(271): Add success body.
         (status = 200, description = "Chainstate retrieved successfully", body = Chainstate),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
@@ -91,7 +89,6 @@ pub async fn get_chainstate_at_height(
     tag = "chainstate",
     request_body = Chainstate,
     responses(
-        // TODO(271): Add success body.
         (status = 201, description = "Chainstate updated successfully", body = Chainstate),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
@@ -138,7 +135,6 @@ pub async fn set_chainstate(
     tag = "chainstate",
     request_body = Chainstate,
     responses(
-        // TODO(271): Add success body.
         (status = 201, description = "Chainstate updated successfully", body = Chainstate),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),

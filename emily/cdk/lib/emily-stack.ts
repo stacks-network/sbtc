@@ -135,16 +135,16 @@ export class EmilyStack extends cdk.Stack {
             pointInTimeRecovery: pointInTimeRecovery,
         });
 
-        const indexName: string = "DepositStatus";
+        const byStatusIndexName: string = "DepositStatus";
         table.addGlobalSecondaryIndex({
-            indexName: indexName,
+            indexName: byStatusIndexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.STRING
+                type: dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
-                type:  dynamodb.AttributeType.NUMBER
+                type: dynamodb.AttributeType.NUMBER
             },
             projectionType: dynamodb.ProjectionType.INCLUDE,
             nonKeyAttributes: [
@@ -158,7 +158,53 @@ export class EmilyStack extends cdk.Stack {
             ]
         });
 
-        // TODO(388): Add an additional GSI for querying by user; not required for MVP.
+        const byRecipientIndexName: string = "DepositRecipient";
+        table.addGlobalSecondaryIndex({
+            indexName: byRecipientIndexName,
+            partitionKey: {
+                name: 'Recipient',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "BitcoinTxid",
+                "BitcoinTxOutputIndex",
+                "OpStatus",
+                "Amount",
+                "LastUpdateBlockHash",
+                "ReclaimScript",
+                "DepositScript",
+            ]
+        });
+
+        // Index to efficiently query deposits that comes from a specific address
+        const byReclaimPubkeysHashIndexName: string = "DepositReclaimPubkeysHashIndex";
+        table.addGlobalSecondaryIndex({
+            indexName: byReclaimPubkeysHashIndexName,
+            partitionKey: {
+                name: 'ReclaimPubkeysHash',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "BitcoinTxid",
+                "BitcoinTxOutputIndex",
+                "Recipient",
+                "OpStatus",
+                "Amount",
+                "LastUpdateBlockHash",
+                "ReclaimScript",
+                "DepositScript",
+            ]
+        });
         return table;
     }
 
@@ -192,16 +238,16 @@ export class EmilyStack extends cdk.Stack {
             pointInTimeRecovery: pointInTimeRecovery,
         });
 
-        const indexName: string = "WithdrawalStatus";
+        const byStatusIndexName: string = "WithdrawalStatus";
         table.addGlobalSecondaryIndex({
-            indexName: indexName,
+            indexName: byStatusIndexName,
             partitionKey: {
                 name: 'OpStatus',
-                type:  dynamodb.AttributeType.STRING
+                type: dynamodb.AttributeType.STRING
             },
             sortKey: {
                 name: 'LastUpdateHeight',
-                type:  dynamodb.AttributeType.NUMBER
+                type: dynamodb.AttributeType.NUMBER
             },
             projectionType: dynamodb.ProjectionType.INCLUDE,
             nonKeyAttributes: [
@@ -209,6 +255,28 @@ export class EmilyStack extends cdk.Stack {
                 "StacksBlockHash",
                 "StacksBlockHeight",
                 "Recipient",
+                "Amount",
+                "LastUpdateBlockHash",
+            ]
+        });
+
+        const byRecipientIndexName: string = "WithdrawalRecipient";
+        table.addGlobalSecondaryIndex({
+            indexName: byRecipientIndexName,
+            partitionKey: {
+                name: 'Recipient',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "RequestId",
+                "StacksBlockHash",
+                "StacksBlockHeight",
+                "OpStatus",
                 "Amount",
                 "LastUpdateBlockHash",
             ]
@@ -293,7 +361,7 @@ export class EmilyStack extends cdk.Stack {
         chainstateTableName: string,
         limitTableName: string,
         removalPolicy: cdk.RemovalPolicy,
-        props: EmilyStackProps
+        props: EmilyStackProps,
     ): lambda.Function {
 
         const operationLambdaId: string = "OperationLambda";
@@ -320,6 +388,8 @@ export class EmilyStack extends cdk.Stack {
                 // already expected to be present in the lambda.
                 IS_LOCAL: "false",
                 TRUSTED_REORG_API_KEY: props.trustedReorgApiKey,
+                IS_MAINNET: props.stageName == Constants.PROD_STAGE_NAME || props.stageName == Constants.PRIVATE_MAINNET_STAGE_NAME ? "true" : "false",
+                VERSION: EmilyStackUtils.getLambdaGitIdentifier(),
             },
             description: `Emily Api Handler. ${EmilyStackUtils.getLambdaGitIdentifier()}`,
             currentVersionOptions: {
@@ -393,7 +463,7 @@ export class EmilyStack extends cdk.Stack {
             restApiName: EmilyStackUtils.getResourceName(apiId, props),
             apiDefinition: EmilyStackUtils.restApiDefinitionWithLambdaIntegration(
                 EmilyStackUtils.getPathFromProjectRoot(
-                    `.generated-sources/emily/openapi/generated-specs/${apiPurpose}-emily-openapi-spec.json`
+                    `emily/openapi-gen/generated-specs/${apiPurpose}-emily-openapi-spec.json`
                 ),
                 [
                     // This must match the Lambda name from the @aws.apigateway#integration trait in the
@@ -453,7 +523,7 @@ export class EmilyStack extends cdk.Stack {
             }
 
             // Create the custom domain name of the format:
-            //   if stage != prod: [stage].[purpose].[customRootDomainNameRoot]
+            //   if stage != prod: [purpose].[stage].[customRootDomainNameRoot]
             //   if stage == prod: [purpose].[customRootDomainNameRoot]
             const stagePrefix = EmilyStackUtils.getStageName() === Constants.PROD_STAGE_NAME
                 ? ""

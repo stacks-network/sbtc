@@ -21,6 +21,7 @@ use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::utxo::WithdrawalRequest;
 use signer::context::SbtcLimits;
 use signer::storage::model::ScriptPubKey;
+use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
@@ -130,7 +131,6 @@ struct RbfContext {
 ///    fees paid for the last successfully submitted transaction to
 ///    construct and submit an RBF transaction.
 /// 4. Check that the withdrawal recipients have the expected balance.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case::test_matrix(
     [5, 0, 9],
     [5, 0, 9],
@@ -229,7 +229,8 @@ pub fn transaction_with_rbf(
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
+        max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
     // Okay, lets submit the transaction. We also do a sanity check where

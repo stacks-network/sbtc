@@ -79,7 +79,7 @@ async fn set_api_state_status(
             Err(Error::VersionConflict) => {
                 debug!("Failed to update API state - retrying: {api_state:?}")
             }
-            // If some other error occured then return from here; this shouldn't
+            // If some other error occurred then return from here; this shouldn't
             // happen and something has actually gone wrong.
             e @ Err(_) => e?,
         }
@@ -90,7 +90,7 @@ async fn set_api_state_status(
 
 /// Handler that executes a reorg.
 ///
-/// This function isn't intendeded to be exposed into any specific endpoint
+/// This function isn't intended to be exposed into any specific endpoint
 /// outside of what could maybe be a testing endpoint one day. It handles
 /// the internal requests to execute a reorg.
 pub async fn execute_reorg_handler(

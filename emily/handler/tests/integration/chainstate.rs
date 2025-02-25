@@ -42,7 +42,6 @@ async fn batch_set_chainstates(
     created
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(1123, 1128; "create-5-chainstates")]
 #[tokio::test]
 async fn create_and_get_chainstate_happy_path(min_height: u64, max_height: u64) {
@@ -86,7 +85,6 @@ async fn create_and_get_chainstate_happy_path(min_height: u64, max_height: u64) 
     assert_eq!(expected_chaintip, gotten_chaintip)
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(1123, 1128, 1133; "standard-reorg")]
 #[test_case(1123, 1133, 1133; "reorg-to-tip-at-same-height")]
 #[test_case(1123, 1111, 1133; "reorg-to-tip-below-any-existing-entry")]
@@ -125,7 +123,6 @@ async fn create_and_get_chainstate_reorg_happy_path(
     assert_eq!(expected_post_reorg_chaintip, gotten_post_reorg_chaintip);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test_case(1123, 1128; "replay-5-chainstates-out-of-order")]
 #[tokio::test]
 async fn create_and_replay_does_not_initiate_reorg(min_height: u64, max_height: u64) {

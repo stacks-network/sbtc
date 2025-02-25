@@ -367,6 +367,16 @@ impl BitcoinInteract for WrappedMock<MockBitcoinInteract> {
     ) -> Result<Option<bitcoincore_rpc_json::GetMempoolEntryResult>, Error> {
         unimplemented!()
     }
+
+    async fn get_blockchain_info(
+        &self,
+    ) -> Result<bitcoincore_rpc_json::GetBlockchainInfoResult, Error> {
+        self.inner.lock().await.get_blockchain_info().await
+    }
+
+    async fn get_network_info(&self) -> Result<bitcoincore_rpc_json::GetNetworkInfoResult, Error> {
+        self.inner.lock().await.get_network_info().await
+    }
 }
 
 impl StacksInteract for WrappedMock<MockStacksInteract> {
@@ -389,6 +399,30 @@ impl StacksInteract for WrappedMock<MockStacksInteract> {
             .lock()
             .await
             .get_current_signers_aggregate_key(contract_principal)
+            .await
+    }
+
+    async fn is_deposit_completed(
+        &self,
+        contract_principal: &StacksAddress,
+        outpoint: &bitcoin::OutPoint,
+    ) -> Result<bool, Error> {
+        self.inner
+            .lock()
+            .await
+            .is_deposit_completed(contract_principal, outpoint)
+            .await
+    }
+
+    async fn is_withdrawal_completed(
+        &self,
+        contract_principal: &StacksAddress,
+        request_id: u64,
+    ) -> Result<bool, Error> {
+        self.inner
+            .lock()
+            .await
+            .is_withdrawal_completed(contract_principal, request_id)
             .await
     }
 

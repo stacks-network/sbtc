@@ -51,8 +51,6 @@ impl fake::Dummy<fake::Faker> for message::Payload {
             dummy_payload::<message::SignerWithdrawalDecision, _>,
             dummy_payload::<message::StacksTransactionSignRequest, _>,
             dummy_payload::<message::StacksTransactionSignature, _>,
-            dummy_payload::<message::BitcoinTransactionSignRequest, _>,
-            dummy_payload::<message::BitcoinTransactionSignAck, _>,
             dummy_payload::<message::WstsMessage, _>,
             dummy_payload::<message::BitcoinPreSignRequest, _>,
         ];
@@ -79,31 +77,12 @@ impl fake::Dummy<fake::Faker> for message::SignerDepositDecision {
     }
 }
 
-impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignRequest {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        let mut bytes: [u8; 32] = [0; 32];
-        rng.fill_bytes(&mut bytes);
-        let private_key = PrivateKey::new(rng);
-
-        Self {
-            tx: dummy::tx(config, rng),
-            aggregate_key: PublicKey::from_private_key(&private_key),
-        }
-    }
-}
-
-impl fake::Dummy<fake::Faker> for message::BitcoinTransactionSignAck {
-    fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        Self { txid: dummy::txid(config, rng) }
-    }
-}
-
 impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         let private_key = PrivateKey::new(rng);
         Self {
             contract_tx: ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
-                request_id: 1,
+                id: config.fake_with_rng(rng),
                 signer_bitmap: BitArray::ZERO,
                 deployer: StacksAddress::burn_address(false),
             })
@@ -134,7 +113,7 @@ impl fake::Dummy<fake::Faker> for message::WstsMessage {
         };
 
         Self {
-            txid: dummy::txid(config, rng),
+            id: dummy::txid(config, rng).into(),
             inner: wsts::net::Message::DkgEndBegin(dkg_end_begin),
         }
     }

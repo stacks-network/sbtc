@@ -10,14 +10,12 @@ pub const BITCOIN_CORE_ZMQ_ENDPOINT: &str = "tcp://localhost:28332";
 /// bitcoin-core as it receives them. We create the stream, generate
 /// bitcoin blocks, and wait for the blocks to be received from the stream.
 #[tokio::test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 async fn block_stream_streams_blocks() {
     let (_, faucet) = regtest::initialize_blockchain();
 
-    let stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["rawblock"])
-            .await
-            .unwrap();
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT)
+        .await
+        .unwrap();
 
     let mut block_stream = stream.to_block_stream();
 
@@ -64,14 +62,12 @@ async fn block_stream_streams_blocks() {
 /// stream. This also checks that we parse block hashes correctly, since
 /// they are supposed to be little-endian formatted.
 #[tokio::test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 async fn block_hash_stream_streams_block_hashes() {
     let (_, faucet) = regtest::initialize_blockchain();
 
-    let stream =
-        BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT, &["hashblock"])
-            .await
-            .unwrap();
+    let stream = BitcoinCoreMessageStream::new_from_endpoint(BITCOIN_CORE_ZMQ_ENDPOINT)
+        .await
+        .unwrap();
 
     let mut block_hash_stream = stream.to_block_hash_stream();
 

@@ -18,6 +18,7 @@ use crate::network::MessageTransfer as _;
 use crate::request_decider::RequestDeciderEventLoop;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::DkgSharesStatus;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
@@ -42,6 +43,7 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
         context: C,
         network: SignerNetwork,
         context_window: u16,
+        deposit_decisions_retry_window: u16,
         signer_private_key: PrivateKey,
     ) -> Self {
         Self {
@@ -51,6 +53,7 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
                 blocklist_checker: Some(()),
                 signer_private_key,
                 context_window,
+                deposit_decisions_retry_window,
             },
             context,
         }
@@ -122,6 +125,8 @@ pub struct TestEnvironment<C> {
     pub context: C,
     /// Bitcoin context window
     pub context_window: u16,
+    /// Deposit decisions retry window
+    pub deposit_decisions_retry_window: u16,
     /// Num signers
     pub num_signers: usize,
     /// Signing threshold
@@ -156,6 +161,7 @@ where
             self.context.clone(),
             signer_network,
             self.context_window,
+            self.deposit_decisions_retry_window,
             coordinator_signer_info.signer_private_key,
         );
 
@@ -172,6 +178,7 @@ where
             &handle.context.get_storage_mut(),
             group_key,
             signer_set.clone(),
+            DkgSharesStatus::Verified,
         )
         .await;
 
@@ -238,6 +245,7 @@ where
             self.context.clone(),
             signer_network,
             self.context_window,
+            self.deposit_decisions_retry_window,
             coordinator_signer_info.signer_private_key,
         );
 
@@ -295,7 +303,7 @@ where
     /// Assert that the transaction signer will make and store decisions
     /// received from other signers.
     pub async fn assert_should_store_decisions_received_from_other_signers(self) {
-        let mut rng = rand::rngs::StdRng::seed_from_u64(46);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
         let network = WanNetwork::default();
         let signer_info = testing::wsts::generate_signer_info(&mut rng, self.num_signers);
         let coordinator_signer_info = signer_info.first().cloned().unwrap();
@@ -315,6 +323,7 @@ where
                     ctx,
                     net,
                     self.context_window,
+                    self.deposit_decisions_retry_window,
                     signer_info.signer_private_key,
                 );
 
@@ -335,9 +344,19 @@ where
                 &handle.context.get_storage_mut(),
                 group_key,
                 signer_set.clone(),
+                DkgSharesStatus::Verified,
             )
             .await;
         }
+
+        let db = event_loop_handles.first().unwrap().context.get_storage();
+        let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
+        let signer_public_key = signer_set.first().unwrap();
+        let pending_deposits_count = db
+            .get_pending_deposit_requests(&chain_tip, self.context_window, signer_public_key)
+            .await
+            .unwrap()
+            .len();
 
         // For each signer, send a signal to simulate the observation of a new block.
         for handle in event_loop_handles.iter() {
@@ -347,15 +366,13 @@ where
                 .expect("failed to send signal");
         }
 
-        let num_expected_decisions = (self.num_signers - 1) as u16
-            * self.context_window
-            * self.test_model_parameters.num_deposit_requests_per_block as u16;
+        let num_expected_decisions = ((self.num_signers - 1) * pending_deposits_count) as u16;
 
         // Wait for the expected number of decisions to be received by each signer.
         for handle in event_loop_handles.iter_mut() {
             let msg = RequestDeciderEvent::ReceivedDepositDecision;
             handle
-                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(13))
+                .wait_for_events(msg, num_expected_decisions, Duration::from_secs(10))
                 .await
                 .expect("timed out waiting for events");
         }
@@ -532,12 +549,18 @@ async fn store_dummy_dkg_shares<R, S>(
     storage: &S,
     group_key: PublicKey,
     signer_set: BTreeSet<PublicKey>,
+    status: DkgSharesStatus,
 ) where
     R: rand::CryptoRng + rand::RngCore,
     S: storage::DbWrite,
 {
-    let mut shares =
-        testing::dummy::encrypted_dkg_shares(&fake::Faker, rng, signer_private_key, group_key);
+    let mut shares = testing::dummy::encrypted_dkg_shares(
+        &fake::Faker,
+        rng,
+        signer_private_key,
+        group_key,
+        status,
+    );
     shares.signer_set_public_keys = signer_set.into_iter().collect();
 
     storage

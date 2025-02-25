@@ -23,7 +23,6 @@ use signer::bitcoin::BitcoinInteract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn btc_client_getstransaction() {
     let client = BitcoinCoreClient::new(
@@ -67,7 +66,6 @@ fn btc_client_getstransaction() {
     assert_eq!(response.confirmations, Some(1));
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn btc_client_getblockheader() {
     let client = BitcoinCoreClient::new(
@@ -93,7 +91,6 @@ fn btc_client_getblockheader() {
     assert!(client.get_block_header(&random_hash).unwrap().is_none());
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn btc_client_gets_transaction_info() {
     let client = BitcoinCoreClient::new(
@@ -136,7 +133,6 @@ fn btc_client_gets_transaction_info() {
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn btc_client_gets_transaction_info_missing_tx() {
     let client = BitcoinCoreClient::new(
@@ -177,7 +173,6 @@ fn btc_client_gets_transaction_info_missing_tx() {
     assert!(response.is_none());
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn btc_client_unsubmitted_tx() {
     let client = BitcoinCoreClient::new(
@@ -198,7 +193,6 @@ fn btc_client_unsubmitted_tx() {
 /// estimate the fee rate, otherwise it will return an error. Since we do
 /// not ensure that bitcoin-core has enough transactions to estimate fees
 /// in the test, we just check that fee is positive.
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[test]
 fn estimate_fee_rate() {
     let _ = regtest::initialize_blockchain();
@@ -215,7 +209,6 @@ fn estimate_fee_rate() {
     }
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_tx_spending_prevout() {
     let client = BitcoinCoreClient::new(
@@ -281,7 +274,6 @@ async fn get_tx_spending_prevout() {
     assert!(response.is_empty());
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_tx_spending_prevout_nonexistent_txid() {
     let client = BitcoinCoreClient::new(
@@ -305,7 +297,6 @@ async fn get_tx_spending_prevout_nonexistent_txid() {
     assert!(result.is_empty());
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_mempool_descendants() {
     let client = BitcoinCoreClient::new(
@@ -438,7 +429,6 @@ async fn get_mempool_descendants() {
     assert!(response.contains(&tx3.compute_txid()));
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_tx_out_confirmed_no_mempool() {
     let client = BitcoinCoreClient::new(
@@ -464,7 +454,6 @@ async fn get_tx_out_confirmed_no_mempool() {
     assert_eq!(txout.confirmations, 1);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_tx_out_confirmed_with_mempool() {
     let client = BitcoinCoreClient::new(
@@ -490,7 +479,6 @@ async fn get_tx_out_confirmed_with_mempool() {
     assert_eq!(txout.confirmations, 1);
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_tx_out_unconfirmed_no_mempool() {
     let client = BitcoinCoreClient::new(
@@ -513,7 +501,6 @@ async fn get_tx_out_unconfirmed_no_mempool() {
     assert!(txout.is_none());
 }
 
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 #[tokio::test]
 async fn get_tx_out_unconfirmed_with_mempool() {
     let client = BitcoinCoreClient::new(

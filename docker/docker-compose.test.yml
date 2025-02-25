@@ -26,12 +26,11 @@ services:
       retries: 3
 
   postgres:
-    image: postgres:16.3
+    image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: signer
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
@@ -40,23 +39,6 @@ services:
       interval: 2s
       timeout: 1s
       retries: 5
-
-  flyway:
-    image: flyway/flyway:10.13.0
-    command: >-
-      -url=jdbc:postgresql://postgres:5432/signer
-      -user=postgres
-      -password=postgres
-      -sqlMigrationPrefix=""
-      -connectRetries=60
-      migrate
-    volumes:
-      - ../signer/migrations:/flyway/sql
-    depends_on:
-      postgres:
-        condition: service_healthy
-    profiles:
-      - manual_start
 
   # DynamoDB Tables for the Emily API.
   emily-dynamodb:
@@ -94,3 +76,20 @@ services:
       - PORT=3031
     ports:
       - "3031:3031"
+
+  flyway:
+    image: flyway/flyway:10.13.0
+    command: >-
+      -url=jdbc:postgresql://postgres:5432/postgres
+      -user=postgres
+      -password=postgres
+      -sqlMigrationPrefix=""
+      -connectRetries=60
+      migrate
+    volumes:
+      - ../signer/migrations:/flyway/sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - manual_start

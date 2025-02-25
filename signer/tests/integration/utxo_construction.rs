@@ -30,6 +30,7 @@ use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
 use signer::bitcoin::utxo::WithdrawalRequest;
 use signer::context::SbtcLimits;
+use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 use stacks_common::types::chainstate::StacksAddress;
 
 use regtest::Recipient;
@@ -39,12 +40,16 @@ use sbtc::testing::regtest::AsUtxo;
 pub static REQUEST_IDS: AtomicU64 = AtomicU64::new(0);
 
 pub fn generate_withdrawal() -> (WithdrawalRequest, Recipient) {
-    let recipient = Recipient::new(AddressType::P2tr);
     let amount = OsRng.sample(Uniform::new(200_000, 250_000));
+    make_withdrawal(amount, amount / 2)
+}
+
+pub fn make_withdrawal(amount: u64, max_fee: u64) -> (WithdrawalRequest, Recipient) {
+    let recipient = Recipient::new(AddressType::P2tr);
 
     let req = WithdrawalRequest {
         amount,
-        max_fee: amount / 2,
+        max_fee,
         script_pubkey: recipient.script_pubkey.clone().into(),
         signer_bitmap: BitArray::ZERO,
         request_id: REQUEST_IDS.fetch_add(1, Ordering::Relaxed),
@@ -108,7 +113,7 @@ where
         reclaim_script,
     };
 
-    let dep = create_req.validate_tx(&deposit_tx).unwrap();
+    let dep = create_req.validate_tx(&deposit_tx, false).unwrap();
 
     let req = DepositRequest {
         outpoint: dep.outpoint,
@@ -125,7 +130,6 @@ where
 /// This test just checks that many of the methods on the Recipient struct
 /// work as advertised.
 #[test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn helper_struct_methods_work() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let signer = Recipient::new(AddressType::P2tr);
@@ -163,7 +167,6 @@ fn helper_struct_methods_work() {
 /// Check that deposits, when sent with the expected format, are
 /// spent using the transactions generated in the utxo module.
 #[test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn deposits_add_to_controlled_amounts() {
     let (rpc, faucet) = regtest::initialize_blockchain();
     let fee = regtest::BITCOIN_CORE_FALLBACK_FEE.to_sat();
@@ -224,7 +227,8 @@ fn deposits_add_to_controlled_amounts() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
+        max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
     // There should only be one transaction here since there is only one
@@ -248,7 +252,6 @@ fn deposits_add_to_controlled_amounts() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration-tests"), ignore)]
 fn withdrawals_reduce_to_signers_amounts() {
     const FEE_RATE: f64 = 10.0;
 
@@ -289,7 +292,8 @@ fn withdrawals_reduce_to_signers_amounts() {
         },
         accept_threshold: 4,
         num_signers: 7,
-        sbtc_limits: SbtcLimits::default(),
+        sbtc_limits: SbtcLimits::unlimited(),
+        max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
     };
 
     // There should only be one transaction here since there is only one

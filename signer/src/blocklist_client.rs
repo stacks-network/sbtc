@@ -8,44 +8,52 @@
 use blocklist_api::apis::address_api::{check_address, CheckAddressError};
 use blocklist_api::apis::configuration::Configuration;
 use blocklist_api::apis::Error as ClientError;
-use blocklist_api::models::BlocklistStatus;
 use std::future::Future;
+use std::time::Duration;
 
-use crate::context::Context;
+use crate::config::BlocklistClientConfig;
+use crate::error::Error;
+
+/// Blocklist client error variants.
+#[derive(Debug, thiserror::Error)]
+pub enum BlocklistClientError {
+    /// An error occurred while checking an address
+    #[error("error checking an address: {0}")]
+    CheckAddress(ClientError<CheckAddressError>),
+}
 
 /// A trait for checking if an address is blocklisted.
 pub trait BlocklistChecker {
     /// Checks if the given address is blocklisted.
     /// Returns `true` if the address is blocklisted, otherwise `false`.
-    fn can_accept(
-        &self,
-        address: &str,
-    ) -> impl Future<Output = Result<bool, ClientError<CheckAddressError>>> + Send;
+    fn can_accept(&self, address: &str) -> impl Future<Output = Result<bool, Error>> + Send;
 }
 
 /// A client for interacting with the blocklist service.
 #[derive(Clone, Debug)]
 pub struct BlocklistClient {
     config: Configuration,
+    retry_delay: Duration,
 }
 
 impl BlocklistChecker for BlocklistClient {
-    async fn can_accept(&self, address: &str) -> Result<bool, ClientError<CheckAddressError>> {
-        let config = self.config.clone();
-
-        // Call the generated function from blocklist-api
-        let resp: BlocklistStatus = check_address(&config, address).await?;
-        Ok(resp.accept)
+    async fn can_accept(&self, address: &str) -> Result<bool, Error> {
+        let response = self.check_address(address).await;
+        if let Err(error) = response {
+            tracing::error!(%error, "blocklist client error, sleeping and retrying once");
+            tokio::time::sleep(self.retry_delay).await;
+            self.check_address(address).await
+        } else {
+            response
+        }
     }
 }
 
 impl BlocklistClient {
     /// Construct a new [`BlocklistClient`]
-    pub fn new(ctx: &impl Context) -> Option<Self> {
-        let config = ctx.config().blocklist_client.as_ref()?;
-
+    pub fn new(client_config: &BlocklistClientConfig) -> Self {
         let mut config = Configuration {
-            base_path: config.endpoint.to_string(),
+            base_path: client_config.endpoint.to_string(),
             ..Default::default()
         };
 
@@ -57,29 +65,39 @@ impl BlocklistClient {
             .trim_end_matches("/")
             .to_string();
 
-        Some(BlocklistClient { config })
+        BlocklistClient {
+            config,
+            retry_delay: client_config.retry_delay,
+        }
     }
 
-    #[cfg(test)]
-    fn with_base_url(base_url: String) -> Self {
+    /// Construct a new [`BlocklistClient`] from a base url
+    #[cfg(any(test, feature = "testing"))]
+    pub fn with_base_url(base_url: String) -> Self {
         let config = Configuration {
             base_path: base_url.clone(),
             ..Default::default()
         };
 
-        BlocklistClient { config }
+        BlocklistClient {
+            config,
+            retry_delay: Duration::ZERO,
+        }
+    }
+
+    async fn check_address(&self, address: &str) -> Result<bool, Error> {
+        // Call the generated function from blocklist-api
+        check_address(&self.config, address)
+            .await
+            .map_err(BlocklistClientError::CheckAddress)
+            .map_err(Error::BlocklistClient)
+            .map(|resp| resp.accept)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        config::BlocklistClientConfig,
-        testing::context::{
-            self, BuildContext as _, ConfigureMockedClients, ConfigureSettings,
-            ConfigureStorage as _,
-        },
-    };
+    use crate::config::BlocklistClientConfig;
 
     use super::*;
     use mockito::{Server, ServerGuard};
@@ -179,15 +197,10 @@ mod tests {
     fn try_from_url_with_slash() {
         let endpoint = Url::parse("http://localhost:8080/").unwrap();
 
-        let ctx = context::TestContext::builder()
-            .modify_settings(|config| {
-                config.blocklist_client = Some(BlocklistClientConfig { endpoint })
-            })
-            .with_in_memory_storage()
-            .with_mocked_clients()
-            .build();
-
-        let client = BlocklistClient::new(&ctx).unwrap();
+        let client = BlocklistClient::new(&BlocklistClientConfig {
+            endpoint,
+            retry_delay: Duration::ZERO,
+        });
 
         assert_eq!(client.config.base_path, "http://localhost:8080");
     }
@@ -196,15 +209,10 @@ mod tests {
     fn try_from_url_without_slash() {
         let endpoint = Url::parse("http://localhost:8080").unwrap();
 
-        let ctx = context::TestContext::builder()
-            .modify_settings(|config| {
-                config.blocklist_client = Some(BlocklistClientConfig { endpoint })
-            })
-            .with_in_memory_storage()
-            .with_mocked_clients()
-            .build();
-
-        let client = BlocklistClient::new(&ctx).unwrap();
+        let client = BlocklistClient::new(&BlocklistClientConfig {
+            endpoint,
+            retry_delay: Duration::ZERO,
+        });
 
         assert_eq!(client.config.base_path, "http://localhost:8080");
     }

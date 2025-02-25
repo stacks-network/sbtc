@@ -422,7 +422,9 @@ where
         .collect();
 
     // This will only fail if we get very unlucky with private keys that we
-    // generate.
+    // generate. We create a new wallet so that we don't alter the state of the
+    // wallet that was passed in, which will increment nonces for new
+    // transactions.
     let wallet = SignerWallet::new(
         &public_keys,
         wallet.signatures_required,
@@ -677,6 +679,7 @@ mod tests {
             num_deposit_requests_per_block: 0,
             num_withdraw_requests_per_block: 0,
             num_signers_per_request: 0,
+            consecutive_blocks: false,
         };
         let test_data = TestData::generate(&mut rng, &[], &test_params);
         test_data.write_to(&db).await;

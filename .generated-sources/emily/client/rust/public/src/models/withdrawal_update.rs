@@ -11,7 +11,7 @@
 use crate::models;
 use serde::{Deserialize, Serialize};
 
-/// WithdrawalUpdate : A singlular Withdrawal update that contains only the fields pertinent to updating the status of a withdrawal. This includes the key related data in addition to status history related data.
+/// WithdrawalUpdate : A singular Withdrawal update that contains only the fields pertinent to updating the status of a withdrawal. This includes the key related data in addition to status history related data.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct WithdrawalUpdate {
     #[serde(
@@ -38,7 +38,7 @@ pub struct WithdrawalUpdate {
 }
 
 impl WithdrawalUpdate {
-    /// A singlular Withdrawal update that contains only the fields pertinent to updating the status of a withdrawal. This includes the key related data in addition to status history related data.
+    /// A singular Withdrawal update that contains only the fields pertinent to updating the status of a withdrawal. This includes the key related data in addition to status history related data.
     pub fn new(
         last_update_block_hash: String,
         last_update_height: u64,

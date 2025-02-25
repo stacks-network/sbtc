@@ -3,14 +3,19 @@ use config::Config;
 use config::ConfigError;
 use config::Environment;
 use config::File;
+use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use serde::Deserialize;
 use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
+use std::num::NonZeroU16;
+use std::num::NonZeroU32;
+use std::num::NonZeroU64;
 use std::path::Path;
 use url::Url;
 
 use crate::config::error::SignerConfigError;
+use crate::config::serialization::duration_milliseconds_deserializer;
 use crate::config::serialization::duration_seconds_deserializer;
 use crate::config::serialization::p2p_multiaddr_deserializer_vec;
 use crate::config::serialization::parse_stacks_address;
@@ -19,13 +24,18 @@ use crate::config::serialization::url_deserializer_single;
 use crate::config::serialization::url_deserializer_vec;
 use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
+use crate::network::libp2p::MultiaddrExt as _;
 use crate::stacks::wallet::SignerWallet;
+use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 mod error;
 mod serialization;
 
 /// Maximum configurable delay (in seconds) before processing new Bitcoin blocks.
 pub const MAX_BITCOIN_PROCESSING_DELAY_SECONDS: u64 = 300;
+
+/// Maximum configurable delay (in seconds) before processing new SBTC requests.
+pub const MAX_REQUESTS_PROCESSING_DELAY_SECONDS: u64 = 300;
 
 /// Trait for validating configuration values.
 trait Validatable {
@@ -52,6 +62,16 @@ impl From<NetworkKind> for bitcoin::NetworkKind {
         match value {
             NetworkKind::Mainnet => bitcoin::NetworkKind::Main,
             _ => bitcoin::NetworkKind::Test,
+        }
+    }
+}
+
+impl std::fmt::Display for NetworkKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NetworkKind::Mainnet => write!(f, "mainnet"),
+            NetworkKind::Testnet => write!(f, "testnet"),
+            NetworkKind::Regtest => write!(f, "regtest"),
         }
     }
 }
@@ -133,6 +153,17 @@ pub struct P2PNetworkConfig {
     pub enable_mdns: bool,
 }
 
+impl P2PNetworkConfig {
+    /// Returns whether QUIC is used in the P2P network configuration, i.e. if
+    /// any of the seeds or listen_on addresses use the QUIC protocol.
+    pub fn is_quic_used(&self) -> bool {
+        self.listen_on
+            .iter()
+            .chain(self.seeds.iter())
+            .any(|addr| addr.is_quic())
+    }
+}
+
 impl Validatable for P2PNetworkConfig {
     fn validate(&self, cfg: &Settings) -> Result<(), ConfigError> {
         if [NetworkKind::Mainnet, NetworkKind::Testnet].contains(&cfg.signer.network)
@@ -141,6 +172,35 @@ impl Validatable for P2PNetworkConfig {
             return Err(ConfigError::Message(
                 SignerConfigError::P2PSeedPeerRequired.to_string(),
             ));
+        }
+
+        // Validate that any public endpoints use protocols that are currently
+        // used in the listen_on addresses.
+        let listen_on_protocols = self
+            .listen_on
+            .iter()
+            .filter_map(|addr| addr.get_transport_protocol())
+            .collect::<Vec<_>>();
+
+        for public_endpoint in &self.public_endpoints {
+            if let Some(public_protocol) = public_endpoint.get_transport_protocol() {
+                let is_valid = listen_on_protocols.iter().any(|listen_protocol| {
+                    match (&public_protocol, listen_protocol) {
+                        (Protocol::Tcp(_), Protocol::Tcp(_)) => true, // Port-agnostic comparison for TCP
+                        (Protocol::QuicV1, Protocol::QuicV1) => true,
+                        _ => false,
+                    }
+                });
+
+                if !is_valid {
+                    return Err(ConfigError::Message(
+                        SignerConfigError::P2PPublicEndpointProtocolMismatch(
+                            public_endpoint.clone(),
+                        )
+                        .to_string(),
+                    ));
+                }
+            }
         }
 
         Ok(())
@@ -153,14 +213,30 @@ pub struct BlocklistClientConfig {
     /// the url for the blocklist client
     #[serde(deserialize_with = "url_deserializer_single")]
     pub endpoint: Url,
+
+    /// The delay, in milliseconds, for the second retry after a blocklist
+    /// client failure
+    #[serde(
+        default = "BlocklistClientConfig::retry_delay_default",
+        deserialize_with = "duration_milliseconds_deserializer"
+    )]
+    pub retry_delay: std::time::Duration,
 }
 
+impl BlocklistClientConfig {
+    fn retry_delay_default() -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
+}
 /// Emily API configuration.
 #[derive(Deserialize, Clone, Debug)]
 pub struct EmilyClientConfig {
     /// Emily API endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<Url>,
+    /// Pagination timeout in seconds.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub pagination_timeout: std::time::Duration,
 }
 
 impl Validatable for EmilyClientConfig {
@@ -219,12 +295,20 @@ pub struct SignerConfig {
     pub bootstrap_signatures_required: u16,
     /// The number of seconds the coordinator will wait
     /// before processing a new Bitcoin block
-    /// (allowing it to propagate to the others signers)
+    /// (allowing the request decisions to propagate to the others signers)
     #[serde(deserialize_with = "duration_seconds_deserializer")]
     pub bitcoin_processing_delay: std::time::Duration,
+    /// The number of seconds the request decider will wait
+    /// before processing the new sbtc requests
+    /// (allowing the bitcoin block to propagate to the others signers)
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub requests_processing_delay: std::time::Duration,
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
     pub context_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for deposit decisions to retry to propagate.
+    pub deposit_decisions_retry_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
@@ -244,6 +328,27 @@ pub struct SignerConfig {
     /// The minimum bitcoin block height for which the sbtc signers will
     /// backfill bitcoin blocks to.
     pub sbtc_bitcoin_start_height: Option<u64>,
+    /// The maximum number of deposit inputs that will be included in a
+    /// single bitcoin transaction. Transactions must be constructed within
+    /// a tenure of a bitcoin block, and higher values here imply lower
+    /// likelihood of signing all inputs before the next bitcoin block
+    /// arrives. The default here is controlled by the
+    /// [`MAX_DEPOSITS_PER_BITCOIN_TX`] constant
+    pub max_deposits_per_bitcoin_tx: NonZeroU16,
+    /// Configures a DKG re-run Bitcoin block height. If this is set and DKG has
+    /// already been run, the coordinator will attempt to re-run DKG after this
+    /// block height is met if `dkg_target_rounds` has not been reached. If DKG
+    /// has never been run, this configuration has no effect.
+    pub dkg_min_bitcoin_block_height: Option<NonZeroU64>,
+    /// Configures a target number of DKG rounds to run/accept. If this is set
+    /// and the number of DKG shares is less than this number, the coordinator
+    /// will continue to run DKG rounds until this number of rounds is reached,
+    /// assuming the conditions for `dkg_min_bitcoin_block_height` are also met.
+    /// If DKG has never been run, this configuration has no effect.
+    pub dkg_target_rounds: NonZeroU32,
+    /// The number of bitcoin blocks after a DKG start where we attempt to
+    /// verify the shares. After this many blocks, we mark the shares as failed.
+    pub dkg_verification_window: u16,
 }
 
 impl Validatable for SignerConfig {
@@ -275,6 +380,17 @@ impl Validatable for SignerConfig {
             return Err(ConfigError::Message(
                 SignerConfigError::InvalidBitcoinProcessingDelay(
                     MAX_BITCOIN_PROCESSING_DELAY_SECONDS,
+                    delay_secs,
+                )
+                .to_string(),
+            ));
+        }
+
+        let delay_secs = cfg.signer.requests_processing_delay.as_secs();
+        if delay_secs > MAX_REQUESTS_PROCESSING_DELAY_SECONDS {
+            return Err(ConfigError::Message(
+                SignerConfigError::InvalidRequestsProcessingDelay(
+                    MAX_REQUESTS_PROCESSING_DELAY_SECONDS,
                     delay_secs,
                 )
                 .to_string(),
@@ -317,6 +433,11 @@ impl SignerConfig {
             .copied()
             .chain([self_public_key])
             .collect()
+    }
+
+    /// Return the public key of the signer.
+    pub fn public_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.private_key)
     }
 }
 
@@ -375,9 +496,17 @@ impl Settings {
         // after https://github.com/stacks-network/sbtc/issues/1004 gets
         // done.
         cfg_builder = cfg_builder.set_default("signer.context_window", 1000)?;
+        cfg_builder = cfg_builder.set_default("signer.deposit_decisions_retry_window", 3)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
+        cfg_builder = cfg_builder.set_default(
+            "signer.max_deposits_per_bitcoin_tx",
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
+        )?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
+        cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 15)?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -396,6 +525,8 @@ impl Settings {
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
         self.signer.validate(self)?;
+        self.stacks.validate(self)?;
+        self.emily.validate(self)?;
 
         Ok(())
     }
@@ -489,11 +620,16 @@ mod tests {
             settings.signer.event_observer.bind,
             "0.0.0.0:8801".parse::<SocketAddr>().unwrap()
         );
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx,
+            NonZeroU16::new(DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX).unwrap()
+        );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
         assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
         assert!(settings.signer.prometheus_exporter_endpoint.is_none());
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
@@ -504,6 +640,13 @@ mod tests {
             Duration::from_secs(30)
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+        assert_eq!(
+            settings.signer.dkg_target_rounds,
+            NonZeroU32::new(1).unwrap()
+        );
+        assert_eq!(settings.signer.dkg_verification_window, 10);
+        assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
     }
 
     #[test]
@@ -602,6 +745,76 @@ mod tests {
             settings.signer.private_key,
             PrivateKey::from_str(new).unwrap()
         );
+    }
+
+    #[test]
+    fn default_config_toml_loads_max_deposits_per_bitcoin_tx() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.max_deposits_per_bitcoin_tx.get(),
+            DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX
+        );
+
+        let value = "42";
+        let expected_value: NonZeroU16 = value.parse().unwrap();
+        // Let's make sure that this test is meaningful but checking that
+        // the `value` and the default are different.
+        assert_ne!(DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX, expected_value.get());
+
+        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", value);
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.max_deposits_per_bitcoin_tx, expected_value);
+
+        std::env::set_var("SIGNER_SIGNER__MAX_DEPOSITS_PER_BITCOIN_TX", "0");
+        assert!(Settings::new_from_default_config().is_err());
+    }
+
+    #[test]
+    fn default_config_toml_loads_dkg_min_bitcoin_block_height() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
+
+        std::env::set_var("SIGNER_SIGNER__DKG_MIN_BITCOIN_BLOCK_HEIGHT", "42");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.dkg_min_bitcoin_block_height,
+            Some(NonZeroU64::new(42).unwrap())
+        );
+    }
+
+    #[test]
+    fn default_config_toml_loads_dkg_target_rounds() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.dkg_target_rounds,
+            NonZeroU32::new(1).unwrap()
+        );
+
+        std::env::set_var("SIGNER_SIGNER__DKG_TARGET_ROUNDS", "42");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.dkg_target_rounds,
+            NonZeroU32::new(42).unwrap()
+        );
+    }
+
+    #[test]
+    fn default_config_toml_loads_dkg_verification_window() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_verification_window, 10);
+
+        std::env::set_var("SIGNER_SIGNER__DKG_VERIFICATION_WINDOW", "42");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_verification_window, 42);
     }
 
     #[test]
@@ -716,10 +929,22 @@ mod tests {
             settings.signer.bitcoin_processing_delay,
             std::time::Duration::from_secs(delay),
         );
+
+        let delay = 42;
+        std::env::set_var(
+            "SIGNER_SIGNER__REQUESTS_PROCESSING_DELAY",
+            delay.to_string(),
+        );
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(
+            settings.signer.requests_processing_delay,
+            std::time::Duration::from_secs(delay),
+        );
     }
 
     #[test]
-    fn unprovided_optional_parameters_in_signer_config_setted_to_default() {
+    fn unprovided_optional_parameters_in_signer_config_set_to_default() {
         // In case there are some envs which provide values for this optional parameters,
         // this test will actually test nothing, so we need to reset them.
         clear_env();
@@ -728,18 +953,22 @@ mod tests {
         let config_str = std::fs::read_to_string(config_file).unwrap();
         let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
 
-        let mut remove_parameter = |parameter: &str| {
+        let mut remove_parameter = |config_name: &str, parameter: &str| {
             config_toml
-                .get_mut("signer")
+                .get_mut(&config_name)
                 .unwrap()
                 .as_table_mut()
                 .unwrap()
                 .remove(parameter);
         };
-        remove_parameter("context_window");
-        remove_parameter("signer_round_max_duration");
-        remove_parameter("bitcoin_presign_request_max_duration");
-        remove_parameter("dkg_max_duration");
+        remove_parameter("signer", "context_window");
+        remove_parameter("signer", "deposit_decisions_retry_window");
+        remove_parameter("signer", "signer_round_max_duration");
+        remove_parameter("signer", "bitcoin_presign_request_max_duration");
+        remove_parameter("signer", "dkg_max_duration");
+        remove_parameter("signer", "max_deposits_per_bitcoin_tx");
+
+        remove_parameter("emily", "pagination_timeout");
 
         let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
 
@@ -748,6 +977,7 @@ mod tests {
         let settings = Settings::new(Some(&new_config.path())).unwrap();
 
         assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
             Duration::from_secs(30)
@@ -757,6 +987,8 @@ mod tests {
             Duration::from_secs(30)
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
     }
 
     #[test]
@@ -810,6 +1042,24 @@ mod tests {
         assert!(matches!(
             settings.unwrap_err(),
             ConfigError::Message(msg) if msg == SignerConfigError::InvalidBitcoinProcessingDelay(MAX_BITCOIN_PROCESSING_DELAY_SECONDS, delay).to_string()
+        ));
+    }
+
+    #[test]
+    fn invalid_requests_processing_delay_returns_correct_error() {
+        clear_env();
+
+        let delay = MAX_REQUESTS_PROCESSING_DELAY_SECONDS + 1;
+        std::env::set_var(
+            "SIGNER_SIGNER__REQUESTS_PROCESSING_DELAY",
+            delay.to_string(),
+        );
+
+        let settings = Settings::new_from_default_config();
+        assert!(settings.is_err());
+        assert!(matches!(
+            settings.unwrap_err(),
+            ConfigError::Message(msg) if msg == SignerConfigError::InvalidRequestsProcessingDelay(MAX_REQUESTS_PROCESSING_DELAY_SECONDS, delay).to_string()
         ));
     }
 
@@ -990,6 +1240,53 @@ mod tests {
             .with(Protocol::Tcp(4122));
 
         assert_eq!(*actual, expected);
+    }
+
+    #[test]
+    fn p2p_public_endpoint_transport_protocols_must_match_listen_on() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://127.0.0.1:4122");
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS",
+            "tcp://127.0.0.1:4122",
+        );
+        let result = Settings::new_from_default_config();
+        assert!(result.is_ok());
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "tcp://127.0.0.1:4122");
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS",
+            "quic-v1://127.0.0.1:4122",
+        );
+        let result = Settings::new_from_default_config();
+        assert!(matches!(
+            result,
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::P2PPublicEndpointProtocolMismatch("/ip4/127.0.0.1/udp/4122/quic-v1".parse().unwrap()).to_string()
+        ));
+
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__LISTEN_ON",
+            "tcp://127.0.0.1:4122,quic-v1://127.0.0.1:4122",
+        );
+        std::env::set_var(
+            "SIGNER_SIGNER__P2P__PUBLIC_ENDPOINTS",
+            "quic-v1://127.0.0.1:4122",
+        );
+        let result = Settings::new_from_default_config();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn p2p_memory_transport_cannot_be_used() {
+        clear_env();
+
+        std::env::set_var("SIGNER_SIGNER__P2P__LISTEN_ON", "memory://localhost:123");
+        let result = Settings::new_from_default_config();
+        assert!(matches!(
+            result,
+            Err(ConfigError::Message(msg)) if msg == SignerConfigError::InvalidP2PScheme("memory".into()).to_string()
+        ))
     }
 
     #[test_case::test_case(NetworkKind::Mainnet; "mainnet network, testnet deployer")]

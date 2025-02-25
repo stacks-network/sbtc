@@ -1,0 +1,10 @@
+{
+  "name": "blocklist-api",
+  "scripts": {
+    "build-openapi": "JAVA_OPTS='-Dlog.level=error' openapi-generator-cli generate -i ./blocklist-client-openapi.json -g rust -o ../.generated-sources/blocklist-api --config ./config.json",
+    "build": "pnpm build-openapi"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.13.2"
+  }
+}
