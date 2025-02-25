@@ -460,12 +460,12 @@ impl CompleteDepositV1 {
     ///
     /// Specifically, this function checks the following points (from the
     /// docs of [`CompleteDepositV1::validate`]):
-    ///  3. Check that the signer sweep transaction is on the canonical
-    ///     bitcoin blockchain.
-    ///  4. Check that the sweep transaction uses the indicated deposit
-    ///     outpoint as an input.
-    ///  9. That the first input into the sweep transaction is the signers'
-    ///     UTXO.
+    /// 3. Check that the signer sweep transaction is on the canonical
+    ///    bitcoin blockchain.
+    /// 4. Check that the sweep transaction uses the indicated deposit
+    ///    outpoint as an input.
+    /// 9. That the first input into the sweep transaction is the signers'
+    ///    UTXO.
     async fn validate_sweep_tx<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<Amount, Error>
     where
         C: Context + Send + Sync,
