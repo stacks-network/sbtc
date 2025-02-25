@@ -614,7 +614,6 @@ services:
     restart: always
     volumes:
       - ./local-prometheus.yml:/etc/prometheus/prometheus.yml
-      # - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -647,7 +646,6 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
     volumes:
-      # - grafana-data:/var/lib/grafana
       - ./grafana/:/etc/grafana/provisioning/
     ports:
       - 3040:3000
