@@ -47,10 +47,10 @@ if item == {} {
   item.message = to_string!(.message)
 }
 
-item.container_name = .container_name
-item.host = .host
-item.image = .image
-item.label = .label
+item.docker_container_name = .container_name
+item.docker_host = .host
+item.docker_image = .image
+item.docker_label = .label
 . = item
 '''
 
@@ -64,5 +64,4 @@ out_of_order_action = "accept"
   codec = "json"
 
   [sinks.loki.labels]
-  app = "{{ container_name }}"
-  host = "{{ host }}"
+  docker_image = "{{ docker_image }}"
