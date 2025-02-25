@@ -1050,7 +1050,7 @@ async fn complete_deposit_validation_request_completed() {
         .with_mocked_emily_client()
         .build();
 
-    // Normal: the request is not completed in the smart contract.
+    // Different: the request is marked as completed in the smart contract.
     set_deposit_completed(&mut ctx).await;
 
     let validation_result = complete_deposit_tx.validate(&ctx, &req_ctx).await;
