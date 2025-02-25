@@ -89,15 +89,14 @@ integration-env-build:
 
 integration-test-full: integration-env-down integration-env-up integration-test integration-env-down
 
-integration-env-up-ci: emily-cdk-synth
-	docker compose --file docker/docker-compose.ci.yml up --detach --quiet-pull
-	DYNAMODB_ENDPOINT=http://localhost:8000 \
+integration-env-up-ci: emily-cdk-synth clean-nakamoto-headers
+	docker compose --file docker/docker-compose.ci.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
+	env DYNAMODB_ENDPOINT=http://localhost:8000 \
 		INPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.template.json \
 		OUTPUT_CDK_TEMPLATE=./emily/cdk/cdk.out/EmilyStack.devenv.template.json \
 		LOCAL_LAMBDA_PATH=empty.zip \
-
 		TRUSTED_REORG_API_KEY=testApiKey \
-		python3 docker/sbtc/emily-aws-setup/initialize.py
+		bash -c 'echo "INPUT_CDK_TEMPLATE=$$INPUT_CDK_TEMPLATE"; python3 docker/sbtc/emily-aws-setup/initialize.py'
 	cargo $(CARGO_FLAGS) build --bin emily-server
 	AWS_ACCESS_KEY_ID=xxxxxxxxxxxx \
 		AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
