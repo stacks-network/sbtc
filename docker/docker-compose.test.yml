@@ -335,7 +335,7 @@ services:
     volumes:
       - ./stacks/stacks-regtest-miner.toml:/data/config.toml.in
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
-      - stacks-node-data:/data
+      - ./data/stacks-node:/data
     environment:
       # STACKS_LOG_TRACE: 1 # uncomment for trace logging
       # STACKS_LOG_DEBUG: 1
@@ -612,8 +612,6 @@ services:
     profiles:
       - bitcoin-mempool
 
-
-
   bitcoind:
     container_name: bitcoind
     image: lncm/bitcoind:v25.1
@@ -653,7 +651,3 @@ services:
       interval: 2s
       timeout: 1s
       retries: 5
-
-
-volumes:
-  stacks-node-data:

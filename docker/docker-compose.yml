@@ -335,7 +335,7 @@ services:
     volumes:
       - ./stacks/stacks-regtest-miner.toml:/data/config.toml.in
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
-      - stacks-node-data:/data
+      - ./data/stacks-node:/data
     environment:
       # STACKS_LOG_TRACE: 1 # uncomment for trace logging
       # STACKS_LOG_DEBUG: 1
@@ -611,6 +611,3 @@ services:
     command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
     profiles:
       - bitcoin-mempool
-
-volumes:
-  stacks-node-data:
