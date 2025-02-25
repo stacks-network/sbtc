@@ -1,7 +1,6 @@
 # sBTC
 
 [![License: GPL v3][gpl-v3-badge]][gpl-v3-link]
-[![Discord][discord-badge]][discord-link]
 
 ### Links
 
@@ -185,7 +184,5 @@ does not support development on Windows or z/OS.
 
 See [this](./SECURITY.md).
 
-[discord-badge]: https://img.shields.io/static/v1?logo=discord&label=discord&message=Join&color=blue
-[discord-link]: https://discord.gg/hHaz2gGX
 [gpl-v3-badge]: https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat
 [gpl-v3-link]: https://www.gnu.org/licenses/gpl-3.0
