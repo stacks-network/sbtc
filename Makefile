@@ -140,7 +140,7 @@ devenv-sbtc-down:
 devenv-sbtc-build:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer build
 
-.PHONY: devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down devenv-sbtc-build devenv-clean-headers devenv-up-fast devenv-down-fast
+.PHONY: devenv-no-sbtc-up devenv-no-sbtc-down devenv-up devenv-down devenv-sbtc-up devenv-sbtc-down devenv-sbtc-build clean-nakamoto-headers
 
 
 # ##############################################################################
