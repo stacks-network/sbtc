@@ -117,16 +117,16 @@ integration-env-down-ci:
 # ##############################################################################
 
 devenv-no-sbtc-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool up -d
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability up -d
 
 devenv-no-sbtc-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool down -t 0 -v
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability down -t 0 -v
 
 devenv-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability --profile sbtc-signer up -d
 
 devenv-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0 -v
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability --profile sbtc-signer down -t 0 -v
 
 devenv-sbtc-up:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build -d
@@ -229,18 +229,6 @@ emily-client-build: emily-client-codegen
 	cargo $(CARGO_FLAGS) build --package emily-client ${CARGO_BUILD_ARGS}
 
 .PHONY: emily-api-specgen emily-client-codegen emily-client-build
-
-devenv-no-sbtc-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability up
-
-devenv-no-sbtc-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability down
-
-devenv-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer --profile observability up --detach
-
-devenv-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer --profile observability down
 
 # ##############################################################################
 # - BLOCKLIST API

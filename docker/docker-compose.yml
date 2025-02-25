@@ -29,10 +29,6 @@ x-common-vars:
   - &REWARD_RECIPIENT ${REWARD_RECIPIENT:-STQM73RQC4EX0A07KWG1J5ECZJYBZS4SJ4ERC6WN} # priv: 6ad9cadb42d4edbfbe0c5bfb3b8a4125ddced021c4174f829b714ccbf527f02001
   - &EXIT_FROM_MONITOR 1 # set to "1" to automatically shut down via monitor.ts
 
-volumes:
-  # prometheus-data: {}
-  grafana-data1: {}
-
 # Templates.
 # ------------------------------------------------------------------------------
 x-stacks-blockchain: &stacks-blockchain
@@ -641,10 +637,10 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
     volumes:
-      - grafana-data1:/var/lib/grafana
-      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - grafana-data:/var/lib/grafana
+      - ./grafana/:/etc/grafana/provisioning/
     ports:
-      - 3030:3000
+      - 3040:3000
     depends_on:
       - prometheus
     profiles:
