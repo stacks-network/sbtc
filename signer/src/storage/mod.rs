@@ -416,12 +416,6 @@ pub trait DbRead {
         &self,
         sighash: &model::SigHash,
     ) -> impl Future<Output = Result<Option<(bool, PublicKeyXOnly)>, Error>> + Send;
-
-    /// Get all the request's withdrawal outputs
-    fn get_withdrawal_outputs(
-        &self,
-        id: &model::QualifiedRequestId,
-    ) -> impl Future<Output = Result<Vec<model::BitcoinWithdrawalOutput>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.
