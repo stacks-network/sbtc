@@ -613,7 +613,7 @@ services:
     image: prom/prometheus:v3.2.0
     restart: always
     volumes:
-      - ./local-prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/local-prometheus.yml:/etc/prometheus/prometheus.yml
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -631,7 +631,9 @@ services:
     ports:
       - 3100:3100
     volumes:
-      - ./loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    profiles:
+      - observability
 
   grafana:
     image: grafana/grafana:11.5.2-ubuntu
@@ -646,7 +648,7 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: 'false'
     volumes:
-      - ./grafana/:/etc/grafana/provisioning/
+      - ./observability/grafana/:/etc/grafana/provisioning/
     ports:
       - 3040:3000
     depends_on:
@@ -662,7 +664,8 @@ services:
     ports:
       - 9598
     volumes: 
-      - ./vector.toml:/etc/vector/vector.toml:ro
+      - ./observability/vector.toml:/etc/vector/vector.toml:ro
+      # This is needed for vector to read logs from other containers
       - /var/run/docker.sock:/var/run/docker.sock
     # This is needed for localhost networking
     extra_hosts:
