@@ -1811,6 +1811,8 @@ mod tests {
     #[test_case(PhantomData::<((u32, PolyCommitment), proto::PartyCommitment)>; "PartyCommitment")]
     #[test_case(PhantomData::<(DkgPublicShares, proto::SignerDkgPublicShares)>; "SignerDkgPublicShares")]
     #[test_case(PhantomData::<(BTreeMap<u32, DkgPublicShares>, proto::DkgPublicShares)>; "DkgPublicShares")]
+    #[test_case(PhantomData::<((u32, PartyState), proto::PartyState)>; "PartyState")]
+    #[test_case(PhantomData::<(SignerState, proto::SignerState)>; "SignerState")]
     fn convert_protobuf_type2<T, U, E>(_: PhantomData<(T, U)>)
     where
         T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
@@ -1824,59 +1826,6 @@ mod tests {
 
             let original_from_proto = T::try_from(proto_original).unwrap();
             assert_eq!(original, original_from_proto);
-        }
-    }
-
-    // The following are tests for structs that do not derive eq
-    #[derive(Debug)]
-    struct PartyStateWrapper((u32, PartyState));
-
-    impl PartialEq for PartyStateWrapper {
-        fn eq(&self, other: &Self) -> bool {
-            self.0 .0 == other.0 .0
-                && self.0 .1.nonce == other.0 .1.nonce
-                && self.0 .1.polynomial == other.0 .1.polynomial
-                && self.0 .1.private_keys == other.0 .1.private_keys
-        }
-    }
-
-    #[derive(Debug)]
-    struct SignerStateWrapper(SignerState);
-
-    impl PartialEq for SignerStateWrapper {
-        fn eq(&self, other: &Self) -> bool {
-            self.0.group_key == other.0.group_key
-                && self.0.id == other.0.id
-                && self.0.key_ids == other.0.key_ids
-                && self.0.num_keys == other.0.num_keys
-                && self.0.num_parties == other.0.num_parties
-                && self.0.threshold == other.0.threshold
-                && self.0.parties.len() == other.0.parties.len()
-                && self
-                    .0
-                    .parties
-                    .iter()
-                    .zip(other.0.parties.iter())
-                    .all(|(a, b)| PartyStateWrapper(a.clone()) == PartyStateWrapper(b.clone()))
-        }
-    }
-
-    #[test_case(PhantomData::<((u32, PartyState), proto::PartyState)>, PartyStateWrapper; "PartyState")]
-    #[test_case(PhantomData::<(SignerState, proto::SignerState)>, SignerStateWrapper; "SignerState")]
-    fn convert_protobuf_type3<T, U, V, E>(_: PhantomData<(T, U)>, wrapper: fn(T) -> V)
-    where
-        T: Dummy<Unit> + TryFrom<U, Error = E> + Clone,
-        V: PartialEq + std::fmt::Debug,
-        U: From<T>,
-        E: std::fmt::Debug,
-    {
-        // TODO: proptest
-        for _ in 0..25 {
-            let original: T = Unit.fake_with_rng(&mut OsRng);
-            let proto_original = U::from(original.clone());
-
-            let original_from_proto = T::try_from(proto_original).unwrap();
-            assert_eq!(wrapper(original), wrapper(original_from_proto));
         }
     }
 
