@@ -379,7 +379,17 @@ impl AsContractCall for CompleteDepositV1 {
     where
         C: Context + Send + Sync,
     {
-        // Covers points 3-4 & 9-10
+        // 10. Check that sBTC has not been minted for the deposit already.
+        let stacks = ctx.get_stacks_client();
+        let is_deposit_completed = stacks
+            .is_deposit_completed(&req_ctx.deployer, &self.outpoint)
+            .await?;
+
+        if is_deposit_completed {
+            return Err(DepositErrorMsg::DepositCompleted.into_error(req_ctx, self));
+        }
+
+        // Covers points 3-4 & 9
         let fee = self.validate_sweep_tx(ctx, req_ctx).await?;
         let db = ctx.get_storage();
         // Covers points 1-2 & 5-8
@@ -456,7 +466,6 @@ impl CompleteDepositV1 {
     ///     outpoint as an input.
     ///  9. That the first input into the sweep transaction is the signers'
     ///     UTXO.
-    /// 10. That sBTC has not been minted for the deposit already.
     async fn validate_sweep_tx<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<Amount, Error>
     where
         C: Context + Send + Sync,
@@ -512,16 +521,6 @@ impl CompleteDepositV1 {
         // the signers.
         if !db.is_signer_script_pub_key(&script_pub_key).await? {
             return Err(DepositErrorMsg::InvalidSweep.into_error(req_ctx, self));
-        }
-
-        // 10. Check that sBTC has not been minted for the deposit already.
-        let stacks = ctx.get_stacks_client();
-        let is_deposit_completed = stacks
-            .is_deposit_completed(&req_ctx.deployer, &self.outpoint)
-            .await?;
-
-        if is_deposit_completed {
-            return Err(DepositErrorMsg::DepositCompleted.into_error(req_ctx, self));
         }
 
         // None is only returned from BitcoinTxInfo::assess_output_fee when:
