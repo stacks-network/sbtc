@@ -106,7 +106,7 @@ integration-env-up-ci: emily-cdk-synth clean-nakamoto-headers
 			--host 127.0.0.1 --port 3031 --dynamodb-endpoint http://localhost:8000 > ./target/emily-server.log 2>&1 &
 
 integration-env-down-ci:
-	docker compose --file docker/docker-compose.ci.yml down
+	docker compose --file docker/docker-compose.ci.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0
 	@echo "killing emily server process..."
 	ps -ef | awk  '/[e]mily-server/{print $$2}' | xargs kill -9
 
@@ -128,14 +128,8 @@ devenv-up:
 clean-nakamoto-headers:
 	rm -f docker/data/stacks-node/nakamoto-neon/headers.sqlite
 
-devenv-up-fast: clean-nakamoto-headers
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
-
 devenv-down:
 	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0 -v
-
-devenv-down-fast:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0
 
 devenv-sbtc-up:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build -d

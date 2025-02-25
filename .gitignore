@@ -28,7 +28,3 @@ contracts/docs
 __pycache__/
 *.py[cod]
 *$py.class
-
-docker/data/stacks-node/nakamoto-neon/headers.sqlite.reorg
-docker/data/stacks-node/nakamoto-neon/peer.sqlite-shm
-docker/data/stacks-node/nakamoto-neon/peer.sqlite-wal
