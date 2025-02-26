@@ -37,6 +37,12 @@ include_containers = [
     "sbtc-signer-3",
 ]
 
+# Reshape the logs produced by the docker source.
+#
+# We map the "message" field, which contains the log produced by the source
+# docker service, into a JSON and drop some of the fields that were added
+# by docker or vector. A list of added fields could be found here:
+# https://vector.dev/docs/reference/configuration/sources/docker_logs/#log-fields.
 [transforms.json_messages]
 type = "remap"
 inputs = ["docker_logs"]
@@ -50,7 +56,6 @@ if item == {} {
 item.docker_container_name = .container_name
 item.docker_host = .host
 item.docker_image = .image
-item.docker_label = .label
 . = item
 '''
 
