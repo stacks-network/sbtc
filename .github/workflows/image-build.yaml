@@ -142,8 +142,8 @@ jobs:
   
           ### 🐳 Images <a id="images">
   
-          - [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@sha256:${{ needs.image.outputs.signer_digest }}\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/sha256-${{ needs.image.outputs.signer_digest }})
-          - [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}}@sha256:${{ needs.image.outputs.blocklist_client_digest }}"\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/sha256-${{ needs.image.outputs.blocklist_client_digest }}")
+          - [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@sha256:${{ needs.image.outputs.signer }}\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/sha256-${{ needs.image.outputs.signer }})
+          - [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}}@sha256:${{ needs.image.outputs.blocklist-client }}"\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/sha256-${{ needs.image.outputs.blocklist-client }})
   
           ⚠️ Always use [immutable image tags](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier).
   
