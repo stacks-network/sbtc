@@ -22,6 +22,10 @@ logger.info("Using Emily endpoint: %s", settings.EMILY_ENDPOINT)
 headers = {"Content-Type": "application/json", "x-api-key": settings.API_KEY}
 
 
+# The events received from the stacks-node contain many additional fields,
+# but we only validate these specific ones for logging purposes.
+# The `extra="allow"` argument permits extra fields in the request body
+# that are not explicitly defined in the model.
 class NewBlockEventModel(BaseModel, extra="allow"):
     block_height: int
     index_block_hash: str
@@ -60,4 +64,4 @@ async def handle_attachments() -> dict:
 
 @app.get("/")
 def read_root() -> dict:
-    return {"message": "Hello, World!"}
+    return {}
