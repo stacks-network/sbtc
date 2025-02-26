@@ -43,6 +43,9 @@ jobs:
         docker_target:
           - signer
           - blocklist-client
+    outputs:
+      signer: ${{ steps.save_digest.outputs.signer }}
+      blocklist-client: ${{ steps.save_digest.outputs.blocklist-client }}
 
     runs-on: ubuntu-latest
     environment: "Push to Docker"
@@ -99,6 +102,7 @@ jobs:
             GIT_COMMIT=${{ github.ref_name }}
 
       - name: Save digest as output
+        id: save_digest
         run: echo "${{ matrix.docker_target }}=${{ steps.docker_build.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
       - name: Generate artifact attestation
@@ -134,9 +138,8 @@ jobs:
   
           ### 🐳 Images <a id="images">
   
-          - [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@sha256:${{ needs.image.outputs.signer }}\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/sha256-${{ needs.image.outputs.signer }})
-          - [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}}@sha256:${{ needs.image.outputs.blocklist-client }}"\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/sha256-${{ needs.image.outputs.blocklist-client }})
-  
+          - [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@${{ needs.image.outputs.signer }}\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.signer }})
+          - [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}@${{ needs.image.outputs.blocklist-client }}\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.blocklist-client }})
           ⚠️ Always use [immutable image tags](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier).
   
           🔎 Verify the attestation of these images using [this guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
