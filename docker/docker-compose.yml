@@ -52,7 +52,7 @@ x-sbtc-signer: &sbtc-signer
     context: ../
     dockerfile: docker/sbtc/Dockerfile
     target: signer
-  entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
+  entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db --output-format json'"
   environment: &sbtc-signer-environment
     RUST_LOG: info
     SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
@@ -168,6 +168,7 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
+      SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9181
     ports:
       - "8801:8801"
 
@@ -188,6 +189,7 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
+      SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9182
     ports:
       - "8802:8801"
 
@@ -208,6 +210,7 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
+      SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9183
     ports:
       - "8803:8801"
 
@@ -605,3 +608,67 @@ services:
     command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
     profiles:
       - bitcoin-mempool
+
+  prometheus:
+    image: prom/prometheus:v3.2.0
+    restart: always
+    volumes:
+      - ./observability/local-prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - 9090:9090
+    depends_on:
+      - vector
+    profiles:
+      - observability
+
+  loki:
+    image: grafana/loki:3.4.2
+    ports:
+      - 3100:3100
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    profiles:
+      - observability
+
+  grafana:
+    image: grafana/grafana:11.5.2-ubuntu
+    user: '472'
+    restart: always
+    environment:
+      GF_INSTALL_PLUGINS: 'grafana-clock-panel,grafana-simple-json-datasource'
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_BASIC_ENABLED: false
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./observability/grafana/:/etc/grafana/provisioning/
+    ports:
+      - 3040:3000
+    depends_on:
+      - prometheus
+      - loki
+    profiles:
+      - observability
+
+  vector:
+    image: timberio/vector:0.43.1-distroless-static
+    command: --config /etc/vector/vector.toml
+    restart: always
+    ports:
+      - 9598
+    volumes: 
+      - ./observability/vector.toml:/etc/vector/vector.toml:ro
+      # This is needed for vector to read logs from other containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    # This is needed for localhost networking
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - observability
