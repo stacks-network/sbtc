@@ -350,7 +350,7 @@ impl AsContractCall for CompleteDepositV1 {
     ///  1. That the smart contract deployer matches the deployer in our
     ///     context.
     ///  2. That the signer has a record of the deposit request in its list
-    ///     of pending and accepted deposit requests.
+    ///     of deposit requests.
     ///  3. That the signer sweep transaction is on the canonical bitcoin
     ///     blockchain.
     ///  4. That the sweep transaction uses the indicated deposit outpoint
@@ -406,7 +406,7 @@ impl CompleteDepositV1 {
     /// 1. That the smart contract deployer matches the deployer in our
     ///    context.
     /// 2. That the signer has a record of the deposit request in its list
-    ///    of swept deposit requests.
+    ///    of deposit requests.
     /// 5. That the recipients in the transaction matches that of the
     ///    deposit request.
     /// 6. That the amount to mint is above the dust amount.
