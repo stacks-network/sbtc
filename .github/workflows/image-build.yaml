@@ -20,6 +20,7 @@ permissions:
 env:
   docker_platforms: "linux/amd64"
   docker-org: blockstack
+  latest_release: $(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
 
 concurrency:
   group: docker-image-${{ github.head_ref || github.ref || github.run_id }}
@@ -53,14 +54,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
-
-      # Fetch the latest release tag and put into environment variables under
-      # the key `latest_release`.
-      - name: Get latest release tag
-        id: get_latest_release
-        run: |
-          latest_release=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
-          echo "latest_release=$latest_release" >> $GITHUB_ENV
 
       ## Checkout the branch of the release provided.
       ## This requires that a release branch exists for the tag.
