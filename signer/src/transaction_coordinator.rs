@@ -2250,7 +2250,6 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
-        // Get the configured max Stacks transaction fee in microSTX.
         let tx_fee = self
             .estimate_stacks_tx_fee(wallet, &contract_deploy.tx_payload(), FeePriority::High)
             .await?;
@@ -2446,7 +2445,10 @@ where
     where
         T: AsTxPayload + Send + Sync,
     {
+        // Get the configured max Stacks transaction fee in microSTX.
         let stacks_fees_max_ustx = self.context.config().signer.stacks_fees_max_ustx.get();
+
+        // Calculate the stacks fee for the contract call and cap it to the configured maximum.
         let tx_fee = self
             .context
             .get_stacks_client()

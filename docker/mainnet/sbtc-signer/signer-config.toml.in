@@ -171,14 +171,6 @@ dkg_min_bitcoin_block_height = 880088
 # Environment: SIGNER_SIGNER__DKG_TARGET_ROUNDS
 dkg_target_rounds = 2
 
-# The maximum fee in microSTX that a signer will accept for a Stacks transaction.
-# If the coordinator suggests a fee higher than this value for a transaction the
-# signer will reject it.
-#
-# Required: false
-# Environment: SIGNER_SIGNER__STACKS_FEES_MAX_USTX
-stacks_fees_max_ustx = 1500000
-
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
