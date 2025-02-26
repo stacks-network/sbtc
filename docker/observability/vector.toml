@@ -1,0 +1,72 @@
+## Prometheus Host metrics
+
+[sources.host_metrics]
+type = "host_metrics"
+collectors = ["cpu", "disk", "load", "filesystem", "host", "memory", "network"]
+scrape_interval_secs = 15
+
+[sources.host_metrics.filesystem.mountpoints]
+includes = ["/"]
+
+[sources.host_metrics.disk.devices]
+includes = ["/dev/root", "nvme*", "tmpfs"]
+
+[sources.app]
+type = "prometheus_scrape"
+endpoints = [
+    "http://sbtc-signer-1:9181",
+    "http://sbtc-signer-2:9182",
+    "http://sbtc-signer-3:9183",
+]
+
+## App Metric Sinks
+
+[sinks.host_metrics_sink]
+type = "prometheus_exporter"
+inputs = ["host_metrics", "app"]
+address = "0.0.0.0:9598"
+
+
+## App Logs
+
+[sources.docker_logs]
+type = "docker_logs"
+include_containers = [
+    "sbtc-signer-1",
+    "sbtc-signer-2",
+    "sbtc-signer-3",
+]
+
+# Reshape the logs produced by the docker source.
+#
+# We map the "message" field, which contains the log produced by the source
+# docker service, into a JSON and drop some of the fields that were added
+# by docker or vector. A list of added fields could be found here:
+# https://vector.dev/docs/reference/configuration/sources/docker_logs/#log-fields.
+[transforms.json_messages]
+type = "remap"
+inputs = ["docker_logs"]
+drop_on_error = true
+source = '''
+item = parse_json(.message) ?? {}
+if item == {} {
+  item.message = to_string!(.message)
+}
+
+item.docker_container_name = .container_name
+item.docker_host = .host
+item.docker_image = .image
+. = item
+'''
+
+[sinks.loki]
+type = "loki"
+inputs = [ "json_messages"]
+endpoint = "http://loki:3100"
+out_of_order_action = "accept"
+
+  [sinks.loki.encoding]
+  codec = "json"
+
+  [sinks.loki.labels]
+  docker_image = "{{ docker_image }}"
