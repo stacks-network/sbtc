@@ -20,7 +20,6 @@ permissions:
 env:
   docker_platforms: "linux/amd64"
   docker-org: blockstack
-  latest_release: $(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
 
 concurrency:
   group: docker-image-${{ github.head_ref || github.ref || github.run_id }}
