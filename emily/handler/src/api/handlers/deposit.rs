@@ -303,11 +303,11 @@ pub async fn get_deposits_for_reclaim_pubkeys(
     tag = "deposit",
     request_body = CreateDepositRequestBody,
     responses(
+        (status = 200, description = "Deposit already exists", body = Deposit),
         (status = 201, description = "Deposit created successfully", body = Deposit),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
-        (status = 409, description = "Duplicate request", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
@@ -334,6 +334,8 @@ pub async fn create_deposit(
         let stacks_block_hash = chaintip.key.hash;
         let stacks_block_height = chaintip.key.height;
 
+        let deposit_info = body.validate(context.settings.is_mainnet)?;
+
         // Check if deposit with such txid and outindex already exists.
         let entry = accessors::get_deposit_entry(
             &context,
@@ -345,12 +347,14 @@ pub async fn create_deposit(
         .await;
 
         match entry {
-            Ok(_) => return Err(Error::Conflict),
+            Ok(deposit_entry) => {
+                // The deposit already exists, return it.
+                let response: Deposit = deposit_entry.try_into()?;
+                return Ok(with_status(json(&response), StatusCode::OK));
+            }
             Err(Error::NotFound) => {}
             Err(e) => return Err(e),
         }
-
-        let deposit_info = body.validate(context.settings.is_mainnet)?;
         let reclaim_pubkeys_hash = extract_reclaim_pubkeys_hash(&deposit_info.reclaim_script);
         if reclaim_pubkeys_hash.is_none() {
             warn!(
