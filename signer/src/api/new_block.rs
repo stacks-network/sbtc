@@ -379,7 +379,7 @@ async fn handle_withdrawal_accept(
 async fn handle_withdrawal_create(
     ctx: &impl Context,
     event: WithdrawalRequest,
-    stacks_block_height: u64,
+    stacks_block_height: StacksBlockHeight,
 ) -> Result<CreateWithdrawalRequestBody, Error> {
     ctx.get_storage_mut()
         .write_withdrawal_request(&event)

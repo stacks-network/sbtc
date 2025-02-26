@@ -11,6 +11,7 @@ use crate::storage::model;
 use crate::storage::model::BitcoinBlock;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::BitcoinBlockRef;
+use crate::storage::model::StacksBlockHeight;
 use crate::storage::DbWrite;
 use crate::testing::dummy::DepositTxConfig;
 
@@ -536,7 +537,7 @@ impl BitcoinBlockRef {
     fn hallucinate_parent(block: &model::BitcoinBlock) -> Self {
         Self {
             block_hash: block.parent_hash,
-            block_height: 1337, // Arbitrary number
+            block_height: 1337.into(), // Arbitrary number
         }
     }
 }
@@ -544,7 +545,7 @@ impl BitcoinBlockRef {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct StacksBlockSummary {
     block_hash: model::StacksBlockHash,
-    block_height: u64,
+    block_height: StacksBlockHeight,
 }
 
 impl StacksBlockSummary {
@@ -558,7 +559,7 @@ impl StacksBlockSummary {
     fn hallucinate_parent(block: &model::StacksBlock) -> Self {
         Self {
             block_hash: block.parent_hash,
-            block_height: 1337, // Arbitrary number
+            block_height: 1337.into(), // Arbitrary number
         }
     }
 }
@@ -572,7 +573,7 @@ impl From<&bitcoin::Block> for crate::storage::model::BitcoinBlockRef {
     fn from(value: &bitcoin::Block) -> Self {
         Self {
             block_hash: value.block_hash().into(),
-            block_height: value.bip34_block_height().unwrap(),
+            block_height: value.bip34_block_height().unwrap().into(),
         }
     }
 }

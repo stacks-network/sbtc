@@ -11,6 +11,7 @@ use hashbrown::HashSet;
 use libp2p::PeerId;
 
 use crate::keys::PublicKey;
+use crate::storage::model::BitcoinBlockHeight;
 
 /// A struct for holding internal signer state. This struct is served by
 /// the [`SignerContext`] and can be used to cache global state instead of
@@ -98,7 +99,7 @@ impl SignerState {
     }
 
     /// Set the sbtc start height
-    pub fn set_sbtc_bitcoin_start_height(&self, height: u64) {
+    pub fn set_sbtc_bitcoin_start_height(&self, height: BitcoinBlockHeight) {
         self.is_sbtc_bitcoin_start_height_set
             .store(true, Ordering::SeqCst);
         self.sbtc_bitcoin_start_height

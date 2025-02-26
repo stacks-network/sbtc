@@ -34,6 +34,9 @@ use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 use crate::MAX_REORG_BLOCK_COUNT;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 
+use super::model::BitcoinBlockHeight;
+use super::model::StacksBlockHeight;
+
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
     include_dir::include_dir!("$CARGO_MANIFEST_DIR/migrations");
@@ -143,7 +146,7 @@ struct WithdrawalStatusSummary {
     /// The height of the bitcoin chain tip during the execution of the
     /// contract call that generated the withdrawal request.
     #[sqlx(try_from = "i64")]
-    bitcoin_block_height: u64,
+    bitcoin_block_height: BitcoinBlockHeight,
     /// The amount associated with the deposit UTXO in sats.
     #[sqlx(try_from = "i64")]
     amount: u64,
@@ -159,7 +162,7 @@ struct WithdrawalStatusSummary {
     /// Stacks block ID of the block that includes the transaction
     /// associated with this withdrawal request.
     #[sqlx(try_from = "i64")]
-    stacks_block_height: u64,
+    stacks_block_height: StacksBlockHeight,
 }
 
 // A convenience struct for retrieving the signers' UTXO
@@ -713,7 +716,7 @@ impl PgStore {
         chain_tip: &model::BitcoinBlockHash,
         txid: &model::BitcoinTxId,
         output_index: u32,
-        min_block_height: u64,
+        min_block_height: BitcoinBlockHeight,
     ) -> Result<Option<model::BitcoinTxId>, Error> {
         sqlx::query_scalar::<_, model::BitcoinTxId>(
             r#"
@@ -803,7 +806,7 @@ impl PgStore {
         &self,
         chain_tip: &model::StacksBlockHash,
         block_hash: &model::StacksBlockHash,
-        block_height: u64,
+        block_height: StacksBlockHeight,
     ) -> Result<bool, Error> {
         sqlx::query_scalar::<_, bool>(
             r#"
@@ -1510,7 +1513,7 @@ impl super::DbRead for PgStore {
         &self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         stacks_chain_tip: &model::StacksBlockHash,
-        min_bitcoin_height: u64,
+        min_bitcoin_height: BitcoinBlockHeight,
         signature_threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         sqlx::query_as::<_, model::WithdrawalRequest>(

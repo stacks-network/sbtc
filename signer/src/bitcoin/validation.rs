@@ -18,6 +18,7 @@ use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::message::BitcoinPreSignRequest;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::BitcoinTxRef;
 use crate::storage::model::BitcoinTxSigHash;
@@ -56,7 +57,7 @@ pub struct BitcoinTxContext {
     pub chain_tip: BitcoinBlockHash,
     /// The block height of the bitcoin chain tip identified by the
     /// `chain_tip` field.
-    pub chain_tip_height: u64,
+    pub chain_tip_height: BitcoinBlockHeight,
     /// This signer's public key.
     pub signer_public_key: PublicKey,
     /// The current aggregate key that was the output of DKG. The DKG
@@ -366,7 +367,7 @@ pub struct BitcoinTxValidationData {
     /// the transaction fee in sats
     pub tx_fee: Amount,
     /// the chain tip height.
-    pub chain_tip_height: u64,
+    pub chain_tip_height: BitcoinBlockHeight,
     /// The current sBTC limits.
     pub sbtc_limits: SbtcLimits,
 }
@@ -761,7 +762,7 @@ impl DepositRequestReport {
     /// Validate that the deposit request is okay given the report.
     fn validate<F>(
         &self,
-        chain_tip_height: u64,
+        chain_tip_height: BitcoinBlockHeight,
         tx: &F,
         tx_fee: Amount,
         sbtc_limits: &SbtcLimits,
@@ -914,7 +915,7 @@ pub struct WithdrawalRequestReport {
     pub is_accepted: Option<bool>,
     /// The height of the bitcoin chain tip during the execution of the
     /// contract call that generated the withdrawal request.
-    pub bitcoin_block_height: u64,
+    pub bitcoin_block_height: BitcoinBlockHeight,
 }
 
 impl WithdrawalRequestReport {
@@ -924,7 +925,7 @@ impl WithdrawalRequestReport {
     /// validation rules for withdrawal requests.
     pub fn validate<F>(
         &self,
-        bitcoin_chain_tip_height: u64,
+        bitcoin_chain_tip_height: BitcoinBlockHeight,
         output_index: usize,
         tx: &F,
         tx_fee: Amount,
@@ -1014,7 +1015,7 @@ mod tests {
     struct DepositReportErrorMapping {
         report: DepositRequestReport,
         status: InputValidationResult,
-        chain_tip_height: u64,
+        chain_tip_height: BitcoinBockHeight,
         limits: SbtcLimits,
     }
 
@@ -1402,7 +1403,7 @@ mod tests {
     struct WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport,
         status: WithdrawalValidationResult,
-        chain_tip_height: u64,
+        chain_tip_height: BitcoinBlockHeight,
         limits: SbtcLimits,
     }
 

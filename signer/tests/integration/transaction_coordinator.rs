@@ -4165,7 +4165,7 @@ mod get_eligible_pending_withdrawal_requests {
         bitcoin::MockBitcoinInteract,
         emily_client::MockEmilyInteract,
         network::in_memory2::SignerNetworkInstance,
-        storage::model::{BitcoinBlock, StacksBlock, WithdrawalRequest, WithdrawalSigner},
+        storage::model::{BitcoinBlock, BitcoinBlockHeight, StacksBlock, WithdrawalRequest, WithdrawalSigner},
         testing::{
             blocks::{BitcoinChain, StacksChain},
             storage::{DbReadTestExt as _, DbWriteTestExt as _},
@@ -4305,7 +4305,7 @@ mod get_eligible_pending_withdrawal_requests {
         expiry_window: u64,
         expiry_buffer: u64,
         min_confirmations: u64,
-        at_block_height: usize,
+        at_block_height: BitcoinBlockHeight,
     }
 
     impl Default for TestParams {

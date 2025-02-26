@@ -327,7 +327,7 @@ pub struct SignerConfig {
     pub dkg_begin_pause: Option<u64>,
     /// The minimum bitcoin block height for which the sbtc signers will
     /// backfill bitcoin blocks to.
-    pub sbtc_bitcoin_start_height: Option<u64>,
+    pub sbtc_bitcoin_start_height: Option<BitcoinBlockHeight>,
     /// The maximum number of deposit inputs that will be included in a
     /// single bitcoin transaction. Transactions must be constructed within
     /// a tenure of a bitcoin block, and higher values here imply lower

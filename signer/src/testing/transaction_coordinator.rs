@@ -717,7 +717,7 @@ where
             block_hash: stacks_block.block_hash,
             sweep_txid: sweep_tx_info.txid.into(),
             sweep_block_hash: sweep_block_hash.into(),
-            sweep_block_height: 0,
+            sweep_block_height: 0.into(),
             ..fake::Faker.fake_with_rng(&mut rng)
         };
 

@@ -43,6 +43,7 @@ use signer::stacks::api::MockStacksInteract;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlock;
 use signer::storage::model::BitcoinBlockHash;
+use signer::storage::model::BitcoinBlockHeight;
 use signer::storage::model::BitcoinBlockRef;
 use signer::storage::model::BitcoinTxRef;
 use signer::storage::model::BitcoinTxSigHash;
@@ -101,7 +102,7 @@ pub struct TestSweepSetup {
     pub sweep_block_hash: bitcoin::BlockHash,
     /// The height of the bitcoin block that confirmed the sweep
     /// transaction.
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
     /// The transaction that swept in the deposit transaction.
     pub sweep_tx_info: BitcoinTxInfo,
     /// The withdrawal request, and a bitmap for how the signers voted on
@@ -616,7 +617,7 @@ pub struct SweepTxInfo {
     pub block_hash: BitcoinBlockHash,
     /// The height of the bitcoin block that confirmed the sweep
     /// transaction.
-    pub block_height: u64,
+    pub block_height: BitcoinBlockHeight,
     /// The parent block hash of the `block_hash`.
     pub parent_hash: BitcoinBlockHash,
     /// The transaction that swept in the deposit transaction.

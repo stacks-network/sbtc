@@ -34,6 +34,7 @@ use signer::keys::SignerScriptPubKey as _;
 use signer::stacks::api::TenureBlocks;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
+use signer::storage::model::BitcoinBlockHeight;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::RotateKeysTransaction;
@@ -765,7 +766,7 @@ async fn next_headers_to_process_gets_all_headers() {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    const START_HEIGHT: u64 = 103;
+    const START_HEIGHT: BitcoinBlockHeight = 103;
 
     let (_, faucet) = regtest::initialize_blockchain();
     let db = testing::storage::new_test_database().await;

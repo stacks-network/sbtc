@@ -1677,9 +1677,9 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn test_assert_allow_dkg_begin(
         dkg_rounds_current: u32,
-        dkg_min_bitcoin_block_height: Option<u64>,
+        dkg_min_bitcoin_block_height: Option<BitcoinBlockHeight>,
         dkg_target_rounds: u32,
-        chain_tip_height: u64,
+        chain_tip_height: BitcoinBlockHeight,
         should_allow: bool,
     ) {
         let context = TestContext::builder()

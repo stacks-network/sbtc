@@ -6,8 +6,10 @@ use fake::Faker;
 
 use crate::storage::model::BitcoinBlock;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksBlockHeight;
 
 /// Represents a naive, sequential chain of bitcoin blocks and provides basic
 /// functionality for manipulation. Does not handle forks/branches.
@@ -78,12 +80,12 @@ impl BitcoinChain {
     }
 
     /// Gets the nth block in the chain, if it exists.
-    pub fn nth_block_checked(&self, height: usize) -> Option<&BitcoinBlock> {
+    pub fn nth_block_checked(&self, height: BitcoinBlockHeight) -> Option<&BitcoinBlock> {
         self.0.get(height)
     }
 
     /// Gets the nth block in the chain, panicking if it does not exist.
-    pub fn nth_block(&self, height: usize) -> &BitcoinBlock {
+    pub fn nth_block(&self, height: BitcoinBlockHeight) -> &BitcoinBlock {
         self.nth_block_checked(height)
             .expect("no nth bitcoin block (index out of range)")
     }
@@ -169,12 +171,12 @@ impl StacksChain {
     }
 
     /// Gets the nth block in the chain, if it exists.
-    pub fn nth_block_checked(&self, height: usize) -> Option<&StacksBlock> {
+    pub fn nth_block_checked(&self, height: StacksBlockHeight) -> Option<&StacksBlock> {
         self.0.get(height)
     }
 
     /// Gets the nth block in the chain, panicking if it does not exist.
-    pub fn nth_block(&self, height: usize) -> &StacksBlock {
+    pub fn nth_block(&self, height: StacksBlockHeight) -> &StacksBlock {
         self.0
             .get(height)
             .expect("no nth bitcoin block (index out of range)")

@@ -84,7 +84,7 @@ pub struct BitcoinBlock {
     /// Block height.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
-    pub block_height: u64,
+    pub block_height: BitcoinBlockHeight,
     /// Hash of the parent block.
     pub parent_hash: BitcoinBlockHash,
 }
@@ -132,7 +132,7 @@ pub struct StacksBlock {
     /// Block height.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
-    pub block_height: u64,
+    pub block_height: StacksBlockHeight,
     /// Hash of the parent block.
     pub parent_hash: StacksBlockHash,
     /// The bitcoin block this stacks block is build upon (matching consensus hash)
@@ -296,7 +296,7 @@ pub struct WithdrawalRequest {
     /// transaction that emitted this event was executed.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
-    pub bitcoin_block_height: u64,
+    pub bitcoin_block_height: BitcoinBlockHeight,
 }
 
 impl WithdrawalRequest {
@@ -393,7 +393,7 @@ pub struct SweptDepositRequest {
     pub sweep_block_hash: BitcoinBlockHash,
     /// The block height of the block referenced by the `sweep_block_hash`.
     #[sqlx(try_from = "i64")]
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
     /// Transaction ID of the deposit request transaction.
     pub txid: BitcoinTxId,
     /// Index of the deposit request UTXO.
@@ -436,7 +436,7 @@ pub struct SweptWithdrawalRequest {
     pub sweep_block_hash: BitcoinBlockHash,
     /// The block height of the block that includes the sweep transaction.
     #[sqlx(try_from = "i64")]
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
     /// Request ID of the withdrawal request. These are supposed to be
     /// unique, but there can be duplicates if there is a reorg that
     /// affects a transaction that calls the `initiate-withdrawal-request`
@@ -519,7 +519,7 @@ pub struct EncryptedDkgShares {
     /// when the DKG round associated with these shares started.
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
-    pub started_at_bitcoin_block_height: u64,
+    pub started_at_bitcoin_block_height: BitcoinBlockHeight,
 }
 
 /// Persisted public DKG shares from other signers
@@ -896,7 +896,7 @@ pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     #[sqlx(try_from = "i64")]
-    pub block_height: u64,
+    pub block_height: BitcoinBlockHeight,
     /// Bitcoin block hash. It uniquely identifies the bitcoin block.
     pub block_hash: BitcoinBlockHash,
 }
@@ -1283,7 +1283,7 @@ pub struct CompletedDepositEvent {
     /// The bitcoin block hash where the sweep transaction was included.
     pub sweep_block_hash: BitcoinBlockHash,
     /// The bitcoin block height where the sweep transaction was included.
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// deposit.
     pub sweep_txid: BitcoinTxId,
@@ -1313,7 +1313,7 @@ pub struct WithdrawalAcceptEvent {
     /// The bitcoin block hash where the sweep transaction was included.
     pub sweep_block_hash: BitcoinBlockHash,
     /// The bitcoin block height where the sweep transaction was included.
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
     /// The transaction id of the bitcoin transaction that fulfilled the
     /// withdrawal request.
     pub sweep_txid: BitcoinTxId,
@@ -1335,6 +1335,107 @@ pub struct WithdrawalRejectEvent {
     /// Here, a 1 (or true) implies that the signer did *not* vote to
     /// accept the request.
     pub signer_bitmap: BitArray<[u8; 16]>,
+}
+
+
+/// Bitcoin block height
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct BitcoinBlockHeight(u64);
+/// Stacks block height
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StacksBlockHeight(u64);
+
+impl BitcoinBlockHeight {
+    pub fn into_inner(self) -> u64 {
+        self.0
+    }
+}
+
+impl From<u64> for BitcoinBlockHeight {
+    fn from(value: u64) -> Self {
+        BitcoinBlockHeight(value)
+    }
+}
+
+impl std::ops::Add for BitcoinBlockHeight {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl std::ops::Sub for BitcoinBlockHeight {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl std::ops::Add<u64> for BitcoinBlockHeight {
+    type Output = Self;
+    fn add(self, rhs: u64) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl std::ops::Sub<u64> for BitcoinBlockHeight {
+    type Output = Self;
+    fn sub(self, rhs: u64) -> Self::Output {
+        Self(self.0 - rhs)
+    }
+}
+
+impl std::fmt::Display for BitcoinBlockHeight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// Repeat similar implementations for EthereumHeight
+impl StacksBlockHeight {
+    pub fn into_inner(self) -> u64 {
+        self.0
+    }
+}
+
+impl From<u64> for StacksBlockHeight {
+    fn from(value: u64) -> Self {
+        StacksBlockHeight(value)
+    }
+}
+
+impl std::ops::Add for StacksBlockHeight {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        Self(self.0 + rhs.0)
+    }
+}
+
+impl std::ops::Sub for StacksBlockHeight {
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self(self.0 - rhs.0)
+    }
+}
+
+impl std::ops::Add<u64> for StacksBlockHeight {
+    type Output = Self;
+    fn add(self, rhs: u64) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
+
+impl std::ops::Sub<u64> for StacksBlockHeight {
+    type Output = Self;
+    fn sub(self, rhs: u64) -> Self::Output {
+        Self(self.0 - rhs)
+    }
+}
+
+impl std::fmt::Display for StacksBlockHeight {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 #[cfg(test)]

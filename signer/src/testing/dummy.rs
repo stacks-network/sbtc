@@ -435,7 +435,7 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
             signature_share_threshold: config.signatures_required,
             dkg_shares_status: DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
-            started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
+            started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng).into(),
         }
     }
 }

@@ -20,6 +20,7 @@ use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
 use signer::bitcoin::validation::WithdrawalRequestStatus;
 use signer::bitcoin::validation::WithdrawalValidationResult;
+use signer::storage::model::BitcoinBlockHeight;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
@@ -4379,15 +4380,15 @@ async fn get_deposit_request_returns_returns_inserted_deposit_request() {
 struct ReorgDescription<const N: usize> {
     /// An array that indicates the height that includes at least one sweep
     /// transaction.
-    sweep_heights: [u64; N],
+    sweep_heights: [BitcoinBlockHeight; N],
     /// This is the height where there is a reorg.
-    reorg_height: u64,
+    reorg_height: BitcoinBlockHeight,
     /// This is the height of the donation. It must be less than or equal
     /// to the minimum sweep height indicated by `sweep_heights`.
-    donation_height: u64,
+    donation_height: BitcoinBlockHeight,
     /// The expected height of the UTXO returned by
     /// [`DbRead::get_signer_utxo`].
-    utxo_height: Option<u64>,
+    utxo_height: Option<BitcoinBlockHeight>,
     /// When we create sweep package, this field controls how many
     /// transactions are created in the package.
     num_transactions: std::ops::Range<u8>,

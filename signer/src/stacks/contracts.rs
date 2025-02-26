@@ -305,7 +305,7 @@ pub struct CompleteDepositV1 {
     /// that is included in this block.
     pub sweep_block_hash: BitcoinBlockHash,
     /// The block height associated with the above bitcoin block hash.
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
 }
 
 impl AsTxPayload for CompleteDepositV1 {
@@ -639,7 +639,7 @@ pub struct AcceptWithdrawalV1 {
     /// is included in this block.
     pub sweep_block_hash: BitcoinBlockHash,
     /// The block height associated with the above bitcoin block hash.
-    pub sweep_block_height: u64,
+    pub sweep_block_height: BitcoinBlockHeight,
 }
 
 impl AsTxPayload for AcceptWithdrawalV1 {

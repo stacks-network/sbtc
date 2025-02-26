@@ -511,7 +511,7 @@ impl super::DbRead for SharedStore {
         &self,
         _bitcoin_chain_tip: &model::BitcoinBlockHash,
         _stacks_chain_tip: &model::StacksBlockHash,
-        _min_bitcoin_height: u64,
+        _min_bitcoin_height: BitcoinBlockHeight,
         _threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
         unimplemented!();

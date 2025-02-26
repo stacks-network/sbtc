@@ -746,6 +746,7 @@ mod tests {
     use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
     use crate::storage::model::DkgSharesStatus;
+    use crate::storage::model::StacksBlockHeight;
     use crate::testing::block_observer::TestHarness;
     use crate::testing::context::*;
 
@@ -1050,7 +1051,7 @@ mod tests {
             signature_share_threshold: 1,
             dkg_shares_status: DkgSharesStatus::Unverified,
             started_at_bitcoin_block_hash: block_hash.into(),
-            started_at_bitcoin_block_height: 1,
+            started_at_bitcoin_block_height: BitcoinBlockHeight,
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

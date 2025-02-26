@@ -2558,6 +2558,7 @@ mod tests {
     use crate::keys::{PrivateKey, PublicKey};
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
+    use crate::storage::model::BitcoinBlockHeight;
     use crate::storage::{model, DbWrite};
     use crate::testing;
     use crate::testing::context::*;
@@ -2689,9 +2690,9 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn test_should_coordinate_dkg(
         dkg_rounds_current: u32,
-        dkg_min_bitcoin_block_height: Option<u64>,
+        dkg_min_bitcoin_block_height: Option<BitcoinBlockHeight>,
         dkg_target_rounds: u32,
-        chain_tip_height: u64,
+        chain_tip_height: BitcoinBlockHeight,
         should_allow: bool,
     ) {
         let context = TestContext::builder()

@@ -290,7 +290,7 @@ pub struct TenureBlocks {
     pub anchor_block_hash: BitcoinBlockHash,
     /// The height of the bitcoin block associated with the above block
     /// hash.
-    pub anchor_block_height: u64,
+    pub anchor_block_height: BitcoinBlockHeight,
 }
 
 impl TenureBlocks {
@@ -452,7 +452,7 @@ pub struct AccountInfo {
     pub locked: u128,
     /// The height of the stacks block where the above locked micro-STX
     /// will be unlocked.
-    pub unlock_height: u64,
+    pub unlock_height: StacksBlockHeight,
     /// The next nonce for the account.
     pub nonce: u64,
 }

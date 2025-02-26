@@ -10,7 +10,7 @@ use crate::{
     context::Context,
     stacks::api::StacksInteract,
     storage::{
-        model::{BitcoinBlockHash, StacksBlockHash},
+        model::{AnyHeight, BitcoinBlockHash, BitcoinBlockHeight, StacksBlockHash, StacksBlockHeight},
         DbRead,
     },
 };
@@ -48,14 +48,14 @@ pub struct BitcoinInfo {
 pub struct StacksInfo {
     pub signer_tip: Option<ChainTipInfo<StacksBlockHash>>,
     pub node_tip: Option<ChainTipInfo<StacksBlockId>>,
-    pub node_bitcoin_block_height: Option<u64>,
+    pub node_bitcoin_block_height: Option<BitcoinBlockHeight>,
     pub node_version: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct ChainTipInfo<T> {
     pub block_hash: T,
-    pub block_height: u64,
+    pub block_height: AnyHeight,
 }
 
 #[derive(Debug, Serialize)]
@@ -68,10 +68,10 @@ pub struct ConfigInfo {
     pub signer_round_max_duration: u64,
     pub bitcoin_presign_request_max_duration: u64,
     pub dkg_max_duration: u64,
-    pub sbtc_bitcoin_start_height: Option<u64>,
+    pub sbtc_bitcoin_start_height: Option<BitcoinBlockHeight>,
     pub dkg_begin_pause: u64,
     pub max_deposits_per_bitcoin_block: u16,
-    pub dkg_min_bitcoin_block_height: Option<u64>,
+    pub dkg_min_bitcoin_block_height: Option<BitcoinBlockHeight>,
     pub dkg_target_rounds: u32,
 }
 
