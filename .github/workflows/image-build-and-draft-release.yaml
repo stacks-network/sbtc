@@ -126,13 +126,13 @@ jobs:
         id: generate-release-notes
         run: |
           cat <<EOF > release_notes.md
-          <A manual one-liner with changes>.
+          <A manual one-liner with changes>Fill the section.
   
           [Highlights](#highlights) • [Images](#images) • [Upgrade Instructions](#upgrade-instructions)
   
           ## ✨ Highlights <a id="highlights">
   
-          <A manual one-liner with changes>.
+          <A manual one-liner with changes>Fill the section.
   
           ## 🔗 Links
   
