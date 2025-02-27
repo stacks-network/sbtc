@@ -7,7 +7,7 @@ edition = "2021"
 ignored = ["tonic", "tonic-build", "stackslib"]
 
 [features]
-default = ["testing"]
+default = []
 testing = ["fake", "mockall", "sbtc/testing"]
 
 [dependencies]
