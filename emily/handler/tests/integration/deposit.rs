@@ -945,7 +945,7 @@ async fn create_deposit_handles_duplicates(status: Status) {
         })));
     }
 
-    let expected_deposit = apis::deposit_api::update_deposits(
+    apis::deposit_api::update_deposits(
         &configuration,
         UpdateDepositsRequestBody {
             deposits: vec![DepositUpdate {
@@ -977,10 +977,7 @@ async fn create_deposit_handles_duplicates(status: Status) {
 
     assert_eq!(duplicate_deposit.is_ok(), true);
 
-    assert_eq!(
-        *expected_deposit.deposits.first().unwrap(),
-        duplicate_deposit.unwrap()
-    );
+    assert_eq!(response, duplicate_deposit.unwrap());
 
     let response = apis::deposit_api::get_deposit(
         &configuration,
