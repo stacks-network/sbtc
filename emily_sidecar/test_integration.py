@@ -10,12 +10,8 @@ import logging_config
 import settings
 from main import app, headers
 
-logging_config.silence_logging()
 
-# Set logging level to CRITICAL to suppress other log messages during tests
-logging.basicConfig(level=logging.CRITICAL)
-for logger_name in logging.root.manager.loggerDict:
-    logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+logging_config.silence_logging()
 
 WIPE_URL = f"{settings.EMILY_ENDPOINT}/testing/wipe"
 DEPOSITS_URL = f"{settings.EMILY_ENDPOINT}/deposit"
