@@ -81,3 +81,4 @@ tower.workspace = true
 [[bin]]
 name = "demo-cli"
 path = "src/bin/demo_cli.rs"
+required-features = ["testing"]
