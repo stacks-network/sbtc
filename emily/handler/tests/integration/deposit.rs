@@ -975,7 +975,7 @@ async fn create_deposit_handles_duplicates(status: Status) {
     let duplicate_deposit =
         apis::deposit_api::create_deposit(&configuration, create_deposit_body).await;
 
-    assert_eq!(duplicate_deposit.is_ok(), true);
+    assert!(duplicate_deposit.is_ok());
 
     assert_eq!(response, duplicate_deposit.unwrap());
 
