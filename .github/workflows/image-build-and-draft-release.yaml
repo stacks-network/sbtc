@@ -12,7 +12,7 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
   attestations: write
   packages: write
 
@@ -43,6 +43,9 @@ jobs:
         docker_target:
           - signer
           - blocklist-client
+    outputs:
+      signer: ${{ steps.save_digest.outputs.signer }}
+      blocklist-client: ${{ steps.save_digest.outputs.blocklist-client }}
 
     runs-on: ubuntu-latest
     environment: "Push to Docker"
@@ -54,14 +57,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
-
-      # Fetch the latest release tag and put into environment variables under
-      # the key `latest_release`.
-      - name: Get latest release tag
-        id: get_latest_release
-        run: |
-          latest_release=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
-          echo "latest_release=$latest_release" >> $GITHUB_ENV
 
       ## Checkout the branch of the release provided.
       ## This requires that a release branch exists for the tag.
@@ -106,9 +101,80 @@ jobs:
           build-args: |
             GIT_COMMIT=${{ github.ref_name }}
 
+      - name: Save digest as output
+        id: save_digest
+        run: echo "${{ matrix.docker_target }}=${{ steps.docker_build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb #v2.1.0
         with:
           subject-name: index.docker.io/${{ env.docker-org }}/sbtc
           subject-digest: ${{ steps.docker_build.outputs.digest }}
           push-to-registry: true
+  
+  release:
+    name: Draft Release
+    runs-on: ubuntu-latest
+    needs: image
+    if: startsWith(github.ref, 'refs/tags/') # Runs only if triggered by a tag
+    steps:
+
+      - name: Set TAG_NAME
+        run: echo "TAG_NAME=${{ github.ref_name }}" >> "$GITHUB_ENV"
+
+      - name: Generate Release Notes
+        id: generate-release-notes
+        run: |
+          cat <<EOF > release_notes.md
+          <A manual one-liner with changes>Fill the section.
+  
+          [Highlights](#highlights) • [Images](#images) • [Upgrade Instructions](#upgrade-instructions)
+  
+          ## ✨ Highlights <a id="highlights">
+  
+          <A manual one-liner with changes>Fill the section.
+  
+          ## 🔗 Links
+  
+          ### 🐳 Images <a id="images">
+  
+          - [\`blockstack/sbtc:signer-${{ env.TAG_NAME }}@${{ needs.image.outputs.signer }}\`](https://hub.docker.com/layers/blockstack/sbtc/signer-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.signer }})
+          - [\`blockstack/sbtc:blocklist-client-${{ env.TAG_NAME }}@${{ needs.image.outputs.blocklist-client }}\`](https://hub.docker.com/layers/blockstack/sbtc/blocklist-client-${{ env.TAG_NAME }}/images/${{ needs.image.outputs.blocklist-client }})
+          ⚠️ Always use [immutable image tags](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier).
+  
+          🔎 Verify the attestation of these images using [this guide](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations/using-artifact-attestations-to-establish-provenance-for-builds#verifying-artifact-attestations-with-the-github-cli).
+  
+          ### 📙 Database migrations
+  
+          Here: [\`signer/migrations\`](https://github.com/stacks-network/sbtc/tree/${{ env.TAG_NAME }}/signer/migrations).
+  
+          ## 🛠️ Upgrade Instructions: <a id="upgrade-instructions">
+  
+          1. Stop your sBTC signer
+          2. Backup your database
+          3. Edit your configuration as instructed
+          4. Apply database migrations (only if not running with the \`--migrate-db\` flag)
+          5. Update your sBTC images as specified above
+          6. Restart your sBTC signer and blocklist client
+          EOF
+  
+      - name: Create GitHub Release
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea #v7.0.01
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const fs = require('fs');
+            const releaseNotes = fs.readFileSync('release_notes.md', 'utf8');
+    
+            const release = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: '${{ env.TAG_NAME }}',
+              name: '${{ env.TAG_NAME }}',
+              body: releaseNotes,
+              draft: true,
+              generate_release_notes: true
+            });
+    
+            console.log(`Created release: ${release.data.html_url}`);
