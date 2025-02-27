@@ -18,6 +18,7 @@ use crate::storage::model::SigHash;
 
 use hashbrown::HashMap;
 use hashbrown::HashSet;
+use rand::rngs::OsRng;
 use wsts::common::PolyCommitment;
 use wsts::net::Message;
 use wsts::net::Packet;
@@ -45,7 +46,25 @@ pub enum StateMachineId {
     /// Identifier for a Bitcoin signing state machines
     BitcoinSign(SigHash),
     /// Identifier for a rotate key verification signing round
-    RotateKey(PublicKeyXOnly, model::BitcoinBlockHash),
+    DkgVerification(PublicKeyXOnly, model::BitcoinBlockRef),
+}
+
+impl std::fmt::Display for StateMachineId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StateMachineId::Dkg(block) => write!(
+                f,
+                "dkg(block_hash={}, block_height={})",
+                block.block_hash, block.block_height
+            ),
+            StateMachineId::BitcoinSign(sighash) => write!(f, "bitcoin-sign({})", sighash),
+            StateMachineId::DkgVerification(pubkey, block) => write!(
+                f,
+                "dkg-verification(key={pubkey}, block_hash={}, block_height={})",
+                block.block_hash, block.block_height
+            ),
+        }
+    }
 }
 
 impl From<&model::BitcoinBlockRef> for StateMachineId {
@@ -113,6 +132,12 @@ impl std::ops::DerefMut for FrostCoordinator {
     }
 }
 
+impl From<frost::Coordinator<Aggregator>> for FrostCoordinator {
+    fn from(value: frost::Coordinator<Aggregator>) -> Self {
+        Self(value)
+    }
+}
+
 /// A trait for WSTS state machines.
 pub trait WstsCoordinator
 where
@@ -125,6 +150,9 @@ where
 
     /// Gets the coordinator configuration.
     fn get_config(&self) -> Config;
+
+    /// Creates a new coordinator state machine from the given configuration.
+    fn from_config(config: Config) -> Self;
 
     /// Create a new coordinator state machine from the given aggregate
     /// key.
@@ -211,6 +239,10 @@ impl WstsCoordinator for FireCoordinator {
 
     fn get_config(&self) -> Config {
         self.0.get_config()
+    }
+
+    fn from_config(config: Config) -> Self {
+        Self(fire::Coordinator::<Aggregator>::new(config))
     }
 
     async fn load<S>(
@@ -313,6 +345,10 @@ impl WstsCoordinator for FrostCoordinator {
         self.0.get_config()
     }
 
+    fn from_config(config: Config) -> Self {
+        Self(frost::Coordinator::<Aggregator>::new(config))
+    }
+
     async fn load<S>(
         storage: &S,
         aggregate_key: PublicKeyXOnly,
@@ -383,6 +419,7 @@ impl SignerStateMachine {
         threshold: u32,
         signer_private_key: PrivateKey,
     ) -> Result<Self, error::Error> {
+        let mut rng = OsRng;
         let signer_pub_key = PublicKey::from_private_key(&signer_private_key);
         let signers: hashbrown::HashMap<u32, _> = signers
             .into_iter()
@@ -439,6 +476,7 @@ impl SignerStateMachine {
             key_ids,
             signer_private_key.into(),
             public_keys,
+            &mut rng,
         )
         .map_err(Error::Wsts)?;
 

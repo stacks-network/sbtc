@@ -33,6 +33,10 @@ pub struct Settings {
     pub default_limits: AccountLimits,
     /// The API key for the Bitcoin Layer 2 API.
     pub trusted_reorg_api_key: String,
+    /// Whether the lambda is expecting transactions on mainnet.
+    pub is_mainnet: bool,
+    /// The version of the lambda.
+    pub version: String,
 }
 
 /// Emily Context
@@ -88,6 +92,8 @@ impl Settings {
                     .transpose()?,
             },
             trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?,
+            is_mainnet: env::var("IS_MAINNET")?.to_lowercase() == "true",
+            version: env::var("VERSION")?,
         })
     }
 }
@@ -174,6 +180,8 @@ impl EmilyContext {
                     .to_string(),
                 default_limits: AccountLimits::default(),
                 trusted_reorg_api_key: "testApiKey".to_string(),
+                is_mainnet: false,
+                version: "local-instance".to_string(),
             },
             dynamodb_client,
         })

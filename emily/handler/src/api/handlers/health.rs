@@ -1,6 +1,8 @@
 //! Handlers for Health endpoint endpoints.
 
-use crate::common::error::Error;
+use warp::reply::Reply;
+
+use crate::{api::models::health::responses::HealthData, context::EmilyContext};
 
 /// Get health handler.
 #[utoipa::path(
@@ -15,8 +17,11 @@ use crate::common::error::Error;
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
-    security(("ApiGatewayKey" = []))
 )]
-pub async fn get_health() -> impl warp::reply::Reply {
-    Error::NotImplemented
+pub async fn get_health(context: EmilyContext) -> impl warp::reply::Reply {
+    // Handle and respond.
+    warp::reply::json(&HealthData {
+        version: context.settings.version.clone(),
+    })
+    .into_response()
 }

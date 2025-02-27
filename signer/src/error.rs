@@ -5,20 +5,27 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
+use crate::dkg;
 use crate::emily_client::EmilyClientError;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::stacks::contracts::DepositValidationError;
 use crate::stacks::contracts::RotateKeysValidationError;
 use crate::stacks::contracts::WithdrawalAcceptValidationError;
+use crate::stacks::contracts::WithdrawalRejectValidationError;
 use crate::storage::model::SigHash;
+use crate::wsts_state_machine::StateMachineId;
 
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The DKG verification state machine raised an error.
+    #[error("the dkg verification state machine raised an error: {0}")]
+    DkgVerification(#[source] dkg::verification::Error),
+
     /// Unexpected [`StateMachineId`] in the given context.
     #[error("unexpected state machine id in the given context: {0:?}")]
-    UnexpectedStateMachineId(Box<crate::wsts_state_machine::StateMachineId>),
+    UnexpectedStateMachineId(crate::wsts_state_machine::StateMachineId),
 
     /// An IO error was returned from the [`bitcoin`] library. This is usually an
     /// error that occurred during encoding/decoding of bitcoin types.
@@ -34,29 +41,28 @@ pub enum Error {
     #[error("invalid signing request")]
     InvalidSigningOperation,
 
-    /// No mock transaction was found after DKG successfully completed. Spending
-    /// a signer UTXO locked by the new aggregate key could not be verified.
-    #[error("no mock transaction found when attempting to sign")]
-    MissingMockTransaction,
+    /// The DKG verification state machine is in an end-state and can't be used
+    /// for the requested operation.
+    #[error("DKG verification state machine is in an end-state and cannot be used for the requested operation: {0}")]
+    DkgVerificationEnded(PublicKeyXOnly, Box<dkg::verification::State>),
 
     /// The rotate-key frost verification signing round failed for the aggregate
     /// key.
-    #[error("rotate-key frost verification signing failed for aggregate key: {0}")]
+    #[error("DKG verification signing failed for aggregate key: {0}")]
     DkgVerificationFailed(PublicKeyXOnly),
 
     /// Cannot verify the aggregate key outside the verification window
     #[error("cannot verify the aggregate key outside the verification window: {0}")]
     DkgVerificationWindowElapsed(PublicKey),
 
-    /// No WSTS FROST state machine was found for the given aggregate key. This
-    /// state machine is used during the DKG verification signing round
-    /// following DKG.
-    #[error("no state machine found for frost signing round for the given aggregate key: {0}")]
-    MissingFrostStateMachine(PublicKeyXOnly),
-
     /// Expected two aggregate keys to match, but they did not.
-    #[error("two aggregate keys were expected to match but did not: {0:?}, {1:?}")]
-    AggregateKeyMismatch(Box<PublicKeyXOnly>, Box<PublicKeyXOnly>),
+    #[error("two aggregate keys were expected to match but did not: actual={actual}, expected={expected}")]
+    AggregateKeyMismatch {
+        /// The aggregate key being compared to the `expected` aggregate key.
+        actual: Box<PublicKeyXOnly>,
+        /// The expected aggregate key.
+        expected: Box<PublicKeyXOnly>,
+    },
 
     /// The aggregate key for the given block hash could not be determined.
     #[error("the signer set aggregate key could not be determined for bitcoin block {0}")]
@@ -149,7 +155,7 @@ pub enum Error {
     BitcoinTxMissing(bitcoin::Txid, Option<bitcoin::BlockHash>),
 
     /// This is the error that is returned when validating a bitcoin
-    /// trasnaction.
+    /// transaction.
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
 
@@ -236,6 +242,13 @@ pub enum Error {
     #[error("receive error: {0}")]
     ChannelReceive(#[source] tokio::sync::broadcast::error::RecvError),
 
+    /// Could not serialize the clarity value to bytes.
+    ///
+    /// For some reason, InterpreterError does not implement
+    /// std::fmt::Display or std::error::Error, hence the debug log.
+    #[error("receive error: {0:?}")]
+    ClarityValueSerialization(clarity::vm::errors::InterpreterError),
+
     /// Thrown when doing [`i64::try_from`] or [`i32::try_from`] before
     /// inserting a value into the database. This only happens if the value
     /// is greater than MAX for the signed type.
@@ -320,12 +333,12 @@ pub enum Error {
     InvalidEcdsaSignatureBytes(#[source] secp256k1::Error),
 
     /// This happens when we attempt to convert a `[u8; 65]` into a
-    /// recoverable EDCSA signature.
+    /// recoverable ECDSA signature.
     #[error("could not recover the public key from the signature: {0}")]
     InvalidRecoverableSignatureBytes(#[source] secp256k1::Error),
 
     /// This happens when we attempt to recover a public key from a
-    /// recoverable EDCSA signature.
+    /// recoverable ECDSA signature.
     #[error("could not recover the public key from the signature: {0}, digest: {1}")]
     InvalidRecoverableSignature(#[source] secp256k1::Error, secp256k1::Message),
 
@@ -345,6 +358,10 @@ pub enum Error {
     /// This should never happen.
     #[error("outpoint missing from transaction when assessing fee {0}")]
     OutPointMissing(bitcoin::OutPoint),
+
+    /// This should never happen.
+    #[error("output_index missing from block when assessing fee, txid: {0}, vout: {1}")]
+    VoutMissing(bitcoin::Txid, u32),
 
     /// This is thrown when failing to parse a hex string into an integer.
     #[error("could not parse the hex string into an integer")]
@@ -462,8 +479,8 @@ pub enum Error {
     MissingPublicKey,
 
     /// Missing state machine
-    #[error("missing state machine")]
-    MissingStateMachine,
+    #[error("missing state machine: {0}")]
+    MissingStateMachine(StateMachineId),
 
     /// Missing key rotation
     #[error("missing key rotation")]
@@ -565,6 +582,11 @@ pub enum Error {
     /// transaction fails at the validation step.
     #[error("withdrawal accept validation error: {0}")]
     WithdrawalAcceptValidation(#[source] Box<WithdrawalAcceptValidationError>),
+
+    /// The error for when the request to sign a withdrawal-reject
+    /// transaction fails at the validation step.
+    #[error("withdrawal reject validation error: {0}")]
+    WithdrawalRejectValidation(#[source] Box<WithdrawalRejectValidationError>),
 
     /// WSTS error.
     #[error("WSTS error: {0}")]

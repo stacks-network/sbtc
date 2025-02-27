@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
+use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
@@ -199,8 +200,8 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     let waiting_fut = async {
         let db2 = db2.clone();
         while current_chain_tip != Some(chain_tip) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
             current_chain_tip = db2.get_bitcoin_canonical_chain_tip().await.unwrap();
+            tokio::time::sleep(Duration::from_millis(250)).await;
         }
     };
 
@@ -355,8 +356,12 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let (rpc, faucet) = regtest::initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
     testing_api::wipe_databases(emily_client.config())
         .await
@@ -559,6 +564,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
         bitcoin_txid: deposit_request.outpoint.txid.to_string(),
         deposit_script: deposit_request.deposit_script.to_hex_string(),
         reclaim_script: deposit_request.reclaim_script.to_hex_string(),
+        transaction_hex: serialize_hex(&deposit_tx),
     };
     deposit_api::create_deposit(emily_client.config(), body)
         .await
@@ -1305,9 +1311,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
     assert_eq!(storage.get_encrypted_dkg_shares_count().await.unwrap(), 0);
 
     // Signers and coordinator should allow DKG
-    assert!(should_coordinate_dkg(&ctx, &db_chain_tip.block_hash)
-        .await
-        .unwrap());
+    assert!(should_coordinate_dkg(&ctx, &db_chain_tip).await.unwrap());
     assert!(assert_allow_dkg_begin(&ctx, &db_chain_tip).await.is_ok());
 
     // Okay now let's add in some DKG shares into the database.
@@ -1321,9 +1325,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
     assert_eq!(storage.get_encrypted_dkg_shares_count().await.unwrap(), 1);
 
     // Signers and coordinator should NOT allow DKG
-    assert!(!should_coordinate_dkg(&ctx, &db_chain_tip.block_hash)
-        .await
-        .unwrap());
+    assert!(!should_coordinate_dkg(&ctx, &db_chain_tip).await.unwrap());
     assert!(assert_allow_dkg_begin(&ctx, &db_chain_tip).await.is_err());
 
     // While in the verification window, we expect the share to stay in pending
@@ -1356,9 +1358,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
         assert_eq!(storage.get_encrypted_dkg_shares_count().await.unwrap(), 1);
 
         // Signers and coordinator should NOT allow DKG
-        assert!(!should_coordinate_dkg(&ctx, &db_chain_tip.block_hash)
-            .await
-            .unwrap());
+        assert!(!should_coordinate_dkg(&ctx, &db_chain_tip).await.unwrap());
         assert!(assert_allow_dkg_begin(&ctx, &db_chain_tip).await.is_err());
     }
 
@@ -1393,9 +1393,7 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
     assert_eq!(storage.get_encrypted_dkg_shares_count().await.unwrap(), 0);
 
     // Signers and coordinator should allow again DKG
-    assert!(should_coordinate_dkg(&ctx, &db_chain_tip.block_hash)
-        .await
-        .unwrap());
+    assert!(should_coordinate_dkg(&ctx, &db_chain_tip).await.unwrap());
     assert!(assert_allow_dkg_begin(&ctx, &db_chain_tip).await.is_ok());
 
     testing::storage::drop_db(db).await;

@@ -11,6 +11,7 @@ use bitcoin::ScriptBuf;
 use bitcoin::TapSighash;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
+use bitcoin::XOnlyPublicKey;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::{nakamoto, stacks};
 use clarity::util::secp256k1::Secp256k1PublicKey;
@@ -52,6 +53,8 @@ use wsts::traits::PartyState;
 use wsts::traits::SignerState;
 
 use crate::bitcoin::utxo::Fees;
+use crate::bitcoin::utxo::SignerBtcState;
+use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::TxRequestIds;
 use crate::codec::Encode;
 use crate::ecdsa::Signed;
@@ -81,7 +84,6 @@ use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 /// Dummy block
@@ -360,21 +362,6 @@ impl fake::Dummy<fake::Faker> for WithdrawalRejectEvent {
     }
 }
 
-impl fake::Dummy<fake::Faker> for WithdrawalCreateEvent {
-    fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
-        WithdrawalCreateEvent {
-            txid: config.fake_with_rng(rng),
-            block_id: config.fake_with_rng(rng),
-            request_id: rng.next_u32() as u64,
-            amount: rng.next_u32() as u64,
-            sender: config.fake_with_rng(rng),
-            recipient: config.fake_with_rng::<ScriptPubKey, _>(rng),
-            max_fee: rng.next_u32() as u64,
-            block_height: rng.next_u32() as u64,
-        }
-    }
-}
-
 impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         CompletedDepositEvent {
@@ -449,6 +436,28 @@ impl fake::Dummy<SignerSetConfig> for EncryptedDkgShares {
             dkg_shares_status: DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
             started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
+        }
+    }
+}
+
+impl fake::Dummy<&[PublicKey]> for SignerBtcState {
+    fn dummy_with_rng<R: Rng + ?Sized>(signer_set_public_keys: &&[PublicKey], rng: &mut R) -> Self {
+        let aggregate_key = PublicKey::combine_keys(*signer_set_public_keys).unwrap();
+        let aggregate_key_x_only: XOnlyPublicKey = aggregate_key.into();
+
+        Self {
+            fee_rate: Faker.fake_with_rng(rng),
+            last_fees: Faker.fake_with_rng(rng),
+            magic_bytes: [1, 2],
+            public_key: aggregate_key_x_only,
+            utxo: SignerUtxo {
+                amount: Faker.fake_with_rng(rng),
+                outpoint: OutPoint {
+                    txid: txid(&Faker, rng),
+                    vout: Faker.fake_with_rng(rng),
+                },
+                public_key: aggregate_key_x_only,
+            },
         }
     }
 }
@@ -699,7 +708,7 @@ impl fake::Dummy<fake::Faker> for AcceptWithdrawalV1 {
         let address = StacksAddress::p2pkh(false, &pubkey);
 
         AcceptWithdrawalV1 {
-            request_id: config.fake_with_rng(rng),
+            id: config.fake_with_rng(rng),
             outpoint: OutPoint {
                 txid: txid(config, rng),
                 vout: rng.next_u32(),
@@ -720,7 +729,7 @@ impl fake::Dummy<fake::Faker> for RejectWithdrawalV1 {
         let address = StacksAddress::p2pkh(false, &pubkey);
 
         RejectWithdrawalV1 {
-            request_id: config.fake_with_rng(rng),
+            id: config.fake_with_rng(rng),
             signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
             deployer: address,
         }
@@ -745,7 +754,7 @@ impl fake::Dummy<fake::Faker> for RotateKeysV1 {
 impl fake::Dummy<fake::Faker> for QualifiedRequestId {
     fn dummy_with_rng<R: rand::RngCore + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         QualifiedRequestId {
-            request_id: config.fake_with_rng(rng),
+            request_id: config.fake_with_rng::<u32, _>(rng) as u64,
             txid: config.fake_with_rng(rng),
             block_hash: config.fake_with_rng(rng),
         }

@@ -23,6 +23,7 @@ use crate::bitcoin::TransactionLookupHint;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::RequestDeciderEvent;
+use crate::context::SbtcLimits;
 use crate::context::SignerCommand;
 use crate::context::SignerEvent;
 use crate::context::SignerSignal;
@@ -49,9 +50,11 @@ use crate::stacks::api::FeePriority;
 use crate::stacks::api::GetNakamotoStartHeight;
 use crate::stacks::api::StacksInteract;
 use crate::stacks::api::SubmitTxResponse;
+use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::AsTxPayload;
 use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
+use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
 use crate::stacks::contracts::SmartContract;
 use crate::stacks::contracts::SMART_CONTRACTS;
@@ -59,10 +62,14 @@ use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
-use crate::storage::DbRead as _;
+use crate::storage::DbRead;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_DUST_LIMIT;
+use crate::WITHDRAWAL_EXPIRY_BUFFER;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
@@ -169,6 +176,25 @@ pub struct TxCoordinatorEventLoop<Context, Network> {
     pub is_epoch3: bool,
 }
 
+/// The parameters for the [`TxCoordinatorEventLoop::get_pending_requests`] function.
+#[derive(Debug)]
+pub struct GetPendingRequestsParams<'a> {
+    /// The current bitcoin chain tip (ref).
+    pub bitcoin_chain_tip: &'a model::BitcoinBlockRef,
+    /// The current stacks chain tip (hash).
+    pub stacks_chain_tip: &'a model::StacksBlockHash,
+    /// The current signers' aggregate key.
+    pub aggregate_key: &'a PublicKey,
+    /// The public keys of the current signer set.
+    pub signer_public_keys: &'a BTreeSet<PublicKey>,
+    /// The current sBTC limits.
+    pub sbtc_limits: &'a SbtcLimits,
+    /// The threshold for the minimum number of 'accept' votes required for a
+    /// request to be considered for the sweep transaction package, and the
+    /// number of signatures required for each transaction.
+    pub signature_threshold: u16,
+}
+
 /// This function defines which messages this event loop is interested
 /// in.
 fn run_loop_message_filter(signal: &SignerSignal) -> bool {
@@ -259,10 +285,11 @@ where
         Ok(is_epoch3)
     }
 
-    #[tracing::instrument(
-        skip_all,
-        fields(public_key = %self.signer_public_key(), chain_tip = tracing::field::Empty)
-    )]
+    #[tracing::instrument(skip_all, fields(
+        public_key = %self.signer_public_key(),
+        bitcoin_tip_hash = tracing::field::Empty,
+        bitcoin_tip_height = tracing::field::Empty,
+    ))]
     async fn process_new_blocks(&mut self) -> Result<(), Error> {
         if !self.is_epoch3().await? {
             return Ok(());
@@ -277,12 +304,16 @@ where
         let bitcoin_chain_tip = self
             .context
             .get_storage()
-            .get_bitcoin_canonical_chain_tip()
+            .get_bitcoin_canonical_chain_tip_ref()
             .await?
             .ok_or(Error::NoChainTip)?;
 
         let span = tracing::Span::current();
-        span.record("chain_tip", tracing::field::display(&bitcoin_chain_tip));
+        span.record(
+            "bitcoin_tip_hash",
+            tracing::field::display(bitcoin_chain_tip.block_hash),
+        );
+        span.record("bitcoin_tip_height", bitcoin_chain_tip.block_height);
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -295,7 +326,7 @@ where
         // If we are not the coordinator, then we have no business
         // coordinating DKG or constructing bitcoin and stacks
         // transactions, might as well return early.
-        if !self.is_coordinator(&bitcoin_chain_tip, &signer_public_keys) {
+        if !self.is_coordinator(bitcoin_chain_tip.as_ref(), &signer_public_keys) {
             // Before returning, we also check if all the smart contracts are
             // deployed: we do this as some other coordinator could have deployed
             // them, in which case we need to updated our state.
@@ -312,15 +343,20 @@ where
         let should_coordinate_dkg =
             should_coordinate_dkg(&self.context, &bitcoin_chain_tip).await?;
         let aggregate_key = if should_coordinate_dkg {
-            self.coordinate_dkg(&bitcoin_chain_tip).await?
+            self.coordinate_dkg(bitcoin_chain_tip.as_ref()).await?
         } else {
-            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip))?
+            maybe_aggregate_key.ok_or(Error::MissingAggregateKey(*bitcoin_chain_tip.block_hash))?
         };
 
-        self.deploy_smart_contracts(&bitcoin_chain_tip, &aggregate_key)
+        let chain_tip_hash = &bitcoin_chain_tip.block_hash;
+
+        tracing::debug!("loading the signer stacks wallet");
+        let wallet = self.get_signer_wallet(chain_tip_hash).await?;
+
+        self.deploy_smart_contracts(chain_tip_hash, &wallet, &aggregate_key)
             .await?;
 
-        self.check_and_submit_rotate_key_transaction(&bitcoin_chain_tip, &aggregate_key)
+        self.check_and_submit_rotate_key_transaction(chain_tip_hash, &wallet, &aggregate_key)
             .await?;
 
         let bitcoin_processing_fut = self.construct_and_sign_bitcoin_sbtc_transactions(
@@ -333,11 +369,13 @@ where
             tracing::error!(%error, "failed to construct and sign bitcoin transactions");
         }
 
-        self.construct_and_sign_stacks_sbtc_response_transactions(
+        self.construct_and_sign_stacks_response_transactions(
             &bitcoin_chain_tip,
+            &wallet,
             &aggregate_key,
         )
         .await?;
+        tracing::debug!("coordinator tenure completed successfully");
 
         Ok(())
     }
@@ -348,6 +386,7 @@ where
     async fn check_and_submit_rotate_key_transaction(
         &mut self,
         bitcoin_chain_tip: &model::BitcoinBlockHash,
+        wallet: &SignerWallet,
         aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         if !self.all_smart_contracts_deployed().await? {
@@ -379,16 +418,12 @@ where
         }
         tracing::info!(%needs_verification, %needs_rotate_key, "DKG verification and/or key rotation needed");
 
-        // Load the Stacks wallet.
-        tracing::debug!("loading the signer stacks wallet");
-        let wallet = self.get_signer_wallet(bitcoin_chain_tip).await?;
-
         if needs_verification {
             // Perform DKG verification before submitting the rotate key transaction.
             tracing::info!(
                 "🔐 beginning DKG verification before submitting rotate-key transaction"
             );
-            self.perform_dkg_verification(bitcoin_chain_tip, &last_dkg.aggregate_key, &wallet)
+            self.perform_dkg_verification(bitcoin_chain_tip, &last_dkg.aggregate_key, wallet)
                 .await?;
             tracing::info!("🔐 DKG verification successful");
         }
@@ -408,7 +443,7 @@ where
                     bitcoin_chain_tip,
                     signing_key,
                     &last_dkg.aggregate_key,
-                    &wallet,
+                    wallet,
                 )
                 .await
                 .inspect_err(
@@ -544,53 +579,70 @@ where
 
     /// Construct and coordinate WSTS signing rounds for sBTC transactions on Bitcoin,
     /// fulfilling pending deposit and withdraw requests.
-    #[tracing::instrument(skip_all)]
+    #[tracing::instrument(skip_all, fields(
+        stacks_tip_hash = tracing::field::Empty,
+        stacks_tip_height = tracing::field::Empty,
+    ))]
     async fn construct_and_sign_bitcoin_sbtc_transactions(
         &mut self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
         aggregate_key: &PublicKey,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> Result<(), Error> {
-        tracing::debug!("fetching the stacks chain tip");
-        let stacks_chain_tip = self
-            .context
-            .get_storage()
-            .get_stacks_chain_tip(bitcoin_chain_tip)
+        let storage = self.context.get_storage();
+
+        // Fetch the stacks chain tip from the database.
+        let stacks_chain_tip = storage
+            .get_stacks_chain_tip(&bitcoin_chain_tip.block_hash)
             .await?
             .ok_or(Error::NoStacksChainTip)?;
 
-        tracing::debug!(
-            stacks_chain_tip = %stacks_chain_tip.block_hash,
-            "retrieved the stacks chain tip"
+        let span = tracing::Span::current();
+        span.record("stacks_tip_hash", stacks_chain_tip.block_hash.to_hex());
+        span.record("stacks_tip_height", stacks_chain_tip.block_height);
+
+        // Create a future that fetches pending deposit and withdrawal requests
+        // from the database.
+        let pending_requests_fut = self.get_pending_requests(
+            bitcoin_chain_tip,
+            &stacks_chain_tip.block_hash,
+            aggregate_key,
+            signer_public_keys,
         );
 
-        let pending_requests_fut =
-            self.get_pending_requests(bitcoin_chain_tip, aggregate_key, signer_public_keys);
-
-        // If Self::get_pending_requests returns Ok(None) then there are no
-        // requests to respond to, so let's just exit.
+        // If `get_pending_requests()` returns `Ok(None)` then there are no
+        // eligible requests to service; we can exit early.
         let Some(pending_requests) = pending_requests_fut.await? else {
-            tracing::debug!("no requests to handle, exiting");
+            tracing::debug!("no requests to handle; skipping this round");
             return Ok(());
         };
+
         tracing::debug!(
             num_deposits = %pending_requests.deposits.len(),
             num_withdrawals = pending_requests.withdrawals.len(),
-            "fetched requests"
+            "there are eligible requests to handle"
         );
+
         // Construct the transaction package and store it in the database.
         let transaction_package = pending_requests.construct_transactions()?;
 
+        // Send the pre-sign request to the signers and wait for their
+        // acknowledgments.
         self.construct_and_send_bitcoin_presign_request(
-            bitcoin_chain_tip,
+            bitcoin_chain_tip.as_ref(),
             &pending_requests.signer_state,
             &transaction_package,
         )
         .await?;
 
+        // Construct, sign and broadcast the bitcoin transactions.
         for mut transaction in transaction_package {
-            self.sign_and_broadcast(bitcoin_chain_tip, signer_public_keys, &mut transaction)
-                .await?;
+            self.sign_and_broadcast(
+                bitcoin_chain_tip.as_ref(),
+                signer_public_keys,
+                &mut transaction,
+            )
+            .await?;
 
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
@@ -624,52 +676,68 @@ where
     ///    responses.
     /// 5. If there are enough signatures then broadcast the transaction.
     #[tracing::instrument(skip_all)]
-    async fn construct_and_sign_stacks_sbtc_response_transactions(
+    async fn construct_and_sign_stacks_response_transactions(
         &mut self,
-        chain_tip: &model::BitcoinBlockHash,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
-        let wallet = SignerWallet::load(&self.context, chain_tip).await?;
-        let stacks = self.context.get_stacks_client();
+        let fut = self.construct_and_sign_stacks_deposit_response_transactions(
+            chain_tip,
+            wallet,
+            bitcoin_aggregate_key,
+        );
+        if let Err(error) = fut.await {
+            tracing::error!(%error, "could not process deposit response transactions on stacks");
+        }
 
-        // Fetch deposit and withdrawal requests from the database where
+        let fut = self.construct_and_sign_stacks_withdrawal_response_transactions(
+            chain_tip,
+            wallet,
+            bitcoin_aggregate_key,
+        );
+        if let Err(error) = fut.await {
+            tracing::error!(%error, "could not process withdrawal response transactions on stacks");
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_sign_stacks_deposit_response_transactions(
+        &mut self,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let db = self.context.get_storage();
+
+        // Fetch deposit requests from the database where
         // there has been a confirmed bitcoin transaction associated with
         // the request.
         //
         // For deposits, there will be at most one such bitcoin transaction
         // on the blockchain identified by the chain tip, where an input is
         // the deposit UTXO.
-        //
-        // For withdrawals, we need to have a record of the `request_id`
-        // associated with the bitcoin transaction's outputs.
 
-        let deposit_requests = self
-            .context
-            .get_storage()
-            .get_swept_deposit_requests(chain_tip, self.context_window)
+        let swept_deposits = db
+            .get_swept_deposit_requests(chain_tip.as_ref(), self.context_window)
             .await?;
 
-        if deposit_requests.is_empty() {
+        if swept_deposits.is_empty() {
             tracing::debug!("no stacks transactions to create, exiting");
             return Ok(());
         }
 
         tracing::debug!(
-            num_deposits = %deposit_requests.len(),
-            "we have deposit requests that have been swept that may need minting"
+            swept_deposits = %swept_deposits.len(),
+            "we have deposit requests that may need a response on stacks"
         );
-        // We need to know the nonce to use, so we reach out to our stacks
-        // node for the account information for our multi-sig address.
-        //
-        // Note that the wallet object will automatically increment the
-        // nonce for each transaction that it creates.
-        let account = stacks.get_account(wallet.address()).await?;
-        wallet.set_nonce(account.nonce);
 
-        for req in deposit_requests {
+        for req in swept_deposits {
             let outpoint = req.deposit_outpoint();
             let sign_request_fut =
-                self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, &wallet);
+                self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, wallet);
 
             let (sign_request, multi_tx) = match sign_request_fut.await {
                 Ok(res) => res,
@@ -685,7 +753,7 @@ where
             // transaction because someone else is now the coordinator, and
             // all the signers are now ignoring us.
             let process_request_fut =
-                self.process_sign_request(sign_request, chain_tip, multi_tx, &wallet);
+                self.process_sign_request(sign_request, chain_tip.as_ref(), multi_tx, wallet);
 
             let status = match process_request_fut.await {
                 Ok(txid) => {
@@ -708,9 +776,232 @@ where
                 Metrics::TransactionsSubmittedTotal,
                 "blockchain" => STACKS_BLOCKCHAIN,
                 "status" => status,
+                "kind" => "complete-deposit"
             )
             .increment(1);
         }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all)]
+    async fn construct_and_sign_stacks_withdrawal_response_transactions(
+        &mut self,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
+        bitcoin_aggregate_key: &PublicKey,
+    ) -> Result<(), Error> {
+        let db = self.context.get_storage();
+
+        // Fetch withdrawal requests from the database where there has been
+        // a confirmed bitcoin transaction associated with the request.
+        let swept_withdrawals = db
+            .get_swept_withdrawal_requests(&chain_tip.block_hash, self.context_window)
+            .await
+            .inspect_err(|error| tracing::error!(%error, "could not fetch swept withdrawals"))
+            .unwrap_or_default();
+
+        // Fetch withdrawal requests that have not been swept for quite
+        // some time.
+        let rejected_withdrawals = db
+            .get_pending_rejected_withdrawal_requests(chain_tip, self.context_window)
+            .await
+            .inspect_err(|error| tracing::error!(%error, "could not fetch rejected withdrawals"))
+            .unwrap_or_default();
+
+        if swept_withdrawals.is_empty() && rejected_withdrawals.is_empty() {
+            tracing::debug!("no withdrawal stacks transactions to create, exiting");
+            return Ok(());
+        }
+
+        tracing::debug!(
+            swept_withdrawals = %swept_withdrawals.len(),
+            rejected_withdrawals = %rejected_withdrawals.len(),
+            "we have withdrawals requests that may need completion"
+        );
+
+        for swept_request in swept_withdrawals {
+            let withdrawal_id = swept_request.qualified_id();
+            let fut = self.construct_and_sign_withdrawal_accept(
+                chain_tip,
+                wallet,
+                bitcoin_aggregate_key,
+                swept_request,
+            );
+
+            if let Err(error) = fut.await {
+                tracing::warn!(
+                    %error,
+                    %withdrawal_id,
+                    "could not construct and sign withdrawal accept"
+                );
+            }
+        }
+
+        for withdrawal in rejected_withdrawals {
+            let withdrawal_id = withdrawal.qualified_id();
+            let fut = self.construct_and_sign_withdrawal_reject(
+                chain_tip,
+                wallet,
+                bitcoin_aggregate_key,
+                withdrawal,
+            );
+            if let Err(error) = fut.await {
+                tracing::warn!(
+                    %error,
+                    %withdrawal_id,
+                    "could not construct and sign withdrawal reject"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all, fields(withdrawal_id = %request.qualified_id()))]
+    async fn construct_and_sign_withdrawal_accept(
+        &mut self,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
+        bitcoin_aggregate_key: &PublicKey,
+        request: model::SweptWithdrawalRequest,
+    ) -> Result<(), Error> {
+        let stacks = self.context.get_stacks_client();
+        let deployer = self.context.config().signer.deployer;
+
+        let is_completed = stacks
+            .is_withdrawal_completed(&deployer, request.request_id)
+            .await?;
+
+        if is_completed {
+            tracing::warn!("swept withdrawal request already processed");
+            return Ok(());
+        }
+
+        tracing::debug!("processing withdrawal request");
+        let sign_request_fut = self.construct_withdrawal_accept_stacks_sign_request(
+            request,
+            bitcoin_aggregate_key,
+            wallet,
+        );
+
+        let (sign_request, multi_tx) = sign_request_fut.await?;
+        tracing::debug!("constructed withdrawal accept sign request");
+
+        // If we fail to sign the transaction for some reason, we
+        // decrement the nonce by one, and try the next transaction.
+        // This is not a fatal error, since we could fail to sign the
+        // transaction because someone else is now the coordinator, and
+        // all the signers are now ignoring us.
+        let process_request_fut =
+            self.process_sign_request(sign_request, &chain_tip.block_hash, multi_tx, wallet);
+
+        tracing::debug!("processed withdrawal request");
+
+        let status = match process_request_fut.await {
+            Ok(txid) => {
+                tracing::info!(%txid, "successfully submitted accept-withdrawal transaction");
+                "success"
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not process the stacks sign request for a withdrawal");
+                wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                "failure"
+            }
+        };
+
+        metrics::counter!(
+            Metrics::TransactionsSubmittedTotal,
+            "blockchain" => STACKS_BLOCKCHAIN,
+            "status" => status,
+            "kind" => "complete-withdrawal-accept",
+        )
+        .increment(1);
+
+        tracing::debug!("processed withdrawal requests successfully");
+
+        Ok(())
+    }
+
+    #[tracing::instrument(skip_all, fields(withdrawal_id = %request.qualified_id()))]
+    async fn construct_and_sign_withdrawal_reject(
+        &mut self,
+        chain_tip: &model::BitcoinBlockRef,
+        wallet: &SignerWallet,
+        bitcoin_aggregate_key: &PublicKey,
+        request: model::WithdrawalRequest,
+    ) -> Result<(), Error> {
+        let db = self.context.get_storage();
+        let stacks = self.context.get_stacks_client();
+        let deployer = self.context.config().signer.deployer;
+
+        let is_completed = stacks
+            .is_withdrawal_completed(&deployer, request.request_id)
+            .await?;
+
+        if is_completed {
+            // The request is already completed according to the contract
+            return Ok(());
+        }
+
+        // The `DbRead::is_withdrawal_inflight` function considers whether
+        // the given withdrawal has been included in a sweep transaction
+        // that could have been submitted. With this check we are more
+        // confident that it is safe to reject the withdrawal.
+        let qualified_id = request.qualified_id();
+        let withdrawal_inflight = db
+            .is_withdrawal_inflight(&qualified_id, &chain_tip.block_hash)
+            .await?;
+        if withdrawal_inflight {
+            return Ok(());
+        }
+
+        // The `DbRead::is_withdrawal_inflight` function considers whether
+        // we need to worry about a fork making a sweep fulfilling
+        // withdrawal active in the mempool.
+        let withdrawal_is_active = db
+            .is_withdrawal_active(&qualified_id, chain_tip, WITHDRAWAL_MIN_CONFIRMATIONS)
+            .await?;
+
+        if withdrawal_is_active {
+            return Ok(());
+        }
+
+        let sign_request_fut = self.construct_withdrawal_reject_stacks_sign_request(
+            &request,
+            bitcoin_aggregate_key,
+            wallet,
+        );
+
+        let (sign_request, multi_tx) = sign_request_fut.await?;
+
+        // If we fail to sign the transaction for some reason, we
+        // decrement the nonce by one, and try the next transaction.
+        // This is not a fatal error, since we could fail to sign the
+        // transaction because someone else is now the coordinator, and
+        // all the signers are now ignoring us.
+        let process_request_fut =
+            self.process_sign_request(sign_request, chain_tip.as_ref(), multi_tx, wallet);
+
+        let status = match process_request_fut.await {
+            Ok(txid) => {
+                tracing::info!(%txid, "successfully submitted withdrawal reject transaction");
+                "success"
+            }
+            Err(error) => {
+                tracing::warn!(%error, "could not process the stacks sign request for a withdrawal reject");
+                wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
+                "failure"
+            }
+        };
+
+        metrics::counter!(
+            Metrics::TransactionsSubmittedTotal,
+            "blockchain" => STACKS_BLOCKCHAIN,
+            "status" => status,
+            "kind" => "complete-withdrawal-reject",
+        )
+        .increment(1);
 
         Ok(())
     }
@@ -945,6 +1236,114 @@ where
         Ok((sign_request, multi_tx))
     }
 
+    /// Transform the swept withdrawal request into a Stacks sign request
+    /// object.
+    ///
+    /// This function uses stacks-core for fee estimation of the transaction.
+    #[tracing::instrument(skip_all)]
+    pub async fn construct_withdrawal_accept_stacks_sign_request(
+        &self,
+        req: model::SweptWithdrawalRequest,
+        bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        tracing::debug!("constructing withdrawal accept sign request");
+        // Retrieve the Bitcoin sweep transaction and compute the assessed fee
+        // from the Bitcoin node
+        let btc_client = self.context.get_bitcoin_client();
+
+        let tx_info = btc_client
+            .get_tx_info(&req.sweep_txid, &req.sweep_block_hash)
+            .await?
+            .ok_or_else(|| {
+                Error::BitcoinTxMissing(req.sweep_txid.into(), Some(req.sweep_block_hash.into()))
+            })?;
+
+        let outpoint = req.withdrawal_outpoint();
+        let qualified_id = req.qualified_id();
+
+        let assessed_bitcoin_fee = tx_info
+            .assess_output_fee(outpoint.vout as usize)
+            .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
+
+        let votes = self
+            .context
+            .get_storage()
+            .get_withdrawal_request_signer_votes(&qualified_id, bitcoin_aggregate_key)
+            .await?;
+
+        let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
+            id: qualified_id,
+            outpoint,
+            tx_fee: assessed_bitcoin_fee.to_sat(),
+            signer_bitmap: votes.into(),
+            deployer: self.context.config().signer.deployer,
+            sweep_block_hash: req.sweep_block_hash,
+            sweep_block_height: req.sweep_block_height,
+        });
+
+        // Estimate the fee for the stacks transaction
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, &contract_call, FeePriority::Medium)
+            .await?;
+
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        let tx = multi_tx.tx();
+
+        let sign_request = StacksTransactionSignRequest {
+            aggregate_key: *bitcoin_aggregate_key,
+            contract_tx: contract_call.into(),
+            nonce: tx.get_origin_nonce(),
+            tx_fee: tx.get_tx_fee(),
+            txid: tx.txid(),
+        };
+
+        Ok((sign_request, multi_tx))
+    }
+
+    /// Construct a withdrawal reject transaction
+    #[tracing::instrument(skip_all)]
+    pub async fn construct_withdrawal_reject_stacks_sign_request(
+        &self,
+        req: &model::WithdrawalRequest,
+        bitcoin_aggregate_key: &PublicKey,
+        wallet: &SignerWallet,
+    ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
+        let votes = self
+            .context
+            .get_storage()
+            .get_withdrawal_request_signer_votes(&req.qualified_id(), bitcoin_aggregate_key)
+            .await?;
+
+        let contract_call = ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
+            id: req.qualified_id(),
+            signer_bitmap: votes.into(),
+            deployer: self.context.config().signer.deployer,
+        });
+
+        // Estimate the fee for the stacks transaction
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .await?;
+
+        let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
+        let tx = multi_tx.tx();
+
+        let sign_request = StacksTransactionSignRequest {
+            aggregate_key: *bitcoin_aggregate_key,
+            contract_tx: contract_call.into(),
+            nonce: tx.get_origin_nonce(),
+            tx_fee: tx.get_tx_fee(),
+            txid: tx.txid(),
+        };
+
+        Ok((sign_request, multi_tx))
+    }
+
     /// Attempt to sign the stacks transaction.
     #[tracing::instrument(skip_all)]
     async fn sign_stacks_transaction(
@@ -956,17 +1355,18 @@ where
     ) -> Result<StacksTransaction, Error> {
         let txid = req.txid;
 
-        // We ask for the signers to sign our transaction (including
-        // ourselves, via our tx signer event loop)
-        self.send_message(req, chain_tip).await?;
-
-        let max_duration = self.signing_round_max_duration;
         let signal_stream = self
             .context
             .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
+
+        // We ask for the signers to sign our transaction (including
+        // ourselves, via our tx signer event loop)
+        self.send_message(req, chain_tip).await?;
+
+        let max_duration = self.signing_round_max_duration;
 
         let future = async {
             while multi_tx.num_signatures() < wallet.signatures_required() {
@@ -1405,7 +1805,11 @@ where
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         signer_public_keys: &BTreeSet<PublicKey>,
     ) -> bool {
-        given_key_is_coordinator(self.pub_key(), bitcoin_chain_tip, signer_public_keys)
+        given_key_is_coordinator(
+            self.signer_public_key(),
+            bitcoin_chain_tip,
+            signer_public_keys,
+        )
     }
 
     /// Constructs a new [`utxo::SignerBtcState`] based on the current market
@@ -1438,76 +1842,343 @@ where
         })
     }
 
+    /// Fetches pending withdrawal requests from storage and filters them based
+    /// on the remaining consensus rules as defined in #741.
+    ///
+    /// ## Consensus Rules Overview
+    ///
+    /// 1. [x] The request must not have been swept within the current canonical
+    ///    Bitcoin chain.
+    /// 2. [x] The request must be confirmed in a canonical Stacks block.
+    /// 3. [x] The request must have reached the required number of Bitcoin
+    /// 4. [x] The request must be approved:
+    ///     - [x] By the required number of signers (this is implemented as a
+    ///       pre-filter in the query, any signer),
+    ///     - [x] And by the required number of signers _in the current signer
+    ///       set_.
+    /// 5. [ ] The request has been approved by this signer. **Note:** This rule
+    ///     does not apply within the coordinator module, where decisions are
+    ///     made collectively based on consensus rules rather than an individual
+    ///     signer's approval. However, the coordinator's signer module still
+    ///     processes the request according to these same rules.
+    /// 6. [ ] The assessed fees will be within the constraints of the request's
+    ///    specified maximum fee (this is handled during packaging).
+    /// 7. [x] The request must not have expired (handled in the query).
+    /// 8. [x] The request amount must be above the dust limit.
+    /// 9. [x] The request must be within the current sBTC caps.
+    ///
+    /// ## Function Parameters
+    /// - `storage`: Reference to a `DbRead` implementation.
+    /// - `expiry_window`: The number of blocks which a withdrawal request is
+    ///   considered definitively expired and will not be returned (exclusive).
+    /// - `expiry_buffer`: The number of blocks _prior to_ the expiration of a
+    ///   withdrawal request that it is considered "soft expired" and will be
+    ///   skipped/logged (exclusive).
+    /// - `min_confirmations`: The minimum number of confirmations required for
+    ///   a withdrawal request to be considered valid (inclusive).
+    /// - `params`: A reference to a `GetPendingRequestsParams` struct.
+    #[tracing::instrument(skip_all)]
+    pub async fn get_eligible_pending_withdrawal_requests<DB>(
+        storage: &DB,
+        expiry_window: u64,
+        expiry_buffer: u64,
+        min_confirmations: u64,
+        params: &GetPendingRequestsParams<'_>,
+    ) -> Result<Vec<utxo::WithdrawalRequest>, Error>
+    where
+        DB: DbRead,
+    {
+        // Constants used for logging (local to this method).
+        const REQUEST_SKIPPED_MESSAGE: &str = "skipping withdrawal request";
+        const SKIP_REASON_AMOUNT_IS_DUST: &str = "amount_is_dust";
+        const SKIP_REASON_PER_WITHDRAWAL_CAP_EXCEEDED: &str = "per_withdrawal_cap_exceeded";
+        const SKIP_REASON_INSUFFICIENT_CONFIRMATIONS: &str = "insufficient_confirmations";
+        const SKIP_REASON_INSUFFICIENT_VOTES: &str = "insufficient_votes";
+        const SKIP_REASON_SOFT_EXPIRY: &str = "soft_expiry";
+
+        let mut eligible_withdrawals = Vec::new();
+
+        // Determine the minimum bitcoin block height we should consider for
+        // withdrawals.
+        let min_bitcoin_height = params
+            .bitcoin_chain_tip
+            .block_height
+            .saturating_sub(expiry_window);
+
+        // We also calculate the minimum bitcoin block height for withdrawals
+        // that are considered valid (not expired) based on the soft expiry. We
+        // will not propose these withdrawals in the sweep transaction, but we
+        // will log them as skipped.
+        let min_soft_bitcoin_height = min_bitcoin_height.saturating_add(expiry_buffer);
+
+        // Fetch pending withdrawal requests from storage. This method, with the
+        // given inputs, performs the following filtering according to consensus
+        // rules:
+        //
+        // - [1]  The request has not been swept in the canonical bitcoin chain,
+        // - [2]  Is confirmed in a canonical stacks block,
+        // - [4a] Is accepted by >= `threshold` signers (pre-filter),
+        // - [7]  Is not expired; we only retrieve requests whose bitcoin block
+        //        height is greater than `min_bitcoin_height`.
+        let pending_withdraw_requests = storage
+            .get_pending_accepted_withdrawal_requests(
+                params.bitcoin_chain_tip.as_ref(),
+                params.stacks_chain_tip,
+                min_bitcoin_height,
+                params.signature_threshold,
+            )
+            .await?;
+
+        // If we didn't find any pending withdrawal requests, we can exit early.
+        if pending_withdraw_requests.is_empty() {
+            tracing::debug!("no pending withdrawal requests eligible for consideration found");
+            return Ok(eligible_withdrawals);
+        }
+
+        // Iterate over the pending withdrawal requests we fetched above and
+        // validate them against the remaining consensus rules.
+        for req in pending_withdraw_requests {
+            if req.bitcoin_block_height < min_soft_bitcoin_height {
+                tracing::debug!(
+                    request_id = req.request_id,
+                    bitcoin_block_height = req.bitcoin_block_height,
+                    min_soft_bitcoin_height,
+                    reason = SKIP_REASON_SOFT_EXPIRY,
+                    message = REQUEST_SKIPPED_MESSAGE
+                );
+                continue;
+            }
+
+            // [8] Ensure that the withdrawal request amount is at or above the
+            // dust limit specified in `WITHDRAWAL_DUST_LIMIT`.
+            if req.amount < WITHDRAWAL_DUST_LIMIT {
+                tracing::debug!(
+                    request_id = req.request_id,
+                    amount = req.amount,
+                    reason = SKIP_REASON_AMOUNT_IS_DUST,
+                    message = REQUEST_SKIPPED_MESSAGE
+                );
+                continue;
+            }
+
+            // [9] Ensure that the withdrawal request amount is within the
+            // current sBTC caps.
+            let per_withdrawal_cap = params.sbtc_limits.per_withdrawal_cap().to_sat();
+            if req.amount > per_withdrawal_cap {
+                tracing::debug!(
+                    request_id = req.request_id,
+                    amount = req.amount,
+                    per_withdrawal_cap = per_withdrawal_cap,
+                    reason = SKIP_REASON_PER_WITHDRAWAL_CAP_EXCEEDED,
+                    message = REQUEST_SKIPPED_MESSAGE
+                );
+                continue;
+            }
+
+            // Calculate the number of blocks passed (confirmations) since the
+            // bitcoin anchor of the stacks block confirming the withdrawal
+            // request.
+            let num_confirmations = params
+                .bitcoin_chain_tip
+                .block_height
+                .saturating_sub(req.bitcoin_block_height);
+
+            // [3] Ensure that we have the required number of confirmations for
+            // the withdrawal request.
+            if num_confirmations < min_confirmations {
+                tracing::debug!(
+                    request_id = req.request_id,
+                    num_confirmations,
+                    required_confirmations = min_confirmations,
+                    reason = SKIP_REASON_INSUFFICIENT_CONFIRMATIONS,
+                    message = REQUEST_SKIPPED_MESSAGE
+                );
+                continue;
+            }
+
+            // Fetch the votes for the withdrawal request from storage for the
+            // public keys of the signers in the current signing set, based on
+            // the current signers' aggregate key. Note: this could have been
+            // baked into the initial query, but we need the votes' values for
+            // our return value.
+            let votes = storage
+                .get_withdrawal_request_signer_votes(&req.qualified_id(), params.aggregate_key)
+                .await?;
+
+            // Calculate the number of votes accepted, rejected, and missing.
+            // The vote will be `None` if we don't have a record of the signer's
+            // vote in the database, otherwise it will be `Some(bool)` where
+            // `true` = accept and `false` = reject.
+            let (num_votes_accepted, num_votes_rejected, num_votes_missing) = votes.iter().fold(
+                (0_u16, 0_u16, 0_u16),
+                |(accepted, rejected, missing), vote| match vote.is_accepted {
+                    Some(true) => (accepted + 1, rejected, missing),
+                    Some(false) => (accepted, rejected + 1, missing),
+                    None => (accepted, rejected, missing + 1),
+                },
+            );
+
+            // [4] Ensure that the withdrawal request has been accepted by the
+            // required number of signers _in the current signer set_ (the
+            // initial query only checks the total number of votes accepted by
+            // any signer).
+            if num_votes_accepted < params.signature_threshold {
+                tracing::warn!(
+                    request_id = req.request_id,
+                    num_votes_accepted,
+                    num_votes_rejected,
+                    num_votes_missing,
+                    required_votes = params.signature_threshold,
+                    reason = SKIP_REASON_INSUFFICIENT_VOTES,
+                    message = REQUEST_SKIPPED_MESSAGE
+                );
+                continue;
+            }
+
+            let withdrawal = utxo::WithdrawalRequest::from_model(req, votes);
+            eligible_withdrawals.push(withdrawal);
+        }
+
+        Ok(eligible_withdrawals)
+    }
+
     /// TODO(#742): This function needs to filter deposit requests based on
     /// time as well. We need to do this because deposit requests are locked
     /// using OP_CSV, which lock up coins based on block height or
     /// multiples of 512 seconds measure by the median time past.
     #[tracing::instrument(skip_all)]
-    pub async fn get_pending_requests(
-        &self,
-        bitcoin_chain_tip: &model::BitcoinBlockHash,
-        aggregate_key: &PublicKey,
-        signer_public_keys: &BTreeSet<PublicKey>,
-    ) -> Result<Option<utxo::SbtcRequests>, Error> {
-        tracing::debug!("fetching pending deposit and withdrawal requests");
-        let context_window = self.context_window;
-        let threshold = self.threshold;
+    pub async fn get_eligible_pending_deposit_requests<DB>(
+        storage: &DB,
+        context_window: u16,
+        params: &GetPendingRequestsParams<'_>,
+    ) -> Result<Vec<utxo::DepositRequest>, Error>
+    where
+        DB: DbRead,
+    {
+        tracing::debug!("fetching eligible deposit requests");
+        let mut eligible_deposits: Vec<utxo::DepositRequest> = Vec::new();
 
-        let pending_deposit_requests = self
-            .context
-            .get_storage()
-            .get_pending_accepted_deposit_requests(bitcoin_chain_tip, context_window, threshold)
+        // First, we fetch pending deposit requests with initial filtering
+        // done by the storage layer.
+        let pending_deposit_requests = storage
+            .get_pending_accepted_deposit_requests(
+                params.bitcoin_chain_tip.as_ref(),
+                context_window,
+                params.signature_threshold,
+            )
             .await?;
 
-        let mut deposits: Vec<utxo::DepositRequest> = Vec::new();
+        // If there are no pending deposit requests, we can exit early.
+        if pending_deposit_requests.is_empty() {
+            tracing::debug!("no pending deposit requests eligible for consideration found");
+            return Ok(eligible_deposits);
+        }
 
+        // Iterate through each deposit request, fetch its votes from storage
+        // for the public keys of the signers in the current signing set, based
+        // on the current signers' aggregate key.
         for req in pending_deposit_requests {
-            let votes = self
-                .context
-                .get_storage()
-                .get_deposit_request_signer_votes(&req.txid, req.output_index, aggregate_key)
+            let votes = storage
+                .get_deposit_request_signer_votes(&req.txid, req.output_index, params.aggregate_key)
                 .await?;
 
             let deposit = utxo::DepositRequest::from_model(req, votes);
-            deposits.push(deposit);
+            eligible_deposits.push(deposit);
         }
 
-        let withdrawals: Vec<utxo::WithdrawalRequest> = Vec::new();
+        Ok(eligible_deposits)
+    }
 
+    /// Fetches pending deposit and withdrawal requests from storage and filters
+    /// them based on consensus rules defined in #741 and [**missing**: deposit
+    /// consensus ticket?].
+    #[tracing::instrument(skip_all)]
+    pub async fn get_pending_requests(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+        stacks_chain_tip: &model::StacksBlockHash,
+        aggregate_key: &PublicKey,
+        signer_public_keys: &BTreeSet<PublicKey>,
+    ) -> Result<Option<utxo::SbtcRequests>, Error> {
+        tracing::info!("preparing pending requests for processing");
+
+        let storage = self.context.get_storage();
+        let config = self.context.config();
+
+        // Get the current sBTC limits (caps).
+        let sbtc_limits = self.context.state().get_current_limits();
+
+        // Setup the parameters for fetching pending requests.
+        let params = GetPendingRequestsParams {
+            bitcoin_chain_tip,
+            stacks_chain_tip,
+            aggregate_key,
+            signer_public_keys,
+            signature_threshold: self.threshold,
+            sbtc_limits: &sbtc_limits,
+        };
+
+        // Fetch eligible deposit requests from storage.
+        let deposits =
+            Self::get_eligible_pending_deposit_requests(&storage, self.context_window, &params)
+                .await?;
+
+        // Fetch eligible withdrawal requests from storage.
+        let withdrawals = Self::get_eligible_pending_withdrawal_requests(
+            &storage,
+            WITHDRAWAL_BLOCKS_EXPIRY,
+            WITHDRAWAL_EXPIRY_BUFFER,
+            WITHDRAWAL_MIN_CONFIRMATIONS,
+            &params,
+        )
+        .await?;
+
+        // If there are no pending deposit or withdrawal requests, we return
+        // `None` to signal that there is no work to be done.
+        if deposits.is_empty() && withdrawals.is_empty() {
+            return Ok(None);
+        }
+
+        // Get the current signers' BTC state.
+        let signer_state = self
+            .get_btc_state(&bitcoin_chain_tip.block_hash, aggregate_key)
+            .await?;
+
+        // Count the number of signers in the current signer set.
         let num_signers = signer_public_keys
             .len()
             .try_into()
             .map_err(|_| Error::TypeConversion)?;
 
-        if deposits.is_empty() && withdrawals.is_empty() {
-            return Ok(None);
-        }
-        let signer_config = &self.context.config().signer;
+        let max_deposits_per_bitcoin_tx = config.signer.max_deposits_per_bitcoin_tx.get();
+
+        // Construct and return the `utxo::SbtcRequests` object.
         Ok(Some(utxo::SbtcRequests {
             deposits,
             withdrawals,
-            signer_state: self.get_btc_state(bitcoin_chain_tip, aggregate_key).await?,
-            accept_threshold: threshold,
+            signer_state,
+            accept_threshold: self.threshold,
             num_signers,
-            sbtc_limits: self.context.state().get_current_limits(),
-            max_deposits_per_bitcoin_tx: signer_config.max_deposits_per_bitcoin_tx.get(),
+            sbtc_limits,
+            max_deposits_per_bitcoin_tx,
         }))
-    }
-
-    fn pub_key(&self) -> PublicKey {
-        PublicKey::from_private_key(&self.private_key)
     }
 
     /// This function provides a deterministic 32-byte identifier for the
     /// signer.
     fn coordinator_id(&self, chain_tip: &model::BitcoinBlockHash) -> [u8; 32] {
         sha2::Sha256::new_with_prefix("SIGNER_COORDINATOR_ID")
-            .chain_update(self.pub_key().serialize())
+            .chain_update(self.signer_public_key().serialize())
             .chain_update(chain_tip.into_bytes())
             .finalize()
             .into()
     }
 
+    /// Takes a [`Payload`], converts it to a [`Message`], signs it with the
+    /// signer's private key, and broadcasts it to the network.
+    ///
+    /// This method also generates a [`TxCoordinatorEvent::MessageGenerated`]
+    /// event upon successful completion for the local tx-signer to pick up.
     #[tracing::instrument(skip_all)]
     async fn send_message(
         &mut self,
@@ -1578,6 +2249,10 @@ where
         }
     }
 
+    /// Estimates the fees for the contract deploy transaction, constructs the
+    /// [`StacksTransactionSignRequest`] to be broadcast to the signers for
+    /// signing and returns it along with the corresponding [`MultisigTx`] being
+    /// signed.
     async fn construct_deploy_contracts_stacks_sign_request(
         &self,
         contract_deploy: SmartContract,
@@ -1609,15 +2284,15 @@ where
     pub async fn deploy_smart_contracts(
         &mut self,
         chain_tip: &model::BitcoinBlockHash,
+        wallet: &SignerWallet,
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         if self.all_smart_contracts_deployed().await? {
             return Ok(());
         }
 
-        let wallet = self.get_signer_wallet(chain_tip).await?;
         for contract in SMART_CONTRACTS {
-            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, &wallet)
+            self.deploy_smart_contract(contract, chain_tip, bitcoin_aggregate_key, wallet)
                 .await?;
         }
 
@@ -1660,6 +2335,7 @@ where
         Ok(wallet)
     }
 
+    /// Helper method to get this signer's public key from its private key.
     fn signer_public_key(&self) -> PublicKey {
         PublicKey::from_private_key(&self.private_key)
     }
@@ -1811,16 +2487,10 @@ pub fn coordinator_public_key(
 /// whether or not a new DKG round should be coordinated.
 pub async fn should_coordinate_dkg(
     context: &impl Context,
-    bitcoin_chain_tip: &model::BitcoinBlockHash,
+    bitcoin_chain_tip: &model::BitcoinBlockRef,
 ) -> Result<bool, Error> {
     let storage = context.get_storage();
     let config = context.config();
-
-    // Get the bitcoin block at the chain tip so that we know the height
-    let bitcoin_chain_tip_block = storage
-        .get_bitcoin_block(bitcoin_chain_tip)
-        .await?
-        .ok_or(Error::NoChainTip)?;
 
     // Get the number of DKG shares that have been stored
     let dkg_shares_entry_count = storage.get_encrypted_dkg_shares_count().await?;
@@ -1844,8 +2514,7 @@ pub async fn should_coordinate_dkg(
             Ok(true)
         }
         (current, target, Some(dkg_min_height))
-            if current < target.get()
-                && bitcoin_chain_tip_block.block_height >= dkg_min_height.get() =>
+            if current < target.get() && bitcoin_chain_tip.block_height >= dkg_min_height.get() =>
         {
             tracing::info!(
                 ?dkg_min_bitcoin_block_height,
@@ -1998,8 +2667,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_ignore_withdrawals() {
-        test_environment().assert_ignore_withdrawals().await;
+    async fn should_construct_withdrawal_accept_stacks_sign_request() {
+        test_environment()
+            .assert_construct_withdrawal_accept_stacks_sign_request()
+            .await;
+    }
+
+    #[tokio::test]
+    async fn should_construct_withdrawal_reject_stacks_sign_request() {
+        test_environment()
+            .assert_construct_withdrawal_reject_stacks_sign_request()
+            .await;
     }
 
     #[test_case(0, None, 1, 100, true; "first DKG allowed without min height")]
@@ -2038,14 +2716,17 @@ mod tests {
         }
 
         // Dummy chain tip hash which will be used to fetch the block height
-        let bitcoin_chain_tip: model::BitcoinBlockHash = Faker.fake();
+        let bitcoin_chain_tip = model::BitcoinBlockRef {
+            block_height: chain_tip_height,
+            block_hash: Faker.fake(),
+        };
 
         // Write a bitcoin block at the given height, simulating the chain tip.
         storage
             .write_bitcoin_block(&model::BitcoinBlock {
-                block_height: chain_tip_height,
+                block_hash: bitcoin_chain_tip.block_hash,
+                block_height: bitcoin_chain_tip.block_height,
                 parent_hash: Faker.fake(),
-                block_hash: bitcoin_chain_tip,
             })
             .await
             .unwrap();

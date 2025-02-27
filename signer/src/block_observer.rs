@@ -375,7 +375,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// Process all recent stacks blocks.
     #[tracing::instrument(skip_all)]
     async fn process_stacks_blocks(&self) -> Result<(), Error> {
-        tracing::info!("processing bitcoin block");
+        tracing::info!("processing stacks block");
         let stacks_client = self.context.get_stacks_client();
         let tenure_info = stacks_client.get_tenure_info().await?;
 
@@ -640,6 +640,15 @@ impl<C: Context, B> BlockObserver<C, B> {
         let db = self.context.get_storage_mut();
 
         let last_dkg = db.get_latest_encrypted_dkg_shares().await?;
+
+        if let Some(ref shares) = last_dkg {
+            tracing::info!(
+                aggregate_key = %shares.aggregate_key,
+                status = ?shares.dkg_shares_status,
+                "checking latest DKG shares"
+            );
+        }
+
         let Some(
             last_dkg @ EncryptedDkgShares {
                 dkg_shares_status: model::DkgSharesStatus::Unverified,
@@ -661,6 +670,10 @@ impl<C: Context, B> BlockObserver<C, B> {
             .saturating_add(verification_window as u64);
 
         if max_verification_height < chain_tip.block_height {
+            tracing::info!(
+                aggregate_key = %last_dkg.aggregate_key,
+                "latest DKG shares are unverified and the verification window expired, marking them as failed"
+            );
             db.revoke_dkg_shares(last_dkg.aggregate_key).await?;
         }
 
@@ -809,14 +822,14 @@ mod tests {
         // invalid requests (even though it should've validated them) and
         // BitcoinClient will return the right transaction for both of
         // them.
-        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount);
+        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount]);
         let deposit_request0 = CreateDepositRequest {
             outpoint: bitcoin::OutPoint {
                 txid: tx_setup0.tx.compute_txid(),
                 vout: 0,
             },
-            deposit_script: tx_setup0.deposit.deposit_script(),
-            reclaim_script: tx_setup0.reclaim.reclaim_script(),
+            deposit_script: tx_setup0.deposits.first().unwrap().deposit_script(),
+            reclaim_script: tx_setup0.reclaims.first().unwrap().reclaim_script(),
         };
         let req0 = deposit_request0.clone();
         // When we validate the deposit request, we fetch the transaction
@@ -828,7 +841,7 @@ mod tests {
             block_time: None,
         };
 
-        let tx_setup1 = sbtc::testing::deposits::tx_setup(300, 2000, amount);
+        let tx_setup1 = sbtc::testing::deposits::tx_setup(300, 2000, &[amount]);
         // This one is an invalid deposit request because the deposit
         // script is wrong
         let deposit_request1 = CreateDepositRequest {
@@ -837,7 +850,7 @@ mod tests {
                 vout: 0,
             },
             deposit_script: bitcoin::ScriptBuf::new(),
-            reclaim_script: tx_setup1.reclaim.reclaim_script(),
+            reclaim_script: tx_setup1.reclaims.first().unwrap().reclaim_script(),
         };
         // The transaction is also in the mempool, even though it is an
         // invalid deposit.
@@ -850,7 +863,7 @@ mod tests {
 
         // This deposit transaction is a fine deposit, it just hasn't been
         // confirmed yet.
-        let tx_setup2 = sbtc::testing::deposits::tx_setup(400, 3000, amount);
+        let tx_setup2 = sbtc::testing::deposits::tx_setup(400, 3000, &[amount]);
         let get_tx_resp2 = GetTxResponse {
             tx: tx_setup2.tx.clone(),
             block_hash: None,
@@ -863,8 +876,8 @@ mod tests {
                 txid: tx_setup2.tx.compute_txid(),
                 vout: 0,
             },
-            deposit_script: tx_setup2.deposit.deposit_script(),
-            reclaim_script: tx_setup2.reclaim.reclaim_script(),
+            deposit_script: tx_setup2.deposits.first().unwrap().deposit_script(),
+            reclaim_script: tx_setup2.reclaims.first().unwrap().reclaim_script(),
         };
 
         // Let's add the "responses" to the field that feeds the
@@ -938,14 +951,14 @@ mod tests {
         // invalid requests (even though it should've validated them) and
         // BitcoinClient will return the right transaction for both of
         // them.
-        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount);
+        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount]);
         let deposit_request0 = CreateDepositRequest {
             outpoint: bitcoin::OutPoint {
                 txid: tx_setup0.tx.compute_txid(),
                 vout: 0,
             },
-            deposit_script: tx_setup0.deposit.deposit_script(),
-            reclaim_script: tx_setup0.reclaim.reclaim_script(),
+            deposit_script: tx_setup0.deposits.first().unwrap().deposit_script(),
+            reclaim_script: tx_setup0.reclaims.first().unwrap().reclaim_script(),
         };
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's blockchain. The stubs out that
@@ -1046,14 +1059,14 @@ mod tests {
         // sbtc::testing::deposits::tx_setup just to quickly create a
         // transaction; any one will do since we will be adding the UTXO
         // that spends to the signer afterward.
-        let mut tx_setup0 = sbtc::testing::deposits::tx_setup(0, 0, 100);
+        let mut tx_setup0 = sbtc::testing::deposits::tx_setup(0, 0, &[100]);
         tx_setup0.tx.output.push(TxOut {
             value: Amount::ONE_BTC,
             script_pubkey: signers_script_pubkey.into(),
         });
 
         // This one does not spend to the signers :(
-        let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, 2000);
+        let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, &[2000]);
         let txid0 = tx_setup0.tx.compute_txid();
         let txid1 = tx_setup1.tx.compute_txid();
 

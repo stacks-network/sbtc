@@ -26,6 +26,11 @@ export class Constants {
     static TEMP_STAGE_NAME: string = "temp";
 
     /**
+     * Stage name used for temporary stacks.
+     */
+    static PRIVATE_MAINNET_STAGE_NAME: string = "private-mainnet";
+
+    /**
      * Default stage name used when no stage name is provided.
      */
     static DEFAULT_STAGE_NAME: string = "dev";

@@ -1,5 +1,6 @@
 //! Helper functions for the bitcoin module
 //!
+use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::OutPoint;
@@ -52,12 +53,13 @@ pub fn base_signer_transaction() -> Transaction {
 
 impl utxo::DepositRequest {
     /// Transform this deposit request into the body that Emily expects.
-    pub fn as_emily_request(&self) -> CreateDepositRequestBody {
+    pub fn as_emily_request(&self, tx: &Transaction) -> CreateDepositRequestBody {
         CreateDepositRequestBody {
             bitcoin_tx_output_index: self.outpoint.vout,
             bitcoin_txid: self.outpoint.txid.to_string(),
             deposit_script: self.deposit_script.to_hex_string(),
             reclaim_script: self.reclaim_script.to_hex_string(),
+            transaction_hex: serialize_hex(tx),
         }
     }
 }
