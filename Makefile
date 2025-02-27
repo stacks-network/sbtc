@@ -248,7 +248,7 @@ $(BLOCKLIST_OPENAPI_SPEC_PATH): $(BLOCKLIST_OPENAPI_SOURCE_FILES)
 	@echo "Generating Blocklist OpenAPI spec"
 	cargo $(CARGO_FLAGS) build --package $(BLOCKLIST_OPENAPI_SPEC_PROJECT_NAME) --target-dir ./target/blocklist-spec-gen ${CARGO_BUILD_ARGS}
 
-# Geneate Rust client code for the Blocklist API if any of the generated source
+# Generate Rust client code for the Blocklist API if any of the generated source
 # files are older than the OpenAPI spec file.
 $(BLOCKLIST_CLIENT_SOURCE_FILES): $(BLOCKLIST_OPENAPI_SPEC_PATH)
 	@echo "Generating blocklist client from openapi spec"
