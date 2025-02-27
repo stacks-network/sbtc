@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 logger.info("Using Emily endpoint: %s", settings.EMILY_ENDPOINT)
 
-headers = {"Content-Type": "application/json", "x-api-key": settings.API_KEY}
+headers = {"x-api-key": settings.API_KEY}
 
 
 # The events received from the stacks-node contain many additional fields,
