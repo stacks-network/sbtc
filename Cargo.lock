@@ -5785,6 +5785,7 @@ dependencies = [
  "tempfile",
  "test-case",
  "test-log",
+ "testing-emily-client",
  "thiserror 2.0.11",
  "time 0.3.37",
  "tokio",
