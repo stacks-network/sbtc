@@ -32,7 +32,7 @@ class NewBlockEventModel(BaseModel, extra="allow"):
 
 
 @app.post("/new_block")
-async def handle_new_block(new_block_event: NewBlockEventModel) -> dict:
+async def handle_new_block(new_block_event: NewBlockEventModel) -> Response:
     try:
         resp = requests.post(
             settings.NEW_BLOCK_URL,
@@ -58,10 +58,10 @@ async def handle_new_block(new_block_event: NewBlockEventModel) -> dict:
 
 
 @app.post("/attachments/new")
-async def handle_attachments() -> dict:
+async def handle_attachments() -> Response:
     return Response(status_code=200)
 
 
 @app.get("/")
-def read_root() -> dict:
+def read_root() -> Response:
     return Response(status_code=200)
