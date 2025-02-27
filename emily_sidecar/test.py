@@ -53,7 +53,6 @@ class NewBlockTestCase(unittest.TestCase):
         for fixture in FIXTURES.values():
             response = self.app.post("/new_block", json=fixture)
             self.assertEqual(response.status_code, 200)
-            self.assertEqual({}, response.json())
 
     def test_new_block_invalid_json(self):
         response = self.app.post("/new_block", data="Not a JSON")
@@ -85,17 +84,14 @@ class AttachmentsTestCase(unittest.TestCase):
         test_json = {"key": "value"}
         response = self.app.post("/attachments/new", json=test_json)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual({}, response.json())
 
     def test_handle_attachments_with_empty_json(self):
         response = self.app.post("/attachments/new", json={})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual({}, response.json())
 
     def test_handle_attachments_with_no_json(self):
         response = self.app.post("/attachments/new")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual({}, response.json())
 
 
 if __name__ == "__main__":

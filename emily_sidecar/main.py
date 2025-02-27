@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 import requests
 
@@ -53,14 +54,14 @@ async def handle_new_block(new_block_event: NewBlockEventModel) -> dict:
         new_block_event.block_height,
         new_block_event.index_block_hash,
     )
-    return {}
+    return Response(status_code=200)
 
 
 @app.post("/attachments/new")
 async def handle_attachments() -> dict:
-    return {}
+    return Response(status_code=200)
 
 
 @app.get("/")
 def read_root() -> dict:
-    return {}
+    return Response(status_code=200)
