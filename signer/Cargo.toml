@@ -8,7 +8,7 @@ ignored = ["tonic", "tonic-build", "stackslib"]
 
 [features]
 default = []
-testing = ["fake", "mockall", "sbtc/testing"]
+testing = ["dep:fake", "dep:mockall", "sbtc/testing"]
 
 [dependencies]
 aquamarine.workspace = true
