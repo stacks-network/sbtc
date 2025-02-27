@@ -491,6 +491,10 @@ async fn process_complete_deposit() {
                 .expect_estimate_fees()
                 .once()
                 .returning(move |_, _, _| Box::pin(async move { Ok(25505) }));
+
+            client
+                .expect_is_deposit_completed()
+                .returning(move |_, _| Box::pin(async move { Ok(false) }));
         })
         .await;
 
@@ -1473,6 +1477,10 @@ async fn sign_bitcoin_transaction() {
             client
                 .expect_get_sbtc_total_supply()
                 .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
+
+            client
+                .expect_is_deposit_completed()
+                .returning(move |_, _| Box::pin(async move { Ok(false) }));
         })
         .await;
     }
@@ -1907,6 +1915,10 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             client
                 .expect_get_sbtc_total_supply()
                 .returning(move |_| Box::pin(async move { Ok(Amount::ZERO) }));
+
+            client
+                .expect_is_deposit_completed()
+                .returning(move |_, _| Box::pin(async move { Ok(false) }));
         })
         .await;
     }
