@@ -15,9 +15,6 @@ permissions:
 
 env:
   docker_platforms: "linux/amd64"
-  aws_region: "eu-west-1"
-  aws_role: "arn:aws:iam::376129863319:role/GitHubECR"
-  ecr_repository: "sbtc"
 
 jobs:
   image:
@@ -37,8 +34,8 @@ jobs:
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v3
         with:
-          role-to-assume: ${{ env.aws_role }}
-          aws-region: ${{ env.aws_region }}
+          role-to-assume: ${{ secrets['AWS_ROLE_ARN'] }}
+          aws-region: ${{ secrets['AWS_REGION'] }}
 
       - name: Login to Amazon ECR
         id: ecr_login
@@ -52,7 +49,7 @@ jobs:
         uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5.5.1
         with:
           images: |
-            ${{ steps.ecr_login.outputs.registry }}/${{ env.ecr_repository }}
+            ${{ steps.ecr_login.outputs.registry }}/${{ secrets['AWS_ECR'] }}
           tags: |
             type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }}
             type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }}
