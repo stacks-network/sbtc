@@ -6,6 +6,7 @@
 //! The canonical implementation of these traits is the [`postgres::PgStore`]
 //! allowing the signer to use a Postgres database to store data.
 
+#[cfg(any(test, feature = "testing"))]
 pub mod in_memory;
 pub mod model;
 pub mod postgres;
