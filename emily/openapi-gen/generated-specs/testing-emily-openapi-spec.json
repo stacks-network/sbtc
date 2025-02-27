@@ -471,6 +471,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Deposit already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deposit"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Deposit created successfully",
             "content": {
@@ -503,16 +513,6 @@
           },
           "405": {
             "description": "Method not allowed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate request",
             "content": {
               "application/json": {
                 "schema": {
