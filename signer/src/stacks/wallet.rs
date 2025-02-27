@@ -468,7 +468,6 @@ mod tests {
     impl MultisigTx {
         /// Create a new Stacks transaction for a contract call that can be
         /// signed by the signers' multi-sig wallet.
-        #[cfg(any(test, feature = "testing"))]
         pub fn new_contract_call<T>(contract: T, wallet: &SignerWallet, tx_fee: u64) -> Self
         where
             T: AsContractCall,
