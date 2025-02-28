@@ -6,9 +6,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 2 * * *'
-  push:
-    branches: 
-    - "feat/add_docker_ecr_registry"
 
 permissions:
   id-token: write
