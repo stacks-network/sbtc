@@ -22,9 +22,9 @@ else
     IMAGES=""
 fi
 
-# Function to check if an image needs attestation
+# Function to check if an image needs attestation based on the tag
 requires_attestation() {
-    [[ "$1" =~ ^blockstack/sbtc:(signer|blocklist-client).* ]]
+    [[ "$1" =~ ^blockstack/sbtc:(signer-.*|blocklist-client-.*) ]]
 }
 
 # Ensure GitHub CLI is authenticated
@@ -37,36 +37,39 @@ if ! gh auth status &> /dev/null; then
     fi
 fi
 
+# Ensure Docker is logged into GHCR
+if ! docker info | grep -q 'Server Version'; then
+    echo "❌ Docker is not authenticated with GHCR. Attempting to log in..."
+    docker login ghcr.io
+    if [ $? -ne 0 ]; then
+        echo "❌ Docker login to GHCR failed! Please log in with 'docker login ghcr.io'."
+        exit 1
+    fi
+fi
+
 # If attestation check is enabled, verify only specific images
 if [ "$SKIP_CHECK" = false ]; then
     for IMAGE in $IMAGES; do
         if requires_attestation "$IMAGE"; then
             echo "🔍 Checking GitHub attestation for $IMAGE..."
 
-            # Check if the image exists in GitHub Container Registry
-            DIGEST=$(gh api -H "Accept: application/vnd.github.v3+json" \
-              "/orgs/$OWNER/packages/container/sbtc/versions" \
-              | jq -r '.[0].metadata.container.tags[] | select(.=="latest")')
+            # Extract the tag from the image name (removes the * from the pattern)
+            TAG=$(echo "$IMAGE" | sed -E 's/.*:(signer-[^*]+|blocklist-client-[^*]+).*/\1/')
 
-            if [ -z "$DIGEST" ]; then
-                echo "❌ Image not found in GitHub Container Registry!"
+            if [ -z "$TAG" ]; then
+                echo "❌ Could not extract a valid tag from the image name: $IMAGE"
                 exit 1
             fi
 
-            echo "✅ Image found: $IMAGE"
+            # Verify attestation using gh attestation
+            gh attestation verify oci://ghcr.io/$OWNER/$IMAGE:$TAG -R $OWNER/$REPO
 
-            # Check if the image has a valid GitHub security attestation
-            ATTESTATIONS=$(gh api \
-              -H "Accept: application/vnd.github.v3+json" \
-              "/repos/$OWNER/$REPO/dependabot/alerts" \
-              | jq '. | length')
-
-            if [ "$ATTESTATIONS" -eq "0" ]; then
-                echo "❌ No valid attestations found for $IMAGE! Blocking execution."
+            if [ $? -ne 0 ]; then
+                echo "❌ Attestation verification failed for $IMAGE:$TAG! Blocking execution."
                 exit 1
             fi
 
-            echo "✅ Attestation verified for $IMAGE!"
+            echo "✅ Attestation verified for $IMAGE:$TAG!"
         else
             echo "ℹ️ Skipping attestation check for $IMAGE (not in required list)."
         fi
