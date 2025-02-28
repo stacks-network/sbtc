@@ -313,7 +313,7 @@ where
             "bitcoin_tip_hash",
             tracing::field::display(bitcoin_chain_tip.block_hash),
         );
-        span.record("bitcoin_tip_height", bitcoin_chain_tip.block_height);
+        span.record("bitcoin_tip_height", u64::from(bitcoin_chain_tip.block_height));
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -599,7 +599,7 @@ where
 
         let span = tracing::Span::current();
         span.record("stacks_tip_hash", stacks_chain_tip.block_hash.to_hex());
-        span.record("stacks_tip_height", stacks_chain_tip.block_height);
+        span.record("stacks_tip_height", u64::from(stacks_chain_tip.block_height));
 
         // Create a future that fetches pending deposit and withdrawal requests
         // from the database.
@@ -1941,8 +1941,8 @@ where
             if req.bitcoin_block_height < min_soft_bitcoin_height {
                 tracing::debug!(
                     request_id = req.request_id,
-                    bitcoin_block_height = req.bitcoin_block_height,
-                    min_soft_bitcoin_height,
+                    bitcoin_block_height = *req.bitcoin_block_height,
+                    min_soft_bitcoin_height = *min_soft_bitcoin_height,
                     reason = SKIP_REASON_SOFT_EXPIRY,
                     message = REQUEST_SKIPPED_MESSAGE
                 );
@@ -1978,10 +1978,10 @@ where
             // Calculate the number of blocks passed (confirmations) since the
             // bitcoin anchor of the stacks block confirming the withdrawal
             // request.
-            let num_confirmations = params
+            let num_confirmations: u64 = params
                 .bitcoin_chain_tip
                 .block_height
-                .saturating_sub(req.bitcoin_block_height);
+                .saturating_sub(req.bitcoin_block_height).into();
 
             // [3] Ensure that we have the required number of confirmations for
             // the withdrawal request.
@@ -2514,7 +2514,7 @@ pub async fn should_coordinate_dkg(
             Ok(true)
         }
         (current, target, Some(dkg_min_height))
-            if current < target.get() && bitcoin_chain_tip.block_height >= dkg_min_height.get() =>
+            if current < target.get() && bitcoin_chain_tip.block_height >= dkg_min_height =>
         {
             tracing::info!(
                 ?dkg_min_bitcoin_block_height,
@@ -2690,17 +2690,22 @@ mod tests {
     #[test_log::test(tokio::test)]
     async fn test_should_coordinate_dkg(
         dkg_rounds_current: u32,
-        dkg_min_bitcoin_block_height: Option<BitcoinBlockHeight>,
+        dkg_min_bitcoin_block_height: Option<u64>,
         dkg_target_rounds: u32,
-        chain_tip_height: BitcoinBlockHeight,
+        chain_tip_height: u64,
         should_allow: bool,
     ) {
+        let chain_tip_height = chain_tip_height.into();
+        let dkg_min_bitcoin_block_height = match dkg_min_bitcoin_block_height {
+            Some(height) => Some(BitcoinBlockHeight::from(height)),
+            None => None,
+        };
         let context = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .modify_settings(|s| {
                 s.signer.dkg_min_bitcoin_block_height =
-                    dkg_min_bitcoin_block_height.and_then(NonZeroU64::new);
+                    dkg_min_bitcoin_block_height;
                 s.signer.dkg_target_rounds = NonZeroU32::new(dkg_target_rounds).unwrap();
             })
             .build();

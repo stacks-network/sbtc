@@ -39,6 +39,8 @@ use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
 use crate::storage::model::EncryptedDkgShares;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -763,7 +765,10 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
-            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
+            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = match min_height {
+                Some(h) => Some(h.into()),
+                None => None
+            })
             .build();
 
         // There must be at least one signal receiver alive when the block observer
@@ -901,7 +906,10 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
-            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
+            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = match min_height {
+                Some(h) => Some(h.into()),
+                None => None,
+            })
             .build();
 
         let block_observer = BlockObserver {
@@ -986,7 +994,10 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
-            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = min_height)
+            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = match min_height {
+                Some(h) => Some(h.into()),
+                None => None,
+            })
             .build();
 
         let block_observer = BlockObserver {
@@ -1051,7 +1062,7 @@ mod tests {
             signature_share_threshold: 1,
             dkg_shares_status: DkgSharesStatus::Unverified,
             started_at_bitcoin_block_hash: block_hash.into(),
-            started_at_bitcoin_block_height: BitcoinBlockHeight,
+            started_at_bitcoin_block_height: 1.into(),
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 

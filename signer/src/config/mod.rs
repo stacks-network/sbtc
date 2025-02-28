@@ -26,6 +26,8 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::network::libp2p::MultiaddrExt as _;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::model::BitcoinBlockHeight;
+use crate::storage::model::StacksBlockHeight;
 use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 mod error;
@@ -339,7 +341,7 @@ pub struct SignerConfig {
     /// already been run, the coordinator will attempt to re-run DKG after this
     /// block height is met if `dkg_target_rounds` has not been reached. If DKG
     /// has never been run, this configuration has no effect.
-    pub dkg_min_bitcoin_block_height: Option<NonZeroU64>,
+    pub dkg_min_bitcoin_block_height: Option<BitcoinBlockHeight>,
     /// Configures a target number of DKG rounds to run/accept. If this is set
     /// and the number of DKG shares is less than this number, the coordinator
     /// will continue to run DKG rounds until this number of rounds is reached,
@@ -626,7 +628,7 @@ mod tests {
         );
         assert!(!settings.signer.bootstrap_signing_set.is_empty());
         assert!(settings.signer.dkg_begin_pause.is_none());
-        assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
+        assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101.into()));
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
@@ -783,7 +785,7 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         assert_eq!(
             settings.signer.dkg_min_bitcoin_block_height,
-            Some(NonZeroU64::new(42).unwrap())
+            Some(BitcoinBlockHeight::from(42))
         );
     }
 

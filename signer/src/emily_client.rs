@@ -37,6 +37,8 @@ use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksBlock;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::util::ApiFallbackClient;
 
 /// Emily client error variants.
@@ -329,7 +331,7 @@ impl EmilyInteract for EmilyClient {
                 fulfillment: None,
                 status_message: "".to_string(),
                 last_update_block_hash: stacks_chain_tip.block_hash.to_string(),
-                last_update_height: stacks_chain_tip.block_height,
+                last_update_height: *stacks_chain_tip.block_height,
             })
             .collect();
 

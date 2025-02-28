@@ -58,6 +58,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 url.workspace = true
 wsts.workspace = true
+easy-int.workspace = true
 
 # Only for testing
 fake = { workspace = true, optional = true }

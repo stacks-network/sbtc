@@ -28,6 +28,8 @@ use url::Url;
 
 use crate::bitcoin::BitcoinInteract;
 use crate::error::Error;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 
 use super::GetTransactionFeeResult;
 use super::TransactionLookupHint;

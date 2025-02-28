@@ -1597,6 +1597,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "easy-int"
+version = "0.1.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef12107d9e05636370ea1d3f6abd33b0e03bf29007a7bb0b8d5d4cbc6ecf3b5b"
+
+[[package]]
 name = "ed25519"
 version = "2.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5753,6 +5759,7 @@ dependencies = [
  "clap",
  "clarity",
  "config",
+ "easy-int",
  "emily-client",
  "fake",
  "futures",

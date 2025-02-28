@@ -85,6 +85,8 @@ use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
+use crate::storage::model::BitcoinBlockHeight;
+use crate::storage::model::StacksBlockHeight;
 
 /// Dummy block
 pub fn block<R: rand::RngCore + ?Sized>(
@@ -278,7 +280,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         signature_share_threshold: 1,
         dkg_shares_status: status,
         started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
-        started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng) as u64,
+        started_at_bitcoin_block_height: Faker.fake_with_rng::<u64, _>(rng).into(),
     }
 }
 
@@ -344,7 +346,7 @@ impl fake::Dummy<fake::Faker> for WithdrawalAcceptEvent {
             },
             fee: rng.next_u32() as u64,
             sweep_block_hash: config.fake_with_rng(rng),
-            sweep_block_height: rng.next_u32() as u64,
+            sweep_block_height: rng.next_u64().into(),
             sweep_txid: config.fake_with_rng(rng),
         }
     }
@@ -373,7 +375,7 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
             },
             amount: rng.next_u32() as u64,
             sweep_block_hash: config.fake_with_rng(rng),
-            sweep_block_height: rng.next_u32() as u64,
+            sweep_block_height: rng.next_u64().into(),
             sweep_txid: config.fake_with_rng(rng),
         }
     }
@@ -507,6 +509,30 @@ impl fake::Dummy<fake::Faker> for ScriptPubKey {
 impl fake::Dummy<fake::Faker> for SigHash {
     fn dummy_with_rng<R: Rng + ?Sized>(config: &fake::Faker, rng: &mut R) -> Self {
         TapSighash::from_byte_array(config.fake_with_rng(rng)).into()
+    }
+}
+
+impl fake::Dummy<std::ops::Range<u64>> for BitcoinBlockHeight {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &std::ops::Range<u64>, rng: &mut R) -> Self {
+        rng.next_u64().into()
+    }
+}
+
+impl fake::Dummy<std::ops::Range<u64>> for StacksBlockHeight {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &std::ops::Range<u64>, rng: &mut R) -> Self {
+        rng.next_u64().into()
+    }
+}
+
+impl fake::Dummy<fake::Faker> for BitcoinBlockHeight {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &fake::Faker, rng: &mut R) -> Self {
+        rng.next_u64().into()
+    }
+}
+
+impl fake::Dummy<fake::Faker> for StacksBlockHeight {
+    fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &fake::Faker, rng: &mut R) -> Self {
+        rng.next_u64().into()
     }
 }
 

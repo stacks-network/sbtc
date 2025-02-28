@@ -10,7 +10,7 @@ use crate::{
     context::Context,
     stacks::api::StacksInteract,
     storage::{
-        model::{AnyHeight, BitcoinBlockHash, BitcoinBlockHeight, StacksBlockHash, StacksBlockHeight},
+        model::{BitcoinBlockHash, BitcoinBlockHeight, StacksBlockHash, StacksBlockHeight},
         DbRead,
     },
 };
@@ -55,7 +55,7 @@ pub struct StacksInfo {
 #[derive(Debug, Serialize)]
 pub struct ChainTipInfo<T> {
     pub block_hash: T,
-    pub block_height: AnyHeight,
+    pub block_height: u64,
 }
 
 #[derive(Debug, Serialize)]
@@ -159,8 +159,7 @@ impl InfoResponse {
             max_deposits_per_bitcoin_block: config.signer.max_deposits_per_bitcoin_tx.get(),
             dkg_min_bitcoin_block_height: config
                 .signer
-                .dkg_min_bitcoin_block_height
-                .map(|h| h.get()),
+                .dkg_min_bitcoin_block_height,
             dkg_target_rounds: config.signer.dkg_target_rounds.get(),
         });
     }
@@ -187,7 +186,7 @@ impl InfoResponse {
 
                 self.bitcoin.signer_tip = Some(ChainTipInfo {
                     block_hash: bitcoin_block.block_hash,
-                    block_height: bitcoin_block.block_height,
+                    block_height: *bitcoin_block.block_height,
                 });
 
                 let stacks_tip = storage
@@ -198,7 +197,7 @@ impl InfoResponse {
                     Ok(Some(local_stacks_chain_tip)) => {
                         self.stacks.signer_tip = Some(ChainTipInfo {
                             block_hash: local_stacks_chain_tip.block_hash,
-                            block_height: local_stacks_chain_tip.block_height,
+                            block_height: *local_stacks_chain_tip.block_height,
                         });
                     }
                     Ok(None) => {
@@ -269,7 +268,7 @@ impl InfoResponse {
 
         match node_info {
             Ok(node_info) => {
-                self.stacks.node_bitcoin_block_height = Some(node_info.burn_block_height);
+                self.stacks.node_bitcoin_block_height = Some(node_info.burn_block_height.into());
                 self.stacks.node_version = Some(node_info.server_version);
             }
             Err(error) => {
@@ -633,7 +632,7 @@ mod tests {
         );
         assert_eq!(
             result.stacks.node_bitcoin_block_height,
-            Some(NODE_INFO_RESPONSE.burn_block_height)
+            Some(NODE_INFO_RESPONSE.burn_block_height.into())
         );
         assert_eq!(
             result.stacks.node_version.expect("no node version"),
@@ -655,10 +654,10 @@ mod tests {
                 settings.signer.signer_round_max_duration = Duration::from_secs(2);
                 settings.signer.bitcoin_presign_request_max_duration = Duration::from_secs(3);
                 settings.signer.dkg_max_duration = Duration::from_secs(4);
-                settings.signer.sbtc_bitcoin_start_height = Some(101);
+                settings.signer.sbtc_bitcoin_start_height = Some(BitcoinBlockHeight::from(101));
                 settings.signer.dkg_begin_pause = Some(5);
                 settings.signer.max_deposits_per_bitcoin_tx = NonZeroU16::new(6).unwrap();
-                settings.signer.dkg_min_bitcoin_block_height = Some(NonZeroU64::new(102).unwrap());
+                settings.signer.dkg_min_bitcoin_block_height = Some(BitcoinBlockHeight::from(102));
                 settings.signer.dkg_target_rounds = NonZeroU32::new(7).unwrap();
             })
             .build();
@@ -736,7 +735,7 @@ mod tests {
         );
         assert_eq!(
             config.dkg_min_bitcoin_block_height,
-            settings.dkg_min_bitcoin_block_height.map(|h| h.get())
+            settings.dkg_min_bitcoin_block_height
         );
         assert_eq!(config.dkg_target_rounds, settings.dkg_target_rounds.get());
     }

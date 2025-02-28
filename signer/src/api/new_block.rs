@@ -33,6 +33,8 @@ use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::storage::model::WithdrawalRequest;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use sbtc::webhooks::NewBlockEvent;
@@ -121,7 +123,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 
     let stacks_chaintip = StacksBlock {
         block_hash: new_block_event.index_block_hash.into(),
-        block_height: new_block_event.block_height,
+        block_height: new_block_event.block_height.into(),
         parent_hash: new_block_event.parent_index_block_hash.into(),
         bitcoin_anchor: new_block_event.burn_block_hash.into(),
     };
@@ -129,7 +131,7 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
 
     let span = tracing::span::Span::current();
     span.record("block_hash", stacks_chaintip.block_hash.to_hex());
-    span.record("block_height", stacks_chaintip.block_height);
+    span.record("block_height", *stacks_chaintip.block_height);
     span.record("parent_hash", stacks_chaintip.parent_hash.to_hex());
     span.record("bitcoin_anchor", stacks_chaintip.bitcoin_anchor.to_string());
 
@@ -304,7 +306,7 @@ async fn handle_completed_deposit(
         status: Status::Confirmed,
         fulfillment: Some(Some(Box::new(Fulfillment {
             bitcoin_block_hash: event.sweep_block_hash.to_string(),
-            bitcoin_block_height: event.sweep_block_height,
+            bitcoin_block_height: *event.sweep_block_height,
             bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
             btc_fee,
@@ -312,7 +314,7 @@ async fn handle_completed_deposit(
         }))),
         status_message: format!("Included in block {}", event.block_id.to_hex()),
         last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-        last_update_height: stacks_chaintip.block_height,
+        last_update_height: *stacks_chaintip.block_height,
     })
 }
 
@@ -349,7 +351,7 @@ async fn handle_withdrawal_accept(
         status: Status::Confirmed,
         fulfillment: Some(Some(Box::new(Fulfillment {
             bitcoin_block_hash: event.sweep_block_hash.to_string(),
-            bitcoin_block_height: event.sweep_block_height,
+            bitcoin_block_height: *event.sweep_block_height,
             bitcoin_tx_index: event.outpoint.vout,
             bitcoin_txid: event.outpoint.txid.to_string(),
             btc_fee: event.fee,
@@ -357,7 +359,7 @@ async fn handle_withdrawal_accept(
         }))),
         status_message: format!("Included in block {}", event.block_id.to_hex()),
         last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-        last_update_height: stacks_chaintip.block_height,
+        last_update_height: *stacks_chaintip.block_height,
     })
 }
 
@@ -393,7 +395,7 @@ async fn handle_withdrawal_create(
         recipient: event.recipient.to_string(),
         request_id: event.request_id,
         stacks_block_hash: event.block_hash.to_hex(),
-        stacks_block_height,
+        stacks_block_height: *stacks_block_height,
     })
 }
 
@@ -427,7 +429,7 @@ async fn handle_withdrawal_reject(
     Ok(WithdrawalUpdate {
         fulfillment: None,
         last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-        last_update_height: stacks_chaintip.block_height,
+        last_update_height: *stacks_chaintip.block_height,
         request_id: event.request_id,
         status: Status::Failed,
         status_message: "Rejected".to_string(),
@@ -700,7 +702,7 @@ mod tests {
             status: Status::Confirmed,
             fulfillment: Some(Some(Box::new(Fulfillment {
                 bitcoin_block_hash: bitcoin_block.block_hash.to_string(),
-                bitcoin_block_height: bitcoin_block.block_height,
+                bitcoin_block_height: *bitcoin_block.block_height,
                 bitcoin_tx_index: event.outpoint.vout,
                 bitcoin_txid: txid.to_string(),
                 btc_fee,
@@ -708,7 +710,7 @@ mod tests {
             }))),
             status_message: format!("Included in block {}", stacks_chaintip.block_hash.to_hex()),
             last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-            last_update_height: stacks_chaintip.block_height,
+            last_update_height: *stacks_chaintip.block_height,
         };
         let res = handle_completed_deposit(&ctx, event, stacks_chaintip).await;
         assert!(res.is_ok());
@@ -821,7 +823,7 @@ mod tests {
             status: Status::Confirmed,
             fulfillment: Some(Some(Box::new(Fulfillment {
                 bitcoin_block_hash: bitcoin_block.block_hash.to_string(),
-                bitcoin_block_height: bitcoin_block.block_height,
+                bitcoin_block_height: *bitcoin_block.block_height,
                 bitcoin_tx_index: event.outpoint.vout,
                 bitcoin_txid: txid.to_string(),
                 btc_fee: event.fee,
@@ -829,7 +831,7 @@ mod tests {
             }))),
             status_message: format!("Included in block {}", event.block_id.to_hex()),
             last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-            last_update_height: stacks_chaintip.block_height,
+            last_update_height: *stacks_chaintip.block_height,
         };
         let res = handle_withdrawal_accept(&ctx, event, stacks_chaintip).await;
 
@@ -888,7 +890,7 @@ mod tests {
             recipient: event.recipient.to_string(),
             request_id: event.request_id,
             stacks_block_hash: stacks_first_block.block_hash.to_hex(),
-            stacks_block_height: stacks_first_block.block_height,
+            stacks_block_height: *stacks_first_block.block_height,
         };
 
         let res = handle_withdrawal_create(&ctx, event, stacks_first_block.block_height).await;
@@ -946,7 +948,7 @@ mod tests {
             status: Status::Failed,
             fulfillment: None,
             last_update_block_hash: stacks_chaintip.block_hash.to_hex(),
-            last_update_height: stacks_chaintip.block_height,
+            last_update_height: stacks_chaintip.block_height.into(),
             status_message: "Rejected".to_string(),
         };
 

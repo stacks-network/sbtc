@@ -43,6 +43,8 @@ use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::ToLittleEndianOrder as _;
+use crate::storage::model::BitcoinBlockHeight;
+use crate::storage::model::StacksBlockHeight;
 use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
@@ -264,14 +266,14 @@ pub trait StacksInteract: Send + Sync {
 pub trait GetNakamotoStartHeight {
     /// Get the start height of the first EPOCH 3.0 block on the Stacks
     /// blockchain.
-    fn nakamoto_start_height(&self) -> Option<u64>;
+    fn nakamoto_start_height(&self) -> Option<BitcoinBlockHeight>;
 }
 
 impl GetNakamotoStartHeight for RPCPoxInfoData {
-    fn nakamoto_start_height(&self) -> Option<u64> {
+    fn nakamoto_start_height(&self) -> Option<BitcoinBlockHeight> {
         self.epochs.iter().find_map(|epoch| {
             if epoch.epoch_id == StacksEpochId::Epoch30 {
-                Some(epoch.start_height)
+                Some(epoch.start_height.into())
             } else {
                 None
             }
@@ -302,7 +304,7 @@ impl TenureBlocks {
         Ok(Self {
             blocks,
             anchor_block_hash: info.burn_block_hash.into(),
-            anchor_block_height: info.burn_block_height,
+            anchor_block_height: info.burn_block_height.into(),
         })
     }
 
@@ -496,7 +498,7 @@ impl TryFrom<AccountEntryResponse> for AccountInfo {
             balance: parse_hex_u128(&value.balance)?,
             locked: parse_hex_u128(&value.locked)?,
             nonce: value.nonce,
-            unlock_height: value.unlock_height,
+            unlock_height: value.unlock_height.into(),
         })
     }
 }

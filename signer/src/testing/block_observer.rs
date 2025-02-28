@@ -47,6 +47,8 @@ use crate::stacks::api::SubmitTxResponse;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::testing::dummy;
 use crate::util::ApiFallbackClient;
 
@@ -230,7 +232,7 @@ impl BitcoinInteract for TestHarness {
             .find(|block| &block.block_hash() == block_hash)
             .map(|block| BitcoinBlockHeader {
                 hash: *block_hash,
-                height: block.bip34_block_height().unwrap(),
+                height: block.bip34_block_height().unwrap().into(),
                 time: block.header.time as u64,
                 previous_block_hash: block.header.prev_blockhash,
             }))

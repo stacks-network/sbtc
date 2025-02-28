@@ -150,7 +150,7 @@ pub struct CompleteDeposit {
     >,
     /// The block height associated with the above bitcoin block hash.
     #[prost(uint64, tag = "7")]
-    pub sweep_block_height: BitcoinBlockHeight,
+    pub sweep_block_height: u64,
 }
 /// For making a `accept-withdrawal-request` contract call in the
 /// sbtc-withdrawal smart contract.
@@ -187,7 +187,7 @@ pub struct AcceptWithdrawal {
     >,
     /// The block height associated with the above bitcoin block hash.
     #[prost(uint64, tag = "7")]
-    pub sweep_block_height: BitcoinBlockHeight,
+    pub sweep_block_height: u64,
 }
 /// For making a `reject-withdrawal-request` contract call in the
 /// sbtc-withdrawal smart contract.

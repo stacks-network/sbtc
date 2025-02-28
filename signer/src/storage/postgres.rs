@@ -28,14 +28,13 @@ use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::TransactionType;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 use crate::MAX_REORG_BLOCK_COUNT;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-
-use super::model::BitcoinBlockHeight;
-use super::model::StacksBlockHeight;
 
 /// All migration scripts from the `signer/migrations` directory.
 static PGSQL_MIGRATIONS: include_dir::Dir =
@@ -115,7 +114,7 @@ struct DepositStatusSummary {
     can_sign: Option<bool>,
     /// The height of the block that confirmed the deposit request
     /// transaction.
-    block_height: Option<i64>,
+    block_height: Option<BitcoinBlockHeight>,
     /// The block hash that confirmed the deposit request.
     block_hash: Option<model::BitcoinBlockHash>,
     /// The bitcoin consensus encoded locktime in the reclaim script.
@@ -1114,7 +1113,7 @@ impl super::DbRead for PgStore {
         // Add one to the acceptable unlock height because the chain tip is at height one less
         // than the height of the next block, which is the block for which we are assessing
         // the threshold.
-        let minimum_acceptable_unlock_height = self
+        let minimum_acceptable_unlock_height = *self
             .get_bitcoin_block(chain_tip)
             .await?
             .ok_or(Error::MissingBitcoinBlock(*chain_tip))?
@@ -1286,7 +1285,6 @@ impl super::DbRead for PgStore {
         // the same time.
         let block_info = summary
             .block_height
-            .map(u64::try_from)
             .zip(summary.block_hash);
 
         // Lastly we map the block_height variable to a status enum.
@@ -1296,7 +1294,7 @@ impl super::DbRead for PgStore {
             // confirmed already. We use the height of when the deposit was
             // confirmed for the min height for when a sweep transaction
             // could be confirmed. We could also use block_height + 1.
-            Some((Ok(block_height), block_hash)) => {
+            Some((block_height, block_hash)) => {
                 let deposit_sweep_txid =
                     self.get_deposit_sweep_txid(chain_tip, txid, output_index, block_height);
 
@@ -1309,9 +1307,6 @@ impl super::DbRead for PgStore {
             // we know that the deposit transaction is not on the
             // blockchain identified by the chain tip.
             None => DepositConfirmationStatus::Unconfirmed,
-            // Block heights are stored as BIGINTs after conversion from
-            // u64s, so converting back to u64s is actually safe.
-            Some((Err(error), _)) => return Err(Error::ConversionDatabaseInt(error)),
         };
 
         let dkg_shares = self
@@ -1746,7 +1741,7 @@ impl super::DbRead for PgStore {
         .bind(chain_tip.block_hash)
         .bind(i32::from(context_window))
         .bind(stacks_chain_tip.block_hash)
-        .bind(i64::try_from(expiration_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(u64::from(expiration_height)).map_err(Error::ConversionDatabaseInt)?)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -2104,9 +2099,9 @@ impl super::DbRead for PgStore {
         chain_tip: &model::BitcoinBlockRef,
         block_ref: &model::BitcoinBlockRef,
     ) -> Result<bool, Error> {
-        let height_diff = chain_tip
+        let height_diff: u64 = chain_tip
             .block_height
-            .saturating_sub(block_ref.block_height);
+            .saturating_sub(block_ref.block_height).into();
 
         sqlx::query_scalar::<_, bool>(
             r#"
@@ -2142,7 +2137,7 @@ impl super::DbRead for PgStore {
         .bind(chain_tip.block_hash)
         .bind(block_ref.block_hash)
         .bind(i64::try_from(height_diff).map_err(Error::ConversionDatabaseInt)?)
-        .bind(i64::try_from(block_ref.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(u64::from(block_ref.block_height)).map_err(Error::ConversionDatabaseInt)?)
         .fetch_one(&self.0)
         .await
         .map_err(Error::SqlxQuery)
@@ -2570,7 +2565,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(block.block_hash)
-        .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(u64::from(block.block_height)).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
         .execute(&self.0)
         .await
@@ -2591,7 +2586,7 @@ impl super::DbWrite for PgStore {
             ON CONFLICT DO NOTHING",
         )
         .bind(block.block_hash)
-        .bind(i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(u64::from(block.block_height)).map_err(Error::ConversionDatabaseInt)?)
         .bind(block.parent_hash)
         .bind(block.bitcoin_anchor)
         .execute(&self.0)
@@ -2769,7 +2764,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(request.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(i64::try_from(request.max_fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(&request.sender_address)
-        .bind(i64::try_from(request.bitcoin_block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(u64::from(request.bitcoin_block_height)).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;
@@ -2967,7 +2962,7 @@ impl super::DbWrite for PgStore {
             block_ids.push(block.block_hash);
             parent_block_ids.push(block.parent_hash);
             let block_height =
-                i64::try_from(block.block_height).map_err(Error::ConversionDatabaseInt)?;
+                i64::try_from(u64::from(block.block_height)).map_err(Error::ConversionDatabaseInt)?;
             chain_lengths.push(block_height);
             bitcoin_anchors.push(block.bitcoin_anchor);
         }
@@ -3017,7 +3012,7 @@ impl super::DbWrite for PgStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Error> {
-        let started_at_bitcoin_block_height = i64::try_from(shares.started_at_bitcoin_block_height)
+        let started_at_bitcoin_block_height = i64::try_from(u64::from(shares.started_at_bitcoin_block_height))
             .map_err(Error::ConversionDatabaseInt)?;
 
         sqlx::query(
@@ -3106,7 +3101,7 @@ impl super::DbWrite for PgStore {
         .bind(event.outpoint.txid.to_byte_array())
         .bind(i64::from(event.outpoint.vout))
         .bind(event.sweep_block_hash.to_byte_array())
-        .bind(i64::try_from(event.sweep_block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(u64::from(event.sweep_block_height)).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sweep_txid.to_byte_array())
         .execute(&self.0)
         .await
@@ -3143,7 +3138,7 @@ impl super::DbWrite for PgStore {
         .bind(i64::from(event.outpoint.vout))
         .bind(i64::try_from(event.fee).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sweep_block_hash.to_byte_array())
-        .bind(i64::try_from(event.sweep_block_height).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(u64::from(event.sweep_block_height)).map_err(Error::ConversionDatabaseInt)?)
         .bind(event.sweep_txid.to_byte_array())
         .execute(&self.0)
         .await

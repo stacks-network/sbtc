@@ -31,6 +31,8 @@ use crate::storage::model;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::ToLittleEndianOrder as _;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;
@@ -594,7 +596,7 @@ where
                         Ok(AccountInfo {
                             balance: 1_000_000,
                             locked: 0,
-                            unlock_height: 0,
+                            unlock_height: 0.into(),
                             nonce: 1,
                         })
                     })
@@ -804,7 +806,7 @@ where
                     Value::Sequence(SequenceData::Buffer(BuffData {
                         data: withdrawal_req.sweep_block_hash.to_le_bytes().to_vec()
                     })),
-                    Value::UInt(withdrawal_req.sweep_block_height as u128),
+                    Value::UInt(u64::from(withdrawal_req.sweep_block_height) as u128),
                     Value::Sequence(SequenceData::Buffer(BuffData {
                         data: outpoint.txid.to_le_bytes().to_vec()
                     })),

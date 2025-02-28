@@ -69,6 +69,8 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 
 use super::wsts_message;
 
@@ -389,7 +391,7 @@ impl From<CompleteDepositV1> for proto::CompleteDeposit {
             deployer: Some(value.deployer.into()),
             sweep_txid: Some(value.sweep_txid.into()),
             sweep_block_hash: Some(value.sweep_block_hash.into()),
-            sweep_block_height: value.sweep_block_height,
+            sweep_block_height: *value.sweep_block_height,
         }
     }
 }
@@ -404,7 +406,7 @@ impl TryFrom<proto::CompleteDeposit> for CompleteDepositV1 {
             deployer: value.deployer.required()?.try_into()?,
             sweep_txid: value.sweep_txid.required()?.try_into()?,
             sweep_block_hash: value.sweep_block_hash.required()?.try_into()?,
-            sweep_block_height: value.sweep_block_height,
+            sweep_block_height: value.sweep_block_height.into(),
         })
     }
 }
@@ -418,7 +420,7 @@ impl From<AcceptWithdrawalV1> for proto::AcceptWithdrawal {
             signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
             deployer: Some(value.deployer.into()),
             sweep_block_hash: Some(value.sweep_block_hash.into()),
-            sweep_block_height: value.sweep_block_height,
+            sweep_block_height: *value.sweep_block_height,
         }
     }
 }
@@ -446,7 +448,7 @@ impl TryFrom<proto::AcceptWithdrawal> for AcceptWithdrawalV1 {
             signer_bitmap,
             deployer: value.deployer.required()?.try_into()?,
             sweep_block_hash: value.sweep_block_hash.required()?.try_into()?,
-            sweep_block_height: value.sweep_block_height,
+            sweep_block_height: value.sweep_block_height.into(),
         })
     }
 }

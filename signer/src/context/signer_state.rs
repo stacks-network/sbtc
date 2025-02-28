@@ -103,7 +103,7 @@ impl SignerState {
         self.is_sbtc_bitcoin_start_height_set
             .store(true, Ordering::SeqCst);
         self.sbtc_bitcoin_start_height
-            .store(height, Ordering::SeqCst);
+            .store(height.into(), Ordering::SeqCst);
     }
 
     /// Return whether the sbtc start height has been set.

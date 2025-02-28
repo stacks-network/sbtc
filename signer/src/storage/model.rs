@@ -1,7 +1,10 @@
 //! Database models for the signer.
 
 use std::collections::BTreeSet;
+use std::num::TryFromIntError;
 use std::ops::Deref;
+
+use easy_int::implement_int;
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
@@ -101,7 +104,7 @@ impl From<&bitcoin::Block> for BitcoinBlock {
             block_hash: block.block_hash().into(),
             block_height: block
                 .bip34_block_height()
-                .expect("Failed to get block height"),
+                .expect("Failed to get block height").into(),
             parent_hash: block.header.prev_blockhash.into(),
         }
     }
@@ -144,7 +147,7 @@ impl StacksBlock {
     pub fn from_nakamoto_block(block: &NakamotoBlock, bitcoin_anchor: &BitcoinBlockHash) -> Self {
         Self {
             block_hash: block.block_id().into(),
-            block_height: block.header.chain_length,
+            block_height: block.header.chain_length.into(),
             parent_hash: block.header.parent_block_id.into(),
             bitcoin_anchor: *bitcoin_anchor,
         }
@@ -1189,7 +1192,7 @@ impl From<sbtc::events::CompletedDepositEvent> for CompletedDepositEvent {
             amount: sbtc_event.amount,
             outpoint: sbtc_event.outpoint,
             sweep_block_hash: sweep_hash,
-            sweep_block_height: sbtc_event.sweep_block_height,
+            sweep_block_height: sbtc_event.sweep_block_height.into(),
             sweep_txid: sbtc_event.sweep_txid.into(),
         }
     }
@@ -1205,7 +1208,7 @@ impl From<sbtc::events::WithdrawalAcceptEvent> for WithdrawalAcceptEvent {
             outpoint: sbtc_event.outpoint,
             fee: sbtc_event.fee,
             sweep_block_hash: sbtc_event.sweep_block_hash.into(),
-            sweep_block_height: sbtc_event.sweep_block_height,
+            sweep_block_height: sbtc_event.sweep_block_height.into(),
             sweep_txid: sbtc_event.sweep_txid.into(),
         }
     }
@@ -1232,7 +1235,7 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalRequest {
             amount: sbtc_event.amount,
             max_fee: sbtc_event.max_fee,
             sender_address: sbtc_event.sender.into(),
-            bitcoin_block_height: sbtc_event.block_height,
+            bitcoin_block_height: sbtc_event.block_height.into(),
         }
     }
 }
@@ -1337,106 +1340,50 @@ pub struct WithdrawalRejectEvent {
     pub signer_bitmap: BitArray<[u8; 16]>,
 }
 
+use std::cmp::{PartialEq, PartialOrd};
+use std::convert::From;
+use std::ops::{Add, Div, Mul, Rem, Sub};
+use serde::{Deserialize};
 
 /// Bitcoin block height
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinBlockHeight(u64);
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow, sqlx::Decode, sqlx::Encode)]
+pub struct BitcoinBlockHeight(#[sqlx(try_from = "i64")] u64);
 /// Stacks block height
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct StacksBlockHeight(u64);
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow, sqlx::Decode, sqlx::Encode)]
+pub struct StacksBlockHeight(#[sqlx(try_from = "i64")] u64);
 
-impl BitcoinBlockHeight {
-    pub fn into_inner(self) -> u64 {
-        self.0
+
+impl TryFrom<StacksBlockHeight> for i64 {
+    type Error = TryFromIntError;
+    fn try_from(value: StacksBlockHeight) -> Result<Self, Self::Error> {
+        i64::try_from(value.0)
     }
 }
 
-impl From<u64> for BitcoinBlockHeight {
-    fn from(value: u64) -> Self {
-        BitcoinBlockHeight(value)
+impl TryFrom<BitcoinBlockHeight> for i64 {
+    type Error = TryFromIntError;
+    fn try_from(value: BitcoinBlockHeight) -> Result<Self, Self::Error> {
+        i64::try_from(value.0)
     }
 }
 
-impl std::ops::Add for BitcoinBlockHeight {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0)
+impl Deref for BitcoinBlockHeight {
+    type Target = u64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-impl std::ops::Sub for BitcoinBlockHeight {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0)
+impl Deref for StacksBlockHeight {
+    type Target = u64;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-impl std::ops::Add<u64> for BitcoinBlockHeight {
-    type Output = Self;
-    fn add(self, rhs: u64) -> Self::Output {
-        Self(self.0 + rhs)
-    }
-}
+implement_int!(BitcoinBlockHeight, u64);
+implement_int!(StacksBlockHeight, u64);
 
-impl std::ops::Sub<u64> for BitcoinBlockHeight {
-    type Output = Self;
-    fn sub(self, rhs: u64) -> Self::Output {
-        Self(self.0 - rhs)
-    }
-}
-
-impl std::fmt::Display for BitcoinBlockHeight {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-// Repeat similar implementations for EthereumHeight
-impl StacksBlockHeight {
-    pub fn into_inner(self) -> u64 {
-        self.0
-    }
-}
-
-impl From<u64> for StacksBlockHeight {
-    fn from(value: u64) -> Self {
-        StacksBlockHeight(value)
-    }
-}
-
-impl std::ops::Add for StacksBlockHeight {
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self::Output {
-        Self(self.0 + rhs.0)
-    }
-}
-
-impl std::ops::Sub for StacksBlockHeight {
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self(self.0 - rhs.0)
-    }
-}
-
-impl std::ops::Add<u64> for StacksBlockHeight {
-    type Output = Self;
-    fn add(self, rhs: u64) -> Self::Output {
-        Self(self.0 + rhs)
-    }
-}
-
-impl std::ops::Sub<u64> for StacksBlockHeight {
-    type Output = Self;
-    fn sub(self, rhs: u64) -> Self::Output {
-        Self(self.0 - rhs)
-    }
-}
-
-impl std::fmt::Display for StacksBlockHeight {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 #[cfg(test)]
 mod tests {

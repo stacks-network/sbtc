@@ -28,6 +28,8 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::StacksPrincipal;
+use crate::storage::model::StacksBlockHeight;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::wsts_state_machine;
 
 /// Signer info
@@ -426,7 +428,7 @@ impl SignerSet {
 
         let started_at = model::BitcoinBlockRef {
             block_hash: bitcoin_chain_tip,
-            block_height: 0,
+            block_height: 0.into(),
         };
 
         (

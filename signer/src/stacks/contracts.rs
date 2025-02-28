@@ -57,6 +57,8 @@ use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::ToLittleEndianOrder as _;
+use crate::storage::model::BitcoinBlockHeight;
+use crate::storage::model::StacksBlockHeight;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
@@ -340,7 +342,7 @@ impl AsContractCall for CompleteDepositV1 {
             ClarityValue::UInt(self.amount as u128),
             ClarityValue::Principal(self.recipient.clone()),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
-            ClarityValue::UInt(self.sweep_block_height as u128),
+            ClarityValue::UInt(u64::from(self.sweep_block_height) as u128),
             ClarityValue::Sequence(SequenceData::Buffer(sweep_txid)),
         ]
     }
@@ -671,7 +673,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
-            ClarityValue::UInt(self.sweep_block_height as u128),
+            ClarityValue::UInt(u64::from(self.sweep_block_height) as u128),
             ClarityValue::Sequence(SequenceData::Buffer(txid)),
         ]
     }
@@ -1587,7 +1589,7 @@ mod tests {
             deployer: StacksAddress::burn_address(false),
             sweep_txid: BitcoinTxId::from([0; 32]),
             sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-            sweep_block_height: 7,
+            sweep_block_height: 7.into(),
         };
 
         let _ = call.as_contract_call();
@@ -1608,7 +1610,7 @@ mod tests {
             signer_bitmap: BitArray::ZERO,
             deployer: StacksAddress::burn_address(false),
             sweep_block_hash: BitcoinBlockHash::from([0; 32]),
-            sweep_block_height: 7,
+            sweep_block_height: 7.into(),
         };
 
         let _ = call.as_contract_call();
