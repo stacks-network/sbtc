@@ -33,7 +33,7 @@ impl Config {
             local_peer_id,
             seed_addresses: Default::default(),
             bootstrap_interval: Duration::from_secs(60),
-            initial_delay: Duration::from_secs(0),
+            initial_delay: Duration::ZERO,
         }
     }
 
@@ -404,7 +404,7 @@ impl NetworkBehaviour for Behavior {
             if first_attempt.elapsed() < self.config.initial_delay {
                 return self.next_pending_event();
             }
-        } else if self.config.initial_delay > Duration::from_secs(0) {
+        } else if self.config.initial_delay > Duration::ZERO {
             // If we don't have a first attempt time and an initial delay is
             // configured, we set it and return the next pending event.
             tracing::info!(
