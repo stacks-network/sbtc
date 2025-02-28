@@ -303,7 +303,7 @@ impl NetworkBehaviour for Behavior {
         // that this is a seed peer dial that we've initiated, so we publish
         // the `DialingSeed` event.
         if self.pending_connections.contains(&connection_id) {
-            tracing::debug!(%connection_id, addresses = ?addresses, peer_id = ?maybe_peer, "attempting to dial seed peer");
+            tracing::debug!(%connection_id, ?addresses, peer_id = ?maybe_peer, "attempting to dial seed peer");
             self.pending_events
                 .push_back(ToSwarm::GenerateEvent(BootstrapEvent::DialingSeed {
                     connection_id,
