@@ -1,12 +1,11 @@
 //! Handlers for limits endpoints.
 use std::future::Future;
-use std::sync::OnceLock;
 
 use bitcoin::params;
 use tracing::instrument;
 use warp::reply::Reply;
 
-use clarity::vm::types::{QualifiedContractIdentifier, StandardPrincipalData};
+use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::ContractName;
 use sbtc::events::{
     CompletedDepositEvent, RegistryEvent, TxInfo, WithdrawalAcceptEvent, WithdrawalCreateEvent,
@@ -30,17 +29,6 @@ use crate::{common::error::Error, context::EmilyContext, database::accessors};
 
 /// The name of the sbtc registry smart contract.
 const SBTC_REGISTRY_CONTRACT_NAME: &str = "sbtc-registry";
-
-/// The address for the sbtc-registry smart contract. This value is
-/// populated using the deployer variable in the config.
-///
-/// Although the stacks node is supposed to only send sbtc-registry events,
-/// the node can be misconfigured or have some bug where it sends other
-/// events as well. Accepting such events would be a security issue, so we
-/// filter out events that are not from the sbtc-registry.
-///
-/// See https://github.com/stacks-network/sbtc/issues/501.
-static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLock::new();
 
 /// Maximum request body size for the event observer endpoint.
 ///
@@ -90,14 +78,13 @@ pub async fn new_block(
                 return Err(error.into());
             }
         };
-        // Set the global limits.
-        let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
-            // Although the following line can panic, our unit tests hit this
-            // code path so if tests pass then this will work in production.
-            let contract_name = ContractName::from(SBTC_REGISTRY_CONTRACT_NAME);
-            let issuer = StandardPrincipalData::from(context.settings.deployer_address);
-            QualifiedContractIdentifier::new(issuer, contract_name)
-        });
+
+        // Although the following line can panic, our unit tests hit this
+        // code path so if tests pass then this will work in production.
+        let registry_address = QualifiedContractIdentifier::new(
+            context.settings.deployer_address.clone(),
+            ContractName::from(SBTC_REGISTRY_CONTRACT_NAME),
+        );
 
         let stacks_chaintip = StacksBlock {
             block_hash: new_block_event.index_block_hash.to_hex(),
@@ -117,10 +104,8 @@ pub async fn new_block(
             .into_iter()
             .filter(|x| x.committed)
             .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)))
-            .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print")
+            .filter(|(ev, _)| ev.contract_identifier == registry_address && ev.topic == "print")
             .collect::<Vec<_>>();
-
-        tracing::debug!(block = %events.len(), "received events from stacks-core");
 
         // Set the chainstate
         handle_internal_call(
@@ -142,7 +127,7 @@ pub async fn new_block(
             return Ok(warp::reply());
         }
 
-        tracing::debug!(count = %events.len(), "processing events for new stacks block");
+        tracing::debug!(events = %events.len(), "processing events for new stacks block");
 
         // Create vectors to store the processed events for Emily.
         let mut completed_deposits = Vec::new();
@@ -426,7 +411,7 @@ where
 {
     let response = api_call.await.into_response();
     if !response.status().is_success() {
-        tracing::error!("{}", error_msg);
+        tracing::error!("{error_msg}");
         return Err(Error::InternalServer);
     }
     Ok(())
@@ -443,7 +428,10 @@ mod test {
         params::Params,
         secp256k1, BlockHash, OutPoint, ScriptBuf, Txid,
     };
-    use clarity::{types::chainstate::StacksBlockId, vm::types::PrincipalData};
+    use clarity::{
+        types::chainstate::StacksBlockId,
+        vm::types::{PrincipalData, StandardPrincipalData},
+    };
     use sbtc::events::StacksTxid;
     use test_case::test_case;
 
