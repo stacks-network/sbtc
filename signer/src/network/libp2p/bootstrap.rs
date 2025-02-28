@@ -353,7 +353,8 @@ impl NetworkBehaviour for Behavior {
     ) -> std::task::Poll<libp2p::swarm::ToSwarm<Self::ToSwarm, libp2p::swarm::THandlerInEvent<Self>>>
     {
         // If we have any pending events, we return them immediately.
-        if let Some(event) = self.pending_events.pop_front() {
+        // Check for any existing events first
+        if let Poll::Ready(event) = self.next_pending_event() {
             return Poll::Ready(event);
         }
 
