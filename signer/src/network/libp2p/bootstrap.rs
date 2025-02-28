@@ -67,7 +67,7 @@ impl Config {
 }
 
 /// Events emitted by the bootstrapping behavior.
-#[allow(dead_code)]
+#[allow(unused)] // Due to currently unconsumed fields in event variants.
 #[derive(Debug)]
 pub enum BootstrapEvent {
     /// An event which is raised when the network has been bootstrapped, i.e.
