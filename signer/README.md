@@ -7,7 +7,7 @@ Change to the signer directory and build the program using `cargo`.
    cd signer
    cargo build --release
    ```
-If you want to rebuild protos (`signer/src/proto/generated`), set use `REBUILD_PROTOS=true cargo build --release`.
+If you want to rebuild protos (`signer/src/proto/generated`), use `REBUILD_PROTOS=true cargo build --release`.
 ### Running
 You can run the signer by providing the required environment variables.
 
