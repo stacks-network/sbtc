@@ -233,33 +233,33 @@ mod tests {
         assert_eq!(
             multiaddr.without_p2p_protocol(),
             expected,
-            "p2p + ip4 + tcp + p2p"
-        );
-
-        let multiaddr = Multiaddr::empty()
-            .with(Protocol::Ip4(IP4_LOOPBACK))
-            .with(Protocol::Tcp(8080))
-            .with(Protocol::P2p(PeerId::random()));
-        let expected = Multiaddr::empty()
-            .with(Protocol::Ip4(IP4_LOOPBACK))
-            .with(Protocol::Tcp(8080));
-        assert_eq!(
-            multiaddr.without_p2p_protocol(),
-            expected,
             "ip4 + tcp + p2p"
         );
 
         let multiaddr = Multiaddr::empty()
-            .with(Protocol::Ip4(IP4_LOOPBACK))
+            .with(Protocol::Ip6(IP6_LOOPBACK))
             .with(Protocol::Tcp(8080))
             .with(Protocol::P2p(PeerId::random()));
         let expected = Multiaddr::empty()
-            .with(Protocol::Ip4(IP4_LOOPBACK))
+            .with(Protocol::Ip6(IP6_LOOPBACK))
             .with(Protocol::Tcp(8080));
         assert_eq!(
             multiaddr.without_p2p_protocol(),
             expected,
-            "ip4 + tcp + p2p"
+            "ip6 + tcp + p2p"
+        );
+
+        let multiaddr = Multiaddr::empty()
+            .with(Protocol::Dns("localhost".into()))
+            .with(Protocol::Tcp(8080))
+            .with(Protocol::P2p(PeerId::random()));
+        let expected = Multiaddr::empty()
+            .with(Protocol::Dns("localhost".into()))
+            .with(Protocol::Tcp(8080));
+        assert_eq!(
+            multiaddr.without_p2p_protocol(),
+            expected,
+            "dns + tcp + p2p"
         );
 
         let multiaddr = Multiaddr::empty()
