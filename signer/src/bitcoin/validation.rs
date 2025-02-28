@@ -805,7 +805,7 @@ impl DepositRequestReport {
         match self.lock_time {
             LockTime::Blocks(height) => {
                 let max_age = height.value().saturating_sub(DEPOSIT_LOCKTIME_BLOCK_BUFFER) as u64;
-                if deposit_age >= max_age {
+                if deposit_age >= max_age.into() {
                     return InputValidationResult::LockTimeExpiry;
                 }
             }
@@ -960,11 +960,11 @@ impl WithdrawalRequestReport {
         }
 
         let block_wait = bitcoin_chain_tip_height.saturating_sub(self.bitcoin_block_height);
-        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS {
+        if block_wait < WITHDRAWAL_MIN_CONFIRMATIONS.into() {
             return WithdrawalValidationResult::RequestNotFinal;
         }
 
-        if block_wait > WITHDRAWAL_BLOCKS_EXPIRY {
+        if block_wait > WITHDRAWAL_BLOCKS_EXPIRY.into() {
             return WithdrawalValidationResult::RequestExpired;
         }
 

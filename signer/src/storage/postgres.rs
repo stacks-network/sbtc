@@ -2270,7 +2270,7 @@ impl super::DbRead for PgStore {
         let txo_confirmations = bitcoin_chain_tip
             .block_height
             .saturating_sub(least_txo_height);
-        Ok(txo_confirmations <= min_confirmations)
+        Ok(txo_confirmations <= min_confirmations.into())
     }
 
     async fn get_bitcoin_tx(

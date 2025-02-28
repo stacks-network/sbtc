@@ -277,7 +277,7 @@ where
             return Ok(false);
         };
 
-        let is_epoch3 = pox_info.current_burnchain_block_height > nakamoto_start_height;
+        let is_epoch3 = pox_info.current_burnchain_block_height > *nakamoto_start_height;
         if is_epoch3 {
             self.is_epoch3 = is_epoch3;
             tracing::debug!("we are in epoch 3 or later; time to do work");
