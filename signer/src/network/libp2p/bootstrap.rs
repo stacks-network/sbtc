@@ -158,14 +158,14 @@ impl Behavior {
         self.connected_peers.len()
     }
 
-    /// Gets the [`PeerId`]s of all connected peers.
-    pub fn connected_peers(&self) -> Vec<(PeerId, Multiaddr)> {
+    /// Gets all currently connected peers and the addresses they are connected
+    /// on.
+    pub fn connected_peers(&self) -> HashMap<PeerId, Vec<Multiaddr>> {
         self.connected_peers
             .iter()
-            .flat_map(|(peer_id, info)| {
-                info.connections
-                    .values()
-                    .map(|addr| (*peer_id, addr.clone()))
+            .map(|(peer_id, info)| {
+                let addresses = info.connections.values().cloned().collect();
+                (*peer_id, addresses)
             })
             .collect()
     }
@@ -369,7 +369,7 @@ impl NetworkBehaviour for Behavior {
                     // bootstrapped and emit an event to the swarm.
                     self.is_bootstrapped = true;
                     let connection_count = self.connection_count();
-                    let connected_peers = self.connected_peers().iter().map(|p| p.0).collect();
+                    let connected_peers = self.connected_peers().keys().copied().collect();
 
                     tracing::info!(%connection_count, ?connected_peers, "network bootstrapping complete");
                     Poll::Ready(ToSwarm::GenerateEvent(BootstrapEvent::Bootstrapped {
