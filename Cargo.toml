@@ -87,7 +87,6 @@ tower-http = { version = "0.6.2", default-features = false, features = ["trace",
 secp256k1 = { version = "0.29.0", default-features = false, features = ["std", "rand", "alloc", "serde", "global-context", "recovery"] }
 axum = { version = "0.8.1", default-features = false, features = ["http1", "json", "tracing", "tokio", "tower-log"] }
 tracing-subscriber = { version = "0.3.19", default-features = false, features = ["env-filter", "fmt", "json", "time", "ansi"] }
-easy-int = "0.1.8"
 
 # Crates used only for testing
 fake = { version = "3.1.0", default-features = false, features = ["derive", "time"] }

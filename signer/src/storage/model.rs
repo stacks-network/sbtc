@@ -4,8 +4,6 @@ use std::collections::BTreeSet;
 use std::num::TryFromIntError;
 use std::ops::Deref;
 
-use easy_int::implement_int;
-
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
 use bitvec::array::BitArray;
@@ -1345,25 +1343,139 @@ use std::convert::From;
 use std::ops::{Add, Div, Mul, Rem, Sub};
 use serde::{Deserialize};
 
+
+#[macro_export]
+macro_rules! implement_trait {
+    ($type:ident, $inner:ty, $int:ty, $trait:ident, $method:ident) => {
+        impl $trait<$int> for $type {
+            type Output = $type;
+            fn $method(self, other: $int) -> Self::Output {
+                Self(self.0.$method(other as $inner))
+            }
+        }
+        impl $trait<$type> for $int {
+            type Output = $type;
+            fn $method(self, other: $type) -> Self::Output {
+                $type((self as $inner).$method(other.0))
+            }
+        }
+        impl $trait for $type {
+            type Output = $type;
+            fn $method(self, other: $type) -> Self::Output {
+                Self(self.0.$method(other.0))
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! implement_from {
+    ($type:ident, $inner:ty, $($int:ty),*) => {
+        $(impl From<$int> for $type {
+            fn from(value: $int) -> Self {
+                Self(value as $inner)
+            }
+        })*
+    };
+}
+
+#[macro_export]
+macro_rules! implement_special_methods {
+    ($type:ident, $inner:ty) => {
+        impl $type {
+            pub fn saturating_add(self, rhs: impl Into<$type>) -> Self {
+                let rhs: $inner = rhs.into().0;
+                Self(self.0.saturating_add(rhs))
+            }
+            pub fn saturating_sub(self, rhs: impl Into<$type>) -> Self {
+                let rhs: $inner = rhs.into().0;
+                Self(self.0.saturating_sub(rhs))
+            }
+            pub fn wrapping_add(self, rhs: impl Into<$type>) -> Self {
+                let rhs: $inner = rhs.into().0;
+                Self(self.0.wrapping_add(rhs))
+            }
+            pub fn wrapping_sub(self, rhs: impl Into<$type>) -> Self {
+                let rhs: $inner = rhs.into().0;
+                Self(self.0.wrapping_sub(rhs))
+            }
+            pub fn checked_add(self, rhs: impl Into<$type>) -> Option<Self> {
+                let rhs: $inner = rhs.into().0;
+                self.0.checked_add(rhs).map(Self)
+            }
+            pub fn checked_sub(self, rhs: impl Into<$type>) -> Option<Self> {
+                let rhs: $inner = rhs.into().0;
+                self.0.checked_sub(rhs).map(Self)
+            }
+            pub fn overflowing_add(self, rhs: impl Into<$type>) -> (Self, bool) {
+                let rhs: $inner = rhs.into().0;
+                let (val, overflow) = self.0.overflowing_add(rhs);
+                (Self(val), overflow)
+            }
+            pub fn overflowing_sub(self, rhs: impl Into<$type>) -> (Self, bool) {
+                let rhs: $inner = rhs.into().0;
+                let (val, overflow) = self.0.overflowing_sub(rhs);
+                (Self(val), overflow)
+            }
+        }
+    };
+}
+
+
+macro_rules! implement_int {
+    ($type:ident, $inner:ty) => {
+        $crate::implement_from!($type, $inner, u8, u16, u32, u64, usize, i32);
+        impl From<$type> for $inner {
+            fn from(value: $type) -> Self {
+                value.0
+            }
+        }
+        impl std::fmt::Display for $type {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.0)
+            }
+        }
+        implement_trait!($type, $inner, $inner, Add, add);
+        implement_trait!($type, $inner, $inner, Sub, sub);
+        implement_special_methods!($type, $inner);
+    };
+}
+
 /// Bitcoin block height
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow, sqlx::Decode, sqlx::Encode)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow)]
+#[sqlx(transparent)]
 pub struct BitcoinBlockHeight(#[sqlx(try_from = "i64")] u64);
 /// Stacks block height
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow, sqlx::Decode, sqlx::Encode)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow)]
+#[sqlx(transparent)]
 pub struct StacksBlockHeight(#[sqlx(try_from = "i64")] u64);
 
 
 impl TryFrom<StacksBlockHeight> for i64 {
     type Error = TryFromIntError;
     fn try_from(value: StacksBlockHeight) -> Result<Self, Self::Error> {
-        i64::try_from(value.0)
+        Ok(i64::try_from(value.0)?)
     }
 }
 
 impl TryFrom<BitcoinBlockHeight> for i64 {
     type Error = TryFromIntError;
     fn try_from(value: BitcoinBlockHeight) -> Result<Self, Self::Error> {
-        i64::try_from(value.0)
+        Ok(i64::try_from(value.0)?)
+    }
+}
+
+impl TryFrom<i64> for BitcoinBlockHeight {
+    type Error = TryFromIntError;
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        Ok(Self(u64::try_from(value)?))
+    }
+}
+
+impl TryFrom<i64> for BitcoinBlockHeight {
+    type Error = TryFromIntError;
+    fn try_from(value: i64) -> Result<Self, Self::Error> {
+        Ok(Self(u64::try_from(value)?))
     }
 }
 
