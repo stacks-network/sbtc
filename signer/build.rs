@@ -2,7 +2,9 @@ use std::env;
 
 fn main() {
     set_up_build_info();
-    // compile_protos();
+    if std::env::var("REBUILD_PROTOS").is_ok() {
+        compile_protos();
+    }
 }
 
 pub fn set_up_build_info() {
