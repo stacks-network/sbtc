@@ -127,6 +127,7 @@ pub struct Faucet {
 }
 
 /// Helper struct for representing an address we control on bitcoin.
+#[derive(Debug, Clone)]
 pub struct Recipient {
     /// The public/private key pair
     pub keypair: secp256k1::Keypair,
@@ -249,6 +250,13 @@ impl Faucet {
         self.rpc
             .generate_to_address(num_blocks, &self.address)
             .unwrap()
+    }
+
+    /// Generates one block with coinbase rewards being sent to this recipient.
+    pub fn generate_block(&self) -> BlockHash {
+        self.generate_blocks(1)
+            .pop()
+            .expect("failed to generate bitcoin block")
     }
 
     /// Return all UTXOs for this recipient where the amount is greater

@@ -284,6 +284,12 @@ impl From<PublicKey> for PublicKeyXOnly {
     }
 }
 
+impl From<(secp256k1::XOnlyPublicKey, secp256k1::Parity)> for PublicKeyXOnly {
+    fn from(value: (bitcoin::XOnlyPublicKey, secp256k1::Parity)) -> Self {
+        Self(value.0)
+    }
+}
+
 impl From<&PublicKey> for PublicKeyXOnly {
     fn from(value: &PublicKey) -> Self {
         Self(secp256k1::XOnlyPublicKey::from(value))

@@ -36,6 +36,6 @@ fi
         --profile "${AWS_DEPLOYMENT_PROFILE}"
     echo "Done bootstrapping CDK."
     npx aws-cdk deploy \
-        --profile "${AWS_DEPLOYMENT_PROFILE}"
+        --profile "${AWS_DEPLOYMENT_PROFILE}" \
         --require-approval any-change
 }

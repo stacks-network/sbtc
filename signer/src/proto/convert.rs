@@ -54,6 +54,7 @@ use crate::message::SignerWithdrawalDecision;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::StacksTransactionSignature;
 use crate::message::WstsMessage;
+use crate::message::WstsMessageId;
 use crate::proto;
 use crate::stacks::contracts::AcceptWithdrawalV1;
 use crate::stacks::contracts::CompleteDepositV1;
@@ -68,6 +69,8 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
+
+use super::wsts_message;
 
 /// This trait is to make it easy to handle fields of protobuf structs that
 /// are `None`, when they should be `Some(_)`.
@@ -409,7 +412,7 @@ impl TryFrom<proto::CompleteDeposit> for CompleteDepositV1 {
 impl From<AcceptWithdrawalV1> for proto::AcceptWithdrawal {
     fn from(value: AcceptWithdrawalV1) -> Self {
         proto::AcceptWithdrawal {
-            request_id: value.request_id,
+            id: Some(value.id.into()),
             outpoint: Some(value.outpoint.into()),
             tx_fee: value.tx_fee,
             signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
@@ -437,7 +440,7 @@ impl TryFrom<proto::AcceptWithdrawal> for AcceptWithdrawalV1 {
             });
 
         Ok(AcceptWithdrawalV1 {
-            request_id: value.request_id,
+            id: value.id.required()?.try_into()?,
             outpoint: value.outpoint.required()?.try_into()?,
             tx_fee: value.tx_fee,
             signer_bitmap,
@@ -451,7 +454,7 @@ impl TryFrom<proto::AcceptWithdrawal> for AcceptWithdrawalV1 {
 impl From<RejectWithdrawalV1> for proto::RejectWithdrawal {
     fn from(value: RejectWithdrawalV1) -> Self {
         proto::RejectWithdrawal {
-            request_id: value.request_id,
+            id: Some(value.id.into()),
             signer_bitmap: value.signer_bitmap.iter().map(|e| *e).collect(),
             deployer: Some(value.deployer.into()),
         }
@@ -475,7 +478,7 @@ impl TryFrom<proto::RejectWithdrawal> for RejectWithdrawalV1 {
             });
 
         Ok(RejectWithdrawalV1 {
-            request_id: value.request_id,
+            id: value.id.required()?.try_into()?,
             signer_bitmap,
             deployer: value.deployer.required()?.try_into()?,
         })
@@ -1089,8 +1092,17 @@ impl From<WstsMessage> for proto::WstsMessage {
                 proto::wsts_message::Inner::SignatureShareResponse(inner.into())
             }
         };
+
         proto::WstsMessage {
-            txid: Some(BitcoinTxId::from(value.txid).into()),
+            id: Some(match value.id {
+                WstsMessageId::Sweep(txid) => wsts_message::Id::Sweep(proto::BitcoinTxid {
+                    txid: Some(proto::Uint256::from(BitcoinTxId::from(txid).into_bytes())),
+                }),
+                WstsMessageId::DkgVerification(pubkey) => {
+                    wsts_message::Id::DkgVerification(pubkey.into())
+                }
+                WstsMessageId::Dkg(id) => wsts_message::Id::Dkg(id.into()),
+            }),
             inner: Some(inner),
         }
     }
@@ -1098,6 +1110,7 @@ impl From<WstsMessage> for proto::WstsMessage {
 
 impl TryFrom<proto::WstsMessage> for WstsMessage {
     type Error = Error;
+
     fn try_from(value: proto::WstsMessage) -> Result<Self, Self::Error> {
         let inner = match value.inner.required()? {
             proto::wsts_message::Inner::DkgBegin(inner) => {
@@ -1131,8 +1144,17 @@ impl TryFrom<proto::WstsMessage> for WstsMessage {
                 wsts::net::Message::SignatureShareResponse(inner.try_into()?)
             }
         };
+
         Ok(WstsMessage {
-            txid: BitcoinTxId::try_from(value.txid.required()?)?.into(),
+            id: match value.id.required()? {
+                wsts_message::Id::Sweep(txid) => {
+                    WstsMessageId::Sweep(BitcoinTxId::try_from(txid)?.into())
+                }
+                wsts_message::Id::DkgVerification(pubkey) => {
+                    WstsMessageId::DkgVerification(PublicKey::try_from(pubkey)?)
+                }
+                wsts_message::Id::Dkg(id) => WstsMessageId::Dkg(id.into()),
+            },
             inner,
         })
     }
@@ -1737,21 +1759,24 @@ mod tests {
         U: From<T>,
         E: std::fmt::Debug,
     {
-        // The type T originates from a signer. Let's create a random
-        // instance of one.
-        let original: T = Faker.fake_with_rng(&mut OsRng);
-        // The type U is a protobuf type. Before sending it to other
-        // signers, we convert our internal type into it's protobuf
-        // counterpart. We can always infallibly create U from T.
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..25 {
+            // The type T originates from a signer. Let's create a random
+            // instance of one.
+            let original: T = Faker.fake_with_rng(&mut OsRng);
+            // The type U is a protobuf type. Before sending it to other
+            // signers, we convert our internal type into it's protobuf
+            // counterpart. We can always infallibly create U from T.
+            let proto_original = U::from(original.clone());
 
-        // Some other signer receives an instance of U. This could be a
-        // malicious actor or a modified version of the signer binary
-        // where they made some mistake, so converting back to T can fail.
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        // In this case, we know U was created from T correctly, so we
-        // should be able to convert back without issues.
-        assert_eq!(original, original_from_proto);
+            // Some other signer receives an instance of U. This could be a
+            // malicious actor or a modified version of the signer binary
+            // where they made some mistake, so converting back to T can fail.
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            // In this case, we know U was created from T correctly, so we
+            // should be able to convert back without issues.
+            assert_eq!(original, original_from_proto);
+        }
     }
 
     /// This test is identical to [`convert_protobuf_types`] tests above,
@@ -1786,67 +1811,22 @@ mod tests {
     #[test_case(PhantomData::<((u32, PolyCommitment), proto::PartyCommitment)>; "PartyCommitment")]
     #[test_case(PhantomData::<(DkgPublicShares, proto::SignerDkgPublicShares)>; "SignerDkgPublicShares")]
     #[test_case(PhantomData::<(BTreeMap<u32, DkgPublicShares>, proto::DkgPublicShares)>; "DkgPublicShares")]
+    #[test_case(PhantomData::<((u32, PartyState), proto::PartyState)>; "PartyState")]
+    #[test_case(PhantomData::<(SignerState, proto::SignerState)>; "SignerState")]
     fn convert_protobuf_type2<T, U, E>(_: PhantomData<(T, U)>)
     where
         T: Dummy<Unit> + TryFrom<U, Error = E> + Clone + PartialEq + std::fmt::Debug,
         U: From<T>,
         E: std::fmt::Debug,
     {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
-        let proto_original = U::from(original.clone());
+        // TODO: proptest
+        for _ in 0..10 {
+            let original: T = Unit.fake_with_rng(&mut OsRng);
+            let proto_original = U::from(original.clone());
 
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        assert_eq!(original, original_from_proto);
-    }
-
-    // The following are tests for structs that do not derive eq
-    #[derive(Debug)]
-    struct PartyStateWrapper((u32, PartyState));
-
-    impl PartialEq for PartyStateWrapper {
-        fn eq(&self, other: &Self) -> bool {
-            self.0 .0 == other.0 .0
-                && self.0 .1.nonce == other.0 .1.nonce
-                && self.0 .1.polynomial == other.0 .1.polynomial
-                && self.0 .1.private_keys == other.0 .1.private_keys
+            let original_from_proto = T::try_from(proto_original).unwrap();
+            assert_eq!(original, original_from_proto);
         }
-    }
-
-    #[derive(Debug)]
-    struct SignerStateWrapper(SignerState);
-
-    impl PartialEq for SignerStateWrapper {
-        fn eq(&self, other: &Self) -> bool {
-            self.0.group_key == other.0.group_key
-                && self.0.id == other.0.id
-                && self.0.key_ids == other.0.key_ids
-                && self.0.num_keys == other.0.num_keys
-                && self.0.num_parties == other.0.num_parties
-                && self.0.threshold == other.0.threshold
-                && self.0.parties.len() == other.0.parties.len()
-                && self
-                    .0
-                    .parties
-                    .iter()
-                    .zip(other.0.parties.iter())
-                    .all(|(a, b)| PartyStateWrapper(a.clone()) == PartyStateWrapper(b.clone()))
-        }
-    }
-
-    #[test_case(PhantomData::<((u32, PartyState), proto::PartyState)>, PartyStateWrapper; "PartyState")]
-    #[test_case(PhantomData::<(SignerState, proto::SignerState)>, SignerStateWrapper; "SignerState")]
-    fn convert_protobuf_type3<T, U, V, E>(_: PhantomData<(T, U)>, wrapper: fn(T) -> V)
-    where
-        T: Dummy<Unit> + TryFrom<U, Error = E> + Clone,
-        V: PartialEq + std::fmt::Debug,
-        U: From<T>,
-        E: std::fmt::Debug,
-    {
-        let original: T = Unit.fake_with_rng(&mut OsRng);
-        let proto_original = U::from(original.clone());
-
-        let original_from_proto = T::try_from(proto_original).unwrap();
-        assert_eq!(wrapper(original), wrapper(original_from_proto));
     }
 
     #[test]

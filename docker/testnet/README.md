@@ -66,7 +66,7 @@ work for the folks running the signer. If your signer is saying that it
 cannot find the signer database either:
 
 1. The database is not in the location `.postgres/data`
-2. It has incompatable permissions with the docker container runner.
+2. It has incompatible permissions with the docker container runner.
 
 ### Add an event-listener to your Stacks node
 

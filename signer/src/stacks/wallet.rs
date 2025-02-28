@@ -422,7 +422,9 @@ where
         .collect();
 
     // This will only fail if we get very unlucky with private keys that we
-    // generate.
+    // generate. We create a new wallet so that we don't alter the state of the
+    // wallet that was passed in, which will increment nonces for new
+    // transactions.
     let wallet = SignerWallet::new(
         &public_keys,
         wallet.signatures_required,

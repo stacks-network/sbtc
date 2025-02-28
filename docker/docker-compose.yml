@@ -1,7 +1,6 @@
 # Variables.
 # ------------------------------------------------------------------------------
 x-common-vars:
-  - &STACKS_BLOCKCHAIN_COMMIT 49777d3fd73a6dbb610be80c376b7d9389c9871a
   - &STACKS_API_COMMIT 46e1ae256e474eac98979d0a3df685fe3fa48d6d
   - &BTC_ADDR miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT
   - &MINER_SEED 9e446f6b0c6a96cf2190e54bcd5a8569c3e386f091605499464389b8d4e0bfc201 # stx: STEW4ZNT093ZHK4NEQKX8QJGM2Y7WWJ2FQQS5C19, btc: miEJtNKa3ASpA19v5ZhvbKTEieYjLpzCYT, pub_key: 035379aa40c02890d253cfa577964116eb5295570ae9f7287cbae5f2585f5b2c7c, wif: cStMQXkK5yTFGP3KbNXYQ3sJf2qwQiKrZwR9QJnksp32eKzef1za
@@ -11,7 +10,7 @@ x-common-vars:
   - &BITCOIN_RPC_USER devnet
   - &BITCOIN_RPC_PASS devnet
   - &MINE_INTERVAL ${MINE_INTERVAL:-1s}
-  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-5s} # 5 second bitcoin block times in epoch 2.5
+  - &MINE_INTERVAL_EPOCH25 ${MINE_INTERVAL_EPOCH25:-1s} # 1 second bitcoin block times in epoch 2.5
   - &MINE_INTERVAL_EPOCH3 ${MINE_INTERVAL_EPOCH3:-15s} # 15 second bitcoin block times in epoch 3
   - &NAKAMOTO_BLOCK_INTERVAL 2 # seconds to wait between issuing stx-transfer transactions (which triggers Nakamoto block production)
   - &STACKS_20_HEIGHT ${STACKS_20_HEIGHT:-0}
@@ -32,6 +31,11 @@ x-common-vars:
 
 # Templates.
 # ------------------------------------------------------------------------------
+x-stacks-blockchain: &stacks-blockchain
+  image: blockstack/stacks-core:3.1.0.0.5
+  profiles:
+    - default
+
 x-postgres: &postgres
   image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
   stop_grace_period: 5s
@@ -48,7 +52,7 @@ x-sbtc-signer: &sbtc-signer
     context: ../
     dockerfile: docker/sbtc/Dockerfile
     target: signer
-  entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db'"
+  entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db --output-format json'"
   environment: &sbtc-signer-environment
     RUST_LOG: info
     SIGNER_SIGNER__P2P__LISTEN_ON: tcp://0.0.0.0:4122
@@ -58,10 +62,7 @@ x-sbtc-signer: &sbtc-signer
     - sbtc-signer
 
 x-stacks-signer: &stacks-signer
-  build:
-    context: stacks
-    args:
-      GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
+  <<: *stacks-blockchain
   depends_on:
     - stacks-node
   volumes:
@@ -73,11 +74,11 @@ x-stacks-signer: &stacks-signer
     - /bin/bash
     - -c
     - |
+      apt-get update && apt-get install -y gettext-base
+      cd /data/
       set -e
       envsubst < config.toml.in > config.toml
       exec stacks-signer run --config config.toml
-  profiles:
-    - default
 
 # Services.
 # ------------------------------------------------------------------------------
@@ -167,6 +168,7 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-1:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
+      SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9181
     ports:
       - "8801:8801"
 
@@ -187,6 +189,7 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-2:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 9bfecf16c9c12792589dd2b843f850d5b89b81a04f8ab91c083bdf6709fbefee01
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
+      SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9182
     ports:
       - "8802:8801"
 
@@ -207,6 +210,7 @@ services:
       SIGNER_SIGNER__DB_ENDPOINT: postgresql://postgres:postgres@postgres-3:5432/signer
       SIGNER_SIGNER__PRIVATE_KEY: 3ec0ca5770a356d6cd1a9bfcbf6cd151eb1bd85c388cc00648ec4ef5853fdb7401
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
+      SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9183
     ports:
       - "8803:8801"
 
@@ -245,7 +249,7 @@ services:
   # Bitcoin / Burnchain.
   # --------------------
   bitcoin:
-    build: bitcoin
+    image: bitcoin/bitcoin:25.2
     ports:
       - "18443:18443"
       - "28332:28332"
@@ -257,14 +261,20 @@ services:
       - |
         set -e
         bitcoind
+    healthcheck:
+      test: ["CMD-SHELL", "bitcoin-cli -rpcwait getblockcount"]
+      interval: 5s
+      timeout: 1s
+      retries: 3
     profiles:
       - default
       - bitcoin-mempool
 
   bitcoin-miner:
-    build: bitcoin
+    image: bitcoin/bitcoin:25.2
     depends_on:
-      - bitcoin
+      bitcoin:
+        condition: service_healthy
     volumes:
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     environment:
@@ -279,6 +289,7 @@ services:
       - /bin/bash
       - -c
       - |
+        apt-get update && apt-get install -y jq
         set -e
         trap "exit" INT TERM
         trap "kill 0" EXIT
@@ -324,12 +335,10 @@ services:
   # Stacks Blockchain.
   # ------------------
   stacks-node:
-    build:
-      context: stacks
-      args:
-        GIT_COMMIT: *STACKS_BLOCKCHAIN_COMMIT
+    <<: *stacks-blockchain
     depends_on:
-      - bitcoin
+      bitcoin:
+        condition: service_healthy
     ports:
       - "20443:20443"
     volumes:
@@ -362,12 +371,11 @@ services:
       - /bin/bash
       - -c
       - |
+        apt-get update && apt-get install -y gettext-base
+        cd /data/
         set -e
         envsubst < config.toml.in > config.toml
-        bitcoin-cli -rpcwait -rpcconnect=bitcoin getmininginfo
         exec stacks-node start --config config.toml
-    profiles:
-      - default
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -471,14 +479,9 @@ services:
       - default
 
   stacks-api:
-    image: stacks-api:latest
+    image: blockstack/stacks-blockchain-api:8.6.0
     container_name: stacks-api
     stop_grace_period: 5s
-    build:
-      context: stacks-api
-      args:
-        GIT_URI: "https://github.com/hirosystems/stacks-blockchain-api.git"
-        GIT_BRANCH: "v8.0.3"
     ports:
       - 3999:3999
       - 3700:3700
@@ -506,14 +509,9 @@ services:
       - default
 
   stacks-explorer:
-    image: stacks-explorer
+    image: hirosystems/explorer:1.248.0
     container_name: stacks-explorer
     stop_grace_period: 5s
-    build:
-      context: stacks-explorer
-      args:
-        GIT_URI: "https://github.com/hirosystems/explorer.git"
-        GIT_BRANCH: "v1.211.2"
     ports:
       - 3020:3000
     depends_on:
@@ -610,3 +608,67 @@ services:
     command: "./wait-for-it.sh mariadb:3306 --timeout=720 --strict -- ./start.sh"
     profiles:
       - bitcoin-mempool
+
+  prometheus:
+    image: prom/prometheus:v3.2.0
+    restart: always
+    volumes:
+      - ./observability/local-prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - 9090:9090
+    depends_on:
+      - vector
+    profiles:
+      - observability
+
+  loki:
+    image: grafana/loki:3.4.2
+    ports:
+      - 3100:3100
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    profiles:
+      - observability
+
+  grafana:
+    image: grafana/grafana:11.5.2-ubuntu
+    user: '472'
+    restart: always
+    environment:
+      GF_INSTALL_PLUGINS: 'grafana-clock-panel,grafana-simple-json-datasource'
+      GF_AUTH_ANONYMOUS_ENABLED: true
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_BASIC_ENABLED: false
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - ./observability/grafana/:/etc/grafana/provisioning/
+    ports:
+      - 3040:3000
+    depends_on:
+      - prometheus
+      - loki
+    profiles:
+      - observability
+
+  vector:
+    image: timberio/vector:0.43.1-distroless-static
+    command: --config /etc/vector/vector.toml
+    restart: always
+    ports:
+      - 9598
+    volumes: 
+      - ./observability/vector.toml:/etc/vector/vector.toml:ro
+      # This is needed for vector to read logs from other containers
+      - /var/run/docker.sock:/var/run/docker.sock
+    # This is needed for localhost networking
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - observability
