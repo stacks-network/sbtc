@@ -24,7 +24,6 @@ use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api::wipe_databases;
 use emily_client::models::CreateDepositRequestBody;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::rpc::BitcoinTxInfo;
@@ -61,7 +60,9 @@ use signer::testing::storage::model::TestData;
 use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
+use testing_emily_client::apis::testing_api::wipe_databases;
 
+use crate::setup::IntoEmilyTestingConfig as _;
 use crate::utxo_construction::make_deposit_request;
 
 async fn run_dkg<Rng, C>(
@@ -165,7 +166,7 @@ async fn deposit_flow() {
     let stacks_client = WrappedMock::default();
 
     // Wipe the Emily database to start fresh
-    wipe_databases(&emily_client.config())
+    wipe_databases(&emily_client.config().as_testing())
         .await
         .expect("Wiping Emily database in test setup failed.");
 
@@ -585,7 +586,7 @@ async fn get_deposit_request_works() {
     )
     .unwrap();
 
-    wipe_databases(&emily_client.config())
+    wipe_databases(&emily_client.config().as_testing())
         .await
         .expect("Wiping Emily database in test setup failed.");
 
@@ -638,7 +639,7 @@ async fn test_get_deposits_request_paging(
     )
     .unwrap();
 
-    wipe_databases(&emily_client.config())
+    wipe_databases(&emily_client.config().as_testing())
         .await
         .expect("Wiping Emily database in test setup failed.");
 

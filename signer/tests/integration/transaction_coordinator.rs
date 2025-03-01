@@ -30,7 +30,6 @@ use clarity::vm::types::SequenceData;
 use clarity::vm::types::StandardPrincipalData;
 use clarity::vm::Value as ClarityValue;
 use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api;
 use fake::Fake as _;
 use fake::Faker;
 use futures::StreamExt as _;
@@ -50,6 +49,7 @@ use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
+use testing_emily_client::apis::testing_api;
 
 use signer::context::SbtcLimits;
 use signer::context::TxCoordinatorEvent;
@@ -121,6 +121,7 @@ use tokio::sync::broadcast::Sender;
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::AsBlockRef as _;
+use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -1344,7 +1345,7 @@ async fn sign_bitcoin_transaction() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(emily_client.config())
+    testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
 
@@ -1770,7 +1771,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(emily_client.config())
+    testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
 
@@ -2383,7 +2384,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(emily_client.config())
+    testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
 
@@ -3478,7 +3479,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(emily_client.config())
+    testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
 
