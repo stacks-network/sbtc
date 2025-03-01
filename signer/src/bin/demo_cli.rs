@@ -9,8 +9,8 @@ use bitcoin::{Address, XOnlyPublicKey};
 use bitcoincore_rpc::{json, Client as BitcoinClient, RpcApi as _};
 use blockstack_lib::chainstate::stacks::address::{PoxAddressType20, PoxAddressType32};
 use blockstack_lib::chainstate::stacks::{
-    SinglesigHashMode, SinglesigSpendingCondition, StacksTransaction, TransactionAnchorMode,
-    TransactionAuth, TransactionPayload, TransactionPublicKeyEncoding,
+    SinglesigHashMode, SinglesigSpendingCondition, StacksTransaction, TokenTransferMemo,
+    TransactionAnchorMode, TransactionAuth, TransactionPayload, TransactionPublicKeyEncoding,
     TransactionSpendingCondition, TransactionVersion,
 };
 use clap::{Args, Parser, Subcommand};
@@ -89,6 +89,28 @@ enum CliCommand {
     Withdraw(WithdrawArgs),
     Donation(DonationArgs),
     Info,
+    FundBtc(FundBtcArgs),
+    FundStx(FundStxArgs),
+}
+
+#[derive(Debug, Args)]
+struct FundBtcArgs {
+    /// Amount to fund in satoshis
+    #[clap(long, default_value = "100000000")] // 1 BTC
+    amount: u64,
+    /// The recipient of the funds
+    #[clap(long)]
+    recipient: String,
+}
+
+#[derive(Debug, Args)]
+struct FundStxArgs {
+    /// Amount to fund in STX
+    #[clap(long, default_value = "100")]
+    amount: u64,
+    /// The recipient of the funds
+    #[clap(long)]
+    recipient: String,
 }
 
 #[derive(Debug, Args)]
@@ -103,7 +125,7 @@ struct DepositArgs {
     #[clap(long = "lock-time", default_value = "10")]
     lock_time: u32,
     /// The beneficiary Stacks address to receive the deposit in sBTC.
-    #[clap(long = "recipient", default_value = DEMO_STACKS_ADDR)]
+    #[clap(default_value = DEMO_STACKS_ADDR)]
     recipient: String,
 }
 
@@ -119,7 +141,7 @@ struct WithdrawArgs {
     #[clap(long = "sender-sk", default_value = DEMO_PRIVATE_KEY)]
     sender_sk: String,
     /// The BTC recipient.
-    #[clap(long = "recipient", default_value = DEMO_BITCOIN_ADDR)]
+    #[clap(default_value = DEMO_BITCOIN_ADDR)]
     recipient: String,
 }
 
@@ -177,6 +199,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         CliCommand::Withdraw(args) => exec_withdraw(&ctx, args).await?,
         CliCommand::Donation(args) => exec_donation(&ctx, args).await?,
         CliCommand::Info => exec_info(&ctx).await?,
+        CliCommand::FundBtc(args) => exec_fund_btc(&ctx, args).await?,
+        CliCommand::FundStx(args) => exec_fund_stx(&ctx, args).await?,
     }
     Ok(())
 }
@@ -522,4 +546,45 @@ fn get_transaction(
         version: Version::TWO,
         lock_time: absolute::LockTime::ZERO,
     })
+}
+
+async fn exec_fund_btc(ctx: &Context, args: FundBtcArgs) -> Result<(), Error> {
+    let recipient_addr = Address::from_str(&args.recipient)?.require_network(ctx.network)?;
+
+    let unsigned_tx = get_transaction(
+        &ctx.bitcoin_client,
+        TxOut {
+            value: Amount::from_sat(args.amount),
+            script_pubkey: recipient_addr.script_pubkey(),
+        },
+        Amount::from_sat(153),
+    )?;
+
+    let signed_tx =
+        ctx.bitcoin_client
+            .sign_raw_transaction_with_wallet(&unsigned_tx, None, None)?;
+    let tx_id = ctx.bitcoin_client.send_raw_transaction(&signed_tx.hex)?;
+    println!("Transaction sent: {tx_id}");
+
+    Ok(())
+}
+
+async fn exec_fund_stx(ctx: &Context, args: FundStxArgs) -> Result<(), Error> {
+    let recipient = PrincipalData::parse(&args.recipient).expect("cannot parse recipient");
+
+    let payload = TransactionPayload::TokenTransfer(
+        recipient,
+        args.amount * 1_000_000,
+        TokenTransferMemo([0u8; 34]),
+    );
+
+    // Using `DEMO_PRIVATE_KEY` as fund sender
+    let tx = create_stacks_tx(ctx, payload, DEMO_PRIVATE_KEY.to_owned()).await?;
+
+    println!(
+        "Submitted stacks tx: {:?}",
+        ctx.stacks_client.submit_tx(&tx).await
+    );
+
+    Ok(())
 }
