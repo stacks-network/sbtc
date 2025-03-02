@@ -20,7 +20,7 @@ install:
 	pnpm --recursive install
 
 build: blocklist-client-codegen emily-client-codegen contracts
-	cargo $(CARGO_FLAGS) build --features "testing" --all-targets $(CARGO_EXCLUDES) ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) build --all-targets $(CARGO_EXCLUDES) ${CARGO_BUILD_ARGS}
 
 test:
 	cargo $(CARGO_FLAGS) nextest run --features "testing" --lib $(CARGO_EXCLUDES) --no-fail-fast ${CARGO_BUILD_ARGS}
