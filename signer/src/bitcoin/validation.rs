@@ -26,7 +26,6 @@ use crate::storage::model::BitcoinWithdrawalOutput;
 use crate::storage::model::DkgSharesStatus;
 use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::SignerVotes;
-use crate::storage::model::StacksBlockHeight;
 use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
@@ -1005,8 +1004,8 @@ mod tests {
     use test_case::test_case;
 
     use crate::context::SbtcLimits;
-    use crate::storage::model::StacksBlockHash;
     use crate::storage::model::BitcoinBlockHeight;
+    use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksTxId;
     use crate::testing::context::TestContext;
 
@@ -1952,7 +1951,10 @@ mod tests {
         (
             DepositRequestReport {
                 outpoint: OutPoint::new(Txid::from_byte_array([idx; 32]), 0),
-                status: DepositConfirmationStatus::Confirmed(0.into(), BitcoinBlockHash::from([idx; 32])),
+                status: DepositConfirmationStatus::Confirmed(
+                    0.into(),
+                    BitcoinBlockHash::from([idx; 32]),
+                ),
                 can_sign: Some(true),
                 can_accept: Some(true),
                 amount,

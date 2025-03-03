@@ -39,8 +39,6 @@ use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
 use crate::storage::model::EncryptedDkgShares;
-use crate::storage::model::StacksBlockHeight;
-use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -765,9 +763,11 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
-            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = match min_height {
-                Some(h) => Some(h.into()),
-                None => None
+            .modify_settings(|settings| {
+                settings.signer.sbtc_bitcoin_start_height = match min_height {
+                    Some(h) => Some(h.into()),
+                    None => None,
+                }
             })
             .build();
 
@@ -906,9 +906,11 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
-            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = match min_height {
-                Some(h) => Some(h.into()),
-                None => None,
+            .modify_settings(|settings| {
+                settings.signer.sbtc_bitcoin_start_height = match min_height {
+                    Some(h) => Some(h.into()),
+                    None => None,
+                }
             })
             .build();
 
@@ -994,9 +996,11 @@ mod tests {
             .with_stacks_client(test_harness.clone())
             .with_emily_client(test_harness.clone())
             .with_bitcoin_client(test_harness.clone())
-            .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = match min_height {
-                Some(h) => Some(h.into()),
-                None => None,
+            .modify_settings(|settings| {
+                settings.signer.sbtc_bitcoin_start_height = match min_height {
+                    Some(h) => Some(h.into()),
+                    None => None,
+                }
             })
             .build();
 

@@ -10,7 +10,6 @@ use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
 use std::num::NonZeroU16;
 use std::num::NonZeroU32;
-use std::num::NonZeroU64;
 use std::path::Path;
 use url::Url;
 
@@ -27,7 +26,6 @@ use crate::keys::PublicKey;
 use crate::network::libp2p::MultiaddrExt as _;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model::BitcoinBlockHeight;
-use crate::storage::model::StacksBlockHeight;
 use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
 mod error;

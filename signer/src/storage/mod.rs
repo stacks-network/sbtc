@@ -23,11 +23,10 @@ use crate::bitcoin::validation::WithdrawalRequestReport;
 use crate::error::Error;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;
-use crate::storage::model::StacksBlockHeight;
-use crate::storage::model::BitcoinBlockHeight;
 
 /// Represents the ability to read data from the signer storage.
 pub trait DbRead {

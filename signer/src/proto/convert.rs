@@ -69,8 +69,6 @@ use crate::storage::model::QualifiedRequestId;
 use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
-use crate::storage::model::StacksBlockHeight;
-use crate::storage::model::BitcoinBlockHeight;
 
 use super::wsts_message;
 

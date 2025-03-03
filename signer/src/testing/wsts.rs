@@ -28,8 +28,6 @@ use crate::storage;
 use crate::storage::model;
 use crate::storage::model::EncryptedDkgShares;
 use crate::storage::model::StacksPrincipal;
-use crate::storage::model::StacksBlockHeight;
-use crate::storage::model::BitcoinBlockHeight;
 use crate::wsts_state_machine;
 
 /// Signer info

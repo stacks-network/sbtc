@@ -31,8 +31,6 @@ use crate::storage::model;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::ToLittleEndianOrder as _;
-use crate::storage::model::StacksBlockHeight;
-use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use crate::testing;

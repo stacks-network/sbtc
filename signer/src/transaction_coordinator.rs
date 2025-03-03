@@ -313,7 +313,10 @@ where
             "bitcoin_tip_hash",
             tracing::field::display(bitcoin_chain_tip.block_hash),
         );
-        span.record("bitcoin_tip_height", u64::from(bitcoin_chain_tip.block_height));
+        span.record(
+            "bitcoin_tip_height",
+            u64::from(bitcoin_chain_tip.block_height),
+        );
 
         // We first need to determine if we are the coordinator, so we need
         // to know the current signing set. If we are the coordinator then
@@ -599,7 +602,10 @@ where
 
         let span = tracing::Span::current();
         span.record("stacks_tip_hash", stacks_chain_tip.block_hash.to_hex());
-        span.record("stacks_tip_height", u64::from(stacks_chain_tip.block_height));
+        span.record(
+            "stacks_tip_height",
+            u64::from(stacks_chain_tip.block_height),
+        );
 
         // Create a future that fetches pending deposit and withdrawal requests
         // from the database.
@@ -1981,7 +1987,8 @@ where
             let num_confirmations: u64 = params
                 .bitcoin_chain_tip
                 .block_height
-                .saturating_sub(req.bitcoin_block_height).into();
+                .saturating_sub(req.bitcoin_block_height)
+                .into();
 
             // [3] Ensure that we have the required number of confirmations for
             // the withdrawal request.
@@ -2704,8 +2711,7 @@ mod tests {
             .with_in_memory_storage()
             .with_mocked_clients()
             .modify_settings(|s| {
-                s.signer.dkg_min_bitcoin_block_height =
-                    dkg_min_bitcoin_block_height;
+                s.signer.dkg_min_bitcoin_block_height = dkg_min_bitcoin_block_height;
                 s.signer.dkg_target_rounds = NonZeroU32::new(dkg_target_rounds).unwrap();
             })
             .build();

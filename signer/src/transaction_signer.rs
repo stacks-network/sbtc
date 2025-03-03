@@ -1622,11 +1622,11 @@ mod tests {
     use crate::emily_client::MockEmilyInteract;
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
+    use crate::storage::model::BitcoinBlockHeight;
+    use crate::storage::model::StacksBlockHeight;
     use crate::storage::{model, DbWrite};
     use crate::testing;
     use crate::testing::context::*;
-    use crate::storage::model::BitcoinBlockHeight;
-    use crate::storage::model::StacksBlockHeight;
 
     use super::*;
 
@@ -1693,8 +1693,7 @@ mod tests {
             .with_in_memory_storage()
             .with_mocked_clients()
             .modify_settings(|s| {
-                s.signer.dkg_min_bitcoin_block_height =
-                    dkg_min_bitcoin_block_height;
+                s.signer.dkg_min_bitcoin_block_height = dkg_min_bitcoin_block_height;
                 s.signer.dkg_target_rounds = NonZeroU32::new(dkg_target_rounds).unwrap();
             })
             .build();

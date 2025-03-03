@@ -102,7 +102,8 @@ impl From<&bitcoin::Block> for BitcoinBlock {
             block_hash: block.block_hash().into(),
             block_height: block
                 .bip34_block_height()
-                .expect("Failed to get block height").into(),
+                .expect("Failed to get block height")
+                .into(),
             parent_hash: block.header.prev_blockhash.into(),
         }
     }
@@ -1338,12 +1339,12 @@ pub struct WithdrawalRejectEvent {
     pub signer_bitmap: BitArray<[u8; 16]>,
 }
 
+use serde::Deserialize;
 use std::cmp::{PartialEq, PartialOrd};
 use std::convert::From;
-use std::ops::{Add, Div, Mul, Rem, Sub};
-use serde::{Deserialize};
+use std::ops::{Add, Sub};
 
-
+/// Helper for [`implement_trait!`] macro. Implements arithmetic traits for integer wrapper types.
 #[macro_export]
 macro_rules! implement_trait {
     ($type:ident, $inner:ty, $int:ty, $trait:ident, $method:ident) => {
@@ -1368,6 +1369,7 @@ macro_rules! implement_trait {
     };
 }
 
+/// Helper for [`implement_int!`] macro. Implements conversion from integer types to int wrapper types.
 #[macro_export]
 macro_rules! implement_from {
     ($type:ident, $inner:ty, $($int:ty),*) => {
@@ -1379,39 +1381,48 @@ macro_rules! implement_from {
     };
 }
 
+/// Helper for [`implement_int!`] macro. Implements special arithmetic methods for integer wrapper types.
 #[macro_export]
 macro_rules! implement_special_methods {
     ($type:ident, $inner:ty) => {
         impl $type {
+            /// Implementation of saturating_add for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn saturating_add(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.saturating_add(rhs))
             }
+            /// Implementation of saturating_sub for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn saturating_sub(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.saturating_sub(rhs))
             }
+            /// Implementation of wrapping_add for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn wrapping_add(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.wrapping_add(rhs))
             }
+            /// Implementation of wrapping_sub for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn wrapping_sub(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.wrapping_sub(rhs))
             }
+            /// Implementation of checked_add for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn checked_add(self, rhs: impl Into<$type>) -> Option<Self> {
                 let rhs: $inner = rhs.into().0;
                 self.0.checked_add(rhs).map(Self)
             }
+            /// Implementation of checked_sub for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn checked_sub(self, rhs: impl Into<$type>) -> Option<Self> {
                 let rhs: $inner = rhs.into().0;
                 self.0.checked_sub(rhs).map(Self)
             }
+            /// Implementation of overflowing_add for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn overflowing_add(self, rhs: impl Into<$type>) -> (Self, bool) {
                 let rhs: $inner = rhs.into().0;
                 let (val, overflow) = self.0.overflowing_add(rhs);
                 (Self(val), overflow)
             }
+            /// Implementation of overflowing_sub for int wrapper type `[$type]`. Behavies same way as inner type.
             pub fn overflowing_sub(self, rhs: impl Into<$type>) -> (Self, bool) {
                 let rhs: $inner = rhs.into().0;
                 let (val, overflow) = self.0.overflowing_sub(rhs);
@@ -1421,7 +1432,8 @@ macro_rules! implement_special_methods {
     };
 }
 
-
+/// Implements various traits and functions for integer wrapper types.
+/// Most of this impls are arithmetics and conversions.
 macro_rules! implement_int {
     ($type:ident, $inner:ty) => {
         $crate::implement_from!($type, $inner, u8, u16, u32, u64, usize, i32);
@@ -1442,14 +1454,17 @@ macro_rules! implement_int {
 }
 
 /// Bitcoin block height
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow,
+)]
 #[sqlx(transparent)]
 pub struct BitcoinBlockHeight(#[sqlx(try_from = "i64")] u64);
 /// Stacks block height
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow)]
+#[derive(
+    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow,
+)]
 #[sqlx(transparent)]
 pub struct StacksBlockHeight(#[sqlx(try_from = "i64")] u64);
-
 
 impl TryFrom<StacksBlockHeight> for i64 {
     type Error = TryFromIntError;
@@ -1497,9 +1512,9 @@ use sqlx::{Decode, Type};
 
 // Implement sqlx::Decode by delegating to i64.
 impl<'r> Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
-    fn decode(value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>)
-        -> Result<Self, sqlx::error::BoxDynError> 
-    {
+    fn decode(
+        value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>,
+    ) -> Result<Self, sqlx::error::BoxDynError> {
         // First decode the raw value as an i64.
         let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
         // Then convert i64 into BitcoinBlockHeight.
@@ -1516,9 +1531,9 @@ impl Type<sqlx::Postgres> for BitcoinBlockHeight {
 
 // Implement sqlx::Decode by delegating to i64.
 impl<'r> Decode<'r, sqlx::Postgres> for StacksBlockHeight {
-    fn decode(value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>)
-        -> Result<Self, sqlx::error::BoxDynError> 
-    {
+    fn decode(
+        value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>,
+    ) -> Result<Self, sqlx::error::BoxDynError> {
         // First decode the raw value as an i64.
         let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
         // Then convert i64 into StacksBlockHeight.
@@ -1535,7 +1550,6 @@ impl Type<sqlx::Postgres> for StacksBlockHeight {
 
 implement_int!(BitcoinBlockHeight, u64);
 implement_int!(StacksBlockHeight, u64);
-
 
 #[cfg(test)]
 mod tests {

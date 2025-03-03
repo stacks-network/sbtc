@@ -10,7 +10,7 @@ use crate::{
     context::Context,
     stacks::api::StacksInteract,
     storage::{
-        model::{BitcoinBlockHash, BitcoinBlockHeight, StacksBlockHash, StacksBlockHeight},
+        model::{BitcoinBlockHash, BitcoinBlockHeight, StacksBlockHash},
         DbRead,
     },
 };
@@ -157,9 +157,7 @@ impl InfoResponse {
             sbtc_bitcoin_start_height: config.signer.sbtc_bitcoin_start_height,
             dkg_begin_pause: config.signer.dkg_begin_pause.unwrap_or(0),
             max_deposits_per_bitcoin_block: config.signer.max_deposits_per_bitcoin_tx.get(),
-            dkg_min_bitcoin_block_height: config
-                .signer
-                .dkg_min_bitcoin_block_height,
+            dkg_min_bitcoin_block_height: config.signer.dkg_min_bitcoin_block_height,
             dkg_target_rounds: config.signer.dkg_target_rounds.get(),
         });
     }

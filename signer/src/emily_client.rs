@@ -37,8 +37,6 @@ use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::StacksBlock;
-use crate::storage::model::StacksBlockHeight;
-use crate::storage::model::BitcoinBlockHeight;
 use crate::util::ApiFallbackClient;
 
 /// Emily client error variants.
