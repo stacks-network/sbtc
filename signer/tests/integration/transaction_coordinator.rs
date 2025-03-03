@@ -456,7 +456,7 @@ async fn process_complete_deposit() {
     // Ensure a stacks tip exists
     let stacks_block = model::StacksBlock {
         block_hash: Faker.fake_with_rng(&mut OsRng),
-        block_height: setup.sweep_block_height,
+        block_height: Faker.fake_with_rng(&mut OsRng),
         parent_hash: Faker.fake_with_rng(&mut OsRng),
         bitcoin_anchor: setup.sweep_block_hash.into(),
     };
@@ -4442,7 +4442,7 @@ mod get_eligible_pending_withdrawal_requests {
         let request = store_withdrawal_request(
             &db,
             bitcoin_chain.nth_block(params.at_block_height),
-            stacks_chain.nth_block(params.at_block_height),
+            stacks_chain.nth_block((*params.at_block_height).into()), // Here we can cast one height to another because in this test chains are 1 to 1.
             params.amount,
             1_000, // Max fee isn't validated here.
         )
