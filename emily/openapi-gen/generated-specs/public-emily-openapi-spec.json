@@ -1658,7 +1658,7 @@
           {
             "name": "recipient",
             "in": "path",
-            "description": "the recpieint to search by when getting all withdrawals.",
+            "description": "The recipient's hex-encoded scriptPubKey, used to filter withdrawals.",
             "required": true,
             "schema": {
               "type": "string"
@@ -1757,7 +1757,7 @@
           {
             "name": "recipient",
             "in": "path",
-            "description": "the recpieint to search by when getting all withdrawals.",
+            "description": "The recipient's hex-encoded scriptPubKey, used to filter withdrawals.",
             "required": true,
             "schema": {
               "type": "string"
@@ -1998,7 +1998,7 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient Bitcoin hex-encoded scriptPubKey."
           },
           "requestId": {
             "type": "integer",

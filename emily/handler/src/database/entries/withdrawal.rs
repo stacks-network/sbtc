@@ -44,7 +44,7 @@ pub struct WithdrawalEntry {
     pub stacks_block_height: u64,
     /// Table entry version. Updated on each alteration.
     pub version: u64,
-    /// Stacks address to received the withdrawn sBTC.
+    /// The recipient Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
@@ -333,7 +333,7 @@ pub struct WithdrawalInfoEntry {
     pub primary_index_key: WithdrawalEntryKey,
     /// The height of the Stacks block in which this request id was initiated.
     pub stacks_block_height: u64,
-    /// Stacks address to received the withdrawn sBTC.
+    /// The recipient Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
@@ -411,7 +411,7 @@ pub struct WithdrawalInfoByRecipientEntrySearchToken {
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct WithdrawalInfoByRecipientEntryKey {
-    /// The recipient of the withdrawal.
+    /// The The recipient Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
     /// The most recent Stacks block height the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain

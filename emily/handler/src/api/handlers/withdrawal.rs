@@ -114,7 +114,7 @@ pub async fn get_withdrawals(
     operation_id = "getWithdrawalsForRecipient",
     path = "/withdrawal/recipient/{recipient}",
     params(
-        ("recipient" = String, Path, description = "the recpieint to search by when getting all withdrawals."),
+        ("recipient" = String, Path, description = "The recipient's hex-encoded scriptPubKey, used to filter withdrawals."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
