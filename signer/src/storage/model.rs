@@ -1454,13 +1454,35 @@ macro_rules! implement_int {
 
 /// Bitcoin block height
 #[derive(
-    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    sqlx::FromRow,
 )]
 #[sqlx(transparent)]
 pub struct BitcoinBlockHeight(#[sqlx(try_from = "i64")] u64);
 /// Stacks block height
 #[derive(
-    Debug, Clone, Copy, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, sqlx::FromRow,
+    Debug,
+    Default,
+    Clone,
+    Copy,
+    Hash,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    sqlx::FromRow,
 )]
 #[sqlx(transparent)]
 pub struct StacksBlockHeight(#[sqlx(try_from = "i64")] u64);

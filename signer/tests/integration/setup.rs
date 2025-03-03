@@ -71,7 +71,7 @@ impl AsBlockRef for bitcoincore_rpc_json::GetBlockHeaderResult {
     fn as_block_ref(&self) -> BitcoinBlockRef {
         BitcoinBlockRef {
             block_hash: self.hash.into(),
-            block_height: self.height as u64,
+            block_height: (self.height as u64).into(),
         }
     }
 }
@@ -225,7 +225,7 @@ impl TestSweepSetup {
             deposit_request: requests.deposits.pop().unwrap(),
             deposit_tx_info,
             sweep_tx_info,
-            sweep_block_height,
+            sweep_block_height: sweep_block_height.into(),
             sweep_block_hash,
             signer_keys: signer::testing::wallet::create_signers_keys(rng, &signer, 7),
             aggregated_signer: signer,
@@ -250,7 +250,7 @@ impl TestSweepSetup {
     pub async fn store_stacks_genesis_block(&self, db: &PgStore) {
         let block = model::StacksBlock {
             block_hash: Faker.fake_with_rng(&mut OsRng),
-            block_height: 0,
+            block_height: 0.into(),
             parent_hash: StacksBlockId::first_mined().into(),
             bitcoin_anchor: self.sweep_block_hash.into(),
         };
@@ -385,7 +385,7 @@ impl TestSweepSetup {
             signature_share_threshold: self.signatures_required,
             dkg_shares_status: model::DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
-            started_at_bitcoin_block_height: 0,
+            started_at_bitcoin_block_height: 0.into(),
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }
@@ -411,7 +411,7 @@ pub async fn backfill_bitcoin_blocks(db: &PgStore, rpc: &Client, chain_tip: &bit
         let parent_header_hash = block_header.previous_block_hash.unwrap();
         let bitcoin_block = BitcoinBlock {
             block_hash: block_header.hash.into(),
-            block_height: block_header.height as u64,
+            block_height: (block_header.height as u64).into(),
             parent_hash: parent_header_hash.into(),
         };
 
@@ -757,7 +757,7 @@ impl TestSweepSetup2 {
 
         let genesis_block = model::StacksBlock {
             block_hash: Faker.fake_with_rng(&mut OsRng),
-            block_height: 0,
+            block_height: 0.into(),
             parent_hash: StacksBlockId::first_mined().into(),
             bitcoin_anchor: deposit_block_hash.into(),
         };
@@ -958,7 +958,7 @@ impl TestSweepSetup2 {
 
         self.sweep_tx_info = Some(SweepTxInfo {
             block_hash: block_hash.into(),
-            block_height: block_header.height as u64,
+            block_height: (block_header.height as u64).into(),
             parent_hash: block_header.previous_block_hash.unwrap().into(),
             tx_info,
         });
@@ -1217,7 +1217,7 @@ impl TestSweepSetup2 {
             signature_share_threshold: self.signatures_required,
             dkg_shares_status: DkgSharesStatus::Verified,
             started_at_bitcoin_block_hash: self.deposit_block_hash.into(),
-            started_at_bitcoin_block_height: 0,
+            started_at_bitcoin_block_height: 0.into(),
         };
         db.write_encrypted_dkg_shares(&shares).await.unwrap();
     }

@@ -330,7 +330,7 @@ impl InfoResponse {
 mod tests {
     use std::{
         cell::LazyCell,
-        num::{NonZeroU16, NonZeroU32, NonZeroU64},
+        num::{NonZeroU16, NonZeroU32},
         time::Duration,
     };
 
@@ -476,14 +476,14 @@ mod tests {
             panic!("expected local bitcoin tip to be present");
         };
         assert_eq!(bitcoin_local_tip.block_hash, bitcoin_block.block_hash);
-        assert_eq!(bitcoin_local_tip.block_height, bitcoin_block.block_height);
+        assert_eq!(bitcoin_local_tip.block_height, *bitcoin_block.block_height);
 
         // Assert local stacks tip
         let Some(stacks_local_tip) = result.stacks.signer_tip else {
             panic!("expected local stacks tip to be present");
         };
         assert_eq!(stacks_local_tip.block_hash, stacks_block.block_hash);
-        assert_eq!(stacks_local_tip.block_height, stacks_block.block_height);
+        assert_eq!(stacks_local_tip.block_height, *stacks_block.block_height);
     }
 
     #[tokio::test]

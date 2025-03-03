@@ -746,7 +746,6 @@ mod tests {
     use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
     use crate::storage::model::DkgSharesStatus;
-    use crate::storage::model::StacksBlockHeight;
     use crate::testing::block_observer::TestHarness;
     use crate::testing::context::*;
 

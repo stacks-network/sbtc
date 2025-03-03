@@ -84,7 +84,7 @@ fn btc_client_getblockheader() {
 
     assert_eq!(header.hash, block.block_hash());
     assert_eq!(header.previous_block_hash, block.header.prev_blockhash);
-    assert_eq!(header.height, block.bip34_block_height().unwrap());
+    assert_eq!(header.height, block.bip34_block_height().unwrap().into());
     assert_eq!(header.time, block.header.time as u64);
 
     let random_hash = bitcoin::BlockHash::from_byte_array([13; 32]);

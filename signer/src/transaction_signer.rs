@@ -1610,7 +1610,7 @@ pub enum ChainTipStatus {
 
 #[cfg(test)]
 mod tests {
-    use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
+    use std::num::{NonZeroU32, NonZeroUsize};
 
     use bitcoin::Txid;
     use fake::{Fake, Faker};
@@ -1622,8 +1622,6 @@ mod tests {
     use crate::emily_client::MockEmilyInteract;
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
-    use crate::storage::model::BitcoinBlockHeight;
-    use crate::storage::model::StacksBlockHeight;
     use crate::storage::{model, DbWrite};
     use crate::testing;
     use crate::testing::context::*;

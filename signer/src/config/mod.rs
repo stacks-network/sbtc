@@ -848,7 +848,7 @@ mod tests {
         let settings = Settings::new_from_default_config().unwrap();
         let height = settings.signer.sbtc_bitcoin_start_height.unwrap();
 
-        assert_eq!(height, 12345);
+        assert_eq!(height, 12345.into());
     }
 
     #[test]

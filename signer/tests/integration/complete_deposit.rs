@@ -736,7 +736,7 @@ async fn complete_deposit_validation_sweep_reorged() {
         // detail. All that should matter is that the block_hash does not
         // identify the bitcoin blockchain that includes the sweep
         // transaction.
-        block_height: 30000,
+        block_height: 30000.into(),
     };
 
     let ctx = TestContext::builder()

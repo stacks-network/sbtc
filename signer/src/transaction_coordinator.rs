@@ -2556,7 +2556,7 @@ pub fn assert_rotate_key_action(
 
 #[cfg(test)]
 mod tests {
-    use std::num::{NonZeroU32, NonZeroU64};
+    use std::num::NonZeroU32;
 
     use crate::bitcoin::MockBitcoinInteract;
     use crate::context::Context;

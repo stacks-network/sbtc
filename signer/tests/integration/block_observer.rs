@@ -34,7 +34,6 @@ use signer::keys::SignerScriptPubKey as _;
 use signer::stacks::api::TenureBlocks;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
-use signer::storage::model::BitcoinBlockHeight;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
 use signer::storage::model::RotateKeysTransaction;
@@ -766,14 +765,16 @@ async fn next_headers_to_process_gets_all_headers() {
     // We start with the typical setup with a fresh database and context
     // with a real bitcoin core client and a real connection to our
     // database.
-    const START_HEIGHT: BitcoinBlockHeight = 103;
+    const START_HEIGHT: u64 = 103;
 
     let (_, faucet) = regtest::initialize_blockchain();
     let db = testing::storage::new_test_database().await;
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .modify_settings(|settings| settings.signer.sbtc_bitcoin_start_height = Some(START_HEIGHT))
+        .modify_settings(|settings| {
+            settings.signer.sbtc_bitcoin_start_height = Some(START_HEIGHT.into())
+        })
         .with_first_bitcoin_core_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
@@ -802,7 +803,7 @@ async fn next_headers_to_process_gets_all_headers() {
 
     let start_height = ctx.state().get_sbtc_bitcoin_start_height();
     assert_eq!(start_height, START_HEIGHT);
-    assert_eq!(START_HEIGHT, headers[0].height);
+    assert_eq!(START_HEIGHT, *headers[0].height);
     assert_eq!(headers.last().map(|header| header.hash), Some(chain_tip));
 
     // Let's make sure that if we generate a new block, that we
@@ -814,7 +815,7 @@ async fn next_headers_to_process_gets_all_headers() {
         .next_headers_to_process(chain_tip)
         .await
         .unwrap();
-    assert_eq!(START_HEIGHT, headers[0].height);
+    assert_eq!(START_HEIGHT, *headers[0].height);
     assert_eq!(headers2.len(), headers.len() + 1);
     assert_eq!(headers2.last().map(|header| header.hash), Some(chain_tip));
 
