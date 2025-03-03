@@ -1490,14 +1490,14 @@ pub struct StacksBlockHeight(#[sqlx(try_from = "i64")] u64);
 impl TryFrom<StacksBlockHeight> for i64 {
     type Error = TryFromIntError;
     fn try_from(value: StacksBlockHeight) -> Result<Self, Self::Error> {
-        Ok(i64::try_from(value.0)?)
+        i64::try_from(value.0)
     }
 }
 
 impl TryFrom<BitcoinBlockHeight> for i64 {
     type Error = TryFromIntError;
     fn try_from(value: BitcoinBlockHeight) -> Result<Self, Self::Error> {
-        Ok(i64::try_from(value.0)?)
+        i64::try_from(value.0)
     }
 }
 
