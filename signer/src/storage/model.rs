@@ -1534,9 +1534,7 @@ impl<'r> Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
     fn decode(
         value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
-        // First decode the raw value as an i64.
         let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
-        // Then convert i64 into BitcoinBlockHeight.
         BitcoinBlockHeight::try_from(int_value).map_err(Into::into)
     }
 }
@@ -1553,9 +1551,7 @@ impl<'r> Decode<'r, sqlx::Postgres> for StacksBlockHeight {
     fn decode(
         value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>,
     ) -> Result<Self, sqlx::error::BoxDynError> {
-        // First decode the raw value as an i64.
         let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
-        // Then convert i64 into StacksBlockHeight.
         StacksBlockHeight::try_from(int_value).map_err(Into::into)
     }
 }
