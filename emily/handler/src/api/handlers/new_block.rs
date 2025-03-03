@@ -325,8 +325,8 @@ fn handle_withdrawal_accept(
         fulfillment: Some(Fulfillment {
             bitcoin_block_hash: event.sweep_block_hash.to_string(),
             bitcoin_block_height: event.sweep_block_height,
-            bitcoin_tx_index: event.outpoint.vout, // TODO: We don't have this information in the event
-            bitcoin_txid: event.sweep_txid.to_string(),
+            bitcoin_tx_index: event.outpoint.vout,
+            bitcoin_txid: event.outpoint.txid.to_string(),
             btc_fee: event.fee,
             stacks_txid: hex::encode(event.txid.0),
         }),
