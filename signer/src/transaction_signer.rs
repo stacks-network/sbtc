@@ -11,6 +11,7 @@ use std::time::Duration;
 
 use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::validation::BitcoinTxContext;
+use crate::bitcoin::BitcoinInteract;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::SignerCommand;
@@ -399,12 +400,18 @@ where
                     .aggregate_key
             }
         };
+        let estimated_fee_rate = self
+            .context
+            .get_bitcoin_client()
+            .estimate_fee_rate()
+            .await?;
 
         let btc_ctx = BitcoinTxContext {
             chain_tip: chain_tip.block_hash,
             chain_tip_height: chain_tip.block_height,
             signer_public_key: self.signer_public_key(),
             aggregate_key,
+            estimated_fee_rate,
         };
 
         tracing::debug!("validating bitcoin transaction pre-sign");
