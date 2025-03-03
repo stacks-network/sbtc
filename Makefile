@@ -119,16 +119,16 @@ integration-env-down-ci:
 # ##############################################################################
 
 devenv-no-sbtc-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool up -d
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability up -d
 
 devenv-no-sbtc-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool down -t 0 -v
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability down -t 0 -v
 
 devenv-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability --profile sbtc-signer up -d
 
 devenv-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0 -v
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability --profile sbtc-signer down -t 0 -v
 
 devenv-sbtc-up:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build -d
@@ -251,7 +251,7 @@ $(BLOCKLIST_OPENAPI_SPEC_PATH): $(BLOCKLIST_OPENAPI_SOURCE_FILES)
 	@echo "Generating Blocklist OpenAPI spec"
 	cargo $(CARGO_FLAGS) build --package $(BLOCKLIST_OPENAPI_SPEC_PROJECT_NAME) --target-dir ./target/blocklist-spec-gen ${CARGO_BUILD_ARGS}
 
-# Geneate Rust client code for the Blocklist API if any of the generated source
+# Generate Rust client code for the Blocklist API if any of the generated source
 # files are older than the OpenAPI spec file.
 $(BLOCKLIST_CLIENT_SOURCE_FILES): $(BLOCKLIST_OPENAPI_SPEC_PATH)
 	@echo "Generating blocklist client from openapi spec"

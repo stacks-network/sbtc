@@ -473,6 +473,14 @@ impl SweptWithdrawalRequest {
             vout: 2, // TODO: This field will be stored in the database
         }
     }
+    /// Return the identifier for the withdrawal request.
+    pub fn qualified_id(&self) -> QualifiedRequestId {
+        QualifiedRequestId {
+            request_id: self.request_id,
+            txid: self.txid,
+            block_hash: self.block_hash,
+        }
+    }
 }
 
 /// Persisted DKG shares
@@ -686,6 +694,12 @@ pub struct QualifiedRequestId {
     /// The Stacks block ID that includes the transaction that generated
     /// the request.
     pub block_hash: StacksBlockHash,
+}
+
+impl std::fmt::Display for QualifiedRequestId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.request_id, self.block_hash)
+    }
 }
 
 /// This trait adds a function for converting a type into bytes to

@@ -162,7 +162,7 @@ pub async fn get_deposits(
     context: EmilyContext,
     query: GetDepositsQuery,
 ) -> impl warp::reply::Reply {
-    debug!("In get deposits");
+    debug!("in get deposits");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
@@ -303,11 +303,11 @@ pub async fn get_deposits_for_reclaim_pubkeys(
     tag = "deposit",
     request_body = CreateDepositRequestBody,
     responses(
+        (status = 200, description = "Deposit already exists", body = Deposit),
         (status = 201, description = "Deposit created successfully", body = Deposit),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
-        (status = 409, description = "Duplicate request", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     )
 )]
@@ -331,8 +331,10 @@ pub async fn create_deposit(
         api_state.error_if_reorganizing()?;
 
         let chaintip = api_state.chaintip();
-        let mut stacks_block_hash: String = chaintip.key.hash;
-        let mut stacks_block_height: u64 = chaintip.key.height;
+        let stacks_block_hash = chaintip.key.hash;
+        let stacks_block_height = chaintip.key.height;
+
+        let deposit_info = body.validate(context.settings.is_mainnet)?;
 
         // Check if deposit with such txid and outindex already exists.
         let entry = accessors::get_deposit_entry(
@@ -343,22 +345,16 @@ pub async fn create_deposit(
             },
         )
         .await;
-        // Reject if we already have a deposit with the same txid and output index and it is NOT pending or reprocessing.
+
         match entry {
-            Ok(deposit) => {
-                if deposit.status != Status::Pending && deposit.status != Status::Reprocessing {
-                    return Err(Error::Conflict);
-                } else {
-                    // If the deposit is pending or reprocessing, we should keep height and hash same as in the old deposit
-                    stacks_block_hash = deposit.last_update_block_hash;
-                    stacks_block_height = deposit.last_update_height;
-                }
+            Ok(deposit_entry) => {
+                // The deposit already exists, return it.
+                let response: Deposit = deposit_entry.try_into()?;
+                return Ok(with_status(json(&response), StatusCode::OK));
             }
             Err(Error::NotFound) => {}
             Err(e) => return Err(e),
         }
-
-        let deposit_info = body.validate(context.settings.is_mainnet)?;
         let reclaim_pubkeys_hash = extract_reclaim_pubkeys_hash(&deposit_info.reclaim_script);
         if reclaim_pubkeys_hash.is_none() {
             warn!(

@@ -1,0 +1,81 @@
+## Github workflow to build a multiarch docker image from pre-built binaries
+
+name: Nightly Docker AWS ECR Image (Binary)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'
+
+permissions:
+  id-token: write
+  contents: read
+  attestations: write
+  packages: write
+
+env:
+  docker_platforms: "linux/amd64"
+
+jobs:
+  image:
+    name: Build Image
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        dist:
+          - debian
+        docker_target:
+          - signer
+          - blocklist-client
+    runs-on: ubuntu-latest
+    environment: "Push to ECR"
+
+    steps:
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 #v4.1.0
+        with:
+          role-to-assume: ${{ secrets['AWS_ROLE_ARN'] }}
+          aws-region: ${{ vars['AWS_REGION'] }}
+
+      - name: Login to Amazon ECR
+        id: ecr_login
+        uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076 # v2.0.1
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Docker Metadata (${{ matrix.dist }})
+        id: docker_metadata
+        uses: docker/metadata-action@8e5442c4ef9f78752691e2d8f8d19755c6f78e81 # v5.5.1
+        with:
+          images: |
+            ${{ steps.ecr_login.outputs.registry }}/${{ vars['AWS_ECR'] }}
+          tags: |
+            type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }}
+            type=raw,value=${{ matrix.docker_target }}-${{ github.ref_name }}
+            type=raw,value=${{ matrix.docker_target }}-latest,enable=${{ github.ref_name == 'main' }}
+
+      - name: Build and Push (${{ matrix.dist }} ${{ matrix.docker_target }})
+        id: docker_build
+        uses: docker/build-push-action@2cdde995de11925a030ce8070c3d77a52ffcf1c0 # v5.3.0
+        with:
+          file: ./.github/actions/dockerfiles/Dockerfile.${{ matrix.docker_target }}.${{ matrix.dist }}
+          platforms: ${{ env.docker_platforms }}
+          tags: ${{ steps.docker_metadata.outputs.tags }}
+          labels: ${{ steps.docker_metadata.outputs.labels }}
+          target: ${{ matrix.docker_target }}
+          push: true
+          build-args: |
+            GIT_COMMIT=${{ github.ref_name }}
+
+      - name: Save digest as output
+        id: save_digest
+        run: echo "${{ matrix.docker_target }}=${{ steps.docker_build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@7668571508540a607bdfd90a87a560489fe372eb #v2.1.0
+        with:
+          subject-name: ${{ steps.ecr_login.outputs.registry }}/${{ vars['AWS_ECR'] }}
+          subject-digest: ${{ steps.docker_build.outputs.digest }}
+          push-to-registry: true

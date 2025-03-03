@@ -823,6 +823,15 @@ impl super::DbRead for SharedStore {
         unimplemented!()
     }
 
+    async fn is_withdrawal_active(
+        &self,
+        _: &model::QualifiedRequestId,
+        _: &model::BitcoinBlockRef,
+        _: u64,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
     async fn get_bitcoin_tx(
         &self,
         txid: &model::BitcoinTxId,
@@ -953,13 +962,6 @@ impl super::DbRead for SharedStore {
             .collect();
 
         Ok(result)
-    }
-
-    async fn get_withdrawal_outputs(
-        &self,
-        _id: &model::QualifiedRequestId,
-    ) -> Result<Vec<model::BitcoinWithdrawalOutput>, Error> {
-        unimplemented!()
     }
 }
 

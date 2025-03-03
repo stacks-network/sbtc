@@ -17,7 +17,7 @@ use crate::deposits;
 use crate::deposits::DepositScriptInputs;
 use crate::deposits::ReclaimScriptInputs;
 
-/// A properly formated transaction and the corresponding deposit and
+/// A properly formatted transaction and the corresponding deposit and
 /// reclaim inputs.
 pub struct TxSetup {
     /// The transaction
