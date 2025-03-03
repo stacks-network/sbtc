@@ -305,16 +305,15 @@ pub async fn update_withdrawals(
             let updated_withdrawal =
                 accessors::pull_and_update_withdrawal_with_retry(&context, update, 15)
                     .await
-                    .map_err(|error| {
+                    .inspect_err(|error| {
                         tracing::error!(
                             request_id,
                             %error,
                             "failed to update withdrawal",
                         );
-                        error
                     })?;
 
-            let withdrawal: Withdrawal = updated_withdrawal.try_into().map_err(|error| {
+            let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
                 // This should never happen, because the withdrawal was
                 // validated before being updated.
                 tracing::error!(
@@ -322,7 +321,6 @@ pub async fn update_withdrawals(
                     %error,
                     "failed to convert updated withdrawal",
                 );
-                error
             })?;
 
             updated_withdrawals.push((index, withdrawal));

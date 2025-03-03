@@ -479,16 +479,15 @@ pub async fn update_deposits(
             let updated_deposit =
                 accessors::pull_and_update_deposit_with_retry(&context, update, 15)
                     .await
-                    .map_err(|error| {
+                    .inspect_err(|error| {
                         tracing::error!(
                             %bitcoin_txid,
                             bitcoin_tx_output_index,
                             %error,
                             "failed to update deposit"
                         );
-                        error
                     })?;
-            let deposit: Deposit = updated_deposit.try_into().map_err(|error| {
+            let deposit: Deposit = updated_deposit.try_into().inspect_err(|error| {
                 // This should never happen, because the deposit was
                 // validated before being updated.
                 tracing::error!(
@@ -497,7 +496,6 @@ pub async fn update_deposits(
                     %error,
                     "failed to convert deposit"
                 );
-                error
             })?;
             updated_deposits.push((index, deposit));
         }
