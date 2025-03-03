@@ -11,17 +11,11 @@ pub fn routes(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_deposit(context.clone())
         .or(get_deposits_for_transaction(context.clone()))
-        .boxed()
         .or(get_deposits(context.clone()))
-        .boxed()
         .or(get_deposits_for_recipient(context.clone()))
-        .boxed()
         .or(get_deposits_for_reclaim_pubkeys(context.clone()))
-        .boxed()
         .or(create_deposit(context.clone()))
-        .boxed()
         .or(update_deposits(context))
-        .boxed()
 }
 
 /// Get deposit endpoint.
