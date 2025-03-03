@@ -280,7 +280,7 @@ pub async fn update_withdrawals(
 
         // Infer the new chainstates that would come from these withdrawal updates and then
         // attempt to update the chainstates.
-        let inferred_chainstates = validated_request.inferred_chainstates()?;
+        let inferred_chainstates = validated_request.inferred_chainstates();
         let can_reorg = context.settings.trusted_reorg_api_key == api_key;
         for chainstate in inferred_chainstates {
             // TODO(TBD): Determine what happens if this occurs in multiple lambda
@@ -299,11 +299,34 @@ pub async fn update_withdrawals(
 
         // Loop through all updates and execute.
         for (index, update) in validated_request.withdrawals {
-            let updated_withdrawal =
-                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15).await?;
-            updated_withdrawals.push((index, updated_withdrawal.try_into()?));
-        }
+            let request_id = update.request_id;
+            debug!(request_id, "updating withdrawal");
 
+            let updated_withdrawal =
+                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15)
+                    .await
+                    .map_err(|error| {
+                        tracing::error!(
+                            request_id,
+                            %error,
+                            "failed to update withdrawal",
+                        );
+                        error
+                    })?;
+
+            let withdrawal: Withdrawal = updated_withdrawal.try_into().map_err(|error| {
+                // This should never happen, because the withdrawal was
+                // validated before being updated.
+                tracing::error!(
+                    request_id,
+                    %error,
+                    "failed to convert updated withdrawal",
+                );
+                error
+            })?;
+
+            updated_withdrawals.push((index, withdrawal));
+        }
         updated_withdrawals.sort_by_key(|(index, _)| *index);
         let withdrawals = updated_withdrawals
             .into_iter()
