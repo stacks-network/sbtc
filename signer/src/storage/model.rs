@@ -1,15 +1,19 @@
 //! Database models for the signer.
 
+use std::cmp::{PartialEq, PartialOrd};
 use std::collections::BTreeSet;
+use std::convert::From;
 use std::num::TryFromIntError;
 use std::ops::Deref;
+use std::ops::{Add, Sub};
 
 use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use sqlx::{Decode, Type};
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::StacksBlockId;
 
@@ -1339,11 +1343,6 @@ pub struct WithdrawalRejectEvent {
     pub signer_bitmap: BitArray<[u8; 16]>,
 }
 
-use serde::Deserialize;
-use std::cmp::{PartialEq, PartialOrd};
-use std::convert::From;
-use std::ops::{Add, Sub};
-
 /// Helper for [`implement_trait!`] macro. Implements arithmetic traits for integer wrapper types.
 #[macro_export]
 macro_rules! implement_trait {
@@ -1507,8 +1506,6 @@ impl Deref for StacksBlockHeight {
         &self.0
     }
 }
-
-use sqlx::{Decode, Type};
 
 // Implement sqlx::Decode by delegating to i64.
 impl<'r> Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
