@@ -1,11 +1,8 @@
 ## Github workflow to build a multiarch docker image from pre-built binaries
 
-name: Docker Image (Binary)
+name: Docker Hub Release Image (Binary)
 
 on:
-  workflow_dispatch:
-  # schedule:
-  #   - cron: '0 2 * * *'
   push:
     tags:
       - '*'

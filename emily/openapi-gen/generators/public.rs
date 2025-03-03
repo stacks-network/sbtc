@@ -33,7 +33,7 @@ use super::CorsSupport;
         api::handlers::chainstate::set_chainstate,
         // api::handlers::chainstate::update_chainstate, // signers may not set the chainstate to cause a reorg.
         // Testing endpoints.
-        api::handlers::testing::wipe_databases,
+        // api::handlers::testing::wipe_databases, // The public api cannot perform testing operations.
         // Limits endpoints.
         api::handlers::limits::get_limits,
         // api::handlers::limits::set_limits, // signers / users may not set limits.

@@ -390,6 +390,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Deposit already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deposit"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Deposit created successfully",
             "content": {
@@ -422,16 +432,6 @@
           },
           "405": {
             "description": "Method not allowed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate request",
             "content": {
               "application/json": {
                 "schema": {
@@ -1304,60 +1304,6 @@
             }
           }
         ],
-        "responses": {},
-        "x-amazon-apigateway-integration": {
-          "httpMethod": "POST",
-          "type": "aws_proxy",
-          "uri": {
-            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
-          }
-        }
-      }
-    },
-    "/testing/wipe": {
-      "post": {
-        "tags": [
-          "testing"
-        ],
-        "summary": "Wipe databases handler.",
-        "operationId": "wipeDatabases",
-        "responses": {
-          "204": {
-            "description": "Successfully wiped databases."
-          },
-          "400": {
-            "description": "Invalid request body"
-          },
-          "404": {
-            "description": "Address not found"
-          },
-          "405": {
-            "description": "Method not allowed"
-          },
-          "500": {
-            "description": "Internal server error"
-          }
-        },
-        "security": [
-          {
-            "ApiGatewayKey": []
-          }
-        ],
-        "x-amazon-apigateway-integration": {
-          "httpMethod": "POST",
-          "type": "aws_proxy",
-          "uri": {
-            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
-          }
-        }
-      },
-      "options": {
-        "tags": [
-          "CORS"
-        ],
-        "summary": "CORS support",
-        "description": "Handles CORS preflight requests",
-        "parameters": [],
         "responses": {},
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",

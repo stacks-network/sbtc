@@ -242,9 +242,21 @@ services:
       - emily-server
       - bitcoin
     ports:
-      - "3010:3000"
+      - "3000:3000"
     profiles:
       - default
+    environment:
+      BITCOIND_URL: http://bitcoin:18443
+      EMILY_URL: http://emily-server:3031
+      MEMPOOL_API_URL: http://mempool-web:8083/api
+      PUBLIC_MEMPOOL_URL: http://localhost:8083
+      BITCOIN_RPC_USER_NAME: devnet
+      BITCOIN_RPC_PASSWORD: devnet
+      WALLET_NETWORK: sbtcDevenv
+      RECLAIM_LOCK_TIME: 18
+      SBTC_CONTRACT_DEPLOYER: SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
+      BANNER_CONTENT: devenv!
+      STACKS_API_URL: http://stacks-api:3999
 
   # Bitcoin / Burnchain.
   # --------------------
