@@ -390,7 +390,7 @@ async fn handle_withdrawal_create(
     Ok(CreateWithdrawalRequestBody {
         amount: event.amount,
         parameters: Box::new(WithdrawalParameters { max_fee: event.max_fee }),
-        recipient: event.recipient.to_string(),
+        recipient: event.recipient.to_hex_string(),
         request_id: event.request_id,
         stacks_block_hash: event.block_hash.to_hex(),
         stacks_block_height,
