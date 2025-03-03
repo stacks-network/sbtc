@@ -1493,6 +1493,46 @@ impl Deref for StacksBlockHeight {
     }
 }
 
+use sqlx::{Decode, Type};
+
+// Implement sqlx::Decode by delegating to i64.
+impl<'r> Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
+    fn decode(value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>)
+        -> Result<Self, sqlx::error::BoxDynError> 
+    {
+        // First decode the raw value as an i64.
+        let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
+        // Then convert i64 into BitcoinBlockHeight.
+        BitcoinBlockHeight::try_from(int_value).map_err(Into::into)
+    }
+}
+
+// Implement sqlx::Type for BitcoinBlockHeight by delegating to i64.
+impl Type<sqlx::Postgres> for BitcoinBlockHeight {
+    fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
+        <i64 as Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+// Implement sqlx::Decode by delegating to i64.
+impl<'r> Decode<'r, sqlx::Postgres> for StacksBlockHeight {
+    fn decode(value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>)
+        -> Result<Self, sqlx::error::BoxDynError> 
+    {
+        // First decode the raw value as an i64.
+        let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
+        // Then convert i64 into StacksBlockHeight.
+        StacksBlockHeight::try_from(int_value).map_err(Into::into)
+    }
+}
+
+// Implement sqlx::Type for StacksBlockHeight by delegating to i64.
+impl Type<sqlx::Postgres> for StacksBlockHeight {
+    fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
+        <i64 as Type<sqlx::Postgres>>::type_info()
+    }
+}
+
 implement_int!(BitcoinBlockHeight, u64);
 implement_int!(StacksBlockHeight, u64);
 
