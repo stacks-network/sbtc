@@ -1,13 +1,16 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use crate::common::clean_setup;
-use testing_emily_client::apis;
-use testing_emily_client::apis::configuration::Configuration;
+use test_case::test_case;
+
+use testing_emily_client::apis::configuration::{ApiKey, Configuration};
+use testing_emily_client::apis::{self, ResponseContent};
 use testing_emily_client::models::{
     CreateWithdrawalRequestBody, Fulfillment, Status, UpdateWithdrawalsRequestBody, Withdrawal,
     WithdrawalInfo, WithdrawalParameters, WithdrawalUpdate,
 };
+
+use crate::common::clean_setup;
 
 const RECIPIENT: &'static str = "TEST_RECIPIENT";
 const BLOCK_HASH: &'static str = "TEST_BLOCK_HASH";
@@ -458,5 +461,96 @@ async fn update_withdrawals_updates_chainstate() {
             update_withdrawals_response.withdrawals[index].last_update_height,
             last_update_height
         );
+    }
+}
+
+#[tokio::test]
+#[test_case(Status::Accepted, "untrusted-api-key", false; "untrusted-key-accepted")]
+#[test_case(Status::Pending, "untrusted-api-key", true; "untrusted-key-pending")]
+#[test_case(Status::Reprocessing, "untrusted-api-key", true; "untrusted-key-reprocessing")]
+#[test_case(Status::Confirmed, "untrusted-api-key", true; "untrusted-key-confirmed")]
+#[test_case(Status::Failed, "untrusted-api-key", true; "untrusted-key-failed")]
+#[test_case(Status::Accepted, "testApiKey", false; "trusted-key-accepted")]
+#[test_case(Status::Pending, "testApiKey", false; "trusted-key-pending")]
+#[test_case(Status::Reprocessing, "testApiKey", false; "trusted-key-reprocessing")]
+#[test_case(Status::Confirmed, "testApiKey", false; "trusted-key-confirmed")]
+#[test_case(Status::Failed, "testApiKey", false; "trusted-key-failed")]
+async fn update_withdrawals_is_authorized(status: Status, api_key: &str, is_error: bool) {
+    let mut configuration = clean_setup().await;
+    configuration.api_key = Some(ApiKey {
+        prefix: None,
+        key: api_key.to_string(),
+    });
+    // Arrange.
+    // --------
+    let request_id = 1;
+
+    // Setup test deposit transaction.
+    let request = CreateWithdrawalRequestBody {
+        amount: 10000,
+        parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
+        recipient: RECIPIENT.into(),
+        request_id,
+        stacks_block_hash: BLOCK_HASH.into(),
+        stacks_block_height: BLOCK_HEIGHT,
+    };
+
+    apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
+        .await
+        .expect("Received an error after making a valid create deposit request api call.");
+
+    let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
+
+    if status == Status::Confirmed {
+        fulfillment = Some(Some(Box::new(Fulfillment {
+            bitcoin_block_hash: "bitcoin_block_hash".to_string(),
+            bitcoin_block_height: 23,
+            bitcoin_tx_index: 45,
+            bitcoin_txid: "test_fulfillment_bitcoin_txid".to_string(),
+            btc_fee: 2314,
+            stacks_txid: "test_fulfillment_stacks_txid".to_string(),
+        })));
+    }
+
+    let response = apis::withdrawal_api::update_withdrawals(
+        &configuration,
+        UpdateWithdrawalsRequestBody {
+            withdrawals: vec![WithdrawalUpdate {
+                request_id,
+                fulfillment,
+                last_update_block_hash: "update_block_hash".into(),
+                last_update_height: 34,
+                status,
+                status_message: "foo".into(),
+            }],
+        },
+    )
+    .await;
+
+    if is_error {
+        assert!(response.is_err());
+        match response.unwrap_err() {
+            testing_emily_client::apis::Error::ResponseError(ResponseContent {
+                status, ..
+            }) => {
+                assert_eq!(status, 401);
+            }
+            e => panic!("Expected a 401 error, got {e}"),
+        }
+
+        let response = apis::withdrawal_api::get_withdrawal(&configuration, request_id)
+            .await
+            .expect("Received an error after making a valid get deposit api call.");
+        assert_eq!(response.request_id, request_id);
+        assert_eq!(response.status, Status::Pending);
+    } else {
+        assert!(response.is_ok());
+        let response = response.unwrap();
+        let deposit = response
+            .withdrawals
+            .first()
+            .expect("No deposit in response");
+        assert_eq!(deposit.request_id, request_id);
+        assert_eq!(deposit.status, status);
     }
 }
