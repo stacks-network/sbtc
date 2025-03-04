@@ -218,6 +218,8 @@ impl sqlx::Type<sqlx::Postgres> for StacksBlockHeight {
 
 impl<'r> sqlx::Encode<'r, sqlx::Postgres> for StacksBlockHeight {
     fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        eprintln!("Encoding BitcoinBlockHeight: {}", self);
+        eprintln!("res {:#?}", i64::try_from(*self));
         let as_i64 = i64::try_from(*self)?;
         <i64 as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&as_i64, buf)
     }
@@ -240,6 +242,8 @@ impl sqlx::Type<sqlx::Postgres> for BitcoinBlockHeight {
 
 impl<'r> sqlx::Encode<'r, sqlx::Postgres> for BitcoinBlockHeight {
     fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        eprintln!("Encoding BitcoinBlockHeight: {}", self);
+        eprintln!("res {:#?}", i64::try_from(*self));
         let as_i64 = i64::try_from(*self)?;
         <i64 as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&as_i64, buf)
     }
