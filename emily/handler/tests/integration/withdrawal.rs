@@ -475,7 +475,7 @@ async fn update_withdrawals_updates_chainstate() {
 #[test_case(Status::Reprocessing, "testApiKey", false; "trusted-key-reprocessing")]
 #[test_case(Status::Confirmed, "testApiKey", false; "trusted-key-confirmed")]
 #[test_case(Status::Failed, "testApiKey", false; "trusted-key-failed")]
-async fn update_withdrawals_is_authorized(status: Status, api_key: &str, is_error: bool) {
+async fn update_withdrawals_is_forbidden(status: Status, api_key: &str, is_error: bool) {
     let mut configuration = clean_setup().await;
     configuration.api_key = Some(ApiKey {
         prefix: None,
@@ -533,9 +533,9 @@ async fn update_withdrawals_is_authorized(status: Status, api_key: &str, is_erro
             testing_emily_client::apis::Error::ResponseError(ResponseContent {
                 status, ..
             }) => {
-                assert_eq!(status, 401);
+                assert_eq!(status, 403);
             }
-            e => panic!("Expected a 401 error, got {e}"),
+            e => panic!("Expected a 403 error, got {e}"),
         }
 
         let response = apis::withdrawal_api::get_withdrawal(&configuration, request_id)

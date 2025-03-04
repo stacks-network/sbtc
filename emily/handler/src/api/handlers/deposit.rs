@@ -413,7 +413,7 @@ pub async fn create_deposit(
     responses(
         (status = 201, description = "Deposits updated successfully", body = UpdateDepositsResponse),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
-        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
@@ -450,7 +450,7 @@ pub async fn update_deposits(
                 .any(|deposit| deposit.status != Status::Accepted);
 
             if is_unauthorized {
-                return Err(Error::Unauthorized);
+                return Err(Error::Forbidden);
             }
         }
 
