@@ -86,7 +86,6 @@ pub struct BitcoinBlock {
     /// Block hash.
     pub block_hash: BitcoinBlockHash,
     /// Block height.
-    #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub block_height: BitcoinBlockHeight,
     /// Hash of the parent block.
@@ -134,8 +133,7 @@ impl From<bitcoin::Block> for BitcoinBlock {
 pub struct StacksBlock {
     /// Block hash.
     pub block_hash: StacksBlockHash,
-    /// Block height.
-    #[sqlx(try_from = "i64")]
+    /// Block height.    
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub block_height: StacksBlockHeight,
     /// Hash of the parent block.
@@ -299,7 +297,6 @@ pub struct WithdrawalRequest {
     pub sender_address: StacksPrincipal,
     /// The block height of the bitcoin blockchain when the stacks
     /// transaction that emitted this event was executed.
-    #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
     pub bitcoin_block_height: BitcoinBlockHeight,
 }
@@ -396,8 +393,7 @@ pub struct SweptDepositRequest {
     /// The block id of the bitcoin block that includes the sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
-    /// The block height of the block referenced by the `sweep_block_hash`.
-    #[sqlx(try_from = "i64")]
+    /// The block height of the block referenced by the `sweep_block_hash`.   
     pub sweep_block_height: BitcoinBlockHeight,
     /// Transaction ID of the deposit request transaction.
     pub txid: BitcoinTxId,
@@ -439,8 +435,7 @@ pub struct SweptWithdrawalRequest {
     /// The block id of the stacks block that includes this sweep
     /// transaction.
     pub sweep_block_hash: BitcoinBlockHash,
-    /// The block height of the block that includes the sweep transaction.
-    #[sqlx(try_from = "i64")]
+    /// The block height of the block that includes the sweep transaction.    
     pub sweep_block_height: BitcoinBlockHeight,
     /// Request ID of the withdrawal request. These are supposed to be
     /// unique, but there can be duplicates if there is a reorg that
@@ -522,7 +517,6 @@ pub struct EncryptedDkgShares {
     pub started_at_bitcoin_block_hash: BitcoinBlockHash,
     /// The block height of the chain tip of the canonical bitcoin blockchain
     /// when the DKG round associated with these shares started.
-    #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
     pub started_at_bitcoin_block_height: BitcoinBlockHeight,
 }
@@ -900,7 +894,6 @@ impl std::fmt::Display for BitcoinBlockHash {
 pub struct BitcoinBlockRef {
     /// The height of the block in the bitcoin blockchain.
     #[cfg_attr(feature = "testing", dummy(faker = "0..u32::MAX as u64"))]
-    #[sqlx(try_from = "i64")]
     pub block_height: BitcoinBlockHeight,
     /// Bitcoin block hash. It uniquely identifies the bitcoin block.
     pub block_hash: BitcoinBlockHash,

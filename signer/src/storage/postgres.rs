@@ -144,7 +144,6 @@ struct WithdrawalStatusSummary {
     is_accepted: Option<bool>,
     /// The height of the bitcoin chain tip during the execution of the
     /// contract call that generated the withdrawal request.
-    #[sqlx(try_from = "i64")]
     bitcoin_block_height: BitcoinBlockHeight,
     /// The amount associated with the deposit UTXO in sats.
     #[sqlx(try_from = "i64")]
@@ -160,7 +159,6 @@ struct WithdrawalStatusSummary {
     stacks_block_hash: model::StacksBlockHash,
     /// Stacks block ID of the block that includes the transaction
     /// associated with this withdrawal request.
-    #[sqlx(try_from = "i64")]
     stacks_block_height: StacksBlockHeight,
 }
 
