@@ -2344,7 +2344,7 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin hex-encoded scriptPubKey."
+            "description": "The recipient's Bitcoin hex-encoded scriptPubKey."
           },
           "requestId": {
             "type": "integer",
