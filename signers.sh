@@ -75,12 +75,12 @@ exec_run() {
 }
 
 exec_demo() {
-  cargo run -p signer --bin demo-cli --features "testing" donation --amount 10000
-  cargo run -p signer --bin demo-cli --features "testing" deposit --amount 10000000 # 0.1 BTC
+  cargo run -p signer --bin demo-cli donation --amount 10000
+  cargo run -p signer --bin demo-cli deposit --amount 10000000 # 0.1 BTC
 }
 
 exec_info() {
-  cargo run -p signer --bin demo-cli info --features "testing"
+  cargo run -p signer --bin demo-cli info
 }
 
 # The main function
