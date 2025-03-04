@@ -475,7 +475,7 @@ impl WithdrawData {
                     withdraw_request.block_hash = stacks_block_hash;
                     withdraw_request.request_id = next_withdraw_request_id;
                     withdraw_request.recipient = fake::Faker.fake_with_rng(rng);
-                    withdraw_request.bitcoin_block_height = bitcoin_block.block_height;
+                    withdraw_request.bitcoin_block_height = bitcoin_block.block_height - 1;
 
                     let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
                     raw_transaction.tx_type = model::TransactionType::WithdrawRequest;
