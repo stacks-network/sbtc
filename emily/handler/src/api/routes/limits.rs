@@ -12,8 +12,11 @@ pub fn routes(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_limits(context.clone())
         .or(set_limits(context.clone()))
+        .boxed()
         .or(set_limits_for_account(context.clone()))
+        .boxed()
         .or(get_limits_for_account(context))
+        .boxed()
 }
 
 /// Get limits endpoint.
