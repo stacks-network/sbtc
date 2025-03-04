@@ -206,7 +206,10 @@ impl sqlx::postgres::PgHasArrayType for PublicKeyXOnly {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksBlockHeight {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         eprintln!("Decoding StacksBlockHeight");
-        eprintln!("Decoded: {:#?}", <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value.clone()));
+        eprintln!(
+            "Decoded: {:#?}",
+            <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value.clone())
+        );
         let height = <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
         Ok(StacksBlockHeight::try_from(height)?)
     }
@@ -238,7 +241,10 @@ impl sqlx::postgres::PgHasArrayType for StacksBlockHeight {
 impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
     fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
         eprintln!("Decoding BitcoinBlockHeight");
-        eprintln!("Decoded: {:#?}", <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value.clone()));
+        eprintln!(
+            "Decoded: {:#?}",
+            <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value.clone())
+        );
         let height = <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
         Ok(BitcoinBlockHeight::try_from(height)?)
     }
