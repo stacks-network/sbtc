@@ -25,12 +25,12 @@ use super::CorsSupport;
         api::handlers::withdrawal::get_withdrawal,
         api::handlers::withdrawal::get_withdrawals,
         api::handlers::withdrawal::get_withdrawals_for_recipient,
-        // api::handlers::withdrawal::create_withdrawal,  // signers may not create withdrawals.
+        api::handlers::withdrawal::create_withdrawal,
         api::handlers::withdrawal::update_withdrawals,
         // Chainstate endpoints.
         api::handlers::chainstate::get_chain_tip,
         api::handlers::chainstate::get_chainstate_at_height,
-        // api::handlers::chainstate::set_chainstate,  // signers may not set the chainstate to cause a reorg.
+        api::handlers::chainstate::set_chainstate,
         // api::handlers::chainstate::update_chainstate, // signers may not set the chainstate to cause a reorg.
         // Testing endpoints.
         // api::handlers::testing::wipe_databases, // The public api cannot perform testing operations.
