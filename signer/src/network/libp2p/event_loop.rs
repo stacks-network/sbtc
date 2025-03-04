@@ -105,17 +105,16 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
                             tracing::warn!(%connection_id, %peer_id, ?endpoint, "connected to peer, however it is not a known signer; disconnecting");
                             let _ = swarm.disconnect_peer_id(peer_id);
-                            continue;
-                        }
-                        tracing::debug!(%connection_id, %peer_id, ?endpoint, "connected to peer");
-
-                        if endpoint.is_dialer() {
-                            let kad_addr = endpoint.get_remote_address();
-                            tracing::debug!(%peer_id, %kad_addr, "adding address to kademlia");
-                            swarm
-                                .behaviour_mut()
-                                .kademlia
-                                .add_address(&peer_id, kad_addr.clone());
+                        } else {
+                            tracing::debug!(%peer_id, ?endpoint, "connected to peer");
+                            if endpoint.is_dialer() {
+                                let kad_addr = endpoint.get_remote_address();
+                                tracing::debug!(%peer_id, %kad_addr, "adding address to kademlia");
+                                swarm
+                                    .behaviour_mut()
+                                    .kademlia
+                                    .add_address(&peer_id, kad_addr.clone());
+                            }
                         }
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
