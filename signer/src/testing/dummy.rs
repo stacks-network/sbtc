@@ -280,7 +280,7 @@ pub fn encrypted_dkg_shares<R: rand::RngCore + rand::CryptoRng>(
         signature_share_threshold: 1,
         dkg_shares_status: status,
         started_at_bitcoin_block_hash: Faker.fake_with_rng(rng),
-        started_at_bitcoin_block_height: Faker.fake_with_rng::<u64, _>(rng).into(),
+        started_at_bitcoin_block_height: Faker.fake_with_rng::<u32, _>(rng).into(),
     }
 }
 
@@ -375,7 +375,7 @@ impl fake::Dummy<fake::Faker> for CompletedDepositEvent {
             },
             amount: rng.next_u32() as u64,
             sweep_block_hash: config.fake_with_rng(rng),
-            sweep_block_height: rng.next_u64().into(),
+            sweep_block_height: rng.next_u32().into(),
             sweep_txid: config.fake_with_rng(rng),
         }
     }
