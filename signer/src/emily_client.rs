@@ -142,7 +142,6 @@ pub struct EmilyClient {
     page_size: Option<u32>,
 }
 
-#[cfg(any(test, feature = "testing"))]
 impl EmilyClient {
     /// Get the client config
     pub fn config(&self) -> &EmilyApiConfig {

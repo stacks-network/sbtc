@@ -1,12 +1,10 @@
 //! Handlers for limits endpoints.
 use std::future::Future;
-use std::sync::OnceLock;
 
-use bitcoin::params;
 use tracing::instrument;
 use warp::reply::Reply;
 
-use clarity::vm::types::{QualifiedContractIdentifier, StandardPrincipalData};
+use clarity::vm::types::QualifiedContractIdentifier;
 use clarity::vm::ContractName;
 use sbtc::events::{
     CompletedDepositEvent, RegistryEvent, TxInfo, WithdrawalAcceptEvent, WithdrawalCreateEvent,
@@ -30,17 +28,6 @@ use crate::{common::error::Error, context::EmilyContext, database::accessors};
 
 /// The name of the sbtc registry smart contract.
 const SBTC_REGISTRY_CONTRACT_NAME: &str = "sbtc-registry";
-
-/// The address for the sbtc-registry smart contract. This value is
-/// populated using the deployer variable in the config.
-///
-/// Although the stacks node is supposed to only send sbtc-registry events,
-/// the node can be misconfigured or have some bug where it sends other
-/// events as well. Accepting such events would be a security issue, so we
-/// filter out events that are not from the sbtc-registry.
-///
-/// See https://github.com/stacks-network/sbtc/issues/501.
-static SBTC_REGISTRY_IDENTIFIER: OnceLock<QualifiedContractIdentifier> = OnceLock::new();
 
 /// Maximum request body size for the event observer endpoint.
 ///
@@ -90,14 +77,13 @@ pub async fn new_block(
                 return Err(error.into());
             }
         };
-        // Set the global limits.
-        let registry_address = SBTC_REGISTRY_IDENTIFIER.get_or_init(|| {
-            // Although the following line can panic, our unit tests hit this
-            // code path so if tests pass then this will work in production.
-            let contract_name = ContractName::from(SBTC_REGISTRY_CONTRACT_NAME);
-            let issuer = StandardPrincipalData::from(context.settings.deployer_address);
-            QualifiedContractIdentifier::new(issuer, contract_name)
-        });
+
+        // Although the following line can panic, our unit tests hit this
+        // code path so if tests pass then this will work in production.
+        let registry_address = QualifiedContractIdentifier::new(
+            context.settings.deployer_address.clone(),
+            ContractName::from(SBTC_REGISTRY_CONTRACT_NAME),
+        );
 
         let stacks_chaintip = StacksBlock {
             block_hash: new_block_event.index_block_hash.to_hex(),
@@ -117,10 +103,8 @@ pub async fn new_block(
             .into_iter()
             .filter(|x| x.committed)
             .filter_map(|x| x.contract_event.map(|ev| (ev, x.txid)))
-            .filter(|(ev, _)| &ev.contract_identifier == registry_address && ev.topic == "print")
+            .filter(|(ev, _)| ev.contract_identifier == registry_address && ev.topic == "print")
             .collect::<Vec<_>>();
-
-        tracing::debug!(block = %events.len(), "received events from stacks-core");
 
         // Set the chainstate
         handle_internal_call(
@@ -142,7 +126,7 @@ pub async fn new_block(
             return Ok(warp::reply());
         }
 
-        tracing::debug!(count = %events.len(), "processing events for new stacks block");
+        tracing::debug!(events = %events.len(), "processing events for new stacks block");
 
         // Create vectors to store the processed events for Emily.
         let mut completed_deposits = Vec::new();
@@ -173,23 +157,9 @@ pub async fn new_block(
                     .push(handle_withdrawal_accept(event, stacks_chaintip.clone())),
                 Ok(RegistryEvent::WithdrawalReject(event)) => updated_withdrawals
                     .push(handle_withdrawal_reject(event, stacks_chaintip.clone())),
-                Ok(RegistryEvent::WithdrawalCreate(event)) => {
-                    let event_maybe = handle_withdrawal_create(
-                        event,
-                        stacks_chaintip.block_height,
-                        context.settings.is_mainnet,
-                    );
-                    match event_maybe {
-                        Ok(withdrawal) => created_withdrawals.push(withdrawal),
-                        Err(error) => {
-                            // If we fail to create a withdrawal, we log the error and continue.
-                            // We don't want the sidecar to retry the webhook because this error
-                            // is likely to be persistent. This should never happen.
-                            tracing::error!(%error, %txid, "failed to handle withdrawal create event");
-                            continue;
-                        }
-                    }
-                }
+                Ok(RegistryEvent::WithdrawalCreate(event)) => created_withdrawals.push(
+                    handle_withdrawal_create(event, stacks_chaintip.block_height),
+                ),
                 Ok(RegistryEvent::KeyRotation(_)) => continue,
                 Err(error) => {
                     tracing::error!(%error, %txid, "got an error when transforming the event ClarityValue");
@@ -340,8 +310,8 @@ fn handle_withdrawal_accept(
         fulfillment: Some(Fulfillment {
             bitcoin_block_hash: event.sweep_block_hash.to_string(),
             bitcoin_block_height: event.sweep_block_height,
-            bitcoin_tx_index: event.outpoint.vout, // TODO: We don't have this information in the event
-            bitcoin_txid: event.sweep_txid.to_string(),
+            bitcoin_tx_index: event.outpoint.vout,
+            bitcoin_txid: event.outpoint.txid.to_string(),
             btc_fee: event.fee,
             stacks_txid: hex::encode(event.txid.0),
         }),
@@ -356,11 +326,9 @@ fn handle_withdrawal_accept(
 /// # Parameters
 /// - `event`: The withdrawal creation event to be processed.
 /// - `stacks_block_height`: The height of the Stacks block containing the withdrawal tx.
-/// - `is_mainnet`: Whether the event is on mainnet or regtest.
 ///
 /// # Returns
-/// - `Result<CreateWithdrawalRequestBody, Error>`: On success, returns a `CreateWithdrawalRequestBody`
-///   with withdrawal information. In case of a address conversion error, returns an `Error`
+/// - `CreateWithdrawalRequestBody`: returns a `CreateWithdrawalRequestBody`
 #[tracing::instrument(skip_all, fields(
     stacks_txid = %event.txid,
     request_id = %event.request_id
@@ -368,25 +336,17 @@ fn handle_withdrawal_accept(
 fn handle_withdrawal_create(
     event: WithdrawalCreateEvent,
     stacks_block_height: u64,
-    is_mainnet: bool,
-) -> Result<CreateWithdrawalRequestBody, Error> {
+) -> CreateWithdrawalRequestBody {
     tracing::debug!(topic = "withdrawal-create", "handled stacks event");
-    let params = if is_mainnet {
-        &params::MAINNET
-    } else {
-        &params::REGTEST
-    };
-    let recipient = bitcoin::Address::from_script(&event.recipient, params)
-        // This should never happen since the recipient address is already validated
-        .map_err(|e| Error::Debug(format!("Failed to create recipient address: {}", e)))?;
-    Ok(CreateWithdrawalRequestBody {
+
+    CreateWithdrawalRequestBody {
         amount: event.amount,
         parameters: WithdrawalParameters { max_fee: event.max_fee },
-        recipient: recipient.to_string(),
+        recipient: event.recipient.to_hex_string(),
         request_id: event.request_id,
         stacks_block_hash: event.block_id.to_hex(),
         stacks_block_height,
-    })
+    }
 }
 
 /// Processes a withdrawal rejection event by preparing the data to be stored.
@@ -426,7 +386,7 @@ where
 {
     let response = api_call.await.into_response();
     if !response.status().is_success() {
-        tracing::error!("{}", error_msg);
+        tracing::error!("{error_msg}");
         return Err(Error::InternalServer);
     }
     Ok(())
@@ -440,12 +400,13 @@ mod test {
         hashes::Hash,
         hex::DisplayHex,
         key::rand::{random, rngs::OsRng},
-        params::Params,
         secp256k1, BlockHash, OutPoint, ScriptBuf, Txid,
     };
-    use clarity::{types::chainstate::StacksBlockId, vm::types::PrincipalData};
+    use clarity::{
+        types::chainstate::StacksBlockId,
+        vm::types::{PrincipalData, StandardPrincipalData},
+    };
     use sbtc::events::StacksTxid;
-    use test_case::test_case;
 
     fn make_random_hex_string() -> String {
         let random_bytes: [u8; 32] = random();
@@ -521,20 +482,12 @@ mod test {
         assert_eq!(res, expectation);
     }
 
-    #[test_case(false; "regtest")]
-    #[test_case(true; "mainnet")]
     #[tokio::test]
-    async fn test_handle_withdrawal_create_happy_path(is_mainnet: bool) {
+    async fn test_handle_withdrawal_create_happy_path() {
         let stacks_chaintip = make_stacks_block();
         let keys = secp256k1::Keypair::new_global(&mut OsRng);
         let pk = bitcoin::CompressedPublicKey(keys.public_key());
         let script_pubkey = ScriptBuf::new_p2wpkh(&pk.wpubkey_hash());
-        let params = if is_mainnet {
-            &Params::MAINNET
-        } else {
-            &Params::REGTEST
-        };
-        let recipient = bitcoin::Address::from_script(script_pubkey.as_script(), params).unwrap();
 
         let event = WithdrawalCreateEvent {
             request_id: random(),
@@ -550,31 +503,12 @@ mod test {
         let expectation = CreateWithdrawalRequestBody {
             amount: event.amount,
             parameters: WithdrawalParameters { max_fee: event.max_fee },
-            recipient: recipient.to_string(),
+            recipient: event.recipient.to_hex_string(),
             request_id: event.request_id,
             stacks_block_hash: stacks_chaintip.block_hash,
             stacks_block_height: stacks_chaintip.block_height,
         };
-        let res = handle_withdrawal_create(event, stacks_chaintip.block_height, is_mainnet);
-        assert!(res.is_ok());
-        assert_eq!(res.unwrap(), expectation);
-    }
-
-    #[tokio::test]
-    async fn test_handle_withdrawal_create_invalid_address() {
-        let stacks_chaintip = make_stacks_block();
-        let event = WithdrawalCreateEvent {
-            request_id: random(),
-            amount: random(),
-            max_fee: random(),
-            recipient: ScriptBuf::new(),
-            txid: StacksTxid(random()),
-            block_id: StacksBlockId::from_hex(&stacks_chaintip.block_hash).unwrap(),
-            sender: PrincipalData::Standard(StandardPrincipalData::transient()).into(),
-            block_height: random(),
-        };
-
-        let res = handle_withdrawal_create(event, stacks_chaintip.block_height, false);
-        assert!(res.is_err());
+        let res = handle_withdrawal_create(event, stacks_chaintip.block_height);
+        assert_eq!(res, expectation);
     }
 }

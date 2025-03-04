@@ -10,8 +10,8 @@ use std::fmt;
 
 use aws_config::BehaviorVersion;
 use aws_sdk_dynamodb::Client;
-use clarity::types::chainstate::StacksAddress;
 use clarity::vm::types::PrincipalData;
+use clarity::vm::types::StandardPrincipalData;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -40,7 +40,7 @@ pub struct Settings {
     /// The version of the lambda.
     pub version: String,
     /// The address of the deployer of the sBTC smart contracts.
-    pub deployer_address: StacksAddress,
+    pub deployer_address: StandardPrincipalData,
 }
 
 /// Emily Context
@@ -73,7 +73,6 @@ impl Settings {
     pub fn from_env() -> Result<Self, Error> {
         let deployer_address = env::var("DEPLOYER_ADDRESS")?;
         let deployer_address = PrincipalData::parse_standard_principal(&deployer_address)
-            .map(StacksAddress::from)
             .map_err(|e| Error::Debug(format!("Failed to parse deployer address: {}", e)))?;
 
         Ok(Settings {
@@ -134,7 +133,6 @@ impl EmilyContext {
     /// Create a local testing instance.
     #[cfg(feature = "testing")]
     pub async fn local_instance(dynamodb_endpoint: &str) -> Result<Self, Error> {
-        use clarity::types::Address;
         use std::collections::HashMap;
 
         // Get config that always points to the dynamodb table directly
@@ -193,7 +191,7 @@ impl EmilyContext {
                 trusted_reorg_api_key: "testApiKey".to_string(),
                 is_mainnet: false,
                 version: "local-instance".to_string(),
-                deployer_address: StacksAddress::from_string(
+                deployer_address: PrincipalData::parse_standard_principal(
                     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS",
                 )
                 .unwrap(),

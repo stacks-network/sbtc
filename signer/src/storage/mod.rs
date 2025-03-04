@@ -6,6 +6,7 @@
 //! The canonical implementation of these traits is the [`postgres::PgStore`]
 //! allowing the signer to use a Postgres database to store data.
 
+#[cfg(any(test, feature = "testing"))]
 pub mod in_memory;
 pub mod model;
 pub mod postgres;
@@ -361,6 +362,17 @@ pub trait DbRead {
         bitcoin_chain_tip: &model::BitcoinBlockHash,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
+    /// Returns whether we should consider the withdrawal active. A
+    /// withdrawal request is considered active if there is a reasonable
+    /// risk of the withdrawal being confirmed from a fork of blocks less
+    /// than `min_confirmations`.
+    fn is_withdrawal_active(
+        &self,
+        id: &model::QualifiedRequestId,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+        min_confirmations: u64,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
     /// Fetch the bitcoin transaction that is included in the block
     /// identified by the block hash.
     fn get_bitcoin_tx(
@@ -405,12 +417,6 @@ pub trait DbRead {
         &self,
         sighash: &model::SigHash,
     ) -> impl Future<Output = Result<Option<(bool, PublicKeyXOnly)>, Error>> + Send;
-
-    /// Get all the request's withdrawal outputs
-    fn get_withdrawal_outputs(
-        &self,
-        id: &model::QualifiedRequestId,
-    ) -> impl Future<Output = Result<Vec<model::BitcoinWithdrawalOutput>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

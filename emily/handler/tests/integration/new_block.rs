@@ -52,9 +52,9 @@ where
         .expect("Expected specified RegistryEvent variant")
 }
 
-// /// Test that the handler can handle a new block event with a valid payload
-// /// that contains a CompletedDeposit event.
-// /// The handler should update the chain state in Emily and mark the deposit as confirmed.
+/// Test that the handler can handle a new block event with a valid payload
+/// that contains a CompletedDeposit event.
+/// The handler should update the chain state in Emily and mark the deposit as confirmed.
 #[tokio::test]
 async fn test_new_blocks_sends_update_deposits_to_emily() {
     let configuration = clean_setup().await;

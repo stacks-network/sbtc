@@ -23,11 +23,11 @@ build: blocklist-client-codegen emily-client-codegen contracts
 	cargo $(CARGO_FLAGS) build --all-targets $(CARGO_EXCLUDES) ${CARGO_BUILD_ARGS}
 
 test:
-	cargo $(CARGO_FLAGS) nextest run --lib $(CARGO_EXCLUDES) --no-fail-fast ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) nextest run --features "testing" --lib $(CARGO_EXCLUDES) --no-fail-fast ${CARGO_BUILD_ARGS}
 	pnpm --recursive test
 
 test-build:
-	cargo $(CARGO_FLAGS) test build $(CARGO_EXCLUDES) --no-run --locked ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) test build --features "testing"  $(CARGO_EXCLUDES) --no-run --locked ${CARGO_BUILD_ARGS}
 
 lint:
 	cargo $(CARGO_FLAGS) fmt --all -- --check
@@ -55,8 +55,8 @@ NEXTEST_SERIAL_ARCHIVE_FILE := target/nextest/nextest-archive-serial.tar.zst
 
 # Creates nextest archives
 nextest-archive:
-	cargo $(CARGO_FLAGS) nextest archive $(CARGO_EXCLUDES) --lib --archive-file $(NEXTEST_ARCHIVE_FILE) ${CARGO_BUILD_ARGS}
-	cargo $(CARGO_FLAGS) nextest archive $(CARGO_EXCLUDES) --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE) --test integration ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) nextest archive --features "testing" $(CARGO_EXCLUDES) --lib --archive-file $(NEXTEST_ARCHIVE_FILE) ${CARGO_BUILD_ARGS}
+	cargo $(CARGO_FLAGS) nextest archive --features "testing" $(CARGO_EXCLUDES) --archive-file $(NEXTEST_SERIAL_ARCHIVE_FILE) --test integration ${CARGO_BUILD_ARGS}
 
 # Runs nextest archives
 nextest-archive-run:
@@ -76,10 +76,10 @@ integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
 integration-test:
-	cargo $(CARGO_FLAGS) nextest run $(CARGO_EXCLUDES) --test integration --no-fail-fast --test-threads 1
+	cargo $(CARGO_FLAGS) nextest run --features "testing" $(CARGO_EXCLUDES) --test integration --no-fail-fast --test-threads 1
 
 integration-test-build:
-	cargo $(CARGO_FLAGS) test build $(CARGO_EXCLUDES) --test integration --no-run --locked
+	cargo $(CARGO_FLAGS) test build --features "testing" $(CARGO_EXCLUDES) --test integration --no-run --locked
 
 integration-env-down:
 	docker compose --file docker/docker-compose.test.yml down -t 0 -v
@@ -119,16 +119,16 @@ integration-env-down-ci:
 # ##############################################################################
 
 devenv-no-sbtc-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool up -d
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability up -d
 
 devenv-no-sbtc-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool down -t 0 -v
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability down -t 0 -v
 
 devenv-up:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer up -d
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability --profile sbtc-signer up -d
 
 devenv-down:
-	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile sbtc-signer down -t 0 -v
+	docker compose -f docker/docker-compose.yml --profile default --profile bitcoin-mempool --profile observability --profile sbtc-signer down -t 0 -v
 
 devenv-sbtc-up:
 	docker compose -f docker/docker-compose.yml --profile sbtc-signer up --build -d
@@ -251,7 +251,7 @@ $(BLOCKLIST_OPENAPI_SPEC_PATH): $(BLOCKLIST_OPENAPI_SOURCE_FILES)
 	@echo "Generating Blocklist OpenAPI spec"
 	cargo $(CARGO_FLAGS) build --package $(BLOCKLIST_OPENAPI_SPEC_PROJECT_NAME) --target-dir ./target/blocklist-spec-gen ${CARGO_BUILD_ARGS}
 
-# Geneate Rust client code for the Blocklist API if any of the generated source
+# Generate Rust client code for the Blocklist API if any of the generated source
 # files are older than the OpenAPI spec file.
 $(BLOCKLIST_CLIENT_SOURCE_FILES): $(BLOCKLIST_OPENAPI_SPEC_PATH)
 	@echo "Generating blocklist client from openapi spec"
