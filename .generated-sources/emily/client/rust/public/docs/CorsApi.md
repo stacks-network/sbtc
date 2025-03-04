@@ -378,7 +378,7 @@ Handles CORS preflight requests
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**recipient** | **String** | the recpieint to search by when getting all withdrawals. | [required] |
+**recipient** | **String** | The recipient's hex-encoded scriptPubKey, used to filter withdrawals. | [required] |
 
 ### Return type
 

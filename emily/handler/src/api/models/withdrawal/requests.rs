@@ -30,7 +30,7 @@ pub struct CreateWithdrawalRequestBody {
     pub stacks_block_hash: String,
     /// The stacks block hash in which this request id was initiated.
     pub stacks_block_height: u64,
-    /// The recipient Bitcoin address.
+    /// The recipient's Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,

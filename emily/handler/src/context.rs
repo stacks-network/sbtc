@@ -10,6 +10,8 @@ use std::fmt;
 
 use aws_config::BehaviorVersion;
 use aws_sdk_dynamodb::Client;
+use clarity::vm::types::PrincipalData;
+use clarity::vm::types::StandardPrincipalData;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -17,7 +19,7 @@ use crate::api::models::limits::AccountLimits;
 use crate::common::error::Error;
 
 /// Emily lambda settings.
-#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     /// Whether the Emily lambda is running locally.
     pub is_local: bool,
@@ -37,6 +39,8 @@ pub struct Settings {
     pub is_mainnet: bool,
     /// The version of the lambda.
     pub version: String,
+    /// The address of the deployer of the sBTC smart contracts.
+    pub deployer_address: StandardPrincipalData,
 }
 
 /// Emily Context
@@ -67,6 +71,10 @@ impl fmt::Debug for EmilyContext {
 impl Settings {
     /// Create settings from environment variables.
     pub fn from_env() -> Result<Self, Error> {
+        let deployer_address = env::var("DEPLOYER_ADDRESS")?;
+        let deployer_address = PrincipalData::parse_standard_principal(&deployer_address)
+            .map_err(|e| Error::Debug(format!("Failed to parse deployer address: {}", e)))?;
+
         Ok(Settings {
             is_local: env::var("IS_LOCAL")?.to_lowercase() == "true",
             deposit_table_name: env::var("DEPOSIT_TABLE_NAME")?,
@@ -94,6 +102,7 @@ impl Settings {
             trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?,
             is_mainnet: env::var("IS_MAINNET")?.to_lowercase() == "true",
             version: env::var("VERSION")?,
+            deployer_address,
         })
     }
 }
@@ -182,6 +191,10 @@ impl EmilyContext {
                 trusted_reorg_api_key: "testApiKey".to_string(),
                 is_mainnet: false,
                 version: "local-instance".to_string(),
+                deployer_address: PrincipalData::parse_standard_principal(
+                    "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS",
+                )
+                .unwrap(),
             },
             dynamodb_client,
         })

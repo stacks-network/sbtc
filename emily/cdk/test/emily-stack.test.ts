@@ -12,6 +12,7 @@ const TEST_STACK_PROPS: EmilyStackProps = {
         region: "region",
     },
     trustedReorgApiKey: "testApiKey",
+    deployerAddress: "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS"
 }
 
 describe('EmilyStack Test', () => {
@@ -65,6 +66,7 @@ describe('EmilyStack Test', () => {
                 expect(environment.TRUSTED_REORG_API_KEY).toEqual("testApiKey");
                 expect(environment.IS_LOCAL).toEqual("false");
                 expect(environment.IS_MAINNET).toEqual("false");
+                expect(environment.DEPLOYER_ADDRESS).toEqual("SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS");
             });
     });
 

@@ -318,7 +318,7 @@ pub async fn create_deposit(
 ) -> impl warp::reply::Reply {
     debug!(
         bitcoin_txid = %body.bitcoin_txid,
-        bitcoin_tx_output_index = %body.bitcoin_tx_output_index,
+        bitcoin_tx_output_index = body.bitcoin_tx_output_index,
         "creating deposit"
     );
     // Internal handler so `?` can be used correctly while still returning a reply.
@@ -444,7 +444,7 @@ pub async fn update_deposits(
 
         // Infer the new chainstates that would come from these deposit updates and then
         // attempt to update the chainstates.
-        let inferred_chainstates = validated_request.inferred_chainstates()?;
+        let inferred_chainstates = validated_request.inferred_chainstates();
         let can_reorg = context.settings.trusted_reorg_api_key == api_key;
         for chainstate in inferred_chainstates {
             // TODO(TBD): Determine what happens if this occurs in multiple lambda
@@ -463,9 +463,37 @@ pub async fn update_deposits(
 
         // Loop through all updates and execute.
         for (index, update) in validated_request.deposits {
+            let bitcoin_txid = update.key.bitcoin_txid.clone();
+            let bitcoin_tx_output_index = update.key.bitcoin_tx_output_index;
+
+            debug!(
+                %bitcoin_txid,
+                bitcoin_tx_output_index,
+                "updating deposit"
+            );
+
             let updated_deposit =
-                accessors::pull_and_update_deposit_with_retry(&context, update, 15).await?;
-            updated_deposits.push((index, updated_deposit.try_into()?));
+                accessors::pull_and_update_deposit_with_retry(&context, update, 15)
+                    .await
+                    .inspect_err(|error| {
+                        tracing::error!(
+                            %bitcoin_txid,
+                            bitcoin_tx_output_index,
+                            %error,
+                            "failed to update deposit"
+                        );
+                    })?;
+            let deposit: Deposit = updated_deposit.try_into().inspect_err(|error| {
+                // This should never happen, because the deposit was
+                // validated before being updated.
+                tracing::error!(
+                    %bitcoin_txid,
+                    bitcoin_tx_output_index,
+                    %error,
+                    "failed to convert deposit"
+                );
+            })?;
+            updated_deposits.push((index, deposit));
         }
 
         updated_deposits.sort_by_key(|(index, _)| *index);

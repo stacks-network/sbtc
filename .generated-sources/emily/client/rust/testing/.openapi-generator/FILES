@@ -22,6 +22,7 @@ docs/HealthApi.md
 docs/HealthData.md
 docs/Limits.md
 docs/LimitsApi.md
+docs/NewBlockApi.md
 docs/Status.md
 docs/TestingApi.md
 docs/UpdateDepositsRequestBody.md
@@ -41,6 +42,7 @@ src/apis/deposit_api.rs
 src/apis/health_api.rs
 src/apis/limits_api.rs
 src/apis/mod.rs
+src/apis/new_block_api.rs
 src/apis/testing_api.rs
 src/apis/withdrawal_api.rs
 src/lib.rs
