@@ -26,6 +26,7 @@ pub struct Config {
     initial_delay: Duration,
 }
 
+#[allow(unused)]
 impl Config {
     /// Creates a new [`Config`] instance with the provided local peer ID.
     pub fn new(local_peer_id: PeerId) -> Self {
@@ -38,7 +39,6 @@ impl Config {
     }
 
     /// Adds seed addresses to the configuration.
-    #[allow(dead_code)]
     pub fn add_seed_addresses<T>(mut self, seed_addresses: T) -> Self
     where
         T: IntoIterator<Item = Multiaddr>,
@@ -50,7 +50,6 @@ impl Config {
     /// Sets the bootstrapping interval. This is the interval at which the
     /// behavior will attempt to bootstrap the network if no connections are
     /// established. The default is 60 seconds.
-    #[allow(dead_code)]
     pub fn with_bootstrap_interval(mut self, interval: Duration) -> Self {
         self.bootstrap_interval = interval;
         self
@@ -59,7 +58,6 @@ impl Config {
     /// Sets the initial delay before bootstrapping. This is the delay before
     /// the behavior will attempt to bootstrap the network upon startup. The
     /// default is 0 seconds.
-    #[allow(dead_code)]
     pub fn with_initial_delay(mut self, delay: Duration) -> Self {
         self.initial_delay = delay;
         self
