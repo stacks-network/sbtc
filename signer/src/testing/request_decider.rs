@@ -253,6 +253,21 @@ where
 
         let signer_set = &coordinator_signer_info.signer_public_keys;
         let test_data = self.generate_test_data(&mut rng, signer_set);
+        let max_height = test_data
+            .stacks_blocks
+            .iter()
+            .map(|block| block.block_height)
+            .max()
+            .unwrap();
+        eprintln!("max height: {}", max_height);
+        let max_bitcoin_height = test_data
+            .bitcoin_blocks
+            .iter()
+            .map(|block| block.block_height)
+            .max()
+            .unwrap();
+        eprintln!("max bitcoin height: {}", max_bitcoin_height);
+        eprintln!("test data: {:#?}", test_data);
         Self::write_test_data(&handle.context.get_storage_mut(), &test_data).await;
 
         handle
@@ -281,6 +296,9 @@ where
         })
         .await
         .expect("timeout");
+
+    eprintln!("withdraw requests: {:#?}", test_data.withdraw_requests);
+    eprintln!("context window: {}", self.context_window);
 
         self.assert_only_withdraw_requests_in_context_window_has_decisions(
             self.context_window,
@@ -450,6 +468,8 @@ where
                 .unwrap_or(context_window_end_block);
         }
 
+        eprintln!("bitcoin blocks in context window {}", context_window_bitcoin_blocks.len());
+
         let stacks_chain_tip = storage
             .get_stacks_chain_tip(&canoncial_tip_block_hash)
             .await
@@ -470,6 +490,8 @@ where
                 .await
                 .expect("storage failure");
         }
+
+        eprintln!("stacks blocks in context window {}", context_window_block_hashes.len());
 
         context_window_block_hashes
     }
@@ -513,6 +535,7 @@ where
         withdraw_requests: &[model::WithdrawalRequest],
         num_expected_decisions: usize,
     ) {
+        eprintln!("context_window: {}", context_window);
         let storage = self.context.get_storage();
 
         let context_window_block_hashes = self
@@ -529,6 +552,11 @@ where
                 assert_eq!(signer_decisions.len(), num_expected_decisions);
                 assert!(signer_decisions.iter().all(|decision| decision.is_accepted))
             } else {
+                if !signer_decisions.is_empty() {
+                    eprintln!("withdraw request: {:?}", withdraw_request);
+                    eprintln!("signer decisions: {:?}", signer_decisions);
+                    
+                }
                 assert!(signer_decisions.is_empty());
             }
         }

@@ -94,6 +94,10 @@ impl TestData {
         let stacks_blocks =
             self.generate_stacks_blocks(rng, &block, params.num_stacks_blocks_per_bitcoin_block);
 
+        for stacks_block in &stacks_blocks {
+            assert_eq!(stacks_block.bitcoin_anchor, block.parent_hash);
+        }
+
         let deposit_data = DepositData::generate(
             rng,
             signer_keys,
