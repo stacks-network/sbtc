@@ -108,7 +108,7 @@ Get withdrawals by recipient handler.
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**recipient** | **String** | the recpieint to search by when getting all withdrawals. | [required] |
+**recipient** | **String** | The recipient's hex-encoded scriptPubKey, used to filter withdrawals. | [required] |
 **next_token** | Option<**String**> | the next token value from the previous return of this api call. |  |
 **page_size** | Option<**u32**> | the maximum number of items in the response list. |  |
 
