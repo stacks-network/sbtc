@@ -1492,7 +1492,7 @@ macro_rules! implement_int {
     sqlx::FromRow,
 )]
 #[sqlx(transparent)]
-pub struct BitcoinBlockHeight(#[sqlx(try_from = "i64")] u64);
+pub struct BitcoinBlockHeight(u64);
 /// Stacks block height
 #[derive(
     Debug,
@@ -1509,7 +1509,7 @@ pub struct BitcoinBlockHeight(#[sqlx(try_from = "i64")] u64);
     sqlx::FromRow,
 )]
 #[sqlx(transparent)]
-pub struct StacksBlockHeight(#[sqlx(try_from = "i64")] u64);
+pub struct StacksBlockHeight(u64);
 
 implement_int!(BitcoinBlockHeight, u64);
 implement_int!(StacksBlockHeight, u64);
