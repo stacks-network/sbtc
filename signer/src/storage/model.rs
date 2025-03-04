@@ -1445,6 +1445,25 @@ macro_rules! implement_int {
                 write!(f, "{}", self.0)
             }
         }
+        impl Deref for $type {
+            type Target = $inner;
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        impl TryFrom<$type> for i64 {
+            type Error = TryFromIntError;
+            fn try_from(value: $type) -> Result<Self, Self::Error> {
+                i64::try_from(value.0)
+            }
+        }
+
+        impl TryFrom<i64> for $type {
+            type Error = TryFromIntError;
+            fn try_from(value: i64) -> Result<Self, Self::Error> {
+                Ok(Self(<$inner>::try_from(value)?))
+            }
+        }
         implement_trait!($type, $inner, $inner, Add, add);
         implement_trait!($type, $inner, $inner, Sub, sub);
         implement_special_methods!($type, $inner);
@@ -1485,48 +1504,6 @@ pub struct BitcoinBlockHeight(#[sqlx(try_from = "i64")] u64);
 )]
 #[sqlx(transparent)]
 pub struct StacksBlockHeight(#[sqlx(try_from = "i64")] u64);
-
-impl TryFrom<StacksBlockHeight> for i64 {
-    type Error = TryFromIntError;
-    fn try_from(value: StacksBlockHeight) -> Result<Self, Self::Error> {
-        i64::try_from(value.0)
-    }
-}
-
-impl TryFrom<BitcoinBlockHeight> for i64 {
-    type Error = TryFromIntError;
-    fn try_from(value: BitcoinBlockHeight) -> Result<Self, Self::Error> {
-        i64::try_from(value.0)
-    }
-}
-
-impl TryFrom<i64> for BitcoinBlockHeight {
-    type Error = TryFromIntError;
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
-        Ok(Self(u64::try_from(value)?))
-    }
-}
-
-impl TryFrom<i64> for StacksBlockHeight {
-    type Error = TryFromIntError;
-    fn try_from(value: i64) -> Result<Self, Self::Error> {
-        Ok(Self(u64::try_from(value)?))
-    }
-}
-
-impl Deref for BitcoinBlockHeight {
-    type Target = u64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl Deref for StacksBlockHeight {
-    type Target = u64;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
 
 implement_int!(BitcoinBlockHeight, u64);
 implement_int!(StacksBlockHeight, u64);
