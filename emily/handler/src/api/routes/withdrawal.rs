@@ -11,13 +11,9 @@ pub fn routes(
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     get_withdrawal(context.clone())
         .or(get_withdrawals(context.clone()))
-        .boxed()
         .or(get_withdrawals_for_recipient(context.clone()))
-        .boxed()
         .or(create_withdrawal(context.clone()))
-        .boxed()
         .or(update_withdrawals(context))
-        .boxed()
 }
 
 /// Get withdrawal endpoint.
