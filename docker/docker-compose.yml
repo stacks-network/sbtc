@@ -106,6 +106,7 @@ services:
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
       - TRUSTED_REORG_API_KEY=testApiKey
+      - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     profiles:
       - default
 
@@ -127,6 +128,7 @@ services:
       - DEFAULT_PEG_CAP=100000000000
       - DEFAULT_PER_DEPOSIT_CAP=100000000
       - DEFAULT_PER_WITHDRAWAL_CAP=100000000
+      - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     ports:
       - "3031:3031"
     profiles:
@@ -274,7 +276,7 @@ services:
         set -e
         bitcoind
     healthcheck:
-      test: ["CMD-SHELL", "bitcoin-cli -rpcwait getblockcount"]
+      test: [ "CMD-SHELL", "bitcoin-cli -rpcwait getblockcount" ]
       interval: 5s
       timeout: 1s
       retries: 3

@@ -13,7 +13,7 @@ use crate::{
             Deposit, DepositInfo, DepositParameters,
         },
     },
-    common::error::{Error, Inconsistency},
+    common::error::{Error, Inconsistency, ValidationError},
 };
 
 use super::{
@@ -652,16 +652,26 @@ impl TryFrom<UpdateDepositsRequestBody> for ValidatedUpdateDepositsRequest {
     type Error = Error;
     fn try_from(update_request: UpdateDepositsRequestBody) -> Result<Self, Self::Error> {
         // Validate all the deposit updates.
-        let mut deposits: Vec<(usize, ValidatedDepositUpdate)> = update_request
-            .deposits
-            .into_iter()
-            .enumerate()
-            .map(|(index, update)| {
-                update
-                    .try_into()
-                    .map(|validated_update| (index, validated_update))
-            })
-            .collect::<Result<_, Error>>()?;
+        let mut deposits: Vec<(usize, ValidatedDepositUpdate)> = vec![];
+        let mut failed_txs: Vec<String> = vec![];
+
+        for (index, update) in update_request.deposits.into_iter().enumerate() {
+            match update.clone().try_into() {
+                Ok(validated_update) => deposits.push((index, validated_update)),
+                Err(_) => {
+                    failed_txs.push(format!(
+                        "{}:{}",
+                        update.bitcoin_txid.clone(),
+                        update.bitcoin_tx_output_index
+                    ));
+                }
+            }
+        }
+
+        // If there are failed conversion, return an error.
+        if !failed_txs.is_empty() {
+            return Err(ValidationError::DepositsMissingFulfillment(failed_txs).into());
+        }
 
         // Order the updates by order of when they occur so that it's as though we got them in
         // chronological order.
@@ -674,7 +684,7 @@ impl TryFrom<UpdateDepositsRequestBody> for ValidatedUpdateDepositsRequest {
 impl ValidatedUpdateDepositsRequest {
     /// Infers all chainstates that need to be present in the API for the
     /// deposit updates to be valid.
-    pub fn inferred_chainstates(&self) -> Result<Vec<Chainstate>, Error> {
+    pub fn inferred_chainstates(&self) -> Vec<Chainstate> {
         // TODO(TBD): Error if the inferred chainstates have conflicting block hashes
         // for a the same block height.
         let mut inferred_chainstates = self
@@ -693,7 +703,7 @@ impl ValidatedUpdateDepositsRequest {
         inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
 
         // Return.
-        Ok(inferred_chainstates)
+        inferred_chainstates
     }
 }
 
@@ -707,7 +717,8 @@ pub struct ValidatedDepositUpdate {
 }
 
 impl TryFrom<DepositUpdate> for ValidatedDepositUpdate {
-    type Error = Error;
+    type Error = ValidationError;
+
     fn try_from(update: DepositUpdate) -> Result<Self, Self::Error> {
         // Make key.
         let key = DepositEntryKey {
@@ -717,7 +728,13 @@ impl TryFrom<DepositUpdate> for ValidatedDepositUpdate {
         // Make status entry.
         let status_entry: StatusEntry = match update.status {
             Status::Confirmed => {
-                let fulfillment = update.fulfillment.ok_or(Error::InternalServer)?;
+                let fulfillment =
+                    update
+                        .fulfillment
+                        .ok_or(ValidationError::DepositMissingFulfillment(
+                            key.bitcoin_txid.clone(),
+                            key.bitcoin_tx_output_index,
+                        ))?;
                 StatusEntry::Confirmed(fulfillment)
             }
             Status::Accepted => StatusEntry::Accepted,

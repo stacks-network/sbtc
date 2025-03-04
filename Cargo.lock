@@ -1653,6 +1653,7 @@ dependencies = [
  "base64 0.22.1",
  "bitcoin",
  "clap",
+ "clarity",
  "config",
  "hex",
  "reqwest 0.11.27",
