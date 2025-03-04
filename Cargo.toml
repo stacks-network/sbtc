@@ -110,3 +110,6 @@ split-debuginfo = "unpacked"
 lto = "thin"
 codegen-units = 16
 overflow-checks = true
+
+[profile.test]
+overflow-checks = true
