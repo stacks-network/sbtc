@@ -12,7 +12,6 @@ use serde_json::json;
 use url::Url;
 
 use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::blocklist_client::BlocklistClient;
@@ -32,8 +31,10 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
+use testing_emily_client::apis::testing_api;
 
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
 
 fn test_environment(
@@ -314,7 +315,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(emily_client.config())
+    testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
 

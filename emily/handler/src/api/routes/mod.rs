@@ -14,6 +14,8 @@ mod deposit;
 mod health;
 /// Limit routes.
 mod limits;
+/// NewBlock routes.
+mod new_block;
 /// Testing routes.
 #[cfg(feature = "testing")]
 mod testing;
@@ -40,13 +42,23 @@ where
 pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    // `.boxed()` erases the deeply nested filter type from multiple `.or()` calls,
+    // making the return type manageable and preventing compilation errors and runtime stack overflows.
     health::routes(context.clone())
+        .or(new_block::routes(context.clone()))
+        .boxed()
         .or(chainstate::routes(context.clone()))
+        .boxed()
         .or(deposit::routes(context.clone()))
+        .boxed()
         .or(withdrawal::routes(context.clone()))
+        .boxed()
         .or(limits::routes(context.clone()))
+        .boxed()
         .or(testing::routes(context))
+        .boxed()
         .or(verbose_not_found_route())
+        .boxed()
         // Convert reply to tuple to that more routes can be added to the returned filter.
         .map(|reply| (reply,))
         .map(log_response)
@@ -58,10 +70,16 @@ pub fn routes(
     context: EmilyContext,
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
     health::routes(context.clone())
+        .or(new_block::routes(context.clone()))
+        .boxed()
         .or(chainstate::routes(context.clone()))
+        .boxed()
         .or(deposit::routes(context.clone()))
+        .boxed()
         .or(withdrawal::routes(context.clone()))
-        .or(limits::routes(context.clone()))
+        .boxed()
+        .or(limits::routes(context))
+        .boxed()
         // Convert reply to tuple to that more routes can be added to the returned filter.
         .map(|reply| (reply,))
         .map(log_response)

@@ -19,7 +19,7 @@ pub struct CreateWithdrawalRequestBody {
     pub amount: u64,
     #[serde(rename = "parameters")]
     pub parameters: Box<models::WithdrawalParameters>,
-    /// The recipient Bitcoin address.
+    /// The recipient's Bitcoin hex-encoded scriptPubKey.
     #[serde(rename = "recipient")]
     pub recipient: String,
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.

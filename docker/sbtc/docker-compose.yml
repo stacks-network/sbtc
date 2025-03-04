@@ -48,8 +48,7 @@ services:
       - "20540:20540"
     environment:
       EMILY_API_KEY: testApiKey
-      EMILY_CHAINSTATE_URL: http://emily-server:3031/chainstate
-      DEPLOYER_ADDRESS: SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
+      EMILY_ENDPOINT: http://emily-server:3031
     depends_on:
       - emily-server
 

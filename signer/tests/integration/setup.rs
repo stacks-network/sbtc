@@ -13,6 +13,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use clarity::types::chainstate::StacksBlockId;
 use clarity::vm::types::PrincipalData;
 
+use emily_client::apis::configuration::Configuration as EmilyApiConfiguration;
 use fake::Fake;
 use fake::Faker;
 use rand::rngs::OsRng;
@@ -57,6 +58,8 @@ use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use signer::testing::dummy::Unit;
 use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
+use testing_emily_client::apis::configuration::ApiKey as TestingEmilyApiKey;
+use testing_emily_client::apis::configuration::Configuration as TestingEmilyApiConfiguration;
 
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
@@ -71,6 +74,27 @@ impl AsBlockRef for bitcoincore_rpc_json::GetBlockHeaderResult {
         BitcoinBlockRef {
             block_hash: self.hash.into(),
             block_height: self.height as u64,
+        }
+    }
+}
+
+pub trait IntoEmilyTestingConfig {
+    fn as_testing(&self) -> TestingEmilyApiConfiguration;
+}
+
+impl IntoEmilyTestingConfig for EmilyApiConfiguration {
+    fn as_testing(&self) -> TestingEmilyApiConfiguration {
+        TestingEmilyApiConfiguration {
+            base_path: self.base_path.clone(),
+            user_agent: self.user_agent.clone(),
+            client: self.client.clone(),
+            basic_auth: self.basic_auth.clone(),
+            oauth_access_token: self.oauth_access_token.clone(),
+            bearer_access_token: self.bearer_access_token.clone(),
+            api_key: self.api_key.clone().map(|key| TestingEmilyApiKey {
+                prefix: key.prefix.clone(),
+                key: key.key.clone(),
+            }),
         }
     }
 }
@@ -534,6 +558,23 @@ pub async fn fill_signers_utxo<R: rand::RngCore + ?Sized>(
 }
 
 type MockedStacksContext<S, B, E> = TestContext<S, B, WrappedMock<MockStacksInteract>, E>;
+
+pub async fn set_deposit_incomplete<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>) {
+    set_deposit_status(ctx, false).await;
+}
+
+pub async fn set_deposit_completed<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>) {
+    set_deposit_status(ctx, true).await;
+}
+
+pub async fn set_deposit_status<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>, status: bool) {
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_is_deposit_completed()
+            .returning(move |_, _| Box::pin(std::future::ready(Ok(status))));
+    })
+    .await;
+}
 
 pub async fn set_withdrawal_incomplete<S, B, E>(ctx: &mut MockedStacksContext<S, B, E>) {
     set_withdrawal_status(ctx, false).await;

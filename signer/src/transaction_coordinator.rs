@@ -1355,17 +1355,18 @@ where
     ) -> Result<StacksTransaction, Error> {
         let txid = req.txid;
 
-        // We ask for the signers to sign our transaction (including
-        // ourselves, via our tx signer event loop)
-        self.send_message(req, chain_tip).await?;
-
-        let max_duration = self.signing_round_max_duration;
         let signal_stream = self
             .context
             .as_signal_stream(signed_message_filter)
             .filter_map(Self::to_signed_message);
 
         tokio::pin!(signal_stream);
+
+        // We ask for the signers to sign our transaction (including
+        // ourselves, via our tx signer event loop)
+        self.send_message(req, chain_tip).await?;
+
+        let max_duration = self.signing_round_max_duration;
 
         let future = async {
             while multi_tx.num_signatures() < wallet.signatures_required() {

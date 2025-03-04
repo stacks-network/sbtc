@@ -30,7 +30,7 @@
                     "Tuple": {
                         "data_map": {
                             "request-id": {
-                                "UInt": 2
+                                "UInt": 1
                             },
                             "signer-bitmap": {
                                 "UInt": 0

@@ -57,6 +57,11 @@ export class EmilyStackUtils {
     private static trustedReorgApiKey?: string;
 
     /*
+     * The address of the deployer of the sBTC smart contracts.
+     */
+    private static deployerAddress?: string;
+
+    /*
      * Returns the current stage name.
      */
     public static getStageName(): string {
@@ -117,7 +122,7 @@ export class EmilyStackUtils {
     /*
      * Returns the hosted zone ID or undefined if none is set.
      */
-    public static getHostedZoneId(): string | undefined{
+    public static getHostedZoneId(): string | undefined {
         this.hostedZoneId ??= process.env.HOSTED_ZONE_ID;
         return this.hostedZoneId;
     }
@@ -139,6 +144,18 @@ export class EmilyStackUtils {
             throw new Error('Must define a trusted reorg api key.');
         }
         return this.trustedReorgApiKey;
+    }
+
+
+    /*
+     * Returns the address of the deployer of the sBTC smart contracts.
+     */
+    public static getDeployerAddress(): string {
+        this.deployerAddress ??= process.env.DEPLOYER_ADDRESS;
+        if (this.deployerAddress === undefined) {
+            throw new Error('Must define a sBTC contracts deployer address.');
+        }
+        return this.deployerAddress;
     }
 
     /*
@@ -269,7 +286,7 @@ export class EmilyStackUtils {
                             // This will incorrectly handle the already invalid case where two function ARNS are in the uri.
                             // Handling multiple replacements is left as an exercise for the reader.
                             apiJsonDefinition["paths"][path][verb]["x-amazon-apigateway-integration"]["uri"]["Fn::Sub"] =
-                                [ originalSubString, { [lambdaIdentifier] : lambdaFunction.functionArn } ]
+                                [originalSubString, { [lambdaIdentifier]: lambdaFunction.functionArn }]
                         }
                     })
                 }

@@ -14,6 +14,7 @@ Method | HTTP request | Description
 [**health_options**](CorsApi.md#health_options) | **OPTIONS** /health | CORS support
 [**limits_account_options**](CorsApi.md#limits_account_options) | **OPTIONS** /limits/{account} | CORS support
 [**limits_options**](CorsApi.md#limits_options) | **OPTIONS** /limits | CORS support
+[**new_block_options**](CorsApi.md#new_block_options) | **OPTIONS** /new_block | CORS support
 [**withdrawal_id_options**](CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
 [**withdrawal_options**](CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
 [**withdrawal_recipient_recipient_options**](CorsApi.md#withdrawal_recipient_recipient_options) | **OPTIONS** /withdrawal/recipient/{recipient} | CORS support
@@ -309,6 +310,33 @@ No authorization required
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 
+## new_block_options
+
+> new_block_options()
+CORS support
+
+Handles CORS preflight requests
+
+### Parameters
+
+This endpoint does not need any parameter.
+
+### Return type
+
+ (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+
 ## withdrawal_id_options
 
 > withdrawal_id_options(id)
@@ -378,7 +406,7 @@ Handles CORS preflight requests
 
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
-**recipient** | **String** | the recpieint to search by when getting all withdrawals. | [required] |
+**recipient** | **String** | The recipient's hex-encoded scriptPubKey, used to filter withdrawals. | [required] |
 
 ### Return type
 

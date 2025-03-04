@@ -75,6 +75,7 @@ sbtc = { workspace = true, features = ["testing"] }
 tempfile.workspace = true
 test-case.workspace = true
 test-log.workspace = true
+testing-emily-client.workspace = true
 toml_edit.workspace = true
 tower.workspace = true
 

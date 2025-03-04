@@ -31,6 +31,24 @@ pub enum Inconsistency {
 }
 
 /// Errors from the internal API logic.
+#[derive(thiserror::Error, Debug)]
+pub enum ValidationError {
+    /// The withdrawal is confirmed but missing the fulfillment data.
+    #[error("missing fulfillment for confirmed withdrawal request with id: {0}")]
+    WithdrawalMissingFulfillment(u64),
+    /// The withdrawals are confirmed but missing the fulfillment data.
+    #[error("missing fulfillment for confirmed withdrawals requests with ids: {0:?}")]
+    WithdrawalsMissingFulfillment(Vec<u64>),
+
+    /// The deposit is confirmed but missing the fulfillment data.
+    #[error("missing fulfillment for confirmed deposit request with txid: {0}, vout: {1}")]
+    DepositMissingFulfillment(String, u32),
+    /// The deposits are confirmed but missing the fulfillment data.
+    #[error("missing fulfillment for confirmed deposit requests with txid:vout pairs: {0:?}")]
+    DepositsMissingFulfillment(Vec<String>),
+}
+
+/// Errors from the internal API logic.
 #[allow(dead_code)]
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -110,6 +128,10 @@ pub enum Error {
     /// Bad request
     #[error("Bad request {0}")]
     BadRequest(String),
+
+    /// Deserialization error
+    #[error("Deserialization error: {0}")]
+    Deserialization(String),
 }
 
 /// Error implementation.
@@ -135,6 +157,7 @@ impl Error {
             Error::Reorganizing(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::BadRequest(_) => StatusCode::BAD_REQUEST,
             Error::VersionConflict => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Deserialization(_) => StatusCode::BAD_REQUEST,
         }
     }
     /// Converts the error into a warp response.
@@ -180,6 +203,12 @@ impl Error {
 /// TODO(391): Route errors to the appropriate Emily API error.
 ///
 /// Implement from for API Errors.
+impl From<ValidationError> for Error {
+    fn from(err: ValidationError) -> Self {
+        Error::HttpRequest(StatusCode::BAD_REQUEST, err.to_string())
+    }
+}
+
 impl From<SdkError<GetItemError>> for Error {
     fn from(err: SdkError<GetItemError>) -> Self {
         Error::Debug(format!("SdkError<GetItemError> - {err:?}"))

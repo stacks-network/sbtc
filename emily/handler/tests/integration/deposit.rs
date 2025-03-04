@@ -888,12 +888,12 @@ async fn update_deposits_updates_chainstate() {
 }
 
 #[tokio::test]
-#[test_case(Status::Pending, false; "Should not reject pending duplicate")]
-#[test_case(Status::Reprocessing, false; "Should not reject reprocessing duplicate")]
-#[test_case(Status::Confirmed, true; "Should reject confirmed duplicate")]
-#[test_case(Status::Failed, true; "Should reject failed duplicate")]
-#[test_case(Status::Accepted, true; "Should reject accepted duplicate")]
-async fn overwrite_deposit(status: Status, should_reject: bool) {
+#[test_case(Status::Pending; "pending")]
+#[test_case(Status::Reprocessing; "reprocessing")]
+#[test_case(Status::Confirmed; "confirmed")]
+#[test_case(Status::Failed; "failed")]
+#[test_case(Status::Accepted; "accepted")]
+async fn create_deposit_handles_duplicates(status: Status) {
     let configuration = clean_setup().await;
     // Arrange.
     // --------
@@ -972,12 +972,12 @@ async fn overwrite_deposit(status: Status, should_reject: bool) {
     assert_eq!(response.bitcoin_txid, bitcoin_txid);
     assert_eq!(response.status, status);
 
-    assert_eq!(
-        apis::deposit_api::create_deposit(&configuration, create_deposit_body)
-            .await
-            .is_err(),
-        should_reject
-    );
+    let duplicate_deposit =
+        apis::deposit_api::create_deposit(&configuration, create_deposit_body).await;
+
+    assert!(duplicate_deposit.is_ok());
+
+    assert_eq!(response, duplicate_deposit.unwrap());
 
     let response = apis::deposit_api::get_deposit(
         &configuration,
@@ -987,10 +987,5 @@ async fn overwrite_deposit(status: Status, should_reject: bool) {
     .await
     .expect("Received an error after making a valid get deposit api call.");
     assert_eq!(response.bitcoin_txid, bitcoin_txid);
-    let expected_status = if status == Status::Reprocessing {
-        Status::Pending
-    } else {
-        status
-    };
-    assert_eq!(response.status, expected_status);
+    assert_eq!(response.status, status);
 }

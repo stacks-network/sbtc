@@ -17,6 +17,7 @@ describe('EmilyStackUtils Test', () => {
                 region: "testAwsRegion",
             },
             trustedReorgApiKey: "testApiKey",
+            deployerAddress: "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS",
         }
         const resourceName: string = EmilyStackUtils
             .getResourceName("ResourceId", testEmilyStackProps);
@@ -26,9 +27,10 @@ describe('EmilyStackUtils Test', () => {
     it('Test resource name is generated properly.', async () => {
         process.env = {
             AWS_STAGE: Constants.UNIT_TEST_STAGE_NAME,
-            AWS_ACCOUNT: "TestAccount" ,
+            AWS_ACCOUNT: "TestAccount",
             AWS_REGION: "TestRegion",
             TRUSTED_REORG_API_KEY: "TestApiKey",
+            DEPLOYER_ADDRESS: "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS",
         };
         const resourceName: string = EmilyStackUtils.getStackName("StackId");
         expect(resourceName).toEqual(`StackId-TestAccount-TestRegion-${Constants.UNIT_TEST_STAGE_NAME}`);

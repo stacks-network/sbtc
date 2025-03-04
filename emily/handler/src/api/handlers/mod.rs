@@ -16,6 +16,8 @@ pub mod health;
 pub mod internal;
 /// Limit handlers.
 pub mod limits;
+/// New block handlers.
+pub mod new_block;
 /// Testing handlers.
 #[cfg(feature = "testing")]
 pub mod testing;
