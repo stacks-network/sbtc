@@ -514,25 +514,25 @@ impl fake::Dummy<fake::Faker> for SigHash {
 
 impl fake::Dummy<std::ops::Range<u64>> for BitcoinBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &std::ops::Range<u64>, rng: &mut R) -> Self {
-        rng.next_u64().into()
+        rng.next_u32().into()
     }
 }
 
 impl fake::Dummy<std::ops::Range<u64>> for StacksBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &std::ops::Range<u64>, rng: &mut R) -> Self {
-        rng.next_u64().into()
+        rng.next_u32().into()
     }
 }
 
 impl fake::Dummy<fake::Faker> for BitcoinBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &fake::Faker, rng: &mut R) -> Self {
-        rng.next_u64().into()
+        rng.next_u32().into()
     }
 }
 
 impl fake::Dummy<fake::Faker> for StacksBlockHeight {
     fn dummy_with_rng<R: rand::Rng + ?Sized>(_config: &fake::Faker, rng: &mut R) -> Self {
-        rng.next_u64().into()
+        rng.next_u32().into()
     }
 }
 

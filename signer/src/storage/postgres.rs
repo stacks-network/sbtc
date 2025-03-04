@@ -3015,6 +3015,8 @@ impl super::DbWrite for PgStore {
         &self,
         shares: &model::EncryptedDkgShares,
     ) -> Result<(), Error> {
+        eprintln!("u64 = {:#?}", u64::from(shares.started_at_bitcoin_block_height));
+        eprintln!("i64 = {:#?}", i64::try_from(u64::from(shares.started_at_bitcoin_block_height)));
         let started_at_bitcoin_block_height =
             i64::try_from(u64::from(shares.started_at_bitcoin_block_height))
                 .map_err(Error::ConversionDatabaseInt)?;
