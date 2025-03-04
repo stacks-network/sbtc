@@ -13,7 +13,6 @@ use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;
 use serde::{Deserialize, Serialize};
-use sqlx::{Decode, Type};
 use stacks_common::types::chainstate::BurnchainHeaderHash;
 use stacks_common::types::chainstate::StacksBlockId;
 
@@ -1526,40 +1525,6 @@ impl Deref for StacksBlockHeight {
     type Target = u64;
     fn deref(&self) -> &Self::Target {
         &self.0
-    }
-}
-
-// Implement sqlx::Decode by delegating to i64.
-impl<'r> Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
-    fn decode(
-        value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>,
-    ) -> Result<Self, sqlx::error::BoxDynError> {
-        let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
-        BitcoinBlockHeight::try_from(int_value).map_err(Into::into)
-    }
-}
-
-// Implement sqlx::Type for BitcoinBlockHeight by delegating to i64.
-impl Type<sqlx::Postgres> for BitcoinBlockHeight {
-    fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
-        <i64 as Type<sqlx::Postgres>>::type_info()
-    }
-}
-
-// Implement sqlx::Decode by delegating to i64.
-impl<'r> Decode<'r, sqlx::Postgres> for StacksBlockHeight {
-    fn decode(
-        value: <sqlx::Postgres as sqlx::Database>::ValueRef<'r>,
-    ) -> Result<Self, sqlx::error::BoxDynError> {
-        let int_value = <i64 as Decode<sqlx::Postgres>>::decode(value)?;
-        StacksBlockHeight::try_from(int_value).map_err(Into::into)
-    }
-}
-
-// Implement sqlx::Type for StacksBlockHeight by delegating to i64.
-impl Type<sqlx::Postgres> for StacksBlockHeight {
-    fn type_info() -> <sqlx::Postgres as sqlx::Database>::TypeInfo {
-        <i64 as Type<sqlx::Postgres>>::type_info()
     }
 }
 

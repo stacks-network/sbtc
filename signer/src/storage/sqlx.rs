@@ -16,11 +16,13 @@ use sqlx::postgres::PgArgumentBuffer;
 use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockHeight;
 use crate::storage::model::BitcoinTx;
 use crate::storage::model::BitcoinTxId;
 use crate::storage::model::ScriptPubKey;
 use crate::storage::model::SigHash;
 use crate::storage::model::StacksBlockHash;
+use crate::storage::model::StacksBlockHeight;
 use crate::storage::model::StacksPrincipal;
 use crate::storage::model::StacksTxId;
 
@@ -196,6 +198,50 @@ impl<'r> sqlx::Encode<'r, sqlx::Postgres> for PublicKeyXOnly {
 impl sqlx::postgres::PgHasArrayType for PublicKeyXOnly {
     fn array_type_info() -> sqlx::postgres::PgTypeInfo {
         <[u8; 32] as sqlx::postgres::PgHasArrayType>::array_type_info()
+    }
+}
+
+// For the [`StacksBlockHeight`]
+
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for StacksBlockHeight {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
+        let height = <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(StacksBlockHeight::try_from(height)?)
+    }
+}
+
+impl sqlx::Type<sqlx::Postgres> for StacksBlockHeight {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <i64 as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+impl<'r> sqlx::Encode<'r, sqlx::Postgres> for StacksBlockHeight {
+    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        let as_i64 = i64::try_from(*self)?;
+        <i64 as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&as_i64, buf)
+    }
+}
+
+// For the [`BitcoinBlockHeight`]
+
+impl<'r> sqlx::Decode<'r, sqlx::Postgres> for BitcoinBlockHeight {
+    fn decode(value: sqlx::postgres::PgValueRef<'r>) -> Result<Self, BoxDynError> {
+        let height = <i64 as sqlx::Decode<sqlx::Postgres>>::decode(value)?;
+        Ok(BitcoinBlockHeight::try_from(height)?)
+    }
+}
+
+impl sqlx::Type<sqlx::Postgres> for BitcoinBlockHeight {
+    fn type_info() -> sqlx::postgres::PgTypeInfo {
+        <i64 as sqlx::Type<sqlx::Postgres>>::type_info()
+    }
+}
+
+impl<'r> sqlx::Encode<'r, sqlx::Postgres> for BitcoinBlockHeight {
+    fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+        let as_i64 = i64::try_from(*self)?;
+        <i64 as sqlx::Encode<'r, sqlx::Postgres>>::encode_by_ref(&as_i64, buf)
     }
 }
 
