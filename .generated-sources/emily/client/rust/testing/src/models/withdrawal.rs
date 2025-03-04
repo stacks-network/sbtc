@@ -32,12 +32,15 @@ pub struct Withdrawal {
     pub last_update_height: u64,
     #[serde(rename = "parameters")]
     pub parameters: Box<models::WithdrawalParameters>,
-    /// The recipient Bitcoin address.
+    /// The recipient's hex-encoded Bitcoin scriptPubKey.
     #[serde(rename = "recipient")]
     pub recipient: String,
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
     #[serde(rename = "requestId")]
     pub request_id: u64,
+    /// The sender's hex-encoded Stacks principal.
+    #[serde(rename = "sender")]
+    pub sender: String,
     /// The stacks block hash in which this request id was initiated.
     #[serde(rename = "stacksBlockHash")]
     pub stacks_block_hash: String,
@@ -60,6 +63,7 @@ impl Withdrawal {
         parameters: models::WithdrawalParameters,
         recipient: String,
         request_id: u64,
+        sender: String,
         stacks_block_hash: String,
         stacks_block_height: u64,
         status: models::Status,
@@ -73,6 +77,7 @@ impl Withdrawal {
             parameters: Box::new(parameters),
             recipient,
             request_id,
+            sender,
             stacks_block_hash,
             stacks_block_height,
             status,

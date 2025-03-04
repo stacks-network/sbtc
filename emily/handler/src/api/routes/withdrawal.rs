@@ -12,6 +12,7 @@ pub fn routes(
     get_withdrawal(context.clone())
         .or(get_withdrawals(context.clone()))
         .or(get_withdrawals_for_recipient(context.clone()))
+        .or(get_withdrawals_for_sender(context.clone()))
         .or(create_withdrawal(context.clone()))
         .or(update_withdrawals(context))
 }
@@ -49,6 +50,18 @@ fn get_withdrawals_for_recipient(
         .and(warp::get())
         .and(warp::query())
         .then(handlers::withdrawal::get_withdrawals_for_recipient)
+}
+
+/// Get withdrawals for sender endpoint.
+fn get_withdrawals_for_sender(
+    context: EmilyContext,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::any()
+        .map(move || context.clone())
+        .and(warp::path!("withdrawal" / "sender" / String))
+        .and(warp::get())
+        .and(warp::query())
+        .then(handlers::withdrawal::get_withdrawals_for_sender)
 }
 
 /// Create withdrawal endpoint.

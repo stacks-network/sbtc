@@ -2275,6 +2275,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "parameters"
         ],
@@ -2297,6 +2298,10 @@
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2777,6 +2782,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
@@ -2814,13 +2820,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2849,6 +2859,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
@@ -2873,13 +2884,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",

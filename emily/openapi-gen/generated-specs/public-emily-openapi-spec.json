@@ -1720,6 +1720,133 @@
         }
       }
     },
+    "/withdrawal/sender/{sender}": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawals by sender handler.",
+        "operationId": "getWithdrawalsForSender",
+        "parameters": [
+          {
+            "name": "sender",
+            "in": "path",
+            "description": "The sender's Stacks principal, used to filter withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWithdrawalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "sender",
+            "in": "path",
+            "description": "The sender's Stacks principal, used to filter withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/withdrawal/{id}": {
       "get": {
         "tags": [
@@ -1929,6 +2056,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "parameters"
         ],
@@ -1951,6 +2079,10 @@
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2427,6 +2559,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
@@ -2464,13 +2597,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2499,6 +2636,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
@@ -2523,13 +2661,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",

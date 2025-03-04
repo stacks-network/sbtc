@@ -25,6 +25,7 @@ use super::CorsSupport;
         api::handlers::withdrawal::get_withdrawal,
         api::handlers::withdrawal::get_withdrawals,
         api::handlers::withdrawal::get_withdrawals_for_recipient,
+        api::handlers::withdrawal::get_withdrawals_for_sender,
         api::handlers::withdrawal::create_withdrawal,
         api::handlers::withdrawal::update_withdrawals,
         // Chainstate endpoints.

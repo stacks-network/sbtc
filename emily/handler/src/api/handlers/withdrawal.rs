@@ -161,6 +161,59 @@ pub async fn get_withdrawals_for_recipient(
         .map_or_else(Reply::into_response, Reply::into_response)
 }
 
+/// Get withdrawals by sender handler.
+#[utoipa::path(
+    get,
+    operation_id = "getWithdrawalsForSender",
+    path = "/withdrawal/sender/{sender}",
+    params(
+        ("sender" = String, Path, description = "The sender's Stacks principal, used to filter withdrawals."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
+    ),
+    tag = "withdrawal",
+    responses(
+        (status = 200, description = "Withdrawals retrieved successfully", body = GetWithdrawalsResponse),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+#[instrument(skip(context))]
+pub async fn get_withdrawals_for_sender(
+    context: EmilyContext,
+    sender: String,
+    query: BasicPaginationQuery,
+) -> impl warp::reply::Reply {
+    debug!("in get_withdrawals_for_sender: {sender}");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        sender: String,
+        query: BasicPaginationQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        let (entries, next_token) = accessors::get_withdrawal_entries_by_sender(
+            &context,
+            &sender,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into resource types.
+        let withdrawals: Vec<WithdrawalInfo> =
+            entries.into_iter().map(|entry| entry.into()).collect();
+        // Create response.
+        let response = GetWithdrawalsResponse { withdrawals, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, sender, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
 /// Create withdrawal handler.
 #[utoipa::path(
     post,
@@ -200,6 +253,7 @@ pub async fn create_withdrawal(
             stacks_block_hash,
             stacks_block_height,
             recipient,
+            sender,
             amount,
             parameters,
         } = body;
@@ -213,6 +267,7 @@ pub async fn create_withdrawal(
                 stacks_block_hash: stacks_block_hash.clone(),
             },
             recipient,
+            sender,
             amount,
             parameters: WithdrawalParametersEntry { max_fee: parameters.max_fee },
             history: vec![WithdrawalEvent {

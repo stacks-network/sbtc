@@ -46,6 +46,8 @@ pub struct WithdrawalEntry {
     pub version: u64,
     /// The recipient's Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
+    /// The sender's Stacks principal.
+    pub sender: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
     /// Withdrawal parameters.
@@ -194,6 +196,7 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
             stacks_block_hash: withdrawal_entry.key.stacks_block_hash,
             stacks_block_height: withdrawal_entry.stacks_block_height,
             recipient: withdrawal_entry.recipient,
+            sender: withdrawal_entry.sender,
             amount: withdrawal_entry.amount,
             last_update_height: withdrawal_entry.last_update_height,
             last_update_block_hash: withdrawal_entry.last_update_block_hash,
@@ -335,6 +338,8 @@ pub struct WithdrawalInfoEntry {
     pub stacks_block_height: u64,
     /// The recipient's Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
+    /// The sender's Stacks principal.
+    pub sender: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
     /// The most recent Stacks block hash the API was aware of when the withdrawal was last
@@ -387,6 +392,7 @@ impl From<WithdrawalInfoEntry> for WithdrawalInfo {
             stacks_block_hash: withdrawal_info_entry.primary_index_key.stacks_block_hash,
             stacks_block_height: withdrawal_info_entry.stacks_block_height,
             recipient: withdrawal_info_entry.recipient,
+            sender: withdrawal_info_entry.sender,
             amount: withdrawal_info_entry.amount,
             last_update_height: withdrawal_info_entry.key.last_update_height,
             last_update_block_hash: withdrawal_info_entry.last_update_block_hash,
@@ -434,6 +440,8 @@ pub struct WithdrawalInfoByRecipientEntry {
     /// The status of the entry.
     #[serde(rename = "OpStatus")]
     pub status: Status,
+    /// The sender's Stacks principal.
+    pub sender: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
     /// The most recent Stacks block hash the API was aware of when the withdrawal was last
@@ -487,6 +495,7 @@ impl From<WithdrawalInfoByRecipientEntry> for WithdrawalInfo {
             stacks_block_hash: withdrawal_info_entry.primary_index_key.stacks_block_hash,
             stacks_block_height: withdrawal_info_entry.stacks_block_height,
             recipient: withdrawal_info_entry.key.recipient,
+            sender: withdrawal_info_entry.sender,
             amount: withdrawal_info_entry.amount,
             last_update_height: withdrawal_info_entry.key.last_update_height,
             last_update_block_hash: withdrawal_info_entry.last_update_block_hash,
@@ -494,6 +503,110 @@ impl From<WithdrawalInfoByRecipientEntry> for WithdrawalInfo {
         }
     }
 }
+
+/// Search token for WithdrawalSender GSI.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct WithdrawalInfoBySenderEntrySearchToken {
+    /// Primary index key.
+    #[serde(flatten)]
+    pub primary_index_key: WithdrawalEntryKey,
+    /// Global secondary index key.
+    #[serde(flatten)]
+    pub secondary_index_key: WithdrawalInfoBySenderEntryKey,
+}
+
+/// Key for withdrawal info entry that's indexed by sender.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct WithdrawalInfoBySenderEntryKey {
+    /// Sender's Stacks principal.
+    pub sender: String,
+    /// The most recent Stacks block height the API was aware of when the withdrawal was last
+    /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
+    /// then this height is the Stacks block height that contains that artifact.
+    pub last_update_height: u64,
+}
+
+/// Reduced version of the withdrawal data.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct WithdrawalInfoBySenderEntry {
+    /// Secondary index key. This is what's used to search for this particular item.
+    #[serde(flatten)]
+    pub key: WithdrawalInfoBySenderEntryKey,
+    /// Primary index key. This is what's used to search the main table.
+    #[serde(flatten)]
+    pub primary_index_key: WithdrawalEntryKey,
+    /// The height of the Stacks block in which this request id was initiated.
+    pub stacks_block_height: u64,
+    /// The status of the entry.
+    #[serde(rename = "OpStatus")]
+    pub status: Status,
+    /// Recipient's Bitcoin hex-encoded scriptPubKey.
+    pub recipient: String,
+    /// Amount of BTC being withdrawn in satoshis.
+    pub amount: u64,
+    /// The most recent Stacks block hash the API was aware of when the withdrawal was last
+    /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
+    /// then this hash is the Stacks block hash that contains that artifact.
+    pub last_update_block_hash: String,
+}
+
+/// Implements the key trait for the withdrawal info entry key.
+impl KeyTrait for WithdrawalInfoBySenderEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = String;
+    /// the type of the sort key.
+    type SortKey = u64;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "Sender";
+    /// The table field name of the sort key.
+    const SORT_KEY_NAME: &'static str = "LastUpdateHeight";
+}
+
+/// Implements the entry trait for the withdrawal info entry.
+impl EntryTrait for WithdrawalInfoBySenderEntry {
+    /// The type of the key for this entry type.
+    type Key = WithdrawalInfoBySenderEntryKey;
+    /// Extract the key from the withdrawal info entry.
+    fn key(&self) -> Self::Key {
+        WithdrawalInfoBySenderEntryKey {
+            sender: self.key.sender.clone(),
+            last_update_height: self.key.last_update_height,
+        }
+    }
+}
+
+/// Secondary index struct.
+pub struct WithdrawalTableBySenderSecondaryIndexInner;
+/// Withdrawal table secondary index type.
+pub type WithdrawalTableBySenderSecondaryIndex =
+    SecondaryIndex<WithdrawalTableBySenderSecondaryIndexInner>;
+/// Definition of secondary index trait.
+impl SecondaryIndexTrait for WithdrawalTableBySenderSecondaryIndexInner {
+    type PrimaryIndex = WithdrawalTablePrimaryIndex;
+    type Entry = WithdrawalInfoBySenderEntry;
+    const INDEX_NAME: &'static str = "WithdrawalSender";
+}
+
+impl From<WithdrawalInfoBySenderEntry> for WithdrawalInfo {
+    fn from(withdrawal_info_entry: WithdrawalInfoBySenderEntry) -> Self {
+        // Create withdrawal info resource from withdrawal info table entry.
+        WithdrawalInfo {
+            request_id: withdrawal_info_entry.primary_index_key.request_id,
+            stacks_block_hash: withdrawal_info_entry.primary_index_key.stacks_block_hash,
+            stacks_block_height: withdrawal_info_entry.stacks_block_height,
+            recipient: withdrawal_info_entry.recipient,
+            sender: withdrawal_info_entry.key.sender,
+            amount: withdrawal_info_entry.amount,
+            last_update_height: withdrawal_info_entry.key.last_update_height,
+            last_update_block_hash: withdrawal_info_entry.last_update_block_hash,
+            status: withdrawal_info_entry.status,
+        }
+    }
+}
+// End for WithdrawalSender GSI.
 
 /// Validated version of the update withdrawal request.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
@@ -692,6 +805,7 @@ mod tests {
             stacks_block_height: 1,
             version: 1,
             recipient: "recipient".to_string(),
+            sender: "sender".to_string(),
             amount: 1,
             parameters: WithdrawalParametersEntry { max_fee: 1 },
             status: Status::Pending,
@@ -734,6 +848,7 @@ mod tests {
             stacks_block_height: 1,
             version: 1,
             recipient: "recipient".to_string(),
+            sender: "sender".to_string(),
             amount: 1,
             parameters: WithdrawalParametersEntry { max_fee: 1 },
             status: Status::Pending,
@@ -793,6 +908,7 @@ mod tests {
             stacks_block_height: 1,
             version: 1,
             recipient: "test-recipient".to_string(),
+            sender: "test-sender".to_string(),
             amount: 1,
             parameters: WithdrawalParametersEntry { max_fee: 1 },
             status: Status::Confirmed,

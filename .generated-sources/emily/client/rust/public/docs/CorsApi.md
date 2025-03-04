@@ -17,6 +17,7 @@ Method | HTTP request | Description
 [**withdrawal_id_options**](CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
 [**withdrawal_options**](CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
 [**withdrawal_recipient_recipient_options**](CorsApi.md#withdrawal_recipient_recipient_options) | **OPTIONS** /withdrawal/recipient/{recipient} | CORS support
+[**withdrawal_sender_sender_options**](CorsApi.md#withdrawal_sender_sender_options) | **OPTIONS** /withdrawal/sender/{sender} | CORS support
 
 
 
@@ -379,6 +380,36 @@ Handles CORS preflight requests
 Name | Type | Description  | Required | Notes
 ------------- | ------------- | ------------- | ------------- | -------------
 **recipient** | **String** | The recipient's hex-encoded scriptPubKey, used to filter withdrawals. | [required] |
+
+### Return type
+
+ (empty response body)
+
+### Authorization
+
+No authorization required
+
+### HTTP request headers
+
+- **Content-Type**: Not defined
+- **Accept**: Not defined
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+
+## withdrawal_sender_sender_options
+
+> withdrawal_sender_sender_options(sender)
+CORS support
+
+Handles CORS preflight requests
+
+### Parameters
+
+
+Name | Type | Description  | Required | Notes
+------------- | ------------- | ------------- | ------------- | -------------
+**sender** | **String** | The sender's Stacks principal, used to filter withdrawals. | [required] |
 
 ### Return type
 
