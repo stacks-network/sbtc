@@ -1,71 +1,106 @@
-# Docker Compose with GitHub Attestation Verification
+# **Docker Image with Attestation Verification**
 
-This script modifies the behavior of `docker-compose` to enforce **GitHub attestation verification** for specific images. It ensures that **only verified images** from the **GitHub Container Registry** are run. If the image is not attested, the script will block execution.
+This repository provides a Docker image that can be used to run a signer application with **attestation verification**. Before running the application, the image verifies its attestation, ensuring that the image and its contents are trusted.
 
-## Features
+## **Features**
+- **Attestation Verification**: Verifies the integrity of the Docker image before execution using GitHub's attestation tools.
+- **Custom Entry Point**: Uses a custom entry point script to enforce attestation verification before running the signer app.
+- **Supports Local Files for Attestation**: Instead of URLs, this setup uses local file paths for the attestation bundle and trusted root.
 
-- Enforces **GitHub attestation checks** for images of the format:
-  - `blockstack/sbtc:signer*`
-  - `blockstack/sbtc:blocklist-client*`
-- Allows bypassing attestation checks via a `.env` configuration.
-- Does **not require command-line flags** to skip checks, everything is controlled by the `.env` file.
+---
 
-## Setup
+## **Environment Variables**
 
-### 1. Backup Original Docker Compose
+- `TAG`: The tag of the Docker image you want to verify (e.g., `signer-test-attestation`).
+- `BUNDLE_PATH`: Local path to the attestation bundle file (e.g., `/path/to/bundle.jsonl`).
+- `TRUSTED_ROOT_PATH`: Local path to the trusted root file (e.g., `/path/to/trusted_root.jsonl`).
 
-Make sure to back up your existing `docker-compose` binary:
+---
 
-```bash
-mv /usr/local/bin/docker-compose /usr/local/bin/docker-compose-original
-```
+## **Example Docker Command:**
 
-### 2. Save the Script
-
-Copy the script `check_attestation.sh` to 
+To run your Docker image and perform attestation verification, use the following command:
 
 ```bash
-sudo nano /usr/local/bin/docker-compose
+docker run --rm \
+  -e TAG="signer" \
+  -e BUNDLE_PATH="/path/to/your/bundle.jsonl" \
+  -e TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl" \
+  -v /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl \
+  -v /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl \
+  --entrypoint /entrypoint.sh \
+  image_name \
+  /usr/local/bin/signer --config /signer-config.toml --migrate-db
 ```
-
-### 3. Make It Executable
-
-Ensure the script is executable:
 
 ```bash
-chmod +x /usr/local/bin/docker-compose
+docker run --rm \
+  -e TAG="blocklist-cli" \
+  -e BUNDLE_PATH="/path/to/your/bundle.jsonl" \
+  -e TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl" \
+  -v /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl \
+  -v /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl \
+  --entrypoint /entrypoint.sh \
+  image_name \
+  /usr/local/bin/blocklist-client
 ```
 
-### 4. Configure `.env` File
+This command will:
+1. **Set the environment variables**:
+    - `TAG="signer"`: This sets the image tag used to identify the Docker image for verification.
+    - `BUNDLE_PATH="/path/to/your/bundle.jsonl"`: Specifies the local path to the attestation bundle file.
+    - `TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl"`: Specifies the local path to the trusted root file for the attestation.
+  
+2. **Use `/entrypoint.sh`**: The entrypoint of the Docker image is overridden to run the `entrypoint.sh` script, which performs the attestation verification before running the application.
+   
+3. **Run the Signer Application**: The signer application is started with the provided configuration file (`/signer-config.toml`) and the database will be migrated using the `--migrate-db` flag.
 
-The script uses the `.env` file for configuration.  
-- To **disable attestation verification**, set `SKIP_CHECK=true`
-- To **enforce attestation verification**, set `SKIP_CHECK=false` (or leave it unset) 
+---
 
-### 5. Run `docker-compose` Normally
+## **Example Docker Compose Configuration:**
 
-Once the script is installed, you can use `docker-compose` as usual:
+```yaml
+services:
+  signer:
+    image: signer
+    environment:
+      - TAG="signer"  # Set your specific image tag
+      - BUNDLE_PATH="/path/to/your/bundle.jsonl"
+      - TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl"
+    volumes:
+      - /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl
+      - /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl
+    entrypoint: ["/entrypoint.sh"]
+    command: ["/usr/local/bin/signer", "--config", "/signer-config.toml", "--migrate-db"]
+```
+
+```yaml
+services:
+  signer:
+    image: blocklist-cli
+    environment:
+      - TAG="blocklist-cli"  # Set your specific image tag
+      - BUNDLE_PATH="/path/to/your/bundle.jsonl"
+      - TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl"
+    volumes:
+      - /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl
+      - /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl
+    entrypoint: ["/entrypoint.sh"]
+    command: ["/usr/local/bin/blocklist-client"]
+```
+
+This will:
+1. **Set up the Docker container** with the required environment variables for attestation.
+2. **Use `/entrypoint.sh`**: The entry point script checks the attestation and proceeds if verified.
+3. **Run the signer application** with the provided config file and migration option.
+
+To start the service with Docker Compose, use:
 
 ```bash
 docker-compose up
-docker-compose down
-docker-compose ps
 ```
+---
 
-If the script finds an image that requires attestation and it has not been verified, it will block the execution with a message. Otherwise, it will run the `docker-compose` command normally.
+## **Additional Information**
 
-## How It Works
-
-- The script checks **Docker images** specified in `docker-compose.yml`.
-- For images matching `blockstack/sbtc:signer*` or `blockstack/sbtc:blocklist-client*`, the script verifies their **attestation** status using GitHub CLI.
-- If the image is **not attested**, the script blocks the execution and outputs an error.
-- If the image is verified, it allows the Docker container to run.
-- The **attestation check** can be skipped by setting `SKIP_CHECK=true` in the `.env` file.
-
-## Dependencies
-
-- **GitHub CLI**: The script will try to login to Github, if an error is triggered you can log in by running:
-
-```bash
-gh auth login
-```
+The image requires the GitHub CLI (`gh`) to verify the attestation.

@@ -108,6 +108,21 @@ jobs:
           subject-name: index.docker.io/${{ env.docker-org }}/sbtc
           subject-digest: ${{ steps.docker_build.outputs.digest }}
           push-to-registry: true
+
+      - name: Download artifact attestation 
+        run: |
+          gh attestation download oci://index.docker.io/${{ env.docker-org }}/sbtc:${{ steps.docker_build.outputs.digest }} -R stacks-network/sbtc
+          gh attestation trusted-root > trusted_root.jsonl
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Attestation Files as Artifacts
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 v4.6.1
+        with:
+          name: attestation-files
+          path: |
+            ${{ steps.docker_build.outputs.digest }}.jsonl
+            trusted_root.jsonl
   
   release:
     name: Draft Release
