@@ -8,7 +8,6 @@ use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
 use bitcoin::Txid;
-use emily_client::apis::chainstate_api;
 use emily_client::apis::configuration::ApiKey;
 use emily_client::apis::configuration::Configuration as EmilyApiConfig;
 use emily_client::apis::deposit_api;
@@ -16,8 +15,6 @@ use emily_client::apis::limits_api;
 use emily_client::apis::withdrawal_api;
 use emily_client::apis::Error as EmilyError;
 use emily_client::apis::ResponseContent;
-use emily_client::models::Chainstate;
-use emily_client::models::CreateWithdrawalRequestBody;
 use emily_client::models::DepositInfo;
 use emily_client::models::DepositUpdate;
 use emily_client::models::Status;
@@ -25,7 +22,6 @@ use emily_client::models::UpdateDepositsRequestBody;
 use emily_client::models::UpdateDepositsResponse;
 use emily_client::models::UpdateWithdrawalsRequestBody;
 use emily_client::models::UpdateWithdrawalsResponse;
-use emily_client::models::Withdrawal;
 use emily_client::models::WithdrawalUpdate;
 use sbtc::deposits::CreateDepositRequest;
 use url::Url;
@@ -62,17 +58,9 @@ pub enum EmilyClientError {
     #[error("error updating deposits: {0}")]
     UpdateDeposits(EmilyError<deposit_api::UpdateDepositsError>),
 
-    /// An error occurred while creating withdrawals
-    #[error("error creating withdrawals: {0}")]
-    CreateWithdrawal(EmilyError<withdrawal_api::CreateWithdrawalError>),
-
     /// An error occurred while updating withdrawals
     #[error("error updating withdrawals: {0}")]
     UpdateWithdrawals(EmilyError<withdrawal_api::UpdateWithdrawalsError>),
-
-    /// An error occurred while adding a chainstate entry
-    #[error("error adding chainstate entry: {0}")]
-    AddChainstateEntry(EmilyError<chainstate_api::SetChainstateError>),
 
     /// An error occurred while getting limits
     #[error("error getting limits: {0}")]
@@ -109,23 +97,11 @@ pub trait EmilyInteract: Sync + Send {
         update_deposits: Vec<DepositUpdate>,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 
-    /// Create withdrawals in Emily.
-    fn create_withdrawals(
-        &self,
-        create_withdrawals: Vec<CreateWithdrawalRequestBody>,
-    ) -> impl std::future::Future<Output = Vec<Result<Withdrawal, Error>>> + Send;
-
     /// Update the status of withdrawals in Emily.
     fn update_withdrawals(
         &self,
         update_withdrawals: Vec<WithdrawalUpdate>,
     ) -> impl std::future::Future<Output = Result<UpdateWithdrawalsResponse, Error>> + Send;
-
-    /// Set the chainstate in Emily. This could trigger a reorg.
-    fn set_chainstate(
-        &self,
-        chainstate_entry: Chainstate,
-    ) -> impl std::future::Future<Output = Result<Chainstate, Error>> + Send;
 
     /// Gets the current sBTC-cap limits from Emily.
     fn get_limits(&self) -> impl std::future::Future<Output = Result<SbtcLimits, Error>> + Send;
@@ -335,30 +311,6 @@ impl EmilyInteract for EmilyClient {
         self.update_deposits(update_request).await
     }
 
-    async fn create_withdrawals(
-        &self,
-        create_withdrawals: Vec<CreateWithdrawalRequestBody>,
-    ) -> Vec<Result<Withdrawal, Error>> {
-        if create_withdrawals.is_empty() {
-            return vec![];
-        }
-
-        let futures = create_withdrawals
-            .into_iter()
-            .map(|withdrawal| withdrawal_api::create_withdrawal(&self.config, withdrawal));
-
-        let results = futures::future::join_all(futures).await;
-
-        results
-            .into_iter()
-            .map(|result| {
-                result
-                    .map_err(EmilyClientError::CreateWithdrawal)
-                    .map_err(Error::EmilyApi)
-            })
-            .collect()
-    }
-
     async fn update_withdrawals(
         &self,
         update_withdrawals: Vec<WithdrawalUpdate>,
@@ -373,14 +325,6 @@ impl EmilyInteract for EmilyClient {
         withdrawal_api::update_withdrawals(&self.config, update_request)
             .await
             .map_err(EmilyClientError::UpdateWithdrawals)
-            .map_err(Error::EmilyApi)
-    }
-
-    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
-        chainstate_api::set_chainstate(&self.config, chainstate)
-            .await
-            .inspect_err(|error| tracing::info!(?error, "error for set_chainstate"))
-            .map_err(EmilyClientError::AddChainstateEntry)
             .map_err(Error::EmilyApi)
     }
 
@@ -442,28 +386,11 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
             .await
     }
 
-    async fn create_withdrawals(
-        &self,
-        create_withdrawals: Vec<CreateWithdrawalRequestBody>,
-    ) -> Vec<Result<Withdrawal, Error>> {
-        self.exec(|client, _| async {
-            let withdrawals = client.create_withdrawals(create_withdrawals.clone()).await;
-            Ok::<Vec<Result<Withdrawal, Error>>, Error>(withdrawals) // Wrap the Vec in Ok to satisfy exec's type constraints
-        })
-        .await
-        .unwrap_or_else(|err| vec![Err(err)])
-    }
-
     async fn update_withdrawals(
         &self,
         update_withdrawals: Vec<WithdrawalUpdate>,
     ) -> Result<UpdateWithdrawalsResponse, Error> {
         self.exec(|client, _| client.update_withdrawals(update_withdrawals.clone()))
-            .await
-    }
-
-    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
-        self.exec(|client, _| client.set_chainstate(chainstate.clone()))
             .await
     }
 
