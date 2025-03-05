@@ -334,7 +334,6 @@ impl PgStore {
     }
 
     /// Get a reference to the underlying pool.
-    #[cfg(any(test, feature = "testing"))]
     pub fn pool(&self) -> &sqlx::PgPool {
         &self.0
     }
