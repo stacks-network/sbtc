@@ -25,6 +25,7 @@ use clarity::types::chainstate::SortitionId;
 use clarity::vm::costs::ExecutionCost;
 use emily_client::models::Chainstate;
 use emily_client::models::CreateWithdrawalRequestBody;
+use emily_client::models::Status;
 use emily_client::models::Withdrawal;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
@@ -498,6 +499,16 @@ impl EmilyInteract for TestHarness {
     }
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         Ok(self.pending_deposits.clone())
+    }
+
+    async fn get_deposits_with_status(
+        &self,
+        status: Status,
+    ) -> Result<Vec<CreateDepositRequest>, Error> {
+        match status {
+            Status::Pending => Ok(self.pending_deposits.clone()),
+            _ => Ok(Vec::new()),
+        }
     }
 
     async fn update_deposits(
