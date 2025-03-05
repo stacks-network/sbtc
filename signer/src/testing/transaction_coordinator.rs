@@ -672,14 +672,11 @@ where
             ..fake::Faker.fake_with_rng::<model::WithdrawalRequest, _>(&mut rng)
         };
 
-        let mut output_index: u8 = fake::Faker.fake_with_rng(&mut rng);
-        // output_index must be strictly greater than 1
-        while output_index < 2 {
-            output_index = fake::Faker.fake_with_rng(&mut rng);
-        }
-        // If output_index is too big test take too long, and in reality transactions usually have
-        // not so much outputs
-        let output_index = output_index as u32;
+        // Too big outindex will make this test slow and don't really happen in practice
+        let output_index: u8 = fake::Faker.fake_with_rng(&mut rng);
+        // Output index smaller than 2 is invalid in our case
+        let output_index = output_index as u32 + 2;
+
         let mut output = vec![bitcoin::TxOut::NULL; output_index as usize];
         output.push(bitcoin::TxOut {
             value: bitcoin::Amount::from_sat(withdrawal_req.amount),
