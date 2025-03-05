@@ -339,7 +339,6 @@ pub async fn get_withdrawal_entries(
 }
 
 /// Get withdrawal entries by recipient.
-#[allow(clippy::ptr_arg)]
 pub async fn get_withdrawal_entries_by_recipient(
     context: &EmilyContext,
     recipient: &String,
@@ -356,7 +355,6 @@ pub async fn get_withdrawal_entries_by_recipient(
 }
 
 /// Get withdrawal entries by sender.
-#[allow(clippy::ptr_arg)]
 pub async fn get_withdrawal_entries_by_sender(
     context: &EmilyContext,
     sender: &String,
