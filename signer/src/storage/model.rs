@@ -428,6 +428,9 @@ impl SweptDepositRequest {
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
 #[cfg_attr(feature = "testing", derive(fake::Dummy))]
 pub struct SweptWithdrawalRequest {
+    /// Index of the output in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    pub output_index: u32,
     /// The transaction ID of the bitcoin transaction that swept out the
     /// funds to the intended recipient.
     pub sweep_txid: BitcoinTxId,

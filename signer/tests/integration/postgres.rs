@@ -2173,6 +2173,7 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     // Its details should match that of the withdrawals request.
     let req = requests.pop().unwrap();
     let expected = SweptWithdrawalRequest {
+        output_index: swept_output.output_index,
         amount: withdrawal_request.amount,
         txid: withdrawal_request.txid,
         sweep_block_hash: bitcoin_block.block_hash,
