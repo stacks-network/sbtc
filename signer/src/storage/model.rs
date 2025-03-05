@@ -473,7 +473,7 @@ impl SweptWithdrawalRequest {
     pub fn withdrawal_outpoint(&self) -> bitcoin::OutPoint {
         OutPoint {
             txid: self.sweep_txid.into(),
-            vout: 2, // TODO: This field will be stored in the database
+            vout: self.output_index,
         }
     }
     /// Return the identifier for the withdrawal request.
