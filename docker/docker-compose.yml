@@ -106,6 +106,7 @@ services:
     environment:
       - DYNAMODB_ENDPOINT=http://emily-dynamodb:8000
       - TRUSTED_REORG_API_KEY=testApiKey
+      - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     profiles:
       - default
 
@@ -127,6 +128,7 @@ services:
       - DEFAULT_PEG_CAP=100000000000
       - DEFAULT_PER_DEPOSIT_CAP=100000000
       - DEFAULT_PER_WITHDRAWAL_CAP=100000000
+      - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     ports:
       - "3031:3031"
     profiles:
@@ -142,8 +144,7 @@ services:
       - "20540:20540"
     environment:
       EMILY_API_KEY: testApiKey
-      EMILY_CHAINSTATE_URL: http://emily-server:3031/chainstate
-      DEPLOYER_ADDRESS: SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
+      EMILY_ENDPOINT: http://emily-server:3031
     profiles:
       - default
     depends_on:
@@ -242,9 +243,21 @@ services:
       - emily-server
       - bitcoin
     ports:
-      - "3010:3000"
+      - "3000:3000"
     profiles:
       - default
+    environment:
+      BITCOIND_URL: http://bitcoin:18443
+      EMILY_URL: http://emily-server:3031
+      MEMPOOL_API_URL: http://mempool-web:8083/api
+      PUBLIC_MEMPOOL_URL: http://localhost:8083
+      BITCOIN_RPC_USER_NAME: devnet
+      BITCOIN_RPC_PASSWORD: devnet
+      WALLET_NETWORK: sbtcDevenv
+      RECLAIM_LOCK_TIME: 18
+      SBTC_CONTRACT_DEPLOYER: SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
+      BANNER_CONTENT: devenv!
+      STACKS_API_URL: http://stacks-api:3999
 
   # Bitcoin / Burnchain.
   # --------------------
@@ -262,7 +275,7 @@ services:
         set -e
         bitcoind
     healthcheck:
-      test: ["CMD-SHELL", "bitcoin-cli -rpcwait getblockcount"]
+      test: [ "CMD-SHELL", "bitcoin-cli -rpcwait getblockcount" ]
       interval: 5s
       timeout: 1s
       retries: 3

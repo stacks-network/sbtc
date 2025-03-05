@@ -334,7 +334,6 @@ impl PgStore {
     }
 
     /// Get a reference to the underlying pool.
-    #[cfg(any(test, feature = "testing"))]
     pub fn pool(&self) -> &sqlx::PgPool {
         &self.0
     }
@@ -742,9 +741,9 @@ impl PgStore {
     /// the deposit request, and whether it was confirmed on the blockchain
     /// that we just listed out.
     ///
-    /// `None` is returned if deposit request in the database (we always
-    /// write the associated transaction to the database for each deposit
-    /// so that cannot be the reason for why the query here returns
+    /// `None` is returned if no deposit request is in the database (we
+    /// always write the associated transaction to the database for each
+    /// deposit so that cannot be the reason for why the query here returns
     /// `None`).
     async fn get_deposit_request_status_summary(
         &self,

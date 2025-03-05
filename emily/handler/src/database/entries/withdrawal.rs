@@ -13,7 +13,7 @@ use crate::{
             Withdrawal, WithdrawalInfo, WithdrawalParameters,
         },
     },
-    common::error::{Error, Inconsistency},
+    common::error::{Error, Inconsistency, ValidationError},
 };
 
 use super::{
@@ -44,7 +44,7 @@ pub struct WithdrawalEntry {
     pub stacks_block_height: u64,
     /// Table entry version. Updated on each alteration.
     pub version: u64,
-    /// Stacks address to received the withdrawn sBTC.
+    /// The recipient's Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
@@ -333,7 +333,7 @@ pub struct WithdrawalInfoEntry {
     pub primary_index_key: WithdrawalEntryKey,
     /// The height of the Stacks block in which this request id was initiated.
     pub stacks_block_height: u64,
-    /// Stacks address to received the withdrawn sBTC.
+    /// The recipient's Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
     /// Amount of BTC being withdrawn in satoshis.
     pub amount: u64,
@@ -411,7 +411,7 @@ pub struct WithdrawalInfoByRecipientEntrySearchToken {
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct WithdrawalInfoByRecipientEntryKey {
-    /// The recipient of the withdrawal.
+    /// The recipient's Bitcoin hex-encoded scriptPubKey.
     pub recipient: String,
     /// The most recent Stacks block height the API was aware of when the withdrawal was last
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
@@ -512,16 +512,20 @@ impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest 
     type Error = Error;
     fn try_from(update_request: UpdateWithdrawalsRequestBody) -> Result<Self, Self::Error> {
         // Validate all the withdrawal updates.
-        let mut withdrawals: Vec<(usize, ValidatedWithdrawalUpdate)> = update_request
-            .withdrawals
-            .into_iter()
-            .enumerate()
-            .map(|(index, update)| {
-                update
-                    .try_into()
-                    .map(|validated_update| (index, validated_update))
-            })
-            .collect::<Result<_, Error>>()?;
+        let mut withdrawals: Vec<(usize, ValidatedWithdrawalUpdate)> = vec![];
+        let mut failed_ids: Vec<u64> = vec![];
+
+        for (index, update) in update_request.withdrawals.into_iter().enumerate() {
+            match update.clone().try_into() {
+                Ok(validated_update) => withdrawals.push((index, validated_update)),
+                Err(_) => failed_ids.push(update.request_id),
+            }
+        }
+
+        // If there are failed conversion, return an error.
+        if !failed_ids.is_empty() {
+            return Err(ValidationError::WithdrawalsMissingFulfillment(failed_ids).into());
+        }
 
         // Order the updates by order of when they occur so that it's as though we got them in
         // chronological order.
@@ -534,7 +538,7 @@ impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest 
 impl ValidatedUpdateWithdrawalRequest {
     /// Infers all chainstates that need to be present in the API for the
     /// withdrawal updates to be valid.
-    pub fn inferred_chainstates(&self) -> Result<Vec<Chainstate>, Error> {
+    pub fn inferred_chainstates(&self) -> Vec<Chainstate> {
         // TODO(TBD): Error if the inferred chainstates have conflicting block hashes
         // for a the same block height.
         let mut inferred_chainstates = self
@@ -553,7 +557,7 @@ impl ValidatedUpdateWithdrawalRequest {
         inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
 
         // Return.
-        Ok(inferred_chainstates)
+        inferred_chainstates
     }
 }
 
@@ -567,12 +571,18 @@ pub struct ValidatedWithdrawalUpdate {
 }
 
 impl TryFrom<WithdrawalUpdate> for ValidatedWithdrawalUpdate {
-    type Error = Error;
+    type Error = ValidationError;
+
     fn try_from(update: WithdrawalUpdate) -> Result<Self, Self::Error> {
         // Make status entry.
         let status_entry: StatusEntry = match update.status {
             Status::Confirmed => {
-                let fulfillment = update.fulfillment.ok_or(Error::InternalServer)?;
+                let fulfillment =
+                    update
+                        .fulfillment
+                        .ok_or(ValidationError::WithdrawalMissingFulfillment(
+                            update.request_id,
+                        ))?;
                 StatusEntry::Confirmed(fulfillment)
             }
             Status::Accepted => StatusEntry::Accepted,

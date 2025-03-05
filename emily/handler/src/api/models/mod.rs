@@ -10,5 +10,7 @@ pub mod deposit;
 pub mod health;
 /// Api structures for limits.
 pub mod limits;
+/// Api structures for new block events.
+pub mod new_block;
 /// Api structures for withdrawals.
 pub mod withdrawal;
