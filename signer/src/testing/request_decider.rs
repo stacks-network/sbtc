@@ -468,7 +468,7 @@ where
                 .unwrap_or(context_window_end_block);
         }
 
-        eprintln!("bitcoin blocks in context window {}", context_window_bitcoin_blocks.len());
+        eprintln!("bitcoin blocks in context window {:#?}", context_window_bitcoin_blocks);
 
         let stacks_chain_tip = storage
             .get_stacks_chain_tip(&canoncial_tip_block_hash)
@@ -491,7 +491,7 @@ where
                 .expect("storage failure");
         }
 
-        eprintln!("stacks blocks in context window {}", context_window_block_hashes.len());
+        eprintln!("stacks blocks in context window {:#?}", context_window_block_hashes);
 
         context_window_block_hashes
     }
@@ -541,6 +541,8 @@ where
         let context_window_block_hashes = self
             .extract_stacks_context_window_block_hashes(context_window)
             .await;
+
+
 
         for withdraw_request in withdraw_requests {
             let signer_decisions = storage
