@@ -7,7 +7,6 @@ docs/Chainstate.md
 docs/ChainstateApi.md
 docs/CorsApi.md
 docs/CreateDepositRequestBody.md
-docs/CreateWithdrawalRequestBody.md
 docs/Deposit.md
 docs/DepositApi.md
 docs/DepositInfo.md
@@ -45,7 +44,6 @@ src/lib.rs
 src/models/account_limits.rs
 src/models/chainstate.rs
 src/models/create_deposit_request_body.rs
-src/models/create_withdrawal_request_body.rs
 src/models/deposit.rs
 src/models/deposit_info.rs
 src/models/deposit_parameters.rs
