@@ -8,7 +8,7 @@ if [[ -z "$BUNDLE_PATH" || -z "$TRUSTED_ROOT_PATH" ]]; then
 fi
 
 # Define the image and repo (since they are fixed)
-IMAGE="index.docker.io/blockstack/sbtc:$TAG"  # You can pass $TAG as environment variable if it's dynamic.
+IMAGE="index.docker.io/blockstack/sbtc:$TAG"  # You can pass $TAG as environment variable
 REPO="stacks-network/sbtc"
 
 # Verifying attestation
