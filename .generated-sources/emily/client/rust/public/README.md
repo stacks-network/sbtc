@@ -42,7 +42,6 @@ Class | Method | HTTP request | Description
 *CorsApi* | [**withdrawal_sender_sender_options**](docs/CorsApi.md#withdrawal_sender_sender_options) | **OPTIONS** /withdrawal/sender/{sender} | CORS support
 *ChainstateApi* | [**get_chain_tip**](docs/ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
 *ChainstateApi* | [**get_chainstate_at_height**](docs/ChainstateApi.md#get_chainstate_at_height) | **GET** /chainstate/{height} | Get chainstate handler.
-*ChainstateApi* | [**set_chainstate**](docs/ChainstateApi.md#set_chainstate) | **POST** /chainstate | Set chainstate handler.
 *DepositApi* | [**create_deposit**](docs/DepositApi.md#create_deposit) | **POST** /deposit | Create deposit handler.
 *DepositApi* | [**get_deposit**](docs/DepositApi.md#get_deposit) | **GET** /deposit/{txid}/{index} | Get deposit handler.
 *DepositApi* | [**get_deposits**](docs/DepositApi.md#get_deposits) | **GET** /deposit | Get deposits handler.
@@ -53,7 +52,6 @@ Class | Method | HTTP request | Description
 *HealthApi* | [**check_health**](docs/HealthApi.md#check_health) | **GET** /health | Get health handler.
 *LimitsApi* | [**get_limits**](docs/LimitsApi.md#get_limits) | **GET** /limits | Get the global limits.
 *LimitsApi* | [**get_limits_for_account**](docs/LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
-*WithdrawalApi* | [**create_withdrawal**](docs/WithdrawalApi.md#create_withdrawal) | **POST** /withdrawal | Create withdrawal handler.
 *WithdrawalApi* | [**get_withdrawal**](docs/WithdrawalApi.md#get_withdrawal) | **GET** /withdrawal/{id} | Get withdrawal handler.
 *WithdrawalApi* | [**get_withdrawals**](docs/WithdrawalApi.md#get_withdrawals) | **GET** /withdrawal | Get withdrawals handler.
 *WithdrawalApi* | [**get_withdrawals_for_recipient**](docs/WithdrawalApi.md#get_withdrawals_for_recipient) | **GET** /withdrawal/recipient/{recipient} | Get withdrawals by recipient handler.
@@ -66,7 +64,6 @@ Class | Method | HTTP request | Description
  - [AccountLimits](docs/AccountLimits.md)
  - [Chainstate](docs/Chainstate.md)
  - [CreateDepositRequestBody](docs/CreateDepositRequestBody.md)
- - [CreateWithdrawalRequestBody](docs/CreateWithdrawalRequestBody.md)
  - [Deposit](docs/Deposit.md)
  - [DepositInfo](docs/DepositInfo.md)
  - [DepositParameters](docs/DepositParameters.md)

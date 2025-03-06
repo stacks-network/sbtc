@@ -26,20 +26,13 @@ use super::CorsSupport;
         api::handlers::withdrawal::get_withdrawals,
         api::handlers::withdrawal::get_withdrawals_for_recipient,
         api::handlers::withdrawal::get_withdrawals_for_sender,
-        api::handlers::withdrawal::create_withdrawal,
         api::handlers::withdrawal::update_withdrawals,
         // Chainstate endpoints.
         api::handlers::chainstate::get_chain_tip,
         api::handlers::chainstate::get_chainstate_at_height,
-        api::handlers::chainstate::set_chainstate,
-        // api::handlers::chainstate::update_chainstate, // signers may not set the chainstate to cause a reorg.
-        // Testing endpoints.
-        // api::handlers::testing::wipe_databases, // The public api cannot perform testing operations.
         // Limits endpoints.
         api::handlers::limits::get_limits,
-        // api::handlers::limits::set_limits, // signers / users may not set limits.
         api::handlers::limits::get_limits_for_account,
-        // api::handlers::limits::set_limits_for_account, // signers / users may not set limits.
     ),
     // Components to be included in the OpenAPI specification.
     components(schemas(
@@ -50,20 +43,19 @@ use super::CorsSupport;
         api::models::deposit::DepositParameters,
         api::models::deposit::DepositInfo,
         api::models::deposit::requests::CreateDepositRequestBody,
-        api::models::deposit::requests::DepositUpdate, // users may not update the state of existing deposits.
-        api::models::deposit::requests::UpdateDepositsRequestBody, // users may not update the state of existing deposits.
+        api::models::deposit::requests::DepositUpdate, // signers may update the state of deposits to Accepted.
+        api::models::deposit::requests::UpdateDepositsRequestBody, // signers may update the state of deposits to Accepted.
         api::models::deposit::responses::GetDepositsForTransactionResponse,
         api::models::deposit::responses::GetDepositsResponse,
-        api::models::deposit::responses::UpdateDepositsResponse, // users may not update the state of existing deposits.
+        api::models::deposit::responses::UpdateDepositsResponse, // signers may update the state of deposits to Accepted.
         // Withdrawal Models.
         api::models::withdrawal::Withdrawal,
         api::models::withdrawal::WithdrawalInfo,
         api::models::withdrawal::WithdrawalParameters,
-        api::models::withdrawal::requests::CreateWithdrawalRequestBody, // users may not alter the state of withdrawals.
-        api::models::withdrawal::requests::WithdrawalUpdate, // users may not alter the state of withdrawals.
-        api::models::withdrawal::requests::UpdateWithdrawalsRequestBody, // users may not alter the state of withdrawals.
+        api::models::withdrawal::requests::WithdrawalUpdate, // signers may update the state of withdrawals to Accepted.
+        api::models::withdrawal::requests::UpdateWithdrawalsRequestBody, // signers may update the state of withdrawals to Accepted.
         api::models::withdrawal::responses::GetWithdrawalsResponse,
-        api::models::withdrawal::responses::UpdateWithdrawalsResponse, // users may not alter the state of withdrawals.
+        api::models::withdrawal::responses::UpdateWithdrawalsResponse, // signers may update the state of withdrawals to Accepted.
         // Health check datatypes.
         api::models::health::responses::HealthData,
         // Common models.
