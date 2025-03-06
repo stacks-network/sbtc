@@ -263,7 +263,7 @@ pub async fn update_withdrawals(
     api_key: String,
     body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
-    tracing::debug!("in update deposits");
+    tracing::debug!("in update withdrawals");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
@@ -284,7 +284,7 @@ pub async fn update_withdrawals(
             let is_unauthorized = body
                 .withdrawals
                 .iter()
-                .any(|deposit| deposit.status != Status::Accepted);
+                .any(|withdrawal| withdrawal.status != Status::Accepted);
 
             if is_unauthorized {
                 return Err(Error::Forbidden);

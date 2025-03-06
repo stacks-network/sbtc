@@ -283,7 +283,7 @@ async fn get_withdrawals_by_recipient() {
         expected_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
         let mut actual_withdrawal_infos = actual_recipient_data.get(recipient).unwrap().clone();
         actual_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
-        // Assert that the expected and actual deposit infos are the same.
+        // Assert that the expected and actual withdrawal infos are the same.
         assert_eq!(expected_withdrawal_infos, actual_withdrawal_infos);
     }
 }
@@ -485,7 +485,7 @@ async fn update_withdrawals_is_forbidden(status: Status, api_key: &str, is_error
     // --------
     let request_id = 1;
 
-    // Setup test deposit transaction.
+    // Setup test withdrawal transaction.
     let request = CreateWithdrawalRequestBody {
         amount: 10000,
         parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
@@ -497,7 +497,7 @@ async fn update_withdrawals_is_forbidden(status: Status, api_key: &str, is_error
 
     apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
         .await
-        .expect("Received an error after making a valid create deposit request api call.");
+        .expect("Received an error after making a valid create withdrawal request api call.");
 
     let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
 
@@ -540,17 +540,17 @@ async fn update_withdrawals_is_forbidden(status: Status, api_key: &str, is_error
 
         let response = apis::withdrawal_api::get_withdrawal(&configuration, request_id)
             .await
-            .expect("Received an error after making a valid get deposit api call.");
+            .expect("Received an error after making a valid get withdrawal api call.");
         assert_eq!(response.request_id, request_id);
         assert_eq!(response.status, Status::Pending);
     } else {
         assert!(response.is_ok());
         let response = response.unwrap();
-        let deposit = response
+        let withdrawal = response
             .withdrawals
             .first()
-            .expect("No deposit in response");
-        assert_eq!(deposit.request_id, request_id);
-        assert_eq!(deposit.status, status);
+            .expect("No withdrawal in response");
+        assert_eq!(withdrawal.request_id, request_id);
+        assert_eq!(withdrawal.status, status);
     }
 }
