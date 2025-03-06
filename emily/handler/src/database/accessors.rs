@@ -21,8 +21,8 @@ use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
 use super::entries::withdrawal::{
-    ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry,
-    WithdrawalTableByRecipientSecondaryIndex,
+    ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry, WithdrawalInfoBySenderEntry,
+    WithdrawalTableByRecipientSecondaryIndex, WithdrawalTableBySenderSecondaryIndex,
 };
 use super::entries::{
     chainstate::{
@@ -339,7 +339,6 @@ pub async fn get_withdrawal_entries(
 }
 
 /// Get withdrawal entries by recipient.
-#[allow(clippy::ptr_arg)]
 pub async fn get_withdrawal_entries_by_recipient(
     context: &EmilyContext,
     recipient: &String,
@@ -349,6 +348,22 @@ pub async fn get_withdrawal_entries_by_recipient(
     query_with_partition_key::<WithdrawalTableByRecipientSecondaryIndex>(
         context,
         recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get withdrawal entries by sender.
+pub async fn get_withdrawal_entries_by_sender(
+    context: &EmilyContext,
+    sender: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<WithdrawalInfoBySenderEntry>, Option<String>), Error> {
+    query_with_partition_key::<WithdrawalTableBySenderSecondaryIndex>(
+        context,
+        sender,
         maybe_next_token,
         maybe_page_size,
     )

@@ -10,6 +10,7 @@ use testing_emily_client::models::{
 };
 
 const RECIPIENT: &'static str = "TEST_RECIPIENT";
+const SENDER: &'static str = "TEST_SENDER";
 const BLOCK_HASH: &'static str = "TEST_BLOCK_HASH";
 const BLOCK_HEIGHT: u64 = 0;
 const INITIAL_WITHDRAWAL_STATUS_MESSAGE: &'static str = "Just received withdrawal";
@@ -68,6 +69,7 @@ async fn create_and_get_withdrawal_happy_path() {
         amount,
         parameters: Box::new(parameters.clone()),
         recipient: RECIPIENT.into(),
+        sender: SENDER.into(),
         request_id,
         stacks_block_hash: BLOCK_HASH.into(),
         stacks_block_height: BLOCK_HEIGHT,
@@ -80,6 +82,7 @@ async fn create_and_get_withdrawal_happy_path() {
         last_update_height: BLOCK_HEIGHT,
         parameters: Box::new(parameters.clone()),
         recipient: RECIPIENT.into(),
+        sender: SENDER.into(),
         request_id,
         stacks_block_hash: BLOCK_HASH.into(),
         stacks_block_height: BLOCK_HEIGHT,
@@ -121,6 +124,7 @@ async fn get_withdrawals() {
             amount,
             parameters: Box::new(parameters.clone()),
             recipient: RECIPIENT.into(),
+            sender: SENDER.into(),
             request_id,
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
@@ -132,6 +136,7 @@ async fn get_withdrawals() {
             last_update_block_hash: BLOCK_HASH.into(),
             last_update_height: BLOCK_HEIGHT,
             recipient: RECIPIENT.into(),
+            sender: SENDER.into(),
             request_id,
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
@@ -212,6 +217,7 @@ async fn get_withdrawals_by_recipient() {
                 amount,
                 parameters: Box::new(parameters.clone()),
                 recipient: recipient.into(),
+                sender: SENDER.into(),
                 request_id,
                 stacks_block_hash: BLOCK_HASH.into(),
                 stacks_block_height: BLOCK_HEIGHT,
@@ -223,6 +229,7 @@ async fn get_withdrawals_by_recipient() {
                 last_update_block_hash: BLOCK_HASH.into(),
                 last_update_height: BLOCK_HEIGHT,
                 recipient: recipient.into(),
+                sender: SENDER.into(),
                 request_id,
                 stacks_block_hash: BLOCK_HASH.into(),
                 stacks_block_height: BLOCK_HEIGHT,
@@ -286,6 +293,106 @@ async fn get_withdrawals_by_recipient() {
 }
 
 #[tokio::test]
+async fn get_withdrawals_by_sender() {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    // --------
+    let senders = vec![
+        "SN1Z0WW5SMN4J99A1G1725PAB8H24CWNA7Z8H7214.my-contract",
+        "SN1Z0WW5SMN4J99A1G1725PAB8H24CWNA7Z8H7214",
+    ];
+    let withdrawals_per_sender = 5;
+    let mut create_requests: Vec<CreateWithdrawalRequestBody> = Vec::new();
+    let mut expected_sender_data: HashMap<String, Vec<WithdrawalInfo>> = HashMap::new();
+
+    let amount = 0;
+    let parameters = WithdrawalParameters { max_fee: 123 };
+
+    let mut request_id = 1;
+    for sender in senders {
+        let mut expected_withdrawal_infos: Vec<WithdrawalInfo> = Vec::new();
+        for _ in 1..=withdrawals_per_sender {
+            let request = CreateWithdrawalRequestBody {
+                amount,
+                parameters: Box::new(parameters.clone()),
+                recipient: RECIPIENT.into(),
+                sender: sender.into(),
+                request_id,
+                stacks_block_hash: BLOCK_HASH.into(),
+                stacks_block_height: BLOCK_HEIGHT,
+            };
+            create_requests.push(request);
+
+            let expected_withdrawal_info = WithdrawalInfo {
+                amount,
+                last_update_block_hash: BLOCK_HASH.into(),
+                last_update_height: BLOCK_HEIGHT,
+                recipient: RECIPIENT.into(),
+                sender: sender.into(),
+                request_id,
+                stacks_block_hash: BLOCK_HASH.into(),
+                stacks_block_height: BLOCK_HEIGHT,
+                status: Status::Pending,
+            };
+            request_id += 1;
+            expected_withdrawal_infos.push(expected_withdrawal_info);
+        }
+        // Add the sender data to the sender data hashmap that stores what
+        // we expect to see from the sender.
+        expected_sender_data.insert(sender.to_string(), expected_withdrawal_infos.clone());
+    }
+
+    let chunksize = 2;
+
+    // Act.
+    // ----
+    batch_create_withdrawals(&configuration, create_requests).await;
+
+    let mut actual_sender_data: HashMap<String, Vec<WithdrawalInfo>> = HashMap::new();
+    for sender in expected_sender_data.keys() {
+        let mut gotten_withdrawal_info_chunks: Vec<Vec<WithdrawalInfo>> = Vec::new();
+        let mut next_token: Option<String> = None;
+
+        loop {
+            let response = apis::withdrawal_api::get_withdrawals_for_sender(
+                &configuration,
+                sender,
+                next_token.as_deref(),
+                Some(chunksize as u32),
+            )
+            .await
+            .expect("Received an error after making a valid get withdrawal api call.");
+            gotten_withdrawal_info_chunks.push(response.withdrawals);
+            // If there's no next token then break.
+            next_token = match response.next_token.flatten() {
+                Some(token) => Some(token),
+                None => break,
+            };
+        }
+        // Store the actual data received from the api.
+        actual_sender_data.insert(
+            sender.clone(),
+            gotten_withdrawal_info_chunks
+                .into_iter()
+                .flatten()
+                .collect(),
+        );
+    }
+
+    // Assert.
+    // -------
+    for recipient in expected_sender_data.keys() {
+        let mut expected_withdrawal_infos = expected_sender_data.get(recipient).unwrap().clone();
+        expected_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
+        let mut actual_withdrawal_infos = actual_sender_data.get(recipient).unwrap().clone();
+        actual_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
+        // Assert that the expected and actual deposit infos are the same.
+        assert_eq!(expected_withdrawal_infos, actual_withdrawal_infos);
+    }
+}
+
+#[tokio::test]
 async fn update_withdrawals() {
     let configuration = clean_setup().await;
 
@@ -321,6 +428,7 @@ async fn update_withdrawals() {
             amount,
             parameters: Box::new(parameters.clone()),
             recipient: RECIPIENT.into(),
+            sender: SENDER.into(),
             request_id,
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
@@ -344,6 +452,7 @@ async fn update_withdrawals() {
             last_update_height: update_block_height.clone(),
             parameters: Box::new(parameters.clone()),
             recipient: RECIPIENT.into(),
+            sender: SENDER.into(),
             request_id,
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
@@ -387,6 +496,7 @@ async fn update_withdrawals_updates_chainstate() {
         amount,
         parameters: Box::new(parameters.clone()),
         recipient: RECIPIENT.into(),
+        sender: SENDER.into(),
         request_id,
         stacks_block_hash: BLOCK_HASH.into(),
         stacks_block_height: BLOCK_HEIGHT,
