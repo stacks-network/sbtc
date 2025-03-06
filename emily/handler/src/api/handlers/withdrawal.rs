@@ -317,16 +317,20 @@ pub async fn update_withdrawals(
             let request_id = update.request_id;
             debug!(request_id, "updating withdrawal");
 
-            let updated_withdrawal =
-                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::error!(
-                            request_id,
-                            %error,
-                            "failed to update withdrawal",
-                        );
-                    })?;
+            let updated_withdrawal = accessors::pull_and_update_withdrawal_with_retry(
+                &context,
+                update,
+                15,
+                is_trusted_key,
+            )
+            .await
+            .inspect_err(|error| {
+                tracing::error!(
+                    request_id,
+                    %error,
+                    "failed to update withdrawal",
+                );
+            })?;
 
             let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
                 // This should never happen, because the withdrawal was

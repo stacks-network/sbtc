@@ -487,7 +487,7 @@ pub async fn update_deposits(
             );
 
             let updated_deposit =
-                accessors::pull_and_update_deposit_with_retry(&context, update, 15)
+                accessors::pull_and_update_deposit_with_retry(&context, update, 15, is_trusted_key)
                     .await
                     .inspect_err(|error| {
                         tracing::error!(
