@@ -486,8 +486,10 @@ async fn update_withdrawals_is_forbidden(
     api_key: &str,
     is_forbidden: bool,
 ) {
+    // the testing configuration has privileged access to all endpoints.
     let testing_configuration = clean_setup().await;
 
+    // the user configuration access depends on the api_key.
     let mut user_configuration = testing_configuration.clone();
     user_configuration.api_key = Some(ApiKey {
         prefix: None,
@@ -511,34 +513,37 @@ async fn update_withdrawals_is_forbidden(
         .await
         .expect("Received an error after making a valid create withdrawal request api call.");
 
-    let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
+    // Update the withdrawal status with the privileged configuration.
+    if previous_status != Status::Pending {
+        let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
 
-    if previous_status == Status::Confirmed {
-        fulfillment = Some(Some(Box::new(Fulfillment {
-            bitcoin_block_hash: "bitcoin_block_hash".to_string(),
-            bitcoin_block_height: 23,
-            bitcoin_tx_index: 45,
-            bitcoin_txid: "test_fulfillment_bitcoin_txid".to_string(),
-            btc_fee: 2314,
-            stacks_txid: "test_fulfillment_stacks_txid".to_string(),
-        })));
+        if previous_status == Status::Confirmed {
+            fulfillment = Some(Some(Box::new(Fulfillment {
+                bitcoin_block_hash: "bitcoin_block_hash".to_string(),
+                bitcoin_block_height: 23,
+                bitcoin_tx_index: 45,
+                bitcoin_txid: "test_fulfillment_bitcoin_txid".to_string(),
+                btc_fee: 2314,
+                stacks_txid: "test_fulfillment_stacks_txid".to_string(),
+            })));
+        }
+
+        apis::withdrawal_api::update_withdrawals(
+            &testing_configuration,
+            UpdateWithdrawalsRequestBody {
+                withdrawals: vec![WithdrawalUpdate {
+                    request_id,
+                    fulfillment,
+                    last_update_block_hash: "update_block_hash".into(),
+                    last_update_height: 34,
+                    status: previous_status,
+                    status_message: "foo".into(),
+                }],
+            },
+        )
+        .await
+        .expect("Received an error after making a valid update withdrawal api call.");
     }
-
-    apis::withdrawal_api::update_withdrawals(
-        &testing_configuration,
-        UpdateWithdrawalsRequestBody {
-            withdrawals: vec![WithdrawalUpdate {
-                request_id,
-                fulfillment,
-                last_update_block_hash: "update_block_hash".into(),
-                last_update_height: 34,
-                status: previous_status,
-                status_message: "foo".into(),
-            }],
-        },
-    )
-    .await
-    .expect("Received an error after making a valid update withdrawal api call.");
 
     let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
 

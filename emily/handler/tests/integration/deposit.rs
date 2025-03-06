@@ -995,19 +995,33 @@ async fn create_deposit_handles_duplicates(status: Status) {
 }
 
 #[tokio::test]
-#[test_case(Status::Accepted, "untrusted-api-key", false; "untrusted-key-accepted")]
-#[test_case(Status::Pending, "untrusted-api-key", true; "untrusted-key-pending")]
-#[test_case(Status::Reprocessing, "untrusted-api-key", true; "untrusted-key-reprocessing")]
-#[test_case(Status::Confirmed, "untrusted-api-key", true; "untrusted-key-confirmed")]
-#[test_case(Status::Failed, "untrusted-api-key", true; "untrusted-key-failed")]
-#[test_case(Status::Accepted, "testApiKey", false; "trusted-key-accepted")]
-#[test_case(Status::Pending, "testApiKey", false; "trusted-key-pending")]
-#[test_case(Status::Reprocessing, "testApiKey", false; "trusted-key-reprocessing")]
-#[test_case(Status::Confirmed, "testApiKey", false; "trusted-key-confirmed")]
-#[test_case(Status::Failed, "testApiKey", false; "trusted-key-failed")]
-async fn update_deposits_is_forbidden(status: Status, api_key: &str, is_error: bool) {
-    let mut configuration = clean_setup().await;
-    configuration.api_key = Some(ApiKey {
+#[test_case(Status::Pending, Status::Pending, "untrusted_api_key", true; "untrusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Accepted, "untrusted_api_key", false; "untrusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Reprocessing, "untrusted_api_key", true; "untrusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, "untrusted_api_key", true; "untrusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, "untrusted_api_key", true; "untrusted_key_pending_to_failed")]
+#[test_case(Status::Accepted, Status::Pending, "untrusted_api_key", true; "untrusted_key_accepted_to_pending")]
+#[test_case(Status::Failed, Status::Pending, "untrusted_api_key", true; "untrusted_key_failed_to_pending")]
+#[test_case(Status::Reprocessing, Status::Pending, "untrusted_api_key", true; "untrusted_key_reprocessing_to_pending")]
+#[test_case(Status::Confirmed, Status::Pending, "untrusted_api_key", true; "untrusted_key_confirmed_to_pending")]
+#[test_case(Status::Pending, Status::Accepted, "testApiKey", false; "trusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Pending, "testApiKey", false; "trusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Reprocessing, "testApiKey", false; "trusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, "testApiKey", false; "trusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, "testApiKey", false; "trusted_key_pending_to_failed")]
+#[test_case(Status::Confirmed, Status::Pending, "testApiKey", false; "trusted_key_confirmed_to_pending")]
+async fn update_deposits_is_forbidden(
+    previous_status: Status,
+    new_status: Status,
+    api_key: &str,
+    is_forbidden: bool,
+) {
+    // the testing configuration has privileged access to all endpoints.
+    let testing_configuration = clean_setup().await;
+
+    // the user configuration access depends on the api_key.
+    let mut user_configuration = testing_configuration.clone();
+    user_configuration.api_key = Some(ApiKey {
         prefix: None,
         key: api_key.to_string(),
     });
@@ -1034,23 +1048,47 @@ async fn update_deposits_is_forbidden(status: Status, api_key: &str, is_error: b
         transaction_hex: transaction_hex.clone(),
     };
 
-    apis::deposit_api::create_deposit(&configuration, create_deposit_body.clone())
+    // Update the withdrawal status with the privileged configuration.
+    apis::deposit_api::create_deposit(&testing_configuration, create_deposit_body.clone())
         .await
         .expect("Received an error after making a valid create deposit request api call.");
 
-    let response = apis::deposit_api::get_deposit(
-        &configuration,
-        &bitcoin_txid,
-        &bitcoin_tx_output_index.to_string(),
-    )
-    .await
-    .expect("Received an error after making a valid get deposit api call.");
-    assert_eq!(response.bitcoin_txid, bitcoin_txid);
-    assert_eq!(response.status, Status::Pending);
+    // Update the withdrawal status with the privileged configuration.
+    if previous_status != Status::Pending {
+        let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
+
+        if previous_status == Status::Confirmed {
+            fulfillment = Some(Some(Box::new(Fulfillment {
+                bitcoin_block_hash: "bitcoin_block_hash".to_string(),
+                bitcoin_block_height: 23,
+                bitcoin_tx_index: 45,
+                bitcoin_txid: "test_fulfillment_bitcoin_txid".to_string(),
+                btc_fee: 2314,
+                stacks_txid: "test_fulfillment_stacks_txid".to_string(),
+            })));
+        }
+
+        apis::deposit_api::update_deposits(
+            &testing_configuration,
+            UpdateDepositsRequestBody {
+                deposits: vec![DepositUpdate {
+                    bitcoin_tx_output_index: bitcoin_tx_output_index,
+                    bitcoin_txid: bitcoin_txid.clone().into(),
+                    fulfillment,
+                    last_update_block_hash: "update_block_hash".into(),
+                    last_update_height: 34,
+                    status: previous_status,
+                    status_message: "foo".into(),
+                }],
+            },
+        )
+        .await
+        .expect("Received an error after making a valid update deposit request api call.");
+    }
 
     let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
 
-    if status == Status::Confirmed {
+    if new_status == Status::Confirmed {
         fulfillment = Some(Some(Box::new(Fulfillment {
             bitcoin_block_hash: "bitcoin_block_hash".to_string(),
             bitcoin_block_height: 23,
@@ -1062,7 +1100,7 @@ async fn update_deposits_is_forbidden(status: Status, api_key: &str, is_error: b
     }
 
     let response = apis::deposit_api::update_deposits(
-        &configuration,
+        &user_configuration,
         UpdateDepositsRequestBody {
             deposits: vec![DepositUpdate {
                 bitcoin_tx_output_index: bitcoin_tx_output_index,
@@ -1070,14 +1108,14 @@ async fn update_deposits_is_forbidden(status: Status, api_key: &str, is_error: b
                 fulfillment,
                 last_update_block_hash: "update_block_hash".into(),
                 last_update_height: 34,
-                status,
+                status: new_status,
                 status_message: "foo".into(),
             }],
         },
     )
     .await;
 
-    if is_error {
+    if is_forbidden {
         assert!(response.is_err());
         match response.unwrap_err() {
             testing_emily_client::apis::Error::ResponseError(ResponseContent {
@@ -1089,19 +1127,19 @@ async fn update_deposits_is_forbidden(status: Status, api_key: &str, is_error: b
         }
 
         let response = apis::deposit_api::get_deposit(
-            &configuration,
+            &user_configuration,
             &bitcoin_txid,
             &bitcoin_tx_output_index.to_string(),
         )
         .await
         .expect("Received an error after making a valid get deposit api call.");
         assert_eq!(response.bitcoin_txid, bitcoin_txid);
-        assert_eq!(response.status, Status::Pending);
+        assert_eq!(response.status, previous_status);
     } else {
         assert!(response.is_ok());
         let response = response.unwrap();
         let deposit = response.deposits.first().expect("No deposit in response");
         assert_eq!(deposit.bitcoin_txid, bitcoin_txid);
-        assert_eq!(deposit.status, status);
+        assert_eq!(deposit.status, new_status);
     }
 }
