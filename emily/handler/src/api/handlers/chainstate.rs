@@ -97,7 +97,7 @@ pub async fn get_chainstate_at_height(
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context))]
+#[instrument(skip(context, api_key))]
 pub async fn set_chainstate(
     context: EmilyContext,
     api_key: String,
@@ -143,7 +143,7 @@ pub async fn set_chainstate(
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context))]
+#[instrument(skip(context, api_key))]
 pub async fn update_chainstate(
     context: EmilyContext,
     api_key: String,
