@@ -64,7 +64,6 @@ pub async fn get_deposit_entry(
     key: &DepositEntryKey,
 ) -> Result<DepositEntry, Error> {
     let entry = get_entry::<DepositTablePrimaryIndex>(context, key).await?;
-    #[cfg(feature = "testing")]
     Ok(entry)
 }
 
@@ -305,11 +304,7 @@ pub async fn get_withdrawal_entry(
     // Return.
     match entries.as_slice() {
         [] => Err(Error::NotFound),
-        [withdrawal] =>
-        {
-            #[cfg(feature = "testing")]
-            Ok(withdrawal.clone())
-        }
+        [withdrawal] => Ok(withdrawal.clone()),
         _ => {
             warn!(
                 "Found too many withdrawals for id {key}: {}",

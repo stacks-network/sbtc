@@ -339,7 +339,6 @@ pub(crate) trait TableIndexTrait {
     }
 
     /// Get all entries from a dynamodb table.
-    #[cfg(feature = "testing")]
     async fn get_all_entries(
         dynamodb_client: &aws_sdk_dynamodb::Client,
         settings: &Settings,
@@ -371,7 +370,6 @@ pub(crate) trait TableIndexTrait {
     }
 
     /// Generic delete table entry.
-    #[cfg(feature = "testing")]
     async fn delete_entry(
         dynamodb_client: &aws_sdk_dynamodb::Client,
         settings: &Settings,

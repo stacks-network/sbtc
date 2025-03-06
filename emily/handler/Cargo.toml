@@ -7,9 +7,8 @@ edition = "2021"
 ignored = []
 
 [features]
-default = ["testing"]
+default = []
 testing = []
-populate = ["testing"]
 
 [dependencies]
 aws-config.workspace = true
@@ -46,3 +45,4 @@ name = "emily-lambda"
 
 [[bin]]
 name = "emily-server"
+required-features = ["testing"]
