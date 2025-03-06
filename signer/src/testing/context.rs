@@ -537,17 +537,6 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .await
     }
 
-    async fn create_withdrawals(
-        &self,
-        create_withdrawals: Vec<emily_client::models::CreateWithdrawalRequestBody>,
-    ) -> Vec<Result<emily_client::models::Withdrawal, Error>> {
-        self.inner
-            .lock()
-            .await
-            .create_withdrawals(create_withdrawals)
-            .await
-    }
-
     async fn update_withdrawals(
         &self,
         update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
@@ -557,13 +546,6 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .await
             .update_withdrawals(update_withdrawals)
             .await
-    }
-
-    async fn set_chainstate(
-        &self,
-        chainstate: emily_client::models::Chainstate,
-    ) -> Result<emily_client::models::Chainstate, Error> {
-        self.inner.lock().await.set_chainstate(chainstate).await
     }
 
     async fn get_limits(&self) -> Result<SbtcLimits, Error> {
