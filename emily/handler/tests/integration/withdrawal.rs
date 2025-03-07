@@ -1,13 +1,16 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
-use crate::common::clean_setup;
-use testing_emily_client::apis;
-use testing_emily_client::apis::configuration::Configuration;
+use test_case::test_case;
+
+use testing_emily_client::apis::configuration::{ApiKey, Configuration};
+use testing_emily_client::apis::{self, ResponseContent};
 use testing_emily_client::models::{
     CreateWithdrawalRequestBody, Fulfillment, Status, UpdateWithdrawalsRequestBody, Withdrawal,
     WithdrawalInfo, WithdrawalParameters, WithdrawalUpdate,
 };
+
+use crate::common::clean_setup;
 
 const RECIPIENT: &'static str = "TEST_RECIPIENT";
 const SENDER: &'static str = "TEST_SENDER";
@@ -287,7 +290,7 @@ async fn get_withdrawals_by_recipient() {
         expected_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
         let mut actual_withdrawal_infos = actual_recipient_data.get(recipient).unwrap().clone();
         actual_withdrawal_infos.sort_by(arbitrary_withdrawal_info_partial_cmp);
-        // Assert that the expected and actual deposit infos are the same.
+        // Assert that the expected and actual withdrawal infos are the same.
         assert_eq!(expected_withdrawal_infos, actual_withdrawal_infos);
     }
 }
@@ -568,5 +571,146 @@ async fn update_withdrawals_updates_chainstate() {
             update_withdrawals_response.withdrawals[index].last_update_height,
             last_update_height
         );
+    }
+}
+
+#[tokio::test]
+#[test_case(Status::Pending, Status::Pending, "untrusted_api_key", true; "untrusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Accepted, "untrusted_api_key", false; "untrusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Reprocessing, "untrusted_api_key", true; "untrusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, "untrusted_api_key", true; "untrusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, "untrusted_api_key", true; "untrusted_key_pending_to_failed")]
+#[test_case(Status::Accepted, Status::Pending, "untrusted_api_key", true; "untrusted_key_accepted_to_pending")]
+#[test_case(Status::Failed, Status::Pending, "untrusted_api_key", true; "untrusted_key_failed_to_pending")]
+#[test_case(Status::Reprocessing, Status::Pending, "untrusted_api_key", true; "untrusted_key_reprocessing_to_pending")]
+#[test_case(Status::Confirmed, Status::Pending, "untrusted_api_key", true; "untrusted_key_confirmed_to_pending")]
+#[test_case(Status::Accepted, Status::Accepted, "untrusted_api_key", false; "untrusted_key_accepted_to_accepted")]
+#[test_case(Status::Failed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_failed_to_accepted")]
+#[test_case(Status::Reprocessing, Status::Accepted, "untrusted_api_key", true; "untrusted_key_reprocessing_to_accepted")]
+#[test_case(Status::Confirmed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_confirmed_to_accepted")]
+#[test_case(Status::Pending, Status::Accepted, "testApiKey", false; "trusted_key_pending_to_accepted")]
+#[test_case(Status::Pending, Status::Pending, "testApiKey", false; "trusted_key_pending_to_pending")]
+#[test_case(Status::Pending, Status::Reprocessing, "testApiKey", false; "trusted_key_pending_to_reprocessing")]
+#[test_case(Status::Pending, Status::Confirmed, "testApiKey", false; "trusted_key_pending_to_confirmed")]
+#[test_case(Status::Pending, Status::Failed, "testApiKey", false; "trusted_key_pending_to_failed")]
+#[test_case(Status::Confirmed, Status::Pending, "testApiKey", false; "trusted_key_confirmed_to_pending")]
+async fn update_withdrawals_is_forbidden(
+    previous_status: Status,
+    new_status: Status,
+    api_key: &str,
+    is_forbidden: bool,
+) {
+    // the testing configuration has privileged access to all endpoints.
+    let testing_configuration = clean_setup().await;
+
+    // the user configuration access depends on the api_key.
+    let mut user_configuration = testing_configuration.clone();
+    user_configuration.api_key = Some(ApiKey {
+        prefix: None,
+        key: api_key.to_string(),
+    });
+    // Arrange.
+    // --------
+    let request_id = 1;
+
+    // Setup test withdrawal transaction.
+    let request = CreateWithdrawalRequestBody {
+        amount: 10000,
+        parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
+        recipient: RECIPIENT.into(),
+        request_id,
+        stacks_block_hash: BLOCK_HASH.into(),
+        stacks_block_height: BLOCK_HEIGHT,
+    };
+
+    apis::withdrawal_api::create_withdrawal(&testing_configuration, request.clone())
+        .await
+        .expect("Received an error after making a valid create withdrawal request api call.");
+
+    // Update the withdrawal status with the privileged configuration.
+    if previous_status != Status::Pending {
+        let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
+
+        if previous_status == Status::Confirmed {
+            fulfillment = Some(Some(Box::new(Fulfillment {
+                bitcoin_block_hash: "bitcoin_block_hash".to_string(),
+                bitcoin_block_height: 23,
+                bitcoin_tx_index: 45,
+                bitcoin_txid: "test_fulfillment_bitcoin_txid".to_string(),
+                btc_fee: 2314,
+                stacks_txid: "test_fulfillment_stacks_txid".to_string(),
+            })));
+        }
+
+        apis::withdrawal_api::update_withdrawals(
+            &testing_configuration,
+            UpdateWithdrawalsRequestBody {
+                withdrawals: vec![WithdrawalUpdate {
+                    request_id,
+                    fulfillment,
+                    last_update_block_hash: "update_block_hash".into(),
+                    last_update_height: 34,
+                    status: previous_status,
+                    status_message: "foo".into(),
+                }],
+            },
+        )
+        .await
+        .expect("Received an error after making a valid update withdrawal api call.");
+    }
+
+    let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
+
+    if new_status == Status::Confirmed {
+        fulfillment = Some(Some(Box::new(Fulfillment {
+            bitcoin_block_hash: "bitcoin_block_hash".to_string(),
+            bitcoin_block_height: 23,
+            bitcoin_tx_index: 45,
+            bitcoin_txid: "test_fulfillment_bitcoin_txid".to_string(),
+            btc_fee: 2314,
+            stacks_txid: "test_fulfillment_stacks_txid".to_string(),
+        })));
+    }
+
+    let response = apis::withdrawal_api::update_withdrawals(
+        &user_configuration,
+        UpdateWithdrawalsRequestBody {
+            withdrawals: vec![WithdrawalUpdate {
+                request_id,
+                fulfillment,
+                last_update_block_hash: "update_block_hash".into(),
+                last_update_height: 34,
+                status: new_status,
+                status_message: "foo".into(),
+            }],
+        },
+    )
+    .await;
+
+    if is_forbidden {
+        assert!(response.is_err());
+        match response.unwrap_err() {
+            testing_emily_client::apis::Error::ResponseError(ResponseContent {
+                status, ..
+            }) => {
+                assert_eq!(status, 403);
+            }
+            e => panic!("Expected a 403 error, got {e}"),
+        }
+
+        let response = apis::withdrawal_api::get_withdrawal(&user_configuration, request_id)
+            .await
+            .expect("Received an error after making a valid get withdrawal api call.");
+        assert_eq!(response.request_id, request_id);
+        assert_eq!(response.status, previous_status);
+    } else {
+        assert!(response.is_ok());
+        let response = response.unwrap();
+        let withdrawal = response
+            .withdrawals
+            .first()
+            .expect("No withdrawal in response");
+        assert_eq!(withdrawal.request_id, request_id);
+        assert_eq!(withdrawal.status, new_status);
     }
 }
