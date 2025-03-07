@@ -3,7 +3,6 @@
 use bitcoin::consensus::Decodable as _;
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use emily_client::models::withdrawal;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -970,17 +969,6 @@ impl super::DbRead for SharedStore {
             })
             .map(|stacks_block| stacks_block.block_hash)
             .collect();
-
-        let mut withdrawal_signers = Vec::new();
-        for ((_id, _block_hash), signers) in &store.withdrawal_request_to_signers {
-            for signer in signers {
-                if stacks_blocks_in_context.contains(&signer.block_hash)
-                    && signer.signer_pub_key == *signer_public_key
-                {
-                    withdrawal_signers.push(signer.clone());
-                }
-            }
-        }
 
         let withdrawal_signers: Vec<_> = store
             .withdrawal_request_to_signers
