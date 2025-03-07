@@ -1004,6 +1004,10 @@ async fn create_deposit_handles_duplicates(status: Status) {
 #[test_case(Status::Failed, Status::Pending, "untrusted_api_key", true; "untrusted_key_failed_to_pending")]
 #[test_case(Status::Reprocessing, Status::Pending, "untrusted_api_key", true; "untrusted_key_reprocessing_to_pending")]
 #[test_case(Status::Confirmed, Status::Pending, "untrusted_api_key", true; "untrusted_key_confirmed_to_pending")]
+#[test_case(Status::Accepted, Status::Accepted, "untrusted_api_key", false; "untrusted_key_accepted_to_accepted")]
+#[test_case(Status::Failed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_failed_to_accepted")]
+#[test_case(Status::Reprocessing, Status::Accepted, "untrusted_api_key", true; "untrusted_key_reprocessing_to_accepted")]
+#[test_case(Status::Confirmed, Status::Accepted, "untrusted_api_key", true; "untrusted_key_confirmed_to_accepted")]
 #[test_case(Status::Pending, Status::Accepted, "testApiKey", false; "trusted_key_pending_to_accepted")]
 #[test_case(Status::Pending, Status::Pending, "testApiKey", false; "trusted_key_pending_to_pending")]
 #[test_case(Status::Pending, Status::Reprocessing, "testApiKey", false; "trusted_key_pending_to_reprocessing")]
@@ -1048,12 +1052,12 @@ async fn update_deposits_is_forbidden(
         transaction_hex: transaction_hex.clone(),
     };
 
-    // Update the withdrawal status with the privileged configuration.
+    // Update the deposit status with the privileged configuration.
     apis::deposit_api::create_deposit(&testing_configuration, create_deposit_body.clone())
         .await
         .expect("Received an error after making a valid create deposit request api call.");
 
-    // Update the withdrawal status with the privileged configuration.
+    // Update the deposit status with the privileged configuration.
     if previous_status != Status::Pending {
         let mut fulfillment: Option<Option<Box<Fulfillment>>> = None;
 
