@@ -24,7 +24,6 @@ use crate::storage::DbWrite;
 use crate::testing;
 use crate::testing::storage::model::TestData;
 
-use emily_client::models::withdrawal;
 use hashbrown::HashSet;
 use rand::SeedableRng as _;
 use tokio::sync::broadcast;

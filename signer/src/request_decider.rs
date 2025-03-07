@@ -30,7 +30,7 @@ use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::DepositSigner;
 use crate::storage::model::WithdrawalSigner;
-use crate::storage::DbRead;
+use crate::storage::DbRead as _;
 use crate::storage::DbWrite as _;
 
 use futures::StreamExt;
@@ -191,7 +191,7 @@ where
             .handle_withdrawal_decisions_to_retry(withdrawal_decisions_to_retry, &chain_tip)
             .await
             .inspect_err(
-                |error| tracing::warn!(%error, "error handling deposit decisions to retry"),
+                |error| tracing::warn!(%error, "error handling withdrawal decisions to retry"),
             );
 
         let withdraw_requests = db
