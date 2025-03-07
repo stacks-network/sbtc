@@ -64,7 +64,7 @@ version = "0.3.8"
 criteria = "safe-to-deploy"
 
 [[exemptions.arrayvec]]
-version = "0.7.4"
+version = "0.7.6"
 criteria = "safe-to-deploy"
 
 [[exemptions.asn1-rs]]
@@ -85,6 +85,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.assert-json-diff]]
 version = "2.0.2"
+criteria = "safe-to-run"
+
+[[exemptions.assert_matches]]
+version = "1.5.0"
 criteria = "safe-to-run"
 
 [[exemptions.async-channel]]
@@ -250,6 +254,14 @@ criteria = "safe-to-deploy"
 [[exemptions.bindgen]]
 version = "0.64.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.bit-set]]
+version = "0.8.0"
+criteria = "safe-to-run"
+
+[[exemptions.bit-vec]]
+version = "0.8.0"
+criteria = "safe-to-run"
 
 [[exemptions.bitcoin]]
 version = "0.32.5"
@@ -1615,6 +1627,10 @@ criteria = "safe-to-deploy"
 version = "0.4.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.proptest]]
+version = "1.6.0"
+criteria = "safe-to-run"
+
 [[exemptions.prost]]
 version = "0.13.4"
 criteria = "safe-to-deploy"
@@ -1690,6 +1706,10 @@ criteria = "safe-to-deploy"
 [[exemptions.rand_core]]
 version = "0.6.4"
 criteria = "safe-to-deploy"
+
+[[exemptions.rand_xorshift]]
+version = "0.3.0"
+criteria = "safe-to-run"
 
 [[exemptions.rand_xoshiro]]
 version = "0.6.0"
@@ -1862,6 +1882,10 @@ criteria = "safe-to-deploy"
 [[exemptions.rustversion]]
 version = "1.0.17"
 criteria = "safe-to-deploy"
+
+[[exemptions.rusty-fork]]
+version = "0.3.0"
+criteria = "safe-to-run"
 
 [[exemptions.rw-stream-sink]]
 version = "0.4.0"
@@ -2411,6 +2435,10 @@ criteria = "safe-to-deploy"
 version = "0.10.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.unarray]]
+version = "0.1.4"
+criteria = "safe-to-run"
+
 [[exemptions.unicase]]
 version = "2.7.0"
 criteria = "safe-to-deploy"
@@ -2498,6 +2526,10 @@ criteria = "safe-to-deploy"
 [[exemptions.vsimd]]
 version = "0.8.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.wait-timeout]]
+version = "0.2.1"
+criteria = "safe-to-run"
 
 [[exemptions.walkdir]]
 version = "2.5.0"
@@ -2725,10 +2757,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.ws2_32-sys]]
 version = "0.2.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wsts]]
-version = "10.0.0@git:a7bf38bd54cddf0b78c0f7c521a5ed1537a684fa"
 criteria = "safe-to-deploy"
 
 [[exemptions.wyz]]
