@@ -618,6 +618,7 @@ async fn update_withdrawals_is_forbidden(
         amount: 10000,
         parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
         recipient: RECIPIENT.into(),
+        sender: SENDER.into(),
         request_id,
         stacks_block_hash: BLOCK_HASH.into(),
         stacks_block_height: BLOCK_HEIGHT,
