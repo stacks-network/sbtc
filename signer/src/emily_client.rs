@@ -94,7 +94,7 @@ pub trait EmilyInteract: Sync + Send {
         &self,
     ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> + Send;
 
-    /// Get pending deposits from Emily.
+    /// Get pending deposits with a specific status from Emily.
     fn get_deposits_with_status(
         &self,
         status: Status,
