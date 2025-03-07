@@ -3,6 +3,7 @@
 use bitcoin::consensus::Decodable as _;
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use emily_client::models::withdrawal;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
@@ -929,11 +930,59 @@ impl super::DbRead for SharedStore {
 
     async fn get_withdrawal_signer_decisions(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
-        _context_window: u16,
-        _signer_public_key: &PublicKey,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> Result<Vec<model::WithdrawalSigner>, Error> {
-        unimplemented!();
+        let store = self.lock().await;
+
+        let first_block = store.bitcoin_blocks.get(chain_tip);
+
+        let context_window_end_block = std::iter::successors(first_block, |block| {
+            Some(
+                store
+                    .bitcoin_blocks
+                    .get(&block.parent_hash)
+                    .unwrap_or(block),
+            )
+        })
+        .nth(context_window as usize);
+
+        let Some(context_window_end_block) = context_window_end_block else {
+            return Ok(Vec::new());
+        };
+
+        let Some(stacks_chain_tip) = store.get_stacks_chain_tip(chain_tip) else {
+            return Ok(Vec::new());
+        };
+
+        let stacks_blocks_in_context: HashSet<_> =
+            std::iter::successors(Some(&stacks_chain_tip), |stacks_block| {
+                store.stacks_blocks.get(&stacks_block.parent_hash)
+            })
+            .take_while(|stacks_block| {
+                store
+                    .bitcoin_blocks
+                    .get(&stacks_block.bitcoin_anchor)
+                    .is_some_and(|anchor| {
+                        anchor.block_height >= context_window_end_block.block_height
+                    })
+            })
+            .map(|stacks_block| stacks_block.block_hash)
+            .collect();
+
+        let mut withdrawal_signers = Vec::new();
+        for ((_id, _block_hash), signers) in &store.withdrawal_request_to_signers {
+            for signer in signers {
+                if stacks_blocks_in_context.contains(&signer.block_hash)
+                    && signer.signer_pub_key == *signer_public_key
+                {
+                    withdrawal_signers.push(signer.clone());
+                }
+            }
+        }
+
+        Ok(withdrawal_signers)
     }
 
     async fn get_deposit_signer_decisions(
