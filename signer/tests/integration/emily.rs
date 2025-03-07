@@ -752,5 +752,16 @@ async fn test_get_deposits_returns_pending_and_accepted() {
 
     // Check that we get all deposits
     let deposits = emily_client.get_deposits().await.unwrap();
+    let accepted_deposits = emily_client
+        .get_deposits_with_status(Status::Accepted)
+        .await
+        .unwrap();
+    let pending_deposits = emily_client
+        .get_deposits_with_status(Status::Pending)
+        .await
+        .unwrap();
+
     assert_eq!(deposits.len(), num_deposits);
+    assert_eq!(accepted_deposits.len(), num_accepted);
+    assert_eq!(pending_deposits.len(), num_deposits - num_accepted);
 }
