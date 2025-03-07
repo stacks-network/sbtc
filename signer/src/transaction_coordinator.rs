@@ -613,7 +613,7 @@ where
         // If `get_pending_requests()` returns `Ok(None)` then there are no
         // eligible requests to service; we can exit early.
         let Some(pending_requests) = pending_requests_fut.await? else {
-            tracing::debug!("no bitcoin requests to handle");
+            tracing::debug!("no requests to handle on bitcoin");
             return Ok(());
         };
 
