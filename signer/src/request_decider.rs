@@ -31,7 +31,6 @@ use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::DepositSigner;
 use crate::storage::model::WithdrawalSigner;
 use crate::storage::DbRead;
-use crate::storage::DbRead as _;
 use crate::storage::DbWrite as _;
 
 use futures::StreamExt;
