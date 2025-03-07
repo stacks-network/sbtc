@@ -2527,6 +2527,15 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::WithdrawalSigner>, Error> {
+        unimplemented!();
+    }
+
     async fn get_deposit_signer_decisions(
         &self,
         chain_tip: &model::BitcoinBlockHash,
