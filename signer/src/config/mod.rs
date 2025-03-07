@@ -646,7 +646,7 @@ mod tests {
         );
         assert_eq!(settings.signer.dkg_verification_window, 10);
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
-        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
     }
 
     #[test]
