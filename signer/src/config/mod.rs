@@ -505,7 +505,7 @@ impl Settings {
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         )?;
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
-        cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 15)?;
+        cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 10)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
 
         if let Some(path) = config_path {
@@ -646,7 +646,7 @@ mod tests {
         );
         assert_eq!(settings.signer.dkg_verification_window, 10);
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
-        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
     }
 
     #[test]
@@ -988,7 +988,7 @@ mod tests {
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
 
-        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
     }
 
     #[test]

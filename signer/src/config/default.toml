@@ -41,7 +41,7 @@ endpoints = [
 # The pagination timeout, in seconds, used to fetch deposits requests from Emily.
 # Required: false
 # Environment: SIGNER_EMILY__PAGINATION_TIMEOUT
-# pagination_timeout = 15
+# pagination_timeout = 10
 
 # !! ==============================================================================
 # !! Bitcoin Core Configuration
