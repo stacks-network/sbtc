@@ -305,18 +305,20 @@ pub async fn create_withdrawal(
     responses(
         (status = 201, description = "Withdrawals updated successfully", body = UpdateWithdrawalsResponse),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context))]
+#[instrument(skip(context, api_key))]
 pub async fn update_withdrawals(
     context: EmilyContext,
     api_key: String,
     body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
+    tracing::debug!("in update withdrawals");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
@@ -330,19 +332,32 @@ pub async fn update_withdrawals(
         // in order to enforce added stability to the API during a reorg.
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
+
+        let is_trusted_key = context.settings.trusted_reorg_api_key == api_key;
+        // Signers are only allowed to update withdrawals to the accepted state.
+        if !is_trusted_key {
+            let is_unauthorized = body
+                .withdrawals
+                .iter()
+                .any(|withdrawal| withdrawal.status != Status::Accepted);
+
+            if is_unauthorized {
+                return Err(Error::Forbidden);
+            }
+        }
+
         // Validate request.
         let validated_request: ValidatedUpdateWithdrawalRequest = body.try_into()?;
 
         // Infer the new chainstates that would come from these withdrawal updates and then
         // attempt to update the chainstates.
         let inferred_chainstates = validated_request.inferred_chainstates();
-        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
         for chainstate in inferred_chainstates {
             // TODO(TBD): Determine what happens if this occurs in multiple lambda
             // instances at once.
             crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(
                 &context,
-                can_reorg,
+                is_trusted_key,
                 &chainstate,
             )
             .await?;
@@ -357,16 +372,20 @@ pub async fn update_withdrawals(
             let request_id = update.request_id;
             debug!(request_id, "updating withdrawal");
 
-            let updated_withdrawal =
-                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15)
-                    .await
-                    .inspect_err(|error| {
-                        tracing::error!(
-                            request_id,
-                            %error,
-                            "failed to update withdrawal",
-                        );
-                    })?;
+            let updated_withdrawal = accessors::pull_and_update_withdrawal_with_retry(
+                &context,
+                update,
+                15,
+                is_trusted_key,
+            )
+            .await
+            .inspect_err(|error| {
+                tracing::error!(
+                    request_id,
+                    %error,
+                    "failed to update withdrawal",
+                );
+            })?;
 
             let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
                 // This should never happen, because the withdrawal was
