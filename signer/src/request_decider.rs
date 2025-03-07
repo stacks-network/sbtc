@@ -194,7 +194,7 @@ where
             .inspect_err(
                 |error| tracing::warn!(%error, "error handling deposit decisions to retry"),
             );
-            
+
         let withdraw_requests = db
             .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
@@ -212,8 +212,6 @@ where
                     )
                 });
         }
-
-        
 
         Ok(())
     }

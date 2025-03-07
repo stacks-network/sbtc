@@ -132,7 +132,6 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
 
-
     /// Get all the withdrewal decisions for the given signer in the given window
     /// of blocks.
     fn get_withdrawal_signer_decisions(

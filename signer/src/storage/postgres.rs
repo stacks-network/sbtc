@@ -2533,7 +2533,33 @@ impl super::DbRead for PgStore {
         context_window: u16,
         signer_public_key: &PublicKey,
     ) -> Result<Vec<model::WithdrawalSigner>, Error> {
-        unimplemented!();
+        sqlx::query_as::<_, model::WithdrawalSigner>(
+            r#"
+            WITH target_block AS (
+                SELECT blocks.block_hash, blocks.created_at
+                FROM sbtc_signer.bitcoin_blockchain_of($1, $2) chain
+                JOIN sbtc_signer.bitcoin_blocks blocks USING (block_hash)
+                ORDER BY chain.block_height ASC
+                LIMIT 1
+            )
+            SELECT
+                ws.request_id,
+                ws.txid,
+                ws.block_hash,
+                ws.signer_pub_key,
+                ws.is_accepted
+
+            FROM sbtc_signer.withdrawal_signers ws
+            WHERE ws.signer_pub_key = $3
+              AND ws.created_at >= (SELECT created_at FROM target_block)
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(signer_public_key)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
     }
 
     async fn get_deposit_signer_decisions(
