@@ -98,7 +98,7 @@ integration-env-up-ci: emily-cdk-synth
 		TRUSTED_REORG_API_KEY=testApiKey \
 		DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS \
 		python3 docker/sbtc/emily-aws-setup/initialize.py
-	cargo $(CARGO_FLAGS) build --bin emily-server
+	cargo $(CARGO_FLAGS) build --features "testing" --bin emily-server
 	AWS_ACCESS_KEY_ID=xxxxxxxxxxxx \
 		AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxx \
 		AWS_REGION=us-west-2 \

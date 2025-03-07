@@ -32,7 +32,7 @@ RUN make install && make build
 
 # Build Emily Server.
 # --------------------
-RUN cargo build --bin emily-server
+RUN cargo build --features "testing" --bin emily-server
 
 # Build Emily AWS setup.
 # -----------------------
