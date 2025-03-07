@@ -255,6 +255,7 @@ export class EmilyStack extends cdk.Stack {
                 "StacksBlockHash",
                 "StacksBlockHeight",
                 "Recipient",
+                "Sender",
                 "Amount",
                 "LastUpdateBlockHash",
             ]
@@ -277,12 +278,34 @@ export class EmilyStack extends cdk.Stack {
                 "StacksBlockHash",
                 "StacksBlockHeight",
                 "OpStatus",
+                "Sender",
                 "Amount",
                 "LastUpdateBlockHash",
             ]
         });
 
-        // TODO(388): Add an additional GSI for querying by user; not required for MVP.
+        const bySenderIndexName: string = "WithdrawalSender";
+        table.addGlobalSecondaryIndex({
+            indexName: bySenderIndexName,
+            partitionKey: {
+                name: 'Sender',
+                type: dynamodb.AttributeType.STRING
+            },
+            sortKey: {
+                name: 'LastUpdateHeight',
+                type: dynamodb.AttributeType.NUMBER
+            },
+            projectionType: dynamodb.ProjectionType.INCLUDE,
+            nonKeyAttributes: [
+                "RequestId",
+                "StacksBlockHash",
+                "StacksBlockHeight",
+                "OpStatus",
+                "Recipient",
+                "Amount",
+                "LastUpdateBlockHash",
+            ]
+        });
         return table;
     }
 
