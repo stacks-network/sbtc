@@ -567,6 +567,7 @@ mod tests {
             context,
             context_window: 6,
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
             num_signers: 7,
             signing_threshold: 5,
             test_model_parameters,
