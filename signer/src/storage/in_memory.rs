@@ -929,9 +929,9 @@ impl super::DbRead for SharedStore {
 
     async fn get_withdrawal_signer_decisions(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        signer_public_key: &PublicKey,
+        _chain_tip: &model::BitcoinBlockHash,
+        _context_window: u16,
+        _signer_public_key: &PublicKey,
     ) -> Result<Vec<model::WithdrawalSigner>, Error> {
         unimplemented!();
     }
