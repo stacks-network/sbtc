@@ -84,7 +84,6 @@ pub trait Encodable {
     ///
     /// The encoding process analyzes value patterns and selects the optimal
     /// compression strategy to minimize byte size.
-    #[allow(unused)]
     fn encode(&self) -> Result<Vec<u8>, SegmentEncodeError>;
 }
 
@@ -97,7 +96,6 @@ pub trait Decodable: Sized {
     /// - Single value encoding with no payload
     /// - Bitset encoding with various bitmap optimizations
     /// - Fixed-width delta encoding with bit packing and special cases
-    #[allow(unused)]
     fn decode(bytes: &[u8]) -> Result<Self, SegmentDecodeError>;
 }
 
