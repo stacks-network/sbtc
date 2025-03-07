@@ -982,6 +982,18 @@ impl super::DbRead for SharedStore {
             }
         }
 
+        let withdrawal_signers: Vec<_> = store
+            .withdrawal_request_to_signers
+            .iter()
+            .map(|(_, signers)| signers)
+            .flatten()
+            .filter(|signer| {
+                stacks_blocks_in_context.contains(&signer.block_hash)
+                    && signer.signer_pub_key == *signer_public_key
+            })
+            .cloned()
+            .collect();
+
         Ok(withdrawal_signers)
     }
 
