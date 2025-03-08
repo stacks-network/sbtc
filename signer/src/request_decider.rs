@@ -79,6 +79,7 @@ where
         name = "request-decider"
     )]
     pub async fn run(mut self) -> Result<(), Error> {
+        eprintln!("decider context window: {}", self.context_window);
         let start_message = RequestDeciderEvent::EventLoopStarted.into();
         if let Err(error) = self.context.signal(start_message) {
             tracing::error!(%error, "error signaling event loop start");
@@ -136,6 +137,8 @@ where
             .await?
             .ok_or(Error::NoChainTip)?;
 
+        eprintln!("decider bitcoin chain tip: {}", chain_tip);
+
         let signer_public_key = self.signer_public_key();
 
         let span = tracing::Span::current();
@@ -176,9 +179,13 @@ where
                 });
         }
 
+        eprintln!("decider context window 222: {:?}", self.context_window);
         let withdraw_requests = db
             .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
+
+
+        eprintln!("decider withdraw requests: {:?}", withdraw_requests);
 
         for withdraw_request in withdraw_requests {
             let request_id = withdraw_request.request_id;
