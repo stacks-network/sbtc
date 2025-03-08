@@ -349,6 +349,8 @@ pub struct SignerConfig {
     /// The number of bitcoin blocks after a DKG start where we attempt to
     /// verify the shares. After this many blocks, we mark the shares as failed.
     pub dkg_verification_window: u16,
+    /// The maximum stacks fee in microSTX that the signer will accept for any stacks transaction.
+    pub stacks_fees_max_ustx: NonZeroU64,
 }
 
 impl Validatable for SignerConfig {
@@ -507,6 +509,7 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
         cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 10)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
+        cfg_builder = cfg_builder.set_default("signer.stacks_fees_max_ustx", 1_500_000)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -989,6 +992,34 @@ mod tests {
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
 
         assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
+    }
+
+    #[test]
+    fn stacks_fees_max_ustx_can_be_loaded_from_environment() {
+        clear_env();
+        let expected_stacks_fees_max_ustx = NonZeroU64::new(1234).unwrap();
+        std::env::set_var(
+            "SIGNER_SIGNER__STACKS_FEES_MAX_USTX",
+            format!("{expected_stacks_fees_max_ustx}"),
+        );
+        assert_eq!(
+            Settings::new_from_default_config()
+                .unwrap()
+                .signer
+                .stacks_fees_max_ustx,
+            expected_stacks_fees_max_ustx,
+        );
+    }
+
+    #[test]
+    fn zero_values_for_nonzero_fields_fail_in_signer_config() {
+        fn test_one(field: &str) {
+            clear_env();
+            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+            let _ = Settings::new_from_default_config()
+                .expect_err(&format!("Value for {field} must be non zero"));
+        }
+        test_one("stacks_fees_max_ustx");
     }
 
     #[test]
