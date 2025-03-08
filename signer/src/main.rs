@@ -239,6 +239,7 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
         .add_external_addresses(&ctx.config().signer.p2p.public_endpoints)
         .enable_mdns(config.signer.p2p.enable_mdns)
         .enable_quic_transport(enable_quic)
+        .with_initial_bootstrap_delay(Duration::from_secs(3))
         .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
