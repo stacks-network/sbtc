@@ -62,6 +62,7 @@ pub enum GetWithdrawalsForRecipientError {
 #[serde(untagged)]
 pub enum UpdateWithdrawalsError {
     Status400(models::ErrorResponse),
+    Status403(models::ErrorResponse),
     Status404(models::ErrorResponse),
     Status405(models::ErrorResponse),
     Status500(models::ErrorResponse),

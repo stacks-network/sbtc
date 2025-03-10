@@ -9,6 +9,7 @@ OUTPUT_CDK_TEMPLATE = os.environ["OUTPUT_CDK_TEMPLATE"]
 DYNAMODB_ENDPOINT = os.environ["DYNAMODB_ENDPOINT"]
 LOCAL_LAMBDA_PATH = os.environ["LOCAL_LAMBDA_PATH"]
 TRUSTED_REORG_API_KEY = os.environ["TRUSTED_REORG_API_KEY"]
+DEPLOYER_ADDRESS = os.environ["DEPLOYER_ADDRESS"]
 
 def main():
     """
@@ -112,7 +113,7 @@ def replace_local_lambda_path(template, local_lambda_path):
     """
 
     # Ensure we don't modify the original template so this function doesn't
-    # have unintented side effects.
+    # have unintended side effects.
     modified_template = copy.deepcopy(template)
     lambda_template_resource_ids = get_template_resource_ids_for_resources_type(
         modified_template, "AWS::Lambda::Function")

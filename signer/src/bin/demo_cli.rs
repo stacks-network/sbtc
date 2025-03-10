@@ -9,13 +9,16 @@ use bitcoin::{Address, XOnlyPublicKey};
 use bitcoincore_rpc::{json, Client as BitcoinClient, RpcApi as _};
 use blockstack_lib::chainstate::stacks::address::{PoxAddressType20, PoxAddressType32};
 use blockstack_lib::chainstate::stacks::{
-    SinglesigHashMode, SinglesigSpendingCondition, StacksTransaction, TransactionAnchorMode,
-    TransactionAuth, TransactionPayload, TransactionPublicKeyEncoding,
+    SinglesigHashMode, SinglesigSpendingCondition, StacksTransaction, TokenTransferMemo,
+    TransactionAnchorMode, TransactionAuth, TransactionPayload, TransactionPublicKeyEncoding,
     TransactionSpendingCondition, TransactionVersion,
 };
 use clap::{Args, Parser, Subcommand};
 use clarity::consts::{CHAIN_ID_MAINNET, CHAIN_ID_TESTNET};
 use clarity::util::secp256k1::MessageSignature;
+use clarity::vm::types::TupleData;
+use clarity::vm::ClarityName;
+use clarity::vm::Value as ClarityValue;
 use clarity::{
     types::{chainstate::StacksAddress, Address as _},
     vm::types::{PrincipalData, StandardPrincipalData},
@@ -28,16 +31,13 @@ use emily_client::{
     },
     models::CreateDepositRequestBody,
 };
-use fake::Fake as _;
-use rand::rngs::OsRng;
 use sbtc::deposits::{DepositScriptInputs, ReclaimScriptInputs};
 use signer::config::Settings;
+use signer::context::Context as SignerCtx;
 use signer::keys::{PrivateKey, PublicKey, SignerScriptPubKey};
 use signer::signature::{sign_stacks_tx, RecoverableEcdsaSignature as _};
 use signer::stacks::api::{StacksClient, StacksInteract};
-use signer::stacks::contracts::{AsContractCall as _, AsTxPayload as _};
-use signer::storage::model::StacksPrincipal;
-use signer::testing::wallet::InitiateWithdrawalRequest;
+use signer::stacks::contracts::{AsContractCall, AsTxPayload as _, ReqContext};
 use stacks_common::address::{
     AddressHashMode, C32_ADDRESS_VERSION_MAINNET_SINGLESIG, C32_ADDRESS_VERSION_TESTNET_SINGLESIG,
 };
@@ -89,6 +89,28 @@ enum CliCommand {
     Withdraw(WithdrawArgs),
     Donation(DonationArgs),
     Info,
+    FundBtc(FundBtcArgs),
+    FundStx(FundStxArgs),
+}
+
+#[derive(Debug, Args)]
+struct FundBtcArgs {
+    /// Amount to fund in satoshis
+    #[clap(long, default_value = "100000000")] // 1 BTC
+    amount: u64,
+    /// The recipient of the funds
+    #[clap(long)]
+    recipient: String,
+}
+
+#[derive(Debug, Args)]
+struct FundStxArgs {
+    /// Amount to fund in STX
+    #[clap(long, default_value = "100")]
+    amount: u64,
+    /// The recipient of the funds
+    #[clap(long)]
+    recipient: String,
 }
 
 #[derive(Debug, Args)]
@@ -103,7 +125,7 @@ struct DepositArgs {
     #[clap(long = "lock-time", default_value = "10")]
     lock_time: u32,
     /// The beneficiary Stacks address to receive the deposit in sBTC.
-    #[clap(long = "recipient", default_value = DEMO_STACKS_ADDR)]
+    #[clap(default_value = DEMO_STACKS_ADDR)]
     recipient: String,
 }
 
@@ -119,7 +141,7 @@ struct WithdrawArgs {
     #[clap(long = "sender-sk", default_value = DEMO_PRIVATE_KEY)]
     sender_sk: String,
     /// The BTC recipient.
-    #[clap(long = "recipient", default_value = DEMO_BITCOIN_ADDR)]
+    #[clap(default_value = DEMO_BITCOIN_ADDR)]
     recipient: String,
 }
 
@@ -136,6 +158,53 @@ struct Context {
     emily_config: EmilyConfig,
     deployer: StacksAddress,
     network: bitcoin::Network,
+}
+
+/// A type for initiating withdrawal requests for testing
+#[derive(Debug)]
+pub struct InitiateWithdrawalRequest {
+    /// The amount of sBTC to send to the recipient, in sats.
+    pub amount: u64,
+    /// The recipient, defined as a Pox address.
+    pub recipient: (u8, Vec<u8>),
+    /// The maximum fee amount of sats to pay to the bitcoin miners when
+    /// sending to the recipient.
+    pub max_fee: u64,
+    /// The address that deployed the contract.
+    pub deployer: StacksAddress,
+}
+
+impl AsContractCall for InitiateWithdrawalRequest {
+    const CONTRACT_NAME: &'static str = "sbtc-withdrawal";
+    const FUNCTION_NAME: &'static str = "initiate-withdrawal-request";
+    /// The stacks address that deployed the contract.
+    fn deployer_address(&self) -> StacksAddress {
+        self.deployer
+    }
+    /// The arguments to the clarity function.
+    fn as_contract_args(&self) -> Vec<ClarityValue> {
+        let data = vec![
+            (
+                ClarityName::from("version"),
+                ClarityValue::buff_from_byte(self.recipient.0),
+            ),
+            (
+                ClarityName::from("hashbytes"),
+                ClarityValue::buff_from(self.recipient.1.clone()).unwrap(),
+            ),
+        ];
+        vec![
+            ClarityValue::UInt(self.amount as u128),
+            ClarityValue::Tuple(TupleData::from_data(data).unwrap()),
+            ClarityValue::UInt(self.max_fee as u128),
+        ]
+    }
+    async fn validate<C>(&self, _: &C, _: &ReqContext) -> Result<(), signer::error::Error>
+    where
+        C: SignerCtx + Send + Sync,
+    {
+        Ok(())
+    }
 }
 
 impl Context {
@@ -177,6 +246,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         CliCommand::Withdraw(args) => exec_withdraw(&ctx, args).await?,
         CliCommand::Donation(args) => exec_donation(&ctx, args).await?,
         CliCommand::Info => exec_info(&ctx).await?,
+        CliCommand::FundBtc(args) => exec_fund_btc(&ctx, args).await?,
+        CliCommand::FundStx(args) => exec_fund_stx(&ctx, args).await?,
     }
     Ok(())
 }
@@ -312,11 +383,7 @@ async fn exec_info(ctx: &Context) -> Result<(), Error> {
     let address = Address::from_script(&x_only.signers_script_pubkey(), ctx.network).unwrap();
     println!("Signers regtest bitcoin address (for donation): {address}");
 
-    let random_principal: StacksPrincipal = fake::Faker.fake_with_rng(&mut OsRng);
-    println!(
-        "Random stacks address (for demo recipient): {}",
-        *random_principal
-    );
+    println!("Stacks address (for demo recipient): {DEMO_STACKS_ADDR}");
 
     Ok(())
 }
@@ -522,4 +589,45 @@ fn get_transaction(
         version: Version::TWO,
         lock_time: absolute::LockTime::ZERO,
     })
+}
+
+async fn exec_fund_btc(ctx: &Context, args: FundBtcArgs) -> Result<(), Error> {
+    let recipient_addr = Address::from_str(&args.recipient)?.require_network(ctx.network)?;
+
+    let unsigned_tx = get_transaction(
+        &ctx.bitcoin_client,
+        TxOut {
+            value: Amount::from_sat(args.amount),
+            script_pubkey: recipient_addr.script_pubkey(),
+        },
+        Amount::from_sat(153),
+    )?;
+
+    let signed_tx =
+        ctx.bitcoin_client
+            .sign_raw_transaction_with_wallet(&unsigned_tx, None, None)?;
+    let tx_id = ctx.bitcoin_client.send_raw_transaction(&signed_tx.hex)?;
+    println!("Transaction sent: {tx_id}");
+
+    Ok(())
+}
+
+async fn exec_fund_stx(ctx: &Context, args: FundStxArgs) -> Result<(), Error> {
+    let recipient = PrincipalData::parse(&args.recipient).expect("cannot parse recipient");
+
+    let payload = TransactionPayload::TokenTransfer(
+        recipient,
+        args.amount * 1_000_000,
+        TokenTransferMemo([0u8; 34]),
+    );
+
+    // Using `DEMO_PRIVATE_KEY` as fund sender
+    let tx = create_stacks_tx(ctx, payload, DEMO_PRIVATE_KEY.to_owned()).await?;
+
+    println!(
+        "Submitted stacks tx: {:?}",
+        ctx.stacks_client.submit_tx(&tx).await
+    );
+
+    Ok(())
 }

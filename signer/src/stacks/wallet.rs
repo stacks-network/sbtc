@@ -33,7 +33,6 @@ use crate::keys::PrivateKey;
 use crate::keys::PublicKey;
 use crate::signature::RecoverableEcdsaSignature as _;
 use crate::signature::SighashDigest as _;
-use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::AsTxPayload;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::DbRead;
@@ -329,17 +328,6 @@ impl MultisigTx {
         Self { digest, signatures, tx }
     }
 
-    /// Create a new Stacks transaction for a contract call that can be
-    /// signed by the signers' multi-sig wallet.
-    #[cfg(any(test, feature = "testing"))]
-    pub fn new_contract_call<T>(contract: T, wallet: &SignerWallet, tx_fee: u64) -> Self
-    where
-        T: AsContractCall,
-    {
-        use crate::testing::wallet::ContractCallWrapper;
-        Self::new_tx(&ContractCallWrapper(contract), wallet, tx_fee)
-    }
-
     /// Return a reference to the underlying transaction
     pub fn tx(&self) -> &StacksTransaction {
         &self.tx
@@ -461,6 +449,7 @@ mod tests {
 
     use crate::context::Context;
     use crate::signature::sign_stacks_tx;
+    use crate::stacks::contracts::AsContractCall;
     use crate::stacks::contracts::ReqContext;
     use crate::storage::model;
     use crate::storage::model::RotateKeysTransaction;
@@ -475,6 +464,18 @@ mod tests {
 
     // This is the transaction fee. It doesn't matter what value we choose.
     const TX_FEE: u64 = 25;
+
+    impl MultisigTx {
+        /// Create a new Stacks transaction for a contract call that can be
+        /// signed by the signers' multi-sig wallet.
+        pub fn new_contract_call<T>(contract: T, wallet: &SignerWallet, tx_fee: u64) -> Self
+        where
+            T: AsContractCall,
+        {
+            use crate::testing::wallet::ContractCallWrapper;
+            Self::new_tx(&ContractCallWrapper(contract), wallet, tx_fee)
+        }
+    }
 
     struct TestContractCall;
 
