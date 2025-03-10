@@ -52,6 +52,7 @@ use clarity::vm::types::SequenceData;
 use clarity::vm::Value;
 use fake::Fake as _;
 use fake::Faker;
+use rand::seq::IteratorRandom;
 use rand::SeedableRng as _;
 
 use super::context::TestContext;
@@ -672,19 +673,21 @@ where
             ..fake::Faker.fake_with_rng::<model::WithdrawalRequest, _>(&mut rng)
         };
 
+        // Too big outindex will make this test slow and don't really happen in practice
+        // Output index smaller than 2 is invalid in our case
+        let output_index: u32 = (2..200).choose(&mut rng).unwrap();
+
+        let mut output = vec![bitcoin::TxOut::NULL; output_index as usize];
+        output.push(bitcoin::TxOut {
+            value: bitcoin::Amount::from_sat(withdrawal_req.amount),
+            script_pubkey: bitcoin_aggregate_key.signers_script_pubkey(),
+        });
+
         // Create test data for the withdrawal sweep tx
         let sweep_block_hash = bitcoin::BlockHash::all_zeros();
         let sweep_tx = bitcoin::Transaction {
             input: vec![],
-            output: vec![
-                // Note: `assess_output_fee` expects a valid `vout` index to be at least the third output (index 2).
-                bitcoin::TxOut::NULL,
-                bitcoin::TxOut::NULL,
-                bitcoin::TxOut {
-                    value: bitcoin::Amount::from_sat(withdrawal_req.amount),
-                    script_pubkey: bitcoin_aggregate_key.signers_script_pubkey(),
-                },
-            ],
+            output,
             version: bitcoin::transaction::Version::TWO,
             lock_time: bitcoin::absolute::LockTime::ZERO,
         };
@@ -712,6 +715,7 @@ where
         };
 
         let withdrawal_req = model::SweptWithdrawalRequest {
+            output_index,
             request_id: withdrawal_req.request_id,
             txid: withdrawal_req.txid,
             block_hash: stacks_block.block_hash,
@@ -721,7 +725,10 @@ where
             ..fake::Faker.fake_with_rng(&mut rng)
         };
 
-        let withdrawal_fee = sweep_tx_info.assess_output_fee(2).unwrap().to_sat();
+        let withdrawal_fee = sweep_tx_info
+            .assess_output_fee(output_index as usize)
+            .unwrap()
+            .to_sat();
 
         // Add estimate_fee_rate
         self.context
