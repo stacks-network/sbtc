@@ -268,7 +268,10 @@ impl EncodingStrategy for BitsetStrategy {
         let mut bitmap = vec![0u8; bitmap_len as usize];
         cursor.read_exact(&mut bitmap)?;
 
-        // Process each bit in the bitmap to reconstruct original values
+        // Process each bit in the bitmap to reconstruct original values.
+        // 1. Iterate over each byte in the bitmap
+        // 2. Iterate over each bit in the byte
+        // 3. Calculate the value from the bit position and add it to the results.
         for (byte_idx, &byte) in bitmap.iter().enumerate() {
             for bit_idx in 0..8 {
                 // Check if this bit is set
@@ -277,8 +280,8 @@ impl EncodingStrategy for BitsetStrategy {
                     let position = byte_idx * 8 + bit_idx;
 
                     // Convert bitmap position to value:
-                    // 1. Add offset (base of the segment)
-                    // 2. Add position + 1 (converting 0-based bit to 1-based value)
+                    // - Add offset (base of the segment)
+                    // - Add position + 1 (converting 0-based bit to 1-based value)
                     let value = offset + (position as u64) + 1;
                     values.push(value);
                 }
