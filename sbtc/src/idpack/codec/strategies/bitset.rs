@@ -79,11 +79,9 @@ impl EncodingStrategy for BitsetStrategy {
     /// Creates flags for the segment based on its characteristics.
     ///
     /// The flag creation applies optimizations in descending priority:
-    /// 1. Tiny ranges (≤4 bits): Uses embedded bitmap in flags for zero-byte
-    ///    encoding
-    /// 2. Small ranges (≤56 bits): Embeds the bitmap length in the flags for
+    /// 1. Small ranges (≤56 bits): Embeds the bitmap length in the flags for
     ///    1-byte savings
-    /// 3. Larger ranges: Encodes length explicitly for maximum compatibility
+    /// 2. Larger ranges: Encodes length explicitly for maximum compatibility
     ///
     /// ## Parameters
     /// * `segment` - The segment to create flags for
@@ -99,7 +97,7 @@ impl EncodingStrategy for BitsetStrategy {
         let bits_needed = segment.range();
         let bytes_needed = bits_needed.div_ceil(8);
 
-        // Optimization 2: For small-to-medium bitmaps (1-7 bytes), embed length in flags
+        // Optimization 1: For small-to-medium bitmaps (1-7 bytes), embed length in flags
         // This saves 1 byte compared to explicit length encoding.
         if bytes_needed <= 7 {
             flags |= EMBEDDED_LENGTH_FLAG;
@@ -120,7 +118,6 @@ impl EncodingStrategy for BitsetStrategy {
     /// Estimates the encoded size in bytes for the given segment.
     ///
     /// The calculation includes:
-    /// - Zero bytes for tiny ranges (≤4 bits) using embedded bitmap optimization
     /// - Bitmap bytes based on segment range for larger ranges
     /// - Extra length byte for bitmaps > 7 bytes
     ///
@@ -210,7 +207,7 @@ impl EncodingStrategy for BitsetStrategy {
             bitmap[byte_index as usize] |= 1 << bit_index;
         }
 
-        // Optimization 2: Check if length is embedded in flags
+        // Optimization 1: Check if length is embedded in flags
         let has_embed_length = flags & EMBEDDED_LENGTH_FLAG != 0;
 
         // Write explicit length only when not embedded in flags
@@ -250,7 +247,7 @@ impl EncodingStrategy for BitsetStrategy {
     ) -> Result<(), SegmentDecodeError> {
         // For larger bitmaps, first determine the bitmap length
 
-        // Optimization 2: Check if length is embedded in flags
+        // Optimization 1: Check if length is embedded in flags
         let has_embed_length = flags & EMBEDDED_LENGTH_FLAG != 0;
 
         // Extract bitmap length either from flags or explicit LEB128 value
