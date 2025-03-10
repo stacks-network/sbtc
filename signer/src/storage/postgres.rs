@@ -2432,7 +2432,8 @@ impl super::DbRead for PgStore {
                         ON bb.block_hash = parent.bitcoin_anchor
                 )
                 SELECT
-                    bwo.bitcoin_txid AS sweep_txid
+                    bwo.output_index AS output_index
+                  , bwo.bitcoin_txid AS sweep_txid
                   , bc_blocks.block_hash AS sweep_block_hash
                   , bc_blocks.block_height AS sweep_block_height
                   , wr.request_id
@@ -2456,7 +2457,8 @@ impl super::DbRead for PgStore {
                     ON sb.block_hash = wae.block_hash
 
                 GROUP BY
-                    bwo.bitcoin_txid
+                    bwo.output_index
+                  , bwo.bitcoin_txid
                   , bc_blocks.block_hash
                   , bc_blocks.block_height
                   , wr.request_id

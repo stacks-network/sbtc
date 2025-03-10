@@ -184,11 +184,14 @@ pub async fn get_deposit_entries_for_transaction(
 /// Pulls in a deposit entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
 ///
+/// An untusted key can only update pending deposits.
+///
 /// TODO(792): Combine this with the withdrawal version.
 pub async fn pull_and_update_deposit_with_retry(
     context: &EmilyContext,
     update: ValidatedDepositUpdate,
     retries: u16,
+    is_trusted_key: bool,
 ) -> Result<DepositEntry, Error> {
     for _ in 0..retries {
         // Get original deposit entry.
@@ -196,6 +199,9 @@ pub async fn pull_and_update_deposit_with_retry(
         // Return the existing entry if no update is necessary.
         if update.is_unnecessary(&deposit_entry) {
             return Ok(deposit_entry);
+        }
+        if !is_trusted_key && deposit_entry.status != Status::Pending {
+            return Err(Error::Forbidden);
         }
         // Make the update package.
         let update_package: DepositUpdatePackage =
@@ -412,11 +418,14 @@ pub async fn get_all_withdrawal_entries_modified_from_height_with_status(
 /// Pulls in a withdrawal entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
 ///
+/// An untusted key can only update pending withdrawals.
+///
 /// TODO(792): Combine this with the deposit version.
 pub async fn pull_and_update_withdrawal_with_retry(
     context: &EmilyContext,
     update: ValidatedWithdrawalUpdate,
     retries: u16,
+    is_trusted_key: bool,
 ) -> Result<WithdrawalEntry, Error> {
     for _ in 0..retries {
         // Get original withdrawal entry.
@@ -425,6 +434,11 @@ pub async fn pull_and_update_withdrawal_with_retry(
         if update.is_unnecessary(&entry) {
             return Ok(entry);
         }
+
+        if !is_trusted_key && entry.status != Status::Pending {
+            return Err(Error::Forbidden);
+        }
+
         // Make the update package.
         let update_package = WithdrawalUpdatePackage::try_from(&entry, update.clone())?;
         // Attempt to update the withdrawal.

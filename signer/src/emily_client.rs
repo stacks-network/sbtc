@@ -77,9 +77,15 @@ pub trait EmilyInteract: Sync + Send {
         output_index: u32,
     ) -> impl std::future::Future<Output = Result<Option<CreateDepositRequest>, Error>> + Send;
 
-    /// Get pending deposits from Emily.
+    /// Get pending and accepted deposits to process from Emily.
     fn get_deposits(
         &self,
+    ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> + Send;
+
+    /// Get pending deposits with a specific status from Emily.
+    fn get_deposits_with_status(
+        &self,
+        status: Status,
     ) -> impl std::future::Future<Output = Result<Vec<CreateDepositRequest>, Error>> + Send;
 
     /// Update accepted deposits after their sweep bitcoin transaction has been
@@ -219,13 +225,43 @@ impl EmilyInteract for EmilyClient {
     }
 
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
+        let pending_deposits = self.get_deposits_with_status(Status::Pending).await;
+        let accepted_deposits = self.get_deposits_with_status(Status::Accepted).await;
+
+        match (pending_deposits, accepted_deposits) {
+            (Err(pending_err), Err(_accepted_err)) => {
+                // If both calls fail, return the error from the first call
+                Err(pending_err)
+            }
+            (Ok(pending), Err(accepted_err)) => {
+                // If the pending call succeeds, return the pending deposits
+                tracing::warn!("failed to fetch accepted deposits: {:?}", accepted_err);
+                Ok(pending)
+            }
+            (Err(pending_err), Ok(accepted)) => {
+                // If the pending call fails, return the accepted deposits
+                tracing::warn!("failed to fetch pending deposits: {:?}", pending_err);
+                Ok(accepted)
+            }
+            (Ok(mut pending), Ok(mut accepted)) => {
+                // Combine the results
+                pending.append(&mut accepted);
+                Ok(pending)
+            }
+        }
+    }
+
+    async fn get_deposits_with_status(
+        &self,
+        status: Status,
+    ) -> Result<Vec<CreateDepositRequest>, Error> {
         let mut all_deposits = Vec::new();
         let mut next_token: Option<String> = None;
         let start_time = Instant::now();
         loop {
             let resp = match deposit_api::get_deposits(
                 &self.config,
-                Status::Pending,
+                status,
                 next_token.as_deref(),
                 self.page_size,
             )
@@ -367,6 +403,14 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
 
     async fn get_deposits(&self) -> Result<Vec<CreateDepositRequest>, Error> {
         self.exec(|client, _| client.get_deposits()).await
+    }
+
+    async fn get_deposits_with_status(
+        &self,
+        status: Status,
+    ) -> Result<Vec<CreateDepositRequest>, Error> {
+        self.exec(|client, _| client.get_deposits_with_status(status))
+            .await
     }
 
     async fn update_deposits(
