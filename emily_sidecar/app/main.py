@@ -5,8 +5,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 import requests
 
-import settings
-import logging_config
+from app import settings, logging_config
 
 # Initialize the FastAPI app
 app = FastAPI()
