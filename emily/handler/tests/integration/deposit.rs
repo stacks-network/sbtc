@@ -994,7 +994,6 @@ async fn create_deposit_handles_duplicates(status: Status) {
     assert_eq!(response.status, status);
 }
 
-#[tokio::test]
 #[test_case(Status::Pending, Status::Pending, "untrusted_api_key", true; "untrusted_key_pending_to_pending")]
 #[test_case(Status::Pending, Status::Accepted, "untrusted_api_key", false; "untrusted_key_pending_to_accepted")]
 #[test_case(Status::Pending, Status::Reprocessing, "untrusted_api_key", true; "untrusted_key_pending_to_reprocessing")]
@@ -1014,6 +1013,7 @@ async fn create_deposit_handles_duplicates(status: Status) {
 #[test_case(Status::Pending, Status::Confirmed, "testApiKey", false; "trusted_key_pending_to_confirmed")]
 #[test_case(Status::Pending, Status::Failed, "testApiKey", false; "trusted_key_pending_to_failed")]
 #[test_case(Status::Confirmed, Status::Pending, "testApiKey", false; "trusted_key_confirmed_to_pending")]
+#[tokio::test]
 async fn update_deposits_is_forbidden(
     previous_status: Status,
     new_status: Status,
