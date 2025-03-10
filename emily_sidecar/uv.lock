@@ -172,11 +172,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "apscheduler", specifier = ">=3.11.0" },
-    { name = "btclib", specifier = ">=2023.7.12" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.11" },
-    { name = "requests", specifier = ">=2.32.3" },
-    { name = "uvicorn", specifier = ">=0.34.0" },
+    { name = "apscheduler", specifier = "==3.11.0" },
+    { name = "btclib", specifier = "==2023.7.12" },
+    { name = "fastapi", extras = ["standard"], specifier = "==0.115.11" },
+    { name = "requests", specifier = "==2.32.3" },
+    { name = "uvicorn", specifier = "==0.34.0" },
 ]
 
 [[package]]
