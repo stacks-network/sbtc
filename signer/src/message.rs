@@ -9,6 +9,7 @@ use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -298,9 +299,6 @@ impl WstsMessage {
         }
     }
 }
-
-/// Convenient type aliases
-type StacksBlockHash = [u8; 32];
 
 #[cfg(test)]
 mod tests {

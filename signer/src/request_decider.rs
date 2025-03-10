@@ -345,7 +345,7 @@ where
 
         let msg = SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
-            block_hash: withdrawal_request.block_hash.into_bytes(),
+            block_hash: withdrawal_request.block_hash,
             accepted: is_accepted,
             txid: withdrawal_request.txid,
         };
