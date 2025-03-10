@@ -5,9 +5,9 @@ from unittest.mock import patch, MagicMock
 
 from fastapi.testclient import TestClient
 import requests
-import logging_config
 
-from main import app
+from app import logging_config
+from app.main import app
 
 
 logging_config.silence_logging()
@@ -21,7 +21,7 @@ def read_fixture(filename):
         return json.load(file)
 
 
-BASE_PATH = os.path.join(os.path.dirname(__file__), "..")
+BASE_PATH = os.path.join(os.path.dirname(__file__), "..", "..")
 FIXTURES_PATH = os.path.join(BASE_PATH, "signer", "tests", "fixtures")
 
 FIXTURE_FILES = {
