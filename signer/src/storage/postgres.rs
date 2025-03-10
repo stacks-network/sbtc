@@ -2543,11 +2543,11 @@ impl super::DbRead for PgStore {
                 LIMIT 1
             )
             SELECT
-                ws.request_id,
-                ws.txid,
-                ws.block_hash,
-                ws.signer_pub_key,
-                ws.is_accepted
+                ws.request_id
+              , ws.txid
+              , ws.block_hash
+              , ws.signer_pub_key
+              , ws.is_accepted
 
             FROM sbtc_signer.withdrawal_signers ws
             WHERE ws.signer_pub_key = $3
@@ -2578,11 +2578,11 @@ impl super::DbRead for PgStore {
                 LIMIT 1
             )
             SELECT
-                ds.txid,
-                ds.output_index,
-                ds.signer_pub_key,
-                ds.can_sign,
-                ds.can_accept
+                ds.txid
+              , ds.output_index
+              , ds.signer_pub_key
+              , ds.can_sign
+              , ds.can_accept
             FROM sbtc_signer.deposit_signers ds
             WHERE ds.signer_pub_key = $3
               AND ds.created_at >= (SELECT created_at FROM target_block)
