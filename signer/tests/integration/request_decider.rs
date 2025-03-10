@@ -645,6 +645,7 @@ async fn do_not_procceed_with_blocked_addresses(is_withdrawal: bool, is_blocked:
         blocklist_checker: Some(blocklist_client),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
     };
 
     // We need this so that there is a live "network". Otherwise we will error
