@@ -295,7 +295,7 @@ where
         Ok(())
     }
 
-    /// Send the given deposit decisions to the other signers for redundancy.
+    /// Send the given withdrawal decisions to the other signers for redundancy.
     #[tracing::instrument(skip_all)]
     pub async fn handle_withdrawal_decisions_to_retry(
         &mut self,
