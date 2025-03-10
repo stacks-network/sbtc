@@ -1,6 +1,6 @@
 use std::ops::Index;
 
-use crate::Segment;
+use super::Segment;
 
 /// Collection of segment objects representing segmented integer data.
 ///

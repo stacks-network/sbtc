@@ -29,10 +29,6 @@ pub enum SegmentEncoding {
     /// Encodes integers as bits in a bitmap with a base offset.
     /// Optimal for dense values within small ranges (>25% density).
     Bitset,
-
-    /// Encodes integers using fixed-bit-width delta encoding.
-    /// Optimal for sparse values with variable gaps or sequential patterns.
-    FixedWidthDelta,
 }
 
 impl std::fmt::Display for SegmentEncoding {

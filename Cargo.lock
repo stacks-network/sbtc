@@ -188,12 +188,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "assert_matches"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
-
-[[package]]
 name = "async-channel"
 version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2730,17 +2724,6 @@ checksum = "daca1df1c957320b2cf139ac61e7bd64fed304c5040df000a745aa1de3b4ef71"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
-]
-
-[[package]]
-name = "idpack"
-version = "0.1.0"
-dependencies = [
- "assert_matches",
- "proptest",
- "rand",
- "test-case",
- "thiserror 2.0.11",
 ]
 
 [[package]]
@@ -5448,6 +5431,7 @@ dependencies = [
  "bitcoincore-rpc-json",
  "clarity",
  "hex",
+ "proptest",
  "rand",
  "secp256k1 0.29.0",
  "serde",

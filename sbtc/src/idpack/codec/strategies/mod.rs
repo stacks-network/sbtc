@@ -1,18 +1,16 @@
-pub(super) mod bitset;
-pub(super) mod fixed_width_delta;
-pub(super) mod single;
+pub mod bitset;
+pub mod single;
 
 use std::io::Cursor;
 
 pub use bitset::BitsetStrategy;
-pub use fixed_width_delta::FixedWidthDeltaStrategy;
 
-use crate::{Segment, SegmentEncoding};
+use crate::idpack::{Segment, SegmentEncoding};
 
 use super::{SegmentDecodeError, SegmentEncodeError};
 
 // Define the encoding strategy trait
-pub(crate) trait EncodingStrategy {
+pub trait EncodingStrategy {
     /// Returns the base type flag for this encoding
     fn type_flag(&self) -> u8;
 
@@ -25,7 +23,7 @@ pub(crate) trait EncodingStrategy {
     fn encoding_type(&self) -> SegmentEncoding;
 
     /// Estimates the payload size in bytes (excluding headers)
-    fn estimate_size(&self, segment: &Segment) -> usize;
+    fn estimate_payload_size(&self, segment: &[u64]) -> Option<usize>;
 
     /// Encodes the segment values into bytes
     fn encode(
@@ -45,7 +43,7 @@ pub(crate) trait EncodingStrategy {
     ) -> Result<(), SegmentDecodeError>;
 
     /// Checks if this strategy is applicable for the given segment
-    fn is_applicable(&self, segment: &Segment) -> bool {
+    fn is_applicable(&self, segment: &[u64]) -> bool {
         // Default implementation - most strategies are applicable to non-empty segments
         !segment.is_empty()
     }

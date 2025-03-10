@@ -7,12 +7,10 @@
 
 use std::io::{Cursor, Read};
 
-use crate::codec::strategies::{EncodingStrategy, FixedWidthDeltaStrategy};
+use crate::idpack::{Segment, SegmentEncoding, Segments};
 use crate::leb128::ReadLeb128;
-use crate::segments::Segments;
-use crate::{Segment, SegmentEncoding};
 
-use super::strategies::BitsetStrategy;
+use super::strategies::{BitsetStrategy, EncodingStrategy};
 use super::{Decodable, SegmentDecodeError};
 
 /// Implements decoding from bytes into a collection of optimally encoded segments.
@@ -102,7 +100,6 @@ pub fn read_segment_into(
     // Map binary encoding type to segment encoding enum
     let segment_encoding = match encoding_type {
         super::TYPE_BITSET => SegmentEncoding::Bitset,
-        super::TYPE_FW_DELTA => SegmentEncoding::FixedWidthDelta,
         super::TYPE_SINGLE => SegmentEncoding::Single,
         _ => return Err(SegmentDecodeError::UnrecognizedEncoding(encoding_type)),
     };
@@ -132,16 +129,6 @@ pub fn read_segment_into(
         // Bitmap-based encoding for dense ranges
         super::TYPE_BITSET => {
             BitsetStrategy.decode(
-                cursor,
-                flags & !super::FLAG_CONTINUATION,
-                actual_offset,
-                &mut values,
-            )?;
-        }
-
-        // Fixed-width delta encoding for sparse/regular sequences
-        super::TYPE_FW_DELTA => {
-            FixedWidthDeltaStrategy.decode(
                 cursor,
                 flags & !super::FLAG_CONTINUATION,
                 actual_offset,

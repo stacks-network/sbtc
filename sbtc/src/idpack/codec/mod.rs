@@ -1,6 +1,5 @@
-use crate::{segment, ALLOC_BYTES_LIMIT};
+use super::{segment, ALLOC_BYTES_LIMIT};
 
-mod arithmetic;
 mod decoder;
 mod encoder;
 pub mod strategies;
@@ -30,12 +29,6 @@ const TYPE_SINGLE: u8             = 0b0000_0000;
 #[rustfmt::skip]
 const TYPE_BITSET: u8             = 0b0000_0001;
 
-/// Fixed-width delta encoding type (10).
-/// Efficient for sparse values, regular patterns, or sequences.
-#[rustfmt::skip]
-const TYPE_FW_DELTA: u8           = 0b0000_0010;
-// One spare encoding type value (11) reserved for future compression techniques
-
 /// Mask for extracting encoding-specific flags (bits 2-6).
 /// These bits store strategy-specific optimizations to minimize encoded size.
 #[rustfmt::skip]
@@ -45,12 +38,14 @@ const ENCODING_FLAGS_MASK: u8     = 0b0111_1100;
 /// For Bitset: Embedded bitmap flag
 /// For FWDelta: Embedded bit width flag
 #[rustfmt::skip]
+#[allow(unused)]
 const ENCODING_FLAG_1: u8         = 0b0000_0100;
 
 /// Flag 2 (bit position 3) - Second encoding-specific optimization flag.
 /// For Bitset: Embedded length flag
 /// For FWDelta: Tiny sequence flag
 #[rustfmt::skip]
+#[allow(unused)]
 const ENCODING_FLAG_2: u8         = 0b0000_1000;
 
 /// Flag 3 (bit position 4) - Third encoding-specific optimization flag.
@@ -95,7 +90,6 @@ pub trait Decodable: Sized {
     /// The decoding process must robustly handle all compression formats:
     /// - Single value encoding with no payload
     /// - Bitset encoding with various bitmap optimizations
-    /// - Fixed-width delta encoding with bit packing and special cases
     fn decode(bytes: &[u8]) -> Result<Self, SegmentDecodeError>;
 }
 
@@ -141,17 +135,13 @@ pub enum SegmentDecodeError {
     #[error("integer overflow")]
     IntegerOverflow,
 
-    /// Decoded value count is invalid or impossible
-    #[error("invalid value count: {0}")]
-    InvalidValueCount(u64),
-
     /// Value count exceeds safety limit, preventing allocation attacks
     #[error("value count limit exceeded: {0}")]
-    ValueCountLimitExceeded(u64),
+    TooManyValues(u64),
 
     /// Total allocation size exceeds safety limit
-    #[error("allocation bytes limit exceeded: {0}")]
-    AllocationLimitExceeded(u64),
+    #[error("byte allocation limit exceeded: {0}")]
+    ByteAllocationLimit(u64),
 
     /// Arithmetic overflow during value reconstruction
     #[error("arithmetic overflow: {0}")]
@@ -170,7 +160,12 @@ pub enum SegmentEncodeError {
     /// Different encoding strategies have minimum value requirements for
     /// optimal compression.
     #[error("insufficient segment value count for encoding: min={min}, actual={actual}")]
-    InsufficientValueCount { min: usize, actual: usize },
+    TooFewValues {
+        /// Minimum value count required for the encoding strategy
+        min: usize,
+        /// Actual value count in the segment
+        actual: usize,
+    },
 
     /// Attempt to encode an empty segment, which is not supported
     #[error("attempt to encode an empty segment")]
@@ -184,4 +179,12 @@ pub enum SegmentEncodeError {
     /// which would corrupt the encoding format
     #[error("Strategy used forbidden flag bits: {0:08b}, allowed mask: {1:08b}")]
     InvalidStrategyFlags(u8, u8),
+
+    /// Total allocation size exceeds safety limit
+    #[error("byte allocation limit exceeded: {0}")]
+    ByteAllocationLimit(u64),
+
+    /// Value count exceeds safety limit, preventing allocation attacks
+    #[error("value count limit exceeded: {0}")]
+    TooManyValues(u64),
 }

@@ -10,12 +10,16 @@ use bitcoin::XOnlyPublicKey;
 pub mod deposits;
 pub mod error;
 pub mod events;
+pub mod idpack;
+pub mod leb128;
 
 #[cfg(feature = "webhooks")]
 pub mod webhooks;
 
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
+
+pub use leb128::Leb128;
 
 /// The x-coordinate public key with no known discrete logarithm.
 ///

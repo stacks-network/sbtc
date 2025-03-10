@@ -8,12 +8,11 @@
 //! segment patterns and applies position-aware optimizations to minimize
 //! the encoded size.
 
+use crate::idpack::{Segment, SegmentEncoding, Segments};
 use crate::leb128::Leb128;
-use crate::segments::Segments;
-use crate::{Segment, SegmentEncoding};
 
 use super::strategies::single::SingleValueStrategy;
-use super::strategies::{BitsetStrategy, EncodingStrategy, FixedWidthDeltaStrategy};
+use super::strategies::{BitsetStrategy, EncodingStrategy};
 use super::{Encodable, SegmentEncodeError};
 
 /// Implementation of encoding for segment collections with delta-optimization.
@@ -102,14 +101,6 @@ fn encode_segment_with_offset(
             // Pass flags (without continuation bit) to access optimization bits
             BitsetStrategy.encode(flags & !super::FLAG_CONTINUATION, segment, &mut result)?;
         }
-        SegmentEncoding::FixedWidthDelta => {
-            // Bit-packed delta encoding for sparse or regular sequences
-            FixedWidthDeltaStrategy.encode(
-                flags & !super::FLAG_CONTINUATION,
-                segment,
-                &mut result,
-            )?;
-        }
         SegmentEncoding::Single => {
             // No payload needed for single value encoding
             // Value is already encoded in the offset field - maximum compression
@@ -136,7 +127,6 @@ fn create_flags_byte(segment: &Segment, has_continuation: bool) -> Result<u8, Se
     // Select appropriate strategy based on segment encoding type
     let strategy: Box<dyn EncodingStrategy> = match segment.encoding() {
         SegmentEncoding::Bitset => Box::new(BitsetStrategy),
-        SegmentEncoding::FixedWidthDelta => Box::new(FixedWidthDeltaStrategy),
         SegmentEncoding::Single => Box::new(SingleValueStrategy),
     };
 

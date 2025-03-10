@@ -4,11 +4,13 @@
 //! exactly one value. The value is encoded entirely as the segment's offset,
 //! making it the most space-efficient encoding possible for isolated values.
 
-use super::EncodingStrategy;
-use crate::codec::{SegmentDecodeError, SegmentEncodeError};
-use crate::segment::Segment;
-use crate::{codec, SegmentEncoding};
 use std::io::Cursor;
+
+use crate::idpack::{codec, Segment, SegmentEncoding};
+
+use super::EncodingStrategy;
+use super::SegmentDecodeError;
+use super::SegmentEncodeError;
 
 /// Implementation of the Single Value encoding strategy.
 ///
@@ -41,10 +43,14 @@ impl EncodingStrategy for SingleValueStrategy {
     ///
     /// Always returns 0 for Single Value encoding since the value is
     /// stored entirely in the offset with no additional payload bytes.
-    fn estimate_size(&self, _segment: &Segment) -> usize {
+    fn estimate_payload_size(&self, values: &[u64]) -> Option<usize> {
         // Single value encoding has no payload - value is contained in the
         // offset.
-        0
+        if values.len() == 1 {
+            return Some(0);
+        }
+
+        None
     }
 
     /// Encodes the segment into the result vector.
@@ -79,7 +85,7 @@ impl EncodingStrategy for SingleValueStrategy {
     ///
     /// Single Value encoding is only applicable for segments containing
     /// exactly one value.
-    fn is_applicable(&self, segment: &Segment) -> bool {
-        segment.len() == 1
+    fn is_applicable(&self, values: &[u64]) -> bool {
+        values.len() == 1
     }
 }
