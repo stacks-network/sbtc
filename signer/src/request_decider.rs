@@ -345,9 +345,8 @@ where
             return Ok(true);
         };
 
-        let receiver_pubkey = req.recipient.clone();
         let network = bitcoin::Network::from(self.context.config().signer.network);
-        let receiver_address = bitcoin::Address::from_script(&receiver_pubkey, network.params())
+        let receiver_address = bitcoin::Address::from_script(&req.recipient, network.params())
             .map_err(|err| {
                 Error::WithdrawalBitcoinAddressFromScript(
                     err,
