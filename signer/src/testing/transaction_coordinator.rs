@@ -52,6 +52,7 @@ use clarity::vm::types::SequenceData;
 use clarity::vm::Value;
 use fake::Fake as _;
 use fake::Faker;
+use rand::seq::IteratorRandom;
 use rand::SeedableRng as _;
 
 use super::context::TestContext;
@@ -673,9 +674,8 @@ where
         };
 
         // Too big outindex will make this test slow and don't really happen in practice
-        let output_index: u8 = fake::Faker.fake_with_rng(&mut rng);
         // Output index smaller than 2 is invalid in our case
-        let output_index = output_index as u32 + 2;
+        let output_index: u32 = (2..200).choose(&mut rng).unwrap();
 
         let mut output = vec![bitcoin::TxOut::NULL; output_index as usize];
         output.push(bitcoin::TxOut {
