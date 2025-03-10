@@ -94,6 +94,10 @@ impl TestData {
         let stacks_blocks =
             self.generate_stacks_blocks(rng, &block, params.num_stacks_blocks_per_bitcoin_block);
 
+        for stacks_block in &stacks_blocks {
+            assert_eq!(stacks_block.bitcoin_anchor, block.parent_hash);
+        }
+
         let deposit_data = DepositData::generate(
             rng,
             signer_keys,
@@ -471,7 +475,7 @@ impl WithdrawData {
                     withdraw_request.block_hash = stacks_block_hash;
                     withdraw_request.request_id = next_withdraw_request_id;
                     withdraw_request.recipient = fake::Faker.fake_with_rng(rng);
-                    withdraw_request.bitcoin_block_height = bitcoin_block.block_height;
+                    withdraw_request.bitcoin_block_height = bitcoin_block.block_height - 1;
 
                     let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
                     raw_transaction.tx_type = model::TransactionType::WithdrawRequest;

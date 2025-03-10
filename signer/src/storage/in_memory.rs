@@ -232,12 +232,14 @@ impl Store {
         chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Vec<model::WithdrawalRequest> {
+        eprintln!("storage get_withdrawal_requests context window: {}", context_window);
+        eprintln!("storage get_withdrawal_requests chain_tip: {:#?}", chain_tip);
         let first_block = self.bitcoin_blocks.get(chain_tip);
 
         let context_window_end_block = std::iter::successors(first_block, |block| {
             Some(self.bitcoin_blocks.get(&block.parent_hash).unwrap_or(block))
         })
-        .nth(context_window as usize);
+        .nth(context_window as usize - 1);
 
         let Some(context_window_end_block) = context_window_end_block else {
             return Vec::new();
@@ -246,6 +248,9 @@ impl Store {
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip) else {
             return Vec::new();
         };
+
+        eprintln!("get_withdrawal_requests Context window end block: {:#?}", context_window_end_block);
+        eprintln!("get_withdrawal_requests Stacks chain tip: {:#?}", stacks_chain_tip);
 
         std::iter::successors(Some(&stacks_chain_tip), |stacks_block| {
             self.stacks_blocks.get(&stacks_block.parent_hash)
@@ -256,6 +261,7 @@ impl Store {
                 .is_some_and(|anchor| anchor.block_height >= context_window_end_block.block_height)
         })
         .flat_map(|stacks_block| {
+            eprintln!("Iterating stacks block {:#?}", stacks_block);
             self.stacks_block_to_withdrawal_requests
                 .get(&stacks_block.block_hash)
                 .cloned()
@@ -484,8 +490,11 @@ impl super::DbRead for SharedStore {
         context_window: u16,
         signer_public_key: &PublicKey,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
+        eprintln!("storage context window = {}", context_window);
         let store = self.lock().await;
         let withdrawal_requests = store.get_withdrawal_requests(chain_tip, context_window);
+
+        eprintln!("storage withdrawal_requests = {:?}", withdrawal_requests);
 
         // These are the withdrawal requests that this signer has voted on.
         let voted: HashSet<(u64, model::StacksBlockHash)> = store
