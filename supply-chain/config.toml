@@ -87,10 +87,6 @@ criteria = "safe-to-deploy"
 version = "2.0.2"
 criteria = "safe-to-run"
 
-[[exemptions.assert_matches]]
-version = "1.5.0"
-criteria = "safe-to-run"
-
 [[exemptions.async-channel]]
 version = "2.3.1"
 criteria = "safe-to-deploy"
