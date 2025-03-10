@@ -290,45 +290,4 @@ impl EncodingStrategy for BitsetStrategy {
 
         Ok(())
     }
-
-    /// Determines if the BitSet strategy is applicable for the given segment.
-    ///
-    /// BitSet encoding is most efficient for:
-    /// - Segments with at least 2 values (segments with 1 value use Single encoding)
-    /// - Segments with any range (even tiny ranges now benefit from embedded bitmap)
-    /// - Dense ranges benefit most, but efficient for any range with compression needs
-    ///
-    /// ## Parameters
-    /// * `segment` - The segment to evaluate
-    ///
-    /// ## Parameters
-    /// `true` if BitSet encoding is appropriate, `false` otherwise
-    fn is_applicable(&self, values: &[u64]) -> bool {
-        // Prefer single-value encoding (simpler) if we can't make use of the
-        // bitmap.
-        if values.len() < 2 {
-            return false;
-        }
-
-        // We just ensured there are at least two values, so this is safe.
-        let min_value = values[0];
-        let max_value = values[values.len() - 1];
-
-        // Get the range and calculate bytes needed for the bitmap
-        let range = max_value - min_value;
-        let bytes_needed = range.div_ceil(8);
-
-        // Safety check to prevent OOM for extremely sparse data
-        if bytes_needed > ALLOC_BYTES_LIMIT as u64 {
-            return false;
-        }
-
-        // Safety check to prevent OOM for extremely large bitmaps
-        let value_count = values.len() as u64;
-        if value_count > VALUE_COUNT_LIMIT as u64 {
-            return false;
-        }
-
-        true
-    }
 }

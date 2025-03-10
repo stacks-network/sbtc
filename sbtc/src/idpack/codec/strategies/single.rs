@@ -80,12 +80,4 @@ impl EncodingStrategy for SingleValueStrategy {
     ) -> Result<(), SegmentDecodeError> {
         Ok(())
     }
-
-    /// Determines if this strategy is applicable for the given segment.
-    ///
-    /// Single Value encoding is only applicable for segments containing
-    /// exactly one value.
-    fn is_applicable(&self, values: &[u64]) -> bool {
-        values.len() == 1
-    }
 }

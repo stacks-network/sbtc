@@ -41,10 +41,4 @@ pub trait EncodingStrategy {
         offset: u64,
         values: &mut Vec<u64>,
     ) -> Result<(), SegmentDecodeError>;
-
-    /// Checks if this strategy is applicable for the given segment
-    fn is_applicable(&self, segment: &[u64]) -> bool {
-        // Default implementation - most strategies are applicable to non-empty segments
-        !segment.is_empty()
-    }
 }
