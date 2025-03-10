@@ -155,6 +155,18 @@ bitcoin_processing_delay = 0
 # Required: true Environment: SIGNER_SIGNER__REQUESTS_PROCESSING_DELAY
 requests_processing_delay = 0
 
+# How many bitcoin blocks back from the chain tip the signer will
+# look for deposit decisions to retry to propagate.
+# Required: false
+# Environment: SIGNER_SIGNER__DEPOSIT_DECISIONS_RETRY_WINDOW
+deposit_decisions_retry_window = 3
+
+# How many bitcoin blocks back from the chain tip the signer will
+# look for withdrawal decisions to retry to propagate.
+# Required: false
+# Environment: SIGNER_SIGNER__WITHDRAWAL_DECISIONS_RETRY_WINDOW
+withdrawal_decisions_retry_window = 3
+
 # How many bitcoin blocks back from the chain tip the signer will look for
 # requests. Must be strictly positive.
 #
