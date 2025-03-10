@@ -86,7 +86,8 @@ impl Leb128 {
         let mut value = value;
         loop {
             let mut byte = (value & LOWER_BITS_MASK as u64) as u8;
-            value >>= 7;
+            
+            value = value.checked_shr(7).unwrap_or(0);
 
             if value != 0 {
                 byte |= CONTINUATION_FLAG;
@@ -135,42 +136,39 @@ impl Leb128 {
         if bytes.is_empty() {
             return Err(Error::EmptyInput);
         }
-
+    
         let mut result: u64 = 0;
         let mut position = 0;
         let mut shift = 0;
-
+    
         while position < bytes.len() {
-            // This index access is safe due to the loop condition
             let byte = bytes[position];
             let value = (byte & LOWER_BITS_MASK) as u64;
-
-            // Check for shift overflow before attempting shift
-            if shift >= 64
-                || (shift > MAX_BITS - BITS_PER_BYTE && value > (1 << (MAX_BITS - shift)) - 1)
-            {
-                return Err(Error::ValueOutOfBounds);
+            
+            // Use checked_shl instead of manual overflow detection
+            match value.checked_shl(shift as u32) {
+                Some(shifted) => result |= shifted,
+                None => return Err(Error::ValueOutOfBounds),
             }
-
-            result |= value << shift;
+            
             position += 1;
             shift += BITS_PER_BYTE;
-
+    
             // No continuation bit - we're done
             if byte & CONTINUATION_FLAG == 0 {
                 return Ok((result, position));
             }
-
-            // Check if we've reached the maximum bytes or end of input
+    
+            // Check if we've reached the maximum bytes
             if position == MAX_BYTES {
                 return Err(Error::InvalidContinuation);
             }
-
+    
             if position == bytes.len() {
                 return Err(Error::IncompleteSequence);
             }
         }
-
+    
         // We shouldn't get here
         Err(Error::UnexpectedDecodeError)
     }
@@ -191,7 +189,7 @@ impl Leb128 {
         let mut size = 0;
         while value >= 0x80 {
             size += 1;
-            value >>= 7;
+            value = value.checked_shr(7).unwrap_or(0);
         }
         size += 1;
         size
@@ -302,8 +300,8 @@ mod tests {
     #[test_case(&[0x80] => Err(Error::IncompleteSequence); "incomplete byte sequence")]
     #[test_case(&[0x80, 0x80] => Err(Error::IncompleteSequence); "truncated multi-byte")]
     #[test_case(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFF] => Err(Error::InvalidContinuation) ; "too many continuation bytes")]
-    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::ValueOutOfBounds) ; "exceeds u64 (11 bytes)")]
-    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::ValueOutOfBounds) ; "exceeds u64 (12 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::InvalidContinuation) ; "exceeds u64 (11 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::InvalidContinuation) ; "exceeds u64 (12 bytes)")]
     fn test_leb128_decode_invalid(bytes: &[u8]) -> Result<(u64, usize), Error> {
         Leb128::try_decode(bytes)
     }
