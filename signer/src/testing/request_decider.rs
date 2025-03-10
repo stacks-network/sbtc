@@ -44,6 +44,7 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
         network: SignerNetwork,
         context_window: u16,
         deposit_decisions_retry_window: u16,
+        withdrawal_decisions_retry_window: u16,
         signer_private_key: PrivateKey,
     ) -> Self {
         Self {
@@ -54,6 +55,7 @@ impl<C: Context + 'static> RequestDeciderEventLoopHarness<C> {
                 signer_private_key,
                 context_window,
                 deposit_decisions_retry_window,
+                withdrawal_decisions_retry_window,
             },
             context,
         }
@@ -127,6 +129,8 @@ pub struct TestEnvironment<C> {
     pub context_window: u16,
     /// Deposit decisions retry window
     pub deposit_decisions_retry_window: u16,
+    /// Withdrawal decisions retry window
+    pub withdrawal_decisions_retry_window: u16,
     /// Num signers
     pub num_signers: usize,
     /// Signing threshold
@@ -162,6 +166,7 @@ where
             signer_network,
             self.context_window,
             self.deposit_decisions_retry_window,
+            self.withdrawal_decisions_retry_window,
             coordinator_signer_info.signer_private_key,
         );
 
@@ -246,6 +251,7 @@ where
             signer_network,
             self.context_window,
             self.deposit_decisions_retry_window,
+            self.withdrawal_decisions_retry_window,
             coordinator_signer_info.signer_private_key,
         );
 
@@ -324,6 +330,7 @@ where
                     net,
                     self.context_window,
                     self.deposit_decisions_retry_window,
+                    self.withdrawal_decisions_retry_window,
                     signer_info.signer_private_key,
                 );
 

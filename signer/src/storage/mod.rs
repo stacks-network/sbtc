@@ -132,6 +132,15 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
 
+    /// Get all the withdrawal decisions for the given signer in the given window
+    /// of blocks.
+    fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalSigner>, Error>> + Send;
+
     /// Returns whether the given `signer_public_key` can provide signature
     /// shares for the deposit transaction.
     ///

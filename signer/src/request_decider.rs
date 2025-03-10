@@ -53,6 +53,9 @@ pub struct RequestDeciderEventLoop<C, N, B> {
     /// How many bitcoin blocks back from the chain tip the signer will look for deposit
     /// decisions to retry to propagate.
     pub deposit_decisions_retry_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will look for withdrawal
+    /// decisions to retry to propagate.
+    pub withdrawal_decisions_retry_window: u16,
 }
 
 /// This function defines which messages this event loop is interested
@@ -176,6 +179,21 @@ where
                 });
         }
 
+        let withdrawal_decisions_to_retry = db
+            .get_withdrawal_signer_decisions(
+                &chain_tip,
+                self.withdrawal_decisions_retry_window,
+                &signer_public_key,
+            )
+            .await?;
+
+        let _ = self
+            .handle_withdrawal_decisions_to_retry(withdrawal_decisions_to_retry, &chain_tip)
+            .await
+            .inspect_err(
+                |error| tracing::warn!(%error, "error handling withdrawal decisions to retry"),
+            );
+
         let withdraw_requests = db
             .get_pending_withdrawal_requests(&chain_tip, self.context_window, &signer_public_key)
             .await?;
@@ -277,6 +295,24 @@ where
         Ok(())
     }
 
+    /// Send the given withdrawal decisions to the other signers for redundancy.
+    #[tracing::instrument(skip_all)]
+    pub async fn handle_withdrawal_decisions_to_retry(
+        &mut self,
+        decisions: Vec<model::WithdrawalSigner>,
+        chain_tip: &BitcoinBlockHash,
+    ) -> Result<(), Error> {
+        for decision in decisions.into_iter().map(SignerWithdrawalDecision::from) {
+            let _ = self
+                .send_message(decision, chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "error sending withdrawal decision to retry, skipping");
+                });
+        }
+        Ok(())
+    }
+
     /// Send the given deposit decisions to the other signers for redundancy.
     #[tracing::instrument(skip_all)]
     pub async fn handle_deposit_decisions_to_retry(
@@ -309,7 +345,7 @@ where
 
         let msg = SignerWithdrawalDecision {
             request_id: withdrawal_request.request_id,
-            block_hash: withdrawal_request.block_hash.into_bytes(),
+            block_hash: withdrawal_request.block_hash,
             accepted: is_accepted,
             txid: withdrawal_request.txid,
         };
@@ -465,7 +501,7 @@ where
     ) -> Result<(), Error> {
         let signer_decision = WithdrawalSigner {
             request_id: decision.request_id,
-            block_hash: decision.block_hash.into(),
+            block_hash: decision.block_hash,
             signer_pub_key,
             is_accepted: decision.accepted,
             txid: decision.txid,
@@ -541,6 +577,7 @@ mod tests {
             context,
             context_window: 6,
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
             num_signers: 7,
             signing_threshold: 5,
             test_model_parameters,
