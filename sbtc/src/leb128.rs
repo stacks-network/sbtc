@@ -140,13 +140,9 @@ impl Leb128 {
         let mut position = 0;
         let mut shift = 0;
 
-        for (i, &byte) in bytes.iter().enumerate() {
-            // Set helper variables for readability
-            let has_continuation = (byte & CONTINUATION_FLAG) != 0; // Has continuation?
-            let is_last_byte = i + 1 == bytes.len(); // Is this the last byte?
-            let is_max_byte = i == MAX_BYTES - 1; // Are we at the byte-count limit?
-
-            // Extract 7-bit payload from the lower bits
+        while position < bytes.len() {
+            // This index access is safe due to the loop condition
+            let byte = bytes[position];
             let value = (byte & LOWER_BITS_MASK) as u64;
 
             // Check for shift overflow before attempting shift
@@ -156,40 +152,26 @@ impl Leb128 {
                 return Err(Error::ValueOutOfBounds);
             }
 
-            // Add to result with proper shifting and increment our position
-            // tracking
             result |= value << shift;
-            shift += BITS_PER_BYTE;
             position += 1;
+            shift += BITS_PER_BYTE;
 
-            match (has_continuation, is_last_byte) {
-                // Continuation bit IS NOT set and we've reached the last byte,
-                // OR continuation bit IS NOT set, then this is a complete sequence.
-                (false, _) => {
-                    return Ok((result, position));
-                }
+            // No continuation bit - we're done
+            if byte & CONTINUATION_FLAG == 0 {
+                return Ok((result, position));
+            }
 
-                // Continuation bit IS set AND we've reached the maximum number
-                // of bytes for a u64, then the continuation is invalid.
-                (true, _) if is_max_byte => {
-                    return Err(Error::InvalidContinuation);
-                }
+            // Check if we've reached the maximum bytes or end of input
+            if position == MAX_BYTES {
+                return Err(Error::InvalidContinuation);
+            }
 
-                // Continuation bit IS set AND we've reached the last byte.
-                (true, true) => {
-                    return Err(Error::IncompleteSequence);
-                }
-
-                // Continuation bit IS set AND there's bytes remaining AND we're
-                // not at the maximum number of bytes, then this is a valid
-                // continuation pattern.
-                (true, false) => {
-                    continue;
-                }
+            if position == bytes.len() {
+                return Err(Error::IncompleteSequence);
             }
         }
 
-        // We shouldn't get here, but if we do, it's a generic decoding error
+        // We shouldn't get here
         Err(Error::UnexpectedDecodeError)
     }
 
