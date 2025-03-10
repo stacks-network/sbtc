@@ -131,9 +131,10 @@ impl EncodingStrategy for BitsetStrategy {
             return None;
         }
 
-        // We expect values to be sorted, so min and max are at the ends
-        let min_value = values.first()?;
-        let max_value = values.last()?;
+        // We expect values to be sorted, so min and max are at the ends.
+        // We just ensured the values are non-empty, so this is safe.
+        let min_value = values[0];
+        let max_value = values[values.len() - 1];
 
         // Calculate bitmap size requirements
         let range = max_value - min_value;
@@ -307,8 +308,8 @@ impl EncodingStrategy for BitsetStrategy {
         }
 
         // We just ensured there are at least two values, so this is safe.
-        let min_value = values.iter().min().expect("values is not empty");
-        let max_value = values.iter().max().expect("values is not empty");
+        let min_value = values[0];
+        let max_value = values[values.len() - 1];
 
         // Get the range and calculate bytes needed for the bitmap
         let range = max_value - min_value;
