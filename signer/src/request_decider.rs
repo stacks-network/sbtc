@@ -491,7 +491,7 @@ where
     ) -> Result<(), Error> {
         let signer_decision = WithdrawalSigner {
             request_id: decision.request_id,
-            block_hash: decision.block_hash.into(),
+            block_hash: decision.block_hash,
             signer_pub_key,
             is_accepted: decision.accepted,
             txid: decision.txid,

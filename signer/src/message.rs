@@ -171,7 +171,7 @@ impl From<model::WithdrawalSigner> for SignerWithdrawalDecision {
     fn from(signer: model::WithdrawalSigner) -> Self {
         Self {
             request_id: signer.request_id,
-            block_hash: signer.block_hash.into(),
+            block_hash: signer.block_hash,
             txid: signer.txid,
             accepted: signer.is_accepted,
         }

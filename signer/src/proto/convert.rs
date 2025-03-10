@@ -361,7 +361,7 @@ impl From<SignerWithdrawalDecision> for proto::SignerWithdrawalDecision {
     fn from(value: SignerWithdrawalDecision) -> Self {
         proto::SignerWithdrawalDecision {
             request_id: value.request_id,
-            block_id: Some(StacksBlockHash::from(value.block_hash).into()),
+            block_id: Some(value.block_hash.into()),
             accepted: value.accepted,
             txid: Some(value.txid.into()),
         }
