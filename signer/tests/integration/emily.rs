@@ -25,6 +25,9 @@ use blockstack_lib::net::api::getsortition::SortitionInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use emily_client::apis::deposit_api;
 use emily_client::models::CreateDepositRequestBody;
+use emily_client::models::DepositUpdate;
+use emily_client::models::Status;
+use emily_client::models::UpdateDepositsRequestBody;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
@@ -622,7 +625,7 @@ async fn get_deposit_request_works() {
 #[test_case(3, 10, Some(2), 3; "handles paging")]
 #[test_case(3, 0, Some(2), 2; "handles timeout")]
 #[tokio::test]
-async fn test_get_deposits_request_paging(
+async fn test_get_deposits_with_status_request_paging(
     num_deposits: usize,
     timeout_secs: u64,
     page_size: Option<u16>,
@@ -670,6 +673,95 @@ async fn test_get_deposits_request_paging(
         result.expect("cannot create emily deposit");
     }
 
-    let deposits = emily_client.get_deposits().await.unwrap();
+    let deposits = emily_client
+        .get_deposits_with_status(Status::Pending)
+        .await
+        .unwrap();
     assert_eq!(deposits.len(), expected_result);
+}
+
+#[tokio::test]
+async fn test_get_deposits_returns_pending_and_accepted() {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 150;
+    let num_deposits = 5;
+    let num_accepted = 2;
+
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(10),
+        None,
+    )
+    .unwrap();
+
+    wipe_databases(&emily_client.config().as_testing())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
+
+    // Create deposits
+    let tx_setups: Vec<sbtc::testing::deposits::TxSetup> = (0..num_deposits)
+        .map(|_| sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]))
+        .collect();
+    let futures = tx_setups.iter().map(|setup| {
+        let create_deposit_request_body = CreateDepositRequestBody {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            deposit_script: setup
+                .deposits
+                .first()
+                .unwrap()
+                .deposit_script()
+                .to_hex_string(),
+            reclaim_script: setup
+                .reclaims
+                .first()
+                .unwrap()
+                .reclaim_script()
+                .to_hex_string(),
+            transaction_hex: serialize_hex(&setup.tx),
+        };
+        deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
+    });
+
+    let results = join_all(futures).await;
+    for result in results {
+        result.expect("cannot create emily deposit");
+    }
+
+    // Update some deposits to accepted
+    let deposits = tx_setups[0..num_accepted]
+        .iter()
+        .map(|setup| DepositUpdate {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            fulfillment: None,
+            last_update_block_hash: "block-hash".to_string(),
+            last_update_height: 42,
+            status: Status::Accepted,
+            status_message: "accepted".to_string(),
+        })
+        .collect();
+
+    deposit_api::update_deposits(
+        emily_client.config(),
+        UpdateDepositsRequestBody { deposits: deposits },
+    )
+    .await
+    .expect("cannot update deposits");
+
+    // Check that we get all deposits
+    let deposits = emily_client.get_deposits().await.unwrap();
+    let accepted_deposits = emily_client
+        .get_deposits_with_status(Status::Accepted)
+        .await
+        .unwrap();
+    let pending_deposits = emily_client
+        .get_deposits_with_status(Status::Pending)
+        .await
+        .unwrap();
+
+    assert_eq!(deposits.len(), num_deposits);
+    assert_eq!(accepted_deposits.len(), num_accepted);
+    assert_eq!(pending_deposits.len(), num_deposits - num_accepted);
 }

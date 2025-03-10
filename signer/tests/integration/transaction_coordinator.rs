@@ -49,6 +49,8 @@ use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
+use signer::message::Payload;
+use signer::network::MessageTransfer;
 use testing_emily_client::apis::testing_api;
 
 use signer::context::SbtcLimits;
@@ -120,8 +122,12 @@ use tokio::sync::broadcast::Sender;
 
 use crate::complete_deposit::make_complete_deposit;
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::fetch_canonical_bitcoin_blockchain;
+use crate::setup::set_deposit_completed;
+use crate::setup::set_deposit_incomplete;
 use crate::setup::AsBlockRef as _;
 use crate::setup::IntoEmilyTestingConfig as _;
+use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup;
 use crate::setup::TestSweepSetup2;
@@ -4164,6 +4170,150 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
         contract_call.function_args[0],
         ClarityValue::UInt(request.request_id as u128)
     );
+
+    testing::storage::drop_db(db).await;
+}
+
+/// Test that the coordinator doesn't try to sign a complete deposit stacks tx
+/// for a swept deposit if the smart contract consider the deposit confirmed.
+#[test_case(true; "deposit completed")]
+#[test_case(false; "deposit not completed")]
+#[tokio::test]
+async fn coordinator_skip_onchain_completed_deposits(deposit_completed: bool) {
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let db = testing::storage::new_test_database().await;
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+    let network = WanNetwork::default();
+    let signer_network = network.connect(&ctx);
+
+    let signer = Recipient::new(AddressType::P2tr);
+    let signer_kp = signer.keypair.clone();
+    let signers = TestSignerSet {
+        signer,
+        keys: vec![signer_kp.public_key().into()],
+    };
+    let aggregate_key = signers.aggregate_key();
+
+    ctx.state().set_sbtc_contracts_deployed();
+    // When the signer binary starts up in main(), it sets the current
+    // signer set public keys in the context state using the values in
+    // the bootstrap_signing_set configuration parameter. Later, the
+    // state gets updated in the block observer. We're not running a
+    // block observer in this test, nor are we going through main, so
+    // we manually update the state here.
+    ctx.state()
+        .update_current_signer_set(signers.signer_keys().iter().copied().collect());
+    ctx.state().set_current_aggregate_key(aggregate_key.clone());
+
+    ctx.with_stacks_client(|client| {
+        client
+            .expect_estimate_fees()
+            .returning(|_, _, _| Box::pin(std::future::ready(Ok(25))));
+
+        client.expect_get_account().returning(|_| {
+            let response = Ok(AccountInfo {
+                balance: 0,
+                locked: 0,
+                unlock_height: 0,
+                // this is the only part used to create the stacks transaction.
+                nonce: 12,
+            });
+            Box::pin(std::future::ready(response))
+        });
+
+        client
+            .expect_get_current_signers_aggregate_key()
+            .returning(move |_| Box::pin(std::future::ready(Ok(Some(aggregate_key)))));
+    })
+    .await;
+
+    // Setup the scenario: we want a swept deposit
+    let amounts = [SweepAmounts {
+        amount: 700_000,
+        max_fee: 500_000,
+        is_deposit: true,
+    }];
+    let mut setup = TestSweepSetup2::new_setup(signers.clone(), &faucet, &amounts);
+
+    // Store everything we need for the deposit to be considered swept
+    setup.submit_sweep_tx(rpc, faucet);
+    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+
+    setup.store_stacks_genesis_block(&db).await;
+    setup.store_dkg_shares(&db).await;
+    setup.store_donation(&db).await;
+    setup.store_deposit_txs(&db).await;
+    setup.store_deposit_request(&db).await;
+    setup.store_deposit_decisions(&db).await;
+    setup.store_sweep_tx(&db).await;
+
+    // If we try to sign a complete deposit, we will ask the bitcoin node to
+    // asses the fees, so we need to mock this.
+    let sweep_tx_info = setup.sweep_tx_info.unwrap().tx_info;
+    ctx.with_bitcoin_client(|client| {
+        client.expect_get_tx_info().returning(move |_, _| {
+            let sweep_tx_info = sweep_tx_info.clone();
+            Box::pin(async { Ok(Some(sweep_tx_info)) })
+        });
+    })
+    .await;
+
+    // Start the coordinator event loop and wait for it to be ready
+    let start_flag = Arc::new(AtomicBool::new(false));
+    let flag = start_flag.clone();
+
+    let signing_round_max_duration = Duration::from_secs(2);
+    let ev = TxCoordinatorEventLoop {
+        network: signer_network.spawn(),
+        context: ctx.clone(),
+        context_window: 10000,
+        private_key: signers.private_key(),
+        signing_round_max_duration,
+        bitcoin_presign_request_max_duration: Duration::from_secs(1),
+        threshold: ctx.config().signer.bootstrap_signatures_required,
+        dkg_max_duration: Duration::from_secs(1),
+        is_epoch3: true,
+    };
+    tokio::spawn(async move {
+        flag.store(true, Ordering::Relaxed);
+        ev.run().await
+    });
+
+    while !start_flag.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    // We will use network messages to detect the coordinator attempt, so we
+    // need to connect to the network
+    let fake_ctx = TestContext::default_mocked();
+    let mut fake_signer = network.connect(&fake_ctx).spawn();
+
+    // Finally, set the deposit status according in the smart contract
+    if deposit_completed {
+        set_deposit_completed(&mut ctx).await;
+    } else {
+        set_deposit_incomplete(&mut ctx).await;
+    }
+
+    // Wake up the coordinator
+    ctx.signal(RequestDeciderEvent::NewRequestsHandled.into())
+        .expect("failed to signal");
+
+    let network_msg = tokio::time::timeout(signing_round_max_duration, fake_signer.receive()).await;
+
+    if deposit_completed {
+        network_msg.expect_err("expected timeout, got something instead");
+    } else {
+        let network_msg = network_msg.expect("failed to get a msg").unwrap();
+        assert!(matches!(
+            network_msg.payload,
+            Payload::StacksTransactionSignRequest(_)
+        ));
+    }
 
     testing::storage::drop_db(db).await;
 }

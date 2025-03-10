@@ -74,6 +74,10 @@ pub enum Error {
     #[error("Unauthorized access - check your API key")]
     Unauthorized,
 
+    /// You do not have permission to access or perform the requested action
+    #[error("Forbidden")]
+    Forbidden,
+
     /// This may be because you either requested a nonexistent endpoint
     /// or referenced a user that does not exist
     #[error("Resource not found")]
@@ -144,6 +148,7 @@ impl Error {
             Error::Serialization(_) => StatusCode::BAD_REQUEST,
             Error::InvalidApiResponse => StatusCode::BAD_REQUEST,
             Error::Unauthorized => StatusCode::UNAUTHORIZED,
+            Error::Forbidden => StatusCode::FORBIDDEN,
             Error::NotFound => StatusCode::NOT_FOUND,
             Error::NotAcceptable => StatusCode::NOT_ACCEPTABLE,
             Error::NotImplemented => StatusCode::NOT_IMPLEMENTED,
