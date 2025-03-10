@@ -345,12 +345,22 @@ where
             return Ok(true);
         };
 
-        let result = client
-            .can_accept(&req.sender_address.to_string())
-            .await
-            .unwrap_or(false);
+        let network = bitcoin::Network::from(self.context.config().signer.network);
+        let receiver_address = bitcoin::Address::from_script(&req.recipient, network.params())
+            .map_err(|err| {
+                Error::WithdrawalBitcoinAddressFromScript(
+                    err,
+                    req.request_id,
+                    req.block_hash.into(),
+                )
+            })?;
 
-        Ok(result)
+        let can_accept = client
+            .can_accept(&receiver_address.to_string())
+            .await
+            .inspect_err(|error| tracing::error!(%error, "blocklist client issue"))?;
+
+        Ok(can_accept)
     }
 
     async fn can_accept_deposit_request(&self, req: &model::DepositRequest) -> Result<bool, Error> {
@@ -369,7 +379,7 @@ where
             .iter()
             .map(|script_pubkey| bitcoin::Address::from_script(script_pubkey, params))
             .collect::<Result<Vec<bitcoin::Address>, _>>()
-            .map_err(|err| Error::BitcoinAddressFromScript(err, req.outpoint()))?;
+            .map_err(|err| Error::DepositBitcoinAddressFromScript(err, req.outpoint()))?;
 
         let responses = futures::stream::iter(&addresses)
             .then(|address| async { client.can_accept(&address.to_string()).await })
