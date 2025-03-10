@@ -607,9 +607,18 @@ pub enum Error {
     /// Bitcoin error when attempting to construct an address from a
     /// scriptPubKey.
     #[error("bitcoin address parse error: {0}; txid {txid}, vout: {vout}", txid = .1.txid, vout = .1.vout)]
-    BitcoinAddressFromScript(
+    DepositBitcoinAddressFromScript(
         #[source] bitcoin::address::FromScriptError,
         bitcoin::OutPoint,
+    ),
+
+    /// Bitcoin error when attempting to construct an address from a
+    /// scriptPubKey.
+    #[error("bitcoin address parse error: {0}; Request id: {1}, BlockHash: {2}")]
+    WithdrawalBitcoinAddressFromScript(
+        #[source] bitcoin::address::FromScriptError,
+        u64,
+        StacksBlockId,
     ),
 
     /// Could not parse hex script.

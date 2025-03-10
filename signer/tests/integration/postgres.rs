@@ -2173,6 +2173,7 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     // Its details should match that of the withdrawals request.
     let req = requests.pop().unwrap();
     let expected = SweptWithdrawalRequest {
+        output_index: swept_output.output_index,
         amount: withdrawal_request.amount,
         txid: withdrawal_request.txid,
         sweep_block_hash: bitcoin_block.block_hash,
@@ -2184,6 +2185,7 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
         max_fee: withdrawal_request.max_fee,
         recipient: withdrawal_request.recipient,
     };
+    assert_eq!(req.output_index, expected.output_index);
     assert_eq!(req.amount, expected.amount);
     assert_eq!(req.txid, expected.txid);
     assert_eq!(req.sweep_block_hash, expected.sweep_block_hash);
