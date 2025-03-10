@@ -927,6 +927,11 @@ impl super::DbRead for SharedStore {
             .map(|s| (s.will_sign, s.aggregate_key)))
     }
 
+    // This might look like it do not have same behaviour as the implementation from postgres.rs
+    // However, this is correct, e use the stacks block anchor block as a proxy for the timestamp of
+    // when the decision was made.
+    // Discussion about this can be found here:
+    // https://github.com/stacks-network/sbtc/pull/1243#discussion_r1922483913
     async fn get_withdrawal_signer_decisions(
         &self,
         chain_tip: &model::BitcoinBlockHash,
