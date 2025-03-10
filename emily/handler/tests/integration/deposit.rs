@@ -891,12 +891,12 @@ async fn update_deposits_updates_chainstate() {
     }
 }
 
-#[tokio::test]
 #[test_case(Status::Pending; "pending")]
 #[test_case(Status::Reprocessing; "reprocessing")]
 #[test_case(Status::Confirmed; "confirmed")]
 #[test_case(Status::Failed; "failed")]
 #[test_case(Status::Accepted; "accepted")]
+#[tokio::test]
 async fn create_deposit_handles_duplicates(status: Status) {
     let configuration = clean_setup().await;
     // Arrange.
