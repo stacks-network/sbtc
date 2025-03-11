@@ -1,12 +1,15 @@
 # sBTC
 
 [![License: GPL v3][gpl-v3-badge]][gpl-v3-link]
-[![Discord][discord-badge]][discord-link]
 
 ### Links
 
 - [sBTC Landing Page](https://sbtc.tech/)
 - [sBTC Docs](https://docs.stacks.co/concepts/sbtc)
+
+## Releases
+
+See [`RELEASE.md`](./RELEASE.md).
 
 ## Design Docs
 
@@ -153,7 +156,7 @@ This GitHub Actions workflow, Cargo Vet, is designed to automate the vetting of 
 - **Failure**: Check the GitHub Actions logs for errors and annotations about unvetted dependencies.
 Download the audit-suggestions.txt artifact from the "Artifacts" section of the GitHub Actions interface for a detailed report.
 
-- **Addressing Unvetted Dependencies**: Use the suggestions in the audit-suggestions.txt file to update your dependency audit policies in the supply-chain.toml file. 
+- **Addressing Unvetted Dependencies**: Use the suggestions in the audit-suggestions.txt file to update your dependency audit policies in the supply-chain.toml file.
 
 Running this command you are able to check the suggestions offline:
 
@@ -181,7 +184,5 @@ does not support development on Windows or z/OS.
 
 See [this](./SECURITY.md).
 
-[discord-badge]: https://img.shields.io/static/v1?logo=discord&label=discord&message=Join&color=blue
-[discord-link]: https://discord.gg/hHaz2gGX
 [gpl-v3-badge]: https://img.shields.io/badge/License-GPLv3-blue.svg?style=flat
 [gpl-v3-link]: https://www.gnu.org/licenses/gpl-3.0

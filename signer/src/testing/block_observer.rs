@@ -23,9 +23,7 @@ use blockstack_lib::types::chainstate::StacksBlockId;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use clarity::types::chainstate::SortitionId;
 use clarity::vm::costs::ExecutionCost;
-use emily_client::models::Chainstate;
-use emily_client::models::CreateWithdrawalRequestBody;
-use emily_client::models::Withdrawal;
+use emily_client::models::Status;
 use rand::seq::IteratorRandom;
 use sbtc::deposits::CreateDepositRequest;
 
@@ -323,6 +321,16 @@ impl StacksInteract for TestHarness {
         // issue #118
         todo!()
     }
+    async fn is_deposit_completed(
+        &self,
+        _: &StacksAddress,
+        _: &bitcoin::OutPoint,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+    async fn is_withdrawal_completed(&self, _: &StacksAddress, _: u64) -> Result<bool, Error> {
+        unimplemented!()
+    }
     async fn get_account(&self, _address: &StacksAddress) -> Result<AccountInfo, Error> {
         // issue #118
         todo!()
@@ -490,6 +498,16 @@ impl EmilyInteract for TestHarness {
         Ok(self.pending_deposits.clone())
     }
 
+    async fn get_deposits_with_status(
+        &self,
+        status: Status,
+    ) -> Result<Vec<CreateDepositRequest>, Error> {
+        match status {
+            Status::Pending => Ok(self.pending_deposits.clone()),
+            _ => Ok(Vec::new()),
+        }
+    }
+
     async fn update_deposits(
         &self,
         _update_deposits: Vec<emily_client::models::DepositUpdate>,
@@ -505,22 +523,11 @@ impl EmilyInteract for TestHarness {
         unimplemented!()
     }
 
-    async fn create_withdrawals(
-        &self,
-        _create_withdrawals: Vec<CreateWithdrawalRequestBody>,
-    ) -> Vec<Result<Withdrawal, Error>> {
-        unimplemented!()
-    }
-
     async fn update_withdrawals(
         &self,
         _update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
     ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         unimplemented!()
-    }
-
-    async fn set_chainstate(&self, chainstate: Chainstate) -> Result<Chainstate, Error> {
-        Ok(chainstate)
     }
 
     async fn get_limits(&self) -> Result<SbtcLimits, Error> {

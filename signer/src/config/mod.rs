@@ -15,6 +15,7 @@ use std::path::Path;
 use url::Url;
 
 use crate::config::error::SignerConfigError;
+use crate::config::serialization::duration_milliseconds_deserializer;
 use crate::config::serialization::duration_seconds_deserializer;
 use crate::config::serialization::p2p_multiaddr_deserializer_vec;
 use crate::config::serialization::parse_stacks_address;
@@ -212,14 +213,30 @@ pub struct BlocklistClientConfig {
     /// the url for the blocklist client
     #[serde(deserialize_with = "url_deserializer_single")]
     pub endpoint: Url,
+
+    /// The delay, in milliseconds, for the second retry after a blocklist
+    /// client failure
+    #[serde(
+        default = "BlocklistClientConfig::retry_delay_default",
+        deserialize_with = "duration_milliseconds_deserializer"
+    )]
+    pub retry_delay: std::time::Duration,
 }
 
+impl BlocklistClientConfig {
+    fn retry_delay_default() -> std::time::Duration {
+        std::time::Duration::from_secs(1)
+    }
+}
 /// Emily API configuration.
 #[derive(Deserialize, Clone, Debug)]
 pub struct EmilyClientConfig {
     /// Emily API endpoints.
     #[serde(deserialize_with = "url_deserializer_vec")]
     pub endpoints: Vec<Url>,
+    /// Pagination timeout in seconds.
+    #[serde(deserialize_with = "duration_seconds_deserializer")]
+    pub pagination_timeout: std::time::Duration,
 }
 
 impl Validatable for EmilyClientConfig {
@@ -289,6 +306,9 @@ pub struct SignerConfig {
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for requests.
     pub context_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for deposit decisions to retry to propagate.
+    pub deposit_decisions_retry_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
@@ -326,6 +346,9 @@ pub struct SignerConfig {
     /// assuming the conditions for `dkg_min_bitcoin_block_height` are also met.
     /// If DKG has never been run, this configuration has no effect.
     pub dkg_target_rounds: NonZeroU32,
+    /// The number of bitcoin blocks after a DKG start where we attempt to
+    /// verify the shares. After this many blocks, we mark the shares as failed.
+    pub dkg_verification_window: u16,
 }
 
 impl Validatable for SignerConfig {
@@ -411,6 +434,11 @@ impl SignerConfig {
             .chain([self_public_key])
             .collect()
     }
+
+    /// Return the public key of the signer.
+    pub fn public_key(&self) -> PublicKey {
+        PublicKey::from_private_key(&self.private_key)
+    }
 }
 
 /// Configuration for the Stacks event observer server (hosted within the signer).
@@ -468,6 +496,7 @@ impl Settings {
         // after https://github.com/stacks-network/sbtc/issues/1004 gets
         // done.
         cfg_builder = cfg_builder.set_default("signer.context_window", 1000)?;
+        cfg_builder = cfg_builder.set_default("signer.deposit_decisions_retry_window", 3)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
@@ -476,6 +505,8 @@ impl Settings {
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         )?;
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
+        cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 10)?;
+        cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -494,6 +525,8 @@ impl Settings {
     /// Perform validation on the configuration.
     fn validate(&self) -> Result<(), ConfigError> {
         self.signer.validate(self)?;
+        self.stacks.validate(self)?;
+        self.emily.validate(self)?;
 
         Ok(())
     }
@@ -596,6 +629,7 @@ mod tests {
         assert_eq!(settings.signer.sbtc_bitcoin_start_height, Some(101));
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
         assert!(settings.signer.prometheus_exporter_endpoint.is_none());
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
@@ -610,7 +644,9 @@ mod tests {
             settings.signer.dkg_target_rounds,
             NonZeroU32::new(1).unwrap()
         );
+        assert_eq!(settings.signer.dkg_verification_window, 10);
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
     }
 
     #[test]
@@ -770,6 +806,18 @@ mod tests {
     }
 
     #[test]
+    fn default_config_toml_loads_dkg_verification_window() {
+        clear_env();
+
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_verification_window, 10);
+
+        std::env::set_var("SIGNER_SIGNER__DKG_VERIFICATION_WINDOW", "42");
+        let settings = Settings::new_from_default_config().unwrap();
+        assert_eq!(settings.signer.dkg_verification_window, 42);
+    }
+
+    #[test]
     fn default_config_toml_loads_signer_network_with_environment() {
         clear_env();
 
@@ -905,19 +953,22 @@ mod tests {
         let config_str = std::fs::read_to_string(config_file).unwrap();
         let mut config_toml = config_str.parse::<DocumentMut>().unwrap();
 
-        let mut remove_parameter = |parameter: &str| {
+        let mut remove_parameter = |config_name: &str, parameter: &str| {
             config_toml
-                .get_mut("signer")
+                .get_mut(&config_name)
                 .unwrap()
                 .as_table_mut()
                 .unwrap()
                 .remove(parameter);
         };
-        remove_parameter("context_window");
-        remove_parameter("signer_round_max_duration");
-        remove_parameter("bitcoin_presign_request_max_duration");
-        remove_parameter("dkg_max_duration");
-        remove_parameter("max_deposits_per_bitcoin_tx");
+        remove_parameter("signer", "context_window");
+        remove_parameter("signer", "deposit_decisions_retry_window");
+        remove_parameter("signer", "signer_round_max_duration");
+        remove_parameter("signer", "bitcoin_presign_request_max_duration");
+        remove_parameter("signer", "dkg_max_duration");
+        remove_parameter("signer", "max_deposits_per_bitcoin_tx");
+
+        remove_parameter("emily", "pagination_timeout");
 
         let new_config = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
 
@@ -926,6 +977,7 @@ mod tests {
         let settings = Settings::new(Some(&new_config.path())).unwrap();
 
         assert_eq!(settings.signer.context_window, 1000);
+        assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
             Duration::from_secs(30)
@@ -935,6 +987,8 @@ mod tests {
             Duration::from_secs(30)
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
+
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
     }
 
     #[test]

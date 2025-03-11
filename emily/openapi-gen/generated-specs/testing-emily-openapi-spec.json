@@ -389,7 +389,8 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "nullable": true
+              "nullable": true,
+              "minimum": 0
             }
           }
         ],
@@ -470,6 +471,16 @@
           "required": true
         },
         "responses": {
+          "200": {
+            "description": "Deposit already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deposit"
+                }
+              }
+            }
+          },
           "201": {
             "description": "Deposit created successfully",
             "content": {
@@ -502,16 +513,6 @@
           },
           "405": {
             "description": "Method not allowed",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate request",
             "content": {
               "application/json": {
                 "schema": {
@@ -568,6 +569,16 @@
           },
           "400": {
             "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
             "content": {
               "application/json": {
                 "schema": {
@@ -648,7 +659,7 @@
           {
             "name": "recipient",
             "in": "path",
-            "description": "the status to search by when getting all deposits.",
+            "description": "the recipient to search by when getting all deposits.",
             "required": true,
             "schema": {
               "type": "string"
@@ -672,7 +683,8 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "nullable": true
+              "nullable": true,
+              "minimum": 0
             }
           }
         ],
@@ -746,7 +758,134 @@
           {
             "name": "recipient",
             "in": "path",
-            "description": "the status to search by when getting all deposits.",
+            "description": "the recipient to search by when getting all deposits.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/deposit/reclaim-pubkeys/{reclaimPubkeys}": {
+      "get": {
+        "tags": [
+          "deposit"
+        ],
+        "summary": "Get deposits by recipient handler.",
+        "operationId": "getDepositsForReclaimPubkeys",
+        "parameters": [
+          {
+            "name": "reclaimPubkeys",
+            "in": "path",
+            "description": "The dash-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposits retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetDepositsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "reclaimPubkeys",
+            "in": "path",
+            "description": "The dash-separated list of hex-encoded x-only pubkeys used to generate the reclaim_script.",
             "required": true,
             "schema": {
               "type": "string"
@@ -798,7 +937,8 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "nullable": true
+              "nullable": true,
+              "minimum": 0
             }
           }
         ],
@@ -1071,11 +1211,6 @@
             }
           }
         },
-        "security": [
-          {
-            "ApiGatewayKey": []
-          }
-        ],
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
           "type": "aws_proxy",
@@ -1443,6 +1578,98 @@
         }
       }
     },
+    "/new_block": {
+      "post": {
+        "tags": [
+          "new_block"
+        ],
+        "summary": "Get limits handler.",
+        "operationId": "newBlock",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewBlockEventRaw"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "New Block event received successfully"
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "ApiGatewayKey": []
+          }
+        ],
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
     "/testing/wipe": {
       "post": {
         "tags": [
@@ -1508,7 +1735,7 @@
           {
             "name": "status",
             "in": "query",
-            "description": "the status to search by when getting all deposits.",
+            "description": "the status to search by when getting all withdrawals.",
             "required": true,
             "schema": {
               "$ref": "#/components/schemas/Status"
@@ -1532,7 +1759,8 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "nullable": true
+              "nullable": true,
+              "minimum": 0
             }
           }
         ],
@@ -1714,6 +1942,16 @@
               }
             }
           },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Address not found",
             "content": {
@@ -1765,6 +2003,260 @@
         "summary": "CORS support",
         "description": "Handles CORS preflight requests",
         "parameters": [],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/withdrawal/recipient/{recipient}": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawals by recipient handler.",
+        "operationId": "getWithdrawalsForRecipient",
+        "parameters": [
+          {
+            "name": "recipient",
+            "in": "path",
+            "description": "The recipient's hex-encoded scriptPubKey, used to filter withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWithdrawalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "recipient",
+            "in": "path",
+            "description": "The recipient's hex-encoded scriptPubKey, used to filter withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {},
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      }
+    },
+    "/withdrawal/sender/{sender}": {
+      "get": {
+        "tags": [
+          "withdrawal"
+        ],
+        "summary": "Get withdrawals by sender handler.",
+        "operationId": "getWithdrawalsForSender",
+        "parameters": [
+          {
+            "name": "sender",
+            "in": "path",
+            "description": "The sender's Stacks principal, used to filter withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "nextToken",
+            "in": "query",
+            "description": "the next token value from the previous return of this api call.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "nullable": true
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "description": "the maximum number of items in the response list.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "nullable": true,
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetWithdrawalsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Address not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-amazon-apigateway-integration": {
+          "httpMethod": "POST",
+          "type": "aws_proxy",
+          "uri": {
+            "Fn::Sub": "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${OperationLambda}/invocations"
+          }
+        }
+      },
+      "options": {
+        "tags": [
+          "CORS"
+        ],
+        "summary": "CORS support",
+        "description": "Handles CORS preflight requests",
+        "parameters": [
+          {
+            "name": "sender",
+            "in": "path",
+            "description": "The sender's Stacks principal, used to filter withdrawals.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {},
         "x-amazon-apigateway-integration": {
           "httpMethod": "POST",
@@ -1948,7 +2440,8 @@
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
           "reclaimScript",
-          "depositScript"
+          "depositScript",
+          "transactionHex"
         ],
         "properties": {
           "bitcoinTxOutputIndex": {
@@ -1968,6 +2461,10 @@
           "reclaimScript": {
             "type": "string",
             "description": "Reclaim script."
+          },
+          "transactionHex": {
+            "type": "string",
+            "description": "The raw transaction hex."
           }
         }
       },
@@ -1979,6 +2476,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "parameters"
         ],
@@ -1994,13 +2492,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's Bitcoin hex-encoded scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2341,12 +2843,12 @@
         "type": "object",
         "description": "Struct that represents the current status of the API.",
         "required": [
-          "is_okay"
+          "version"
         ],
         "properties": {
-          "is_okay": {
-            "type": "boolean",
-            "description": "Whether the API is okay."
+          "version": {
+            "type": "string",
+            "description": "The version of the API."
           }
         }
       },
@@ -2393,6 +2895,10 @@
             "minimum": 0
           }
         }
+      },
+      "NewBlockEventRaw": {
+        "type": "string",
+        "description": "The raw payload of a new block event from a stacks node.\nThis is the raw JSON string that is sent to the webhook.\nIdeally, NewBlockEvent would be used directly, but because of the\nthe imported data types, we can't derive ToSchema for it to be used\nin the OpenAPI spec."
       },
       "Status": {
         "type": "string",
@@ -2477,6 +2983,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
@@ -2514,13 +3021,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",
@@ -2549,6 +3060,7 @@
           "stacksBlockHash",
           "stacksBlockHeight",
           "recipient",
+          "sender",
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
@@ -2573,13 +3085,17 @@
           },
           "recipient": {
             "type": "string",
-            "description": "The recipient Bitcoin address."
+            "description": "The recipient's hex-encoded Bitcoin scriptPubKey."
           },
           "requestId": {
             "type": "integer",
             "format": "int64",
             "description": "The id of the Stacks withdrawal request that initiated the sBTC operation.",
             "minimum": 0
+          },
+          "sender": {
+            "type": "string",
+            "description": "The sender's hex-encoded Stacks principal."
           },
           "stacksBlockHash": {
             "type": "string",

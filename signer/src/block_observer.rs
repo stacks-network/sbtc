@@ -17,6 +17,7 @@
 //! - Update signer set transactions
 //! - Set aggregate key transactions
 
+use std::collections::BTreeSet;
 use std::future::Future;
 use std::time::Duration;
 
@@ -29,6 +30,7 @@ use crate::context::SbtcLimits;
 use crate::context::SignerEvent;
 use crate::emily_client::EmilyInteract;
 use crate::error::Error;
+use crate::keys::PublicKey;
 use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
 use crate::stacks::api::GetNakamotoStartHeight as _;
@@ -36,6 +38,7 @@ use crate::stacks::api::StacksInteract;
 use crate::stacks::api::TenureBlocks;
 use crate::storage;
 use crate::storage::model;
+use crate::storage::model::EncryptedDkgShares;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
 use bitcoin::hashes::Hash as _;
@@ -81,7 +84,7 @@ impl DepositRequestValidator for CreateDepositRequest {
         };
 
         // If the transaction has not been confirmed yet, then the block
-        // hash will be None. The trasnaction has not failed validation,
+        // hash will be None. The transaction has not failed validation,
         // let's try again when it gets confirmed.
         let Some(block_hash) = response.block_hash else {
             return Ok(None);
@@ -157,8 +160,14 @@ where
                         tracing::warn!(%error, "could not process stacks blocks");
                     }
 
-                    if let Err(error) = self.update_sbtc_limits().await {
-                        tracing::warn!(%error, "could not update sBTC limits");
+                    if let Err(error) = self.check_pending_dkg_shares(block_hash).await {
+                        tracing::warn!(%error, "could not check pending dkg shares");
+                        continue;
+                    }
+
+                    tracing::debug!("updating the signer state");
+                    if let Err(error) = self.update_signer_state(block_hash).await {
+                        tracing::warn!(%error, "could not update the signer state");
                         continue;
                     }
 
@@ -366,7 +375,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// Process all recent stacks blocks.
     #[tracing::instrument(skip_all)]
     async fn process_stacks_blocks(&self) -> Result<(), Error> {
-        tracing::info!("processing bitcoin block");
+        tracing::info!("processing stacks block");
         let stacks_client = self.context.get_stacks_client();
         let tenure_info = stacks_client.get_tenure_info().await?;
 
@@ -577,6 +586,146 @@ impl<C: Context, B> BlockObserver<C, B> {
         }
         Ok(())
     }
+
+    /// Update the `SignerState` object with current signer set and
+    /// aggregate key data.
+    ///
+    /// # Notes
+    ///
+    /// The query used for fetching the cached information can take quite a
+    /// lot of some time to complete on mainnet. So this function updates
+    /// the signers state once so that the other event loops do not need to
+    /// execute them. The cached information is:
+    ///
+    /// * The current signer set. It gets this information from the last
+    ///   successful key-rotation contract call if it exists. If such a
+    ///   contract call does not exist this function uses the latest DKG
+    ///   shares, and if that doesn't exist it uses the bootstrap signing
+    ///   set from the configuration.
+    /// * The current aggregate key. It gets this information from the last
+    ///   successful key-rotation contract call if it exists, and from the
+    ///   latest DKG shares if no such contract call can be found.
+    async fn set_signer_set_and_aggregate_key(&self, chain_tip: BlockHash) -> Result<(), Error> {
+        let (aggregate_key, public_keys) =
+            get_signer_set_and_aggregate_key(&self.context, chain_tip).await?;
+
+        let state = self.context.state();
+        if let Some(aggregate_key) = aggregate_key {
+            state.set_current_aggregate_key(aggregate_key);
+        }
+
+        state.update_current_signer_set(public_keys);
+        Ok(())
+    }
+
+    /// Update the `SignerState` object with data that is unlikely to
+    /// change until the arrival of the next bitcoin block.
+    ///
+    /// # Notes
+    ///
+    /// The function updates the following:
+    /// * sBTC limits from Emily.
+    /// * The current signer set.
+    /// * The current aggregate key.
+    async fn update_signer_state(&self, chain_tip: BlockHash) -> Result<(), Error> {
+        tracing::info!("loading sbtc limits from Emily");
+        self.update_sbtc_limits().await?;
+
+        tracing::info!("updating the signer state with the current signer set");
+        self.set_signer_set_and_aggregate_key(chain_tip).await
+    }
+
+    /// Checks if the latest dkg share is pending and is no longer valid
+    async fn check_pending_dkg_shares(&self, chain_tip: BlockHash) -> Result<(), Error> {
+        let db = self.context.get_storage_mut();
+
+        let last_dkg = db.get_latest_encrypted_dkg_shares().await?;
+
+        if let Some(ref shares) = last_dkg {
+            tracing::info!(
+                aggregate_key = %shares.aggregate_key,
+                status = ?shares.dkg_shares_status,
+                "checking latest DKG shares"
+            );
+        }
+
+        let Some(
+            last_dkg @ EncryptedDkgShares {
+                dkg_shares_status: model::DkgSharesStatus::Unverified,
+                ..
+            },
+        ) = last_dkg
+        else {
+            return Ok(());
+        };
+
+        let chain_tip = db
+            .get_bitcoin_block(&chain_tip.into())
+            .await?
+            .ok_or(Error::NoChainTip)?;
+        let verification_window = self.context.config().signer.dkg_verification_window;
+
+        let max_verification_height = last_dkg
+            .started_at_bitcoin_block_height
+            .saturating_add(verification_window as u64);
+
+        if max_verification_height < chain_tip.block_height {
+            tracing::info!(
+                aggregate_key = %last_dkg.aggregate_key,
+                "latest DKG shares are unverified and the verification window expired, marking them as failed"
+            );
+            db.revoke_dkg_shares(last_dkg.aggregate_key).await?;
+        }
+
+        Ok(())
+    }
+}
+
+/// Return the signing set that can make sBTC related contract calls along
+/// with the current aggregate key to use for locking UTXOs on bitcoin.
+///
+/// The aggregate key fetched here is the one confirmed on the canonical
+/// Stacks blockchain as part of a `rotate-keys` contract call. It will be
+/// the public key that is the result of a DKG run. If there are no
+/// rotate-keys transactions on the canonical stacks blockchain, then we
+/// fall back on the last known DKG shares row in our database, and return
+/// None as the aggregate key if no DKG shares can be found, implying that
+/// this signer has not participated in DKG.
+#[tracing::instrument(skip_all)]
+pub async fn get_signer_set_and_aggregate_key<C, B>(
+    context: &C,
+    chain_tip: B,
+) -> Result<(Option<PublicKey>, BTreeSet<PublicKey>), Error>
+where
+    C: Context,
+    B: Into<model::BitcoinBlockHash>,
+{
+    let db = context.get_storage();
+    let chain_tip = chain_tip.into();
+
+    // We are supposed to submit a rotate-keys transaction after running
+    // DKG, but that transaction may not have been submitted yet (if we
+    // have just run DKG) or it may not have been confirmed on the
+    // canonical Stacks blockchain.
+    //
+    // If the signers have already run DKG, then we know that all
+    // participating signers should have the same view of the latest
+    // aggregate key, so we can fall back on the stored DKG shares for
+    // getting the current aggregate key and associated signing set.
+    match db.get_last_key_rotation(&chain_tip).await? {
+        Some(last_key) => {
+            let aggregate_key = last_key.aggregate_key;
+            let signer_set = last_key.signer_set.into_iter().collect();
+            Ok((Some(aggregate_key), signer_set))
+        }
+        None => match db.get_latest_encrypted_dkg_shares().await? {
+            Some(shares) => {
+                let signer_set = shares.signer_set_public_keys.into_iter().collect();
+                Ok((Some(shares.aggregate_key), signer_set))
+            }
+            None => Ok((None, context.config().signer.bootstrap_signing_set())),
+        },
+    }
 }
 
 #[cfg(test)]
@@ -596,6 +745,7 @@ mod tests {
     use crate::keys::PublicKey;
     use crate::keys::SignerScriptPubKey as _;
     use crate::storage;
+    use crate::storage::model::DkgSharesStatus;
     use crate::testing::block_observer::TestHarness;
     use crate::testing::context::*;
 
@@ -672,14 +822,14 @@ mod tests {
         // invalid requests (even though it should've validated them) and
         // BitcoinClient will return the right transaction for both of
         // them.
-        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount);
+        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount]);
         let deposit_request0 = CreateDepositRequest {
             outpoint: bitcoin::OutPoint {
                 txid: tx_setup0.tx.compute_txid(),
                 vout: 0,
             },
-            deposit_script: tx_setup0.deposit.deposit_script(),
-            reclaim_script: tx_setup0.reclaim.reclaim_script(),
+            deposit_script: tx_setup0.deposits.first().unwrap().deposit_script(),
+            reclaim_script: tx_setup0.reclaims.first().unwrap().reclaim_script(),
         };
         let req0 = deposit_request0.clone();
         // When we validate the deposit request, we fetch the transaction
@@ -691,7 +841,7 @@ mod tests {
             block_time: None,
         };
 
-        let tx_setup1 = sbtc::testing::deposits::tx_setup(300, 2000, amount);
+        let tx_setup1 = sbtc::testing::deposits::tx_setup(300, 2000, &[amount]);
         // This one is an invalid deposit request because the deposit
         // script is wrong
         let deposit_request1 = CreateDepositRequest {
@@ -700,7 +850,7 @@ mod tests {
                 vout: 0,
             },
             deposit_script: bitcoin::ScriptBuf::new(),
-            reclaim_script: tx_setup1.reclaim.reclaim_script(),
+            reclaim_script: tx_setup1.reclaims.first().unwrap().reclaim_script(),
         };
         // The transaction is also in the mempool, even though it is an
         // invalid deposit.
@@ -713,7 +863,7 @@ mod tests {
 
         // This deposit transaction is a fine deposit, it just hasn't been
         // confirmed yet.
-        let tx_setup2 = sbtc::testing::deposits::tx_setup(400, 3000, amount);
+        let tx_setup2 = sbtc::testing::deposits::tx_setup(400, 3000, &[amount]);
         let get_tx_resp2 = GetTxResponse {
             tx: tx_setup2.tx.clone(),
             block_hash: None,
@@ -726,8 +876,8 @@ mod tests {
                 txid: tx_setup2.tx.compute_txid(),
                 vout: 0,
             },
-            deposit_script: tx_setup2.deposit.deposit_script(),
-            reclaim_script: tx_setup2.reclaim.reclaim_script(),
+            deposit_script: tx_setup2.deposits.first().unwrap().deposit_script(),
+            reclaim_script: tx_setup2.reclaims.first().unwrap().reclaim_script(),
         };
 
         // Let's add the "responses" to the field that feeds the
@@ -801,14 +951,14 @@ mod tests {
         // invalid requests (even though it should've validated them) and
         // BitcoinClient will return the right transaction for both of
         // them.
-        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount);
+        let tx_setup0 = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount]);
         let deposit_request0 = CreateDepositRequest {
             outpoint: bitcoin::OutPoint {
                 txid: tx_setup0.tx.compute_txid(),
                 vout: 0,
             },
-            deposit_script: tx_setup0.deposit.deposit_script(),
-            reclaim_script: tx_setup0.reclaim.reclaim_script(),
+            deposit_script: tx_setup0.deposits.first().unwrap().deposit_script(),
+            reclaim_script: tx_setup0.reclaims.first().unwrap().reclaim_script(),
         };
         // When we validate the deposit request, we fetch the transaction
         // from bitcoin-core's blockchain. The stubs out that
@@ -898,6 +1048,9 @@ mod tests {
             public_shares: Vec::new(),
             signer_set_public_keys: vec![aggregate_key],
             signature_share_threshold: 1,
+            dkg_shares_status: DkgSharesStatus::Unverified,
+            started_at_bitcoin_block_hash: block_hash.into(),
+            started_at_bitcoin_block_height: 1,
         };
         storage.write_encrypted_dkg_shares(&shares).await.unwrap();
 
@@ -906,14 +1059,14 @@ mod tests {
         // sbtc::testing::deposits::tx_setup just to quickly create a
         // transaction; any one will do since we will be adding the UTXO
         // that spends to the signer afterward.
-        let mut tx_setup0 = sbtc::testing::deposits::tx_setup(0, 0, 100);
+        let mut tx_setup0 = sbtc::testing::deposits::tx_setup(0, 0, &[100]);
         tx_setup0.tx.output.push(TxOut {
             value: Amount::ONE_BTC,
             script_pubkey: signers_script_pubkey.into(),
         });
 
         // This one does not spend to the signers :(
-        let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, 2000);
+        let tx_setup1 = sbtc::testing::deposits::tx_setup(1, 10, &[2000]);
         let txid0 = tx_setup0.tx.compute_txid();
         let txid1 = tx_setup1.tx.compute_txid();
 

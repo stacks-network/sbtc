@@ -16,49 +16,61 @@ use rand::SeedableRng;
 use signer::testing::context::*;
 
 use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::TestSweepSetup;
+use crate::setup::set_withdrawal_completed;
+use crate::setup::set_withdrawal_incomplete;
+use crate::setup::SweepAmounts;
+use crate::setup::TestSignerSet;
+use crate::setup::TestSweepSetup2;
+
+const WITHDRAWAL_AMOUNT: [SweepAmounts; 1] = [SweepAmounts {
+    amount: 700_000,
+    max_fee: 500_000,
+    is_deposit: false,
+}];
 
 /// Create a "proper" [`AcceptWithdrawalV1`] object and context with the
 /// given information. If the information here is correct then the returned
 /// [`AcceptWithdrawalV1`] object will pass validation with the given
 /// context.
-fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqContext) {
+fn make_withdrawal_accept(data: &TestSweepSetup2) -> (AcceptWithdrawalV1, ReqContext) {
     // Okay now we get ready to create the transaction using the
     // `AcceptWithdrawalV1` type.
-    let fee = data.sweep_tx_info.assess_output_fee(2).unwrap().to_sat();
+    let sweep_tx_info = data.sweep_tx_info.clone().unwrap();
+    let fee = sweep_tx_info.tx_info.assess_output_fee(2).unwrap().to_sat();
     let complete_withdrawal_tx = AcceptWithdrawalV1 {
         // This OutPoint points to the withdrawal UTXO. We look up our
         // record of the actual withdrawal to make sure that the amount
         // matches the one in the withdrawal request.
         outpoint: OutPoint {
-            txid: data.sweep_tx_info.txid,
+            txid: sweep_tx_info.tx_info.txid,
             // The sweep transaction has exactly 3 outputs, where the first
             // two are about the signers and the third one is for the
             // withdrawal request.
             vout: 2,
         },
         // This points to the withdrawal request transaction.
-        request_id: data.withdrawal_request.request_id,
+        id: data.withdrawal_ids()[0],
         // This is the assessed transaction fee for fulfilling the withdrawal
         // request.
         tx_fee: fee,
-        //
-        signer_bitmap: data.withdrawal_request.signer_bitmap,
+        // The bitmap for how the signers voted.
+        signer_bitmap: data.withdrawals[0].request.signer_bitmap,
         // The deployer must match what is in the signers' context.
         deployer: StacksAddress::burn_address(false),
         // The block hash of the block that includes the above sweep
         // transaction. It must be on the canonical bitcoin blockchain.
-        sweep_block_hash: data.sweep_block_hash.into(),
+        sweep_block_hash: sweep_tx_info.block_hash,
         // This must be the height of the above block.
-        sweep_block_height: data.sweep_block_height,
+        sweep_block_height: sweep_tx_info.block_height,
     };
 
     // This is what the current signer thinks is the state of things.
     let req_ctx = ReqContext {
         chain_tip: BitcoinBlockRef {
-            block_hash: data.sweep_block_hash.into(),
-            block_height: data.sweep_block_height,
+            block_hash: sweep_tx_info.block_hash,
+            block_height: sweep_tx_info.block_height,
         },
+        stacks_chain_tip: data.withdrawals[0].request.block_hash,
         // This value means that the signer will go back 20 blocks when
         // looking for pending and accepted withdrawal requests.
         context_window: 20,
@@ -67,11 +79,11 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
         // When checking whether the transaction is from the signer, we
         // check that the first "prevout" has a `scriptPubKey` that the
         // signers control.
-        aggregate_key: data.aggregated_signer.keypair.public_key().into(),
+        aggregate_key: data.signers.aggregate_key(),
         // This value affects whether a withdrawal request is considered
         // "accepted". During validation, a signer won't sign a transaction
         // if it is not considered accepted but the collection of signers.
-        signatures_required: 2,
+        signatures_required: data.signatures_required,
         // This is who the current signer thinks deployed the sBTC
         // contracts.
         deployer: StacksAddress::burn_address(false),
@@ -82,25 +94,31 @@ fn make_withdrawal_accept(data: &TestSweepSetup) -> (AcceptWithdrawalV1, ReqCont
 
 /// For this test we check that the `AcceptWithdrawalV1::validate` function
 /// returns okay when everything matches the way that it is supposed to.
-#[tokio::test]
+#[test_log::test(tokio::test)]
 async fn accept_withdrawal_validation_happy_path() {
     // Normal: this generates the blockchain as well as a transaction
     // sweeping out the funds for a withdrawal request. This is just setup
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
-    // Normal: we take the sweep transaction as is from the test setup and
+    // Normal: we take the sweep transaction that we just submitted and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -109,19 +127,22 @@ async fn accept_withdrawal_validation_happy_path() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
     // This should not return an Err.
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     accept_withdrawal_tx.validate(&ctx, &req_ctx).await.unwrap();
 
@@ -138,17 +159,23 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -157,21 +184,24 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (mut accept_withdrawal_tx, mut req_ctx) = make_withdrawal_accept(&setup);
     // Different: Okay, let's make sure the deployers do not match.
-    accept_withdrawal_tx.deployer = StacksAddress::p2pkh(false, &setup.signer_keys[0].into());
-    req_ctx.deployer = StacksAddress::p2pkh(false, &setup.signer_keys[1].into());
+    accept_withdrawal_tx.deployer = StacksAddress::p2pkh(false, &setup.signers.keys[0].into());
+    req_ctx.deployer = StacksAddress::p2pkh(false, &setup.signers.keys[1].into());
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -195,17 +225,23 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -214,7 +250,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
@@ -222,14 +258,17 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // Different: Let's use a request_id that does not exist in our
     // database. In these tests, the withdrawal id starts at 0 and
     // increments by 1 for each withdrawal request generated.
-    accept_withdrawal_tx.request_id = u64::MAX;
+    accept_withdrawal_tx.id.request_id = u32::MAX as u64;
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -253,17 +292,23 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -272,22 +317,25 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     // Different: the sweep transaction has already taken place, but our
     // records of the recipient does not match the actual recipient on
     // chain.
-    setup.withdrawal_request.script_pubkey = fake::Faker.fake_with_rng(&mut rng);
+    setup.withdrawals[0].request.script_pubkey = fake::Faker.fake_with_rng(&mut rng);
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -311,39 +359,48 @@ async fn accept_withdrawal_validation_invalid_amount() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
     setup.store_dkg_shares(&db).await;
 
     // Different: the request amount and the amount on chain do not match.
-    setup.withdrawal_request.amount += 1;
+    setup.withdrawals[0].request.amount += 1;
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -367,17 +424,23 @@ async fn accept_withdrawal_validation_invalid_fee() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let mut setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -385,23 +448,33 @@ async fn accept_withdrawal_validation_invalid_fee() {
 
     // Different: The fee cannot exceed the max fee. As usual, we still
     // need to store the withdrawal request and how the signers voted.
-    let assessed_fee = setup.sweep_tx_info.assess_output_fee(2).unwrap().to_sat();
-    setup.withdrawal_request.max_fee = assessed_fee - 1;
+    let assessed_fee = setup
+        .sweep_tx_info
+        .clone()
+        .unwrap()
+        .tx_info
+        .assess_output_fee(2)
+        .unwrap()
+        .to_sat();
+    setup.withdrawals[0].request.max_fee = assessed_fee - 1;
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validate_future = accept_withdrawal_tx.validate(&ctx, &req_ctx);
     match validate_future.await.unwrap_err() {
@@ -425,17 +498,23 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -444,7 +523,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
@@ -456,12 +535,15 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     let fake_txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
     accept_withdrawal_tx.outpoint.txid = fake_txid.into();
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -485,17 +567,23 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -504,7 +592,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
@@ -524,12 +612,15 @@ async fn accept_withdrawal_validation_sweep_reorged() {
         block_height: 30000,
     };
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -554,17 +645,23 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -573,7 +670,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
@@ -583,14 +680,17 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // Here we give an outpoint that doesn't exist in the transaction,
     // triggering the desired error. We use 3 for the vout, but any number
     // greater than 2 will do.
-    accept_withdrawal_tx.outpoint = OutPoint::new(setup.sweep_tx_info.txid, 3);
+    accept_withdrawal_tx.outpoint = OutPoint::new(setup.sweep_tx_info.unwrap().tx_info.txid, 3);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -614,17 +714,23 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -633,7 +739,7 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
@@ -643,12 +749,15 @@ async fn accept_withdrawal_validation_bitmap_mismatch() {
     let first_vote = *accept_withdrawal_tx.signer_bitmap.get(0).unwrap();
     accept_withdrawal_tx.signer_bitmap.set(0, !first_vote);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -673,17 +782,23 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control.
@@ -692,7 +807,7 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
@@ -701,12 +816,15 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // should be.
     accept_withdrawal_tx.tx_fee -= 1;
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
+
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
 
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
@@ -730,17 +848,23 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
     let (rpc, faucet) = regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
     setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
 
     // Different: we normally add a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. Here we
@@ -750,23 +874,92 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     // Normal: the request and how the signers voted needs to be added to
     // the database. Here the bitmap in the withdrawal request object
     // corresponds to how the signers voted.
-    setup.store_withdrawal_request(&db).await;
+    setup.store_withdrawal_requests(&db).await;
     setup.store_withdrawal_decisions(&db).await;
 
     // Generate the transaction and corresponding request context.
     let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
 
+    // Normal: the request is not completed in the smart contract.
+    set_withdrawal_incomplete(&mut ctx).await;
+
     let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::InvalidSweep)
+        }
+        err => panic!("unexpected error during validation {err}"),
+    }
+
+    testing::storage::drop_db(db).await;
+}
+
+/// For this test we check that the `AcceptWithdrawalV1::validate` function
+/// returns a withdrawal validation error with a RequestCompleted message
+/// when smart contract returns that the withdrawal request has been
+/// completed.
+#[tokio::test]
+async fn accept_withdrawal_validation_request_completed() {
+    // Normal: this generates the blockchain as well as a transaction
+    // sweeping out the funds for a withdrawal request. This is just setup
+    // and should be essentially the same between tests.
+    let db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(2);
+    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let signers = TestSignerSet::new(&mut rng);
+    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+
+    // Normal: The withdrawal must be swept on bitcoin.
+    setup.submit_sweep_tx(rpc, faucet);
+
+    // Normal: the signer follows the bitcoin blockchain and event observer
+    // should be getting new block events from bitcoin-core. We haven't
+    // hooked up our block observer, so we need to manually update the
+    // database with new bitcoin block headers.
+    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+
+    // Normal: we take the sweep transaction that we just submitted and
+    // store it in the database.
+    setup.store_sweep_tx(&db).await;
+    setup.store_bitcoin_withdrawals_outputs(&db).await;
+
+    // Normal: we need to store a row in the dkg_shares table so that we
+    // have a record of the scriptPubKey that the signers control.
+    setup.store_dkg_shares(&db).await;
+
+    // Normal: the request and how the signers voted needs to be added to
+    // the database. Here the bitmap in the withdrawal request object
+    // corresponds to how the signers voted.
+    setup.store_withdrawal_requests(&db).await;
+    setup.store_withdrawal_decisions(&db).await;
+
+    // Generate the transaction and corresponding request context.
+    let (accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
+
+    // This should not return an Err.
+    let mut ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_first_bitcoin_core_client()
+        .with_mocked_stacks_client()
+        .with_mocked_emily_client()
+        .build();
+
+    // Different: the request has been marked as completed in the smart
+    // contract.
+    set_withdrawal_completed(&mut ctx).await;
+
+    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
+    match validation_result.unwrap_err() {
+        Error::WithdrawalAcceptValidation(ref err) => {
+            assert_eq!(err.error, WithdrawalErrorMsg::RequestCompleted)
         }
         err => panic!("unexpected error during validation {err}"),
     }

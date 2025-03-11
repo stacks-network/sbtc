@@ -6,6 +6,7 @@
 //! The canonical implementation of these traits is the [`postgres::PgStore`]
 //! allowing the signer to use a Postgres database to store data.
 
+#[cfg(any(test, feature = "testing"))]
 pub mod in_memory;
 pub mod model;
 pub mod postgres;
@@ -25,7 +26,6 @@ use crate::keys::PublicKey;
 use crate::keys::PublicKeyXOnly;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 
 /// Represents the ability to read data from the signer storage.
@@ -46,6 +46,11 @@ pub trait DbRead {
     fn get_bitcoin_canonical_chain_tip(
         &self,
     ) -> impl Future<Output = Result<Option<model::BitcoinBlockHash>, Error>> + Send;
+
+    /// Get the bitcoin canonical chain tip.
+    fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::BitcoinBlockRef>, Error>> + Send;
 
     /// Get the stacks chain tip, defined as the highest stacks block
     /// confirmed by the bitcoin chain tip.
@@ -87,12 +92,6 @@ pub trait DbRead {
         output_index: u32,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
-    /// Get the deposit requests that the signer has accepted to sign
-    fn get_accepted_deposit_requests(
-        &self,
-        signer: &PublicKey,
-    ) -> impl Future<Output = Result<Vec<model::DepositRequest>, Error>> + Send;
-
     /// This function returns a deposit request report that does the
     /// following:
     ///
@@ -122,6 +121,15 @@ pub trait DbRead {
         &self,
         txid: &model::BitcoinTxId,
         output_index: u32,
+    ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
+
+    /// Get all the deposit decisions for the given signer in the given window
+    /// of blocks.
+    fn get_deposit_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
 
     /// Returns whether the given `signer_public_key` can provide signature
@@ -159,13 +167,46 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
-    /// Get pending withdrawal requests that have been accepted by at least
-    /// `threshold` signers and has no responses
+    /// This function returns withdrawal requests filtered by a portion of the
+    /// consensus critera defined in #741.
+    ///
+    /// ## Filter Criteria
+    ///
+    /// 1. The withdrawal request transaction (`create-withdrawal-request`
+    ///    contract call) is confirmed in a block on the canonical stacks
+    ///    blockchain.
+    /// 2. The withdrawal request has not been included in a sweep transaction
+    ///    that has been confirmed in a block on the canonical bitcoin
+    ///    blockchain.
+    /// 3. The withdrawal request has been approved by at least
+    ///    `signature_threshold` signers.
+    /// 4. The withdrawal request bitcoin block height is not older than the
+    ///    given `min_bitcoin_height` (_inclusive_).
+    /// 5. There is no canonically confirmed withdrawal request rejection event
+    ///    (`reject-withdrawal-request` contract call) for the request.
+    ///
+    /// ## Notes
+    ///
+    /// -  This does does not filter `signature_threshold` on that the approving
+    ///    signers are part of the current signer set and this parameter is only
+    ///    used as a pre-filter as the votes themselves are generally also
+    ///    needed separately. Use
+    ///    [`DbRead::get_withdrawal_request_signer_votes`] to fetch the votes
+    ///    and perform this verification separately.
     fn get_pending_accepted_withdrawal_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
+        min_bitcoin_height: u64,
+        signature_threshold: u16,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
+
+    /// Get pending rejected withdrawal requests that have failed but are not
+    /// rejected yet
+    fn get_pending_rejected_withdrawal_requests(
+        &self,
+        chain_tip: &model::BitcoinBlockRef,
         context_window: u16,
-        threshold: u16,
     ) -> impl Future<Output = Result<Vec<model::WithdrawalRequest>, Error>> + Send;
 
     /// This function returns a withdrawal request report that does the
@@ -174,19 +215,19 @@ pub trait DbRead {
     /// 1. Check that the current signer accepted by the withdrawal
     ///    request.
     /// 2. Check that the transaction that created the withdrawal is in a
-    ///    stacks block anchored by a bitcoin block on the blockchain
-    ///    identified by the given chain tip.
-    /// 3. Check that the withdrawal has not been included on a sweep
+    ///    stacks block on the stacks blockchain identified by the given
+    ///    chain tip.
+    /// 3. Check that the withdrawal has not been included in a sweep
     ///    transaction that has been confirmed by block on the bitcoin
     ///    blockchain identified by the given chain tip.
     ///
-    ///  `Ok(None)` is returned if we do not have a record of the
-    /// withdrawal request.
-    ///
-    /// Note: The above list is probably not exhaustive.
+    /// `Ok(None)` is returned if we do not have a record of the withdrawal
+    /// request or if the withdrawal request is confirmed on a stacks block
+    /// that we do not know about
     fn get_withdrawal_request_report(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        stacks_chain_tip: &model::StacksBlockHash,
         id: &model::QualifiedRequestId,
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<WithdrawalRequestReport>, Error>> + Send;
@@ -218,7 +259,13 @@ pub trait DbRead {
         &self,
     ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
 
-    /// Returns the number of DKG shares entries in the database.
+    /// Return the most recent DKG shares that have passed verification,
+    /// and return None if no such shares exist.
+    fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> impl Future<Output = Result<Option<model::EncryptedDkgShares>, Error>> + Send;
+
+    /// Returns the number of non-failed DKG shares entries in the database.
     fn get_encrypted_dkg_shares_count(&self) -> impl Future<Output = Result<u32, Error>> + Send;
 
     /// Return the latest rotate-keys transaction confirmed by the given `chain-tip`.
@@ -296,6 +343,34 @@ pub trait DbRead {
     fn is_signer_script_pub_key(
         &self,
         script: &model::ScriptPubKey,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
+    /// Returns whether the identified withdrawal may be included in a
+    /// sweep transaction that is in the bitcoin mempool.
+    ///
+    /// # Notes
+    ///
+    /// At this time, we cannot use the bitcoin mempool for this
+    /// information since we cannot match withdrawals with transaction
+    /// outputs without a lot of computational effort. Instead, we use our
+    /// database, where the query is straightforward. The tables that are
+    /// be able to answer whether a withdrawal is potentially in the
+    /// mempool are populated during validation of pre-sign requests.
+    fn is_withdrawal_inflight(
+        &self,
+        id: &model::QualifiedRequestId,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+    ) -> impl Future<Output = Result<bool, Error>> + Send;
+
+    /// Returns whether we should consider the withdrawal active. A
+    /// withdrawal request is considered active if there is a reasonable
+    /// risk of the withdrawal being confirmed from a fork of blocks less
+    /// than `min_confirmations`.
+    fn is_withdrawal_active(
+        &self,
+        id: &model::QualifiedRequestId,
+        bitcoin_chain_tip: &model::BitcoinBlockRef,
+        min_confirmations: u64,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
     /// Fetch the bitcoin transaction that is included in the block
@@ -448,12 +523,6 @@ pub trait DbWrite {
         event: &WithdrawalAcceptEvent,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the withdrawal-create event to the database.
-    fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> impl Future<Output = Result<(), Error>> + Send;
-
     /// Write the completed deposit event to the database.
     fn write_completed_deposit_event(
         &self,
@@ -472,7 +541,7 @@ pub trait DbWrite {
         prevout: &model::TxPrevout,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
-    /// Write the bitcoin transactions sighaes to the database.
+    /// Write the bitcoin transactions sighashes to the database.
     fn write_bitcoin_txs_sighashes(
         &self,
         sighashes: &[model::BitcoinTxSigHash],
@@ -483,4 +552,26 @@ pub trait DbWrite {
         &self,
         withdrawals_outputs: &[model::BitcoinWithdrawalOutput],
     ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Marks the stored DKG shares for the provided aggregate key as revoked
+    /// and thus should no longer be used.
+    ///
+    /// This can be due to a failed DKG process, the key having been
+    /// compromised, or any other reason that would require the shares for the
+    /// provided aggregate key to not be used in the signing of transactions.
+    fn revoke_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
+
+    /// Marks the stored DKG shares as verified, meaning that the shares have
+    /// been used to sign a transaction input spending a UTXO locked by itself.
+    fn verify_dkg_shares<X>(
+        &self,
+        aggregate_key: X,
+    ) -> impl Future<Output = Result<bool, Error>> + Send
+    where
+        X: Into<PublicKeyXOnly> + Send;
 }

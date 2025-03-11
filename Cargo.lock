@@ -821,6 +821,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bitcoinconsensus"
+version = "0.106.0+26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e12cba9cce5043cdda968e07b9df6d05ec6b0b38aa27a9a40bb575cf3e521ae9"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "bitcoincore-rpc"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1577,9 +1586,9 @@ checksum = "dcbb2bf8e87535c23f7a8a321e364ce21462d0ff10cb6407820e8e96dfff6653"
 
 [[package]]
 name = "dummy"
-version = "0.7.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7e57e12b69e57fad516e01e2b3960f122696fdb13420e1a88ed8e210316f2876"
+checksum = "b3ee4e39146145f7dd28e6c85ffdce489d93c0d9c88121063b8aacabbd9858d2"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -1644,6 +1653,7 @@ dependencies = [
  "base64 0.22.1",
  "bitcoin",
  "clap",
+ "clarity",
  "config",
  "hex",
  "reqwest 0.11.27",
@@ -1651,6 +1661,7 @@ dependencies = [
  "serde",
  "serde_dynamo",
  "serde_json",
+ "sha2 0.10.8",
  "stacks-common",
  "test-case",
  "testing-emily-client",
@@ -1744,9 +1755,9 @@ dependencies = [
 
 [[package]]
 name = "fake"
-version = "2.9.2"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c25829bde82205da46e1823b2259db6273379f626fc211f126f65654a2669be"
+checksum = "aef603df4ba9adbca6a332db7da6f614f21eafefbaf8e087844e452fdec152d0"
 dependencies = [
  "deunicode",
  "dummy",
@@ -4209,9 +4220,9 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "p256k1"
-version = "7.2.1"
+version = "7.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8641765697df03a529cd21181fbccd1cad9f66086c24252b91c16bf38cdddd6"
+checksum = "57afd4c19b05645dcc7898653c7e63079a3f16578897685a304f14467d7c2825"
 dependencies = [
  "bindgen",
  "bitvec",
@@ -4970,6 +4981,7 @@ dependencies = [
  "http 0.2.12",
  "http-body 0.4.6",
  "hyper 0.14.28",
+ "hyper-rustls",
  "ipnet",
  "js-sys",
  "log",
@@ -4977,17 +4989,21 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "pin-project-lite",
+ "rustls 0.21.12",
+ "rustls-pemfile 1.0.4",
  "serde",
  "serde_json",
  "serde_urlencoded",
  "sync_wrapper 0.1.2",
  "system-configuration 0.5.1",
  "tokio",
+ "tokio-rustls",
  "tower-service",
  "url",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+ "webpki-roots 0.25.4",
  "winreg 0.50.0",
 ]
 
@@ -5728,6 +5744,7 @@ dependencies = [
  "aquamarine",
  "axum",
  "bitcoin",
+ "bitcoinconsensus",
  "bitcoincore-rpc",
  "bitcoincore-rpc-json",
  "bitcoincore-zmq",
@@ -5762,6 +5779,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha2 0.10.8",
+ "signer",
  "sqlx",
  "stacks-common",
  "stackslib",
@@ -5769,6 +5787,7 @@ dependencies = [
  "tempfile",
  "test-case",
  "test-log",
+ "testing-emily-client",
  "thiserror 2.0.11",
  "time 0.3.37",
  "tokio",
@@ -5932,7 +5951,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
- "webpki-roots",
+ "webpki-roots 0.26.3",
 ]
 
 [[package]]
@@ -7295,6 +7314,12 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
+version = "0.25.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f20c57d8d7db6d3b86154206ae5d8fba62dd39573114de97c2cb0578251f8e1"
+
+[[package]]
+name = "webpki-roots"
 version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bd7c23921eeb1713a4e851530e9b9756e4fb0e89978582942612524cf09f01cd"
@@ -7631,8 +7656,9 @@ dependencies = [
 
 [[package]]
 name = "wsts"
-version = "10.0.0"
-source = "git+https://github.com/Trust-Machines/wsts.git?rev=53ae23f5f35def420877ccc8c0fe3662e64e38a1#53ae23f5f35def420877ccc8c0fe3662e64e38a1"
+version = "13.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4da72ea03341049d9f68837abe1402bc6f77190cdbb85043146c0ad22fc4453e"
 dependencies = [
  "aes-gcm",
  "bs58 0.5.1",

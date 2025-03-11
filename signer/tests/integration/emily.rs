@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use bitcoin::block::Header;
 use bitcoin::block::Version;
+use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::hashes::Hash as _;
 use bitcoin::AddressType;
 use bitcoin::Amount;
@@ -12,13 +13,21 @@ use bitcoin::Transaction;
 use bitcoin::TxMerkleNode;
 use bitcoin::Txid;
 use bitcoincore_rpc_json::Utxo;
+use fake::Fake as _;
+use futures::future::join_all;
+use rand::SeedableRng;
+use test_case::test_case;
+use test_log::test;
+use url::Url;
 
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use blockstack_lib::net::api::getsortition::SortitionInfo;
 use clarity::types::chainstate::BurnchainHeaderHash;
 use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api::wipe_databases;
 use emily_client::models::CreateDepositRequestBody;
+use emily_client::models::DepositUpdate;
+use emily_client::models::Status;
+use emily_client::models::UpdateDepositsRequestBody;
 use sbtc::testing::regtest::Recipient;
 use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
@@ -51,15 +60,12 @@ use signer::testing::dummy::DepositTxConfig;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use signer::testing::storage::model::TestData;
-
-use fake::Fake as _;
-use rand::SeedableRng;
 use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
-use test_log::test;
-use url::Url;
+use testing_emily_client::apis::testing_api::wipe_databases;
 
+use crate::setup::IntoEmilyTestingConfig as _;
 use crate::utxo_construction::make_deposit_request;
 
 async fn run_dkg<Rng, C>(
@@ -80,6 +86,7 @@ where
         num_deposit_requests_per_block: 0,
         num_withdraw_requests_per_block: 0,
         num_signers_per_request: 0,
+        consecutive_blocks: false,
     };
     let test_data = TestData::generate(rng, &signer_keys, &test_model_parameters);
     test_data.write_to(&storage).await;
@@ -98,8 +105,14 @@ where
         .into();
 
     let dkg_txid = testing::dummy::txid(&fake::Faker, rng);
-    let (aggregate_key, all_dkg_shares) =
-        signer_set.run_dkg(bitcoin_chain_tip, dkg_txid, rng).await;
+    let (aggregate_key, all_dkg_shares) = signer_set
+        .run_dkg(
+            bitcoin_chain_tip,
+            dkg_txid.into(),
+            rng,
+            model::DkgSharesStatus::Verified,
+        )
+        .await;
 
     let encrypted_dkg_shares = all_dkg_shares.first().unwrap();
     signer_set
@@ -147,12 +160,16 @@ async fn deposit_flow() {
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
     let stacks_client = WrappedMock::default();
 
     // Wipe the Emily database to start fresh
-    wipe_databases(&emily_client.config())
+    wipe_databases(&emily_client.config().as_testing())
         .await
         .expect("Wiping Emily database in test setup failed.");
 
@@ -216,6 +233,7 @@ async fn deposit_flow() {
         bitcoin_txid: deposit_request.outpoint.txid.to_string(),
         deposit_script: deposit_request.deposit_script.to_hex_string(),
         reclaim_script: deposit_request.reclaim_script.to_hex_string(),
+        transaction_hex: serialize_hex(&deposit_tx),
     };
 
     // Create a fresh block for the block observer to process
@@ -564,20 +582,27 @@ async fn get_deposit_request_works() {
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let emily_client =
-        EmilyClient::try_from(&Url::parse("http://testApiKey@localhost:3031").unwrap()).unwrap();
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(1),
+        None,
+    )
+    .unwrap();
 
-    wipe_databases(&emily_client.config())
+    wipe_databases(&emily_client.config().as_testing())
         .await
         .expect("Wiping Emily database in test setup failed.");
 
-    let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, amount_sats);
+    let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
+    let deposit = setup.deposits.first().unwrap();
+    let reclaim = setup.reclaims.first().unwrap();
 
     let emily_request = CreateDepositRequestBody {
         bitcoin_tx_output_index: 0,
         bitcoin_txid: setup.tx.compute_txid().to_string(),
-        deposit_script: setup.deposit.deposit_script().to_hex_string(),
-        reclaim_script: setup.reclaim.reclaim_script().to_hex_string(),
+        deposit_script: deposit.deposit_script().to_hex_string(),
+        reclaim_script: reclaim.reclaim_script().to_hex_string(),
+        transaction_hex: serialize_hex(&setup.tx),
     };
 
     deposit_api::create_deposit(emily_client.config(), emily_request.clone())
@@ -587,12 +612,156 @@ async fn get_deposit_request_works() {
     let txid = setup.tx.compute_txid().into();
     let request = emily_client.get_deposit(&txid, 0).await.unwrap().unwrap();
 
-    assert_eq!(request.deposit_script, setup.deposit.deposit_script());
-    assert_eq!(request.reclaim_script, setup.reclaim.reclaim_script());
+    assert_eq!(request.deposit_script, deposit.deposit_script());
+    assert_eq!(request.reclaim_script, reclaim.reclaim_script());
     assert_eq!(request.outpoint.txid, setup.tx.compute_txid());
     assert_eq!(request.outpoint.vout, 0);
 
     // This one doesn't exist
     let request = emily_client.get_deposit(&txid, 50).await.unwrap();
     assert!(request.is_none());
+}
+
+#[test_case(3, 10, Some(2), 3; "handles paging")]
+#[test_case(3, 0, Some(2), 2; "handles timeout")]
+#[tokio::test]
+async fn test_get_deposits_with_status_request_paging(
+    num_deposits: usize,
+    timeout_secs: u64,
+    page_size: Option<u16>,
+    expected_result: usize,
+) {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 150;
+
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(timeout_secs),
+        page_size,
+    )
+    .unwrap();
+
+    wipe_databases(&emily_client.config().as_testing())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
+
+    let futures = (0..num_deposits).map(|_| {
+        let setup = sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]);
+        let create_deposit_request_body = CreateDepositRequestBody {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            deposit_script: setup
+                .deposits
+                .first()
+                .unwrap()
+                .deposit_script()
+                .to_hex_string(),
+            reclaim_script: setup
+                .reclaims
+                .first()
+                .unwrap()
+                .reclaim_script()
+                .to_hex_string(),
+            transaction_hex: serialize_hex(&setup.tx),
+        };
+        deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
+    });
+
+    let results = join_all(futures).await;
+    for result in results {
+        result.expect("cannot create emily deposit");
+    }
+
+    let deposits = emily_client
+        .get_deposits_with_status(Status::Pending)
+        .await
+        .unwrap();
+    assert_eq!(deposits.len(), expected_result);
+}
+
+#[tokio::test]
+async fn test_get_deposits_returns_pending_and_accepted() {
+    let max_fee: u64 = 15000;
+    let amount_sats = 49_900_000;
+    let lock_time = 150;
+    let num_deposits = 5;
+    let num_accepted = 2;
+
+    let emily_client = EmilyClient::try_new(
+        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
+        Duration::from_secs(10),
+        None,
+    )
+    .unwrap();
+
+    wipe_databases(&emily_client.config().as_testing())
+        .await
+        .expect("Wiping Emily database in test setup failed.");
+
+    // Create deposits
+    let tx_setups: Vec<sbtc::testing::deposits::TxSetup> = (0..num_deposits)
+        .map(|_| sbtc::testing::deposits::tx_setup(lock_time, max_fee, &[amount_sats]))
+        .collect();
+    let futures = tx_setups.iter().map(|setup| {
+        let create_deposit_request_body = CreateDepositRequestBody {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            deposit_script: setup
+                .deposits
+                .first()
+                .unwrap()
+                .deposit_script()
+                .to_hex_string(),
+            reclaim_script: setup
+                .reclaims
+                .first()
+                .unwrap()
+                .reclaim_script()
+                .to_hex_string(),
+            transaction_hex: serialize_hex(&setup.tx),
+        };
+        deposit_api::create_deposit(emily_client.config(), create_deposit_request_body)
+    });
+
+    let results = join_all(futures).await;
+    for result in results {
+        result.expect("cannot create emily deposit");
+    }
+
+    // Update some deposits to accepted
+    let deposits = tx_setups[0..num_accepted]
+        .iter()
+        .map(|setup| DepositUpdate {
+            bitcoin_tx_output_index: 0,
+            bitcoin_txid: setup.tx.compute_txid().to_string(),
+            fulfillment: None,
+            last_update_block_hash: "block-hash".to_string(),
+            last_update_height: 42,
+            status: Status::Accepted,
+            status_message: "accepted".to_string(),
+        })
+        .collect();
+
+    deposit_api::update_deposits(
+        emily_client.config(),
+        UpdateDepositsRequestBody { deposits: deposits },
+    )
+    .await
+    .expect("cannot update deposits");
+
+    // Check that we get all deposits
+    let deposits = emily_client.get_deposits().await.unwrap();
+    let accepted_deposits = emily_client
+        .get_deposits_with_status(Status::Accepted)
+        .await
+        .unwrap();
+    let pending_deposits = emily_client
+        .get_deposits_with_status(Status::Pending)
+        .await
+        .unwrap();
+
+    assert_eq!(deposits.len(), num_deposits);
+    assert_eq!(accepted_deposits.len(), num_accepted);
+    assert_eq!(pending_deposits.len(), num_deposits - num_accepted);
 }

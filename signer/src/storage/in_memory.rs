@@ -21,10 +21,10 @@ use crate::keys::SignerScriptPubKey as _;
 use crate::storage::model;
 use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::WithdrawalAcceptEvent;
-use crate::storage::model::WithdrawalCreateEvent;
 use crate::storage::model::WithdrawalRejectEvent;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 
+use super::model::DkgSharesStatus;
 use super::util::get_utxo;
 
 /// A store wrapped in an Arc<Mutex<...>> for interior mutability
@@ -45,7 +45,9 @@ pub struct Store {
     /// Deposit requests
     pub deposit_requests: HashMap<DepositRequestPk, model::DepositRequest>,
 
-    /// Deposit requests
+    /// A mapping between (request_ids, block_hash) and withdrawal-create events.
+    /// Note that a single request_id may be associated with
+    /// more than one withdrawal-create event because of reorgs.
     pub withdrawal_requests: HashMap<WithdrawalRequestPk, model::WithdrawalRequest>,
 
     /// Deposit request to signers
@@ -89,11 +91,6 @@ pub struct Store {
 
     /// Rotate keys transactions
     pub rotate_keys_transactions: HashMap<model::StacksTxId, model::RotateKeysTransaction>,
-
-    /// A mapping between request_ids and withdrawal-create events. Note
-    /// that in prod we can have a single request_id be associated with
-    /// more than one withdrawal-create event because of reorgs.
-    pub withdrawal_create_events: HashMap<u64, WithdrawalCreateEvent>,
 
     /// A mapping between request_ids and withdrawal-accept events. Note
     /// that in prod we can have a single request_id be associated with
@@ -226,7 +223,7 @@ impl Store {
         .filter_map(|block| self.bitcoin_anchor_to_stacks_blocks.get(&block.block_hash))
         .flatten()
         .filter_map(|stacks_block_hash| self.stacks_blocks.get(stacks_block_hash))
-        .max_by_key(|block| (block.block_height, &block.block_hash))
+        .max_by_key(|block| (block.block_height, block.block_hash.to_bytes()))
         .cloned()
     }
 
@@ -238,9 +235,13 @@ impl Store {
         let first_block = self.bitcoin_blocks.get(chain_tip);
 
         let context_window_end_block = std::iter::successors(first_block, |block| {
-            self.bitcoin_blocks.get(&block.parent_hash)
+            Some(self.bitcoin_blocks.get(&block.parent_hash).unwrap_or(block))
         })
         .nth(context_window as usize);
+
+        let Some(context_window_end_block) = context_window_end_block else {
+            return Vec::new();
+        };
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip) else {
             return Vec::new();
@@ -250,11 +251,9 @@ impl Store {
             self.stacks_blocks.get(&stacks_block.parent_hash)
         })
         .take_while(|stacks_block| {
-            !context_window_end_block.as_ref().is_some_and(|block| {
-                self.bitcoin_blocks
-                    .get(&stacks_block.bitcoin_anchor)
-                    .is_some_and(|anchor| anchor.block_height <= block.block_height)
-            })
+            self.bitcoin_blocks
+                .get(&stacks_block.bitcoin_anchor)
+                .is_some_and(|anchor| anchor.block_height >= context_window_end_block.block_height)
         })
         .flat_map(|stacks_block| {
             self.stacks_block_to_withdrawal_requests
@@ -298,6 +297,18 @@ impl super::DbRead for SharedStore {
             .values()
             .max_by_key(|block| (block.block_height, block.block_hash))
             .map(|block| block.block_hash))
+    }
+
+    async fn get_bitcoin_canonical_chain_tip_ref(
+        &self,
+    ) -> Result<Option<model::BitcoinBlockRef>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .bitcoin_blocks
+            .values()
+            .max_by_key(|block| (block.block_height, block.block_hash))
+            .map(model::BitcoinBlockRef::from))
     }
 
     async fn get_stacks_chain_tip(
@@ -391,30 +402,6 @@ impl super::DbRead for SharedStore {
                             >= threshold
                     })
                     .unwrap_or_default()
-            })
-            .collect())
-    }
-
-    async fn get_accepted_deposit_requests(
-        &self,
-        signer: &PublicKey,
-    ) -> Result<Vec<model::DepositRequest>, Error> {
-        let store = self.lock().await;
-
-        let accepted_deposit_pks = store
-            .signer_to_deposit_request
-            .get(signer)
-            .cloned()
-            .unwrap_or_default();
-
-        Ok(accepted_deposit_pks
-            .into_iter()
-            .map(|req| {
-                store
-                    .deposit_requests
-                    .get(&req)
-                    .cloned()
-                    .expect("missing deposit request")
             })
             .collect())
     }
@@ -522,31 +509,26 @@ impl super::DbRead for SharedStore {
 
     async fn get_pending_accepted_withdrawal_requests(
         &self,
-        chain_tip: &model::BitcoinBlockHash,
-        context_window: u16,
-        threshold: u16,
+        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+        _stacks_chain_tip: &model::StacksBlockHash,
+        _min_bitcoin_height: u64,
+        _threshold: u16,
     ) -> Result<Vec<model::WithdrawalRequest>, Error> {
-        let store = self.lock().await;
-        let withdraw_requests = store.get_withdrawal_requests(chain_tip, context_window);
-        let threshold = threshold as usize;
+        unimplemented!();
+    }
 
-        Ok(withdraw_requests
-            .into_iter()
-            .filter(|withdraw_request| {
-                store
-                    .withdrawal_request_to_signers
-                    .get(&(withdraw_request.request_id, withdraw_request.block_hash))
-                    .map(|signers| {
-                        signers.iter().filter(|signer| signer.is_accepted).count() >= threshold
-                    })
-                    .unwrap_or_default()
-            })
-            .collect())
+    async fn get_pending_rejected_withdrawal_requests(
+        &self,
+        _chain_tip: &model::BitcoinBlockRef,
+        _context_window: u16,
+    ) -> Result<Vec<model::WithdrawalRequest>, Error> {
+        unimplemented!()
     }
 
     async fn get_withdrawal_request_report(
         &self,
-        _chain_tip: &model::BitcoinBlockHash,
+        _bitcoin_chain_tip: &model::BitcoinBlockHash,
+        _stacks_chain_tip: &model::StacksBlockHash,
         _id: &model::QualifiedRequestId,
         _signer_public_key: &PublicKey,
     ) -> Result<Option<WithdrawalRequestReport>, Error> {
@@ -601,8 +583,27 @@ impl super::DbRead for SharedStore {
             .map(|(_, shares)| shares.clone()))
     }
 
+    async fn get_latest_verified_dkg_shares(
+        &self,
+    ) -> Result<Option<model::EncryptedDkgShares>, Error> {
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.dkg_shares_status == DkgSharesStatus::Verified)
+            .max_by_key(|(time, _)| time)
+            .map(|(_, shares)| shares.clone()))
+    }
+
     async fn get_encrypted_dkg_shares_count(&self) -> Result<u32, Error> {
-        Ok(self.lock().await.encrypted_dkg_shares.len() as u32)
+        Ok(self
+            .lock()
+            .await
+            .encrypted_dkg_shares
+            .values()
+            .filter(|(_, shares)| shares.dkg_shares_status != DkgSharesStatus::Failed)
+            .count() as u32)
     }
 
     async fn get_last_key_rotation(
@@ -814,6 +815,23 @@ impl super::DbRead for SharedStore {
             .any(|(_, share)| &share.script_pubkey == script))
     }
 
+    async fn is_withdrawal_inflight(
+        &self,
+        _: &model::QualifiedRequestId,
+        _: &model::BitcoinBlockHash,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
+    async fn is_withdrawal_active(
+        &self,
+        _: &model::QualifiedRequestId,
+        _: &model::BitcoinBlockRef,
+        _: u64,
+    ) -> Result<bool, Error> {
+        unimplemented!()
+    }
+
     async fn get_bitcoin_tx(
         &self,
         txid: &model::BitcoinTxId,
@@ -907,6 +925,43 @@ impl super::DbRead for SharedStore {
             .bitcoin_sighashes
             .get(sighash)
             .map(|s| (s.will_sign, s.aggregate_key)))
+    }
+
+    async fn get_deposit_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::DepositSigner>, Error> {
+        let store = self.lock().await;
+        let deposit_requests = store.get_deposit_requests(chain_tip, context_window);
+        let voted: HashSet<(model::BitcoinTxId, u32)> = store
+            .signer_to_deposit_request
+            .get(signer_public_key)
+            .cloned()
+            .unwrap_or(Vec::new())
+            .into_iter()
+            .collect();
+
+        let result = deposit_requests
+            .into_iter()
+            .filter_map(|request| {
+                if !voted.contains(&(request.txid, request.output_index)) {
+                    return None;
+                }
+                store
+                    .deposit_request_to_signers
+                    .get(&(request.txid, request.output_index))
+                    .and_then(|signers| {
+                        signers
+                            .iter()
+                            .find(|signer| signer.signer_pub_key == *signer_public_key)
+                            .cloned()
+                    })
+            })
+            .collect();
+
+        Ok(result)
     }
 }
 
@@ -1135,18 +1190,6 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
-    async fn write_withdrawal_create_event(
-        &self,
-        event: &WithdrawalCreateEvent,
-    ) -> Result<(), Error> {
-        self.lock()
-            .await
-            .withdrawal_create_events
-            .insert(event.request_id, event.clone());
-
-        Ok(())
-    }
-
     async fn write_withdrawal_accept_event(
         &self,
         event: &WithdrawalAcceptEvent,
@@ -1226,5 +1269,33 @@ impl super::DbWrite for SharedStore {
                 .insert(sighash.sighash, sighash.clone());
         });
         Ok(())
+    }
+
+    async fn revoke_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Failed;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    async fn verify_dkg_shares<X>(&self, aggregate_key: X) -> Result<bool, Error>
+    where
+        X: Into<PublicKeyXOnly> + Send,
+    {
+        let mut store = self.lock().await;
+        if let Some((_, shares)) = store.encrypted_dkg_shares.get_mut(&aggregate_key.into()) {
+            if shares.dkg_shares_status == DkgSharesStatus::Unverified {
+                shares.dkg_shares_status = DkgSharesStatus::Verified;
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 }

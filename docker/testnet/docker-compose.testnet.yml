@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16.3-alpine
+    image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
     stop_grace_period: 5s
     environment:
       POSTGRES_USER: postgres
@@ -10,7 +10,7 @@ services:
       - ./postgres/data:/var/lib/postgresql/data
 
   sbtc-signer:
-    image: blockstack/sbtc:signer-0.0.9-rc4
+    image: blockstack/sbtc:signer-0.0.9-rc6@sha256:44d2c828c6452f75ea2fabe5160ba95a9f944c0fcaeeaea5523dff81da8bc342
     entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs'"
     depends_on:
       - postgres
@@ -24,7 +24,7 @@ services:
       - "8801:8801"
 
   blocklist-client:
-    image: blockstack/sbtc:blocklist-client-0.0.9-rc4
+    image: blockstack/sbtc:blocklist-client-0.0.9-rc6@sha256:e4fa52ac16c357ae69f3b9eb5d5254a43bc605dbded621291b5637064b04d105
     entrypoint: "/usr/local/bin/blocklist-client"
     ports:
       - "3032:3032"
@@ -36,7 +36,7 @@ services:
 
   vector:
     container_name: vector
-    image: timberio/vector:0.42.0-debian
+    image: timberio/vector:0.44.0-debian@sha256:e285e1543366ac306f3957c25d3aca4d2f86855ae274fa4de3522676d72fa0df
     volumes:
       - ./logs:/logs
       - ./vector/vector.yaml:/etc/vector/vector.yaml:ro

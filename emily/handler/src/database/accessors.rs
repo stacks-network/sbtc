@@ -13,12 +13,17 @@ use crate::common::error::{Error, Inconsistency};
 use crate::{api::models::common::Status, context::EmilyContext};
 
 use super::entries::deposit::{
-    DepositInfoByRecipientEntry, DepositTableByRecipientSecondaryIndex, ValidatedDepositUpdate,
+    DepositInfoByRecipientEntry, DepositInfoByReclaimPubkeysEntry,
+    DepositTableByRecipientSecondaryIndex, DepositTableByReclaimPubkeysSecondaryIndex,
+    ValidatedDepositUpdate,
 };
 use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
-use super::entries::withdrawal::ValidatedWithdrawalUpdate;
+use super::entries::withdrawal::{
+    ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry, WithdrawalInfoBySenderEntry,
+    WithdrawalTableByRecipientSecondaryIndex, WithdrawalTableBySenderSecondaryIndex,
+};
 use super::entries::{
     chainstate::{
         ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
@@ -80,7 +85,6 @@ pub async fn get_deposit_entries(
 }
 
 /// Get deposit entries by recipient.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_by_recipient(
     context: &EmilyContext,
     recipient: &String,
@@ -90,6 +94,22 @@ pub async fn get_deposit_entries_by_recipient(
     query_with_partition_key::<DepositTableByRecipientSecondaryIndex>(
         context,
         recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get deposit entries by reclaim pubkey.
+pub async fn get_deposit_entries_by_reclaim_pubkeys_hash(
+    context: &EmilyContext,
+    reclaim_pubkeys_hash: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<DepositInfoByReclaimPubkeysEntry>, Option<String>), Error> {
+    query_with_partition_key::<DepositTableByReclaimPubkeysSecondaryIndex>(
+        context,
+        reclaim_pubkeys_hash,
         maybe_next_token,
         maybe_page_size,
     )
@@ -146,7 +166,6 @@ pub async fn get_all_deposit_entries_modified_from_height_with_status(
 }
 
 /// Get deposit entries for a given transaction.
-#[allow(clippy::ptr_arg)]
 pub async fn get_deposit_entries_for_transaction(
     context: &EmilyContext,
     bitcoin_txid: &String,
@@ -165,11 +184,14 @@ pub async fn get_deposit_entries_for_transaction(
 /// Pulls in a deposit entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
 ///
+/// An untusted key can only update pending deposits.
+///
 /// TODO(792): Combine this with the withdrawal version.
 pub async fn pull_and_update_deposit_with_retry(
     context: &EmilyContext,
     update: ValidatedDepositUpdate,
     retries: u16,
+    is_trusted_key: bool,
 ) -> Result<DepositEntry, Error> {
     for _ in 0..retries {
         // Get original deposit entry.
@@ -177,6 +199,9 @@ pub async fn pull_and_update_deposit_with_retry(
         // Return the existing entry if no update is necessary.
         if update.is_unnecessary(&deposit_entry) {
             return Ok(deposit_entry);
+        }
+        if !is_trusted_key && deposit_entry.status != Status::Pending {
+            return Err(Error::Forbidden);
         }
         // Make the update package.
         let update_package: DepositUpdatePackage =
@@ -319,6 +344,38 @@ pub async fn get_withdrawal_entries(
     .await
 }
 
+/// Get withdrawal entries by recipient.
+pub async fn get_withdrawal_entries_by_recipient(
+    context: &EmilyContext,
+    recipient: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<WithdrawalInfoByRecipientEntry>, Option<String>), Error> {
+    query_with_partition_key::<WithdrawalTableByRecipientSecondaryIndex>(
+        context,
+        recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get withdrawal entries by sender.
+pub async fn get_withdrawal_entries_by_sender(
+    context: &EmilyContext,
+    sender: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<WithdrawalInfoBySenderEntry>, Option<String>), Error> {
+    query_with_partition_key::<WithdrawalTableBySenderSecondaryIndex>(
+        context,
+        sender,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
 /// Gets all withdrawal entries modified from (on or after) a given height.
 pub async fn get_all_withdrawal_entries_modified_from_height(
     context: &EmilyContext,
@@ -361,11 +418,14 @@ pub async fn get_all_withdrawal_entries_modified_from_height_with_status(
 /// Pulls in a withdrawal entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
 ///
+/// An untusted key can only update pending withdrawals.
+///
 /// TODO(792): Combine this with the deposit version.
 pub async fn pull_and_update_withdrawal_with_retry(
     context: &EmilyContext,
     update: ValidatedWithdrawalUpdate,
     retries: u16,
+    is_trusted_key: bool,
 ) -> Result<WithdrawalEntry, Error> {
     for _ in 0..retries {
         // Get original withdrawal entry.
@@ -374,9 +434,14 @@ pub async fn pull_and_update_withdrawal_with_retry(
         if update.is_unnecessary(&entry) {
             return Ok(entry);
         }
+
+        if !is_trusted_key && entry.status != Status::Pending {
+            return Err(Error::Forbidden);
+        }
+
         // Make the update package.
         let update_package = WithdrawalUpdatePackage::try_from(&entry, update.clone())?;
-        // Attempt to update the deposit.
+        // Attempt to update the withdrawal.
         match update_withdrawal(context, &update_package).await {
             Err(Error::VersionConflict) => {
                 // Retry.
@@ -697,7 +762,6 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
 }
 
 /// Get the limit for a specific account.
-#[allow(clippy::ptr_arg)]
 pub async fn get_limit_for_account(
     context: &EmilyContext,
     account: &String,

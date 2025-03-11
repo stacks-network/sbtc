@@ -22,9 +22,6 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [policy.stacks-common]
 audit-as-crates-io = true
 
-[policy.wsts]
-audit-as-crates-io = true
-
 [[exemptions.addr2line]]
 version = "0.21.0"
 criteria = "safe-to-deploy"
@@ -482,7 +479,7 @@ version = "1.0.9"
 criteria = "safe-to-deploy"
 
 [[exemptions.dummy]]
-version = "0.7.0"
+version = "0.9.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.ed25519]]
@@ -518,7 +515,7 @@ version = "0.5.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.fake]]
-version = "2.9.2"
+version = "3.1.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.fallible-iterator]]
@@ -1145,8 +1142,13 @@ criteria = "safe-to-deploy"
 version = "0.5.1"
 criteria = "safe-to-deploy"
 
+<<<<<<< HEAD
 [[exemptions.p256k1]]
 version = "7.2.1"
+=======
+[[exemptions.overload]]
+version = "0.1.1"
+>>>>>>> main
 criteria = "safe-to-deploy"
 
 [[exemptions.parity-scale-codec]]
@@ -2226,7 +2228,7 @@ version = "0.2.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.wsts]]
-version = "10.0.0@git:53ae23f5f35def420877ccc8c0fe3662e64e38a1"
+version = "10.0.0@git:a7bf38bd54cddf0b78c0f7c521a5ed1537a684fa"
 criteria = "safe-to-deploy"
 
 [[exemptions.wyz]]
