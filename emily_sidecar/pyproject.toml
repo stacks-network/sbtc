@@ -1,0 +1,10 @@
+[project]
+name = "emily-sidecar"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi[standard]==0.115.11",
+    "requests==2.32.3",
+    "uvicorn==0.34.0",
+]

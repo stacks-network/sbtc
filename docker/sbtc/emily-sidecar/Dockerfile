@@ -1,11 +1,17 @@
-FROM python:3.12-slim AS emily-sidecar
+FROM python:3.13-slim AS emily-sidecar
 
-WORKDIR /app
+# Install uv 0.6.5
+COPY --from=ghcr.io/astral-sh/uv@sha256:562193a4a9d398f8aedddcb223e583da394ee735de36b5815f8f1d22cb49be15 /uv /uvx /bin/
+
+# Copy the application into the container.
 COPY ../../emily_sidecar /app
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Install the application dependencies.
+WORKDIR /app
+RUN uv sync --frozen --no-cache
+
 # Expose the FastAPI port
 EXPOSE 20540
 ENV EMILY_API_KEY=testApiKey
 ENV EMILY_ENDPOINT=http://emily-server:3031
-CMD ["uvicorn", "--host", "0.0.0.0", "--port", "20540", "--workers", "4", "--timeout-keep-alive", "30", "--log-level" , "info", "main:app"]
+CMD ["uv" , "run", "uvicorn", "--host", "0.0.0.0", "--port", "20540", "--workers", "4", "--timeout-keep-alive", "30", "--log-level" , "info", "app.main:app"]
