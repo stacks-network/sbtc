@@ -2,13 +2,11 @@ import os
 import json
 import unittest
 import requests
-import logging
 
 from fastapi.testclient import TestClient
 
-import logging_config
-import settings
-from main import app, headers
+from app import logging_config, settings
+from app.main import app, headers
 
 
 logging_config.silence_logging()
@@ -25,7 +23,7 @@ def read_fixture(filename):
         return json.load(file)
 
 
-BASE_PATH = os.path.join(os.path.dirname(__file__), "..")
+BASE_PATH = os.path.join(os.path.dirname(__file__), "..", "..")
 NEW_BLOCK_FIXTURES_PATH = os.path.join(BASE_PATH, "signer", "tests", "fixtures")
 DEPOSIT_TESTNET_FIXTURES_PATH = os.path.join(
     BASE_PATH, "emily", "handler", "tests", "fixtures"
@@ -94,6 +92,7 @@ class IntegrationTests(unittest.TestCase):
                 "stacksBlockHash": "75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78",
                 "stacksBlockHeight": 0,
                 "recipient": "76a914000000000000000000000000000000000000000088ac",
+                "sender": "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y",
                 "amount": 22500,
                 "lastUpdateHeight": 253,
                 "lastUpdateBlockHash": "75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78",
@@ -162,6 +161,7 @@ class IntegrationTests(unittest.TestCase):
                 "stacksBlockHash": "75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78",
                 "stacksBlockHeight": 0,
                 "recipient": "76a914000000000000000000000000000000000000000088ac",
+                "sender": "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y",
                 "amount": 22500,
                 "lastUpdateHeight": 301,
                 "lastUpdateBlockHash": "0ce5807894c9da8cddcd7b00d15b916f067b1d53487ecc4cae98bc4b7e8fc253",
@@ -199,6 +199,7 @@ class IntegrationTests(unittest.TestCase):
                 "stacksBlockHash": "75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78",
                 "stacksBlockHeight": 0,
                 "recipient": "76a914000000000000000000000000000000000000000088ac",
+                "sender": "SN2V7WTJ7BHR03MPHZ1C9A9ZR6NZGR4WM8HT4V67Y",
                 "amount": 22500,
                 "lastUpdateHeight": 350,
                 "lastUpdateBlockHash": "fc1b44b2db9997d9f37ea1c8704318ed8c1bce2f077b6e73fb583deac167ce98",
