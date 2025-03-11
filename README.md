@@ -101,6 +101,9 @@ Once running, the following services are available:
 - Stacks explorer at [localhost:3020](http://localhost:3020)
 - Mempool.space Bitcoin explorer at [localhost:8083](http://localhost:8083)
 
+Sometimes this docker-compose command can be useful for running integration tests
+`docker compose --file docker/docker-compose.test.yml up`
+
 #### Update local docker builds
 
 To rebuild the containers from your current branch you can use:
