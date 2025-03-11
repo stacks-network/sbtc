@@ -1,0 +1,134 @@
+{
+    "replacements": {
+        "tx": {
+            "txid": "afe18f246b9624b17b21f2ebf84594bb75b582209d55dfc0b6edb34bfb785c3a",
+            "fee": 27348,
+            "vsize": 636.25,
+            "value": 281645,
+            "rate": 42.9831041257367,
+            "time": 1741732526,
+            "rbf": true,
+            "fullRbf": true
+        },
+        "time": 1741732526,
+        "fullRbf": true,
+        "replaces": [
+            {
+                "tx": {
+                    "txid": "2f1c7f3fcfa444781825491efe38912839ccabec20086767605b947245bbce5f",
+                    "fee": 22204,
+                    "vsize": 765.75,
+                    "value": 14399768,
+                    "rate": 28.9964087495919,
+                    "time": 1741732503,
+                    "rbf": false,
+                    "fullRbf": true
+                },
+                "time": 1741732503,
+                "fullRbf": true,
+                "replaces": [
+                    {
+                        "tx": {
+                            "txid": "c1a83eb973b7904224d54003329eb97bf62088c0bd2906640a0a3c005bf65cd3",
+                            "fee": 10240,
+                            "vsize": 1030.5,
+                            "value": 794728,
+                            "rate": 9.93692382338671,
+                            "time": 1741732479,
+                            "rbf": false,
+                            "fullRbf": true
+                        },
+                        "time": 1741732479,
+                        "fullRbf": true,
+                        "replaces": [
+                            {
+                                "tx": {
+                                    "txid": "8fd3fdd5632f1a7459c381e5e51bebc1f59f82f8ab3a16778cfb7c3973de3d30",
+                                    "fee": 2963,
+                                    "vsize": 564,
+                                    "value": 14417917,
+                                    "rate": 5.25354609929078,
+                                    "time": 1741732437,
+                                    "rbf": false
+                                },
+                                "time": 1741732437,
+                                "interval": 42,
+                                "fullRbf": true,
+                                "replaces": []
+                            }
+                        ],
+                        "interval": 24
+                    },
+                    {
+                        "tx": {
+                            "txid": "3a4940a712111361b66a9df6d0eb9d410f2cf1a94da32405fcd4b34500785e3f",
+                            "fee": 10318,
+                            "vsize": 585.5,
+                            "value": 287727,
+                            "rate": 17.6225448334757,
+                            "time": 1741732483,
+                            "rbf": true,
+                            "fullRbf": false
+                        },
+                        "time": 1741732483,
+                        "fullRbf": true,
+                        "replaces": [
+                            {
+                                "tx": {
+                                    "txid": "99d6fd9c1b3e22f85aabacea66db9cfa959f20f6877f8dc9360627e63f0cdae8",
+                                    "fee": 9720,
+                                    "vsize": 648.5,
+                                    "value": 299273,
+                                    "rate": 14.988434849653,
+                                    "time": 1741732457,
+                                    "rbf": true,
+                                    "fullRbf": true
+                                },
+                                "time": 1741732457,
+                                "fullRbf": true,
+                                "replaces": [
+                                    {
+                                        "tx": {
+                                            "txid": "51c79e6dbd6232547d446614d8a573c00e027e9f2690c9dd336b77e6c644fd7d",
+                                            "fee": 7294,
+                                            "vsize": 489.25,
+                                            "value": 360817,
+                                            "rate": 14.9085334695963,
+                                            "time": 1741732428,
+                                            "rbf": false,
+                                            "fullRbf": true
+                                        },
+                                        "time": 1741732428,
+                                        "fullRbf": true,
+                                        "replaces": [
+                                            {
+                                                "tx": {
+                                                    "txid": "3ed54d49e84f804b117fca784e43caad15787bbbcd9ce34e3bdecd007b91cf3f",
+                                                    "fee": 5240,
+                                                    "vsize": 1054.5,
+                                                    "value": 799728,
+                                                    "rate": 4.96917970602181,
+                                                    "time": 1741732366,
+                                                    "rbf": false
+                                                },
+                                                "time": 1741732366,
+                                                "interval": 62,
+                                                "fullRbf": true,
+                                                "replaces": []
+                                            }
+                                        ],
+                                        "interval": 29
+                                    }
+                                ],
+                                "interval": 26
+                            }
+                        ],
+                        "interval": 20
+                    }
+                ],
+                "interval": 23
+            }
+        ]
+    },
+    "replaces": null
+}
