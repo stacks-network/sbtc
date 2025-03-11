@@ -1,14 +1,14 @@
 import logging
 
 from fastapi import FastAPI, HTTPException
+from fastapi.concurrency import asynccontextmanager
 from fastapi.responses import Response
 from pydantic import BaseModel
 import requests
+from apscheduler.schedulers.background import BackgroundScheduler
 
 from app import settings, logging_config
 
-# Initialize the FastAPI app
-app = FastAPI()
 
 # Set up logging when the app starts
 logging_config.setup_logging()
@@ -28,6 +28,31 @@ headers = {"x-api-key": settings.API_KEY}
 class NewBlockEventModel(BaseModel, extra="allow"):
     block_height: int
     index_block_hash: str
+
+
+def update_deposits():
+    logger.info("Updating deposits")
+    try:
+        resp = requests.get(
+            f"{settings.EMILY_ENDPOINT}/deposits/update", headers=headers
+        )
+        resp.raise_for_status()  # This will raise an HTTPError if the response was an error
+    except requests.RequestException as e:
+        logger.error("Failed to update deposits: error=%s", e)
+        return
+    logger.info("Successfully updated deposits")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(update_deposits, "interval", minutes = 1)
+    scheduler.start()
+    yield
+
+
+# Initialize the FastAPI app
+app = FastAPI(lifespan=lifespan)
 
 
 @app.post("/new_block")

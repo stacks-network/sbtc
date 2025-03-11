@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
+    "apscheduler==3.11.0",
+    "btclib==2023.7.12",
     "fastapi[standard]==0.115.11",
     "requests==2.32.3",
     "uvicorn==0.34.0",
