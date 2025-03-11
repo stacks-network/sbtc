@@ -9,6 +9,7 @@ use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::StacksTx;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::StacksBlockHash;
 use crate::storage::model::StacksTxId;
 
 /// Messages exchanged between signers
@@ -166,6 +167,17 @@ pub struct SignerWithdrawalDecision {
     pub accepted: bool,
 }
 
+impl From<model::WithdrawalSigner> for SignerWithdrawalDecision {
+    fn from(signer: model::WithdrawalSigner) -> Self {
+        Self {
+            request_id: signer.request_id,
+            block_hash: signer.block_hash,
+            txid: signer.txid,
+            accepted: signer.is_accepted,
+        }
+    }
+}
+
 /// Represents a request to sign a Stacks transaction.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StacksTransactionSignRequest {
@@ -287,9 +299,6 @@ impl WstsMessage {
         }
     }
 }
-
-/// Convenient type aliases
-type StacksBlockHash = [u8; 32];
 
 #[cfg(test)]
 mod tests {
