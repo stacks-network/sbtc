@@ -46,12 +46,9 @@ docker run --rm \
 ```
 
 This command will:
-1. **Set the environment variables**:
-    - `TAG="signer"`: This sets the image tag used to identify the Docker image for verification.
-    - `BUNDLE_PATH="/path/to/your/bundle.jsonl"`: Specifies the local path to the attestation bundle file.
-    - `TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl"`: Specifies the local path to the trusted root file for the attestation.
+1. **Set the environment variables**: `TAG`, `BUNDLE_PATH` and `TRUSTED_ROOT_PATH`
   
-2. **Use `/entrypoint.sh`**: The entrypoint of the Docker image is overridden to run the `entrypoint.sh` script, which performs the attestation verification before running the application.
+2. **Use [/entrypoint.sh](/docker/mainnet/gh-attestation/entrypoint.sh)**: The entrypoint of the Docker image is overridden to run the `entrypoint.sh` script, which performs the attestation verification before running the application.
    
 3. **Run the Signer Application**: The signer application is started with the provided configuration file (`/signer-config.toml`) and the database will be migrated using the `--migrate-db` flag.
 
@@ -91,7 +88,7 @@ services:
 
 This will:
 1. **Set up the Docker container** with the required environment variables for attestation.
-2. **Use `/entrypoint.sh`**: The entry point script checks the attestation and proceeds if verified.
+2. **Use [/entrypoint.sh](/docker/mainnet/gh-attestation/entrypoint.sh)**: The entry point script checks the attestation and proceeds if verified.
 3. **Run the signer application** with the provided config file and migration option.
 
 To start the service with Docker Compose, use:
