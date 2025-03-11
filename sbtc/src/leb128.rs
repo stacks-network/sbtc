@@ -86,7 +86,7 @@ impl Leb128 {
         let mut value = value;
         loop {
             let mut byte = (value & LOWER_BITS_MASK as u64) as u8;
-            
+
             value = value.checked_shr(7).unwrap_or(0);
 
             if value != 0 {
@@ -136,39 +136,39 @@ impl Leb128 {
         if bytes.is_empty() {
             return Err(Error::EmptyInput);
         }
-    
+
         let mut result: u64 = 0;
         let mut position = 0;
         let mut shift = 0;
-    
+
         while position < bytes.len() {
             let byte = bytes[position];
             let value = (byte & LOWER_BITS_MASK) as u64;
-            
+
             // Use checked_shl instead of manual overflow detection
             match value.checked_shl(shift as u32) {
                 Some(shifted) => result |= shifted,
                 None => return Err(Error::ValueOutOfBounds),
             }
-            
+
             position += 1;
             shift += BITS_PER_BYTE;
-    
+
             // No continuation bit - we're done
             if byte & CONTINUATION_FLAG == 0 {
                 return Ok((result, position));
             }
-    
+
             // Check if we've reached the maximum bytes
             if position == MAX_BYTES {
                 return Err(Error::InvalidContinuation);
             }
-    
+
             if position == bytes.len() {
                 return Err(Error::IncompleteSequence);
             }
         }
-    
+
         // We shouldn't get here
         Err(Error::UnexpectedDecodeError)
     }
