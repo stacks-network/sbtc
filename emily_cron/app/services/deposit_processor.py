@@ -93,10 +93,7 @@ class DepositProcessor:
             tx
             for tx in enriched_deposits
             if tx.confirmed_height > 0  # Only process confirmed transactions
-            and bitcoin_chaintip.height
-            >= tx.confirmed_height
-            + tx.lock_time
-            + settings.MIN_BLOCK_CONFIRMATIONS  # Check if locktime has expired
+            and bitcoin_chaintip.height >= tx.confirmed_height + tx.lock_time + settings.MIN_BLOCK_CONFIRMATIONS  # Check if locktime has expired
         ]
 
         if not locktime_expired_txs:
@@ -186,16 +183,29 @@ class DepositProcessor:
             chain_txids = set(tx.rbf_txids)
             chain_txids.add(tx.bitcoin_txid)
 
-            # Check if this chain overlaps with any existing group
-            found_group = False
+            # Find all groups that overlap with this chain
+            overlapping_groups = []
             for group_id, group_txids in list(rbf_groups.items()):
                 if chain_txids.intersection(group_txids):
-                    # Merge with existing group
-                    rbf_groups[group_id] = group_txids.union(chain_txids)
-                    found_group = True
-                    break
+                    overlapping_groups.append(group_id)
 
-            if not found_group:
+            if overlapping_groups:
+                # Merge all overlapping groups into the first one
+                primary_group_id = overlapping_groups[0]
+                merged_txids = set(rbf_groups[primary_group_id])
+
+                # Add the current chain
+                merged_txids.update(chain_txids)
+
+                # Merge in all other overlapping groups
+                for group_id in overlapping_groups[1:]:
+                    merged_txids.update(rbf_groups[group_id])
+                    # Remove the merged group
+                    del rbf_groups[group_id]
+
+                # Update the primary group with the merged set
+                rbf_groups[primary_group_id] = merged_txids
+            else:
                 # Create a new group
                 rbf_groups[tx.bitcoin_txid] = chain_txids
 
@@ -233,12 +243,12 @@ class DepositProcessor:
                 "confirmed_time": tx_data.get("status", {}).get("block_time", -1),
                 "num_inputs": len(tx_data.get("vin", [])),
                 "spending_outputs": spending_outputs,
-                "rbf_txids": [],
+                "rbf_txids": set(),
             }
 
             # Only check for RBF if not confirmed
             if additional_info["confirmed_height"] == -1:
-                additional_info["rbf_txids"] = list(MempoolAPI.check_for_rbf(deposit.bitcoin_txid))
+                additional_info["rbf_txids"] = MempoolAPI.check_for_rbf(deposit.bitcoin_txid)
 
             transaction_details.append(
                 EnrichedDepositInfo.from_deposit_info(deposit, additional_info)
