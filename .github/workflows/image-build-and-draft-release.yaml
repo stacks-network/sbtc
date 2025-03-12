@@ -112,6 +112,7 @@ jobs:
       - name: Download artifact attestation 
         run: |
           gh attestation download oci://index.docker.io/${{ env.docker-org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }} -R stacks-network/sbtc
+          mv "${{ steps.docker_build.outputs.digest }}.jsonl" "$(echo "${{ steps.docker_build.outputs.digest }}.jsonl" | tr ':' '_')"
           gh attestation trusted-root > trusted_root.jsonl
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -121,7 +122,7 @@ jobs:
         with:
           name: attestation-files
           path: |
-            ${{ steps.docker_build.outputs.digest }}.jsonl
+            $(echo "${{ steps.docker_build.outputs.digest }}.jsonl" | tr ':' '_')
             trusted_root.jsonl
   
   release:
