@@ -361,7 +361,7 @@ impl From<SignerWithdrawalDecision> for proto::SignerWithdrawalDecision {
     fn from(value: SignerWithdrawalDecision) -> Self {
         proto::SignerWithdrawalDecision {
             request_id: value.request_id,
-            block_id: Some(StacksBlockHash::from(value.block_hash).into()),
+            block_id: Some(value.block_hash.into()),
             accepted: value.accepted,
             txid: Some(value.txid.into()),
         }
@@ -373,7 +373,7 @@ impl TryFrom<proto::SignerWithdrawalDecision> for SignerWithdrawalDecision {
     fn try_from(value: proto::SignerWithdrawalDecision) -> Result<Self, Self::Error> {
         Ok(SignerWithdrawalDecision {
             request_id: value.request_id,
-            block_hash: StacksBlockHash::try_from(value.block_id.required()?)?.into_bytes(),
+            block_hash: StacksBlockHash::try_from(value.block_id.required()?)?,
             accepted: value.accepted,
             txid: value.txid.required()?.try_into()?,
         })
