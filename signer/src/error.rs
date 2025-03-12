@@ -671,12 +671,26 @@ pub enum Error {
     PreSignInvalidFeeRate(f64),
 
     /// Error when deposit requests would exceed sBTC supply cap
-    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
+    #[error("total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
     ExceedsSbtcSupplyCap {
         /// Total deposit amount in sats
         total_amount: u64,
         /// Maximum sBTC mintable
         max_mintable: u64,
+    },
+
+    /// Error when withdrawal requests would exceed sBTC's rolling withdrawal caps
+    #[error("total withdrawal amounts ({withdrawal_amounts}) exceeds rolling caps ({withdrawal_cap} over
+            {withdrawal_cap_blocks}) with the currently withdrawn total {withdrawn_total})")]
+    ExceedsSbtcWithdrawalCap {
+        /// Total deposit amount in sats
+        withdrawal_amounts: u64,
+        /// The rolling withdrawal maximum
+        withdrawal_cap: u64,
+        /// The number of bitcoin blocks that are used in the rolling withdrawal cap
+        withdrawal_cap_blocks: u64,
+        /// The currently withdrawal total over the last N bitcoin blocks.
+        withdrawn_total: u64,
     },
 
     /// An error which can be used in test code instead of `unimplemented!()` or

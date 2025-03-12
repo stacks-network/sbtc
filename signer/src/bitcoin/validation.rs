@@ -198,15 +198,12 @@ impl BitcoinPreSignRequest {
         Ok(cache)
     }
 
-    async fn validate_max_mintable<C>(
-        &self,
-        ctx: &C,
+    fn assert_request_amount_limits(
         cache: &ValidationCache<'_>,
-    ) -> Result<(), Error>
-    where
-        C: Context + Send + Sync,
-    {
-        let max_mintable = ctx.state().get_current_limits().max_mintable_cap().to_sat();
+        limits: &SbtcLimits,
+        withdrawn_total: u64,
+    ) -> Result<(), Error> {
+        let max_mintable = limits.max_mintable_cap().to_sat();
 
         cache
             .deposit_reports
@@ -229,6 +226,22 @@ impl BitcoinPreSignRequest {
                     })
             })?;
 
+        cache
+            .withdrawal_reports
+            .values()
+            .try_fold(withdrawn_total, |acc, (report, _)| {
+                let sum = acc.saturating_add(report.amount);
+                if sum > max_mintable {
+                    return Err(Error::ExceedsSbtcWithdrawalCap {
+                        withdrawal_amounts: sum,
+                        withdrawal_cap: max_mintable,
+                        withdrawal_cap_blocks: 150,
+                        withdrawn_total,
+                    });
+                }
+                Ok(sum)
+            })?;
+
         Ok(())
     }
 
@@ -244,12 +257,14 @@ impl BitcoinPreSignRequest {
     {
         // Let's do basic validation of the request object itself.
         self.pre_validation()?;
-        let cache = self.fetch_all_reports(&ctx.get_storage(), btc_ctx).await?;
+        let db = ctx.get_storage();
+        let cache = self.fetch_all_reports(&db, btc_ctx).await?;
+        
+        let limits = ctx.state().get_current_limits();
+        let withdrawn_total = db.compute_withdrawn_total(&btc_ctx.chain_tip, 3).await?;
+        Self::assert_request_amount_limits(&cache, &limits, withdrawn_total)?;
 
-        self.validate_max_mintable(ctx, &cache).await?;
-
-        let signer_utxo = ctx
-            .get_storage()
+        let signer_utxo = db
             .get_signer_utxo(&btc_ctx.chain_tip)
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
@@ -1005,7 +1020,7 @@ mod tests {
     use crate::context::SbtcLimits;
     use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksTxId;
-    use crate::testing::context::TestContext;
+    // use crate::testing::context::TestContext;
 
     use super::*;
 
@@ -2005,22 +2020,20 @@ mod tests {
         });
         "filter_out_deposits_over_max_mintable"
     )]
-    #[tokio::test]
-    async fn test_validate_max_mintable(
+    fn test_validate_max_mintable(
         deposit_amounts: Vec<u64>,
         total_cap: Amount,
         sbtc_supply: Amount,
         expected: Result<(), Error>,
     ) {
         // Create mock context
-        let context = TestContext::default_mocked();
-        context.state().update_current_limits(SbtcLimits::new(
+        let limits = SbtcLimits::new(
             Some(total_cap),
             None,
             None,
             None,
             Some(total_cap - sbtc_supply),
-        ));
+        );
         // Create cache with test data
         let mut cache = ValidationCache::default();
 
@@ -2041,12 +2054,7 @@ mod tests {
             .collect();
 
         // Create request and validate
-        let request = BitcoinPreSignRequest {
-            request_package: vec![],
-            fee_rate: 2.0,
-            last_fees: None,
-        };
-        let result = request.validate_max_mintable(&context, &cache).await;
+        let result = BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, 0);
 
         match (result, expected) {
             (Ok(()), Ok(())) => {}
