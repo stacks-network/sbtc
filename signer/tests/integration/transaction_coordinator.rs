@@ -49,6 +49,7 @@ use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
+use signer::emily_client::EmilyInteract;
 use signer::message::Payload;
 use signer::network::MessageTransfer;
 use testing_emily_client::apis::testing_api;
@@ -3758,6 +3759,42 @@ async fn sign_bitcoin_transaction_withdrawals() {
         txid: StacksTxId::from([123; 32]),
         sender_address: PrincipalData::from(StandardPrincipalData::transient()).into(),
     };
+
+    let stacks_tip_heugt = db
+        .get_stacks_block(&stacks_chain_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .block_height;
+    use serde_json::json;
+    let payload = json!({
+            "requestId": withdrawal_request.request_id,
+            "stacksBlockHash": withdrawal_request.block_hash.to_string(),
+            "stacksBlockHeight": stacks_tip_heugt,
+            "recipient": withdrawal_request.recipient.to_hex_string(),
+            "sender": withdrawal_request.sender_address.to_string(),
+            "amount": withdrawal_request.amount,
+            "parameters": {
+                "maxFee": withdrawal_request.max_fee,
+            },
+    });
+
+    let url = format!("{}/withdrawal", emily_client.config().base_path);
+    println!("url: {:#?}", url);
+    println!("payload: {:#?}", payload);
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .header("ApiGatewayKey", "testApiKey")
+        .json(&payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    if !response.status().is_success() {
+        panic!("Request failed with status: {}", response.status());
+    }
+
     for (_, db, _, _) in signers.iter() {
         db.write_withdrawal_request(&withdrawal_request)
             .await
@@ -3796,6 +3833,28 @@ async fn sign_bitcoin_transaction_withdrawals() {
 
     wait_for_signers(&signers).await;
 
+    {
+        println!(
+            "withdrawal_request_id: {:#?}",
+            withdrawal_request.request_id
+        );
+        let withdrawal = emily_client::apis::withdrawal_api::get_withdrawal(
+            emily_client.config(),
+            withdrawal_request.request_id,
+        )
+        .await;
+        println!("withdrawal: {:#?}", withdrawal);
+
+        let withdrawals = emily_client::apis::withdrawal_api::get_withdrawals(
+            emily_client.config(),
+            emily_client::models::Status::Accepted,
+            None,
+            None,
+        )
+        .await;
+        println!("withdrawals: {:#?}", withdrawals);
+    }
+
     // =========================================================================
     // Step 8 - Assertions
     // -------------------------------------------------------------------------
@@ -3809,6 +3868,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     // - Does the sweep outputs to the right scriptPubKey with the right
     //   amount.
     // =========================================================================
+
     let sleep_fut = tokio::time::sleep(Duration::from_secs(5));
     let broadcast_stacks_txs: Vec<StacksTransaction> = stacks_tx_stream
         .take_until(sleep_fut)
@@ -3847,6 +3907,19 @@ async fn sign_bitcoin_transaction_withdrawals() {
 
     let withdrawal_amount = withdrawal_request.amount;
     assert_eq!(tx_info.tx.output[2].value.to_sat(), withdrawal_amount);
+
+    // let withdrawals_on_emily = emily_client.get_withdrawals().await.unwrap();
+
+    // let withdrawals_on_emily = emily_client::apis::withdrawal_api::get_withdrawals(
+    //     emily_client.config(),
+    //     emily_client::models::Status::Pending,
+    //     None,
+    //     None,
+    // )
+    // .await
+    // .unwrap();
+
+    // println!("withdrawals on emily: {:#?}", withdrawals_on_emily);
 
     // Lastly we check that out database has the sweep transaction
     let tx = sqlx::query_scalar::<_, BitcoinTx>(
