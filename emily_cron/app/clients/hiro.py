@@ -24,14 +24,14 @@ class HiroAPI(APIClient):
             bool: True if the deposit was completed, False otherwise
         """
         params = {
-            "sender": "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4",
+            "sender": settings.DEPLOYER_ADDRESS,
             "arguments": [
                 f"0x0200000020{txid}",
                 "0x0100000000000000000000000000000000",
             ],
         }
         result = cls.post(
-            "/v2/contracts/call-read/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4/sbtc-registry/get-completed-deposit",
+            f"/v2/contracts/call-read/{settings.DEPLOYER_ADDRESS}/sbtc-registry/get-completed-deposit",
             json_data=params,
         )
 
