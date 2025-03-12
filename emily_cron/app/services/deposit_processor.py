@@ -183,6 +183,9 @@ class DepositProcessor:
         bitcoin_chaintip = MempoolAPI.get_bitcoin_block_at()
         stacks_chaintip = HiroAPI.get_stacks_block()
 
+        logger.info(f"Bitcoin chain tip: {bitcoin_chaintip}")
+        logger.info(f"Stacks chain tip: {stacks_chaintip}")
+
         # Fetch pending and accepted deposits
         pending_deposits = PublicEmilyAPI.fetch_deposits(RequestStatus.PENDING)
         accepted_deposits = PublicEmilyAPI.fetch_deposits(RequestStatus.ACCEPTED)
