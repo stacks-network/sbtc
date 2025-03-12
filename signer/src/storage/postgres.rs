@@ -1793,9 +1793,9 @@ impl super::DbRead for PgStore {
         bitcoin_chain_tip: &model::BitcoinBlockHash,
         context_window: u16,
     ) -> Result<u64, Error> {
-        let total_amount = sqlx::query_scalar::<_, i64>(
+        let total_amount = sqlx::query_scalar::<_, Option<i64>>(
             r#"
-            SELECT SUM(bto.amount)
+            SELECT SUM(bto.amount)::BIGINT
             FROM sbtc_signer.bitcoin_tx_outputs AS bto
             JOIN sbtc_signer.bitcoin_transactions AS bt
               ON bt.txid = bto.txid
@@ -1812,7 +1812,7 @@ impl super::DbRead for PgStore {
 
         // Amounts are always positive in the database, so this conversion
         // is always fine.
-        u64::try_from(total_amount).map_err(|_| Error::TypeConversion)
+        u64::try_from(total_amount.unwrap_or(0)).map_err(|_| Error::TypeConversion)
     }
 
     async fn get_bitcoin_blocks_with_transaction(
