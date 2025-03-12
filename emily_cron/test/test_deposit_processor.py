@@ -158,13 +158,38 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
             RequestStatus.ACCEPTED: [accepted_deposit]
         }[status]
 
+        # Create a long pending deposit for testing
+        long_pending = self._create_mock_deposit(
+            txid="long_pending_tx",
+            confirmed_height=-1,
+            lock_time=0
+        )
+
+        # Fix: Add required attributes to all mock objects
+        # For the long_pending deposit
+        long_pending.status = RequestStatus.PENDING.value
+        long_pending.in_mempool = False
+        long_pending.deposit_time = int(datetime.now().timestamp()) - settings.MAX_UNCONFIRMED_TIME - 3600
+
+        # For the expired_locktime deposit
+        self.expired_locktime.status = RequestStatus.ACCEPTED.value
+
+        # For the rbf_original deposit
+        self.rbf_original.status = RequestStatus.PENDING.value
+        self.rbf_original.in_mempool = True
+        self.rbf_original.deposit_time = int(datetime.now().timestamp()) - 3600  # 1 hour ago
+
+        # For the rbf_replacement deposit
+        self.rbf_replacement.status = RequestStatus.ACCEPTED.value
+
         # Mock the _enrich_deposits method
         with patch.object(self.processor, '_enrich_deposits') as mock_enrich:
             # Return our test deposits when enriching
             mock_enrich.return_value = [
                 self.expired_locktime,
                 self.rbf_original,
-                self.rbf_replacement
+                self.rbf_replacement,
+                long_pending
             ]
 
             # Run the update_deposits method
@@ -181,19 +206,22 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
             mock_update_deposits.assert_called_once()
             updates = mock_update_deposits.call_args[0][0]
 
-            # We expect 2 updates: one for expired_locktime_tx and one for rbf_original_tx
-            self.assertEqual(len(updates), 2)
+            # We expect 3 updates: one for expired_locktime_tx, one for rbf_original_tx, and one for long_pending_tx
+            self.assertEqual(len(updates), 3)
             # Let's check the actual updates to understand what's happening
             update_txids = [update.bitcoin_txid for update in updates]
             self.assertIn("expired_locktime_tx", update_txids, "Should include expired locktime transaction")
             self.assertIn("rbf_original_tx", update_txids, "Should include RBF original transaction")
+            self.assertIn("long_pending_tx", update_txids, "Should include long pending transaction")
 
             # Count the updates by type
             expired_locktime_updates = [u for u in updates if u.bitcoin_txid == "expired_locktime_tx"]
             rbf_updates = [u for u in updates if u.bitcoin_txid == "rbf_original_tx"]
+            long_pending_updates = [u for u in updates if u.bitcoin_txid == "long_pending_tx"]
 
             self.assertEqual(len(expired_locktime_updates), 1, "Should have 1 expired locktime update")
             self.assertEqual(len(rbf_updates), 1, "Should have 1 RBF update")
+            self.assertEqual(len(long_pending_updates), 1, "Should have 1 long pending update")
 
             # Check the status messages
             for update in updates:
@@ -201,6 +229,8 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
                     self.assertTrue("Locktime expired" in update.status_message)
                 elif update.bitcoin_txid == "rbf_original_tx":
                     self.assertTrue("Replaced by confirmed tx" in update.status_message)
+                elif update.bitcoin_txid == "long_pending_tx":
+                    self.assertTrue(f"Pending for too long ({settings.MAX_UNCONFIRMED_TIME} seconds)" in update.status_message)
 
     @patch('app.clients.MempoolAPI.get_bitcoin_transaction')
     @patch('app.clients.MempoolAPI.check_for_rbf')
@@ -263,6 +293,101 @@ class TestDepositProcessorWithRbf(TestDepositProcessorBase):
             self.assertEqual(additional_info2["rbf_txids"], set())
 
 
+class TestLongPendingProcessor(TestDepositProcessorBase):
+    """Tests for the process_long_pending method."""
+
+    def setUp(self):
+        super().setUp()
+
+        # Set current time for testing
+        self.current_time = int(datetime.now().timestamp())
+
+        # Create test deposits
+        self.long_pending = self._create_mock_deposit(
+            txid="long_pending_tx",
+            confirmed_height=-1,  # Not confirmed
+            lock_time=0
+        )
+        self.long_pending.status = RequestStatus.PENDING.value
+        self.long_pending.in_mempool = False
+        self.long_pending.deposit_time = self.current_time - settings.MAX_UNCONFIRMED_TIME - 3600  # 1 hour over limit
+
+        self.recent_pending = self._create_mock_deposit(
+            txid="recent_pending_tx",
+            confirmed_height=-1,  # Not confirmed
+            lock_time=0
+        )
+        self.recent_pending.status = RequestStatus.PENDING.value
+        self.recent_pending.in_mempool = False
+        self.recent_pending.deposit_time = self.current_time - 3600  # Just 1 hour old
+
+        self.in_mempool = self._create_mock_deposit(
+            txid="in_mempool_tx",
+            confirmed_height=-1,  # Not confirmed
+            lock_time=0
+        )
+        self.in_mempool.status = RequestStatus.PENDING.value
+        self.in_mempool.in_mempool = True
+        self.in_mempool.deposit_time = self.current_time - settings.MAX_UNCONFIRMED_TIME - 3600  # Old but in mempool
+
+    def test_no_long_pending(self):
+        # Test with only transactions that shouldn't be marked as failed
+        deposits = [self.recent_pending, self.in_mempool]
+
+        updates = self.processor.process_long_pending(
+            deposits, self.stacks_chaintip
+        )
+
+        self.assertEqual(len(updates), 0, "No transactions should be marked as failed")
+
+    def test_long_pending(self):
+        # Test with a transaction that should be marked as failed
+        deposits = [self.long_pending]
+
+        updates = self.processor.process_long_pending(
+            deposits, self.stacks_chaintip
+        )
+
+        self.assertEqual(len(updates), 1, "One transaction should be marked as failed")
+        self.assertEqual(updates[0].bitcoin_txid, "long_pending_tx")
+        self.assertEqual(updates[0].status, RequestStatus.FAILED.value)
+        self.assertTrue(f"Pending for too long ({settings.MAX_UNCONFIRMED_TIME} seconds)" in updates[0].status_message)
+
+    def test_mixed_transactions(self):
+        # Test with a mix of transactions
+        deposits = [self.long_pending, self.recent_pending, self.in_mempool]
+
+        updates = self.processor.process_long_pending(
+            deposits, self.stacks_chaintip
+        )
+
+        self.assertEqual(len(updates), 1, "Only one transaction should be marked as failed")
+        self.assertEqual(updates[0].bitcoin_txid, "long_pending_tx")
+
+    @patch('app.settings.MAX_UNCONFIRMED_TIME', 60 * 60)  # 1 hour instead of 24 hours
+    def test_with_custom_timeout(self):
+        # Test with a custom timeout setting
+        # Create a deposit that would be considered recent with default settings but long pending with reduced timeout
+        edge_case = self._create_mock_deposit(
+            txid="edge_case",
+            confirmed_height=-1,
+            lock_time=0
+        )
+        edge_case.status = RequestStatus.PENDING.value
+        edge_case.in_mempool = False
+        edge_case.deposit_time = self.current_time - 7200  # 2 hours old
+
+        deposits = [edge_case]
+
+        updates = self.processor.process_long_pending(
+            deposits, self.stacks_chaintip
+        )
+
+        # With MAX_UNCONFIRMED_TIME=1 hour, this should be marked as long pending
+        self.assertEqual(len(updates), 1, "Transaction should be marked as failed with reduced timeout")
+        self.assertEqual(updates[0].bitcoin_txid, "edge_case")
+
+
 class TestDepositProcessor(TestDepositProcessorBase):
     """Tests for the DepositProcessor class."""
 
@@ -306,16 +431,28 @@ class TestDepositProcessor(TestDepositProcessorBase):
             RequestStatus.ACCEPTED: [accepted_deposit]
         }[status]
 
+        # Create a long pending deposit for testing
+        long_pending = self._create_mock_deposit(
+            txid="long_pending_tx",
+            confirmed_height=-1,
+            lock_time=0
+        )
+        long_pending.status = RequestStatus.PENDING.value
+        long_pending.in_mempool = False
+        long_pending.deposit_time = int(datetime.now().timestamp()) - settings.MAX_UNCONFIRMED_TIME - 3600
+
         # Mock the _enrich_deposits method
         with patch.object(self.processor, '_enrich_deposits') as mock_enrich:
             # Return our test deposits when enriching
             mock_enrich.return_value = [
                 self.expired_locktime,
-                self.active_locktime
+                self.active_locktime,
+                long_pending
             ]
 
             # Mock the processing methods to return known updates
-            with patch.object(self.processor, 'process_expired_locktime') as mock_process_locktime:
+            with patch.object(self.processor, 'process_expired_locktime') as mock_process_locktime, \
+                 patch.object(self.processor, 'process_long_pending') as mock_process_long_pending:
 
                 # Set up the mock returns
                 locktime_update = DepositUpdate(
@@ -327,7 +464,17 @@ class TestDepositProcessor(TestDepositProcessorBase):
                     status_message="Locktime expired"
                 )
 
+                long_pending_update = DepositUpdate(
+                    bitcoin_txid="long_pending_tx",
+                    bitcoin_tx_output_index=0,
+                    last_update_height=self.stacks_chaintip.height,
+                    last_update_block_hash=self.stacks_chaintip.hash,
+                    status=RequestStatus.FAILED.value,
+                    status_message=f"Pending for too long ({settings.MAX_UNCONFIRMED_TIME} seconds)"
+                )
+
                 mock_process_locktime.return_value = [locktime_update]
+                mock_process_long_pending.return_value = [long_pending_update]
 
                 # Run the update_deposits method
                 self.processor.update_deposits()
@@ -342,12 +489,15 @@ class TestDepositProcessor(TestDepositProcessorBase):
 
                 # Verify the processing methods were called
                 mock_process_locktime.assert_called_once()
+                mock_process_long_pending.assert_called_once()
 
-                # Verify the update was called with the locktime update
+                # Verify the update was called with both updates
                 mock_update_deposits.assert_called_once()
                 updates = mock_update_deposits.call_args[0][0]
-                self.assertEqual(len(updates), 1)
-                self.assertEqual(updates[0].bitcoin_txid, "expired_locktime_tx")
+                self.assertEqual(len(updates), 2)
+                update_txids = [update.bitcoin_txid for update in updates]
+                self.assertIn("expired_locktime_tx", update_txids)
+                self.assertIn("long_pending_tx", update_txids)
 
     @patch('app.clients.MempoolAPI.get_bitcoin_transaction')
     def test_enrich_deposits(self, mock_get_tx):
