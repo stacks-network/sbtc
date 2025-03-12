@@ -781,7 +781,6 @@ where
             assert_eq!(call.tx_fee, withdrawal_fee);
             assert_eq!(call.id.request_id, withdrawal_req.request_id);
             assert_eq!(call.outpoint, outpoint);
-            assert_eq!(call.signer_bitmap, signer_bitmap);
             assert_eq!(call.sweep_block_hash, withdrawal_req.sweep_block_hash);
             assert_eq!(call.sweep_block_height, withdrawal_req.sweep_block_height);
         } else {
@@ -888,7 +887,6 @@ where
         };
 
         assert_eq!(call.id, withdrawal_req.qualified_id());
-        assert_eq!(call.signer_bitmap, signer_bitmap);
 
         let TransactionPayload::ContractCall(TransactionContractCall {
             address,

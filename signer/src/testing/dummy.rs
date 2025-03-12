@@ -714,7 +714,7 @@ impl fake::Dummy<fake::Faker> for AcceptWithdrawalV1 {
                 vout: rng.next_u32(),
             },
             tx_fee: config.fake_with_rng(rng),
-            signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
+            signer_bitmap: 0,
             deployer: address,
             sweep_block_hash: config.fake_with_rng(rng),
             sweep_block_height: config.fake_with_rng(rng),
@@ -730,7 +730,7 @@ impl fake::Dummy<fake::Faker> for RejectWithdrawalV1 {
 
         RejectWithdrawalV1 {
             id: config.fake_with_rng(rng),
-            signer_bitmap: BitArray::new(config.fake_with_rng(rng)),
+            signer_bitmap: 0,
             deployer: address,
         }
     }

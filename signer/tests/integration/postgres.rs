@@ -5,7 +5,6 @@ use std::ops::Deref;
 use std::time::Duration;
 
 use bitcoin::hashes::Hash as _;
-use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
@@ -182,7 +181,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     },
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -193,7 +192,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
 	txid: StacksTxId::from([0; 32]),
 	block_hash: StacksBlockHash::from([0; 32]),
     },
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
