@@ -10,7 +10,4 @@ def to_camel_case(s: str) -> str:
 
 def asdict_camel(d: Any) -> dict:
     """Convert the dataclass to a dict with camelCase keys."""
-    return {
-        to_camel_case(key): value
-        for key, value in asdict(d).items()
-    }
+    return {to_camel_case(key): value for key, value in asdict(d).items()}

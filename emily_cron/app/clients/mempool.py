@@ -1,9 +1,10 @@
 import logging
 from datetime import datetime
-from typing import Any, Set
+from typing import Any, Optional
 
 from ..models import BlockInfo
 from .base import APIClient
+from .. import settings
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def _collect_rbf_txids(data: dict[str, Any]) -> set[str]:
 class MempoolAPI(APIClient):
     """Client for interacting with the Mempool API."""
 
-    BASE_URL = "https://mempool.space/api"
+    BASE_URL = settings.MEMPOOL_API_URL
 
     @classmethod
     def check_for_rbf(cls, txid: str) -> set[str]:
@@ -48,7 +49,7 @@ class MempoolAPI(APIClient):
         return _collect_rbf_txids(data.get("replacements", {}))
 
     @classmethod
-    def get_bitcoin_block_at(cls, timestamp: int | None = None) -> BlockInfo:
+    def get_bitcoin_block_at(cls, timestamp: Optional[int] = None) -> BlockInfo:
         """Fetch the Bitcoin block at a given timestamp.
 
         Args:
@@ -62,7 +63,7 @@ class MempoolAPI(APIClient):
         return BlockInfo.from_bitcoin(cls.get(f"/v1/mining/blocks/timestamp/{timestamp}"))
 
     @classmethod
-    def get_bitcoin_transaction(cls, txid: str) -> dict:
+    def get_bitcoin_transaction(cls, txid: str) -> dict[str, Any]:
         """Fetch details for a Bitcoin transaction.
 
         Args:

@@ -1,6 +1,6 @@
 import logging
 import requests
-from typing import Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +11,7 @@ class APIClient:
     BASE_URL: str = ""
 
     @classmethod
-    def get(cls, endpoint: str, params: dict | None = None) -> dict:
+    def get(cls, endpoint: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         """Perform a GET request and return JSON response."""
         url = f"{cls.BASE_URL}{endpoint}"
         try:
@@ -23,7 +23,12 @@ class APIClient:
             return {}
 
     @classmethod
-    def post(cls, endpoint: str, json_data: dict, headers: dict | None = None) -> dict:
+    def post(
+        cls,
+        endpoint: str,
+        json_data: dict[str, Any],
+        headers: Optional[dict[str, str]] = None,
+    ) -> dict[str, Any]:
         """Perform a POST request and return JSON response."""
         url = f"{cls.BASE_URL}{endpoint}"
         try:

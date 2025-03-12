@@ -1,15 +1,11 @@
 import logging
 
 from fastapi import FastAPI, HTTPException
-from fastapi.concurrency import asynccontextmanager
 from fastapi.responses import Response
 from pydantic import BaseModel
 import requests
-from apscheduler.schedulers.background import BackgroundScheduler
 
 from app import settings, logging_config
-from app.clients import EmilyAPI
-from app.services import DepositProcessor
 
 # Set up logging when the app starts
 logging_config.setup_logging()
@@ -31,40 +27,8 @@ class NewBlockEventModel(BaseModel, extra="allow"):
     index_block_hash: str
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    """Set up and tear down application resources."""
-    # Initialize the scheduler
-    scheduler = BackgroundScheduler()
-
-    # Create the Emily API client
-    emily_api = EmilyAPI(settings.API_KEY)
-
-    # Create the deposit processor
-    deposit_processor = DepositProcessor(emily_api)
-
-    # Add the deposit update job to run every 5 minutes
-    scheduler.add_job(
-        deposit_processor.update_deposits,
-        "interval",
-        minutes=5,
-        id="update_deposits",
-        name="Update deposit statuses",
-    )
-
-    # Start the scheduler
-    scheduler.start()
-    logger.info("Started background scheduler for deposit status updates")
-
-    yield
-
-    # Shutdown the scheduler when the app is shutting down
-    scheduler.shutdown()
-    logger.info("Stopped background scheduler")
-
-
 # Initialize the FastAPI app
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 
 @app.post("/new_block")

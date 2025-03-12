@@ -1,22 +1,18 @@
 import logging
-from datetime import datetime
-from typing import Any, List
+from typing import Any
 
-from ..models import (
-    DepositInfo,
-    DepositUpdate,
-    RequestStatus,
-    asdict_camel,
-)
+from ..models import DepositInfo, DepositUpdate, RequestStatus
+from ..utils import asdict_camel
 from .base import APIClient
+from .. import settings
 
 logger = logging.getLogger(__name__)
 
 
-class EmilyAPI(APIClient):
+class PublicEmilyAPI(APIClient):
     """Client for interacting with the Emily API."""
 
-    BASE_URL = "https://sbtc-emily.com"
+    BASE_URL = settings.EMILY_ENDPOINT
 
     def __init__(self, api_key: str):
         self.headers = {"x-api-key": api_key}
@@ -26,6 +22,13 @@ class EmilyAPI(APIClient):
         """Fetch deposits based on status."""
         data = cls.get(f"/deposit?status={status.value}")
         return [DepositInfo.from_json(deposit) for deposit in data.get("deposits", [])]
+
+
+class PrivateEmilyAPI(APIClient):
+    """Client for interacting with the Private Emily API."""
+
+    BASE_URL = settings.PRIVATE_EMILY_ENDPOINT
+    HEADERS = {"x-api-key": settings.API_KEY}
 
     def update_deposits(self, updates: list[DepositUpdate]) -> list[dict[str, Any]]:
         """Update multiple deposit statuses.
@@ -39,6 +42,7 @@ class EmilyAPI(APIClient):
         assert len(updates) > 0, "Updates must contain at least one deposit update"
 
         return self.post(
-            f"/deposit/{txid}",
+            f"/deposit",
             json_data={"deposits": [asdict_camel(update) for update in updates]},
-            headers=self.headers)
+            headers=self.HEADERS,
+        )

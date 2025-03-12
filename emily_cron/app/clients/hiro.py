@@ -1,10 +1,9 @@
-import functools
 import logging
-from datetime import datetime
-from typing import Any
+import functools
 
 from ..models import BlockInfo
 from .base import APIClient
+from .. import settings
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 class HiroAPI(APIClient):
     """Client for interacting with the Hiro API."""
 
-    BASE_URL = "https://api.hiro.so"
+    BASE_URL = settings.HIRO_API_URL
 
     @classmethod
     def fetch_if_stacks_deposit_completed(cls, txid: str) -> bool:
@@ -26,7 +25,10 @@ class HiroAPI(APIClient):
         """
         params = {
             "sender": "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4",
-            "arguments": [f"0x0200000020{txid}", "0x0100000000000000000000000000000000"],
+            "arguments": [
+                f"0x0200000020{txid}",
+                "0x0100000000000000000000000000000000",
+            ],
         }
         result = cls.post(
             "/v2/contracts/call-read/SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4/sbtc-registry/get-completed-deposit",
@@ -48,7 +50,7 @@ class HiroAPI(APIClient):
         Returns:
             dict: Block information
         """
-        return cls.get(f"/extended/v2/blocks/{height_or_hash}")
+        return cls.get(f"/v2/blocks/{height_or_hash}")
 
     @classmethod
     def get_stacks_block(cls, height_or_hash: int | str = "latest") -> BlockInfo:
@@ -64,7 +66,7 @@ class HiroAPI(APIClient):
         """
         if height_or_hash == "latest":
             # Don't cache "latest" queries
-            block_data = cls.get(f"/extended/v2/blocks/{height_or_hash}")
+            block_data = cls.get(f"/v2/blocks/{height_or_hash}")
         else:
             # Use cached version for specific heights or hashes
             block_data = cls._get_stacks_block_cached(height_or_hash)
