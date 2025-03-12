@@ -11,6 +11,3 @@ HIRO_API_URL = os.getenv("HIRO_API_URL", "https://api.hiro.so/extended").removes
 
 # The number of confirmations required for a deposit update to be considered final
 MIN_BLOCK_CONFIRMATIONS = int(os.getenv("MIN_BLOCK_CONFIRMATIONS", 6))
-
-# Maximum time (in seconds) a transaction can remain unconfirmed before being marked as FAILED
-MAX_UNCONFIRMED_TIME = int(os.getenv("MAX_UNCONFIRMED_TIME", 60 * 60 * 24))  # 24 hours in seconds

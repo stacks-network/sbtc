@@ -30,7 +30,8 @@ class PrivateEmilyAPI(APIClient):
     BASE_URL = settings.PRIVATE_EMILY_ENDPOINT
     HEADERS = {"x-api-key": settings.API_KEY}
 
-    def update_deposits(self, updates: list[DepositUpdate]) -> list[dict[str, Any]]:
+    @classmethod
+    def update_deposits(cls, updates: list[DepositUpdate]) -> list[dict[str, Any]]:
         """Update multiple deposit statuses.
 
         Args:
@@ -41,8 +42,8 @@ class PrivateEmilyAPI(APIClient):
         """
         assert len(updates) > 0, "Updates must contain at least one deposit update"
 
-        return self.post(
+        return cls.put(
             f"/deposit",
             json_data={"deposits": [asdict_camel(update) for update in updates]},
-            headers=self.HEADERS,
+            headers=cls.HEADERS,
         )
