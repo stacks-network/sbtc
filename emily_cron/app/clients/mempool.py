@@ -9,10 +9,47 @@ from .. import settings
 logger = logging.getLogger(__name__)
 
 
+def _collect_rbf_txids(data: dict[str, Any]) -> set[str]:
+    """Recursively collect all RBF transaction IDs from the replacement chain.
+
+    Args:
+        data: Transaction replacement data from mempool API
+
+    Returns:
+        Set of transaction IDs that replaced the original transaction
+    """
+    txids = set()
+
+    if data is None:
+        return txids
+
+    if tx := data.get("tx", {}):
+        if txid := tx.get("txid"):
+            txids.add(txid)
+
+    for replacement in data.get("replaces", []):
+        txids.update(_collect_rbf_txids(replacement))
+
+    return txids
+
+
 class MempoolAPI(APIClient):
     """Client for interacting with the Mempool API."""
 
     BASE_URL = settings.MEMPOOL_API_URL
+
+    @classmethod
+    def check_for_rbf(cls, txid: str) -> set[str]:
+        """Check if a Bitcoin transaction was replaced by RBF.
+
+        Args:
+            txid: The transaction ID to check
+
+        Returns:
+            Set of transaction IDs that replaced the original transaction
+        """
+        data = cls.get(f"/v1/tx/{txid}/rbf")
+        return _collect_rbf_txids(data.get("replacements", {}))
 
     @classmethod
     def get_bitcoin_block_at(cls, timestamp: Optional[int] = None) -> BlockInfo:

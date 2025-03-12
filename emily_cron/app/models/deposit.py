@@ -18,7 +18,6 @@ class RequestStatus(Enum):
 @dataclass
 class DepositInfo:
     """Represents a deposit transaction."""
-
     bitcoin_txid: str
     bitcoin_tx_output_index: int
     recipient: str
@@ -48,7 +47,7 @@ class DepositInfo:
         """Extracts lock time from reclaim script."""
         lock_time = script.parse(self.reclaim_script)[0]
         if lock_time.startswith("OP_"):
-            return int(lock_time[len("OP_") :])
+            return int(lock_time[len("OP_"):])
         return int.from_bytes(bytes.fromhex(lock_time), byteorder="little")
 
     @property
@@ -61,14 +60,12 @@ class DepositInfo:
     def deposit_time(self) -> int:
         """Get the timestamp from the last update block hash."""
         from ..clients import HiroAPI  # Moved import here to avoid circular import
-
         return HiroAPI.get_stacks_block(self.last_update_block_hash).time
 
 
 @dataclass
 class EnrichedDepositInfo(DepositInfo):
     """Represents a deposit with additional enriched details."""
-
     in_mempool: bool  # Whether the transaction was found by the mempool API
     total_input: int
     fee: int
@@ -76,6 +73,7 @@ class EnrichedDepositInfo(DepositInfo):
     confirmed_time: int
     spending_outputs: dict[str, int]
     num_inputs: int
+    rbf_txids: set[str]  # txids that replaced the original transaction
     # was_minted: bool
 
     @property
@@ -101,6 +99,7 @@ class EnrichedDepositInfo(DepositInfo):
             "confirmed_time": -1,
             "spending_outputs": {},
             "num_inputs": -1,
+            "rbf_txids": set(),
         }
         return cls(**asdict(d), **missing_data)
 
@@ -108,7 +107,6 @@ class EnrichedDepositInfo(DepositInfo):
 @dataclass
 class BlockInfo:
     """Represents a block."""
-
     height: int
     hash: str
     time: int
@@ -133,7 +131,6 @@ class BlockInfo:
 @dataclass
 class Fulfillment:
     """Represents a fulfillment."""
-
     bitcoin_txid: str
     bitcoin_tx_index: int
     stacks_txid: str
@@ -145,7 +142,6 @@ class Fulfillment:
 @dataclass
 class DepositUpdate:
     """Represents a deposit update."""
-
     bitcoin_txid: str
     bitcoin_tx_output_index: int
     last_update_height: int
