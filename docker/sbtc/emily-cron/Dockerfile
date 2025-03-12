@@ -27,6 +27,7 @@ ENV MEMPOOL_API_URL=https://mempool.space/api
 ENV HIRO_API_URL=https://api.hiro.so/extended
 ENV MIN_BLOCK_CONFIRMATIONS=6
 ENV MAX_UNCONFIRMED_TIME=86400
+ENV DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
 
 # Set up the cron job to log to the log file only
 # Run every 10 minutes
