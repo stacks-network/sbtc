@@ -5975,7 +5975,7 @@ async fn compute_withdrawn_total_gets_all_amounts_in_chain() {
 }
 
 /// Check that the query in `compute_withdrawn_total` returns the total
-/// amount of withdrawal amounts in the window.
+/// amount of withdrawal amounts on the identified blockchain.
 #[tokio::test]
 async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain() {
     let mut db = testing::storage::new_test_database().await;
@@ -6050,7 +6050,8 @@ async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain()
     db.write_tx_output(&output2).await.unwrap();
 
     // The blockchain with a context window of zero is just the chain_tip,
-    // same thing as a context window of 1.
+    // same thing as a context window of 1. So this checks the "regular"
+    // chain tip.
     let current_total = db
         .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, 0)
         .await
@@ -6058,6 +6059,7 @@ async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain()
 
     assert_eq!(current_total, amount1);
 
+    // Let's check for the withdrawal output on that other blockchain.
     let current_total = db
         .compute_withdrawn_total(&another_block.block_hash, 0)
         .await
