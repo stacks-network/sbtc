@@ -20,6 +20,9 @@ def _collect_rbf_txids(data: dict[str, Any]) -> set[str]:
     """
     txids = set()
 
+    if data is None:
+        return txids
+
     if tx := data.get("tx", {}):
         if txid := tx.get("txid"):
             txids.add(txid)

@@ -73,7 +73,7 @@ class EnrichedDepositInfo(DepositInfo):
     confirmed_time: int
     spending_outputs: dict[str, int]
     num_inputs: int
-    rbf_txids: list[str]  # txids that replaced the original transaction
+    rbf_txids: set[str]  # txids that replaced the original transaction
     # was_minted: bool
 
     @property
@@ -99,7 +99,7 @@ class EnrichedDepositInfo(DepositInfo):
             "confirmed_time": -1,
             "spending_outputs": {},
             "num_inputs": -1,
-            "rbf_txids": [],
+            "rbf_txids": set(),
         }
         return cls(**asdict(d), **missing_data)
 
