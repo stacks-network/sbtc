@@ -52,6 +52,21 @@ services:
     depends_on:
       - emily-server
 
+  emily-cron:
+    build:
+      context: ../..
+      dockerfile: docker/sbtc/emily-cron/Dockerfile
+      target: emily-cron
+    restart: on-failure
+    environment:
+      - API_KEY=testApiKey
+      - EMILY_ENDPOINT=http://emily-server:3031
+      - PRIVATE_EMILY_ENDPOINT=http://emily-server:3031
+      - MEMPOOL_API_URL=https://mempool.space/api
+      - HIRO_API_URL=https://api.hiro.so/extended
+    depends_on:
+      - emily-server
+
   # Runs the sBTC signer.
   signer:
     build:

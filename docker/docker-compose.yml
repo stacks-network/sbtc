@@ -150,6 +150,25 @@ services:
     depends_on:
       - emily-server
 
+  emily-cron:
+    build:
+      context: ../
+      dockerfile: docker/sbtc/emily-cron/Dockerfile
+      target: emily-cron
+    restart: on-failure
+    environment:
+      - API_KEY=testApiKey
+      - EMILY_ENDPOINT=http://emily-server:3031
+      - PRIVATE_EMILY_ENDPOINT=http://emily-server:3031
+      - MEMPOOL_API_URL=http://mempool-web:8083/api
+      - HIRO_API_URL=https://api.hiro.so/extended
+    profiles:
+      - default
+      - bitcoin-mempool
+    depends_on:
+      - emily-server
+      - mempool-web
+
   # sBTC Signers.
   # ------------------
   # sbtc signer 1 ----
@@ -676,7 +695,7 @@ services:
     restart: always
     ports:
       - 9598
-    volumes: 
+    volumes:
       - ./observability/vector.toml:/etc/vector/vector.toml:ro
       # This is needed for vector to read logs from other containers
       - /var/run/docker.sock:/var/run/docker.sock
