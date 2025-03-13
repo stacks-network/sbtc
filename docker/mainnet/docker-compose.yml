@@ -80,7 +80,6 @@ services:
       - ./logs:/logs
     ports:
       - "4122:4122" # P2P communication between sBTC signers
-      - "8801:8801" # So that Stacks event-observer can reach the sBTC signer
       - "9184:9184" # Prometheus metrics
 
   blocklist-client:
