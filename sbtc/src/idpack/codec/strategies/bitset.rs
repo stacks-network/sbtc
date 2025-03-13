@@ -208,7 +208,7 @@ impl EncodingStrategy for BitsetStrategy {
         }
 
         // Optimization 1: Check if length is embedded in flags
-        let has_embed_length = flags & EMBEDDED_LENGTH_FLAG != 0;
+        let has_embed_length = (flags & EMBEDDED_LENGTH_FLAG) != 0;
 
         // Write explicit length only when not embedded in flags
         // This saves 1 byte for small-to-medium bitmaps
@@ -248,7 +248,7 @@ impl EncodingStrategy for BitsetStrategy {
         // For larger bitmaps, first determine the bitmap length
 
         // Optimization 1: Check if length is embedded in flags
-        let has_embed_length = flags & EMBEDDED_LENGTH_FLAG != 0;
+        let has_embed_length = (flags & EMBEDDED_LENGTH_FLAG) != 0;
 
         // Extract bitmap length either from flags or explicit LEB128 value
         let bitmap_len = if has_embed_length {
