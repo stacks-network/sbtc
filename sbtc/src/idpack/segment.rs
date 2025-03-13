@@ -148,13 +148,13 @@ impl Segment {
         &self.values
     }
 
-    /// Returns all values except the offset.
-    /// Useful for accessing payload values during encoding.
-    ///
-    /// ## Panics
-    /// This method will panic if the segment contains only one value. Use
-    /// [`Self::has_values()`] to check if the segment has any values first.
+    /// Returns all values except the offset. If the underlying vec is empty
+    /// or contains only the offset, this method will return an empty slice.
     pub fn values(&self) -> &[u64] {
+        if self.values.is_empty() {
+            return &[];
+        }
+
         &self.values[1..]
     }
 
