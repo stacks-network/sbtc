@@ -81,6 +81,7 @@ services:
     ports:
       - "4122:4122" # P2P communication between sBTC signers
       - "9184:9184" # Prometheus metrics
+      - "127.0.0.1:8801:8801" # this export is only expose in the local machine for security reason
 
   blocklist-client:
     restart: on-failure
