@@ -131,21 +131,13 @@ impl Segment {
     /// Returns span of the segment (maximum value - offset).
     /// Critical for Bitset sizing and bit width calculations.
     pub fn range(&self) -> u64 {
-        self.values
-            .iter()
-            .max()
-            .map(|x| x - self.offset())
-            .unwrap_or_default()
+        self.max_value() - self.offset()
     }
 
     /// Returns the greatest value in the segment.
     /// Used for range calculations and segment boundary decisions.
-    ///
-    /// ## Panics
-    /// This method will panic if the segment is empty. Use [`Self::is_empty()`]
-    /// to check if the segment has any values first.
     pub fn max_value(&self) -> u64 {
-        self.values.iter().max().copied().unwrap()
+        self.values[self.values.len() - 1]
     }
 }
 
