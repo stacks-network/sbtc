@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::Index};
+use std::fmt::Debug;
 
 /// Error types that can occur when working with segments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -138,16 +138,6 @@ impl Segment {
     /// Used for range calculations and segment boundary decisions.
     pub fn max_value(&self) -> u64 {
         self.values[self.values.len() - 1]
-    }
-}
-
-/// Provides indexed access to values in a segment.
-/// Supports efficient value access during encoding operations.
-impl Index<usize> for Segment {
-    type Output = u64;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.values[index]
     }
 }
 
