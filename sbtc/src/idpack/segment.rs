@@ -98,21 +98,6 @@ impl Segment {
         self.values.is_empty()
     }
 
-    /// Returns `true` if values form a consecutive sequence.
-    /// Enables 0-bit width optimization in Fixed-Width Delta encoding.
-    pub fn is_sequential(&self) -> bool {
-        match self.values.len() {
-            // Empty isn't sequential
-            0 => false,
-
-            // Single value isn't sequential
-            1 => false,
-
-            // Return true if all values are sequential
-            _ => self.values.windows(2).all(|w| w[1] == w[0] + 1),
-        }
-    }
-
     /// Returns a slice of all values in the segment, including the offset.
     pub fn as_slice(&self) -> &[u64] {
         &self.values
