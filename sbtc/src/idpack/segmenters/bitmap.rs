@@ -197,9 +197,7 @@ impl BitmapSegmenter {
         }
 
         // Always include end boundary
-        if boundaries[boundaries.len() - 1] != values.len() {
-            boundaries.push(values.len());
-        }
+        boundaries.push(values.len());
 
         Ok(boundaries)
     }
