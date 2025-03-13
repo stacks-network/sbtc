@@ -15,18 +15,12 @@
 //!
 //! ## Optimizations
 //!
-//! ### 1. Embedded Bitmap (≤4 bits)
-//!
-//! For tiny ranges (≤4 bits), the entire bitmap is stored directly in the flags byte,
-//! requiring zero additional bytes. This enables ultra-compact encoding for common
-//! small-range patterns.
-//!
-//! ### 2. Embedded Length (≤56 bits)
+//! ### 1. Embedded Length (≤56 bits)
 //!
 //! For small-to-medium ranges (≤56 bits), the bitmap length is stored in the flags byte,
 //! saving 1 byte compared to explicit length encoding.
 //!
-//! ### 3. Dense Value Compression
+//! ### 2. Dense Value Compression
 //!
 //! BitSet encoding shines when segments contain dense clusters of values, as each value
 //! requires only a single bit regardless of its magnitude. This makes it highly efficient
@@ -55,7 +49,6 @@ use super::SegmentEncodeError;
 
 /// Flag bit indicating that the bitmap length is embedded in the flags byte.
 /// When set, the bitmap length is encoded in bits 4-6 of the flags byte.
-/// This flag is **not** compatible with [`BITSET_FLAG_EMBED_BITMAP`].
 const EMBEDDED_LENGTH_FLAG: u8 = codec::ENCODING_FLAG_2;
 
 /// Mask for extracting the embedded bitmap length from the flags byte (bits 4-6).
@@ -65,6 +58,9 @@ const EMBEDDED_LENGTH_MASK: u8 =
 
 /// Shift amount for positioning the bitmap length bits in the flags byte.
 const EMBEDDED_LENGTH_SHIFT: u8 = 4;
+
+/// The maximum number of bytes that can be embedded in the flags byte.
+const EMBEDDED_LENGTH_MAX_BYTES: u64 = 7;
 
 /// Implements the BitSet encoding strategy, which compresses integer values by
 /// representing them as bits in a bitmap.
@@ -99,7 +95,7 @@ impl EncodingStrategy for BitsetStrategy {
 
         // Optimization 1: For small-to-medium bitmaps (1-7 bytes), embed length in flags
         // This saves 1 byte compared to explicit length encoding.
-        if bytes_needed <= 7 {
+        if bytes_needed <= EMBEDDED_LENGTH_MAX_BYTES {
             flags |= EMBEDDED_LENGTH_FLAG;
             flags |= ((bytes_needed as u8) << EMBEDDED_LENGTH_SHIFT) & EMBEDDED_LENGTH_MASK;
         }
@@ -138,20 +134,23 @@ impl EncodingStrategy for BitsetStrategy {
 
         // Calculate bitmap size requirements
         let range = max_value - min_value;
-        let bytes_needed = range.div_ceil(8) as usize;
+        let bytes_needed = range.div_ceil(8);
 
-        // Safety check to prevent OOM for extremely sparse data
-        if bytes_needed > ALLOC_BYTES_LIMIT as usize {
-            return None;
-        }
+        // Optimization 1: For small-to-medium bitmaps (1-7 bytes), embed length in flags
+        // This saves 1 byte compared to explicit length encoding.
+        let length_header_size = if bytes_needed <= EMBEDDED_LENGTH_MAX_BYTES {
+            0
+        } else {
+            Leb128::calculate_size(bytes_needed)
+        };
 
-        // For bitmaps > 7 bytes, we need an explicit length byte
-        Some(bytes_needed + (bytes_needed > 7) as usize)
+        // Return the bytes needed for the bitmap plus length header (if any).
+        Some((bytes_needed as usize) + length_header_size)
     }
 
     /// Encodes a segment using the BitSet strategy.
     ///
-    /// The encoding process uses one of three approaches for maximum
+    /// The encoding process uses one of two approaches for maximum
     /// compression:
     /// 1. Embedded length: For small bitmaps (≤7 bytes), the bitmap length is
     ///    embedded in the flags byte to save 1 byte
@@ -209,7 +208,7 @@ impl EncodingStrategy for BitsetStrategy {
         }
 
         // Optimization 1: Check if length is embedded in flags
-        let has_embed_length = flags & EMBEDDED_LENGTH_FLAG != 0;
+        let has_embed_length = (flags & EMBEDDED_LENGTH_FLAG) != 0;
 
         // Write explicit length only when not embedded in flags
         // This saves 1 byte for small-to-medium bitmaps
@@ -249,7 +248,7 @@ impl EncodingStrategy for BitsetStrategy {
         // For larger bitmaps, first determine the bitmap length
 
         // Optimization 1: Check if length is embedded in flags
-        let has_embed_length = flags & EMBEDDED_LENGTH_FLAG != 0;
+        let has_embed_length = (flags & EMBEDDED_LENGTH_FLAG) != 0;
 
         // Extract bitmap length either from flags or explicit LEB128 value
         let bitmap_len = if has_embed_length {

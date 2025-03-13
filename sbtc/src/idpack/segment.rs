@@ -1,4 +1,4 @@
-use std::{fmt::Debug, ops::Index};
+use std::fmt::Debug;
 
 /// Error types that can occur when working with segments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -46,30 +46,10 @@ pub struct Segment {
 }
 
 impl Segment {
-    /// Creates a new empty segment with the specified encoding method.
-    pub fn new(encoding: SegmentEncoding) -> Self {
-        Self { encoding, values: Vec::new() }
-    }
-
     /// Creates a new segment with the specified encoding and initial offset value.
     /// The offset is crucial for compression as it establishes the base value.
     pub fn new_with_offset(encoding: SegmentEncoding, offset: u64) -> Self {
-        let mut segment = Self::new(encoding);
-        segment.values.push(offset);
-        segment
-    }
-
-    /// Creates a segment with specified encoding from an iterator of values.
-    /// Values are sorted and deduplicated for maximum compression efficiency.
-    pub fn new_from<I>(encoding: SegmentEncoding, values: I) -> Self
-    where
-        I: IntoIterator<Item = u64>,
-    {
-        let mut values = values.into_iter().collect::<Vec<_>>();
-        values.sort_unstable();
-        values.dedup();
-
-        Self { encoding, values }
+        Self { encoding, values: vec![offset] }
     }
 
     /// Returns the offset (first value) of the segment.
@@ -87,22 +67,27 @@ impl Segment {
         self.encoding
     }
 
-    /// Inserts a value into the segment, maintaining sorted order.
-    /// Enforces uniqueness and ordering constraints for optimal compression.
+    /// Inserts a value into the segment, requiring that values are sorted and
+    /// unique.
     ///
     /// ## Errors
     /// - Duplicate values (`DuplicateValue`)
     /// - Unsorted values (`UnsortedInput`)
     pub fn insert(&mut self, value: u64) -> Result<(), Error> {
-        if self.values.contains(&value) {
-            return Err(Error::DuplicateValue(value));
-        }
-
-        if !self.values.is_empty() && value < self.values[self.values.len() - 1] {
-            return Err(Error::UnsortedInput);
+        // If the segment isn't empty, check for duplicates and sort order
+        if !self.values.is_empty() {
+            // Validate that the new value is greater than the last value (sorted)
+            if value < self.values[self.values.len() - 1] {
+                return Err(Error::UnsortedInput);
+            }
+            // Validate that the new value doesn't equal the current last value (deduplicated)
+            if value == self.values[self.values.len() - 1] {
+                return Err(Error::DuplicateValue(value));
+            }
         }
 
         self.values.push(value);
+
         Ok(())
     }
 
@@ -111,50 +96,18 @@ impl Segment {
         self.values.is_empty()
     }
 
-    /// Returns the ratio of values to total range covered (density metric).
-    /// Critical for encoding selection: >0.25 density favors Bitset encoding.
-    ///
-    /// A value of 1.0 indicates a perfectly sequential segment, while lower values
-    /// indicate sparser patterns.
-    ///
-    /// Returns 0.0 if the segment is empty.
-    pub fn density(&self) -> f64 {
-        if self.values.is_empty() {
-            return 0.0;
-        }
-
-        // This is safe as we've just verified that the segment isn't empty.
-        let range = self.values.last().unwrap() - self.offset() + 1;
-        self.values.len() as f64 / range as f64
-    }
-
-    /// Returns `true` if values form a consecutive sequence.
-    /// Enables 0-bit width optimization in Fixed-Width Delta encoding.
-    pub fn is_sequential(&self) -> bool {
-        match self.values.len() {
-            // Empty isn't sequential
-            0 => false,
-
-            // Single value isn't sequential
-            1 => false,
-
-            // Return true if all values are sequential
-            _ => self.values.windows(2).all(|w| w[1] == w[0] + 1),
-        }
-    }
-
     /// Returns a slice of all values in the segment, including the offset.
     pub fn as_slice(&self) -> &[u64] {
         &self.values
     }
 
-    /// Returns all values except the offset.
-    /// Useful for accessing payload values during encoding.
-    ///
-    /// ## Panics
-    /// This method will panic if the segment contains only one value. Use
-    /// [`Self::has_values()`] to check if the segment has any values first.
+    /// Returns all values except the offset. If the underlying vec is empty
+    /// or contains only the offset, this method will return an empty slice.
     pub fn values(&self) -> &[u64] {
+        if self.values.is_empty() {
+            return &[];
+        }
+
         &self.values[1..]
     }
 
@@ -178,31 +131,13 @@ impl Segment {
     /// Returns span of the segment (maximum value - offset).
     /// Critical for Bitset sizing and bit width calculations.
     pub fn range(&self) -> u64 {
-        self.values
-            .iter()
-            .max()
-            .map(|x| x - self.offset())
-            .unwrap_or_default()
+        self.max_value() - self.offset()
     }
 
     /// Returns the greatest value in the segment.
     /// Used for range calculations and segment boundary decisions.
-    ///
-    /// ## Panics
-    /// This method will panic if the segment is empty. Use [`Self::is_empty()`]
-    /// to check if the segment has any values first.
     pub fn max_value(&self) -> u64 {
-        self.values.iter().max().copied().unwrap()
-    }
-}
-
-/// Provides indexed access to values in a segment.
-/// Supports efficient value access during encoding operations.
-impl Index<usize> for Segment {
-    type Output = u64;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.values[index]
+        self.values[self.values.len() - 1]
     }
 }
 

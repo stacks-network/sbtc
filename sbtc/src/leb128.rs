@@ -28,7 +28,7 @@ use std::io::Cursor;
 
 // LEB128 u64 can use at most 10 bytes
 const MAX_BYTES: usize = 10;
-const BITS_PER_BYTE: usize = 7;
+const BITS_PER_BYTE: u32 = 7;
 const MAX_BITS: usize = 64;
 const LOWER_BITS_MASK: u8 = 0x7F;
 const CONTINUATION_FLAG: u8 = 0x80;
@@ -43,10 +43,6 @@ pub enum Error {
     /// The LEB128 sequence had an invalid continuation pattern.
     #[error("invalid LEB128 continuation pattern")]
     InvalidContinuation,
-
-    /// The input contains additional bytes after a complete LEB128 sequence.
-    #[error("excess bytes after complete LEB128 sequence")]
-    ExcessBytes,
 
     /// Attempted to decode from an empty input.
     #[error("empty input")]
@@ -82,12 +78,10 @@ impl Leb128 {
     /// ## Parameters
     /// * `value` - The integer to encode
     /// * `bytes` - The buffer to append the encoded bytes to
-    pub fn encode_into(value: u64, bytes: &mut Vec<u8>) {
-        let mut value = value;
+    pub fn encode_into(mut value: u64, bytes: &mut Vec<u8>) {
         loop {
             let mut byte = (value & LOWER_BITS_MASK as u64) as u8;
-
-            value = value.checked_shr(7).unwrap_or(0);
+            value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
 
             if value != 0 {
                 byte |= CONTINUATION_FLAG;
@@ -99,26 +93,6 @@ impl Leb128 {
                 break;
             }
         }
-    }
-
-    /// Strictly decodes a full LEB128 value, requiring exact input.
-    /// Returns error if input has trailing bytes.
-    ///
-    /// ## Parameters
-    /// * `bytes` - The LEB128-encoded input
-    ///
-    /// ## Returns
-    /// * `Ok(value)` - The decoded value
-    /// * `Err(Error)` - If decoding fails or excess bytes are present
-    pub fn try_decode_exact(bytes: &[u8]) -> Result<u64, Error> {
-        let (value, bytes_read) = Self::try_decode(bytes)?;
-
-        // If we didn't consume all bytes, return error
-        if bytes_read != bytes.len() {
-            return Err(Error::ExcessBytes);
-        }
-
-        Ok(value)
     }
 
     /// Decodes a LEB128-encoded value from bytes.
@@ -146,7 +120,7 @@ impl Leb128 {
             let value = (byte & LOWER_BITS_MASK) as u64;
 
             // Use checked_shl instead of manual overflow detection
-            match value.checked_shl(shift as u32) {
+            match value.checked_shl(shift) {
                 Some(shifted) => result |= shifted,
                 None => return Err(Error::ValueOutOfBounds),
             }
@@ -184,12 +158,11 @@ impl Leb128 {
     ///
     /// ## Returns
     /// The number of bytes required to encode the value
-    pub fn calculate_size(value: u64) -> usize {
-        let mut value = value;
+    pub fn calculate_size(mut value: u64) -> usize {
         let mut size = 0;
         while value >= 0x80 {
             size += 1;
-            value = value.checked_shr(7).unwrap_or(0);
+            value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
         }
         size += 1;
         size
@@ -271,12 +244,6 @@ mod tests {
     #[test_case(&[0x7F, 0x00] => Ok((127, 1)) ; "value with trailing bytes")]
     fn test_leb128_decode(bytes: &[u8]) -> Result<(u64, usize), Error> {
         Leb128::try_decode(bytes)
-    }
-
-    #[test_case(&[0x7F] => Ok(127) ; "exact input")]
-    #[test_case(&[0x7F, 0x00] => Err(Error::ExcessBytes) ; "input with trailing bytes")]
-    fn test_leb128_decode_exact(bytes: &[u8]) -> Result<u64, Error> {
-        Leb128::try_decode_exact(bytes)
     }
 
     /// Tests boundary conditions and unique encoding patterns

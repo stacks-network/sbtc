@@ -91,7 +91,7 @@ impl BitmapCosts {
         // Calculate the total bytes if we split at this position
         // We include both segments' complete sizes for accurate comparison
         let bytes_if_split =
-            FLAGS_SIZE + current_offset_size + next_delta_size + current_segment_payload;
+            current_offset_size + current_segment_payload + FLAGS_SIZE + next_delta_size;
 
         // Calculate the total bytes if we continue the current segment
         let bytes_if_combined = current_offset_size + combined_segment_payload;
@@ -197,9 +197,7 @@ impl BitmapSegmenter {
         }
 
         // Always include end boundary
-        if boundaries[boundaries.len() - 1] != values.len() {
-            boundaries.push(values.len());
-        }
+        boundaries.push(values.len());
 
         Ok(boundaries)
     }
@@ -233,7 +231,7 @@ impl BitmapSegmenter {
 
             // Skip empty ranges (shouldn't happen with our algorithm)
             if start_idx == end_idx {
-                continue;
+                return Err(Error::EmptyRange { start: start_idx, end: end_idx });
             }
 
             let slice = &values[start_idx..end_idx];
@@ -241,13 +239,12 @@ impl BitmapSegmenter {
             // Create segment with appropriate encoding for maximum compression
             if end_idx - start_idx == 1 {
                 // Single value optimization - uses zero payload bytes
-                let mut segment = Segment::new(SegmentEncoding::Single);
-                segment.insert(values[start_idx])?;
+                let segment = Segment::new_with_offset(SegmentEncoding::Single, values[start_idx]);
                 segments.push(segment);
             } else {
                 // Multi-value bitmap encoding
-                let mut segment = Segment::new(SegmentEncoding::Bitset);
-                for value in slice {
+                let mut segment = Segment::new_with_offset(SegmentEncoding::Bitset, slice[0]);
+                for value in &slice[1..] {
                     segment.insert(*value)?;
                 }
                 segments.push(segment);

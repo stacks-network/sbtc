@@ -927,6 +927,70 @@ impl super::DbRead for SharedStore {
             .map(|s| (s.will_sign, s.aggregate_key)))
     }
 
+    // The postgres implementation uses a timestamp to figure out when a
+    // decision was inserted into the database. The in memory database
+    // does not have such a timestamp, so we use the Stacks block's
+    // bitcoin anchor block as a proxy for when the decision was made.
+    // Discussion about this can be found here:
+    // https://github.com/stacks-network/sbtc/pull/1243#discussion_r1922483913
+    async fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::WithdrawalSigner>, Error> {
+        let store = self.lock().await;
+
+        let first_block = store.bitcoin_blocks.get(chain_tip);
+
+        let context_window_end_block = std::iter::successors(first_block, |block| {
+            Some(
+                store
+                    .bitcoin_blocks
+                    .get(&block.parent_hash)
+                    .unwrap_or(block),
+            )
+        })
+        .nth(context_window as usize);
+
+        let Some(context_window_end_block) = context_window_end_block else {
+            return Ok(Vec::new());
+        };
+
+        let Some(stacks_chain_tip) = store.get_stacks_chain_tip(chain_tip) else {
+            return Ok(Vec::new());
+        };
+
+        let stacks_blocks_in_context: HashSet<_> =
+            std::iter::successors(Some(&stacks_chain_tip), |stacks_block| {
+                store.stacks_blocks.get(&stacks_block.parent_hash)
+            })
+            .take_while(|stacks_block| {
+                store
+                    .bitcoin_blocks
+                    .get(&stacks_block.bitcoin_anchor)
+                    .is_some_and(|anchor| {
+                        anchor.block_height >= context_window_end_block.block_height
+                    })
+            })
+            .map(|stacks_block| stacks_block.block_hash)
+            .collect();
+
+        let withdrawal_signers: Vec<_> = store
+            .withdrawal_request_to_signers
+            .iter()
+            .map(|(_, signers)| signers)
+            .flatten()
+            .filter(|signer| {
+                stacks_blocks_in_context.contains(&signer.block_hash)
+                    && signer.signer_pub_key == *signer_public_key
+            })
+            .cloned()
+            .collect();
+
+        Ok(withdrawal_signers)
+    }
+
     async fn get_deposit_signer_decisions(
         &self,
         chain_tip: &model::BitcoinBlockHash,
