@@ -74,22 +74,27 @@ impl Segment {
         self.encoding
     }
 
-    /// Inserts a value into the segment, maintaining sorted order.
-    /// Enforces uniqueness and ordering constraints for optimal compression.
+    /// Inserts a value into the segment, requiring that values are sorted and
+    /// unique.
     ///
     /// ## Errors
     /// - Duplicate values (`DuplicateValue`)
     /// - Unsorted values (`UnsortedInput`)
     pub fn insert(&mut self, value: u64) -> Result<(), Error> {
-        if self.values.contains(&value) {
-            return Err(Error::DuplicateValue(value));
-        }
-
-        if !self.values.is_empty() && value < self.values[self.values.len() - 1] {
-            return Err(Error::UnsortedInput);
+        // If the segment isn't empty, check for duplicates and sort order
+        if !self.values.is_empty() {
+            // Validate that the new value is greater than the last value (sorted)
+            if value < self.values[self.values.len() - 1] {
+                return Err(Error::UnsortedInput);
+            }
+            // Validate that the new value doesn't equal the current last value (deduplicated)
+            if value == self.values[self.values.len() - 1] {
+                return Err(Error::DuplicateValue(value));
+            }
         }
 
         self.values.push(value);
+
         Ok(())
     }
 
