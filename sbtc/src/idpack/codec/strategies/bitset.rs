@@ -15,18 +15,12 @@
 //!
 //! ## Optimizations
 //!
-//! ### 1. Embedded Bitmap (≤4 bits)
-//!
-//! For tiny ranges (≤4 bits), the entire bitmap is stored directly in the flags byte,
-//! requiring zero additional bytes. This enables ultra-compact encoding for common
-//! small-range patterns.
-//!
-//! ### 2. Embedded Length (≤56 bits)
+//! ### 1. Embedded Length (≤56 bits)
 //!
 //! For small-to-medium ranges (≤56 bits), the bitmap length is stored in the flags byte,
 //! saving 1 byte compared to explicit length encoding.
 //!
-//! ### 3. Dense Value Compression
+//! ### 2. Dense Value Compression
 //!
 //! BitSet encoding shines when segments contain dense clusters of values, as each value
 //! requires only a single bit regardless of its magnitude. This makes it highly efficient
@@ -55,7 +49,6 @@ use super::SegmentEncodeError;
 
 /// Flag bit indicating that the bitmap length is embedded in the flags byte.
 /// When set, the bitmap length is encoded in bits 4-6 of the flags byte.
-/// This flag is **not** compatible with [`BITSET_FLAG_EMBED_BITMAP`].
 const EMBEDDED_LENGTH_FLAG: u8 = codec::ENCODING_FLAG_2;
 
 /// Mask for extracting the embedded bitmap length from the flags byte (bits 4-6).
@@ -151,7 +144,7 @@ impl EncodingStrategy for BitsetStrategy {
 
     /// Encodes a segment using the BitSet strategy.
     ///
-    /// The encoding process uses one of three approaches for maximum
+    /// The encoding process uses one of two approaches for maximum
     /// compression:
     /// 1. Embedded length: For small bitmaps (≤7 bytes), the bitmap length is
     ///    embedded in the flags byte to save 1 byte
