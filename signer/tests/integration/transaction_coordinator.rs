@@ -1542,6 +1542,7 @@ async fn sign_bitcoin_transaction() {
             context: ctx.clone(),
             context_window: 10000,
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -1980,6 +1981,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             context: ctx.clone(),
             context_window: 10000,
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -2563,6 +2565,7 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
             context: ctx.clone(),
             context_window: 10000,
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
@@ -3371,6 +3374,7 @@ async fn test_conservative_initial_sbtc_limits() {
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
         };
         let counter = start_count.clone();
         tokio::spawn(async move {
@@ -3670,6 +3674,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
             context: ctx.clone(),
             context_window: 10000,
             deposit_decisions_retry_window: 1,
+            withdrawal_decisions_retry_window: 1,
             blocklist_checker: Some(()),
             signer_private_key: kp.secret_key().into(),
         };
