@@ -8,7 +8,6 @@ use fake::Faker;
 use lru::LruCache;
 use rand::rngs::OsRng;
 use rand::SeedableRng as _;
-use signer::bitcoin::utxo::OpReturnVersion;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::emily_client::MockEmilyInteract;
 use signer::network::in_memory2::SignerNetworkInstance;
@@ -246,7 +245,6 @@ pub async fn assert_should_be_able_to_handle_sbtc_requests() {
         last_fees: None,
         public_key: setup.aggregated_signer.keypair.public_key().into(),
         magic_bytes: [b'T', b'3'],
-        op_return_version: OpReturnVersion::V1,
     };
 
     // Create an unsigned transaction with the deposit request

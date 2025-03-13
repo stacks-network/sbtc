@@ -53,7 +53,6 @@ use wsts::traits::PartyState;
 use wsts::traits::SignerState;
 
 use crate::bitcoin::utxo::Fees;
-use crate::bitcoin::utxo::OpReturnVersion;
 use crate::bitcoin::utxo::SignerBtcState;
 use crate::bitcoin::utxo::SignerUtxo;
 use crate::bitcoin::validation::TxRequestIds;
@@ -450,7 +449,6 @@ impl fake::Dummy<&[PublicKey]> for SignerBtcState {
             fee_rate: Faker.fake_with_rng(rng),
             last_fees: Faker.fake_with_rng(rng),
             magic_bytes: [1, 2],
-            op_return_version: OpReturnVersion::V1,
             public_key: aggregate_key_x_only,
             utxo: SignerUtxo {
                 amount: Faker.fake_with_rng(rng),

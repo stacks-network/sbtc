@@ -17,7 +17,6 @@ use sha2::Digest;
 
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
-use crate::bitcoin::utxo::OpReturnVersion;
 use crate::bitcoin::utxo::UnsignedMockTransaction;
 use crate::bitcoin::BitcoinInteract;
 use crate::bitcoin::TransactionLookupHint;
@@ -1860,7 +1859,6 @@ where
             public_key: bitcoin::XOnlyPublicKey::from(aggregate_key),
             last_fees,
             magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
-            op_return_version: OpReturnVersion::V1,
         })
     }
 

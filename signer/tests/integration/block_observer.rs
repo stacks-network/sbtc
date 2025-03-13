@@ -22,7 +22,6 @@ use fake::Faker;
 use rand::SeedableRng as _;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::Recipient;
-use signer::bitcoin::utxo::OpReturnVersion;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::block_observer::get_signer_set_and_aggregate_key;
@@ -541,7 +540,6 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
             public_key: signers_public_key,
             last_fees: None,
             magic_bytes: [b'T', b'3'],
-            op_return_version: OpReturnVersion::V1,
         },
         accept_threshold: 4,
         num_signers: 7,

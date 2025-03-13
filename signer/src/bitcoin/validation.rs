@@ -33,7 +33,6 @@ use crate::WITHDRAWAL_DUST_LIMIT;
 use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::utxo::DepositRequest;
-use super::utxo::OpReturnVersion;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
 use super::utxo::SignatureHash;
@@ -261,7 +260,6 @@ impl BitcoinPreSignRequest {
             public_key: bitcoin::XOnlyPublicKey::from(btc_ctx.aggregate_key),
             last_fees: self.last_fees,
             magic_bytes: [b'T', b'3'], //TODO(#472): Use the correct magic bytes.
-            op_return_version: OpReturnVersion::V1,
         };
         let mut outputs = Vec::new();
 

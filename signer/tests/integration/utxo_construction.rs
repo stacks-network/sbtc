@@ -27,7 +27,6 @@ use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::utxo::DepositRequest;
-use signer::bitcoin::utxo::OpReturnVersion;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
@@ -230,7 +229,6 @@ fn deposits_add_to_controlled_amounts() {
             public_key: signers_public_key,
             last_fees: None,
             magic_bytes: [b'T', b'3'],
-            op_return_version: OpReturnVersion::V1,
         },
         accept_threshold: 4,
         num_signers: 7,
@@ -296,7 +294,6 @@ fn withdrawals_reduce_to_signers_amounts() {
             public_key: signers_public_key,
             last_fees: None,
             magic_bytes: [b'T', b'3'],
-            op_return_version: OpReturnVersion::V1,
         },
         accept_threshold: 4,
         num_signers: 7,
@@ -423,7 +420,6 @@ fn parse_withdrawal_ids() {
             public_key: signers_public_key,
             last_fees: None,
             magic_bytes: [b'T', b'3'],
-            op_return_version: OpReturnVersion::V1,
         },
         accept_threshold: 4,
         num_signers: 7,
