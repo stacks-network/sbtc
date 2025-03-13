@@ -609,10 +609,7 @@ impl Weighted for RequestRef<'_> {
         }
     }
     fn withdrawal_id(&self) -> Option<u64> {
-        match self {
-            Self::Withdrawal(req) => Some(req.request_id),
-            _ => None,
-        }
+        self.as_withdrawal().map(|req| req.request_id)
     }
 }
 
@@ -1077,42 +1074,38 @@ impl<'a> UnsignedTransaction<'a> {
         }
     }
 
-    /// An OP_RETURN output with encoded withdrawal request IDs.
+    /// An OP_RETURN output with (conditionally) encoded withdrawal request IDs.
     ///
     /// The `OP_RETURN` output has a generally-accepted 80 bytes available for
     /// data (it is not constrained by the Bitcoin protocol itself but rather by
     /// the miners' policy). We use this space to encode the withdrawal request
     /// IDs.
     ///
-    /// Contradictory to version 0, version 1 of the OP_RETURN output will
-    /// always return an output, even if there are no requests.
-    ///
     /// ## Wire Format
     /// The layout of the OP_RETURN output is as follows:
     ///
     /// ```text
     ///  0       2    3                                           X<80
-    ///  |-------|----|-------------------------------------------|
-    ///    magic   op   encoded withdrawal IDs (optional+variable)
+    ///  |-------|----|--------------------------------------------|
+    ///    magic   op   [encoded withdrawal IDs (variable-length)]
     /// ```
     ///
     /// In the above layout:
-    /// - magic: UTF-8 encoded string "ST" (2 bytes)
+    /// - magic: UTF-8 encoded string indicator (2 bytes)
     /// - op: version byte (1 byte)
     /// - encoded IDs: withdrawal request IDs encoded using idpack (variable
-    ///   length)
+    ///   length, if there are withdrawals serviced by the transaction)
     ///
     /// ## Returns
-    /// - `Some(TxOut)`: if there are any withdrawal requests, the OP_RETURN
-    ///    output with encoded withdrawal IDs
+    /// - `Some(TxOut)`: the resulting OP_RETURN output
     fn new_op_return_output(reqs: &Requests, state: &SignerBtcState) -> Result<TxOut, Error> {
         // Create OP_RETURN data
-        let mut data = PushBytesBuf::with_capacity(80);
+        let mut data = PushBytesBuf::with_capacity(OP_RETURN_MAX_SIZE);
         data.extend_from_slice(&state.magic_bytes)?;
         data.push(OP_RETURN_VERSION)?;
 
         // Extract all withdrawal request IDs
-        let mut withdrawal_ids: Vec<u64> = reqs
+        let withdrawal_ids: Vec<u64> = reqs
             .iter()
             .filter_map(|req| req.as_withdrawal().map(|w| w.request_id))
             .collect();
@@ -1120,8 +1113,6 @@ impl<'a> UnsignedTransaction<'a> {
         // If there are any withdrawal ID's, encode them and add them to the
         // OP_RETURN data.
         if !withdrawal_ids.is_empty() {
-            withdrawal_ids.sort_unstable();
-
             let encoded = BitmapSegmenter.package(&withdrawal_ids)?.encode()?;
             data.extend_from_slice(&encoded)?;
         }
@@ -1623,21 +1614,6 @@ mod tests {
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
     }
-
-    // fn random_withdrawal<R: Rng>(rng: &mut R, votes_against: usize) -> WithdrawalRequest {
-    //     let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-    //     signer_bitmap[..votes_against].fill(true);
-
-    //     WithdrawalRequest {
-    //         max_fee: rng.next_u32() as u64,
-    //         signer_bitmap,
-    //         amount: rng.next_u32() as u64,
-    //         script_pubkey: generate_address(),
-    //         txid: fake::Faker.fake_with_rng(rng),
-    //         request_id: (0..u32::MAX as u64).fake_with_rng(rng),
-    //         block_hash: fake::Faker.fake_with_rng(rng),
-    //     }
-    // }
 
     impl BitcoinTxInfo {
         fn from_tx(tx: Transaction, fee: Amount) -> BitcoinTxInfo {

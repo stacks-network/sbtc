@@ -3,7 +3,6 @@
 use sbtc::idpack::BitmapSegmenter;
 use sbtc::idpack::Segmenter;
 
-use crate::error::Error;
 use crate::MAX_MEMPOOL_PACKAGE_SIZE;
 use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
@@ -334,7 +333,7 @@ where
             return true;
         };
 
-        matches!(self.can_add_withdrawal_id(id), Ok(true))
+        self.can_add_withdrawal_id(id)
     }
 
     /// Calculate compatibility score between item and bag (smaller is better).
@@ -368,15 +367,15 @@ where
     /// IDs while maintaining sorted order. The [`BitmapSegmenter`] is then used
     /// to estimate the size of the combined IDs, which requires sorted and
     /// deduplicated IDs.
-    fn can_add_withdrawal_id(&self, new_id: u64) -> Result<bool, Error> {
+    fn can_add_withdrawal_id(&self, new_id: u64) -> bool {
         // If no existing IDs then the range is 0, so we can add any ID
         if self.withdrawal_ids.is_empty() {
-            return Ok(true);
+            return true;
         }
 
         // Check if ID already exists (would have no effect on size)
         match self.withdrawal_ids.binary_search(&new_id) {
-            Ok(_) => Ok(true), // ID already in the list
+            Ok(_) => true, // ID already in the list
             Err(pos) => {
                 // Create combined IDs with new ID inserted at correct position
                 let mut combined_ids = Vec::with_capacity(self.withdrawal_ids.len() + 1);
@@ -385,7 +384,7 @@ where
                 combined_ids.extend_from_slice(&self.withdrawal_ids[pos..]);
 
                 // Check if the combined IDs fit
-                Ok(self.can_fit_withdrawal_ids(&combined_ids))
+                self.can_fit_withdrawal_ids(&combined_ids)
             }
         }
     }
