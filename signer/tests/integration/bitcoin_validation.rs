@@ -5,6 +5,7 @@ use bitcoin::hashes::Hash as _;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
+use signer::bitcoin::utxo::OpReturnVersion;
 use test_case::test_case;
 
 use sbtc::testing::regtest;
@@ -53,6 +54,7 @@ where
         public_key: btc_ctx.aggregate_key.into(),
         last_fees: request.last_fees,
         magic_bytes: [b'T', b'3'],
+        op_return_version: OpReturnVersion::V1,
     }
 }
 

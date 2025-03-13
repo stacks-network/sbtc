@@ -27,6 +27,7 @@ use signer::bitcoin::rpc::BitcoinTxInfo;
 use signer::bitcoin::rpc::GetTxResponse;
 use signer::bitcoin::utxo;
 use signer::bitcoin::utxo::Fees;
+use signer::bitcoin::utxo::OpReturnVersion;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
@@ -202,6 +203,7 @@ impl TestSweepSetup {
                 public_key: signers_public_key,
                 last_fees: None,
                 magic_bytes: [b'T', b'3'],
+                op_return_version: OpReturnVersion::V1,
             },
             accept_threshold: 4,
             num_signers: 7,
@@ -328,7 +330,7 @@ impl TestSweepSetup {
             db.write_tx_prevout(&prevout).await.unwrap();
         }
 
-        for output in self.sweep_tx_info.to_outputs(&signer_script_pubkeys) {
+        for output in self.sweep_tx_info.to_tx_outputs(&signer_script_pubkeys) {
             db.write_tx_output(&output).await.unwrap();
         }
     }
@@ -950,6 +952,7 @@ impl TestSweepSetup2 {
                 public_key: aggregated_signer.keypair.x_only_public_key().0,
                 last_fees,
                 magic_bytes: [b'T', b'3'],
+                op_return_version: OpReturnVersion::V1,
             },
             accept_threshold: 4,
             num_signers: 7,
@@ -1123,7 +1126,7 @@ impl TestSweepSetup2 {
             db.write_tx_prevout(&prevout).await.unwrap();
         }
 
-        for output in sweep.tx_info.to_outputs(&signer_script_pubkeys) {
+        for output in sweep.tx_info.to_tx_outputs(&signer_script_pubkeys) {
             db.write_tx_output(&output).await.unwrap();
         }
     }

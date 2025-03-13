@@ -1,7 +1,9 @@
 //! Top-level error type for the signer
 use std::borrow::Cow;
 
+use bitcoin::script::PushBytesError;
 use blockstack_lib::types::chainstate::StacksBlockId;
+use sbtc::idpack;
 
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
@@ -678,6 +680,30 @@ pub enum Error {
         /// Maximum sBTC mintable
         max_mintable: u64,
     },
+
+    /// sBTC transaction is malformed
+    #[error("sbtc transaction is malformed")]
+    SbtcTxMalformed,
+
+    /// sBTC transaction op return format error
+    #[error("sbtc transaction op return format error")]
+    SbtcTxOpReturnFormatError,
+
+    /// Bitcoin script push bytes error
+    #[error("bitcoin script push bytes error: {0}")]
+    BitcoinScriptPushBytesError(#[source] PushBytesError),
+
+    /// IdPack segmenter error
+    #[error("segmenter error: {0}")]
+    IdPackSegmenterError(#[source] idpack::SegmenterError),
+
+    /// IdPack segments encode error
+    #[error("idpack segments encode error: {0}")]
+    IdPackEncodeError(#[source] idpack::EncodeError),
+
+    /// IdPack segments decode error
+    #[error("idpack segments decode error: {0}")]
+    IdPackDecodeError(#[source] idpack::DecodeError),
 
     /// An error which can be used in test code instead of `unimplemented!()` or
     /// other alternatives, so that an an actual error is returned instead of

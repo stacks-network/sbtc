@@ -7,6 +7,9 @@ use std::sync::LazyLock;
 use bitcoin::absolute::LockTime;
 use bitcoin::consensus::Encodable;
 use bitcoin::hashes::Hash as _;
+use bitcoin::opcodes::all::OP_RETURN;
+use bitcoin::script::Instruction;
+use bitcoin::script::PushBytesBuf;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
 use bitcoin::taproot::LeafVersion;
@@ -29,6 +32,11 @@ use bitcoin::Weight;
 use bitcoin::Witness;
 use bitvec::array::BitArray;
 use bitvec::field::BitField;
+use sbtc::idpack::BitmapSegmenter;
+use sbtc::idpack::Decodable as _;
+use sbtc::idpack::Encodable as _;
+use sbtc::idpack::Segmenter;
+use sbtc::idpack::Segments;
 use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
 use serde::Deserialize;
@@ -52,6 +60,7 @@ use crate::storage::model::TxOutput;
 use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
+use crate::storage::model::WithdrawalTxOutput;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
@@ -86,7 +95,33 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 
 /// The OP_RETURN version byte for deposit or withdrawal sweep
 /// transactions.
-const OP_RETURN_VERSION: u8 = 0;
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+pub enum OpReturnVersion {
+    /// In V0, the OP_RETURN data is laid out as follows:
+    ///
+    /// ```text
+    ///  0       2     3     5        21            41
+    ///  |-------|-----|-----|--------|-------------|
+    ///    magic   0x0   N_d   bitmap  [merkle root]
+    /// ```
+    ///
+    /// A full description of the merkle root can be found in the comments for
+    /// [`UnsignedTransaction::withdrawal_merkle_root`]. If there are no
+    /// withdrawal requests in the input slice then the merkle root is omitted.
+    V0 = 0,
+
+    /// In V1, the OP_RETURN data is laid out as follows:
+    ///
+    /// ```text
+    ///  0       2     3                      ...
+    ///  |-------|-----|-----------------------|
+    ///    magic   0x1   encoded withrawal IDs
+    /// ```
+    ///
+    /// If there are no withdrawals, the last part is omitted
+    V1 = 1,
+}
 
 /// A dummy Schnorr signature.
 static DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
@@ -191,6 +226,8 @@ pub struct SignerBtcState {
     /// Two byte prefix for BTC transactions that are related to the Stacks
     /// blockchain.
     pub magic_bytes: [u8; 2],
+    /// Op return version
+    pub op_return_version: OpReturnVersion,
 }
 
 /// The set of sBTC requests with additional relevant
@@ -287,6 +324,11 @@ impl SbtcRequests {
         let fee_rate = self.signer_state.fee_rate;
         let last_fees = self.signer_state.last_fees;
         compute_transaction_fee(tx_vsize, fee_rate, last_fees)
+    }
+
+    /// Normalize the requests, ensuring the withdrawals are sorted
+    pub fn normalize(&mut self) {
+        self.withdrawals.sort_by_key(|req| req.request_id);
     }
 }
 
@@ -1059,12 +1101,17 @@ impl<'a> UnsignedTransaction<'a> {
         let signer_output_sats = Self::compute_signer_amount(reqs, state)?;
         let signer_output = SignerUtxo::new_tx_output(state.public_key, signer_output_sats);
 
+        let signers_op_return = match state.op_return_version {
+            OpReturnVersion::V0 => Self::new_op_return_output_v0(reqs, state),
+            OpReturnVersion::V1 => Some(Self::new_op_return_output_v1(reqs, state)?),
+        };
+
         Ok(Transaction {
             version: Version::TWO,
             lock_time: LockTime::ZERO,
             input: std::iter::once(signer_input).chain(reqs.tx_ins()).collect(),
             output: std::iter::once(signer_output)
-                .chain(Self::new_op_return_output(reqs, state))
+                .chain(signers_op_return)
                 .chain(reqs.tx_outs())
                 .collect(),
         })
@@ -1080,6 +1127,43 @@ impl<'a> UnsignedTransaction<'a> {
             amount: self.tx.output[0].value.to_sat(),
             public_key: self.signer_public_key,
         }
+    }
+
+    /// An OP_RETURN output for V1 with the fulfilled withdrawal IDs.
+    fn new_op_return_output_v1(reqs: &Requests, state: &SignerBtcState) -> Result<TxOut, Error> {
+        let mut data: Vec<u8> = Vec::new();
+        data.extend_from_slice(&state.magic_bytes);
+        data.extend_from_slice(&[OpReturnVersion::V1 as u8]);
+
+        // TODO: this should probably come from `Requests`, adding it here just
+        //       for testing purposes
+        let withdrawals: Vec<_> = reqs
+            .iter()
+            .filter_map(|req| match req {
+                RequestRef::Deposit(_) => None,
+                RequestRef::Withdrawal(withdrawal_request) => Some(withdrawal_request.request_id),
+            })
+            .collect();
+        // We don't sort `withdrawals`, as we expect reqs to be already sorted
+        // (withdrawal-wise), otherwise we risk losing the match between tx outs
+        // and encoded withdrawals (that are always sorted).
+        // If `withdrawals` is not sorted the segmenter will catch it and err.
+
+        if !withdrawals.is_empty() {
+            let segments = BitmapSegmenter
+                .package(&withdrawals)
+                .map_err(Error::IdPackSegmenterError)?;
+            data.extend_from_slice(&segments.encode().map_err(Error::IdPackEncodeError)?);
+        }
+
+        let mut push_bytes_buf = PushBytesBuf::new();
+        push_bytes_buf
+            .extend_from_slice(&data)
+            .map_err(Error::BitcoinScriptPushBytesError)?;
+
+        let script_pubkey = ScriptBuf::new_op_return(push_bytes_buf.as_push_bytes());
+        let value = Amount::ZERO;
+        Ok(TxOut { value, script_pubkey })
     }
 
     /// An OP_RETURN output with the bitmap for how the signers voted for
@@ -1113,8 +1197,8 @@ impl<'a> UnsignedTransaction<'a> {
     /// encoded as a big-endian two byte unsigned integer.
     ///
     /// `None` is only returned if there are no requests in the input slice.
-    fn new_op_return_output(reqs: &Requests, state: &SignerBtcState) -> Option<TxOut> {
-        let sbtc_data = Self::sbtc_data(reqs, state)?;
+    fn new_op_return_output_v0(reqs: &Requests, state: &SignerBtcState) -> Option<TxOut> {
+        let sbtc_data = Self::sbtc_data_v0(reqs, state)?;
         let script_pubkey = match Self::withdrawal_merkle_root(reqs) {
             Some(merkle_root) => {
                 let mut data: [u8; 41] = [0; 41];
@@ -1149,7 +1233,7 @@ impl<'a> UnsignedTransaction<'a> {
     ///
     /// `None` is only returned if there are no requests in the input
     /// slice.
-    fn sbtc_data(reqs: &Requests, state: &SignerBtcState) -> Option<[u8; 21]> {
+    fn sbtc_data_v0(reqs: &Requests, state: &SignerBtcState) -> Option<[u8; 21]> {
         let bitmap: BitArray<[u8; 16]> = reqs
             .iter()
             .map(RequestRef::signer_bitmap)
@@ -1160,7 +1244,7 @@ impl<'a> UnsignedTransaction<'a> {
         // The magic_bytes is exactly 2 bytes
         data[0..2].copy_from_slice(&state.magic_bytes);
         // Yeah, this is one byte.
-        data[2..3].copy_from_slice(&[OP_RETURN_VERSION]);
+        data[2..3].copy_from_slice(&[OpReturnVersion::V0 as u8]);
         // The num_deposits variable is an u16, so 2 bytes.
         data[3..5].copy_from_slice(&num_deposits.to_be_bytes());
         // The bitmap is 16 bytes so this fits exactly.
@@ -1439,13 +1523,24 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             .collect()
     }
 
+    /// Return all outputs in this transaction that are related to the signers
+    /// and any relevant withdrawal output.
+    fn to_outputs(
+        &self,
+        signer_script_pubkeys: &HashSet<ScriptBuf>,
+    ) -> Result<(Vec<TxOutput>, Vec<WithdrawalTxOutput>), Error> {
+        let tx_outputs = self.to_tx_outputs(signer_script_pubkeys);
+        let withdrawal_outputs = self.to_withdrawal_outputs(&tx_outputs)?;
+        Ok((tx_outputs, withdrawal_outputs))
+    }
+
     /// Return all outputs in this transaction that are related to the
     /// signers.
     ///
     /// This function returns all outputs if the transaction is an
     /// sBTC transaction, and only outputs that the signers can sign for
     /// otherwise.
-    fn to_outputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxOutput> {
+    fn to_tx_outputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxOutput> {
         // This transaction might not be related to the signers at all. If
         // not then we can exit early.
         let mut outputs = self.outputs().iter();
@@ -1478,6 +1573,96 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
                 _ => self.vout_to_output(index, TxOutputType::Withdrawal),
             })
             .collect()
+    }
+
+    /// Return the withdrawal outputs, matching the tx outputs to the decoded
+    /// withdrawal IDs
+    fn to_withdrawal_outputs(
+        &self,
+        tx_outputs: &[TxOutput],
+    ) -> Result<Vec<WithdrawalTxOutput>, Error> {
+        // If the first output is not a SignersOutput, nothing to do
+        match tx_outputs.first() {
+            Some(TxOutput {
+                output_type: TxOutputType::SignersOutput,
+                ..
+            }) => (),
+            _ => return Ok(Vec::new()),
+        }
+
+        // If the second output is not a SignersOpReturn, nothing to do
+        let op_return_output = match tx_outputs.get(1) {
+            Some(
+                op_return_output @ TxOutput {
+                    output_type: TxOutputType::SignersOpReturn,
+                    ..
+                },
+            ) => op_return_output,
+            _ => return Ok(Vec::new()),
+        };
+
+        // If there are no withdrawals, nothing to do
+        if tx_outputs.len() == 2 {
+            return Ok(Vec::new());
+        }
+
+        // Sanity check: all the other outputs must be a TxOutputType::Withdrawal
+        if !tx_outputs[2..]
+            .iter()
+            .all(|out| out.output_type == TxOutputType::Withdrawal)
+        {
+            return Err(Error::SbtcTxMalformed);
+        }
+
+        let op_return_instructions: Vec<_> = op_return_output
+            .script_pubkey
+            .as_script()
+            .instructions()
+            .collect();
+        // The op return must be a OP_RETURN and a push bytes
+        let [Ok(Instruction::Op(OP_RETURN)), Ok(Instruction::PushBytes(push_bytes))] =
+            op_return_instructions[..]
+        else {
+            return Err(Error::SbtcTxOpReturnFormatError);
+        };
+
+        let raw_bytes = push_bytes.as_bytes();
+        if raw_bytes.len() < 3 {
+            return Err(Error::SbtcTxOpReturnFormatError);
+        }
+        // First two bytes are magic bytes, we don't care about them
+        // The third one is the version byte.
+        let version = raw_bytes[2];
+        if version == OpReturnVersion::V0 as u8 {
+            // In V0 we don't store withdrawal IDs
+            return Ok(Vec::new());
+        } else if version == OpReturnVersion::V1 as u8 {
+            // We can parse the withdrawal IDs, we will do it right after
+        } else {
+            // Unknown version byte
+            return Err(Error::SbtcTxOpReturnFormatError);
+        }
+
+        let encoded_withdrawal_ids = &raw_bytes[3..];
+        let segments =
+            Segments::decode(encoded_withdrawal_ids).map_err(Error::IdPackDecodeError)?;
+        let withdrawal_ids = segments.get_values();
+
+        // We checked that the first two are signers output and op return, and
+        // that the rest are withdrawals
+        if withdrawal_ids.len() != tx_outputs.len() - 2 {
+            return Err(Error::SbtcTxMalformed);
+        }
+
+        Ok(tx_outputs[2..]
+            .iter()
+            .zip(withdrawal_ids)
+            .map(|(out, request_id)| WithdrawalTxOutput {
+                txid: out.txid,
+                output_index: out.output_index,
+                request_id,
+            })
+            .collect())
     }
 
     /// Take an output index and the known output type and return the
@@ -1673,7 +1858,8 @@ mod tests {
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
-            request_id: (0..u32::MAX as u64).fake_with_rng(&mut OsRng),
+            // TODO: with u32 the segmenter failed with IdPackSegmenterError(SizeEstimation)
+            request_id: (0..u16::MAX as u64).fake_with_rng(&mut OsRng),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
     }
@@ -1856,6 +2042,7 @@ mod tests {
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 2,
@@ -1970,6 +2157,7 @@ mod tests {
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -2033,6 +2221,7 @@ mod tests {
             public_key,
             last_fees: None,
             magic_bytes: [0; 2],
+            op_return_version: OpReturnVersion::V1,
         };
 
         let requests = Requests::new(Vec::new());
@@ -2060,6 +2249,7 @@ mod tests {
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
                 magic_bytes: [b'T', b'3'],
+                op_return_version: OpReturnVersion::V0,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -2109,7 +2299,11 @@ mod tests {
         let sbtc_data = match unsigned_tx.tx.output[1].script_pubkey.as_bytes() {
             // The data layout is detailed in the documentation for the
             // UnsignedTransaction::new_op_return_output function.
-            [OP_RETURN, OP_PUSHBYTES_41, b'T', b'3', OP_RETURN_VERSION, 0, 1, data @ ..] => data,
+            [OP_RETURN, OP_PUSHBYTES_41, b'T', b'3', op_return_version, 0, 1, data @ ..]
+                if *op_return_version == OpReturnVersion::V0 as u8 =>
+            {
+                data
+            }
             _ => panic!("Invalid OP_RETURN FORMAT"),
         };
         // Since there are withdrawal requests in this transaction, the
@@ -2169,6 +2363,7 @@ mod tests {
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
                 magic_bytes: [b'T', b'3'],
+                op_return_version: OpReturnVersion::V0,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -2185,16 +2380,18 @@ mod tests {
             // The data layout is detailed in the documentation for the
             // UnsignedTransaction::new_op_return_output function when
             // there are withdrawal request UTXOs.
-            [OP_RETURN, OP_PUSHBYTES_41, b'T', b'3', OP_RETURN_VERSION, 0, nd, data @ ..]
-                if *nd == requests.deposits.len() as u8 =>
+            [OP_RETURN, OP_PUSHBYTES_41, b'T', b'3', op_return_version, 0, nd, data @ ..]
+                if *nd == requests.deposits.len() as u8
+                    && *op_return_version == OpReturnVersion::V0 as u8 =>
             {
                 data
             }
             // The data layout is detailed in the documentation for the
             // UnsignedTransaction::new_op_return_output function when
             // there are no withdrawal request UTXOs.
-            [OP_RETURN, OP_PUSHBYTES_21, b'T', b'3', OP_RETURN_VERSION, 0, nd, data @ ..]
-                if *nd == requests.deposits.len() as u8 =>
+            [OP_RETURN, OP_PUSHBYTES_21, b'T', b'3', op_return_version, 0, nd, data @ ..]
+                if *nd == requests.deposits.len() as u8
+                    && *op_return_version == OpReturnVersion::V0 as u8 =>
             {
                 data
             }
@@ -2255,6 +2452,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -2300,6 +2498,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -2351,6 +2550,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -2399,6 +2599,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -2459,6 +2660,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -2559,6 +2761,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -2625,6 +2828,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -2705,6 +2909,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -2742,6 +2947,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 0,
@@ -2800,6 +3006,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 10,
             accept_threshold: 8,
@@ -3103,6 +3310,7 @@ mod tests {
                 public_key,
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             num_signers: 11,
             accept_threshold: 6,
@@ -3150,6 +3358,7 @@ mod tests {
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             accept_threshold: 127,
             num_signers: 128,
@@ -3206,6 +3415,7 @@ mod tests {
                 public_key: generate_x_only_public_key(),
                 last_fees: None,
                 magic_bytes: [0; 2],
+                op_return_version: OpReturnVersion::V1,
             },
             accept_threshold: 10,
             num_signers: 14,

@@ -13,6 +13,7 @@ use rand::distributions::Uniform;
 use rand::Rng;
 use signer::bitcoin::utxo::DepositRequest;
 use signer::bitcoin::utxo::Fees;
+use signer::bitcoin::utxo::OpReturnVersion;
 use signer::bitcoin::utxo::RequestRef;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
@@ -226,6 +227,7 @@ pub fn transaction_with_rbf(
             // The value here isn't important, but it matches what happens
             // in Nakamoto testnet.
             magic_bytes: [b'T', b'3'],
+            op_return_version: OpReturnVersion::V1,
         },
         accept_threshold: failure_threshold,
         num_signers: 2 * failure_threshold,

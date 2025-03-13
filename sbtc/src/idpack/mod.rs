@@ -64,6 +64,7 @@ pub use segment::SegmentEncoding;
 pub use segments::Segments;
 
 pub use segmenters::BitmapSegmenter;
+pub use segmenters::Error as SegmenterError;
 pub use segmenters::Segmenter;
 
 pub use codec::Decodable;

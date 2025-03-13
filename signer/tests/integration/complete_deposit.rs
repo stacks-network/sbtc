@@ -490,10 +490,10 @@ async fn complete_deposit_validation_fee_too_low() {
     // Different: We need to update the amount to be something that
     // validation would reject. To do that we update our database.
     //
-    // The fee rate in this test is fixed at 10.0 sats per vbyte and the tx
-    // size is 235 bytes, so we lose 2350 sats to fees. The amount here is
-    // chosen so that 2350 + 546 is greater than it.
-    let deposit_amount = 2895;
+    // The fee rate in this test is fixed at 10.0 sats per vbyte, and the amount
+    // here is chosen so that it's less than fee amount + 546 (dust limit).
+    let tx_size = &setup.sweep_tx_info.clone().unwrap().tx_info.vsize;
+    let deposit_amount = tx_size * 10 + 546 - 1;
     sqlx::query(
         r#"
         UPDATE deposit_requests AS dr

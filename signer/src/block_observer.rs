@@ -514,8 +514,12 @@ impl<C: Context, B> BlockObserver<C, B> {
                 }
             }
 
-            for output in tx_info.to_outputs(&signer_script_pubkeys) {
+            let (tx_outputs, withdrawal_outputs) = tx_info.to_outputs(&signer_script_pubkeys)?;
+            for output in tx_outputs {
                 db.write_tx_output(&output).await?;
+            }
+            for output in withdrawal_outputs {
+                db.write_withdrawal_tx_output(&output).await?;
             }
         }
 
