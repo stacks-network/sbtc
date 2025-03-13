@@ -91,7 +91,7 @@ impl BitmapCosts {
         // Calculate the total bytes if we split at this position
         // We include both segments' complete sizes for accurate comparison
         let bytes_if_split =
-            FLAGS_SIZE + current_offset_size + next_delta_size + current_segment_payload;
+            current_offset_size + current_segment_payload + FLAGS_SIZE + next_delta_size;
 
         // Calculate the total bytes if we continue the current segment
         let bytes_if_combined = current_offset_size + combined_segment_payload;
