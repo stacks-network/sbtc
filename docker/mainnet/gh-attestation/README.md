@@ -61,12 +61,13 @@ services:
   signer:
     image: signer
     environment:
-      - TAG="signer"  # Set your specific image tag
-      - BUNDLE_PATH="/path/to/your/bundle.jsonl"
-      - TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl"
+      TAG: "signer"  # Set your specific image tag
+      BUNDLE_PATH: "/path/to/your/bundle.jsonl"
+      TRUSTED_ROOT_PATH: "/path/to/your/trusted_root.jsonl"
     volumes:
       - /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl
       - /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl
+      - entrypoint.sh:/entrypoint.sh
     entrypoint: ["/entrypoint.sh"]
     command: ["/usr/local/bin/signer", "--config", "/signer-config.toml", "--migrate-db"]
 ```
@@ -76,12 +77,13 @@ services:
   signer:
     image: blocklist-cli
     environment:
-      - TAG="blocklist-cli"  # Set your specific image tag
-      - BUNDLE_PATH="/path/to/your/bundle.jsonl"
-      - TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl"
+      TAG: "blocklist-cli"  # Set your specific image tag
+      BUNDLE_PATH: "/path/to/your/bundle.jsonl"
+      TRUSTED_ROOT_PATH: "/path/to/your/trusted_root.jsonl"
     volumes:
       - /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl
       - /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl
+      - entrypoint.sh:/entrypoint.sh
     entrypoint: ["/entrypoint.sh"]
     command: ["/usr/local/bin/blocklist-client"]
 ```
@@ -100,4 +102,19 @@ docker-compose up
 
 ## **Additional Information**
 
-The image requires the GitHub CLI (`gh`) to verify the attestation.
+The entrypoint install the last version the GitHub CLI (`gh`) to verify the attestation.
+Remember to run 
+
+```bash
+chmod +x entrypoint.sh
+```
+
+and the envs variables can be also saved in a .env file in the following way:
+
+``bash
+SIGNER_TAG=signer-test_improve_release_notes_5
+SIGNER_BUNDLE_PATH=sha256_8239bc978fa074360c669823064741587a21a58e359d7cacc4512f3ebe17b643.jsonl
+BLOCKLIST_TAG=signer-test_improve_release_notes_5
+BLOCKLIST_BUNDLE_PATH=sha256_8239bc979fs074360c669824064741587a21a58e359d7cacc4512f3ebe17b643.jsonl
+TRUSTED_ROOT_PATH=trusted_root.jsonl
+```
