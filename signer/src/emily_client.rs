@@ -380,12 +380,20 @@ impl EmilyInteract for EmilyClient {
         let per_withdrawal_cap = limits
             .per_withdrawal_cap
             .and_then(|cap| cap.map(Amount::from_sat));
+        let rolling_withdrawal_blocks = limits
+            .rolling_withdrawal_blocks
+            .and_then(|blocks| blocks.map(|b| b as u64));
+        let rolling_withdrawal_cap = limits
+            .rolling_withdrawal_cap
+            .and_then(|cap| cap.map(Amount::from_sat));
 
         Ok(SbtcLimits::new(
             total_cap,
             per_deposit_minimum,
             per_deposit_cap,
             per_withdrawal_cap,
+            rolling_withdrawal_blocks,
+            rolling_withdrawal_cap,
             None,
         ))
     }

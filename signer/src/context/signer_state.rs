@@ -137,6 +137,10 @@ pub struct SbtcLimits {
     per_withdrawal_cap: Option<Amount>,
     /// Represents the maximum amount of sBTC that can currently be minted.
     max_mintable_cap: Option<Amount>,
+    /// Represents the number of blocks over which the rolling withdrawal cap is applied.
+    rolling_withdrawal_blocks: Option<u64>,
+    /// Represents the maximum amount of sBTC that can be withdrawn in the rolling withdrawal blocks window.
+    rolling_withdrawal_cap: Option<Amount>,
 }
 
 impl std::fmt::Display for SbtcLimits {
@@ -156,6 +160,8 @@ impl SbtcLimits {
         per_deposit_minimum: Option<Amount>,
         per_deposit_cap: Option<Amount>,
         per_withdrawal_cap: Option<Amount>,
+        rolling_withdrawal_blocks: Option<u64>,
+        rolling_withdrawal_cap: Option<Amount>,
         max_mintable_cap: Option<Amount>,
     ) -> Self {
         Self {
@@ -163,6 +169,8 @@ impl SbtcLimits {
             per_deposit_minimum,
             per_deposit_cap,
             per_withdrawal_cap,
+            rolling_withdrawal_blocks,
+            rolling_withdrawal_cap,
             max_mintable_cap,
         }
     }
@@ -173,6 +181,8 @@ impl SbtcLimits {
             Some(Amount::ZERO),
             Some(Amount::MAX_MONEY),
             Some(Amount::ZERO),
+            Some(Amount::ZERO),
+            Some(u64::MAX),
             Some(Amount::ZERO),
             Some(Amount::ZERO),
         )
@@ -207,6 +217,16 @@ impl SbtcLimits {
     pub fn max_mintable_cap(&self) -> Amount {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
+
+    /// Get the number of blocks over which the rolling withdrawal cap is applied.
+    pub fn rolling_withdrawal_blocks(&self) -> u64 {
+        self.rolling_withdrawal_blocks.unwrap_or(0)
+    }
+
+    /// Get the maximum amount of sBTC that can be withdrawn in the rolling withdrawal blocks window.
+    pub fn rolling_withdrawal_cap(&self) -> Amount {
+        self.rolling_withdrawal_cap.unwrap_or(Amount::MAX_MONEY)
+    }
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -218,6 +238,8 @@ impl SbtcLimits {
             per_deposit_minimum: Some(Amount::ZERO),
             per_deposit_cap: Some(Amount::MAX_MONEY),
             per_withdrawal_cap: Some(Amount::MAX_MONEY),
+            rolling_withdrawal_blocks: Some(0),
+            rolling_withdrawal_cap: Some(Amount::MAX_MONEY),
             max_mintable_cap: Some(Amount::MAX_MONEY),
         }
     }
@@ -230,6 +252,8 @@ impl SbtcLimits {
             per_deposit_minimum: Some(Amount::from_sat(min)),
             per_deposit_cap: Some(Amount::from_sat(max)),
             per_withdrawal_cap: None,
+            rolling_withdrawal_blocks: None,
+            rolling_withdrawal_cap: None,
             max_mintable_cap: None,
         }
     }
@@ -241,6 +265,8 @@ impl SbtcLimits {
             per_deposit_minimum: None,
             per_deposit_cap: None,
             per_withdrawal_cap: Some(Amount::from_sat(max)),
+            rolling_withdrawal_blocks: None,
+            rolling_withdrawal_cap: None,
             max_mintable_cap: None,
         }
     }
