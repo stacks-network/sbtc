@@ -59,19 +59,6 @@ impl Segment {
         segment
     }
 
-    /// Creates a segment with specified encoding from an iterator of values.
-    /// Values are sorted and deduplicated for maximum compression efficiency.
-    pub fn new_from<I>(encoding: SegmentEncoding, values: I) -> Self
-    where
-        I: IntoIterator<Item = u64>,
-    {
-        let mut values = values.into_iter().collect::<Vec<_>>();
-        values.sort_unstable();
-        values.dedup();
-
-        Self { encoding, values }
-    }
-
     /// Returns the offset (first value) of the segment.
     ///
     /// ## Panics
