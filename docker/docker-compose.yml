@@ -128,6 +128,8 @@ services:
       - DEFAULT_PEG_CAP=100000000000
       - DEFAULT_PER_DEPOSIT_CAP=100000000
       - DEFAULT_PER_WITHDRAWAL_CAP=100000000
+      - DEFAULT_ROLLING_WITHDRAWAL_BLOCKS=144
+      - DEFAULT_ROLLING_WITHDRAWAL_CAP=100000000000
       - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     ports:
       - "3031:3031"
@@ -676,7 +678,7 @@ services:
     restart: always
     ports:
       - 9598
-    volumes: 
+    volumes:
       - ./observability/vector.toml:/etc/vector/vector.toml:ro
       # This is needed for vector to read logs from other containers
       - /var/run/docker.sock:/var/run/docker.sock
