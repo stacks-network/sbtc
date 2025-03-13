@@ -7,7 +7,6 @@ use bitcoin::relative::LockTime;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::ScriptBuf;
-use bitcoin::Txid;
 use bitcoin::XOnlyPublicKey;
 
 use crate::bitcoin::utxo::FeeAssessment;
@@ -42,7 +41,7 @@ use super::utxo::WithdrawalRequest;
 /// Cached validation data to avoid repeated DB queries
 #[derive(Default)]
 struct ValidationCache<'a> {
-    deposit_reports: HashMap<(&'a Txid, u32), (DepositRequestReport, SignerVotes)>,
+    deposit_reports: HashMap<&'a OutPoint, (DepositRequestReport, SignerVotes)>,
     withdrawal_reports: HashMap<&'a QualifiedRequestId, (WithdrawalRequestReport, SignerVotes)>,
 }
 
@@ -169,9 +168,7 @@ impl BitcoinPreSignRequest {
                     .get_deposit_request_signer_votes(&txid, output_index, &btc_ctx.aggregate_key)
                     .await?;
 
-                cache
-                    .deposit_reports
-                    .insert((&outpoint.txid, output_index), (report, votes));
+                cache.deposit_reports.insert(outpoint, (report, votes));
             }
 
             // Fetch all withdrawal reports and votes
@@ -259,9 +256,9 @@ impl BitcoinPreSignRequest {
         self.pre_validation()?;
         let db = ctx.get_storage();
         let cache = self.fetch_all_reports(&db, btc_ctx).await?;
-        
+
         let limits = ctx.state().get_current_limits();
-        let withdrawn_total = db.compute_withdrawn_total(&btc_ctx.chain_tip, 3).await?;
+        let withdrawn_total = db.compute_withdrawn_total(&btc_ctx.chain_tip, 150).await?;
         Self::assert_request_amount_limits(&cache, &limits, withdrawn_total)?;
 
         let signer_utxo = db
@@ -310,10 +307,9 @@ impl BitcoinPreSignRequest {
         let mut withdrawals = Vec::with_capacity(requests.withdrawals.len());
 
         for outpoint in requests.deposits.iter() {
-            let key = (&outpoint.txid, outpoint.vout);
             let (report, votes) = cache
                 .deposit_reports
-                .get(&key)
+                .get(outpoint)
                 // This should never happen because we have already validated that we have all the reports.
                 .ok_or_else(|| InputValidationResult::Unknown.into_error(btc_ctx))?;
             deposits.push((report.to_deposit_request(votes), report.clone()));
@@ -1960,7 +1956,7 @@ mod tests {
         assert_eq!(requests.pre_validation().is_ok(), result);
     }
 
-    fn create_test_report(idx: u8, amount: u64) -> (DepositRequestReport, SignerVotes) {
+    fn create_deposit_report(idx: u8, amount: u64) -> (DepositRequestReport, SignerVotes) {
         (
             DepositRequestReport {
                 outpoint: OutPoint::new(Txid::from_byte_array([idx; 32]), 0),
@@ -1977,6 +1973,24 @@ mod tests {
             },
             SignerVotes::from(Vec::new()),
         )
+    }
+
+    fn create_withdrawal_report(idx: u8, amount: u64) -> (WithdrawalRequestReport, SignerVotes) {
+        let report = WithdrawalRequestReport {
+            id: QualifiedRequestId {
+                txid: StacksTxId::from([0; 32]),
+                request_id: idx as u64,
+                block_hash: StacksBlockHash::from([0; 32]),
+            },
+            status: WithdrawalRequestStatus::Confirmed,
+            is_accepted: Some(true),
+            amount,
+            max_fee: 1000,
+            recipient: ScriptBuf::new(),
+            bitcoin_block_height: 0,
+        };
+
+        (report, SignerVotes::from(Vec::new()))
     }
 
     #[test_case(
@@ -2040,17 +2054,12 @@ mod tests {
         let deposit_reports: Vec<(DepositRequestReport, SignerVotes)> = deposit_amounts
             .into_iter()
             .enumerate()
-            .map(|(idx, amount)| create_test_report(idx as u8, amount))
+            .map(|(idx, amount)| create_deposit_report(idx as u8, amount))
             .collect();
 
         cache.deposit_reports = deposit_reports
             .iter()
-            .map(|(report, votes)| {
-                (
-                    (&report.outpoint.txid, report.outpoint.vout),
-                    (report.clone(), votes.clone()),
-                )
-            })
+            .map(|(report, votes)| (&report.outpoint, (report.clone(), votes.clone())))
             .collect();
 
         // Create request and validate
@@ -2072,6 +2081,109 @@ mod tests {
                 assert_eq!(m1, m2);
             }
             (result, expected) => panic!("Expected {:?} but got {:?}", expected, result),
+        };
+    }
+
+    #[test_case(
+        vec![1000, 2000, 3000],
+        Amount::from_sat(10_000),
+        Amount::from_sat(1_000),
+        Ok(());
+        "should_accept_withdrawals_under_rolling_cap"
+    )]
+    #[test_case(
+        vec![],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Ok(());
+        "should_accept_empty_withdrawals"
+    )]
+    #[test_case(
+        vec![10_000],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Ok(());
+        "should_accept_withdrawals_equal_to_rolling_cap"
+    )]
+    #[test_case(
+        vec![5000, 5001],
+        Amount::from_sat(10_000),
+        Amount::from_sat(0),
+        Err(Error::ExceedsSbtcWithdrawalCap {
+            withdrawal_amounts: 10_001,
+            withdrawal_cap: 10_000,
+            withdrawal_cap_blocks: 150,
+            withdrawn_total: 0,
+        });
+        "should_reject_withdrawals_over_rolling_cap"
+    )]
+    #[test_case(
+        vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
+        Amount::MAX_MONEY,
+        Amount::from_sat(1),
+        Err(Error::ExceedsSbtcWithdrawalCap {
+            withdrawal_amounts: Amount::MAX_MONEY.to_sat() + 1,
+            withdrawal_cap: Amount::MAX_MONEY.to_sat() - 1,
+            withdrawal_cap_blocks: 150,
+            withdrawn_total: 1,
+        });
+        "filter_out_withdrawals_over_rolling_cap"
+    )]
+    fn test_validate_withdrawal_limits(
+        withdrawal_amounts: Vec<u64>,
+        total_cap: Amount,
+        sbtc_supply: Amount,
+        expected: Result<(), Error>,
+    ) {
+        // Create mock context
+        let limits = SbtcLimits::new(
+            Some(total_cap),
+            None,
+            None,
+            None,
+            Some(total_cap - sbtc_supply),
+        );
+        // Create cache with test data
+        let mut cache = ValidationCache::default();
+
+        let withdrawal_reports: Vec<(WithdrawalRequestReport, SignerVotes)> = withdrawal_amounts
+            .into_iter()
+            .enumerate()
+            .map(|(idx, amount)| create_withdrawal_report(idx as u8, amount))
+            .collect();
+
+        cache.withdrawal_reports = withdrawal_reports
+            .iter()
+            .map(|(report, votes)| (&report.id, (report.clone(), votes.clone())))
+            .collect();
+
+        // Create request and validate
+        let withdrawn_total = sbtc_supply.to_sat();
+        let result =
+            BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, withdrawn_total);
+
+        match (result, expected) {
+            (Ok(()), Ok(())) => {}
+            (
+                Err(Error::ExceedsSbtcWithdrawalCap {
+                    withdrawal_amounts,
+                    withdrawal_cap,
+                    withdrawal_cap_blocks,
+                    withdrawn_total,
+                }),
+                Err(Error::ExceedsSbtcWithdrawalCap {
+                    withdrawal_amounts: expected_withdrawal_amounts,
+                    withdrawal_cap: expected_withdrawal_cap,
+                    withdrawal_cap_blocks: expected_withdrawal_cap_blocks,
+                    withdrawn_total: expected_withdrawn_total,
+                }),
+            ) => {
+                assert_eq!(withdrawal_amounts, expected_withdrawal_amounts);
+                assert_eq!(withdrawal_cap, expected_withdrawal_cap);
+                assert_eq!(withdrawal_cap_blocks, expected_withdrawal_cap_blocks);
+                assert_eq!(withdrawn_total, expected_withdrawn_total);
+            }
+            (result, expected) => panic!("Expected {expected:?}, got {result:?}"),
         };
     }
 }
