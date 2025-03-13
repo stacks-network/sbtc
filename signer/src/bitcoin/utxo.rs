@@ -1429,7 +1429,7 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             return Ok(Vec::new());
         }
 
-        // Sanity check: all the other outputs must be a TxOutputType::Withdrawal
+        // Sanity check: all the other outputs must be withdrawals
         if !tx_outputs[2..]
             .iter()
             .all(|out| out.output_type == TxOutputType::Withdrawal)
@@ -1442,6 +1442,7 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             .as_script()
             .instructions()
             .collect();
+
         // The op return must be a OP_RETURN and a push bytes
         let [Ok(Instruction::Op(OP_RETURN)), Ok(Instruction::PushBytes(push_bytes))] =
             op_return_instructions[..]
@@ -1453,10 +1454,11 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
         if raw_bytes.len() < OP_RETURN_HEADER_SIZE {
             return Err(Error::SbtcTxOpReturnFormatError);
         }
+
         // First two bytes are magic bytes, we don't care about them.
         // The third one is the version byte.
         let version = raw_bytes[2];
-        if version < OP_RETURN_VERSION {
+        if version == 0 {
             // In version 0 we didn't store withdrawal ids
             return Ok(Vec::new());
         } else if version != OP_RETURN_VERSION {
@@ -1465,9 +1467,9 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
         }
 
         let encoded_withdrawal_ids = &raw_bytes[3..];
-        let segments =
-            Segments::decode(encoded_withdrawal_ids).map_err(Error::IdPackDecodeError)?;
-        let withdrawal_ids = segments.get_values();
+        let withdrawal_ids = Segments::decode(encoded_withdrawal_ids)
+            .map_err(Error::IdPackDecodeError)?
+            .get_values();
 
         // We checked that the first two are signers output and op return, and
         // that the rest are withdrawals
@@ -1674,8 +1676,7 @@ mod tests {
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
-            // TODO: with u32 the segmenter failed with IdPackSegmenterError(SizeEstimation)
-            request_id: (0..u16::MAX as u64).fake_with_rng(&mut OsRng),
+            request_id: (0..u32::MAX as u64).fake_with_rng(&mut OsRng),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
     }
