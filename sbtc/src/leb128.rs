@@ -44,10 +44,6 @@ pub enum Error {
     #[error("invalid LEB128 continuation pattern")]
     InvalidContinuation,
 
-    /// The input contains additional bytes after a complete LEB128 sequence.
-    #[error("excess bytes after complete LEB128 sequence")]
-    ExcessBytes,
-
     /// Attempted to decode from an empty input.
     #[error("empty input")]
     EmptyInput,
@@ -99,26 +95,6 @@ impl Leb128 {
                 break;
             }
         }
-    }
-
-    /// Strictly decodes a full LEB128 value, requiring exact input.
-    /// Returns error if input has trailing bytes.
-    ///
-    /// ## Parameters
-    /// * `bytes` - The LEB128-encoded input
-    ///
-    /// ## Returns
-    /// * `Ok(value)` - The decoded value
-    /// * `Err(Error)` - If decoding fails or excess bytes are present
-    pub fn try_decode_exact(bytes: &[u8]) -> Result<u64, Error> {
-        let (value, bytes_read) = Self::try_decode(bytes)?;
-
-        // If we didn't consume all bytes, return error
-        if bytes_read != bytes.len() {
-            return Err(Error::ExcessBytes);
-        }
-
-        Ok(value)
     }
 
     /// Decodes a LEB128-encoded value from bytes.
@@ -271,12 +247,6 @@ mod tests {
     #[test_case(&[0x7F, 0x00] => Ok((127, 1)) ; "value with trailing bytes")]
     fn test_leb128_decode(bytes: &[u8]) -> Result<(u64, usize), Error> {
         Leb128::try_decode(bytes)
-    }
-
-    #[test_case(&[0x7F] => Ok(127) ; "exact input")]
-    #[test_case(&[0x7F, 0x00] => Err(Error::ExcessBytes) ; "input with trailing bytes")]
-    fn test_leb128_decode_exact(bytes: &[u8]) -> Result<u64, Error> {
-        Leb128::try_decode_exact(bytes)
     }
 
     /// Tests boundary conditions and unique encoding patterns
