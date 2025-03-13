@@ -36,10 +36,12 @@ Class | Method | HTTP request | Description
 *CorsApi* | [**health_options**](docs/CorsApi.md#health_options) | **OPTIONS** /health | CORS support
 *CorsApi* | [**limits_account_options**](docs/CorsApi.md#limits_account_options) | **OPTIONS** /limits/{account} | CORS support
 *CorsApi* | [**limits_options**](docs/CorsApi.md#limits_options) | **OPTIONS** /limits | CORS support
+*CorsApi* | [**new_block_options**](docs/CorsApi.md#new_block_options) | **OPTIONS** /new_block | CORS support
 *CorsApi* | [**testing_wipe_options**](docs/CorsApi.md#testing_wipe_options) | **OPTIONS** /testing/wipe | CORS support
 *CorsApi* | [**withdrawal_id_options**](docs/CorsApi.md#withdrawal_id_options) | **OPTIONS** /withdrawal/{id} | CORS support
 *CorsApi* | [**withdrawal_options**](docs/CorsApi.md#withdrawal_options) | **OPTIONS** /withdrawal | CORS support
 *CorsApi* | [**withdrawal_recipient_recipient_options**](docs/CorsApi.md#withdrawal_recipient_recipient_options) | **OPTIONS** /withdrawal/recipient/{recipient} | CORS support
+*CorsApi* | [**withdrawal_sender_sender_options**](docs/CorsApi.md#withdrawal_sender_sender_options) | **OPTIONS** /withdrawal/sender/{sender} | CORS support
 *ChainstateApi* | [**get_chain_tip**](docs/ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
 *ChainstateApi* | [**get_chainstate_at_height**](docs/ChainstateApi.md#get_chainstate_at_height) | **GET** /chainstate/{height} | Get chainstate handler.
 *ChainstateApi* | [**set_chainstate**](docs/ChainstateApi.md#set_chainstate) | **POST** /chainstate | Set chainstate handler.
@@ -56,11 +58,13 @@ Class | Method | HTTP request | Description
 *LimitsApi* | [**get_limits_for_account**](docs/LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
 *LimitsApi* | [**set_limits**](docs/LimitsApi.md#set_limits) | **POST** /limits | Get limits handler.
 *LimitsApi* | [**set_limits_for_account**](docs/LimitsApi.md#set_limits_for_account) | **POST** /limits/{account} | Set limits for account handler.
+*NewBlockApi* | [**new_block**](docs/NewBlockApi.md#new_block) | **POST** /new_block | Get limits handler.
 *TestingApi* | [**wipe_databases**](docs/TestingApi.md#wipe_databases) | **POST** /testing/wipe | Wipe databases handler.
 *WithdrawalApi* | [**create_withdrawal**](docs/WithdrawalApi.md#create_withdrawal) | **POST** /withdrawal | Create withdrawal handler.
 *WithdrawalApi* | [**get_withdrawal**](docs/WithdrawalApi.md#get_withdrawal) | **GET** /withdrawal/{id} | Get withdrawal handler.
 *WithdrawalApi* | [**get_withdrawals**](docs/WithdrawalApi.md#get_withdrawals) | **GET** /withdrawal | Get withdrawals handler.
 *WithdrawalApi* | [**get_withdrawals_for_recipient**](docs/WithdrawalApi.md#get_withdrawals_for_recipient) | **GET** /withdrawal/recipient/{recipient} | Get withdrawals by recipient handler.
+*WithdrawalApi* | [**get_withdrawals_for_sender**](docs/WithdrawalApi.md#get_withdrawals_for_sender) | **GET** /withdrawal/sender/{sender} | Get withdrawals by sender handler.
 *WithdrawalApi* | [**update_withdrawals**](docs/WithdrawalApi.md#update_withdrawals) | **PUT** /withdrawal | Update withdrawals handler.
 
 

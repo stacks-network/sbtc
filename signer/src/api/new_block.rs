@@ -317,8 +317,6 @@ mod tests {
     use bitcoin::OutPoint;
     use bitvec::array::BitArray;
     use clarity::vm::types::PrincipalData;
-    use emily_client::models::UpdateDepositsResponse;
-    use emily_client::models::UpdateWithdrawalsResponse;
     use fake::Fake;
     use rand::rngs::OsRng;
     use rand::SeedableRng as _;
@@ -359,7 +357,7 @@ mod tests {
     #[test_case(COMPLETED_DEPOSIT_WEBHOOK, |db| db.completed_deposit_events.get(&OutPoint::null()).is_none(); "completed-deposit")]
     #[test_case(WITHDRAWAL_CREATE_WEBHOOK, |db| db.withdrawal_requests.get(&(1, StacksBlockId::from_hex("75b02b9884ec41c05f2cfa6e20823328321518dd0b027e7b609b63d4d1ea7c78").unwrap().into())).is_none(); "withdrawal-create")]
     #[test_case(WITHDRAWAL_ACCEPT_WEBHOOK, |db| db.withdrawal_accept_events.get(&1).is_none(); "withdrawal-accept")]
-    #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&2).is_none(); "withdrawal-reject")]
+    #[test_case(WITHDRAWAL_REJECT_WEBHOOK, |db| db.withdrawal_reject_events.get(&1).is_none(); "withdrawal-reject")]
     #[test_case(ROTATE_KEYS_WEBHOOK, |db| db.rotate_keys_transactions.is_empty(); "rotate-keys")]
     #[tokio::test]
     async fn test_events<F>(body_str: &str, table_is_empty: F)
@@ -397,7 +395,7 @@ mod tests {
     where
         F: Fn(tokio::sync::MutexGuard<'_, Store>) -> bool,
     {
-        let mut ctx = TestContext::builder()
+        let ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
@@ -444,25 +442,6 @@ mod tests {
             .iter()
             .all(|x| x.contract_identifier == fishy_identifier));
 
-        ctx.with_emily_client(|client| {
-            client
-                .expect_update_deposits()
-                .times(0)
-                .returning(move |_| {
-                    Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
-                });
-            client
-                .expect_update_withdrawals()
-                .times(0)
-                .returning(move |_| {
-                    Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
-                });
-            client
-                .expect_create_withdrawals()
-                .times(0)
-                .returning(move |_| Box::pin(async { vec![] }));
-        })
-        .await;
         // Okay now to do the check.
         let state = State(api.clone());
         let res = new_block_handler(state, body).await;
@@ -709,23 +688,10 @@ mod tests {
     #[test_case(EVENT_OBSERVER_BODY_LIMIT + 1, false; "event over limit")]
     #[tokio::test]
     async fn test_big_event(event_size: usize, success: bool) {
-        let mut ctx = TestContext::builder()
+        let ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
-
-        ctx.with_emily_client(|client| {
-            client.expect_update_deposits().returning(move |_| {
-                Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
-            });
-            client.expect_update_withdrawals().returning(move |_| {
-                Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
-            });
-            client
-                .expect_create_withdrawals()
-                .returning(move |_| Box::pin(async { vec![] }));
-        })
-        .await;
 
         let state = ApiState { ctx: ctx.clone() };
         let app = get_router().with_state(state);
@@ -756,23 +722,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_invalid_event() {
-        let mut ctx = TestContext::builder()
+        let ctx = TestContext::builder()
             .with_in_memory_storage()
             .with_mocked_clients()
             .build();
-
-        ctx.with_emily_client(|client| {
-            client.expect_update_deposits().returning(move |_| {
-                Box::pin(async { Ok(UpdateDepositsResponse { deposits: vec![] }) })
-            });
-            client.expect_update_withdrawals().returning(move |_| {
-                Box::pin(async { Ok(UpdateWithdrawalsResponse { withdrawals: vec![] }) })
-            });
-            client
-                .expect_create_withdrawals()
-                .returning(move |_| Box::pin(async { vec![] }));
-        })
-        .await;
 
         let state = State(ApiState { ctx: ctx.clone() });
         let body = ROTATE_KEYS_AND_INVALID_EVENT_WEBHOOK.to_string();

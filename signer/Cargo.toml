@@ -7,8 +7,8 @@ edition = "2021"
 ignored = ["tonic", "tonic-build", "stackslib"]
 
 [features]
-default = ["testing"]
-testing = ["fake", "mockall", "sbtc/testing"]
+default = []
+testing = ["dep:fake", "dep:mockall", "sbtc/testing"]
 
 [dependencies]
 aquamarine.workspace = true
@@ -72,6 +72,10 @@ mockito.workspace = true
 more-asserts.workspace = true
 ripemd.workspace = true
 sbtc = { workspace = true, features = ["testing"] }
+# We need this so that we have access to "testing" feature code in our
+# tests. Taken from:
+# https://github.com/rust-lang/cargo/issues/2911#issuecomment-749580481
+signer = { path = ".", features = ["testing"] }
 tempfile.workspace = true
 test-case.workspace = true
 test-log.workspace = true

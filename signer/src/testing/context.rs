@@ -14,6 +14,7 @@ use blockstack_lib::{
     },
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
+use emily_client::models::Status;
 use tokio::sync::{broadcast, Mutex};
 use tokio::time::error::Elapsed;
 
@@ -510,8 +511,20 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .get_deposit(txid, output_index)
             .await
     }
+
     async fn get_deposits(&self) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
         self.inner.lock().await.get_deposits().await
+    }
+
+    async fn get_deposits_with_status(
+        &self,
+        status: Status,
+    ) -> Result<Vec<sbtc::deposits::CreateDepositRequest>, Error> {
+        self.inner
+            .lock()
+            .await
+            .get_deposits_with_status(status)
+            .await
     }
 
     async fn update_deposits(
@@ -537,17 +550,6 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .await
     }
 
-    async fn create_withdrawals(
-        &self,
-        create_withdrawals: Vec<emily_client::models::CreateWithdrawalRequestBody>,
-    ) -> Vec<Result<emily_client::models::Withdrawal, Error>> {
-        self.inner
-            .lock()
-            .await
-            .create_withdrawals(create_withdrawals)
-            .await
-    }
-
     async fn update_withdrawals(
         &self,
         update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
@@ -557,13 +559,6 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
             .await
             .update_withdrawals(update_withdrawals)
             .await
-    }
-
-    async fn set_chainstate(
-        &self,
-        chainstate: emily_client::models::Chainstate,
-    ) -> Result<emily_client::models::Chainstate, Error> {
-        self.inner.lock().await.set_chainstate(chainstate).await
     }
 
     async fn get_limits(&self) -> Result<SbtcLimits, Error> {

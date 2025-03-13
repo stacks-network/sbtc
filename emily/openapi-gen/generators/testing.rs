@@ -25,6 +25,7 @@ use super::CorsSupport;
         api::handlers::withdrawal::get_withdrawal,
         api::handlers::withdrawal::get_withdrawals,
         api::handlers::withdrawal::get_withdrawals_for_recipient,
+        api::handlers::withdrawal::get_withdrawals_for_sender,
         api::handlers::withdrawal::create_withdrawal,
         api::handlers::withdrawal::update_withdrawals,
         // Chainstate endpoints.
@@ -39,6 +40,8 @@ use super::CorsSupport;
         api::handlers::limits::set_limits,
         api::handlers::limits::get_limits_for_account,
         api::handlers::limits::set_limits_for_account,
+        /// New block endpoints.
+        api::handlers::new_block::new_block,
     ),
     // Components to be included in the OpenAPI specification.
     components(schemas(
@@ -71,6 +74,8 @@ use super::CorsSupport;
         // Limits models
         api::models::limits::Limits,
         api::models::limits::AccountLimits,
+        // New block models.
+        api::models::new_block::NewBlockEventRaw,
         // Errors.
         common::error::ErrorResponse,
     ))
