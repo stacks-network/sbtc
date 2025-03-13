@@ -1,6 +1,7 @@
 //! Top-level error type for the signer
 use std::borrow::Cow;
 
+use bitcoin::script::PushBytesError;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::blocklist_client::BlocklistClientError;
@@ -19,6 +20,14 @@ use crate::wsts_state_machine::StateMachineId;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An error occurred while attempting to perform withdrawal ID segmentation.
+    #[error(transparent)]
+    IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
+
+    /// An error occurred while attempting to encode the ID pack.
+    #[error(transparent)]
+    IdPackEncode(#[from] sbtc::idpack::SegmentEncodeError),
+
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
     DkgVerification(#[source] dkg::verification::Error),
@@ -158,6 +167,11 @@ pub enum Error {
     /// transaction.
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
+
+    /// An error occurred while attempting to push bytes into a bitcoin
+    /// `PushBytes` type.
+    #[error(transparent)]
+    BitcoinPushBytes(#[from] PushBytesError),
 
     /// This can only be thrown when the number of bytes for a sighash or
     /// not exactly equal to 32. This should never occur.

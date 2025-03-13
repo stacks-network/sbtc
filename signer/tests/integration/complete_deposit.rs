@@ -490,16 +490,22 @@ async fn complete_deposit_validation_fee_too_low() {
     // Different: We need to update the amount to be something that
     // validation would reject. To do that we update our database.
     //
-    // The fee rate in this test is fixed at 10.0 sats per vbyte and the tx
-    // size is 235 bytes, so we lose 2350 sats to fees. The amount here is
-    // chosen so that 2350 + 546 is greater than it.
-    let deposit_amount = 2895;
+    // The fee rate in this test is fixed at 10.0 sats per vbyte.
+    // The tx size is ~217 bytes, resulting in a fee of ~2170 sats.
+    //
+    // With the Bitcoin dust limit of 546 sats, we need: deposit_amount - fee < dust_limit
+    // So: deposit_amount - 2170 < 546
+    // Therefore: deposit_amount < 2716 will fail the dust check
+    //
+    // Using 2715 gives us 2715 - 2170 = 545 sats, which is just below the dust limit.
+    let deposit_amount = 2715;
     sqlx::query(
         r#"
         UPDATE deposit_requests AS dr
         SET amount = $1
-        WHERE dr.txid = $2
-          AND dr.output_index = $3;
+        WHERE 
+            dr.txid = $2
+            AND dr.output_index = $3;
     "#,
     )
     .bind(deposit_amount as i32)
@@ -532,14 +538,17 @@ async fn complete_deposit_validation_fee_too_low() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    // Now a sanity check to see what happens if we are at the limit.
+    // Now a sanity check to see what happens if we are above the dust limit.
+    // With deposit_amount = 2716, we get 2716 - 2170 = 546 sats,
+    // which equals the dust limit and should pass validation.
     let deposit_amount = deposit_amount + 1;
     sqlx::query(
         r#"
         UPDATE deposit_requests AS dr
         SET amount = $1
-        WHERE dr.txid = $2
-          AND dr.output_index = $3;
+        WHERE 
+            dr.txid = $2
+            AND dr.output_index = $3;
     "#,
     )
     .bind(deposit_amount as i32)
