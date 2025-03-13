@@ -111,23 +111,6 @@ impl Segment {
         self.values.is_empty()
     }
 
-    /// Returns the ratio of values to total range covered (density metric).
-    /// Critical for encoding selection: >0.25 density favors Bitset encoding.
-    ///
-    /// A value of 1.0 indicates a perfectly sequential segment, while lower values
-    /// indicate sparser patterns.
-    ///
-    /// Returns 0.0 if the segment is empty.
-    pub fn density(&self) -> f64 {
-        if self.values.is_empty() {
-            return 0.0;
-        }
-
-        // This is safe as we've just verified that the segment isn't empty.
-        let range = self.values.last().unwrap() - self.offset() + 1;
-        self.values.len() as f64 / range as f64
-    }
-
     /// Returns `true` if values form a consecutive sequence.
     /// Enables 0-bit width optimization in Fixed-Width Delta encoding.
     pub fn is_sequential(&self) -> bool {
