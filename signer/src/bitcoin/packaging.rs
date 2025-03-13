@@ -212,7 +212,7 @@ struct Bag<T> {
     /// Items contained in this bag
     items: Vec<T>,
     /// Combined votes bitmap (using bitwise OR)
-    votes: u128,
+    votes_bitmap: u128,
     /// Count of items requiring signatures
     items_needing_signatures: u16,
     /// Total virtual size of items in this bag
@@ -235,7 +235,7 @@ where
     fn new(config: PackagerConfig) -> Self {
         Bag {
             config,
-            votes: 0,
+            votes_bitmap: 0,
             items_needing_signatures: 0,
             vsize: 0,
             items: Vec::new(),
@@ -265,7 +265,7 @@ where
     /// ## Parameters
     /// - `item`: Item to add to the bag
     fn add_item(&mut self, item: T) {
-        self.votes |= item.votes();
+        self.votes_bitmap |= item.votes();
         self.items_needing_signatures += item.needs_signature() as u16;
         self.vsize += item.vsize();
 
@@ -306,7 +306,7 @@ where
     /// ## Returns
     /// `true` if the combined votes don't exceed the maximum allowed.
     fn votes_compatible(&self, item: &T) -> bool {
-        let combined_votes = self.votes | item.votes();
+        let combined_votes = self.votes_bitmap | item.votes();
         combined_votes.count_ones() <= self.config.max_votes_against
     }
 
@@ -349,7 +349,7 @@ where
     /// A score where lower values indicate better compatibility.
     fn compatibility_score(&self, item: &T) -> u32 {
         // XOR measures how different the vote patterns are
-        (self.votes ^ item.votes()).count_ones()
+        (self.votes_bitmap ^ item.votes()).count_ones()
     }
 
     /// Check if adding a single withdrawal ID would exceed the OP_RETURN size
@@ -454,15 +454,10 @@ impl<T: Weighted> BestFitPackager<T> {
     /// ## Returns
     /// A mutable reference to the best bag, or `None` if no compatible bag exists.
     fn find_best_bag(&mut self, item: &T) -> Option<&mut Bag<T>> {
-        let best_bag_index = self
-            .bags
-            .iter()
-            .enumerate()
-            .filter(|(_, bag)| bag.is_compatible(item))
-            .min_by_key(|(_, bag)| bag.compatibility_score(item))
-            .map(|(index, _)| index)?;
-
-        self.bags.get_mut(best_bag_index)
+        self.bags
+            .iter_mut()
+            .filter(|bag| bag.is_compatible(item))
+            .min_by_key(|bag| bag.compatibility_score(item))
     }
 
     /// Try to insert an item into the best-fit bag, or create a new one.
@@ -542,7 +537,7 @@ mod tests {
             let mut bag = Bag {
                 config,
                 items: Vec::new(),
-                votes: 0,
+                votes_bitmap: 0,
                 items_needing_signatures: 0,
                 vsize: 0,
                 withdrawal_ids: Vec::new(),

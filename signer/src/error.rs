@@ -21,11 +21,11 @@ use crate::wsts_state_machine::StateMachineId;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// An error occurred while attempting to perform withdrawal ID segmentation.
-    #[error(transparent)]
+    #[error("idpack segmenter error: {0}")]
     IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
 
     /// An error occurred while attempting to encode the ID pack.
-    #[error(transparent)]
+    #[error("idpack encode error: {0}")]
     IdPackEncode(#[from] sbtc::idpack::SegmentEncodeError),
 
     /// The DKG verification state machine raised an error.
@@ -170,7 +170,7 @@ pub enum Error {
 
     /// An error occurred while attempting to push bytes into a bitcoin
     /// `PushBytes` type.
-    #[error(transparent)]
+    #[error("bitcoin push-bytes error: {0}")]
     BitcoinPushBytes(#[from] PushBytesError),
 
     /// This can only be thrown when the number of bytes for a sighash or

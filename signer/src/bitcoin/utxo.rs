@@ -270,13 +270,6 @@ impl SbtcRequests {
         let max_needs_signature = self.max_deposits_per_bitcoin_tx;
         compute_optimal_packages(items, max_votes_against, max_needs_signature)
             .scan(self.signer_state, |state, request_refs| {
-                eprintln!(
-                    "creating transaction for {:?}",
-                    request_refs
-                        .iter()
-                        .map(|r| r.withdrawal_id())
-                        .collect::<Vec<_>>()
-                );
                 let requests = Requests::new(request_refs);
                 let tx = UnsignedTransaction::new(requests, state);
                 if let Ok(tx_ref) = tx.as_ref() {
@@ -1119,14 +1112,17 @@ impl<'a> UnsignedTransaction<'a> {
         data.push(OP_RETURN_VERSION)?;
 
         // Extract all withdrawal request IDs
-        let withdrawal_ids: Vec<u64> = reqs
+        let mut withdrawal_ids: Vec<u64> = reqs
             .iter()
             .filter_map(|req| req.as_withdrawal().map(|w| w.request_id))
             .collect();
 
-        // Add encoded withdrawal IDs if any
+        // If there are any withdrawal ID's, encode them and add them to the
+        // OP_RETURN data.
         if !withdrawal_ids.is_empty() {
-            let encoded = Self::encode_withdrawal_ids(&withdrawal_ids)?;
+            withdrawal_ids.sort_unstable();
+
+            let encoded = BitmapSegmenter.package(&withdrawal_ids)?.encode()?;
             data.extend_from_slice(&encoded)?;
         }
 
@@ -1138,18 +1134,6 @@ impl<'a> UnsignedTransaction<'a> {
         };
 
         Ok(txout)
-    }
-
-    /// Encodes withdrawal request IDs using idpack.
-    /// Returns the encoded bytes or an empty vector if there are no withdrawal IDs.
-    fn encode_withdrawal_ids(ids: &[u64]) -> Result<Vec<u8>, Error> {
-        if ids.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let encoded = BitmapSegmenter.package(ids)?.encode()?;
-
-        Ok(encoded)
     }
 
     /// Compute the final amount for the signers' UTXO given the current
