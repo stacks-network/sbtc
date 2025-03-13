@@ -90,8 +90,9 @@ fn encode_segment_with_offset(
     let flags = create_flags_byte(segment, has_continuation)?;
     result.push(flags);
 
-    // Add offset value using LEB128 variable-length encoding for maximum compression
-    // LEB128 uses fewer bytes for smaller values, enhancing delta encoding benefits
+    // Add offset value using LEB128 variable-length encoding for maximum
+    // compression LEB128 uses fewer bytes for smaller values, enhancing delta
+    // encoding benefits
     Leb128::encode_into(offset, &mut result);
 
     // Add encoding-specific payload based on segment type
@@ -110,7 +111,8 @@ fn encode_segment_with_offset(
     Ok(result)
 }
 
-/// Creates a flags byte for a segment, incorporating continuation flag if needed.
+/// Creates a flags byte for a segment, incorporating continuation flag if
+/// needed.
 ///
 /// Combines encoding type, strategy-specific optimization flags, and
 /// continuation indicators into a single byte for maximum compression.
