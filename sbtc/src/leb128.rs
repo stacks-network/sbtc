@@ -28,7 +28,7 @@ use std::io::Cursor;
 
 // LEB128 u64 can use at most 10 bytes
 const MAX_BYTES: usize = 10;
-const BITS_PER_BYTE: usize = 7;
+const BITS_PER_BYTE: u32 = 7;
 const MAX_BITS: usize = 64;
 const LOWER_BITS_MASK: u8 = 0x7F;
 const CONTINUATION_FLAG: u8 = 0x80;
@@ -78,12 +78,10 @@ impl Leb128 {
     /// ## Parameters
     /// * `value` - The integer to encode
     /// * `bytes` - The buffer to append the encoded bytes to
-    pub fn encode_into(value: u64, bytes: &mut Vec<u8>) {
-        let mut value = value;
+    pub fn encode_into(mut value: u64, bytes: &mut Vec<u8>) {
         loop {
             let mut byte = (value & LOWER_BITS_MASK as u64) as u8;
-
-            value = value.checked_shr(7).unwrap_or(0);
+            value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
 
             if value != 0 {
                 byte |= CONTINUATION_FLAG;
@@ -122,7 +120,7 @@ impl Leb128 {
             let value = (byte & LOWER_BITS_MASK) as u64;
 
             // Use checked_shl instead of manual overflow detection
-            match value.checked_shl(shift as u32) {
+            match value.checked_shl(shift) {
                 Some(shifted) => result |= shifted,
                 None => return Err(Error::ValueOutOfBounds),
             }
@@ -160,12 +158,11 @@ impl Leb128 {
     ///
     /// ## Returns
     /// The number of bytes required to encode the value
-    pub fn calculate_size(value: u64) -> usize {
-        let mut value = value;
+    pub fn calculate_size(mut value: u64) -> usize {
         let mut size = 0;
         while value >= 0x80 {
             size += 1;
-            value = value.checked_shr(7).unwrap_or(0);
+            value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
         }
         size += 1;
         size
