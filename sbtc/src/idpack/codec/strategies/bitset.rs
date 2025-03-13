@@ -59,6 +59,9 @@ const EMBEDDED_LENGTH_MASK: u8 =
 /// Shift amount for positioning the bitmap length bits in the flags byte.
 const EMBEDDED_LENGTH_SHIFT: u8 = 4;
 
+/// The maximum number of bytes that can be embedded in the flags byte.
+const EMBEDDED_LENGTH_MAX_BYTES: u64 = 7;
+
 /// Implements the BitSet encoding strategy, which compresses integer values by
 /// representing them as bits in a bitmap.
 pub struct BitsetStrategy;
@@ -92,7 +95,7 @@ impl EncodingStrategy for BitsetStrategy {
 
         // Optimization 1: For small-to-medium bitmaps (1-7 bytes), embed length in flags
         // This saves 1 byte compared to explicit length encoding.
-        if bytes_needed <= 7 {
+        if bytes_needed <= EMBEDDED_LENGTH_MAX_BYTES {
             flags |= EMBEDDED_LENGTH_FLAG;
             flags |= ((bytes_needed as u8) << EMBEDDED_LENGTH_SHIFT) & EMBEDDED_LENGTH_MASK;
         }
@@ -131,15 +134,18 @@ impl EncodingStrategy for BitsetStrategy {
 
         // Calculate bitmap size requirements
         let range = max_value - min_value;
-        let bytes_needed = range.div_ceil(8) as usize;
+        let bytes_needed = range.div_ceil(8);
 
-        // Safety check to prevent OOM for extremely sparse data
-        if bytes_needed > ALLOC_BYTES_LIMIT as usize {
-            return None;
-        }
+        // Optimization 1: For small-to-medium bitmaps (1-7 bytes), embed length in flags
+        // This saves 1 byte compared to explicit length encoding.
+        let length_header_size = if bytes_needed <= EMBEDDED_LENGTH_MAX_BYTES {
+            0
+        } else {
+            Leb128::calculate_size(bytes_needed)
+        };
 
-        // For bitmaps > 7 bytes, we need an explicit length byte
-        Some(bytes_needed + (bytes_needed > 7) as usize)
+        // Return the bytes needed for the bitmap plus length header (if any).
+        Some((bytes_needed as usize) + length_header_size)
     }
 
     /// Encodes a segment using the BitSet strategy.
