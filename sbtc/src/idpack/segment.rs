@@ -46,17 +46,10 @@ pub struct Segment {
 }
 
 impl Segment {
-    /// Creates a new empty segment with the specified encoding method.
-    pub fn new(encoding: SegmentEncoding) -> Self {
-        Self { encoding, values: Vec::new() }
-    }
-
     /// Creates a new segment with the specified encoding and initial offset value.
     /// The offset is crucial for compression as it establishes the base value.
     pub fn new_with_offset(encoding: SegmentEncoding, offset: u64) -> Self {
-        let mut segment = Self::new(encoding);
-        segment.values.push(offset);
-        segment
+        Self { encoding, values: vec![offset] }
     }
 
     /// Returns the offset (first value) of the segment.

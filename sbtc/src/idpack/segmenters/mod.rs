@@ -34,6 +34,9 @@ pub enum Error {
     /// An error occurred during size estimation.
     #[error("error estimating segment size")]
     SizeEstimation,
+
+    #[error("the segmenter encountered an empty range: {start} to {end}")]
+    EmptyRange { start: usize, end: usize },
 }
 
 /// Trait for segmenting integer values into optimal segments.
