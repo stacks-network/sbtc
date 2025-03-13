@@ -143,7 +143,7 @@ impl<'a> SignerSwarmBuilder<'a> {
             enable_mdns: false,
             enable_quic_transport: false,
             enable_memory_transport: false,
-            initial_bootstrap_delay: Duration::from_secs(0),
+            initial_bootstrap_delay: Duration::ZERO,
         }
     }
 
@@ -327,11 +327,10 @@ impl SignerSwarm {
     /// Start the [`SignerSwarm`] and run the event loop. This function will block until the
     /// swarm is stopped (either by receiving a shutdown signal or an unrecoverable error).
     pub async fn start(&mut self, ctx: &impl Context) -> Result<(), SignerSwarmError> {
-        let local_peer_id = *self.swarm.lock().await.local_peer_id();
-        tracing::info!(%local_peer_id, "starting signer swarm");
-
+        // Separate scope to ensure that the lock is released before the event loop is run.
         {
             let mut swarm = self.swarm.lock().await;
+            tracing::info!(local_peer_id = %swarm.local_peer_id(), "starting signer swarm");
 
             // Start listening on the listen addresses.
             for addr in self.listen_addrs.iter() {
