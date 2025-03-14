@@ -246,7 +246,8 @@ sbtc_bitcoin_start_height = 101
 
 # The maximum fee in microSTX that a signer will accept for a Stacks
 # transaction. If the coordinator suggests a fee higher than this value for
-# a transaction the signer will reject it.
+# a transaction the signer will reject it. This value must be greater than
+# zero.
 #
 # Required: false
 # Environment: SIGNER_SIGNER__STACKS_FEES_MAX_USTX
