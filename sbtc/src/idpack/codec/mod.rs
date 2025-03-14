@@ -167,10 +167,6 @@ pub enum SegmentEncodeError {
         actual: usize,
     },
 
-    /// Attempt to encode an empty collection of segments
-    #[error("attempt to encode no segments")]
-    NoSegments,
-
     /// Encoding strategy used flag bits outside its allowed range,
     /// which would corrupt the encoding format
     #[error("Strategy used forbidden flag bits: {0:08b}, allowed mask: {1:08b}")]

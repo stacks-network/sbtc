@@ -29,7 +29,7 @@ impl Encodable for Segments {
         let mut result = Vec::new();
 
         if self.is_empty() {
-            return Err(SegmentEncodeError::NoSegments);
+            return Ok(result); // No segments to encode
         }
 
         let mut prev_offset = 0; // Track previous offset for delta calculation
