@@ -75,7 +75,7 @@ impl fmt::Debug for EmilyContext {
                 "deployer_address",
                 &self.settings.deployer_address.to_string(),
             )
-            .field("api_key", &"[REDACTED]")
+            .field("trusted_reorg_api_key", &"[REDACTED]")
             .finish()
     }
 }
