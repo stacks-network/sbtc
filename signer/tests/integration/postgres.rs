@@ -5976,6 +5976,12 @@ async fn compute_withdrawn_total_gets_all_amounts_in_chain() {
 
 /// Check that the query in `compute_withdrawn_total` returns the total
 /// amount of withdrawal amounts on the identified blockchain.
+///
+/// This tests that if there are conflicting blockchains, where say, both
+/// chains have the same height and there are sweep transactions fulfilling
+/// withdrawals confirmed on both of them, then the the query will only
+/// return the amounts associated with the one identified by the given
+/// chain tip and context window.
 #[tokio::test]
 async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain() {
     let mut db = testing::storage::new_test_database().await;
