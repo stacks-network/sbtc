@@ -352,6 +352,8 @@ pub struct SignerConfig {
     /// The number of bitcoin blocks after a DKG start where we attempt to
     /// verify the shares. After this many blocks, we mark the shares as failed.
     pub dkg_verification_window: u16,
+    /// The maximum stacks fee in microSTX that the signer will accept for any stacks transaction.
+    pub stacks_fees_max_ustx: NonZeroU64,
 }
 
 impl Validatable for SignerConfig {
@@ -511,6 +513,7 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
         cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 10)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
+        cfg_builder = cfg_builder.set_default("signer.stacks_fees_max_ustx", 1_500_000)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -560,18 +563,17 @@ impl Validatable for StacksConfig {
 mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
+    use std::time::Duration;
 
     use tempfile;
     use toml_edit::DocumentMut;
 
     use crate::config::serialization::try_parse_p2p_multiaddr;
-
     use crate::error::Error;
     use crate::testing::clear_env;
 
-    use std::time::Duration;
-
     use super::*;
+    use test_case::test_case;
 
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
@@ -999,16 +1001,32 @@ mod tests {
     }
 
     #[test]
-    fn zero_durations_fails_in_signer_config() {
-        fn test_one(field: &str) {
-            clear_env();
-            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
-            let _ = Settings::new_from_default_config()
-                .expect_err(&format!("Duration for {field} must be non zero"));
-        }
-        test_one("dkg_max_duration");
-        test_one("bitcoin_presign_request_max_duration");
-        test_one("signer_round_max_duration");
+    fn stacks_fees_max_ustx_can_be_loaded_from_environment() {
+        clear_env();
+        let expected_stacks_fees_max_ustx = NonZeroU64::new(1234).unwrap();
+        std::env::set_var(
+            "SIGNER_SIGNER__STACKS_FEES_MAX_USTX",
+            format!("{expected_stacks_fees_max_ustx}"),
+        );
+        assert_eq!(
+            Settings::new_from_default_config()
+                .unwrap()
+                .signer
+                .stacks_fees_max_ustx,
+            expected_stacks_fees_max_ustx,
+        );
+    }
+
+    #[test_case("dkg_max_duration" ; "dkg_max_duration")]
+    #[test_case("bitcoin_presign_request_max_duration" ; "bitcoin_presign_request_max_duration")]
+    #[test_case("signer_round_max_duration" ; "signer_round_max_duration")]
+    #[test_case("stacks_fees_max_ustx" ; "stacks_fees_max_ustx")]
+    fn zero_values_for_nonzero_fields_fail_in_signer_config(field: &str) {
+        clear_env();
+
+        std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+
+        Settings::new_from_default_config().expect_err("value for must be non zero");
     }
 
     #[test]
