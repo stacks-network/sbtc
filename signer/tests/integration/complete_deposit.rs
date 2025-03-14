@@ -494,20 +494,18 @@ async fn complete_deposit_validation_fee_too_low() {
     // We want to trigger the AmountBelowDustLimit error by calculating a deposit amount
     // that results in a value just below the dust limit after fees are subtracted:
     //
-    // 1. Calculate actual fee using tx_size * fee_rate (real values from the sweep tx)
-    // 2. Find amount that gives: deposit_amount - fee = DEPOSIT_DUST_LIMIT - 1
-    // 3. Which means: deposit_amount = tx_size * fee_rate + DEPOSIT_DUST_LIMIT - 1
+    // 1. Get the actual fee from the sweep transaction (info.tx_info.fee)
+    // 2. Calculate: deposit_amount = actual_fee + DEPOSIT_DUST_LIMIT - 1
     //
-    // This ensures we're 1 satoshi below the dust limit, triggering the error regardless
+    // This ensures when fee is subtracted from the deposit amount:
+    // deposit_amount - actual_fee = DEPOSIT_DUST_LIMIT - 1
+    //
+    // Which is exactly 1 satoshi below the dust limit, triggering the error regardless
     // of the exact transaction size or fee rate used in tests.
     let deposit_amount = setup
         .sweep_tx_info
         .as_ref()
-        .map(|info| {
-            let tx_size = info.tx_info.vsize;
-            let fee_rate = info.tx_info.fee.to_sat().div_ceil(tx_size as u64);
-            tx_size * fee_rate + DEPOSIT_DUST_LIMIT - 1
-        })
+        .map(|info| info.tx_info.fee.to_sat() + DEPOSIT_DUST_LIMIT - 1)
         .expect("sweep_tx_info not set");
 
     sqlx::query(
