@@ -113,6 +113,14 @@ impl Settings {
                     .ok()
                     .map(|v| v.parse())
                     .transpose()?,
+                rolling_withdrawal_blocks: env::var("DEFAULT_ROLLING_WITHDRAWAL_BLOCKS")
+                    .ok()
+                    .map(|v| v.parse())
+                    .transpose()?,
+                rolling_withdrawal_cap: env::var("DEFAULT_ROLLING_WITHDRAWAL_CAP")
+                    .ok()
+                    .map(|v| v.parse())
+                    .transpose()?,
             },
             trusted_reorg_api_key: env::var("TRUSTED_REORG_API_KEY")?,
             is_mainnet: env::var("IS_MAINNET")?.to_lowercase() == "true",
