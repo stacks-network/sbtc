@@ -1,20 +1,28 @@
+//! Segment encoding for withdrawal IDs with guaranteed invariants.
+//!
+//! # Safety Invariants
+//!
+//! A `Segment` maintains critical invariants at all times:
+//! - **Never empty**: Always contains at least one value (the offset)
+//! - **Always sorted**: Values are in strictly ascending order
+//! - **No duplicates**: Each value appears exactly once
+//!
+//! These invariants are enforced by the API and enable optimized encoding and
+//! safe access without bounds checking in critical paths.
+
 use std::fmt::Debug;
 
 /// Error types that can occur when working with segments.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
-    /// The input is empty.
-    #[error("The input is empty")]
-    EmptyInput,
+    /// Values must be in strictly ascending order.
+    /// Provides the value that violated the ordering constraint.
+    #[error("Value {0} is out of order (must be inserted in strictly ascending order)")]
+    UnsortedValue(u64),
 
-    /// The input is not sorted.
-    /// Sorted input is essential for delta encoding and bitmap optimization.
-    #[error("The input is not sorted")]
-    UnsortedInput,
-
-    /// The input contains duplicate values.
-    /// Duplicate elimination is crucial for maximum compression.
-    #[error("The input contains duplicate values")]
+    /// Each value must appear exactly once.
+    /// Provides the duplicate value for diagnostic purposes.
+    #[error("Duplicate value {0} detected (each value must be unique)")]
     DuplicateValue(u64),
 }
 
@@ -39,6 +47,11 @@ impl std::fmt::Display for SegmentEncoding {
 
 /// Represents a segment of integer values encoded with a specific method.
 /// Facilitates pattern-based optimal compression.
+///
+/// # Safety Invariants
+/// - Contains at least one value (offset) at all times
+/// - Values are always sorted in strictly ascending order
+/// - No duplicate values are allowed
 #[derive(Clone)]
 pub struct Segment {
     encoding: SegmentEncoding,
@@ -46,19 +59,16 @@ pub struct Segment {
 }
 
 impl Segment {
-    /// Creates a new segment with the specified encoding and initial offset value.
-    /// The offset is crucial for compression as it establishes the base value.
+    /// Creates a new segment with the specified encoding and initial offset
+    /// value. The offset is crucial for compression as it establishes the base
+    /// value for the segment.
     pub fn new_with_offset(encoding: SegmentEncoding, offset: u64) -> Self {
         Self { encoding, values: vec![offset] }
     }
 
     /// Returns the offset (first value) of the segment.
-    ///
-    /// ## Panics
-    ///
-    /// This method will panic if the segment is empty. Use [`Self::is_empty()`]
-    /// to check if the segment has any values first.
     pub fn offset(&self) -> u64 {
+        // SAFETY: `values` is never empty due to struct invariants
         self.values[0]
     }
 
@@ -74,35 +84,31 @@ impl Segment {
     /// - Duplicate values (`DuplicateValue`)
     /// - Unsorted values (`UnsortedInput`)
     pub fn insert(&mut self, value: u64) -> Result<(), Error> {
-        // If the segment isn't empty, check for duplicates and sort order
-        if !self.values.is_empty() {
-            // Validate that the new value is greater than the last value (sorted)
-            if value < self.values[self.values.len() - 1] {
-                return Err(Error::UnsortedInput);
-            }
-            // Validate that the new value doesn't equal the current last value (deduplicated)
-            if value == self.values[self.values.len() - 1] {
-                return Err(Error::DuplicateValue(value));
-            }
+        // Validate that the new value is greater than the last value (sorted)
+        // SAFETY: `values` is never empty due to struct invariants
+        if value < self.values[self.values.len() - 1] {
+            return Err(Error::UnsortedValue(value));
         }
 
+        // Validate that the new value doesn't equal the current last value (deduplicated)
+        // SAFETY: `values` is never empty due to struct invariants
+        if value == self.values[self.values.len() - 1] {
+            return Err(Error::DuplicateValue(value));
+        }
+
+        // Add the value to the segment
         self.values.push(value);
 
         Ok(())
     }
 
-    /// Returns `true` if the segment contains no values.
-    pub fn is_empty(&self) -> bool {
-        self.values.is_empty()
-    }
-
-    /// Returns a slice of all values in the segment, including the offset.
+    /// Gets a slice of all values in the segment, including the offset.
     pub fn as_slice(&self) -> &[u64] {
         &self.values
     }
 
-    /// Returns all values except the offset. If the underlying vec is empty
-    /// or contains only the offset, this method will return an empty slice.
+    /// Gets a slice of all values in the segment, excluding the offset.
+    /// Returns an empty slice if there are no values beyond the offset.
     pub fn values(&self) -> &[u64] {
         if self.values.is_empty() {
             return &[];
@@ -112,6 +118,7 @@ impl Segment {
     }
 
     /// Returns the number of values in the segment (including offset).
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.values.len()
     }
@@ -123,20 +130,18 @@ impl Segment {
     }
 
     /// Returns `true` if segment contains values beyond the offset.
-    /// Helps determine if Single encoding is applicable.
     pub fn has_values(&self) -> bool {
         self.value_count() > 0
     }
 
     /// Returns span of the segment (maximum value - offset).
-    /// Critical for Bitset sizing and bit width calculations.
     pub fn range(&self) -> u64 {
-        self.max_value() - self.offset()
+        self.max() - self.offset()
     }
 
     /// Returns the greatest value in the segment.
-    /// Used for range calculations and segment boundary decisions.
-    pub fn max_value(&self) -> u64 {
+    pub fn max(&self) -> u64 {
+        // SAFETY: `values` is never empty due to struct invariants
         self.values[self.values.len() - 1]
     }
 }

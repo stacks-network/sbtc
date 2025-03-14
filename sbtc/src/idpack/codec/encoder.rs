@@ -79,11 +79,6 @@ fn encode_segment_with_offset(
     has_continuation: bool,
     offset: u64,
 ) -> Result<Vec<u8>, SegmentEncodeError> {
-    // Return an error if the segment is empty (shouldn't happen)
-    if segment.is_empty() {
-        return Err(SegmentEncodeError::EmptySegment);
-    }
-
     let mut result = Vec::new();
 
     // Create flags byte with type, optimization bits, and continuation flag

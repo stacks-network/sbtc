@@ -167,10 +167,6 @@ pub enum SegmentEncodeError {
         actual: usize,
     },
 
-    /// Attempt to encode an empty segment, which is not supported
-    #[error("attempt to encode an empty segment")]
-    EmptySegment,
-
     /// Attempt to encode an empty collection of segments
     #[error("attempt to encode no segments")]
     NoSegments,
