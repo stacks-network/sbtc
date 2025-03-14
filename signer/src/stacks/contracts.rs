@@ -715,7 +715,7 @@ impl AsContractCall for AcceptWithdrawalV1 {
     where
         C: Context + Send + Sync,
     {
-        // 11. Check whether the withdrawal request is already completed.
+        // 10. Check whether the withdrawal request is already completed.
         let withdrawal_completed = ctx
             .get_stacks_client()
             .is_withdrawal_completed(&req_ctx.deployer, self.id.request_id)
@@ -1172,7 +1172,6 @@ impl AsContractCall for RejectWithdrawalV1 {
             .block_height
             .saturating_sub(report.bitcoin_block_height);
 
-        // 4. The request is expired.
         if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
