@@ -300,11 +300,6 @@ impl SbtcRequests {
         let last_fees = self.signer_state.last_fees;
         compute_transaction_fee(tx_vsize, fee_rate, last_fees)
     }
-
-    /// Normalize the requests, ensuring the withdrawals are sorted
-    pub fn normalize(&mut self) {
-        self.withdrawals.sort_by_key(|req| req.request_id);
-    }
 }
 
 /// Calculate the total fee necessary for a transaction of the given size
