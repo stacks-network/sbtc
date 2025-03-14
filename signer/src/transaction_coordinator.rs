@@ -649,7 +649,7 @@ where
             // but emily deposit still marked as pending.
             self.context
                 .get_emily_client()
-                .accept_deposits(&transaction, &stacks_chain_tip)
+                .accept_deposits(&transaction)
                 .await?;
         }
 

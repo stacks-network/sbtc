@@ -365,14 +365,11 @@ where
 
         self.context
             .with_emily_client(|client| {
-                client
-                    .expect_accept_deposits()
-                    .times(1..)
-                    .returning(|_, _| {
-                        Box::pin(async {
-                            Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
-                        })
-                    });
+                client.expect_accept_deposits().times(1..).returning(|_| {
+                    Box::pin(async {
+                        Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                    })
+                });
             })
             .await;
 
@@ -515,14 +512,11 @@ where
 
         self.context
             .with_emily_client(|client| {
-                client
-                    .expect_accept_deposits()
-                    .times(1..)
-                    .returning(|_, _| {
-                        Box::pin(async {
-                            Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
-                        })
-                    });
+                client.expect_accept_deposits().times(1..).returning(|_| {
+                    Box::pin(async {
+                        Ok(emily_client::models::UpdateDepositsResponse { deposits: vec![] })
+                    })
+                });
             })
             .await;
 

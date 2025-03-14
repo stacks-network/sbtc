@@ -3201,7 +3201,7 @@ async fn test_conservative_initial_sbtc_limits() {
                 .returning(|| Box::pin(std::future::ready(Ok(vec![]))));
 
             // We don't care about this
-            client.expect_accept_deposits().returning(|_, _| {
+            client.expect_accept_deposits().returning(|_| {
                 Box::pin(std::future::ready(Err(Error::InvalidStacksResponse(
                     "dummy",
                 ))))
@@ -4525,7 +4525,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "insufficient_confirmations_one_too_few")]
     #[test_case(TestParams {
         // This case will calculate the confirmations as:
-        // chain_length (10) - min_confirmations(6) = 4 (maximum block height), 
+        // chain_length (10) - min_confirmations(6) = 4 (maximum block height),
         // at_block_height (4) <= 4.
         chain_length: 10,
         at_block_height: 4,
@@ -4551,7 +4551,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "soft_expiry_one_block_too_old")]
     #[test_case(TestParams {
         // This case will calculate the soft expiry as:
-        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4, 
+        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4,
         // and at_block_height (4) == 4.
         chain_length: 10,
         expiry_window: 10,
@@ -4562,7 +4562,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "soft_expiry_exact_block_allowed")]
     #[test_case(TestParams {
         // This case will calculate the hard expiry as:
-        // chain_length (10) - expiry_window (5) = 5, 
+        // chain_length (10) - expiry_window (5) = 5,
         // and at_block_height (5) == 5
         chain_length: 10,
         expiry_window: 5,
@@ -4573,7 +4573,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "hard_expiry_exact_block_allowed")]
     #[test_case(TestParams {
         // This case will calculate the hard expiry as:
-        // chain_length (10) - expiry_window (5) = 5, 
+        // chain_length (10) - expiry_window (5) = 5,
         // and at_block_height (4) < 5
         chain_length: 10,
         expiry_window: 5,
