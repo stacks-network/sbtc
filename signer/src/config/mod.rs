@@ -309,6 +309,9 @@ pub struct SignerConfig {
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for deposit decisions to retry to propagate.
     pub deposit_decisions_retry_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for withdrawal decisions to retry to propagate.
+    pub withdrawal_decisions_retry_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
@@ -499,6 +502,7 @@ impl Settings {
         // done.
         cfg_builder = cfg_builder.set_default("signer.context_window", 1000)?;
         cfg_builder = cfg_builder.set_default("signer.deposit_decisions_retry_window", 3)?;
+        cfg_builder = cfg_builder.set_default("signer.withdrawal_decisions_retry_window", 3)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
@@ -507,7 +511,7 @@ impl Settings {
             DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         )?;
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
-        cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 15)?;
+        cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 10)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
         cfg_builder = cfg_builder.set_default("signer.stacks_fees_max_ustx", 1_500_000)?;
 
@@ -632,6 +636,7 @@ mod tests {
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
+        assert_eq!(settings.signer.withdrawal_decisions_retry_window, 3);
         assert!(settings.signer.prometheus_exporter_endpoint.is_none());
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
@@ -648,7 +653,7 @@ mod tests {
         );
         assert_eq!(settings.signer.dkg_verification_window, 10);
         assert_eq!(settings.signer.dkg_min_bitcoin_block_height, None);
-        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
     }
 
     #[test]
@@ -965,6 +970,7 @@ mod tests {
         };
         remove_parameter("signer", "context_window");
         remove_parameter("signer", "deposit_decisions_retry_window");
+        remove_parameter("signer", "withdrawal_decisions_retry_window");
         remove_parameter("signer", "signer_round_max_duration");
         remove_parameter("signer", "bitcoin_presign_request_max_duration");
         remove_parameter("signer", "dkg_max_duration");
@@ -980,6 +986,7 @@ mod tests {
 
         assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
+        assert_eq!(settings.signer.withdrawal_decisions_retry_window, 3);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
             Duration::from_secs(30)
@@ -990,7 +997,7 @@ mod tests {
         );
         assert_eq!(settings.signer.dkg_max_duration, Duration::from_secs(120));
 
-        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(15));
+        assert_eq!(settings.emily.pagination_timeout, Duration::from_secs(10));
     }
 
     #[test]

@@ -12,7 +12,6 @@ use serde_json::json;
 use url::Url;
 
 use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
 use signer::bitcoin::MockBitcoinInteract;
 use signer::blocklist_client::BlocklistClient;
@@ -32,8 +31,10 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
+use testing_emily_client::apis::testing_api;
 
 use crate::setup::backfill_bitcoin_blocks;
+use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
 
 fn test_environment(
@@ -50,6 +51,7 @@ fn test_environment(
 > {
     let context_window = 6;
     let deposit_decisions_retry_window = 1;
+    let withdrawal_decisions_retry_window = 1;
 
     let test_model_parameters = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
@@ -70,6 +72,7 @@ fn test_environment(
         num_signers,
         context_window,
         deposit_decisions_retry_window,
+        withdrawal_decisions_retry_window,
         signing_threshold,
         test_model_parameters,
     }
@@ -179,6 +182,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
         context: ctx.clone(),
         context_window: 10000,
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
     };
@@ -264,6 +268,7 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         context: ctx.clone(),
         context_window: 10000,
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         // We generate a new private key here so that we know (with very
         // high probability) that this signer is not in the signer set.
@@ -314,7 +319,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(emily_client.config())
+    testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
 
@@ -347,6 +352,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
         context: ctx.clone(),
         context_window: 10000,
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         signer_private_key: PrivateKey::new(&mut rng),
     };
@@ -501,6 +507,7 @@ async fn blocklist_client_retry(num_failures: u8, failing_iters: u8) {
         blocklist_checker: Some(blocklist_client),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
     };
 
     // We need this so that there is a live "network". Otherwise we will error
@@ -535,6 +542,186 @@ async fn blocklist_client_retry(num_failures: u8, failing_iters: u8) {
         .await
         .unwrap();
     assert_eq!(votes.len(), 1);
+
+    testing::storage::drop_db(db).await;
+}
+
+#[test_case::test_case(true, false; "withdrawal not blocklisted")]
+#[test_case::test_case(true, true; "withdrawal blocklisted")]
+#[test_case::test_case(false, false; "deposit not blocklisted")]
+#[test_case::test_case(false, true; "deposit blocklisted")]
+#[test_log::test(tokio::test)]
+async fn do_not_procceed_with_blocked_addresses(is_withdrawal: bool, is_blocked: bool) {
+    let db = testing::storage::new_test_database().await;
+    let network = InMemoryNetwork::new();
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    let ctx = TestContext::builder()
+        .with_storage(db.clone())
+        .with_mocked_clients()
+        .build();
+
+    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+
+    // Creating test setup which will help store transactions and requests
+    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+
+    // Let's get the blockchain data into the database.
+    let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
+    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+
+    if is_withdrawal {
+        // For withdrawals we can store only request and dkg shares
+        setup.store_withdrawal_request(&db).await;
+    } else {
+        // We need to store the deposit request because of the foreign key
+        // constraint on the deposit_signers table.
+        setup.store_deposit_request(&db).await;
+        // In order to fetch the deposit request that we just stored, we need to
+        // store the deposit transaction.
+        setup.store_deposit_tx(&db).await;
+    }
+    // We check if the current signer is in the signing set. For this check we
+    // need a row in the dkg_shares table.
+    setup.store_dkg_shares(&db).await;
+
+    let signer_public_key = setup.aggregated_signer.keypair.public_key().into();
+
+    let deposit_requests = db
+        .get_pending_deposit_requests(&chain_tip, 100, &signer_public_key)
+        .await
+        .unwrap();
+    let withdrawal_requests = db
+        .get_pending_withdrawal_requests(&chain_tip, 100, &signer_public_key)
+        .await
+        .unwrap();
+    // There should only be the one deposit request that we just fetched.
+    if is_withdrawal {
+        assert_eq!(withdrawal_requests.len(), 1);
+    } else {
+        assert_eq!(deposit_requests.len(), 1);
+    }
+
+    let bitcoin_network = bitcoin::Network::from(ctx.config().signer.network);
+    let address_to_check = if is_withdrawal {
+        bitcoin::Address::from_script(
+            &withdrawal_requests.first().unwrap().recipient,
+            bitcoin_network.params(),
+        )
+        .unwrap()
+    } else {
+        bitcoin::Address::from_script(
+            &deposit_requests.first().unwrap().sender_script_pub_keys[0],
+            bitcoin_network.params(),
+        )
+        .unwrap()
+    };
+
+    // Now we mock the blocklist client
+    let mut blocklist_server = Server::new_async().await;
+    let mock_json = json!({
+        "is_blocklisted": is_blocked,
+        "severity": if is_blocked { "Severe"} else {"Low"},
+        "accept": !is_blocked,
+        "reason": if is_blocked {"Mock bad person address"} else { "Mock good person address"},
+    })
+    .to_string();
+
+    blocklist_server
+        .mock("GET", format!("/screen/{address_to_check}").as_str())
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(&mock_json)
+        .create_async()
+        .await;
+
+    let blocklist_client = BlocklistClient::with_base_url(blocklist_server.url());
+
+    let mut request_decider = RequestDeciderEventLoop {
+        network: network.connect(),
+        context: ctx.clone(),
+        context_window: 10000,
+        blocklist_checker: Some(blocklist_client),
+        signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
+        deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
+    };
+
+    // We need this so that there is a live "network". Otherwise we will error
+    // when trying to send a message at the end.
+    let _rec = ctx.get_signal_receiver();
+
+    // We shouldn't have any decisions or votes at the beginning
+    if is_withdrawal {
+        let request_id = withdrawal_requests.first().unwrap().request_id;
+        let block_hash = &withdrawal_requests.first().unwrap().block_hash;
+        let qualified_id = withdrawal_requests.first().unwrap().qualified_id();
+        let decisions = db
+            .get_withdrawal_signers(request_id, block_hash)
+            .await
+            .unwrap();
+        let votes = db
+            .get_withdrawal_request_signer_votes(&qualified_id, &signer_public_key)
+            .await
+            .unwrap();
+        assert!(decisions.is_empty());
+        assert!(votes.iter().all(|vote| vote.is_accepted.is_none()));
+    } else {
+        let outpoint = deposit_requests.first().unwrap().outpoint();
+        let votes = db
+            .get_deposit_signers(&outpoint.txid.into(), outpoint.vout)
+            .await
+            .expect("Failed to read deposit signer votes");
+        let decisions = db
+            .get_deposit_signer_decisions(&chain_tip, 20, &signer_public_key)
+            .await
+            .expect("Failed to read deposit signer decisions");
+        assert!(votes.is_empty());
+        assert!(decisions.is_empty());
+    }
+
+    // Handle requests
+    request_decider.handle_new_requests().await.unwrap();
+
+    // Check that after requests handled we have votes and decisions, and that they are
+    // following blocklist
+    if is_withdrawal {
+        let request_id = withdrawal_requests.first().unwrap().request_id;
+        let block_hash = &withdrawal_requests.first().unwrap().block_hash;
+        let qualified_id = withdrawal_requests.first().unwrap().qualified_id();
+
+        let decisions = db
+            .get_withdrawal_signers(request_id, block_hash)
+            .await
+            .unwrap();
+        let votes = db
+            .get_withdrawal_request_signer_votes(&qualified_id, &signer_public_key)
+            .await
+            .unwrap();
+
+        assert_eq!(decisions.len(), 1);
+        assert_eq!(decisions.last().unwrap().is_accepted, !is_blocked);
+        assert!(!votes.is_empty());
+        assert!(votes.iter().any(|vote| {
+            vote.signer_public_key == signer_public_key && vote.is_accepted.unwrap() == !is_blocked
+        }));
+    } else {
+        let outpoint = deposit_requests.first().unwrap().outpoint();
+        let votes = db
+            .get_deposit_signers(&outpoint.txid.into(), outpoint.vout)
+            .await
+            .expect("Failed to read deposit signer votes");
+        let decisions = db
+            .get_deposit_signer_decisions(&chain_tip, 20, &signer_public_key)
+            .await
+            .expect("Failed to read deposit signer decisions");
+
+        assert_eq!(votes.len(), 1);
+        assert_eq!(votes.last().unwrap().can_accept, !is_blocked);
+        assert_eq!(decisions.len(), 1);
+        assert_eq!(decisions.last().unwrap().can_accept, !is_blocked);
+    }
 
     testing::storage::drop_db(db).await;
 }

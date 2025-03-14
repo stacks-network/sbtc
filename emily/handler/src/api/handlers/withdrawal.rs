@@ -114,7 +114,7 @@ pub async fn get_withdrawals(
     operation_id = "getWithdrawalsForRecipient",
     path = "/withdrawal/recipient/{recipient}",
     params(
-        ("recipient" = String, Path, description = "the recpieint to search by when getting all withdrawals."),
+        ("recipient" = String, Path, description = "The recipient's hex-encoded scriptPubKey, used to filter withdrawals."),
         ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
         ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
     ),
@@ -161,6 +161,59 @@ pub async fn get_withdrawals_for_recipient(
         .map_or_else(Reply::into_response, Reply::into_response)
 }
 
+/// Get withdrawals by sender handler.
+#[utoipa::path(
+    get,
+    operation_id = "getWithdrawalsForSender",
+    path = "/withdrawal/sender/{sender}",
+    params(
+        ("sender" = String, Path, description = "The sender's Stacks principal, used to filter withdrawals."),
+        ("nextToken" = Option<String>, Query, description = "the next token value from the previous return of this api call."),
+        ("pageSize" = Option<u16>, Query, description = "the maximum number of items in the response list.")
+    ),
+    tag = "withdrawal",
+    responses(
+        (status = 200, description = "Withdrawals retrieved successfully", body = GetWithdrawalsResponse),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    )
+)]
+#[instrument(skip(context))]
+pub async fn get_withdrawals_for_sender(
+    context: EmilyContext,
+    sender: String,
+    query: BasicPaginationQuery,
+) -> impl warp::reply::Reply {
+    debug!("in get_withdrawals_for_sender: {sender}");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        sender: String,
+        query: BasicPaginationQuery,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        let (entries, next_token) = accessors::get_withdrawal_entries_by_sender(
+            &context,
+            &sender,
+            query.next_token,
+            query.page_size,
+        )
+        .await?;
+        // Convert data into resource types.
+        let withdrawals: Vec<WithdrawalInfo> =
+            entries.into_iter().map(|entry| entry.into()).collect();
+        // Create response.
+        let response = GetWithdrawalsResponse { withdrawals, next_token };
+        // Respond.
+        Ok(with_status(json(&response), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context, sender, query)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
 /// Create withdrawal handler.
 #[utoipa::path(
     post,
@@ -200,6 +253,7 @@ pub async fn create_withdrawal(
             stacks_block_hash,
             stacks_block_height,
             recipient,
+            sender,
             amount,
             parameters,
         } = body;
@@ -213,6 +267,7 @@ pub async fn create_withdrawal(
                 stacks_block_hash: stacks_block_hash.clone(),
             },
             recipient,
+            sender,
             amount,
             parameters: WithdrawalParametersEntry { max_fee: parameters.max_fee },
             history: vec![WithdrawalEvent {
@@ -250,18 +305,20 @@ pub async fn create_withdrawal(
     responses(
         (status = 201, description = "Withdrawals updated successfully", body = UpdateWithdrawalsResponse),
         (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Address not found", body = ErrorResponse),
         (status = 405, description = "Method not allowed", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     security(("ApiGatewayKey" = []))
 )]
-#[instrument(skip(context))]
+#[instrument(skip(context, api_key))]
 pub async fn update_withdrawals(
     context: EmilyContext,
     api_key: String,
     body: UpdateWithdrawalsRequestBody,
 ) -> impl warp::reply::Reply {
+    tracing::debug!("in update withdrawals");
     // Internal handler so `?` can be used correctly while still returning a reply.
     async fn handler(
         context: EmilyContext,
@@ -275,19 +332,32 @@ pub async fn update_withdrawals(
         // in order to enforce added stability to the API during a reorg.
         let api_state = accessors::get_api_state(&context).await?;
         api_state.error_if_reorganizing()?;
+
+        let is_trusted_key = context.settings.trusted_reorg_api_key == api_key;
+        // Signers are only allowed to update withdrawals to the accepted state.
+        if !is_trusted_key {
+            let is_unauthorized = body
+                .withdrawals
+                .iter()
+                .any(|withdrawal| withdrawal.status != Status::Accepted);
+
+            if is_unauthorized {
+                return Err(Error::Forbidden);
+            }
+        }
+
         // Validate request.
         let validated_request: ValidatedUpdateWithdrawalRequest = body.try_into()?;
 
         // Infer the new chainstates that would come from these withdrawal updates and then
         // attempt to update the chainstates.
-        let inferred_chainstates = validated_request.inferred_chainstates()?;
-        let can_reorg = context.settings.trusted_reorg_api_key == api_key;
+        let inferred_chainstates = validated_request.inferred_chainstates();
         for chainstate in inferred_chainstates {
             // TODO(TBD): Determine what happens if this occurs in multiple lambda
             // instances at once.
             crate::api::handlers::chainstate::add_chainstate_entry_or_reorg(
                 &context,
-                can_reorg,
+                is_trusted_key,
                 &chainstate,
             )
             .await?;
@@ -299,11 +369,36 @@ pub async fn update_withdrawals(
 
         // Loop through all updates and execute.
         for (index, update) in validated_request.withdrawals {
-            let updated_withdrawal =
-                accessors::pull_and_update_withdrawal_with_retry(&context, update, 15).await?;
-            updated_withdrawals.push((index, updated_withdrawal.try_into()?));
-        }
+            let request_id = update.request_id;
+            debug!(request_id, "updating withdrawal");
 
+            let updated_withdrawal = accessors::pull_and_update_withdrawal_with_retry(
+                &context,
+                update,
+                15,
+                is_trusted_key,
+            )
+            .await
+            .inspect_err(|error| {
+                tracing::error!(
+                    request_id,
+                    %error,
+                    "failed to update withdrawal",
+                );
+            })?;
+
+            let withdrawal: Withdrawal = updated_withdrawal.try_into().inspect_err(|error| {
+                // This should never happen, because the withdrawal was
+                // validated before being updated.
+                tracing::error!(
+                    request_id,
+                    %error,
+                    "failed to convert updated withdrawal",
+                );
+            })?;
+
+            updated_withdrawals.push((index, withdrawal));
+        }
         updated_withdrawals.sort_by_key(|(index, _)| *index);
         let withdrawals = updated_withdrawals
             .into_iter()

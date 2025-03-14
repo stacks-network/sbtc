@@ -6,7 +6,6 @@ Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**get_chain_tip**](ChainstateApi.md#get_chain_tip) | **GET** /chainstate | Get chain tip handler.
 [**get_chainstate_at_height**](ChainstateApi.md#get_chainstate_at_height) | **GET** /chainstate/{height} | Get chainstate handler.
-[**set_chainstate**](ChainstateApi.md#set_chainstate) | **POST** /chainstate | Set chainstate handler.
 
 
 
@@ -58,34 +57,6 @@ No authorization required
 ### HTTP request headers
 
 - **Content-Type**: Not defined
-- **Accept**: application/json
-
-[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
-
-
-## set_chainstate
-
-> models::Chainstate set_chainstate(chainstate)
-Set chainstate handler.
-
-### Parameters
-
-
-Name | Type | Description  | Required | Notes
-------------- | ------------- | ------------- | ------------- | -------------
-**chainstate** | [**Chainstate**](Chainstate.md) |  | [required] |
-
-### Return type
-
-[**models::Chainstate**](Chainstate.md)
-
-### Authorization
-
-[ApiGatewayKey](../README.md#ApiGatewayKey)
-
-### HTTP request headers
-
-- **Content-Type**: application/json
 - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

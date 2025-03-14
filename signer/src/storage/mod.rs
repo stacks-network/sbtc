@@ -6,6 +6,7 @@
 //! The canonical implementation of these traits is the [`postgres::PgStore`]
 //! allowing the signer to use a Postgres database to store data.
 
+#[cfg(any(test, feature = "testing"))]
 pub mod in_memory;
 pub mod model;
 pub mod postgres;
@@ -130,6 +131,15 @@ pub trait DbRead {
         context_window: u16,
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
+
+    /// Get all the withdrawal decisions for the given signer in the given window
+    /// of blocks.
+    fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalSigner>, Error>> + Send;
 
     /// Returns whether the given `signer_public_key` can provide signature
     /// shares for the deposit transaction.
@@ -416,12 +426,6 @@ pub trait DbRead {
         &self,
         sighash: &model::SigHash,
     ) -> impl Future<Output = Result<Option<(bool, PublicKeyXOnly)>, Error>> + Send;
-
-    /// Get all the request's withdrawal outputs
-    fn get_withdrawal_outputs(
-        &self,
-        id: &model::QualifiedRequestId,
-    ) -> impl Future<Output = Result<Vec<model::BitcoinWithdrawalOutput>, Error>> + Send;
 }
 
 /// Represents the ability to write data to the signer storage.

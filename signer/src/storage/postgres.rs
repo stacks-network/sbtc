@@ -334,7 +334,6 @@ impl PgStore {
     }
 
     /// Get a reference to the underlying pool.
-    #[cfg(any(test, feature = "testing"))]
     pub fn pool(&self) -> &sqlx::PgPool {
         &self.0
     }
@@ -742,9 +741,9 @@ impl PgStore {
     /// the deposit request, and whether it was confirmed on the blockchain
     /// that we just listed out.
     ///
-    /// `None` is returned if deposit request in the database (we always
-    /// write the associated transaction to the database for each deposit
-    /// so that cannot be the reason for why the query here returns
+    /// `None` is returned if no deposit request is in the database (we
+    /// always write the associated transaction to the database for each
+    /// deposit so that cannot be the reason for why the query here returns
     /// `None`).
     async fn get_deposit_request_status_summary(
         &self,
@@ -2306,6 +2305,10 @@ impl super::DbRead for PgStore {
         // - [X] get_swept_deposit_requests_does_not_return_unswept_deposit_requests
         // - [X] get_swept_deposit_requests_does_not_return_deposit_requests_with_responses
         // - [X] get_swept_deposit_requests_response_tx_reorged
+        //
+        // Note that this query may return completed requests if the stacks
+        // event is anchored to a bitcoin block that is outside the context
+        // window, while the sweep is still inside it.
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
@@ -2391,6 +2394,10 @@ impl super::DbRead for PgStore {
         // - [X] get_swept_withdrawal_requests_does_not_return_unswept_withdrawal_requests
         // - [X] get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_responses
         // - [X] get_swept_withdrawal_requests_response_tx_reorged
+        //
+        // Note that this query may return completed requests if the stacks
+        // event is anchored to a bitcoin block that is outside the context
+        // window, while the sweep is still inside it.
 
         let Some(stacks_chain_tip) = self.get_stacks_chain_tip(chain_tip).await? else {
             return Ok(Vec::new());
@@ -2425,7 +2432,8 @@ impl super::DbRead for PgStore {
                         ON bb.block_hash = parent.bitcoin_anchor
                 )
                 SELECT
-                    bwo.bitcoin_txid AS sweep_txid
+                    bwo.output_index AS output_index
+                  , bwo.bitcoin_txid AS sweep_txid
                   , bc_blocks.block_hash AS sweep_block_hash
                   , bc_blocks.block_height AS sweep_block_height
                   , wr.request_id
@@ -2449,7 +2457,8 @@ impl super::DbRead for PgStore {
                     ON sb.block_hash = wae.block_hash
 
                 GROUP BY
-                    bwo.bitcoin_txid
+                    bwo.output_index
+                  , bwo.bitcoin_txid
                   , bc_blocks.block_hash
                   , bc_blocks.block_height
                   , wr.request_id
@@ -2520,6 +2529,41 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::WithdrawalSigner>, Error> {
+        sqlx::query_as::<_, model::WithdrawalSigner>(
+            r#"
+            WITH target_block AS (
+                SELECT blocks.block_hash, blocks.created_at
+                FROM sbtc_signer.bitcoin_blockchain_of($1, $2) chain
+                JOIN sbtc_signer.bitcoin_blocks blocks USING (block_hash)
+                ORDER BY chain.block_height ASC
+                LIMIT 1
+            )
+            SELECT
+                ws.request_id
+              , ws.txid
+              , ws.block_hash
+              , ws.signer_pub_key
+              , ws.is_accepted
+
+            FROM sbtc_signer.withdrawal_signers ws
+            WHERE ws.signer_pub_key = $3
+              AND ws.created_at >= (SELECT created_at FROM target_block)
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(signer_public_key)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_deposit_signer_decisions(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -2536,11 +2580,11 @@ impl super::DbRead for PgStore {
                 LIMIT 1
             )
             SELECT
-                ds.txid,
-                ds.output_index,
-                ds.signer_pub_key,
-                ds.can_sign,
-                ds.can_accept
+                ds.txid
+              , ds.output_index
+              , ds.signer_pub_key
+              , ds.can_sign
+              , ds.can_accept
             FROM sbtc_signer.deposit_signers ds
             WHERE ds.signer_pub_key = $3
               AND ds.created_at >= (SELECT created_at FROM target_block)
@@ -2549,33 +2593,6 @@ impl super::DbRead for PgStore {
         .bind(chain_tip)
         .bind(i32::from(context_window))
         .bind(signer_public_key)
-        .fetch_all(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
-    async fn get_withdrawal_outputs(
-        &self,
-        id: &model::QualifiedRequestId,
-    ) -> Result<Vec<model::BitcoinWithdrawalOutput>, Error> {
-        sqlx::query_as::<_, model::BitcoinWithdrawalOutput>(
-            r#"
-            SELECT
-                bwo.bitcoin_txid
-              , bwo.bitcoin_chain_tip
-              , bwo.output_index
-              , bwo.request_id
-              , bwo.stacks_txid
-              , bwo.stacks_block_hash
-              , bwo.validation_result
-              , bwo.is_valid_tx
-            FROM sbtc_signer.bitcoin_withdrawals_outputs AS bwo
-            WHERE bwo.request_id = $1
-              AND bwo.stacks_block_hash = $2
-            "#,
-        )
-        .bind(i64::try_from(id.request_id).map_err(Error::ConversionDatabaseInt)?)
-        .bind(id.block_hash)
         .fetch_all(&self.0)
         .await
         .map_err(Error::SqlxQuery)

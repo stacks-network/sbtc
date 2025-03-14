@@ -1,80 +1,31 @@
-use std::sync::Arc;
-use std::time::Duration;
+use core::panic;
 
-use axum::extract::State;
-use axum::http::StatusCode;
 use bitcoin::PublicKey;
 use bitcoin::ScriptBuf;
-use core::panic;
-use emily_client::apis::deposit_api::create_deposit;
-use emily_client::apis::deposit_api::get_deposit;
-use emily_client::apis::testing_api::wipe_databases;
-use emily_client::apis::withdrawal_api::create_withdrawal;
-use emily_client::apis::withdrawal_api::get_withdrawal;
-use emily_client::models::CreateDepositRequestBody;
-use emily_client::models::CreateWithdrawalRequestBody;
-use emily_client::models::Status;
-use emily_client::models::WithdrawalParameters;
-use fake::Fake;
-use rand::rngs::OsRng;
+
 use sbtc::events::RegistryEvent;
 use sbtc::events::TxInfo;
 use sbtc::webhooks::NewBlockEvent;
-use signer::api::new_block_handler;
-use signer::api::ApiState;
-use signer::bitcoin::MockBitcoinInteract;
-use signer::context::Context;
-use signer::emily_client::EmilyClient;
-use signer::stacks::api::MockStacksInteract;
-use signer::storage::in_memory::Store;
-use signer::storage::model::DepositRequest;
-use signer::storage::DbWrite as _;
-use signer::testing::context::BuildContext;
-use signer::testing::context::ConfigureBitcoinClient;
-use signer::testing::context::ConfigureEmilyClient;
-use signer::testing::context::ConfigureStacksClient;
-use signer::testing::context::ConfigureStorage;
-use signer::testing::context::TestContext;
-use signer::testing::context::WrappedMock;
-use url::Url;
+use testing_emily_client::apis::{deposit_api, new_block_api, withdrawal_api};
+use testing_emily_client::models::{
+    CreateDepositRequestBody, CreateWithdrawalRequestBody, Status, WithdrawalParameters,
+};
 
-async fn test_context() -> TestContext<
-    Arc<tokio::sync::Mutex<Store>>,
-    WrappedMock<MockBitcoinInteract>,
-    WrappedMock<MockStacksInteract>,
-    EmilyClient,
-> {
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
-    let stacks_client = WrappedMock::default();
+use crate::common::clean_setup;
 
-    TestContext::builder()
-        .with_in_memory_storage()
-        // .with_storage(db.clone())
-        .with_mocked_bitcoin_client()
-        .with_stacks_client(stacks_client.clone())
-        .with_emily_client(emily_client.clone())
-        .build()
-}
-
-const CREATE_DEPOSIT_VALID: &str =
-    include_str!("../../../emily/handler/tests/fixtures/create-deposit-valid-testnet.json");
+const CREATE_DEPOSIT_VALID: &str = include_str!("../fixtures/create-deposit-valid-testnet.json");
 
 const COMPLETED_VALID_DEPOSIT_WEBHOOK: &str =
-    include_str!("../../../emily/handler/tests/fixtures/completed-deposit-testnet-event.json");
+    include_str!("../fixtures/completed-deposit-testnet-event.json");
 
 const WITHDRAWAL_ACCEPT_WEBHOOK: &str =
-    include_str!("../../tests/fixtures/withdrawal-accept-event.json");
+    include_str!("../../../../signer/tests/fixtures/withdrawal-accept-event.json");
 
 const WITHDRAWAL_CREATE_WEBHOOK: &str =
-    include_str!("../../tests/fixtures/withdrawal-create-event.json");
+    include_str!("../../../../signer/tests/fixtures/withdrawal-create-event.json");
 
 const WITHDRAWAL_REJECT_WEBHOOK: &str =
-    include_str!("../../tests/fixtures/withdrawal-reject-event.json");
+    include_str!("../../../../signer/tests/fixtures/withdrawal-reject-event.json");
 
 /// Utility function to parse the webhook body and extract the RegistryEvent variant
 /// that matches the expected variant.
@@ -106,14 +57,7 @@ where
 /// The handler should update the chain state in Emily and mark the deposit as confirmed.
 #[tokio::test]
 async fn test_new_blocks_sends_update_deposits_to_emily() {
-    let context = test_context().await;
-    let state = State(ApiState { ctx: context.clone() });
-    let emily_context = state.ctx.emily_client.config();
-
-    // Wipe the Emily database to start fresh
-    wipe_databases(&emily_context)
-        .await
-        .expect("Wiping Emily database in test setup failed.");
+    let configuration = clean_setup().await;
 
     let body = COMPLETED_VALID_DEPOSIT_WEBHOOK.to_string();
     let deposit_completed_event = get_registry_event_from_webhook(&body, |event| match event {
@@ -121,19 +65,6 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         _ => panic!("Expected CompletedDeposit event"),
     });
     let bitcoin_txid = deposit_completed_event.outpoint.txid.to_string();
-
-    // Insert a dummy deposit request into the database. This will be retrieved by
-    // handle_completed_deposit to compute the fee paid.
-    let mut deposit: DepositRequest = fake::Faker.fake_with_rng(&mut OsRng);
-    deposit.amount = deposit_completed_event.amount;
-    deposit.txid = deposit_completed_event.outpoint.txid.into();
-    deposit.output_index = deposit_completed_event.outpoint.vout;
-
-    context
-        .get_storage_mut()
-        .write_deposit_request(&deposit)
-        .await
-        .expect("failed to insert dummy deposit request");
 
     // Add the deposit request to Emily
     let request: CreateDepositRequestBody =
@@ -145,22 +76,23 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
         reclaim_script: request.reclaim_script,
         transaction_hex: request.transaction_hex,
     };
-    let resp = create_deposit(&emily_context, create_deposity_req).await;
-    assert!(resp.is_ok());
+    deposit_api::create_deposit(&configuration, create_deposity_req)
+        .await
+        .expect("Failed to create deposit request");
 
-    let resp = new_block_handler(state.clone(), body).await;
-    assert_eq!(resp, StatusCode::OK);
+    new_block_api::new_block(&configuration, &body)
+        .await
+        .expect("Failed to send new block event");
 
     // Check that the deposit is confirmed
-    let resp = get_deposit(
-        &emily_context,
+    let resp = deposit_api::get_deposit(
+        &configuration,
         &bitcoin_txid,
         &deposit_completed_event.outpoint.vout.to_string(),
     )
-    .await;
-    assert!(resp.is_ok());
+    .await
+    .expect("Failed to get deposit request");
 
-    let resp = resp.unwrap();
     assert_eq!(resp.bitcoin_txid, bitcoin_txid);
     assert_eq!(resp.status, Status::Confirmed);
     assert!(resp.fulfillment.is_some());
@@ -171,28 +103,21 @@ async fn test_new_blocks_sends_update_deposits_to_emily() {
 /// The handler should update the chain state in Emily and mark the withdrawal as pending.
 #[tokio::test]
 async fn test_new_blocks_sends_create_withdrawal_request() {
-    let context = test_context().await;
-    let state = State(ApiState { ctx: context.clone() });
-    let emily_context = state.ctx.emily_client.config();
-
-    // Wipe the Emily database to start fresh
-    wipe_databases(&emily_context)
-        .await
-        .expect("Wiping Emily database in test setup failed.");
-
+    let configuration = clean_setup().await;
     let body = WITHDRAWAL_CREATE_WEBHOOK.to_string();
     let withdrawal_event = get_registry_event_from_webhook(&body, |event| match event {
         RegistryEvent::WithdrawalCreate(event) => Some(event),
         _ => panic!("Expected WithdrawalCreate event"),
     });
 
-    let resp = new_block_handler(state.clone(), body).await;
-    assert_eq!(resp, StatusCode::OK);
+    new_block_api::new_block(&configuration, &body)
+        .await
+        .expect("Failed to send new block event");
 
+    let withdrawal = withdrawal_api::get_withdrawal(&configuration, withdrawal_event.request_id)
+        .await
+        .expect("Failed to get withdrawal request");
     // Check that the withdrawal is confirmed
-    let resp = get_withdrawal(&emily_context, withdrawal_event.request_id).await;
-    assert!(resp.is_ok());
-    let withdrawal = resp.unwrap();
     assert_eq!(withdrawal.status, Status::Pending);
     assert!(withdrawal.fulfillment.is_none());
 }
@@ -202,14 +127,7 @@ async fn test_new_blocks_sends_create_withdrawal_request() {
 /// The handler should update the chain state in Emily and mark the withdrawal as confirmed.
 #[tokio::test]
 async fn test_new_blocks_sends_withdrawal_accept_update() {
-    let context = test_context().await;
-    let state = State(ApiState { ctx: context.clone() });
-    let emily_context = state.ctx.emily_client.config();
-
-    // Wipe the Emily database to start fresh
-    wipe_databases(&emily_context)
-        .await
-        .expect("Wiping Emily database in test setup failed.");
+    let configuration = clean_setup().await;
 
     let body = WITHDRAWAL_ACCEPT_WEBHOOK.to_string();
     let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
@@ -223,18 +141,23 @@ async fn test_new_blocks_sends_withdrawal_accept_update() {
         amount: 100,
         parameters: Box::new(WithdrawalParameters { max_fee: 10 }),
         recipient: ScriptBuf::new_p2pk(&pubkey).to_hex_string(),
+        sender: "SN1Z0WW5SMN4J99A1G1725PAB8H24CWNA7Z8H7214.my-contract".to_string(),
         request_id: withdrawal_accept_event.request_id,
         stacks_block_hash: withdrawal_accept_event.block_id.to_hex(),
         stacks_block_height: new_block_event.block_height,
     };
-    let resp = create_withdrawal(&emily_context, withdrawal_request).await;
-    assert!(resp.is_ok());
 
-    let resp = new_block_handler(state.clone(), body).await;
-    assert_eq!(resp, StatusCode::OK);
+    withdrawal_api::create_withdrawal(&configuration, withdrawal_request)
+        .await
+        .expect("Failed to create withdrawal request");
+
+    new_block_api::new_block(&configuration, &body)
+        .await
+        .expect("Failed to send new block event");
 
     // Check that the withdrawal is confirmed
-    let resp = get_withdrawal(&emily_context, withdrawal_accept_event.request_id).await;
+    let resp =
+        withdrawal_api::get_withdrawal(&configuration, withdrawal_accept_event.request_id).await;
     assert!(resp.is_ok());
     let withdrawal = resp.unwrap();
     assert_eq!(withdrawal.status, Status::Confirmed);
@@ -246,14 +169,7 @@ async fn test_new_blocks_sends_withdrawal_accept_update() {
 /// The handler should update the chain state in Emily and mark the withdrawal as failed.
 #[tokio::test]
 async fn test_new_blocks_sends_withdrawal_reject_update() {
-    let context = test_context().await;
-    let state = State(ApiState { ctx: context.clone() });
-    let emily_context = state.ctx.emily_client.config();
-
-    // Wipe the Emily database to start fresh
-    wipe_databases(&emily_context)
-        .await
-        .expect("Wiping Emily database in test setup failed.");
+    let configuration = clean_setup().await;
 
     let body = WITHDRAWAL_REJECT_WEBHOOK.to_string();
     let new_block_event = serde_json::from_str::<NewBlockEvent>(&body).unwrap();
@@ -268,21 +184,22 @@ async fn test_new_blocks_sends_withdrawal_reject_update() {
         amount: 100,
         parameters: Box::new(WithdrawalParameters { max_fee: 10 }),
         recipient: ScriptBuf::new_p2pk(&pubkey).to_hex_string(),
+        sender: "SN1Z0WW5SMN4J99A1G1725PAB8H24CWNA7Z8H7214.my-contract".to_string(),
         request_id: withdrawal_reject_event.request_id,
         stacks_block_hash: withdrawal_reject_event.block_id.to_hex(),
         stacks_block_height: new_block_event.block_height,
     };
-    let resp: Result<
-        emily_client::models::Withdrawal,
-        emily_client::apis::Error<emily_client::apis::withdrawal_api::CreateWithdrawalError>,
-    > = create_withdrawal(&emily_context, withdrawal_request).await;
-    assert!(resp.is_ok());
+    withdrawal_api::create_withdrawal(&configuration, withdrawal_request)
+        .await
+        .expect("Failed to create withdrawal request");
 
-    let resp = new_block_handler(state.clone(), body).await;
-    assert_eq!(resp, StatusCode::OK);
+    new_block_api::new_block(&configuration, &body)
+        .await
+        .expect("Failed to send new block event");
 
     // Check that the withdrawal is failed and has no fulfillment
-    let resp = get_withdrawal(&emily_context, withdrawal_reject_event.request_id).await;
+    let resp =
+        withdrawal_api::get_withdrawal(&configuration, withdrawal_reject_event.request_id).await;
     assert!(resp.is_ok());
     let withdrawal = resp.unwrap();
     assert_eq!(withdrawal.status, Status::Failed);
