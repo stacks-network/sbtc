@@ -35,8 +35,15 @@ pub enum Error {
     #[error("error estimating segment size")]
     SizeEstimation,
 
+    // TODO: clippy was complaining about the missing docs
+    /// The segmenter encountered an empty range
     #[error("the segmenter encountered an empty range: {start} to {end}")]
-    EmptyRange { start: usize, end: usize },
+    EmptyRange {
+        /// Range start
+        start: usize,
+        /// Range end
+        end: usize,
+    },
 }
 
 /// Trait for segmenting integer values into optimal segments.

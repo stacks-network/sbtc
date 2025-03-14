@@ -44,8 +44,24 @@ pub struct TxOutput {
     #[sqlx(try_from = "i64")]
     #[cfg_attr(feature = "testing", dummy(faker = "1_000_000..1_000_000_000"))]
     pub amount: u64,
-    /// The scriptPubKey locking the output.
+    /// The type of output.
     pub output_type: TxOutputType,
+}
+
+/// A bitcoin transaction output (TXO) related to a withdrawal.
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord, sqlx::FromRow)]
+#[cfg_attr(feature = "testing", derive(fake::Dummy))]
+pub struct WithdrawalTxOutput {
+    /// The Bitcoin transaction id.
+    pub txid: BitcoinTxId,
+    /// The index of the output in the sBTC sweep transaction.
+    #[sqlx(try_from = "i32")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i32::MAX as u32"))]
+    pub output_index: u32,
+    /// The withdrawal request id.
+    #[sqlx(try_from = "i64")]
+    #[cfg_attr(feature = "testing", dummy(faker = "0..i64::MAX as u64"))]
+    pub request_id: u64,
 }
 
 /// A bitcoin transaction output being spent as an input in a transaction.
