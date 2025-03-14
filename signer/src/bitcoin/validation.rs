@@ -229,12 +229,12 @@ impl BitcoinPreSignRequest {
             .try_fold(withdrawn_total, |acc, (report, _)| {
                 let sum = acc.saturating_add(report.amount);
                 if sum > max_mintable {
-                    return Err(Error::ExceedsSbtcWithdrawalCap {
-                        withdrawal_amounts: sum,
-                        withdrawal_cap: max_mintable,
-                        withdrawal_cap_blocks: 150,
+                    return Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
+                        amounts: sum,
+                        cap: max_mintable,
+                        cap_blocks: 150,
                         withdrawn_total,
-                    });
+                    }));
                 }
                 Ok(sum)
             })?;
@@ -660,6 +660,20 @@ pub enum WithdrawalValidationResult {
     /// The signer does not have a record of the withdrawal request in
     /// their database.
     Unknown,
+}
+
+/// A context struct for when a collection of withdrawals exceeds the
+/// rolling withdrawal limits.
+#[derive(Debug, PartialEq, Eq)]
+pub struct WithdrawalCapContext {
+    /// Total deposit amount in sats
+    pub amounts: u64,
+    /// The rolling withdrawal maximum
+    pub cap: u64,
+    /// The number of bitcoin blocks that are used in the rolling withdrawal cap
+    pub cap_blocks: u64,
+    /// The currently withdrawal total over the last N bitcoin blocks.
+    pub withdrawn_total: u64,
 }
 
 impl WithdrawalValidationResult {
@@ -2109,24 +2123,24 @@ mod tests {
         vec![5000, 5001],
         Amount::from_sat(10_000),
         Amount::from_sat(0),
-        Err(Error::ExceedsSbtcWithdrawalCap {
-            withdrawal_amounts: 10_001,
-            withdrawal_cap: 10_000,
-            withdrawal_cap_blocks: 150,
+        Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
+            amounts: 10_001,
+            cap: 10_000,
+            cap_blocks: 150,
             withdrawn_total: 0,
-        });
+        }));
         "should_reject_withdrawals_over_rolling_cap"
     )]
     #[test_case(
         vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
         Amount::MAX_MONEY,
         Amount::from_sat(1),
-        Err(Error::ExceedsSbtcWithdrawalCap {
-            withdrawal_amounts: Amount::MAX_MONEY.to_sat() + 1,
-            withdrawal_cap: Amount::MAX_MONEY.to_sat() - 1,
-            withdrawal_cap_blocks: 150,
+        Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
+            amounts: Amount::MAX_MONEY.to_sat() + 1,
+            cap: Amount::MAX_MONEY.to_sat() - 1,
+            cap_blocks: 150,
             withdrawn_total: 1,
-        });
+        }));
         "filter_out_withdrawals_over_rolling_cap"
     )]
     fn test_validate_withdrawal_limits(
@@ -2165,23 +2179,10 @@ mod tests {
         match (result, expected) {
             (Ok(()), Ok(())) => {}
             (
-                Err(Error::ExceedsSbtcWithdrawalCap {
-                    withdrawal_amounts,
-                    withdrawal_cap,
-                    withdrawal_cap_blocks,
-                    withdrawn_total,
-                }),
-                Err(Error::ExceedsSbtcWithdrawalCap {
-                    withdrawal_amounts: expected_withdrawal_amounts,
-                    withdrawal_cap: expected_withdrawal_cap,
-                    withdrawal_cap_blocks: expected_withdrawal_cap_blocks,
-                    withdrawn_total: expected_withdrawn_total,
-                }),
+                Err(Error::ExceedsWithdrawalCap(actual_context)),
+                Err(Error::ExceedsWithdrawalCap(expected_context)),
             ) => {
-                assert_eq!(withdrawal_amounts, expected_withdrawal_amounts);
-                assert_eq!(withdrawal_cap, expected_withdrawal_cap);
-                assert_eq!(withdrawal_cap_blocks, expected_withdrawal_cap_blocks);
-                assert_eq!(withdrawn_total, expected_withdrawn_total);
+                assert_eq!(actual_context, expected_context);
             }
             (result, expected) => panic!("Expected {expected:?}, got {result:?}"),
         };

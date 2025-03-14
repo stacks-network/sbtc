@@ -3,6 +3,7 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::bitcoin::validation::WithdrawalCapContext;
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
 use crate::dkg;
@@ -680,18 +681,10 @@ pub enum Error {
     },
 
     /// Error when withdrawal requests would exceed sBTC's rolling withdrawal caps
-    #[error("total withdrawal amounts ({withdrawal_amounts}) exceeds rolling caps ({withdrawal_cap} over
-            {withdrawal_cap_blocks}) with the currently withdrawn total {withdrawn_total})")]
-    ExceedsSbtcWithdrawalCap {
-        /// Total deposit amount in sats
-        withdrawal_amounts: u64,
-        /// The rolling withdrawal maximum
-        withdrawal_cap: u64,
-        /// The number of bitcoin blocks that are used in the rolling withdrawal cap
-        withdrawal_cap_blocks: u64,
-        /// The currently withdrawal total over the last N bitcoin blocks.
-        withdrawn_total: u64,
-    },
+    #[error("total withdrawal amounts ({amounts}) exceeds rolling caps ({cap} over
+            {cap_blocks}) with the currently withdrawn total {withdrawn_total})", 
+            amounts = .0.amounts, cap = .0.cap, cap_blocks = .0.cap_blocks, withdrawn_total = .0.withdrawn_total)]
+    ExceedsWithdrawalCap(WithdrawalCapContext),
 
     /// An error which can be used in test code instead of `unimplemented!()` or
     /// other alternatives, so that an an actual error is returned instead of
