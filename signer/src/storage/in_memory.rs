@@ -832,6 +832,14 @@ impl super::DbRead for SharedStore {
         unimplemented!()
     }
 
+    async fn compute_withdrawn_total(
+        &self,
+        _: &model::BitcoinBlockHash,
+        _: u16,
+    ) -> Result<u64, Error> {
+        unimplemented!()
+    }
+
     async fn get_bitcoin_tx(
         &self,
         txid: &model::BitcoinTxId,
