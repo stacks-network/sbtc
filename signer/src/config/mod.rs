@@ -559,18 +559,17 @@ impl Validatable for StacksConfig {
 mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
+    use std::time::Duration;
 
     use tempfile;
     use toml_edit::DocumentMut;
 
     use crate::config::serialization::try_parse_p2p_multiaddr;
-
     use crate::error::Error;
     use crate::testing::clear_env;
 
-    use std::time::Duration;
-
     use super::*;
+    use test_case::test_case;
 
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
@@ -1011,28 +1010,16 @@ mod tests {
         );
     }
 
-    #[test]
-    fn zero_values_for_nonzero_fields_fail_in_signer_config() {
-        fn test_one(field: &str) {
-            clear_env();
-            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
-            let _ = Settings::new_from_default_config()
-                .expect_err(&format!("Value for {field} must be non zero"));
-        }
-        test_one("stacks_fees_max_ustx");
-    }
+    #[test_case("dkg_max_duration" ; "dkg_max_duration")]
+    #[test_case("bitcoin_presign_request_max_duration" ; "bitcoin_presign_request_max_duration")]
+    #[test_case("signer_round_max_duration" ; "signer_round_max_duration")]
+    #[test_case("stacks_fees_max_ustx" ; "stacks_fees_max_ustx")]
+    fn zero_values_for_nonzero_fields_fail_in_signer_config(field: &str) {
+        clear_env();
 
-    #[test]
-    fn zero_durations_fails_in_signer_config() {
-        fn test_one(field: &str) {
-            clear_env();
-            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
-            let _ = Settings::new_from_default_config()
-                .expect_err(&format!("Duration for {field} must be non zero"));
-        }
-        test_one("dkg_max_duration");
-        test_one("bitcoin_presign_request_max_duration");
-        test_one("signer_round_max_duration");
+        std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+
+        Settings::new_from_default_config().expect_err("value for must be non zero");
     }
 
     #[test]
