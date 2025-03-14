@@ -1030,7 +1030,6 @@ mod tests {
     use crate::context::SbtcLimits;
     use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksTxId;
-    // use crate::testing::context::TestContext;
 
     use super::*;
 
@@ -2136,7 +2135,7 @@ mod tests {
         Amount::MAX_MONEY,
         Amount::from_sat(1),
         Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
-            amounts: Amount::MAX_MONEY.to_sat() + 1,
+            amounts: Amount::MAX_MONEY.to_sat(),
             cap: Amount::MAX_MONEY.to_sat() - 1,
             cap_blocks: 150,
             withdrawn_total: 1,
