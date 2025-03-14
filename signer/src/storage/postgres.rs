@@ -1788,6 +1788,33 @@ impl super::DbRead for PgStore {
         }))
     }
 
+    async fn compute_withdrawn_total(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> Result<u64, Error> {
+        let total_amount = sqlx::query_scalar::<_, Option<i64>>(
+            r#"
+            SELECT SUM(bto.amount)::BIGINT
+            FROM sbtc_signer.bitcoin_tx_outputs AS bto
+            JOIN sbtc_signer.bitcoin_transactions AS bt
+              ON bt.txid = bto.txid
+            JOIN bitcoin_blockchain_of($1, $2) AS bbo
+              ON bbo.block_hash = bt.block_hash
+            WHERE bto.output_type = 'withdrawal'
+            "#,
+        )
+        .bind(bitcoin_chain_tip)
+        .bind(i32::from(context_window))
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // Amounts are always positive in the database, so this conversion
+        // is always fine.
+        u64::try_from(total_amount.unwrap_or(0)).map_err(|_| Error::TypeConversion)
+    }
+
     async fn get_bitcoin_blocks_with_transaction(
         &self,
         txid: &model::BitcoinTxId,
