@@ -5,7 +5,6 @@ use std::time::Duration;
 use crate::context::Context;
 use crate::keys::PrivateKey;
 use libp2p::core::muxing::StreamMuxerBox;
-use libp2p::core::transport::dummy::DummyTransport;
 use libp2p::core::upgrade::Version;
 use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
@@ -21,7 +20,7 @@ use rand::SeedableRng as _;
 use tokio::sync::Mutex;
 
 use super::errors::SignerSwarmError;
-use super::event_loop;
+use super::{bootstrap, event_loop};
 
 /// Define the behaviors of the [`SignerSwarm`] libp2p network.
 #[derive(NetworkBehaviour)]
@@ -33,13 +32,20 @@ pub struct SignerBehavior {
     pub identify: identify::Behaviour,
     pub autonat_client: autonat::v2::client::Behaviour<StdRng>,
     pub autonat_server: autonat::v2::server::Behaviour<StdRng>,
+    pub bootstrap: bootstrap::Behavior,
+}
+
+pub struct SignerSwarmConfig {
+    pub enable_mdns: bool,
+    pub initial_bootstrap_delay: Duration,
+    pub seed_addresses: Vec<Multiaddr>,
 }
 
 impl SignerBehavior {
-    pub fn new(keypair: Keypair, enable_mdns: bool) -> Result<Self, SignerSwarmError> {
+    pub fn new(keypair: Keypair, config: SignerSwarmConfig) -> Result<Self, SignerSwarmError> {
         let local_peer_id = keypair.public().to_peer_id();
 
-        let mdns = if enable_mdns {
+        let mdns = if config.enable_mdns {
             Some(
                 mdns::tokio::Behaviour::new(mdns::Config::default(), local_peer_id)
                     .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?,
@@ -62,14 +68,21 @@ impl SignerBehavior {
             keypair.public(),
         ));
 
+        let bootstrap_config = bootstrap::Config::new(local_peer_id)
+            .with_initial_delay(config.initial_bootstrap_delay)
+            .add_seed_addresses(config.seed_addresses);
+
+        let bootstrap = bootstrap::Behavior::new(bootstrap_config);
+
         Ok(Self {
             gossipsub: Self::gossipsub(&keypair)?,
             mdns,
-            kademlia: Self::kademlia(&local_peer_id),
+            kademlia: Self::kademlia(local_peer_id),
             ping: Default::default(),
             identify,
             autonat_client,
             autonat_server,
+            bootstrap,
         })
     }
 
@@ -96,13 +109,12 @@ impl SignerBehavior {
     }
 
     /// Create a new kademlia behavior.
-    fn kademlia(peer_id: &PeerId) -> kad::Behaviour<MemoryStore> {
+    fn kademlia(peer_id: PeerId) -> kad::Behaviour<MemoryStore> {
         let config = kad::Config::new(kad::PROTOCOL_NAME)
             .disjoint_query_paths(true)
             .to_owned();
 
-        let mut kademlia =
-            kad::Behaviour::with_config(*peer_id, MemoryStore::new(*peer_id), config);
+        let mut kademlia = kad::Behaviour::with_config(peer_id, MemoryStore::new(peer_id), config);
         kademlia.set_mode(Some(kad::Mode::Server));
         kademlia
     }
@@ -115,9 +127,9 @@ pub struct SignerSwarmBuilder<'a> {
     seed_addrs: Vec<Multiaddr>,
     external_addresses: Vec<Multiaddr>,
     enable_mdns: bool,
-    enable_tcp_transport: bool,
     enable_quic_transport: bool,
     enable_memory_transport: bool,
+    initial_bootstrap_delay: Duration,
 }
 
 impl<'a> SignerSwarmBuilder<'a> {
@@ -129,21 +141,15 @@ impl<'a> SignerSwarmBuilder<'a> {
             seed_addrs: Vec::new(),
             external_addresses: Vec::new(),
             enable_mdns: false,
-            enable_tcp_transport: true,
             enable_quic_transport: false,
             enable_memory_transport: false,
+            initial_bootstrap_delay: Duration::ZERO,
         }
     }
 
     /// Sets whether or not this swarm should use mdns.
     pub fn enable_mdns(mut self, use_mdns: bool) -> Self {
         self.enable_mdns = use_mdns;
-        self
-    }
-
-    /// Sets whether or not this swarm should use the TCP transport.
-    pub fn enable_tcp_transport(mut self, enable: bool) -> Self {
-        self.enable_tcp_transport = enable;
         self
     }
 
@@ -213,31 +219,35 @@ impl<'a> SignerSwarmBuilder<'a> {
         self
     }
 
+    /// Set the initial bootstrap delay.
+    pub fn with_initial_bootstrap_delay(mut self, delay: Duration) -> Self {
+        self.initial_bootstrap_delay = delay;
+        self
+    }
+
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
         let keypair: Keypair = (*self.private_key).into();
-        let behavior = SignerBehavior::new(keypair.clone(), self.enable_mdns)?;
+        let swarm_config = SignerSwarmConfig {
+            enable_mdns: self.enable_mdns,
+            initial_bootstrap_delay: self.initial_bootstrap_delay,
+            seed_addresses: self.seed_addrs,
+        };
+        let behavior = SignerBehavior::new(keypair.clone(), swarm_config)?;
         let noise =
             noise::Config::new(&keypair).map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
         let yamux = yamux::Config::default();
         let swarm_config = libp2p::swarm::Config::with_tokio_executor()
             .with_idle_connection_timeout(Duration::from_secs(60));
+        let tcp_config = tcp::Config::default().nodelay(true);
 
-        // Start with a dummy transport, and add the transports that are enabled.
-        let mut transport = DummyTransport::new().boxed();
-
-        // If TCP transport is enabled, add it to the transport.
-        if self.enable_tcp_transport {
-            let tcp_transport = tcp::tokio::Transport::default()
-                .upgrade(Version::V1)
-                .authenticate(noise.clone())
-                .multiplex(yamux.clone())
-                .boxed();
-            transport = transport
-                .or_transport(tcp_transport)
-                .map(|either, _| either.into_inner())
-                .boxed();
-        }
+        // Start building the transport with the TCP transport, which should always
+        // be enabled.
+        let mut transport = tcp::tokio::Transport::new(tcp_config)
+            .upgrade(Version::V1)
+            .authenticate(noise.clone())
+            .multiplex(yamux.clone())
+            .boxed();
 
         // If QUIC transport is enabled, add it to the transport.
         if self.enable_quic_transport {
@@ -281,7 +291,6 @@ impl<'a> SignerSwarmBuilder<'a> {
             keypair,
             swarm: Arc::new(Mutex::new(swarm)),
             listen_addrs: self.listen_on,
-            seed_addrs: self.seed_addrs,
             external_addresses: self.external_addresses,
         })
     }
@@ -292,7 +301,6 @@ pub struct SignerSwarm {
     keypair: Keypair,
     swarm: Arc<Mutex<Swarm<SignerBehavior>>>,
     listen_addrs: Vec<Multiaddr>,
-    seed_addrs: Vec<Multiaddr>,
     external_addresses: Vec<Multiaddr>,
 }
 
@@ -319,33 +327,21 @@ impl SignerSwarm {
     /// Start the [`SignerSwarm`] and run the event loop. This function will block until the
     /// swarm is stopped (either by receiving a shutdown signal or an unrecoverable error).
     pub async fn start(&mut self, ctx: &impl Context) -> Result<(), SignerSwarmError> {
-        let local_peer_id = *self.swarm.lock().await.local_peer_id();
-        tracing::info!(%local_peer_id, "starting signer swarm");
+        // Separate scope to ensure that the lock is released before the event loop is run.
+        {
+            let mut swarm = self.swarm.lock().await;
+            tracing::info!(local_peer_id = %swarm.local_peer_id(), "starting signer swarm");
 
-        // Start listening on the listen addresses.
-        for addr in self.listen_addrs.iter() {
-            self.swarm
-                .lock()
-                .await
-                .listen_on(addr.clone())
-                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
-        }
+            // Start listening on the listen addresses.
+            for addr in self.listen_addrs.iter() {
+                swarm
+                    .listen_on(addr.clone())
+                    .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+            }
 
-        // Dial the seed addresses.
-        for addr in self.seed_addrs.iter() {
-            self.swarm
-                .lock()
-                .await
-                .dial(addr.clone())
-                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
-        }
-
-        for addr in self.external_addresses.iter() {
-            self.swarm
-                .lock()
-                .await
-                .dial(addr.clone())
-                .map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
+            for addr in self.external_addresses.iter() {
+                swarm.add_external_address(addr.clone());
+            }
         }
 
         // Run the event loop, blocking until its completion.
@@ -374,7 +370,6 @@ mod tests {
         let swarm = builder.build().unwrap();
 
         assert!(swarm.listen_addrs.contains(&addr));
-        assert!(swarm.seed_addrs.contains(&addr));
         assert_eq!(
             swarm.swarm.lock().await.local_peer_id(),
             &PeerId::from_public_key(&keypair.public())
@@ -469,7 +464,6 @@ mod tests {
         let private_key = PrivateKey::new(&mut rand::thread_rng());
         let builder = SignerSwarmBuilder::new(&private_key);
         let mut swarm = builder
-            .enable_tcp_transport(true)
             .add_listen_endpoint("/ip4/127.0.0.1/tcp/0".parse().unwrap())
             .build()
             .unwrap();
@@ -486,28 +480,6 @@ mod tests {
             .await
             .expect("Task failed")
             .expect("Swarm failed to start");
-    }
-
-    #[tokio::test]
-    async fn swarm_with_tcp_transport_disabled() {
-        let private_key = PrivateKey::new(&mut rand::thread_rng());
-        let builder = SignerSwarmBuilder::new(&private_key);
-        let mut swarm = builder
-            .enable_tcp_transport(false)
-            .add_listen_endpoint("/ip4/127.0.0.1/tcp/0".parse().unwrap())
-            .build()
-            .unwrap();
-
-        let ctx = TestContext::default_mocked();
-        let term = ctx.get_termination_handle();
-
-        let handle = tokio::spawn(async move { swarm.start(&ctx).await });
-
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        term.signal_shutdown();
-
-        let result = handle.await.unwrap().unwrap_err();
-        assert!(result.to_string().contains(MULTIADDR_NOT_SUPPORTED));
     }
 
     /// Note: This test will create an actual listening socket on the system on

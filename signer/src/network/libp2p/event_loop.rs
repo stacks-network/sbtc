@@ -2,9 +2,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
-use libp2p::multiaddr::Protocol;
+use libp2p::kad::RoutingUpdate;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{gossipsub, identify, kad, mdns, Multiaddr, Swarm};
+use libp2p::{gossipsub, identify, kad, mdns, Swarm};
 use tokio::sync::Mutex;
 
 use crate::codec::Encode;
@@ -96,12 +96,25 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                     SwarmEvent::Dialing { peer_id, connection_id } => {
                         tracing::trace!(?peer_id, %connection_id, "dialing peer");
                     }
-                    SwarmEvent::ConnectionEstablished { endpoint, peer_id, .. } => {
+                    SwarmEvent::ConnectionEstablished {
+                        connection_id,
+                        endpoint,
+                        peer_id,
+                        ..
+                    } => {
                         if !ctx.state().current_signer_set().is_allowed_peer(&peer_id) {
-                            tracing::warn!(%peer_id, ?endpoint, "connected to peer, however it is not a known signer; disconnecting");
+                            tracing::warn!(%connection_id, %peer_id, ?endpoint, "connected to peer, however it is not a known signer; disconnecting");
                             let _ = swarm.disconnect_peer_id(peer_id);
                         } else {
                             tracing::debug!(%peer_id, ?endpoint, "connected to peer");
+                            if endpoint.is_dialer() {
+                                let kad_addr = endpoint.get_remote_address();
+                                tracing::debug!(%peer_id, %kad_addr, "adding address to kademlia");
+                                swarm
+                                    .behaviour_mut()
+                                    .kademlia
+                                    .add_address(&peer_id, kad_addr.clone());
+                            }
                         }
                     }
                     SwarmEvent::ConnectionClosed { peer_id, cause, endpoint, .. } => {
@@ -125,7 +138,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::trace!(%local_addr, %send_back_addr, %error, "incoming connection error");
                     }
                     SwarmEvent::NewExternalAddrCandidate { address } => {
-                        tracing::debug!(%address, "new external address candidate");
+                        tracing::debug!(%address, "new external address candidate (ours)");
                     }
                     SwarmEvent::ExternalAddrConfirmed { address } => {
                         tracing::debug!(%address, "external address confirmed (ours)");
@@ -134,16 +147,27 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                         tracing::debug!(%address, "external address expired (ours)");
                     }
                     SwarmEvent::NewExternalAddrOfPeer { peer_id, address } => {
-                        if swarm.listeners().any(|addr| addr == &address) {
+                        if &peer_id == swarm.local_peer_id() {
                             tracing::debug!(%peer_id, %address, "ignoring our own external address");
                         } else {
                             tracing::debug!(%peer_id, %address, "new external address of peer");
-                            let kad_addr = strip_peer_id(&address);
-                            tracing::debug!(%peer_id, %kad_addr, "adding address to kademlia");
-                            swarm
+
+                            let result = swarm
                                 .behaviour_mut()
                                 .kademlia
-                                .add_address(&peer_id, kad_addr);
+                                .add_address(&peer_id, address.clone());
+
+                            match result {
+                                RoutingUpdate::Success => {
+                                    tracing::debug!(%peer_id, %address, "added peer address to kademlia");
+                                }
+                                RoutingUpdate::Failed => {
+                                    tracing::warn!(%peer_id, %address, "failed to add peer address to kademlia");
+                                }
+                                RoutingUpdate::Pending => {
+                                    tracing::debug!(%peer_id, %address, "request to add peer address to kademlia is pending");
+                                }
+                            }
                         }
                     }
                     SwarmEvent::Behaviour(SignerBehaviorEvent::Kademlia(event)) => {
@@ -166,6 +190,7 @@ pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {
                             "autonat server event"
                         );
                     }
+                    SwarmEvent::Behaviour(SignerBehaviorEvent::Bootstrap(_)) => {}
                     // The derived `SwarmEvent` is marked as #[non_exhaustive], so we must have a
                     // catch-all.
                     event => tracing::trace!(?event, "unhandled swarm event"),
@@ -295,7 +320,7 @@ fn handle_mdns_event(swarm: &mut Swarm<SignerBehavior>, ctx: &impl Context, even
 
 #[tracing::instrument(skip_all, name = "identify")]
 fn handle_identify_event(
-    swarm: &mut Swarm<SignerBehavior>,
+    _swarm: &mut Swarm<SignerBehavior>,
     _: &impl Context,
     event: identify::Event,
 ) {
@@ -304,10 +329,6 @@ fn handle_identify_event(
     match event {
         Event::Received { peer_id, info, .. } => {
             tracing::debug!(%peer_id, ?info, "received identify message from peer");
-            swarm
-                .behaviour_mut()
-                .kademlia
-                .add_address(&peer_id, strip_peer_id(&info.observed_addr));
         }
         Event::Pushed { connection_id, peer_id, info } => {
             tracing::debug!(%connection_id, %peer_id, ?info, "pushed identify message to peer");
@@ -411,34 +432,5 @@ fn handle_gossipsub_event(
                 "peer has been flagged as slow"
             );
         }
-    }
-}
-
-/// For a multiaddr that ends with a peer id, this strips this suffix. Rust-libp2p
-/// only supports dialing to an address without providing the peer id.
-fn strip_peer_id(addr: &Multiaddr) -> Multiaddr {
-    let mut new_addr = Multiaddr::empty();
-    for protocol in addr.iter().take_while(|p| !matches!(p, Protocol::P2p(_))) {
-        new_addr.push(protocol);
-    }
-    new_addr
-}
-
-#[cfg(test)]
-mod tests {
-    use std::str::FromStr;
-
-    use super::*;
-
-    #[test]
-    fn test_strip_peer_id() {
-        let endpoint =
-            "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N";
-        let addr = Multiaddr::from_str(endpoint).unwrap();
-
-        let stripped = strip_peer_id(&addr);
-
-        let stripped_str = "/ip4/198.51.100.0/tcp/4242";
-        assert_eq!(stripped.to_string(), stripped_str);
     }
 }
