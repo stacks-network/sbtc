@@ -613,7 +613,7 @@ where
         // If `get_pending_requests()` returns `Ok(None)` then there are no
         // eligible requests to service; we can exit early.
         let Some(pending_requests) = pending_requests_fut.await? else {
-            tracing::debug!("no requests to handle; skipping this round");
+            tracing::debug!("no requests to handle on bitcoin");
             return Ok(());
         };
 
@@ -711,6 +711,8 @@ where
         bitcoin_aggregate_key: &PublicKey,
     ) -> Result<(), Error> {
         let db = self.context.get_storage();
+        let stacks = self.context.get_stacks_client();
+        let deployer = self.context.config().signer.deployer;
 
         // Fetch deposit requests from the database where
         // there has been a confirmed bitcoin transaction associated with
@@ -725,7 +727,7 @@ where
             .await?;
 
         if swept_deposits.is_empty() {
-            tracing::debug!("no stacks transactions to create, exiting");
+            tracing::debug!("no deposit stacks transactions to create");
             return Ok(());
         }
 
@@ -736,6 +738,24 @@ where
 
         for req in swept_deposits {
             let outpoint = req.deposit_outpoint();
+
+            let is_completed = stacks.is_deposit_completed(&deployer, &outpoint).await;
+            match is_completed {
+                Err(error) => {
+                    tracing::warn!(
+                        %error,
+                        %outpoint,
+                        "could not check deposit status"
+                    );
+                    continue;
+                }
+                Ok(true) => {
+                    // The request is already completed according to the contract
+                    continue;
+                }
+                Ok(false) => (),
+            };
+
             let sign_request_fut =
                 self.construct_deposit_stacks_sign_request(req, bitcoin_aggregate_key, wallet);
 
@@ -810,7 +830,7 @@ where
             .unwrap_or_default();
 
         if swept_withdrawals.is_empty() && rejected_withdrawals.is_empty() {
-            tracing::debug!("no withdrawal stacks transactions to create, exiting");
+            tracing::debug!("no withdrawal stacks transactions to create");
             return Ok(());
         }
 
