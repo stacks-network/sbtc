@@ -38,7 +38,6 @@
 use std::io::{Cursor, Read};
 
 use crate::idpack::codec::VALUE_COUNT_LIMIT;
-use crate::idpack::ALLOC_BYTES_LIMIT;
 use crate::idpack::{codec, Segment, SegmentEncoding};
 use crate::leb128::ReadLeb128;
 use crate::Leb128;
@@ -176,17 +175,6 @@ impl EncodingStrategy for BitsetStrategy {
         // Calculate bitmap size requirements.
         let range = segment.range();
         let bytes_needed = range.div_ceil(8);
-
-        // Safety check to prevent OOM for extremely sparse data
-        if bytes_needed > ALLOC_BYTES_LIMIT as u64 {
-            return Err(SegmentEncodeError::ByteAllocationLimit(bytes_needed));
-        }
-
-        // Safety check to prevent OOM for extremely large bitmaps
-        let value_count = segment.len() as u64;
-        if value_count > VALUE_COUNT_LIMIT as u64 {
-            return Err(SegmentEncodeError::TooManyValues(value_count));
-        }
 
         // Allocate bitmap array filled with zeros.
         let mut bitmap = vec![0u8; bytes_needed as usize];
