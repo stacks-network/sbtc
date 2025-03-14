@@ -6067,6 +6067,23 @@ async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain()
 
     assert_eq!(current_total, amount2);
 
+    // The blockchain with a context window of 5 should return the same
+    // thing as a context window of zero or 1. Just an additional sanity
+    // check.
+    let current_total = db
+        .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, 5)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount1);
+
+    let current_total = db
+        .compute_withdrawn_total(&another_block.block_hash, 5)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount2);
+
     // Sanity check that the test isn't totally busted. It still might be
     // regular busted for some other reason though.
     assert_ne!(amount1, amount2);
