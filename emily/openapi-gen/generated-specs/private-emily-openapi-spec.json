@@ -2496,8 +2496,6 @@
         "required": [
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
-          "lastUpdateHeight",
-          "lastUpdateBlockHash",
           "status",
           "statusMessage"
         ],
