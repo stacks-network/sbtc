@@ -42,8 +42,6 @@ use crate::transaction_coordinator::coordinator_public_key;
 use crate::transaction_coordinator::TxCoordinatorEventLoop;
 use bitcoin::hashes::Hash as _;
 
-use bitvec::array::BitArray;
-use bitvec::field::BitField as _;
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
@@ -768,8 +766,6 @@ where
             .await
             .expect("Failed to construct withdrawal accept stacks sign request");
 
-        // We are not storing the decisions in the db, so we will get all zeros
-        let signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
         let outpoint = withdrawal_req.withdrawal_outpoint();
         assert_eq!(sign_request.tx_fee, 123000);
         assert_eq!(sign_request.aggregate_key, bitcoin_aggregate_key);
@@ -781,7 +777,7 @@ where
             assert_eq!(call.tx_fee, withdrawal_fee);
             assert_eq!(call.id.request_id, withdrawal_req.request_id);
             assert_eq!(call.outpoint, outpoint);
-            assert_eq!(call.signer_bitmap, signer_bitmap);
+            assert_eq!(call.signer_bitmap, 0);
             assert_eq!(call.sweep_block_hash, withdrawal_req.sweep_block_hash);
             assert_eq!(call.sweep_block_height, withdrawal_req.sweep_block_height);
         } else {
@@ -805,7 +801,7 @@ where
                     Value::Sequence(SequenceData::Buffer(BuffData {
                         data: outpoint.txid.to_le_bytes().to_vec()
                     })),
-                    Value::UInt(signer_bitmap.load_le()),
+                    Value::UInt(0),
                     Value::UInt(outpoint.vout as u128),
                     Value::UInt(withdrawal_fee as u128),
                     Value::Sequence(SequenceData::Buffer(BuffData {
@@ -874,8 +870,6 @@ where
             .await
             .expect("Failed to construct withdrawal reject stacks sign request");
 
-        // We are not storing the decisions in the db, so we will get all zeros
-        let signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
         assert_eq!(sign_request.tx_fee, 123000);
         assert_eq!(sign_request.aggregate_key, bitcoin_aggregate_key);
         assert_eq!(sign_request.txid, multi_tx.tx().txid());
@@ -888,7 +882,7 @@ where
         };
 
         assert_eq!(call.id, withdrawal_req.qualified_id());
-        assert_eq!(call.signer_bitmap, signer_bitmap);
+        assert_eq!(call.signer_bitmap, 0);
 
         let TransactionPayload::ContractCall(TransactionContractCall {
             address,
@@ -907,7 +901,7 @@ where
             *function_args,
             vec![
                 Value::UInt(withdrawal_req.request_id as u128),
-                Value::UInt(signer_bitmap.load_le()),
+                Value::UInt(0),
             ]
         );
     }

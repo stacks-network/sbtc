@@ -3,7 +3,6 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use bitcoincore_rpc::RpcApi as _;
-use bitvec::array::BitArray;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::types::chainstate::StacksAddress;
@@ -172,7 +171,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
     },
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 2500,
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -189,7 +188,7 @@ pub async fn deploy_smart_contracts() -> &'static SignerStxState {
 	    txid: StacksTxId::from([0; 32]),
 	    block_hash: StacksBlockHash::from([0; 32]),
     },
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
@@ -381,7 +380,7 @@ async fn is_withdrawal_completed_rejection_works() {
             block_hash: StacksBlockHash::from([0; 32]),
             txid: StacksTxId::from([0; 32]),
         },
-        signer_bitmap: BitArray::ZERO,
+        signer_bitmap: 0,
         deployer: *testing::wallet::WALLET.0.address(),
     });
 

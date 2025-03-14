@@ -54,7 +54,7 @@ fn make_withdrawal_accept(data: &TestSweepSetup2) -> (AcceptWithdrawalV1, ReqCon
         // request.
         tx_fee: fee,
         // The bitmap for how the signers voted.
-        signer_bitmap: data.withdrawals[0].request.signer_bitmap,
+        signer_bitmap: 0,
         // The deployer must match what is in the signers' context.
         deployer: StacksAddress::burn_address(false),
         // The block hash of the block that includes the above sweep
@@ -696,73 +696,6 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     match validation_result.unwrap_err() {
         Error::WithdrawalAcceptValidation(ref err) => {
             assert_eq!(err.error, WithdrawalErrorMsg::UtxoMissingFromSweep)
-        }
-        err => panic!("unexpected error during validation {err}"),
-    }
-
-    testing::storage::drop_db(db).await;
-}
-
-/// For this test we check that the `AcceptWithdrawalV1::validate` function
-/// returns a withdrawal validation error with a BitmapMismatch message
-/// when bitmap in the transaction does not match what our records would
-/// create for the bitmap.
-#[tokio::test]
-async fn accept_withdrawal_validation_bitmap_mismatch() {
-    // Normal: this generates the blockchain as well as a transaction
-    // sweeping out the funds for a withdrawal request.
-    let db = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
-
-    let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
-
-    // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
-
-    // Normal: the signer follows the bitcoin blockchain and event observer
-    // should be getting new block events from bitcoin-core. We haven't
-    // hooked up our block observer, so we need to manually update the
-    // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
-
-    // Normal: we take the sweep transaction as is from the test setup and
-    // store it in the database.
-    setup.store_sweep_tx(&db).await;
-    setup.store_bitcoin_withdrawals_outputs(&db).await;
-
-    // Normal: we need to store a row in the dkg_shares table so that we
-    // have a record of the scriptPubKey that the signers control.
-    setup.store_dkg_shares(&db).await;
-
-    // Normal: the request and how the signers voted needs to be added to
-    // the database. Here the bitmap in the withdrawal request object
-    // corresponds to how the signers voted.
-    setup.store_withdrawal_requests(&db).await;
-    setup.store_withdrawal_decisions(&db).await;
-
-    // Generate the transaction and corresponding request context.
-    let (mut accept_withdrawal_tx, req_ctx) = make_withdrawal_accept(&setup);
-    // Different: We're going to get the bitmap that is a little different
-    // from what is expected.
-    let first_vote = *accept_withdrawal_tx.signer_bitmap.get(0).unwrap();
-    accept_withdrawal_tx.signer_bitmap.set(0, !first_vote);
-
-    let mut ctx = TestContext::builder()
-        .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
-        .with_mocked_stacks_client()
-        .with_mocked_emily_client()
-        .build();
-
-    // Normal: the request is not completed in the smart contract.
-    set_withdrawal_incomplete(&mut ctx).await;
-
-    let validation_result = accept_withdrawal_tx.validate(&ctx, &req_ctx).await;
-    match validation_result.unwrap_err() {
-        Error::WithdrawalAcceptValidation(ref err) => {
-            assert_eq!(err.error, WithdrawalErrorMsg::BitmapMismatch)
         }
         err => panic!("unexpected error during validation {err}"),
     }
