@@ -170,12 +170,17 @@ async fn signer_rejects_stacks_txns_with_too_high_a_fee(
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let ctx = TestContext::builder()
+    let mut ctx = TestContext::builder()
         .with_storage(db.clone())
         .with_first_bitcoin_core_client()
         .with_mocked_emily_client()
         .with_mocked_stacks_client()
         .build();
+
+    // We need this or the contract call will fail validation with an
+    // unrelated error, since we mock reaching out to the stacks node.
+    set_deposit_incomplete(&mut ctx).await;
+
     let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
