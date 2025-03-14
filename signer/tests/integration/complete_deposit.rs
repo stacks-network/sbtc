@@ -15,6 +15,7 @@ use signer::testing;
 use signer::testing::context::*;
 
 use fake::Fake;
+use signer::DEPOSIT_DUST_LIMIT;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::set_deposit_completed;
@@ -490,15 +491,25 @@ async fn complete_deposit_validation_fee_too_low() {
     // Different: We need to update the amount to be something that
     // validation would reject. To do that we update our database.
     //
-    // The fee rate in this test is fixed at 10.0 sats per vbyte.
-    // The tx size is ~217 bytes, resulting in a fee of ~2170 sats.
+    // We want to trigger the AmountBelowDustLimit error by calculating a deposit amount
+    // that results in a value just below the dust limit after fees are subtracted:
     //
-    // With the Bitcoin dust limit of 546 sats, we need: deposit_amount - fee < dust_limit
-    // So: deposit_amount - 2170 < 546
-    // Therefore: deposit_amount < 2716 will fail the dust check
+    // 1. Calculate actual fee using tx_size * fee_rate (real values from the sweep tx)
+    // 2. Find amount that gives: deposit_amount - fee = DEPOSIT_DUST_LIMIT - 1
+    // 3. Which means: deposit_amount = tx_size * fee_rate + DEPOSIT_DUST_LIMIT - 1
     //
-    // Using 2715 gives us 2715 - 2170 = 545 sats, which is just below the dust limit.
-    let deposit_amount = 2715;
+    // This ensures we're 1 satoshi below the dust limit, triggering the error regardless
+    // of the exact transaction size or fee rate used in tests.
+    let deposit_amount = setup
+        .sweep_tx_info
+        .as_ref()
+        .map(|info| {
+            let tx_size = info.tx_info.vsize;
+            let fee_rate = info.tx_info.fee.to_sat().div_ceil(tx_size as u64);
+            tx_size * fee_rate + DEPOSIT_DUST_LIMIT - 1
+        })
+        .expect("sweep_tx_info not set");
+
     sqlx::query(
         r#"
         UPDATE deposit_requests AS dr
