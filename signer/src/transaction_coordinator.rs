@@ -691,6 +691,10 @@ where
             tracing::error!(%error, "could not process deposit response transactions on stacks");
         }
 
+        if &self.context.state().bitcoin_chain_tip() != chain_tip {
+            return Ok(());
+        }
+
         let fut = self.construct_and_sign_stacks_withdrawal_response_transactions(
             chain_tip,
             wallet,
@@ -742,11 +746,7 @@ where
             let is_completed = stacks.is_deposit_completed(&deployer, &outpoint).await;
             match is_completed {
                 Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        %outpoint,
-                        "could not check deposit status"
-                    );
+                    tracing::warn!(%error, %outpoint, "could not check deposit status");
                     continue;
                 }
                 Ok(true) => {
@@ -781,12 +781,7 @@ where
                     "success"
                 }
                 Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        txid = %outpoint.txid,
-                        vout = %outpoint.vout,
-                        "could not process the stacks sign request for a deposit"
-                    );
+                    tracing::warn!(%error, %outpoint, "could not process the stacks sign request for a deposit");
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
                     "failure"
                 }
@@ -799,6 +794,11 @@ where
                 "kind" => "complete-deposit"
             )
             .increment(1);
+
+        if &self.context.state().bitcoin_chain_tip() != chain_tip {
+            tracing::info!("new bitcoin chain tip, stoping coordinator activities");
+            return Ok(());
+        }
         }
 
         Ok(())
@@ -856,6 +856,11 @@ where
                     "could not construct and sign withdrawal accept"
                 );
             }
+
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stoping coordinator activities");
+                return Ok(());
+            }
         }
 
         for withdrawal in rejected_withdrawals {
@@ -872,6 +877,11 @@ where
                     %withdrawal_id,
                     "could not construct and sign withdrawal reject"
                 );
+            }
+
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stoping coordinator activities");
+                return Ok(());
             }
         }
 
