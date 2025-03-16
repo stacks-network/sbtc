@@ -73,7 +73,7 @@ impl SignerState {
         self.bitcoin_chain_tip
             .read()
             .expect("BUG: Failed to acquire read lock")
-            .clone()
+            .to_owned()
     }
 
     /// Set the current bitcoin chain tip.
