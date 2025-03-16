@@ -795,10 +795,10 @@ where
             )
             .increment(1);
 
-        if &self.context.state().bitcoin_chain_tip() != chain_tip {
-            tracing::info!("new bitcoin chain tip, stoping coordinator activities");
-            return Ok(());
-        }
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stoping coordinator activities");
+                return Ok(());
+            }
         }
 
         Ok(())
