@@ -3972,15 +3972,16 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     // When the signer binary starts up in main(), it sets the current
     // signer set public keys in the context state using the values in the
     // bootstrap_signing_set configuration parameter. Later, the aggregate
-    // key gets set in the block observer. We're not running a block
-    // observer in this test, nor are we going through main, so we manually
-    // update the state here.
+    // key and bitcoin chain tip get set in the block observer. We're not
+    // running a block observer in this test, nor are we going through
+    // main, so we manually update the state here.
     let signer_set_public_keys = testing_signer_set.signer_keys().into_iter().collect();
+    let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
     let state = context.state();
     state.update_current_signer_set(signer_set_public_keys);
     state.set_current_aggregate_key(aggregate_key);
+    state.set_bitcoin_chain_tip(bitcoin_chain_tip);
 
-    let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
     assert_eq!(stacks_chain_tip, genesis_block.block_hash);
 
     // Now we create a withdrawal request (without voting for it)
