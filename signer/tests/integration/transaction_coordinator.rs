@@ -3975,13 +3975,15 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     // key and bitcoin chain tip get set in the block observer. We're not
     // running a block observer in this test, nor are we going through
     // main, so we manually update the state here.
+    //
+    // We hold off from updating the bitcoin chain tip for now, because we
+    // are about to generate some more blocks.
     let signer_set_public_keys = testing_signer_set.signer_keys().into_iter().collect();
-    let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
     let state = context.state();
     state.update_current_signer_set(signer_set_public_keys);
     state.set_current_aggregate_key(aggregate_key);
-    state.set_bitcoin_chain_tip(bitcoin_chain_tip);
 
+    let (bitcoin_chain_tip, stacks_chain_tip) = db.get_chain_tips().await;
     assert_eq!(stacks_chain_tip, genesis_block.block_hash);
 
     // Now we create a withdrawal request (without voting for it)
@@ -4007,6 +4009,9 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     backfill_bitcoin_blocks(&db, rpc, &new_tip).await;
     let (bitcoin_chain_tip, _) = db.get_chain_tips().await;
 
+    // We've just updated the database with a new chain tip, so we need to
+    // update the signer's state just like the block observer would.
+    state.set_bitcoin_chain_tip(bitcoin_chain_tip);
     // Now it should be pending rejected
     assert_eq!(
         context
