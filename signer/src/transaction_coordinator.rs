@@ -691,7 +691,7 @@ where
             tracing::error!(%error, "could not process deposit response transactions on stacks");
         }
 
-        if &self.context.state().bitcoin_chain_tip() != chain_tip {
+        if self.context.state().bitcoin_chain_tip().as_ref() != Some(chain_tip) {
             return Ok(());
         }
 
@@ -795,8 +795,8 @@ where
             )
             .increment(1);
 
-            if &self.context.state().bitcoin_chain_tip() != chain_tip {
-                tracing::info!("new bitcoin chain tip, stoping coordinator activities");
+            if self.context.state().bitcoin_chain_tip().as_ref() != Some(chain_tip) {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
                 return Ok(());
             }
         }
@@ -857,8 +857,8 @@ where
                 );
             }
 
-            if &self.context.state().bitcoin_chain_tip() != chain_tip {
-                tracing::info!("new bitcoin chain tip, stoping coordinator activities");
+            if self.context.state().bitcoin_chain_tip().as_ref() != Some(chain_tip) {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
                 return Ok(());
             }
         }
@@ -879,8 +879,8 @@ where
                 );
             }
 
-            if &self.context.state().bitcoin_chain_tip() != chain_tip {
-                tracing::info!("new bitcoin chain tip, stoping coordinator activities");
+            if self.context.state().bitcoin_chain_tip().as_ref() != Some(chain_tip) {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
                 return Ok(());
             }
         }
