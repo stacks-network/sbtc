@@ -43,7 +43,7 @@ impl EncodingStrategy for SingleValueStrategy {
     ///
     /// Always returns 0 for Single Value encoding since the value is
     /// stored entirely in the offset with no additional payload bytes.
-    fn estimate_payload_size(&self, values: &[u64]) -> Option<usize> {
+    fn calculate_payload_size(&self, values: &[u64]) -> Option<usize> {
         // Single value encoding has no payload - value is contained in the
         // offset.
         if values.len() == 1 {

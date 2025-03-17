@@ -76,12 +76,12 @@ impl BitmapCosts {
         // Calculate current segment payload size (without next value)
         // This uses the actual BitsetStrategy implementation to ensure consistency
         let current_segment_payload = BitsetStrategy
-            .estimate_payload_size(&[offset, prev])
+            .calculate_payload_size(&[offset, prev])
             .ok_or(Error::SizeEstimation)?;
 
         // Calculate extended segment payload (with next value)
         let combined_segment_payload = BitsetStrategy
-            .estimate_payload_size(&[offset, next])
+            .calculate_payload_size(&[offset, next])
             .ok_or(Error::SizeEstimation)?;
 
         // Calculate LEB128 encoding size for offsets

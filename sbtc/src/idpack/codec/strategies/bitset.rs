@@ -121,7 +121,7 @@ impl EncodingStrategy for BitsetStrategy {
     ///
     /// ## Returns
     /// The estimated encoded size in bytes
-    fn estimate_payload_size(&self, values: &[u64]) -> Option<usize> {
+    fn calculate_payload_size(&self, values: &[u64]) -> Option<usize> {
         if values.is_empty() {
             return None;
         }

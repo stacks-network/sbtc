@@ -23,7 +23,7 @@ pub trait EncodingStrategy {
     fn encoding_type(&self) -> SegmentEncoding;
 
     /// Estimates the payload size in bytes (excluding headers)
-    fn estimate_payload_size(&self, segment: &[u64]) -> Option<usize>;
+    fn calculate_payload_size(&self, segment: &[u64]) -> Option<usize>;
 
     /// Encodes the segment values into bytes
     fn encode(

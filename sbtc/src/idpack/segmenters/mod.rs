@@ -85,10 +85,10 @@ pub trait Segmenter {
             // calculations
             let payload_size_estimate = match segment.encoding() {
                 SegmentEncoding::Bitset => BitsetStrategy
-                    .estimate_payload_size(segment.as_slice())
+                    .calculate_payload_size(segment.as_slice())
                     .ok_or(Error::SizeEstimation)?,
                 SegmentEncoding::Single => SingleValueStrategy
-                    .estimate_payload_size(segment.as_slice())
+                    .calculate_payload_size(segment.as_slice())
                     .ok_or(Error::SizeEstimation)?,
             };
 
