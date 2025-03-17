@@ -223,16 +223,18 @@ impl BitcoinPreSignRequest {
                     })
             })?;
 
+        let rolling_limits = limits.rolling_withdrawal_limits();
+
         cache
             .withdrawal_reports
             .values()
             .try_fold(withdrawn_total, |acc, (report, _)| {
                 let sum = acc.saturating_add(report.amount);
-                if sum > max_mintable {
+                if sum > rolling_limits.cap.to_sat() {
                     return Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
                         amounts: sum,
-                        cap: max_mintable,
-                        cap_blocks: 150,
+                        cap: rolling_limits.cap.to_sat(),
+                        cap_blocks: rolling_limits.blocks,
                         withdrawn_total,
                     }));
                 }
@@ -257,8 +259,16 @@ impl BitcoinPreSignRequest {
         let db = ctx.get_storage();
         let cache = self.fetch_all_reports(&db, btc_ctx).await?;
 
+        // We now check that the withdrawal amounts adhere to the rolling
+        // limits. We check the individual withdrawal caps later.
         let limits = ctx.state().get_current_limits();
-        let withdrawn_total = db.compute_withdrawn_total(&btc_ctx.chain_tip, 150).await?;
+        let context_window = limits
+            .rolling_withdrawal_limits()
+            .blocks
+            .min(u16::MAX as u64) as u16;
+        let withdrawn_total = db
+            .compute_withdrawn_total(&btc_ctx.chain_tip, context_window)
+            .await?;
         Self::assert_request_amount_limits(&cache, &limits, withdrawn_total)?;
 
         let signer_utxo = db
@@ -662,17 +672,21 @@ pub enum WithdrawalValidationResult {
     Unknown,
 }
 
-/// A context struct for when a collection of withdrawals exceeds the
-/// rolling withdrawal limits.
+/// A struct containing context information for when a collection of
+/// withdrawals exceeds the rolling withdrawal limits.
 #[derive(Debug, PartialEq, Eq)]
 pub struct WithdrawalCapContext {
-    /// Total deposit amount in sats
+    /// The new withdrawal amount, including the currently withdrawn total,
+    /// if some of the proposed withdrawals would be swept. This amount is
+    /// in sats.
     pub amounts: u64,
-    /// The rolling withdrawal maximum
+    /// The rolling withdrawal maximum in sats.
     pub cap: u64,
-    /// The number of bitcoin blocks that are used in the rolling withdrawal cap
+    /// The number of bitcoin blocks that are used in the rolling
+    /// withdrawal cap.
     pub cap_blocks: u64,
-    /// The currently withdrawal total over the last N bitcoin blocks.
+    /// The currently withdrawal total over the last N bitcoin blocks in
+    /// sats.
     pub withdrawn_total: u64,
 }
 
@@ -1027,6 +1041,7 @@ mod tests {
     use bitcoin::Witness;
     use test_case::test_case;
 
+    use crate::context::RollingWithdrawalLimits;
     use crate::context::SbtcLimits;
     use crate::storage::model::StacksBlockHash;
     use crate::storage::model::StacksTxId;
@@ -2101,28 +2116,40 @@ mod tests {
 
     #[test_case(
         vec![1000, 2000, 3000],
-        Amount::from_sat(10_000),
+        RollingWithdrawalLimits {
+            cap: Amount::from_sat(10_000),
+            blocks: 150,
+        },
         Amount::from_sat(1_000),
         Ok(());
         "should_accept_withdrawals_under_rolling_cap"
     )]
     #[test_case(
         vec![],
-        Amount::from_sat(10_000),
+        RollingWithdrawalLimits {
+            cap: Amount::from_sat(10_000),
+            blocks: 150,
+        },
         Amount::from_sat(0),
         Ok(());
         "should_accept_empty_withdrawals"
     )]
     #[test_case(
         vec![10_000],
-        Amount::from_sat(10_000),
+        RollingWithdrawalLimits {
+            cap: Amount::from_sat(10_000),
+            blocks: 150,
+        },
         Amount::from_sat(0),
         Ok(());
         "should_accept_withdrawals_equal_to_rolling_cap"
     )]
     #[test_case(
         vec![5000, 5001],
-        Amount::from_sat(10_000),
+        RollingWithdrawalLimits {
+            cap: Amount::from_sat(10_000),
+            blocks: 150,
+        },
         Amount::from_sat(0),
         Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts: 10_001,
@@ -2134,11 +2161,14 @@ mod tests {
     )]
     #[test_case(
         vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
-        Amount::MAX_MONEY,
+        RollingWithdrawalLimits {
+            cap: Amount::MAX_MONEY,
+            blocks: 150,
+        },
         Amount::from_sat(1),
         Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
-            amounts: Amount::MAX_MONEY.to_sat(),
-            cap: Amount::MAX_MONEY.to_sat() - 1,
+            amounts: Amount::MAX_MONEY.to_sat() + 1,
+            cap: Amount::MAX_MONEY.to_sat(),
             cap_blocks: 150,
             withdrawn_total: 1,
         }));
@@ -2146,17 +2176,19 @@ mod tests {
     )]
     fn test_validate_withdrawal_limits(
         withdrawal_amounts: Vec<u64>,
-        total_cap: Amount,
-        sbtc_supply: Amount,
+        rolling_limits: RollingWithdrawalLimits,
+        withdrawn_total: Amount,
         expected: Result<(), Error>,
     ) {
         // Create mock context
         let limits = SbtcLimits::new(
-            Some(total_cap),
             None,
             None,
             None,
-            Some(total_cap - sbtc_supply),
+            None,
+            Some(rolling_limits.blocks),
+            Some(rolling_limits.cap),
+            None,
         );
         // Create cache with test data
         let mut cache = ValidationCache::default();
@@ -2173,7 +2205,7 @@ mod tests {
             .collect();
 
         // Create request and validate
-        let withdrawn_total = sbtc_supply.to_sat();
+        let withdrawn_total = withdrawn_total.to_sat();
         let result =
             BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, withdrawn_total);
 

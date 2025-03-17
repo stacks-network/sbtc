@@ -569,13 +569,14 @@ impl<C: Context, B> BlockObserver<C, B> {
             Amount::MAX_MONEY
         };
 
+        let rolling_limits = limits.rolling_withdrawal_limits();
         let limits = SbtcLimits::new(
             Some(limits.total_cap()),
             Some(limits.per_deposit_minimum()),
             Some(limits.per_deposit_cap()),
             Some(limits.per_withdrawal_cap()),
-            limits.rolling_withdrawal_blocks(),
-            limits.rolling_withdrawal_cap(),
+            Some(rolling_limits.blocks),
+            Some(rolling_limits.cap),
             Some(max_mintable),
         );
 

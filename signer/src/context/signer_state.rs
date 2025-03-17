@@ -143,6 +143,18 @@ pub struct SbtcLimits {
     max_mintable_cap: Option<Amount>,
 }
 
+/// A structing containing the two parameters that define the rolling
+/// withdrawal limits.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct RollingWithdrawalLimits {
+    /// Represents the number of blocks that define the rolling withdrawal
+    /// window.
+    pub blocks: u64,
+    /// Represents the maximum total sBTC that can be withdrawn within the
+    /// rolling withdrawal window.
+    pub cap: Amount,
+}
+
 impl std::fmt::Display for SbtcLimits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -218,14 +230,16 @@ impl SbtcLimits {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
 
-    /// Get the number of blocks that define the rolling withdrawal window.
-    pub fn rolling_withdrawal_blocks(&self) -> Option<u64> {
-        self.rolling_withdrawal_blocks
-    }
+    /// Get the rolling withdrawal limits.
+    pub fn rolling_withdrawal_limits(&self) -> RollingWithdrawalLimits {
+        let limit_pair = self
+            .rolling_withdrawal_blocks
+            .zip(self.rolling_withdrawal_cap);
 
-    /// Get the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
-    pub fn rolling_withdrawal_cap(&self) -> Option<Amount> {
-        self.rolling_withdrawal_cap
+        match limit_pair {
+            Some((blocks, cap)) => RollingWithdrawalLimits { blocks, cap },
+            None => RollingWithdrawalLimits { blocks: 0, cap: Amount::ZERO },
+        }
     }
 }
 
