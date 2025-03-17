@@ -17,6 +17,10 @@ pub struct Limits {
     pub per_deposit_cap: Option<u64>,
     /// Per withdrawal cap. If none then there is no cap.
     pub per_withdrawal_cap: Option<u64>,
+    /// Number of blocks that define the rolling withdrawal window.
+    pub rolling_withdrawal_blocks: Option<u64>,
+    /// Maximum total sBTC that can be withdrawn within the rolling withdrawal window.
+    pub rolling_withdrawal_cap: Option<u64>,
     /// Represents the individual limits for requests coming from different accounts.
     pub account_caps: HashMap<String, AccountLimits>,
 }
@@ -46,4 +50,8 @@ pub struct AccountLimits {
     pub per_deposit_cap: Option<u64>,
     /// Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.
     pub per_withdrawal_cap: Option<u64>,
+    /// Number of blocks that define the rolling withdrawal window.
+    pub rolling_withdrawal_blocks: Option<u64>,
+    /// Maximum total sBTC that can be withdrawn within the rolling withdrawal window.
+    pub rolling_withdrawal_cap: Option<u64>,
 }

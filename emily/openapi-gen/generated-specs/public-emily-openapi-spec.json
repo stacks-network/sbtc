@@ -1848,6 +1848,20 @@
             "description": "Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.",
             "nullable": true,
             "minimum": 0
+          },
+          "rollingWithdrawalBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of blocks that define the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
           }
         }
       },
@@ -2281,6 +2295,20 @@
             "type": "integer",
             "format": "int64",
             "description": "Per withdrawal cap. If none then there is no cap.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of blocks that define the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
             "nullable": true,
             "minimum": 0
           }
