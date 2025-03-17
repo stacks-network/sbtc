@@ -12,3 +12,5 @@ Name | Type | Description | Notes
 **rolling_withdrawal_cap** | Option<**u64**> | Maximum total sBTC that can be withdrawn within the rolling withdrawal window. | [optional]
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
+
+
