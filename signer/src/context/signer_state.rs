@@ -219,13 +219,13 @@ impl SbtcLimits {
     }
 
     /// Get the number of blocks that define the rolling withdrawal window.
-    pub fn rolling_withdrawal_blocks(&self) -> u64 {
-        self.rolling_withdrawal_blocks.unwrap_or(0)
+    pub fn rolling_withdrawal_blocks(&self) -> Option<u64> {
+        self.rolling_withdrawal_blocks
     }
 
     /// Get the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
-    pub fn rolling_withdrawal_cap(&self) -> Amount {
-        self.rolling_withdrawal_cap.unwrap_or(Amount::MAX_MONEY)
+    pub fn rolling_withdrawal_cap(&self) -> Option<Amount> {
+        self.rolling_withdrawal_cap
     }
 }
 
