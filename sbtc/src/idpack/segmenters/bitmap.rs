@@ -271,3 +271,182 @@ impl BitmapSegmenter {
         values.is_empty() || values.windows(2).all(|w| w[0] < w[1])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::idpack::Encodable;
+
+    use super::*;
+    use test_case::test_case;
+
+    /// Tests the boundary detection with direct byte savings calculations
+    #[test_case(&[10], &[0, 1]; "single value")]
+    #[test_case(&[10, 11, 12, 13, 14], &[0, 5]; "small sequential - no splits")]
+    #[test_case(&[10, 20, 30, 40, 50], &[0, 5]; "evenly spaced - no splits")]
+    #[test_case(&[10, 11, 12, 1000, 1001, 1002], &[0, 3, 6]; "clear gap with byte savings")]
+    #[test_case(&[1, 1000000], &[0, 1, 2]; "extreme gap forces split")]
+    #[test_case(&[1, 2, 3, 100000, 100001], &[0, 3, 5]; "large gap with min size respected")]
+    fn test_byte_saving_boundary_detection(values: &[u64], expected_boundaries: &[usize]) {
+        let boundaries = BitmapSegmenter.find_segment_boundaries(values).unwrap();
+        assert_eq!(
+            boundaries, expected_boundaries,
+            "Unexpected boundaries for values: {:?}",
+            values
+        );
+    }
+
+    /// Tests that the package method correctly handles extreme gaps
+    #[test_case(&[1, 1000000], 2; "extreme gap creates 2 segments")]
+    #[test_case(&[1, 2, 3, 4, 5], 1; "small dense sequence stays as 1 segment")]
+    #[test_case(&[1, 2, 50000, 50001], 2; "gap creates 2 segments")]
+    fn test_package_with_extreme_gaps(values: &[u64], expected_segments: usize) {
+        let result = BitmapSegmenter.package(values).unwrap();
+
+        assert_eq!(
+            result.len(),
+            expected_segments,
+            "Unexpected number of segments for values: {:?}",
+            values
+        );
+    }
+
+    /// Tests that byte savings calculations correctly determine when to split
+    #[test]
+    fn test_byte_savings_calculations() {
+        // Create test case with a precise byte savings boundary
+        let mut values = Vec::new();
+        // Add first group (10-19)
+        for i in 10..20 {
+            values.push(i);
+        }
+        // Add second group with gap (100-109)
+        for i in 100..110 {
+            values.push(i);
+        }
+        let boundaries = BitmapSegmenter.find_segment_boundaries(&values).unwrap();
+        assert_eq!(
+            boundaries,
+            &[0, 10, 20],
+            "Failed to split where byte savings occur"
+        );
+    }
+
+    /// Tests low density handling for maximum compression
+    #[test]
+    fn test_low_density_handling() {
+        // Create a low density sequence - values spread widely
+        let values: Vec<u64> = (1..=100).step_by(10).collect(); // 10 values spread over 100 range
+
+        let segments = BitmapSegmenter.package(&values).unwrap();
+
+        // For these values, we expect fixed-width delta to be more efficient than bitmap
+        assert!(
+            segments.len() >= 1,
+            "Should handle low density sequence efficiently"
+        );
+
+        // Check that the actual encoding chosen is efficient for the data pattern
+        let total_bytes = segments.encode().unwrap().len();
+        let fixed_overhead = 3; // ~3 bytes minimum overhead per segment
+
+        // Maximum acceptable bytes for efficient compression
+        let max_acceptable = values.len() * 2 + fixed_overhead;
+
+        assert!(
+            total_bytes <= max_acceptable,
+            "Low density encoding inefficient: {} bytes used for {} values",
+            total_bytes,
+            values.len()
+        );
+    }
+
+    /// Tests bitmap size constraints for maximum efficiency
+    #[test]
+    fn test_bitmap_size_efficiency() {
+        // Values with extremely large range but few actual values
+        let values = vec![1, 2, 3, 10_000, 20_000, 30_000];
+
+        let segments = BitmapSegmenter.package(&values).unwrap();
+
+        // This should be split to avoid a bitmap covering the entire 1-30,000 range
+        assert!(
+            segments.len() > 1,
+            "Should split large sparse range for efficiency"
+        );
+
+        // Calculate the actual compression efficiency
+        let total_bytes = segments.encode().unwrap().len();
+
+        // Theoretical worst case: one large bitmap spanning the whole range
+        let worst_case = (30_000 / 8) + 3; // bitmap bytes + overhead
+
+        assert!(
+            total_bytes < worst_case,
+            "Splitting improved compression: {} bytes vs {} bytes worst case",
+            total_bytes,
+            worst_case
+        );
+    }
+
+    /// Tests validation error handling
+    #[test]
+    fn test_validation_errors() {
+        // Empty input
+        assert!(matches!(
+            BitmapSegmenter.package(&[]),
+            Err(Error::EmptyInput)
+        ));
+
+        // Unsorted input
+        assert!(matches!(
+            BitmapSegmenter.package(&[5, 3, 1]),
+            Err(Error::UnsortedInput)
+        ));
+    }
+
+    /// Tests precise break-even gap detection for maximum compression
+    #[test_case(&[10, 10 + 16], 1; "gap of 16 with 1-byte delta - no split")]
+    #[test_case(&[10, 10 + 17], 2; "gap of 17 with 1-byte delta - split")]
+    #[test_case(&[10000, 10000 + 24], 2; "gap of 24 with 2-byte delta - split")]
+    #[test_case(&[10000, 10000 + 25], 2; "gap of 25 with 2-byte delta - split")]
+    fn test_break_even_gap_detection(values: &[u64], expected_segments: usize) {
+        let result = BitmapSegmenter.package(values).unwrap();
+        assert_eq!(
+            result.len(),
+            expected_segments,
+            "Failed to correctly apply break-even gap analysis for values: {:?}",
+            values
+        );
+    }
+
+    #[test_case(&[1, 1_000_000, 1_000_001], 2; "single value followed by large gap")]
+    #[test_case(&[1, 2, 1_000_000, 1_000_001], 2; "multiple values followed by large gap")]
+    #[test_case(&[1, 1_000_000, 1_000_001, 2_000_000], 3; "multiple large gaps")]
+    #[test_case(&[1, 1_000, 10_000, 10_001, 100_000], 4; "multiple varied gaps")]
+    fn test_optimized_segmentation(values: &[u64], expected_segments: usize) {
+        let segments = BitmapSegmenter.package(values).unwrap();
+        dbg!(&segments);
+
+        // Verify segment count
+        assert_eq!(
+            segments.len(),
+            expected_segments,
+            "Incorrect segmentation for values: {:?}",
+            values
+        );
+
+        // Calculate compression efficiency
+        let encoded = segments.encode().unwrap();
+        let naive_size = (values.last().unwrap() - values[0]) / 8;
+
+        // Verify we achieve significantly better compression than naive approach
+        let compression_ratio = naive_size as f64 / encoded.len() as f64;
+        assert!(
+            compression_ratio > 10.0 || encoded.len() < 20,
+            "Insufficient compression: {} bytes vs naive {} bytes (ratio: {:.1}x)",
+            encoded.len(),
+            naive_size,
+            compression_ratio
+        );
+    }
+}
