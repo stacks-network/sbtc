@@ -38,11 +38,10 @@
 use std::io::{Cursor, Read};
 
 use crate::idpack::codec::VALUE_COUNT_LIMIT;
-use crate::idpack::{codec, Segment, SegmentEncoding};
+use crate::idpack::{codec, Segment};
 use crate::leb128::ReadLeb128;
 use crate::Leb128;
 
-use super::EncodingStrategy;
 use super::SegmentDecodeError;
 use super::SegmentEncodeError;
 
@@ -63,12 +62,12 @@ const EMBEDDED_LENGTH_MAX_BYTES: u64 = 7;
 
 /// Implements the BitSet encoding strategy, which compresses integer values by
 /// representing them as bits in a bitmap.
-pub struct BitsetStrategy;
+pub struct BitmapEncoding;
 
-impl EncodingStrategy for BitsetStrategy {
+impl BitmapEncoding {
     /// Returns the type flag indicating BitSet encoding.
-    fn type_flag(&self) -> u8 {
-        codec::TYPE_BITSET
+    pub fn type_flag(&self) -> u8 {
+        codec::TYPE_BITMAP
     }
 
     /// Creates flags for the segment based on its characteristics.
@@ -83,7 +82,7 @@ impl EncodingStrategy for BitsetStrategy {
     ///
     /// ## Returns
     /// The flags byte with appropriate bits set.
-    fn create_flags(&self, segment: &Segment) -> u8 {
+    pub fn create_flags(&self, segment: &Segment) -> u8 {
         let mut flags = 0;
 
         // Calculate range and byte requirements for the bitmap
@@ -105,11 +104,6 @@ impl EncodingStrategy for BitsetStrategy {
         flags
     }
 
-    /// Returns the encoding type for this strategy.
-    fn encoding_type(&self) -> SegmentEncoding {
-        SegmentEncoding::Bitset
-    }
-
     /// Estimates the encoded size in bytes for the given segment.
     ///
     /// The calculation includes:
@@ -121,7 +115,7 @@ impl EncodingStrategy for BitsetStrategy {
     ///
     /// ## Returns
     /// The estimated encoded size in bytes
-    fn calculate_payload_size(&self, values: &[u64]) -> Option<usize> {
+    pub fn calculate_payload_size(&self, values: &[u64]) -> Option<usize> {
         if values.is_empty() {
             return None;
         }
@@ -166,7 +160,7 @@ impl EncodingStrategy for BitsetStrategy {
     ///
     /// ## Returns
     /// Ok(()) on success, or an error if encoding fails
-    fn encode(
+    pub fn encode(
         &self,
         flags: u8,
         segment: &Segment,
@@ -236,7 +230,7 @@ impl EncodingStrategy for BitsetStrategy {
     ///
     /// ## Returns
     /// Ok(()) on success, or an error if decoding fails
-    fn decode(
+    pub fn decode(
         &self,
         cursor: &mut Cursor<&[u8]>,
         flags: u8,

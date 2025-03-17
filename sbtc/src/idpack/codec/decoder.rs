@@ -10,7 +10,7 @@ use std::io::{Cursor, Read};
 use crate::idpack::{Segment, SegmentEncoding, Segments};
 use crate::leb128::ReadLeb128;
 
-use super::strategies::{BitsetStrategy, EncodingStrategy};
+use super::bitmap_encoding::BitmapEncoding;
 use super::{Decodable, SegmentDecodeError};
 
 /// Implements decoding from bytes into a collection of optimally encoded segments.
@@ -99,8 +99,7 @@ pub fn read_segment_into(
 
     // Map binary encoding type to segment encoding enum
     let segment_encoding = match encoding_type {
-        super::TYPE_BITSET => SegmentEncoding::Bitset,
-        super::TYPE_SINGLE => SegmentEncoding::Single,
+        super::TYPE_BITMAP => SegmentEncoding::Bitset,
         _ => return Err(SegmentDecodeError::UnrecognizedEncoding(encoding_type)),
     };
 
@@ -127,8 +126,8 @@ pub fn read_segment_into(
     // Decode payload using the appropriate strategy
     match encoding_type {
         // Bitmap-based encoding for dense ranges
-        super::TYPE_BITSET => {
-            BitsetStrategy.decode(
+        super::TYPE_BITMAP => {
+            BitmapEncoding.decode(
                 cursor,
                 flags & !super::FLAG_CONTINUATION,
                 actual_offset,

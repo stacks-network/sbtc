@@ -8,11 +8,10 @@
 //! segment patterns and applies position-aware optimizations to minimize
 //! the encoded size.
 
-use crate::idpack::{Segment, SegmentEncoding, Segments};
+use crate::idpack::{Segment, Segments};
 use crate::leb128::Leb128;
 
-use super::strategies::single::SingleValueStrategy;
-use super::strategies::{BitsetStrategy, EncodingStrategy};
+use super::bitmap_encoding::BitmapEncoding;
 use super::{Encodable, SegmentEncodeError};
 
 /// Implementation of encoding for segment collections with delta-optimization.
@@ -90,18 +89,7 @@ fn encode_segment_with_offset(
     // encoding benefits
     Leb128::encode_into(offset, &mut result);
 
-    // Add encoding-specific payload based on segment type
-    match segment.encoding() {
-        SegmentEncoding::Bitset => {
-            // Bitmap-based encoding for dense ranges
-            // Pass flags (without continuation bit) to access optimization bits
-            BitsetStrategy.encode(flags & !super::FLAG_CONTINUATION, segment, &mut result)?;
-        }
-        SegmentEncoding::Single => {
-            // No payload needed for single value encoding
-            // Value is already encoded in the offset field - maximum compression
-        }
-    }
+    BitmapEncoding.encode(flags & !super::FLAG_CONTINUATION, segment, &mut result)?;
 
     Ok(result)
 }
@@ -122,10 +110,7 @@ fn encode_segment_with_offset(
 /// * Combined flags byte with all encodings and indicators
 fn create_flags_byte(segment: &Segment, has_continuation: bool) -> Result<u8, SegmentEncodeError> {
     // Select appropriate strategy based on segment encoding type
-    let strategy: Box<dyn EncodingStrategy> = match segment.encoding() {
-        SegmentEncoding::Bitset => Box::new(BitsetStrategy),
-        SegmentEncoding::Single => Box::new(SingleValueStrategy),
-    };
+    let strategy = BitmapEncoding; // Bitset is the only strategy implemented
 
     // Get base type flag (bits 0-1) and strategy-specific flags (bits 2-6)
     let type_flag = strategy.type_flag(); // Indicates encoding type

@@ -1,9 +1,6 @@
 use crate::{
     idpack::{
-        codec::{
-            strategies::{BitsetStrategy, EncodingStrategy},
-            FLAGS_SIZE,
-        },
+        codec::{BitmapEncoding, FLAGS_SIZE},
         Segment, SegmentEncoding, Segments,
     },
     Leb128,
@@ -75,12 +72,12 @@ impl BitmapCosts {
     fn calculate(offset: u64, prev: u64, next: u64) -> Result<Self, Error> {
         // Calculate current segment payload size (without next value)
         // This uses the actual BitsetStrategy implementation to ensure consistency
-        let current_segment_payload = BitsetStrategy
+        let current_segment_payload = BitmapEncoding
             .calculate_payload_size(&[offset, prev])
             .ok_or(Error::SizeEstimation)?;
 
         // Calculate extended segment payload (with next value)
-        let combined_segment_payload = BitsetStrategy
+        let combined_segment_payload = BitmapEncoding
             .calculate_payload_size(&[offset, next])
             .ok_or(Error::SizeEstimation)?;
 

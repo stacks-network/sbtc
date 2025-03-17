@@ -1,8 +1,10 @@
 use super::{segment, ALLOC_BYTES_LIMIT};
 
+pub mod bitmap_encoding;
 mod decoder;
 mod encoder;
-pub mod strategies;
+
+pub use bitmap_encoding::BitmapEncoding;
 
 /// Maximum number of u64 values that can be safely allocated in a single segment.
 /// This limit balances maximum compression efficiency with memory safety,
@@ -27,7 +29,7 @@ const TYPE_SINGLE: u8             = 0b0000_0000;
 /// Bitmap encoding type (01).
 /// Optimal for dense values in small ranges (>25% density).
 #[rustfmt::skip]
-const TYPE_BITSET: u8             = 0b0000_0001;
+const TYPE_BITMAP: u8             = 0b0000_0001;
 
 /// Mask for extracting encoding-specific flags (bits 2-6).
 /// These bits store strategy-specific optimizations to minimize encoded size.

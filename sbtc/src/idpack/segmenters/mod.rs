@@ -2,13 +2,9 @@ mod bitmap;
 
 use crate::Leb128;
 
-use super::codec::strategies::single::SingleValueStrategy;
-use super::codec::strategies::BitsetStrategy;
-use super::codec::strategies::EncodingStrategy;
-use super::codec::FLAGS_SIZE;
+use super::codec::{BitmapEncoding, FLAGS_SIZE};
 use super::segment;
 use super::segments::Segments;
-use super::SegmentEncoding;
 
 pub use bitmap::BitmapSegmenter;
 
@@ -83,14 +79,9 @@ pub trait Segmenter {
 
             // Get the payload size using the strategy's own estimation
             // calculations
-            let payload_size_estimate = match segment.encoding() {
-                SegmentEncoding::Bitset => BitsetStrategy
-                    .calculate_payload_size(segment.as_slice())
-                    .ok_or(Error::SizeEstimation)?,
-                SegmentEncoding::Single => SingleValueStrategy
-                    .calculate_payload_size(segment.as_slice())
-                    .ok_or(Error::SizeEstimation)?,
-            };
+            let payload_size_estimate = BitmapEncoding
+                .calculate_payload_size(segment.as_slice())
+                .ok_or(Error::SizeEstimation)?;
 
             // Update previous offset for next iteration
             previous_offset = segment.offset();
