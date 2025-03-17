@@ -197,3 +197,5 @@ try manual
 update git config
 
 debugging key issues
+
+try solve
