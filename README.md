@@ -199,3 +199,7 @@ update git config
 debugging key issues
 
 try solve
+
+test youbikey
+
+test youbikey 2
