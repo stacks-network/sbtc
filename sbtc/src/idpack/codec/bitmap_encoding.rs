@@ -1,7 +1,7 @@
-//! # BitSet Encoding Strategy
+//! # BitMap Encoding
 //!
-//! The BitSet encoding strategy compresses integer sequences by representing values as
-//! individual bits in a compact bitmap. This strategy achieves maximum compression for
+//! BitMap encoding compresses integer sequences by representing values as
+//! individual bits in a compact bitmap. This approach achieves maximum compression for
 //! dense sets of values within a limited range.
 //!
 //! ## How It Works
@@ -15,20 +15,20 @@
 //!
 //! ## Optimizations
 //!
-//! ### 1. Embedded Length (≤56 bits)
+//! ### 1. Embedded Length (≤120 bits)
 //!
-//! For small-to-medium ranges (≤56 bits), the bitmap length is stored in the flags byte,
+//! For small-to-medium ranges (≤120 bits), the bitmap length is stored in the flags byte,
 //! saving 1 byte compared to explicit length encoding.
 //!
 //! ### 2. Dense Value Compression
 //!
-//! BitSet encoding shines when segments contain dense clusters of values, as each value
+//! BitMap encoding shines when segments contain dense clusters of values, as each value
 //! requires only a single bit regardless of its magnitude. This makes it highly efficient
 //! for sequences with many consecutive or closely spaced values.
 //!
 //! ## When To Use
 //!
-//! BitSet encoding is most efficient for:
+//! BitMap encoding is most efficient for:
 //!
 //! * Dense sequences where most values in a range are present
 //! * Small ranges that benefit from embedded bitmap optimization
@@ -46,19 +46,21 @@ use super::SegmentDecodeError;
 use super::SegmentEncodeError;
 
 /// Flag bit indicating that the bitmap length is embedded in the flags byte.
-/// When set, the bitmap length is encoded in bits 4-6 of the flags byte.
-const EMBEDDED_LENGTH_FLAG: u8 = codec::ENCODING_FLAG_2;
+/// When set, the bitmap length is encoded in bits 3-6 of the flags byte.
+const EMBEDDED_LENGTH_FLAG: u8 = codec::ENCODING_FLAG_1;
 
 /// Mask for extracting the embedded bitmap length from the flags byte (bits 4-6).
 /// The embedded length can represent bitmap sizes from 0-7 bytes.
-const EMBEDDED_LENGTH_MASK: u8 =
-    codec::ENCODING_FLAG_3 | codec::ENCODING_FLAG_4 | codec::ENCODING_FLAG_5;
+const EMBEDDED_LENGTH_MASK: u8 = codec::ENCODING_FLAG_2
+    | codec::ENCODING_FLAG_3
+    | codec::ENCODING_FLAG_4
+    | codec::ENCODING_FLAG_5;
 
 /// Shift amount for positioning the bitmap length bits in the flags byte.
-const EMBEDDED_LENGTH_SHIFT: u8 = 4;
+const EMBEDDED_LENGTH_SHIFT: u8 = 3;
 
 /// The maximum number of bytes that can be embedded in the flags byte.
-const EMBEDDED_LENGTH_MAX_BYTES: u64 = 7;
+const EMBEDDED_LENGTH_MAX_BYTES: u64 = 15;
 
 /// Implements the BitSet encoding strategy, which compresses integer values by
 /// representing them as bits in a bitmap.
@@ -91,7 +93,7 @@ impl BitmapEncoding {
         let bits_needed = segment.range();
         let bytes_needed = bits_needed.div_ceil(8);
 
-        // Optimization 1: For small-to-medium bitmaps (1-7 bytes), embed length in flags
+        // Optimization 1: For small-to-medium bitmaps (1-15 bytes), embed length in flags
         // This saves 1 byte compared to explicit length encoding.
         if bytes_needed <= EMBEDDED_LENGTH_MAX_BYTES {
             flags |= EMBEDDED_LENGTH_FLAG;
