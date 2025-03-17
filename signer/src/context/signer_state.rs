@@ -232,13 +232,21 @@ impl SbtcLimits {
 
     /// Get the rolling withdrawal limits.
     pub fn rolling_withdrawal_limits(&self) -> RollingWithdrawalLimits {
-        let limit_pair = self
-            .rolling_withdrawal_blocks
-            .zip(self.rolling_withdrawal_cap);
-
-        match limit_pair {
-            Some((blocks, cap)) => RollingWithdrawalLimits { blocks, cap },
-            None => RollingWithdrawalLimits { blocks: 0, cap: Amount::ZERO },
+        match (self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap) {
+            // Use explicitly set limits
+            (Some(blocks), Some(cap)) => RollingWithdrawalLimits { blocks, cap },
+            // If we did not get any limits back from the API, then we
+            // assume that they are intentionally set to disable limits.
+            (None, None) => RollingWithdrawalLimits {
+                blocks: 0,
+                cap: Amount::MAX_MONEY,
+            },
+            // If one of these limits is missing and not the other, then
+            // things are in a bad state. Assume that they set to zero.
+            _ => {
+                tracing::warn!("rolling withdrawal limits are partially set; setting them to zero");
+                RollingWithdrawalLimits { blocks: 0, cap: Amount::ZERO }
+            }
         }
     }
 }
