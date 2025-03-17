@@ -193,3 +193,5 @@ I'm testing commit signing
 attempt 2
 
 try manual
+
+update git config

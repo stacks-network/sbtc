@@ -1,0 +1,13 @@
+curl -X POST http://localhost:3031/withdrawal \
+     -H "Content-Type: application/json" \
+     -d '{
+           "amount": 10000000,
+           "parameters": {
+             "maxFee": 100000
+           },
+           "recipient": "51200d0502eb0824643d01b9d998d371cde7c48bd7c908d6d0e4e3de704709139200",
+           "requestId": 24,
+           "stacksBlockHash": "568bc1260a25331089073689bc891b44f4ffdccd2ab590d1015db49dc54bbceb",
+           "stacksBlockHeight": 0
+         }' \
+     -v
