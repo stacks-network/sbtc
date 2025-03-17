@@ -359,22 +359,22 @@ async fn test_updating_account_limits_via_global_limit_works() {
 }
 
 #[tokio::test]
-#[test_case(Some(Some(100)), None)]
-#[test_case(None, Some(Some(100)))]
+#[test_case(Some(100), None)]
+#[test_case(None, Some(100))]
 async fn test_incomplete_rolling_withdrawal_limit_config_returns_error(
-    rolling_withdrawal_blocks: Option<Option<u64>>,
-    rolling_withdrawal_cap: Option<Option<u64>>,
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
 ) {
     let configuration = clean_setup().await;
 
     // Arrange.
     let limits = Limits {
-        peg_cap: None,
-        per_deposit_minimum: None,
-        per_deposit_cap: None,
-        per_withdrawal_cap: None,
-        rolling_withdrawal_blocks,
-        rolling_withdrawal_cap,
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(rolling_withdrawal_blocks),
+        rolling_withdrawal_cap: Some(rolling_withdrawal_cap),
         account_caps: HashMap::new(),
     };
 
@@ -388,22 +388,22 @@ async fn test_incomplete_rolling_withdrawal_limit_config_returns_error(
     assert_eq!(result.status_code, 400);
 }
 
-#[test_case(Some(Some(100)), Some(Some(100)))]
+#[test_case(Some(100), Some(100))]
 #[test_case(None, None)]
 #[tokio::test]
 async fn test_complete_rolling_withdrawal_limit_config_works(
-    rolling_withdrawal_blocks: Option<Option<u64>>,
-    rolling_withdrawal_cap: Option<Option<u64>>,
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
 ) {
     let configuration = clean_setup().await;
 
     let limits = Limits {
-        peg_cap: None,
-        per_deposit_minimum: None,
-        per_deposit_cap: None,
-        per_withdrawal_cap: None,
-        rolling_withdrawal_blocks,
-        rolling_withdrawal_cap,
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(rolling_withdrawal_blocks),
+        rolling_withdrawal_cap: Some(rolling_withdrawal_cap),
         account_caps: HashMap::new(),
     };
 
