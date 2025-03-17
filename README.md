@@ -195,3 +195,5 @@ attempt 2
 try manual
 
 update git config
+
+debugging key issues
