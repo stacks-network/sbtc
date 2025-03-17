@@ -3490,21 +3490,20 @@ async fn sign_bitcoin_transaction_withdrawals() {
     .unwrap();
 
     // We need to call some functions from test api, thus we need test config.
-    let test_emily_api_key = match emily_client.config().api_key.clone() {
-        Some(key) => Some(testing_emily_client::apis::configuration::ApiKey {
-            prefix: key.prefix,
-            key: key.key,
-        }),
-        None => None,
-    };
+    let emily_config = emily_client.config().clone();
     let test_emily_config = testing_emily_client::apis::configuration::Configuration {
-        base_path: emily_client.config().base_path.clone(),
-        user_agent: emily_client.config().user_agent.clone(),
-        client: emily_client.config().client.clone(),
-        basic_auth: emily_client.config().basic_auth.clone(),
-        oauth_access_token: emily_client.config().oauth_access_token.clone(),
-        bearer_access_token: emily_client.config().bearer_access_token.clone(),
-        api_key: test_emily_api_key,
+        base_path: emily_config.base_path,
+        user_agent: emily_config.user_agent,
+        client: emily_config.client,
+        basic_auth: emily_config.basic_auth,
+        oauth_access_token: emily_config.oauth_access_token,
+        bearer_access_token: emily_config.bearer_access_token,
+        api_key: emily_config.api_key.map(|key| {
+            testing_emily_client::apis::configuration::ApiKey {
+                prefix: key.prefix,
+                key: key.key,
+            }
+        }),
     };
 
     testing_api::wipe_databases(&emily_client.config().as_testing())
