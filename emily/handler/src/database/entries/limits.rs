@@ -38,9 +38,9 @@ pub struct LimitEntry {
     pub per_deposit_cap: Option<u64>,
     /// Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.
     pub per_withdrawal_cap: Option<u64>,
-    /// The number of blocks over which the rolling_withdrawal_cap is applied.
+    /// Number of blocks that define the rolling withdrawal window.
     pub rolling_withdrawal_blocks: Option<u64>,
-    /// Maximum amount of sBTC that can be withdrawn in the rolling_withdrawal_blocks window.
+    /// Maximum total sBTC that can be withdrawn within the rolling withdrawal window.
     pub rolling_withdrawal_cap: Option<u64>,
 }
 
