@@ -1852,14 +1852,14 @@
           "rollingWithdrawalBlocks": {
             "type": "integer",
             "format": "int64",
-            "description": "The number of blocks over which the rolling_withdrawal_cap is applied.",
+            "description": "Number of blocks that define the rolling withdrawal window.",
             "nullable": true,
             "minimum": 0
           },
           "rollingWithdrawalCap": {
             "type": "integer",
             "format": "int64",
-            "description": "Maximum amount of sBTC that can be withdrawn in the rolling_withdrawal_blocks window.",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
             "nullable": true,
             "minimum": 0
           }
@@ -2301,14 +2301,14 @@
           "rollingWithdrawalBlocks": {
             "type": "integer",
             "format": "int64",
-            "description": "The number of blocks over which the rolling_withdrawal_cap is applied.",
+            "description": "Number of blocks that define the rolling withdrawal window.",
             "nullable": true,
             "minimum": 0
           },
           "rollingWithdrawalCap": {
             "type": "integer",
             "format": "int64",
-            "description": "Maximum amount of sBTC that can be withdrawn in the rolling_withdrawal_blocks window.",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
             "nullable": true,
             "minimum": 0
           }

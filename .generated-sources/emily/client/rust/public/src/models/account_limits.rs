@@ -46,7 +46,7 @@ pub struct AccountLimits {
         skip_serializing_if = "Option::is_none"
     )]
     pub per_withdrawal_cap: Option<Option<u64>>,
-    /// The number of blocks over which the rolling_withdrawal_cap is applied.
+    /// Number of blocks that define the rolling withdrawal window.
     #[serde(
         rename = "rollingWithdrawalBlocks",
         default,
@@ -54,7 +54,7 @@ pub struct AccountLimits {
         skip_serializing_if = "Option::is_none"
     )]
     pub rolling_withdrawal_blocks: Option<Option<u64>>,
-    /// Maximum amount of sBTC that can be withdrawn in the rolling_withdrawal_blocks window.
+    /// Maximum total sBTC that can be withdrawn within the rolling withdrawal window.
     #[serde(
         rename = "rollingWithdrawalCap",
         default,
