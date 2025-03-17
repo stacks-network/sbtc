@@ -27,7 +27,6 @@ pub struct Limits {
     pub account_caps: HashMap<String, AccountLimits>,
 }
 
-
 impl Limits {
     /// Validates the withdrawal limit configuration.
     ///
@@ -44,7 +43,9 @@ impl Limits {
     /// See [`ValidationError::IncompleteWithdrawalLimitConfig`].
     pub fn validate(&self) -> Result<(), ValidationError> {
         match (self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap) {
-            (Some(_), None) | (None, Some(_)) => Err(ValidationError::IncompleteWithdrawalLimitConfig),
+            (Some(_), None) | (None, Some(_)) => {
+                Err(ValidationError::IncompleteWithdrawalLimitConfig)
+            }
             _ => Ok(()),
         }
     }
