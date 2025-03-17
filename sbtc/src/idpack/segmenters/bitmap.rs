@@ -69,17 +69,13 @@ impl BitmapCosts {
     /// ## Returns
     ///
     /// `Result<BitmapCosts, Error>` with precise byte calculations for both options
-    fn calculate(offset: u64, prev: u64, next: u64) -> Result<Self, Error> {
+    fn calculate(offset: u64, prev: u64, next: u64) -> Self {
         // Calculate current segment payload size (without next value)
         // This uses the actual BitsetStrategy implementation to ensure consistency
-        let current_segment_payload = BitmapEncoding
-            .calculate_payload_size(&[offset, prev])
-            .ok_or(Error::SizeEstimation)?;
+        let current_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, prev]);
 
         // Calculate extended segment payload (with next value)
-        let combined_segment_payload = BitmapEncoding
-            .calculate_payload_size(&[offset, next])
-            .ok_or(Error::SizeEstimation)?;
+        let combined_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, next]);
 
         // Calculate LEB128 encoding size for offsets
         let current_offset_size = Leb128::calculate_size(offset);
@@ -94,10 +90,10 @@ impl BitmapCosts {
         let bytes_if_combined = current_offset_size + combined_segment_payload;
 
         // Return the precise byte costs for compression decision
-        Ok(Self {
+        Self {
             bytes_if_split,
             bytes_if_combined,
-        })
+        }
     }
 }
 
@@ -130,7 +126,7 @@ impl Segmenter for BitmapSegmenter {
         }
 
         // Find optimal segment boundaries based on byte savings
-        let boundaries = self.find_segment_boundaries(values)?;
+        let boundaries = self.find_segment_boundaries(values);
 
         // Create segments using identified boundaries
         let segments = self.create_segments_from_boundaries(values, &boundaries)?;
@@ -158,13 +154,13 @@ impl BitmapSegmenter {
     /// ## Returns
     ///
     /// A vector of boundary indices representing optimal segment divisions
-    fn find_segment_boundaries(&self, values: &[u64]) -> Result<Vec<usize>, Error> {
+    fn find_segment_boundaries(&self, values: &[u64]) -> Vec<usize> {
         let mut boundaries = vec![0]; // Always include start index
 
         // Handle empty and single value sequences
         if values.len() <= 1 {
             boundaries.push(values.len());
-            return Ok(boundaries);
+            return boundaries;
         }
 
         // Track current segment information for larger sequences
@@ -179,7 +175,7 @@ impl BitmapSegmenter {
 
             // Calculate bitmap costs for splitting vs. combining
             let bitmap_costs =
-                BitmapCosts::calculate(segment_state.current_offset, values[i], values[next_pos])?;
+                BitmapCosts::calculate(segment_state.current_offset, values[i], values[next_pos]);
 
             // Determine if splitting here maximizes compression
             let should_split = bitmap_costs.should_split();
@@ -196,7 +192,7 @@ impl BitmapSegmenter {
         // Always include end boundary
         boundaries.push(values.len());
 
-        Ok(boundaries)
+        boundaries
     }
 
     /// Creates bitmap segments based on the identified boundaries
@@ -284,7 +280,7 @@ mod tests {
     #[test_case(&[1, 1000000], &[0, 1, 2]; "extreme gap forces split")]
     #[test_case(&[1, 2, 3, 100000, 100001], &[0, 3, 5]; "large gap with min size respected")]
     fn test_byte_saving_boundary_detection(values: &[u64], expected_boundaries: &[usize]) {
-        let boundaries = BitmapSegmenter.find_segment_boundaries(values).unwrap();
+        let boundaries = BitmapSegmenter.find_segment_boundaries(values);
         assert_eq!(
             boundaries, expected_boundaries,
             "Unexpected boundaries for values: {:?}",
@@ -320,7 +316,7 @@ mod tests {
         for i in 100..110 {
             values.push(i);
         }
-        let boundaries = BitmapSegmenter.find_segment_boundaries(&values).unwrap();
+        let boundaries = BitmapSegmenter.find_segment_boundaries(&values);
         assert_eq!(
             boundaries,
             &[0, 10, 20],

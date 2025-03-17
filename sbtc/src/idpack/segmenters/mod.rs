@@ -79,9 +79,7 @@ pub trait Segmenter {
 
             // Get the payload size using the strategy's own estimation
             // calculations
-            let payload_size_estimate = BitmapEncoding
-                .calculate_payload_size(segment.as_slice())
-                .ok_or(Error::SizeEstimation)?;
+            let payload_size_estimate = BitmapEncoding.calculate_payload_size(segment.as_slice());
 
             // Update previous offset for next iteration
             previous_offset = segment.offset();

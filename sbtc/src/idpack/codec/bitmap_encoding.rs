@@ -117,9 +117,9 @@ impl BitmapEncoding {
     ///
     /// ## Returns
     /// The estimated encoded size in bytes
-    pub fn calculate_payload_size(&self, values: &[u64]) -> Option<usize> {
+    pub fn calculate_payload_size(&self, values: &[u64]) -> usize {
         if values.is_empty() {
-            return None;
+            return 0;
         }
 
         // We expect values to be sorted, so min and max are at the ends.
@@ -140,7 +140,7 @@ impl BitmapEncoding {
         };
 
         // Return the bytes needed for the bitmap plus length header (if any).
-        Some((bytes_needed as usize) + length_header_size)
+        (bytes_needed as usize) + length_header_size
     }
 
     /// Encodes a segment using the BitSet strategy.
