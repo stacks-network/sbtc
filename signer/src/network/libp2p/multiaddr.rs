@@ -14,6 +14,11 @@ pub trait MultiaddrExt {
     /// Returns the transport protocol used by the multiaddress, or `None` if no
     /// supported transport protocol was found.
     fn get_transport_protocol(&self) -> Option<Protocol>;
+    /// If the P2P protocol is present, return a new [`Multiaddr`] with the P2P
+    /// protocol stripped. Otherwise, return a clone of the original
+    /// [`Multiaddr`] (which is shallow as it uses a [`std::sync::Arc<Vec<u8>>`]
+    /// internally).
+    fn without_p2p_protocol(&self) -> Self;
 }
 
 impl MultiaddrExt for Multiaddr {
@@ -64,6 +69,23 @@ impl MultiaddrExt for Multiaddr {
             )
         })
     }
+
+    fn without_p2p_protocol(&self) -> Self {
+        // If the last protocol is not P2P, return a clone of the original
+        // (which is shallow as it uses a `std::sync::Arc<Vec<u8>>` internally).
+        if !matches!(self.iter().last(), Some(Protocol::P2p(_))) {
+            return self.clone();
+        }
+
+        let mut addr = Multiaddr::empty();
+        for part in self.iter() {
+            if matches!(part, Protocol::P2p(_)) {
+                break;
+            }
+            addr.push(part.clone());
+        }
+        addr
+    }
 }
 
 #[cfg(test)]
@@ -71,7 +93,7 @@ mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     use libp2p::multiaddr::Protocol;
-    use libp2p::Multiaddr;
+    use libp2p::{Multiaddr, PeerId};
 
     use super::*;
 
@@ -197,5 +219,53 @@ mod tests {
             ),
             "memory"
         );
+    }
+
+    #[test]
+    fn test_without_p2p_protocol() {
+        let multiaddr = Multiaddr::empty()
+            .with(Protocol::Ip4(IP4_LOOPBACK))
+            .with(Protocol::Tcp(8080))
+            .with(Protocol::P2p(PeerId::random()));
+        let expected = Multiaddr::empty()
+            .with(Protocol::Ip4(IP4_LOOPBACK))
+            .with(Protocol::Tcp(8080));
+        assert_eq!(
+            multiaddr.without_p2p_protocol(),
+            expected,
+            "ip4 + tcp + p2p"
+        );
+
+        let multiaddr = Multiaddr::empty()
+            .with(Protocol::Ip6(IP6_LOOPBACK))
+            .with(Protocol::Tcp(8080))
+            .with(Protocol::P2p(PeerId::random()));
+        let expected = Multiaddr::empty()
+            .with(Protocol::Ip6(IP6_LOOPBACK))
+            .with(Protocol::Tcp(8080));
+        assert_eq!(
+            multiaddr.without_p2p_protocol(),
+            expected,
+            "ip6 + tcp + p2p"
+        );
+
+        let multiaddr = Multiaddr::empty()
+            .with(Protocol::Dns("localhost".into()))
+            .with(Protocol::Tcp(8080))
+            .with(Protocol::P2p(PeerId::random()));
+        let expected = Multiaddr::empty()
+            .with(Protocol::Dns("localhost".into()))
+            .with(Protocol::Tcp(8080));
+        assert_eq!(
+            multiaddr.without_p2p_protocol(),
+            expected,
+            "dns + tcp + p2p"
+        );
+
+        let multiaddr = Multiaddr::empty()
+            .with(Protocol::Memory(123))
+            .with(Protocol::P2p(PeerId::random()));
+        let expected = Multiaddr::empty().with(Protocol::Memory(123));
+        assert_eq!(multiaddr.without_p2p_protocol(), expected, "memory + p2p");
     }
 }

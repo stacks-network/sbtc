@@ -56,12 +56,27 @@ pub struct EmilyContext {
 /// Implement debug print for the context struct.
 impl fmt::Debug for EmilyContext {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            serde_json::to_string_pretty(self)
-                .expect("Failed to serialize Emily Context in debug print.")
-        )
+        f.debug_struct("Settings")
+            .field("is_local", &self.settings.is_local)
+            .field("deposit_table_name", &self.settings.deposit_table_name)
+            .field(
+                "withdrawal_table_name",
+                &self.settings.withdrawal_table_name,
+            )
+            .field(
+                "chainstate_table_name",
+                &self.settings.chainstate_table_name,
+            )
+            .field("limit_table_name", &self.settings.limit_table_name)
+            .field("default_limits", &self.settings.default_limits)
+            .field("is_mainnet", &self.settings.is_mainnet)
+            .field("version", &self.settings.version)
+            .field(
+                "deployer_address",
+                &self.settings.deployer_address.to_string(),
+            )
+            .field("trusted_reorg_api_key", &"[REDACTED]")
+            .finish()
     }
 }
 
