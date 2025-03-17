@@ -2059,6 +2059,8 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             Some(total_cap - sbtc_supply),
         );
         // Create cache with test data

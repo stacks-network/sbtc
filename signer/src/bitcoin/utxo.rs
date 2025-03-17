@@ -1637,6 +1637,8 @@ mod tests {
             Some(Amount::from_sat(per_deposit_minimum)),
             Some(Amount::from_sat(per_deposit_cap)),
             None,
+            None,
+            None,
             Some(Amount::from_sat(max_mintable_cap)),
         )
     }
