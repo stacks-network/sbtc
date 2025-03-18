@@ -316,7 +316,7 @@ impl SbtcRequests {
 ///
 /// RBF: https://bitcoinops.org/en/topics/replace-by-fee/
 /// BIP-125: https://github.com/bitcoin/bips/blob/master/bip-0125.mediawiki#implementation-details
-fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
+pub fn compute_transaction_fee(tx_vsize: f64, fee_rate: f64, last_fees: Option<Fees>) -> u64 {
     match last_fees {
         Some(Fees { total, rate }) => {
             // The requirement for an RBF transaction is that the new fee

@@ -32,12 +32,25 @@ use crate::WITHDRAWAL_BLOCKS_EXPIRY;
 use crate::WITHDRAWAL_DUST_LIMIT;
 use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
+use super::rpc::assess_mempool_sweep_transaction_fees;
+use super::utxo::compute_transaction_fee;
 use super::utxo::DepositRequest;
+use super::utxo::Fees;
 use super::utxo::RequestRef;
 use super::utxo::Requests;
 use super::utxo::SignatureHash;
 use super::utxo::UnsignedTransaction;
 use super::utxo::WithdrawalRequest;
+
+/// The maximum acceptable multiplier fee difference between the signer and
+/// coordinator estimates when the coordinator's estimate is greater than
+/// the signer's.
+const SIGNER_MAX_BITCOIN_FEE_MULTIPLIER: f64 = 5.0;
+
+/// A constant added to the maximum acceptable fee difference in satoshis between
+/// the signer and coordinator estimates when the coordinator's estimate is
+/// greater than the signer's.
+const SIGNER_MAX_BITCOIN_FEE_OFFSET: u64 = 5;
 
 /// Cached validation data to avoid repeated DB queries
 #[derive(Default)]
@@ -63,6 +76,9 @@ pub struct BitcoinTxContext {
     /// shares associated with this aggregate key must have passed
     /// verification.
     pub aggregate_key: PublicKey,
+    /// The estimated fee rate for a Bitcoin transaction in satoshis per
+    /// vbyte.
+    pub estimated_fee_rate: f64,
 }
 
 /// This type is a container for all deposits and withdrawals that are part
@@ -254,6 +270,13 @@ impl BitcoinPreSignRequest {
             .await?
             .ok_or(Error::MissingSignerUtxo)?;
 
+        let bitcoin_client = ctx.get_bitcoin_client();
+
+        // Get the last fees from the mempool ourselves instead of using those provided by the
+        // the coordinator so that we assess whether the proposed fee is acceptable ourselves.
+        let mut signers_view_of_last_fees: Option<Fees> =
+            assess_mempool_sweep_transaction_fees(&bitcoin_client, &signer_utxo).await?;
+
         let mut signer_state = SignerBtcState {
             fee_rate: self.fee_rate,
             utxo: signer_utxo,
@@ -265,7 +288,14 @@ impl BitcoinPreSignRequest {
 
         for requests in self.request_package.iter() {
             let (output, new_signer_state) = self
-                .construct_tx_sighashes(ctx, btc_ctx, requests, signer_state, &cache)
+                .construct_tx_sighashes(
+                    ctx,
+                    btc_ctx,
+                    requests,
+                    signer_state,
+                    &mut signers_view_of_last_fees,
+                    &cache,
+                )
                 .await?;
             signer_state = new_signer_state;
             outputs.push(output);
@@ -286,6 +316,7 @@ impl BitcoinPreSignRequest {
         btc_ctx: &BitcoinTxContext,
         requests: &'a TxRequestIds,
         signer_state: SignerBtcState,
+        signers_view_of_last_fees: &mut Option<Fees>,
         cache: &ValidationCache<'a>,
     ) -> Result<(BitcoinTxValidationData, SignerBtcState), Error>
     where
@@ -325,13 +356,14 @@ impl BitcoinPreSignRequest {
         let sighashes = tx.construct_digests()?;
 
         signer_state.utxo = tx.new_signer_utxo();
-        // The first transaction is the only one whose input UTXOs that
-        // have all been confirmed. Moreover, the fees that it sets aside
-        // are enough to make up for the remaining transactions in the
-        // transaction package. With that in mind, we do not need to bump
-        // their fees anymore in order for them to be accepted by the
-        // network.
-        signer_state.last_fees = None;
+
+        // The fee that our signer's estimate would have assigned the transaction in sats.
+        let signer_estimated_fee = compute_transaction_fee(
+            tx.tx_vsize as f64,
+            btc_ctx.estimated_fee_rate,
+            *signers_view_of_last_fees,
+        );
+
         let out = BitcoinTxValidationData {
             signer_sighash: sighashes.signer_sighash(),
             deposit_sighashes: sighashes.deposit_sighashes(),
@@ -339,9 +371,19 @@ impl BitcoinPreSignRequest {
             tx: tx.tx.clone(),
             tx_fee: Amount::from_sat(tx.tx_fee),
             reports,
+            signer_estimated_fee: Amount::from_sat(signer_estimated_fee),
             chain_tip_height: btc_ctx.chain_tip_height,
             sbtc_limits: ctx.state().get_current_limits(),
         };
+
+        // The first transaction is the only one whose input UTXOs that
+        // have all been confirmed. Moreover, the fees that it sets aside
+        // are enough to make up for the remaining transactions in the
+        // transaction package. With that in mind, we do not need to bump
+        // their fees anymore in order for them to be accepted by the
+        // network.
+        signer_state.last_fees = None;
+        *signers_view_of_last_fees = None;
 
         Ok((out, signer_state))
     }
@@ -365,6 +407,9 @@ pub struct BitcoinTxValidationData {
     pub tx: bitcoin::Transaction,
     /// the transaction fee in sats
     pub tx_fee: Amount,
+    /// The estimated fee in sats that this signer would have chosen to pay
+    /// for this transaction.
+    pub signer_estimated_fee: Amount,
     /// the chain tip height.
     pub chain_tip_height: u64,
     /// The current sBTC limits.
@@ -487,6 +532,11 @@ impl BitcoinTxValidationData {
         let tx = &self.tx;
         let tx_fee = self.tx_fee;
         let sbtc_limits = &self.sbtc_limits;
+        let estimated_fee = self.signer_estimated_fee;
+
+        if tx_fee.to_sat() > highest_acceptable_fee_sats(estimated_fee) {
+            return false;
+        }
 
         let deposit_validation_results = self.reports.deposits.iter().all(|(_, report)| {
             matches!(
@@ -512,6 +562,13 @@ impl BitcoinTxValidationData {
 
         deposit_validation_results && withdrawal_validation_results
     }
+}
+
+/// Helper function that takes the estimated fee and returns the highest fee that this
+/// signer is willing to pay for the transaction.
+fn highest_acceptable_fee_sats(estimated_fee: Amount) -> u64 {
+    (estimated_fee.to_sat() as f64 * SIGNER_MAX_BITCOIN_FEE_MULTIPLIER) as u64
+        + SIGNER_MAX_BITCOIN_FEE_OFFSET
 }
 
 /// The set of sBTC requests with additional relevant
