@@ -83,13 +83,13 @@ services:
       POSTGRES_HOST: *POSTGRES_HOST
       POSTGRES_PORT: *POSTGRES_PORT
       TAG: *SIGNER_TAG  
-      BUNDLE_PATH: *SIGNER_BUNDLE_PATH
-      TRUSTED_ROOT_PATH: *TRUSTED_ROOT_PATH
+      BUNDLE_PATH: signer_bundle.jsonl
+      TRUSTED_ROOT_PATH: trusted_root.jsonl
     volumes:
       - ./sbtc-signer/signer-config.toml.in:/signer-config.toml.in:ro
       - ./logs:/logs
-      - ${SIGNER_BUNDLE_PATH}:${SIGNER_BUNDLE_PATH}:ro
-      - ${TRUSTED_ROOT_PATH}:${TRUSTED_ROOT_PATH}:ro
+      - ${SIGNER_BUNDLE_PATH}:signer_bundle.jsonl:ro
+      - ${TRUSTED_ROOT_PATH}:trusted_root.jsonl:ro
       - ./entrypoint.sh:/entrypoint.sh
     ports:
       - "4122:4122" # P2P communication between sBTC signers
@@ -109,11 +109,11 @@ services:
       BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
       BLOCKLIST_CLIENT_SERVER__PORT: "3032"
       TAG: *BLOCKLIST_TAG  
-      BUNDLE_PATH: *BLOCKLIST_BUNDLE_PATH
-      TRUSTED_ROOT_PATH: *TRUSTED_ROOT_PATH
+      BUNDLE_PATH: blocklist_bundle.jsonl
+      TRUSTED_ROOT_PATH: trusted_root.jsonl
     volumes:
-      - ${BLOCKLIST_BUNDLE_PATH}:${BLOCKLIST_BUNDLE_PATH}:ro
-      - ${TRUSTED_ROOT_PATH}:${TRUSTED_ROOT_PATH}:ro
+      - ${BLOCKLIST_BUNDLE_PATH}:blocklist_bundle.jsonl:ro
+      - ${TRUSTED_ROOT_PATH}:trusted_root.jsonl:ro
       - ./entrypoint.sh:/entrypoint.sh
 
   vector:
