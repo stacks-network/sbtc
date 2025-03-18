@@ -386,6 +386,11 @@ mod proptests {
     /// Returns maximum value encodable in n bytes
     /// Used to identify size boundaries for encoding decisions
     const fn max_value_for_bytes(n: u32) -> u64 {
+        if n >= 10 {
+            // For 10 bytes (max u64), return u64::MAX
+            return u64::MAX;
+        }
+
         (1u64 << (BITS_PER_BYTE * n)) - 1
     }
 
@@ -569,10 +574,9 @@ mod proptests {
         /// - Minimum values requiring additional bytes
         /// - Consistent encoding across all boundaries
         #[test]
-        fn test_all_compression_boundaries(bytes in 1u32..MAX_BYTES as u32) {
+        fn test_all_compression_boundaries(bytes in 1u32..=MAX_BYTES as u32) {
             // Get boundary values
             let max_value = max_value_for_bytes(bytes);
-            let min_next_value = if bytes < 10 { min_value_for_next_bytes(bytes) } else { u64::MAX };
 
             // Test maximum value for this byte size
             let mut encoded = Vec::new();
@@ -580,7 +584,8 @@ mod proptests {
             prop_assert_eq!(encoded.len(), bytes as usize);
 
             // Test minimum value requiring next byte size
-            if bytes < 10 {
+            if (bytes as usize) < MAX_BYTES {
+                let min_next_value = min_value_for_next_bytes(bytes);
                 let mut encoded = Vec::new();
                 Leb128::encode_into(min_next_value, &mut encoded);
                 prop_assert_eq!(encoded.len(), bytes as usize + 1);
