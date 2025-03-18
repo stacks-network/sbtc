@@ -3765,7 +3765,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     };
 
     // Now we should manually put withdrawal request to Emily, pretending that
-    // users did it.
+    // sidecar did it.
     assert!(
         testing_emily_client::apis::withdrawal_api::create_withdrawal(
             &emily_client.config().as_testing(),
