@@ -1603,6 +1603,7 @@ impl bitcoin::consensus::Encodable for Hash160 {
 mod tests {
     use std::collections::BTreeSet;
     use std::str::FromStr;
+    use std::sync::atomic::AtomicU64;
 
     use super::*;
     use bitcoin::key::TapTweak;
@@ -1626,6 +1627,7 @@ mod tests {
     use stacks_common::types::chainstate::StacksAddress;
     use test_case::test_case;
 
+    use crate::context::RollingWithdrawalLimits;
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
     use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
@@ -1636,6 +1638,8 @@ mod tests {
 
     const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
+
+    static REQUEST_IDS: AtomicU64 = AtomicU64::new(0);
 
     fn generate_x_only_public_key() -> XOnlyPublicKey {
         let secret_key = SecretKey::new(&mut OsRng);
@@ -1720,7 +1724,7 @@ mod tests {
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
-            request_id: (0..u32::MAX as u64).fake_with_rng(&mut OsRng),
+            request_id: REQUEST_IDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
     }
@@ -3409,5 +3413,47 @@ mod tests {
 
         assert_eq!(deposits.len(), num_accepted_deposits);
         assert_eq!(total_amount, accepted_amount);
+    }
+
+    struct WithdrawalLimitTestCase {
+        withdrawals: Vec<WithdrawalRequest>,
+        per_withdrawal_cap: u64,
+        rolling_limits: RollingWithdrawalLimits,
+        fee_rate: f64,
+        num_accepted_withdrawals: usize,
+        accepted_amount: u64,
+    }
+
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(20_001, 10_000, 0), // rejected (above per_withdrawal_cap)
+            create_withdrawal(20_000, 10_000, 0), // accepted
+            create_withdrawal(5_000, 500, 0),     // rejected (below minimum fee)
+            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(10_000, 10_000, 0), // rejected (above rolling cap)
+        ],
+        per_withdrawal_cap: 20_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 40_000, withdrawn_total: 0 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 3,
+        accepted_amount: 40_000,
+    }; "should_respect_all_limits")]
+    fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
+        let limits =
+            SbtcLimits::from_withdrawal_limits(case.per_withdrawal_cap, case.rolling_limits);
+        let filter = SbtcRequestsFilter::new(&limits, case.fee_rate, None);
+
+        let withdrawals = filter.filter_withdrawals(&case.withdrawals);
+        // Each deposit and withdrawal has a max fee greater than the current market fee rate
+        // let txs = requests.construct_transactions().unwrap();
+        let total_amount: u64 = withdrawals
+            .iter()
+            .map(|req| req.as_withdrawal().unwrap().amount)
+            .sum();
+
+        assert_eq!(withdrawals.len(), case.num_accepted_withdrawals);
+        assert_eq!(total_amount, case.accepted_amount);
+        assert!(withdrawals.is_sorted())
     }
 }

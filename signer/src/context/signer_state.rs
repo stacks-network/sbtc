@@ -352,6 +352,20 @@ impl SbtcLimits {
             withdrawn_total: None,
         }
     }
+
+    /// Create a new Self with the given withdrawal limits set.
+    pub fn from_withdrawal_limits(per_request_cap: u64, rolling: RollingWithdrawalLimits) -> Self {
+        Self {
+            total_cap: None,
+            per_deposit_minimum: None,
+            per_deposit_cap: None,
+            per_withdrawal_cap: Some(Amount::from_sat(per_request_cap)),
+            rolling_withdrawal_blocks: Some(rolling.blocks),
+            rolling_withdrawal_cap: Some(rolling.cap),
+            max_mintable_cap: None,
+            withdrawn_total: Some(rolling.withdrawn_total),
+        }
+    }
 }
 
 /// Represents a signer in the current signer set.
