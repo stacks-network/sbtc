@@ -49,9 +49,10 @@ const LOWER_BITS_MASK: u8 = 0x7F;
 /// When clear, it indicates the final byte of the encoded sequence.
 const CONTINUATION_FLAG: u8 = 0x80;
 
-// Represents the threshold where a value needs more than one byte in
-// LEB128 encoding. This is the same as 2^7, which is the highest value
-// that can be encoded in a single byte.
+/// Represents the threshold where a value needs more than one byte in
+/// Values from 0-127 (0x7F) fit in a single byte, while values ≥128 (0x80)
+/// require multiple bytes. Used in calculation of encoded byte length without
+/// performing actual encoding.
 const MULTI_BYTE_THRESHOLD: u64 = 0x80;
 
 /// Errors that can occur during LEB128 operations.
