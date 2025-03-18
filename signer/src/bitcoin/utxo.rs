@@ -184,17 +184,16 @@ impl<'a> SbtcRequestsFilter<'a> {
     ///    withdrawal limits.
     fn validate_withdrawal_amounts(
         &self,
-        withdrawal_amounts: &mut Amount,
+        withdrawal_amounts: &mut u64,
         req: &'a WithdrawalRequest,
     ) -> Option<RequestRef<'a>> {
         let rolling_limits = self.sbtc_limits.rolling_withdrawal_limits();
         let withdrawn_total = rolling_limits
             .withdrawn_total
-            .to_sat()
-            .saturating_add(withdrawal_amounts.to_sat());
+            .saturating_add(*withdrawal_amounts);
 
         let is_within_rolling_limits =
-            req.amount.saturating_add(withdrawn_total) <= rolling_limits.cap.to_sat();
+            req.amount.saturating_add(withdrawn_total) <= rolling_limits.cap;
 
         let is_within_cap = req.amount <= self.sbtc_limits.per_withdrawal_cap().to_sat();
 
@@ -203,7 +202,7 @@ impl<'a> SbtcRequestsFilter<'a> {
             req.max_fee >= compute_transaction_fee(tx_vsize, self.fee_rate, self.last_fees);
 
         if is_within_rolling_limits && is_fee_valid && is_within_cap {
-            *withdrawal_amounts += Amount::from_sat(req.amount);
+            *withdrawal_amounts += req.amount;
             Some(RequestRef::Withdrawal(req))
         } else {
             None

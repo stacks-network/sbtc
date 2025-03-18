@@ -584,7 +584,7 @@ impl<C: Context, B> BlockObserver<C, B> {
             Some(limits.per_withdrawal_cap()),
             Some(rolling_limits.blocks),
             Some(rolling_limits.cap),
-            Some(Amount::from_sat(withdrawn_total)),
+            Some(withdrawn_total),
             Some(max_mintable),
         );
 
