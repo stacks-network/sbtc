@@ -111,7 +111,7 @@ jobs:
 
       - name: Download artifact attestation 
         run: |
-          gh attestation download oci://index.docker.io/${{ env.docker-org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }} -R stacks-network/sbtc
+          gh attestation download oci://index.docker.io/${{ env.docker-org }}/sbtc:${{ matrix.docker_target }}-${{ github.ref_name }}-${{ matrix.dist }} -R stacks-network/sbtc
           
           # Rename the attestation bundle (replace ":" with "_")
           ATTESTATION_FILE="$(echo "${{ steps.docker_build.outputs.digest }}.jsonl" | tr ':' '_')"
@@ -131,7 +131,7 @@ jobs:
           path: |
             ${{ env.ATTESTATION_FILE }}
             trusted_root.jsonl
-  
+
   release:
     name: Draft Release
     runs-on: ubuntu-latest
