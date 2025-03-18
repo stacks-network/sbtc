@@ -358,9 +358,9 @@ async fn test_updating_account_limits_via_global_limit_works() {
     assert_eq!(global_limits, expected_global_limits);
 }
 
-#[tokio::test]
 #[test_case(Some(100), None)]
 #[test_case(None, Some(100))]
+#[tokio::test]
 async fn test_incomplete_rolling_withdrawal_limit_config_returns_error(
     rolling_withdrawal_blocks: Option<u64>,
     rolling_withdrawal_cap: Option<u64>,
