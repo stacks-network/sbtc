@@ -3473,6 +3473,14 @@ mod tests {
         accepted_amount: 0,
     }; "regular withdrawal just outside of limits")]
     #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(10_000, 10_000, 0)],
+        per_withdrawal_cap: 9_999,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 0 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "over the per withdrawal cap gets filtered")]
+    #[test_case(WithdrawalLimitTestCase {
         withdrawals: vec![
             create_withdrawal(10_000, 10_000, 0), // rejected
             create_withdrawal(20_001, 10_000, 0), // rejected

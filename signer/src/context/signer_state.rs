@@ -175,7 +175,7 @@ pub struct SbtcLimits {
     max_mintable_cap: Option<Amount>,
 }
 
-/// A structing containing the two parameters that define the rolling
+/// A struct containing the two parameters that define the rolling
 /// withdrawal limits.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct RollingWithdrawalLimits {
@@ -383,7 +383,7 @@ impl std::hash::Hash for Signer {
 }
 
 // We implement Borrow so that we don't need to reconstruct a full `Signer`
-// object (which involves hashing) when we lookup a signer in the set.
+// object (which involves hashing) when we look up a signer in the set.
 impl std::borrow::Borrow<PublicKey> for Signer {
     fn borrow(&self) -> &PublicKey {
         &self.public_key
