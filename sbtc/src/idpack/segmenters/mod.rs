@@ -1,6 +1,6 @@
 mod bitmap;
 
-use crate::Leb128;
+use crate::leb128::Leb128;
 
 use super::segments::Segments;
 use super::{segment, segments};

@@ -1,6 +1,6 @@
 use crate::{
     idpack::{Segment, Segments},
-    Leb128,
+    leb128::Leb128,
 };
 
 use super::{Segmenter, SegmenterError};
