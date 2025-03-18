@@ -400,12 +400,6 @@ mod proptests {
         (1u64 << (BITS_PER_BYTE * n)) - 1
     }
 
-    /// Returns minimum value requiring exactly n+1 bytes
-    /// Used to identify size transition points
-    const fn min_value_for_next_bytes(n: u32) -> u64 {
-        1u64 << (BITS_PER_BYTE * n)
-    }
-
     /// Helper function for property-based testing of LEB128 encoding
     ///
     /// Performs comprehensive validation of a single value:
@@ -514,25 +508,26 @@ mod proptests {
             let mut bytes = Vec::new();
             Leb128::encode_into(value, &mut bytes);
 
+            // Encoding should never be empty, not even for 0.
+            prop_assert!(!bytes.is_empty(), "encoding should not be empty");
+
             // Encoding size should never exceed 10 bytes (for u64 maximum)
             prop_assert!(bytes.len() <= 10,
                 "encoding should be at most 10 bytes for u64");
 
-            // Explicitly verify continuation bits
-            if bytes.len() > 1 {
-                // All bytes except the last should have continuation bit set
-                for &byte in bytes.iter().take(bytes.len() - 1) {
-                    prop_assert!(
-                        byte & CONTINUATION_FLAG != 0,
-                        "non-final byte missing continuation flag"
-                    );
-                }
-                // Last byte should not have continuation bit set
+            // Explicitly verify continuation bits. All bytes except the last
+            // should have continuation bit set
+            for &byte in bytes.iter().take(bytes.len() - 1) {
                 prop_assert!(
-                    bytes.last().unwrap() & CONTINUATION_FLAG == 0,
-                    "final byte should not have continuation flag set"
+                    byte & CONTINUATION_FLAG != 0,
+                    "non-final byte missing continuation flag"
                 );
             }
+            // Last byte should not have continuation bit set
+            prop_assert!(
+                bytes.last().unwrap() & CONTINUATION_FLAG == 0,
+                "final byte should not have continuation flag set"
+            );
 
             // Reconstruct value manually to verify encoding integrity
             let mut reconstructed = 0u64;
@@ -591,7 +586,7 @@ mod proptests {
 
             // Test minimum value requiring next byte size
             if (bytes as usize) < MAX_BYTES {
-                let min_next_value = min_value_for_next_bytes(bytes);
+                let min_next_value = max_value + 1;
                 let mut encoded = Vec::new();
                 Leb128::encode_into(min_next_value, &mut encoded);
                 prop_assert_eq!(encoded.len(), bytes as usize + 1);
