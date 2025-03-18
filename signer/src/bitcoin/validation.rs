@@ -2068,7 +2068,6 @@ mod tests {
         sbtc_supply: Amount,
         expected: Result<(), Error>,
     ) {
-        // Create mock context
         let limits = SbtcLimits::new(
             Some(total_cap),
             None,
