@@ -117,6 +117,7 @@ pub trait GetFees {
 
 /// Filter out the deposit requests that do not meet the amount or fee requirements.
 pub struct SbtcRequestsFilter<'a> {
+    /// The current sBTC limits on deposits and withdrawals.
     sbtc_limits: &'a SbtcLimits,
     /// The current market fee rate in sat/vByte.
     fee_rate: f64,
@@ -220,8 +221,11 @@ impl<'a> SbtcRequestsFilter<'a> {
             .collect()
     }
 
-    /// Filter withdrawal requests that do not meet amount validation
+    /// Filter withdrawal requests that do not meet the amount validation
     /// criteria.
+    ///
+    /// The returns vector of withdrawal requests that is sorted by request
+    /// ID.
     pub fn filter_withdrawals(&self, withdrawals: &'a [WithdrawalRequest]) -> Vec<RequestRef<'a>> {
         let withdrawn_total = self.sbtc_limits.rolling_withdrawal_limits().withdrawn_total;
 
@@ -295,11 +299,11 @@ impl SbtcRequests {
             return Ok(Vec::new());
         }
 
-        let request_filter = SbtcRequestsFilter::new(
-            &self.sbtc_limits,
-            self.signer_state.fee_rate,
-            self.signer_state.last_fees,
-        );
+        let request_filter = SbtcRequestsFilter {
+            sbtc_limits: &self.sbtc_limits,
+            fee_rate: self.signer_state.fee_rate,
+            last_fees: self.signer_state.last_fees,
+        };
         let deposits = request_filter.filter_deposits(&self.deposits);
         let withdrawals = request_filter.filter_withdrawals(&self.withdrawals);
 
@@ -3416,11 +3420,18 @@ mod tests {
     }
 
     struct WithdrawalLimitTestCase {
+        /// The withdrawal requests under consideration.
         withdrawals: Vec<WithdrawalRequest>,
+        /// The maximum amount that can be withdrawn in a single withdrawal
+        /// request.
         per_withdrawal_cap: u64,
+        /// The rolling withdrawal limits that are being applied to withdrawals.
         rolling_limits: RollingWithdrawalLimits,
+        /// The prevailing fee-rate.
         fee_rate: f64,
+        /// The expected number of non-filtered withdrawal requests.
         num_accepted_withdrawals: usize,
+        /// The expected sum of the withdrawal amounts after filtering.
         accepted_amount: u64,
     }
 
@@ -3430,14 +3441,15 @@ mod tests {
             create_withdrawal(20_001, 10_000, 0), // rejected (above per_withdrawal_cap)
             create_withdrawal(20_000, 10_000, 0), // accepted
             create_withdrawal(5_000, 500, 0),     // rejected (below minimum fee)
-            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(8_000, 10_000, 0),  // accepted
             create_withdrawal(10_000, 10_000, 0), // rejected (above rolling cap)
+            create_withdrawal(1_000, 10_000, 0),  // accepted
         ],
         per_withdrawal_cap: 20_000,
         rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 40_000, withdrawn_total: 0 },
         fee_rate: 10.0,
-        num_accepted_withdrawals: 3,
-        accepted_amount: 40_000,
+        num_accepted_withdrawals: 4,
+        accepted_amount: 39_000,
     }; "should_respect_all_limits")]
     fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
         let limits =
