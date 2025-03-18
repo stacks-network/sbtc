@@ -189,12 +189,9 @@ impl<'a> SbtcRequestsFilter<'a> {
         req: &'a WithdrawalRequest,
     ) -> Option<RequestRef<'a>> {
         let rolling_limits = self.sbtc_limits.rolling_withdrawal_limits();
-        let withdrawn_total = rolling_limits
-            .withdrawn_total
-            .saturating_add(*withdrawal_amounts);
 
         let is_within_rolling_limits =
-            req.amount.saturating_add(withdrawn_total) <= rolling_limits.cap;
+            withdrawal_amounts.saturating_add(req.amount) <= rolling_limits.cap;
 
         let is_within_cap = req.amount <= self.sbtc_limits.per_withdrawal_cap().to_sat();
 
@@ -3440,7 +3437,7 @@ mod tests {
             create_withdrawal(10_000, 10_000, 0), // accepted
             create_withdrawal(20_001, 10_000, 0), // rejected (above per_withdrawal_cap)
             create_withdrawal(20_000, 10_000, 0), // accepted
-            create_withdrawal(5_000, 500, 0),     // rejected (below minimum fee)
+            create_withdrawal(5_000, 500, 0),     // rejected (max-fee is too low)
             create_withdrawal(8_000, 10_000, 0),  // accepted
             create_withdrawal(10_000, 10_000, 0), // rejected (above rolling cap)
             create_withdrawal(1_000, 10_000, 0),  // accepted
@@ -3450,15 +3447,87 @@ mod tests {
         fee_rate: 10.0,
         num_accepted_withdrawals: 4,
         accepted_amount: 39_000,
-    }; "should_respect_all_limits")]
+    }; "should respect all limits")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(10_000, 10_000, 0)],
+        per_withdrawal_cap: 10_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 0 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 1,
+        accepted_amount: 10_000,
+    }; "regular withdrawal within limits v1")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(9_999, 10_000, 0)],
+        per_withdrawal_cap: 10_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 1 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 1,
+        accepted_amount: 9_999,
+    }; "regular withdrawal within limits v2")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(10_000, 10_000, 0)],
+        per_withdrawal_cap: 10_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 1 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "regular withdrawal just outside of limits")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(20_001, 10_000, 0), // rejected
+            create_withdrawal(20_000, 10_000, 0), // rejected
+            create_withdrawal(5_000, 500, 0),     // rejected
+            create_withdrawal(8_000, 10_000, 0),  // rejected
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(1_000, 10_000, 0),  // rejected
+        ],
+        per_withdrawal_cap: Amount::MAX_MONEY.to_sat(),
+        rolling_limits: RollingWithdrawalLimits::zero(0),
+        fee_rate: 1.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "zero for rolling withdrawals filters everything")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(20_001, 10_000, 0), // rejected
+            create_withdrawal(20_000, 10_000, 0), // rejected
+            create_withdrawal(5_000, 10_000, 0),  // rejected
+            create_withdrawal(8_000, 10_000, 0),  // rejected
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(1_000, 10_000, 0),  // rejected
+            create_withdrawal(1, 10_000, 0),      // rejected
+        ],
+        per_withdrawal_cap: 0,
+        rolling_limits: RollingWithdrawalLimits::unlimited(0),
+        fee_rate: 1.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "zero per withdrawal cap rolling withdrawals filters everything")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(20_001, 10_000, 0), // accepted
+            create_withdrawal(20_000, 10_000, 0), // accepted
+            create_withdrawal(5_000, 500, 0),     // rejected (max-fee is too low)
+            create_withdrawal(8_000, 10_000, 0),  // accepted
+            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(1_000, 10_000, 0),  // accepted
+            create_withdrawal(1, 10_000, 0),      // accepted
+        ],
+        per_withdrawal_cap: u64::MAX,
+        rolling_limits: RollingWithdrawalLimits::unlimited(0),
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 7,
+        accepted_amount: 69_002,
+    }; "unlimited withdrawal caps only applies max-fee filtering")]
     fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
         let limits =
             SbtcLimits::from_withdrawal_limits(case.per_withdrawal_cap, case.rolling_limits);
         let filter = SbtcRequestsFilter::new(&limits, case.fee_rate, None);
 
         let withdrawals = filter.filter_withdrawals(&case.withdrawals);
-        // Each deposit and withdrawal has a max fee greater than the current market fee rate
-        // let txs = requests.construct_transactions().unwrap();
         let total_amount: u64 = withdrawals
             .iter()
             .map(|req| req.as_withdrawal().unwrap().amount)
