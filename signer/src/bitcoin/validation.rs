@@ -198,7 +198,6 @@ impl BitcoinPreSignRequest {
     fn assert_request_amount_limits(
         cache: &ValidationCache<'_>,
         limits: &SbtcLimits,
-        withdrawn_total: u64,
     ) -> Result<(), Error> {
         let max_mintable = limits.max_mintable_cap().to_sat();
 
@@ -224,6 +223,7 @@ impl BitcoinPreSignRequest {
             })?;
 
         let rolling_limits = limits.rolling_withdrawal_limits();
+        let withdrawn_total = rolling_limits.withdrawn_total.to_sat();
 
         cache
             .withdrawal_reports
@@ -262,14 +262,7 @@ impl BitcoinPreSignRequest {
         // We now check that the withdrawal amounts adhere to the rolling
         // limits. We check the individual withdrawal caps later.
         let limits = ctx.state().get_current_limits();
-        let context_window = limits
-            .rolling_withdrawal_limits()
-            .blocks
-            .min(u16::MAX as u64) as u16;
-        let withdrawn_total = db
-            .compute_withdrawn_total(&btc_ctx.chain_tip, context_window)
-            .await?;
-        Self::assert_request_amount_limits(&cache, &limits, withdrawn_total)?;
+        Self::assert_request_amount_limits(&cache, &limits)?;
 
         let signer_utxo = db
             .get_signer_utxo(&btc_ctx.chain_tip)
@@ -2075,6 +2068,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(total_cap - sbtc_supply),
         );
         // Create cache with test data
@@ -2092,7 +2086,7 @@ mod tests {
             .collect();
 
         // Create request and validate
-        let result = BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, 0);
+        let result = BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits);
 
         match (result, expected) {
             (Ok(()), Ok(())) => {}
@@ -2118,8 +2112,8 @@ mod tests {
         RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: Amount::from_sat(1_000),
         },
-        Amount::from_sat(1_000),
         Ok(());
         "should accept withdrawals under rolling cap"
     )]
@@ -2128,8 +2122,8 @@ mod tests {
         RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: Amount::from_sat(0),
         },
-        Amount::from_sat(0),
         Ok(());
         "should accept empty withdrawals"
     )]
@@ -2138,8 +2132,8 @@ mod tests {
         RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: Amount::from_sat(0),
         },
-        Amount::from_sat(0),
         Ok(());
         "should accept withdrawals equal to rolling cap"
     )]
@@ -2148,8 +2142,8 @@ mod tests {
         RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: Amount::from_sat(0),
         },
-        Amount::from_sat(0),
         Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts: 10_001,
             cap: 10_000,
@@ -2163,8 +2157,8 @@ mod tests {
         RollingWithdrawalLimits {
             cap: Amount::MAX_MONEY.to_sat(),
             blocks: 150,
+            withdrawn_total: Amount::from_sat(1),
         },
-        Amount::from_sat(1),
         Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts: Amount::MAX_MONEY.to_sat() + 1,
             cap: Amount::MAX_MONEY.to_sat(),
@@ -2209,7 +2203,6 @@ mod tests {
     fn test_validate_withdrawal_limits(
         withdrawal_amounts: Vec<u64>,
         rolling_limits: RollingWithdrawalLimits,
-        withdrawn_total: Amount,
         expected: Result<(), Error>,
     ) {
         let limits = SbtcLimits::new(
@@ -2219,6 +2212,7 @@ mod tests {
             None,
             Some(rolling_limits.blocks),
             Some(rolling_limits.cap),
+            Some(rolling_limits.withdrawn_total),
             None,
         );
         // Create cache with test data
@@ -2235,10 +2229,8 @@ mod tests {
             .map(|(report, votes)| (&report.id, (report.clone(), votes.clone())))
             .collect();
 
-        // Validate the cached reports
-        let withdrawn_total = withdrawn_total.to_sat();
-        let result =
-            BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, withdrawn_total);
+        // Create request and validate
+        let result = BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits);
 
         match (result, expected) {
             (Ok(()), Ok(())) => {}

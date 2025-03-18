@@ -625,9 +625,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 }
 
 #[test_case::test_case(false, SbtcLimits::unlimited(); "no contracts, default limits")]
-#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None, None, None); "no contracts, total cap limit")]
+#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None, None, None, None); "no contracts, total cap limit")]
 #[test_case::test_case(true, SbtcLimits::unlimited(); "deployed contracts, default limits")]
-#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None, None, None); "deployed contracts, total cap limit")]
+#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None, None, None, None); "deployed contracts, total cap limit")]
 #[tokio::test]
 async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcLimits) {
     // We start with the typical setup with a fresh database and context
