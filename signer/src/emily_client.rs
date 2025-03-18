@@ -97,9 +97,9 @@ pub trait EmilyInteract: Sync + Send {
         stacks_chain_tip: &'a StacksBlock,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 
-    /// Update accepted withdrawals after their stacks transaction has been
-    /// confirmed (but before being finalized -- the bitcoin transaction
-    /// spending the UTXO has not been confirmed yet).
+    /// Update accepted withdrawals after their sweep bitcoin transaction has
+    /// been submitted (but before being finalized -- the stacks transaction
+    /// accepting the withdrawal has not been submitted yet).
     fn accept_withdrawals<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
