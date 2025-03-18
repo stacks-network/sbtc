@@ -3489,23 +3489,6 @@ async fn sign_bitcoin_transaction_withdrawals() {
     )
     .unwrap();
 
-    // We need to call some functions from test api, thus we need test config.
-    let emily_config = emily_client.config().clone();
-    let test_emily_config = testing_emily_client::apis::configuration::Configuration {
-        base_path: emily_config.base_path,
-        user_agent: emily_config.user_agent,
-        client: emily_config.client,
-        basic_auth: emily_config.basic_auth,
-        oauth_access_token: emily_config.oauth_access_token,
-        bearer_access_token: emily_config.bearer_access_token,
-        api_key: emily_config.api_key.map(|key| {
-            testing_emily_client::apis::configuration::ApiKey {
-                prefix: key.prefix,
-                key: key.key,
-            }
-        }),
-    };
-
     testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
@@ -3785,7 +3768,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     // users did it.
     assert!(
         testing_emily_client::apis::withdrawal_api::create_withdrawal(
-            &test_emily_config,
+            &emily_client.config().as_testing(),
             testing_emily_client::models::CreateWithdrawalRequestBody {
                 amount: withdrawal_request.amount,
                 parameters: Box::new(testing_emily_client::models::WithdrawalParameters {
@@ -3809,7 +3792,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     // Check that there is no Accepted requests on emily before we broadcast them
     assert_eq!(
         testing_emily_client::apis::withdrawal_api::get_withdrawals(
-            &test_emily_config,
+            &emily_client.config().as_testing(),
             testing_emily_client::models::Status::Accepted,
             None,
             None,
@@ -3874,7 +3857,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     // =========================================================================
 
     let withdrawals_on_emily = testing_emily_client::apis::withdrawal_api::get_withdrawals(
-        &test_emily_config,
+        &emily_client.config().as_testing(),
         testing_emily_client::models::Status::Accepted,
         None,
         None,
