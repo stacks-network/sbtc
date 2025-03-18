@@ -226,8 +226,13 @@ impl<'a> SbtcRequestsFilter<'a> {
     pub fn filter_withdrawals(&self, withdrawals: &'a [WithdrawalRequest]) -> Vec<RequestRef<'a>> {
         let withdrawn_total = self.sbtc_limits.rolling_withdrawal_limits().withdrawn_total;
 
-        withdrawals
-            .iter()
+        // Let's ensure that the withdrawal requests are sorted by their
+        // request ID.
+        let mut reqs: Vec<_> = withdrawals.iter().map(RequestRef::Withdrawal).collect();
+        reqs.sort();
+
+        reqs.iter()
+            .filter_map(RequestRef::as_withdrawal)
             .scan(withdrawn_total, |withdrawal_amounts, req| {
                 Some(self.validate_withdrawal_amounts(withdrawal_amounts, req))
             })
