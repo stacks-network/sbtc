@@ -505,7 +505,23 @@ mod proptests {
 
             // Encoding size should never exceed 10 bytes (for u64 maximum)
             prop_assert!(bytes.len() <= 10,
-                "Encoding should be at most 10 bytes for u64");
+                "encoding should be at most 10 bytes for u64");
+
+            // Explicitly verify continuation bits
+            if bytes.len() > 1 {
+                // All bytes except the last should have continuation bit set
+                for &byte in bytes.iter().take(bytes.len() - 1) {
+                    prop_assert!(
+                        byte & CONTINUATION_FLAG != 0,
+                        "non-final byte missing continuation flag"
+                    );
+                }
+                // Last byte should not have continuation bit set
+                prop_assert!(
+                    bytes.last().unwrap() & CONTINUATION_FLAG == 0,
+                    "final byte should not have continuation flag set"
+                );
+            }
 
             // Reconstruct value manually to verify encoding integrity
             let mut reconstructed = 0u64;
@@ -514,7 +530,7 @@ mod proptests {
             }
 
             prop_assert_eq!(reconstructed, value,
-                "Manual reconstruction from bytes failed");
+                "manual reconstruction from bytes failed");
         }
 
         /// Tests sequential reading of multiple values
