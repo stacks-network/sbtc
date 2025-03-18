@@ -2169,8 +2169,7 @@ mod tests {
     )]
     #[test_case(
         vec![Amount::MAX_MONEY.to_sat() / 4; 3],
-        RollingWithdrawalLimits::unlimited(),
-        Amount::MAX_MONEY / 4,
+        RollingWithdrawalLimits::unlimited(Amount::MAX_MONEY / 4),
         Ok(());
         "unlimited filters no withdrawals"
     )]
@@ -2190,8 +2189,7 @@ mod tests {
     )]
     #[test_case(
         vec![1],
-        RollingWithdrawalLimits::zero(),
-        Amount::ZERO,
+        RollingWithdrawalLimits::zero(Amount::ZERO),
         Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts:  1,
             cap: Amount::ZERO.to_sat(),
