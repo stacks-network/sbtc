@@ -230,10 +230,10 @@ impl BitcoinPreSignRequest {
             .values()
             .try_fold(withdrawn_total, |acc, (report, _)| {
                 let sum = acc.saturating_add(report.amount);
-                if sum > rolling_limits.cap.to_sat() {
+                if sum > rolling_limits.cap {
                     return Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
                         amounts: sum,
-                        cap: rolling_limits.cap.to_sat(),
+                        cap: rolling_limits.cap,
                         cap_blocks: rolling_limits.blocks,
                         withdrawn_total,
                     }));
@@ -2116,7 +2116,7 @@ mod tests {
     #[test_case(
         vec![1000, 2000, 3000],
         RollingWithdrawalLimits {
-            cap: Amount::from_sat(10_000),
+            cap: 10_000,
             blocks: 150,
         },
         Amount::from_sat(1_000),
@@ -2126,7 +2126,7 @@ mod tests {
     #[test_case(
         vec![],
         RollingWithdrawalLimits {
-            cap: Amount::from_sat(10_000),
+            cap: 10_000,
             blocks: 150,
         },
         Amount::from_sat(0),
@@ -2136,7 +2136,7 @@ mod tests {
     #[test_case(
         vec![10_000],
         RollingWithdrawalLimits {
-            cap: Amount::from_sat(10_000),
+            cap: 10_000,
             blocks: 150,
         },
         Amount::from_sat(0),
@@ -2146,7 +2146,7 @@ mod tests {
     #[test_case(
         vec![5000, 5001],
         RollingWithdrawalLimits {
-            cap: Amount::from_sat(10_000),
+            cap: 10_000,
             blocks: 150,
         },
         Amount::from_sat(0),
@@ -2161,7 +2161,7 @@ mod tests {
     #[test_case(
         vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
         RollingWithdrawalLimits {
-            cap: Amount::MAX_MONEY,
+            cap: Amount::MAX_MONEY.to_sat(),
             blocks: 150,
         },
         Amount::from_sat(1),
@@ -2179,6 +2179,13 @@ mod tests {
         Amount::MAX_MONEY / 4,
         Ok(());
         "unlimited_limits_filters_no_withdrawals"
+    )]
+    #[test_case(
+        vec![],
+        RollingWithdrawalLimits::zero(),
+        Amount::MAX_MONEY,
+        Ok(());
+        "no_withdrawals_when_withdrawals_are_locked_down_okay"
     )]
     #[test_case(
         vec![1],

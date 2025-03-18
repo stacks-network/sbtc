@@ -138,7 +138,7 @@ pub struct SbtcLimits {
     /// Represents the number of blocks that define the rolling withdrawal window.
     rolling_withdrawal_blocks: Option<u64>,
     /// Represents the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
-    rolling_withdrawal_cap: Option<Amount>,
+    rolling_withdrawal_cap: Option<u64>,
     /// Represents the maximum amount of sBTC that can currently be minted.
     max_mintable_cap: Option<Amount>,
 }
@@ -152,21 +152,18 @@ pub struct RollingWithdrawalLimits {
     pub blocks: u64,
     /// Represents the maximum total sBTC that can be withdrawn within the
     /// rolling withdrawal window.
-    pub cap: Amount,
+    pub cap: u64,
 }
 
 impl RollingWithdrawalLimits {
     /// Create a new one where the caps imply no withdrawals are allowed.
     pub fn zero() -> Self {
-        RollingWithdrawalLimits { blocks: 0, cap: Amount::ZERO }
+        RollingWithdrawalLimits { blocks: 0, cap: 0 }
     }
 
     /// Create a new one where the caps imply all withdrawals are allowed.
     pub fn unlimited() -> Self {
-        RollingWithdrawalLimits {
-            blocks: 0,
-            cap: Amount::MAX_MONEY,
-        }
+        RollingWithdrawalLimits { blocks: 0, cap: u64::MAX }
     }
 }
 
@@ -188,7 +185,7 @@ impl SbtcLimits {
         per_deposit_cap: Option<Amount>,
         per_withdrawal_cap: Option<Amount>,
         rolling_withdrawal_blocks: Option<u64>,
-        rolling_withdrawal_cap: Option<Amount>,
+        rolling_withdrawal_cap: Option<u64>,
         max_mintable_cap: Option<Amount>,
     ) -> Self {
         Self {
@@ -210,7 +207,7 @@ impl SbtcLimits {
             Some(Amount::ZERO),
             Some(Amount::ZERO),
             Some(u64::MAX),
-            Some(Amount::ZERO),
+            Some(0),
             Some(Amount::ZERO),
         )
     }
@@ -273,7 +270,7 @@ impl SbtcLimits {
             per_deposit_cap: Some(Amount::MAX_MONEY),
             per_withdrawal_cap: Some(Amount::MAX_MONEY),
             rolling_withdrawal_blocks: Some(0),
-            rolling_withdrawal_cap: Some(Amount::MAX_MONEY),
+            rolling_withdrawal_cap: Some(u64::MAX),
             max_mintable_cap: Some(Amount::MAX_MONEY),
         }
     }
