@@ -1,89 +1,79 @@
-//! `idpack` placeholder module
+//! # IDPack: Maximum Compression Integer Set Encoding
+//!
+//! `idpack` is a high-efficiency integer compression library designed to
+//! achieve maximum byte savings through automatic segmentation and optimal
+//! encoding selection. The library specializes in compressing sorted sets of
+//! unsigned 64-bit integers by intelligently splitting them into segments and
+//! applying the most efficient encoding strategy for each segment.
+//!
+//! ## Core Compression Strategies
+//!
+//! * **Bitmap Encoding**: Represents dense integer sequences as bit flags in a
+//!   bitmap, with special optimizations for tiny ranges (embedded bitmaps)
+//!   
+//! * **Single Value**: Special-case optimization for isolated values with zero
+//!   payload overhead
+//!
+//! ## Core Segmentation Strategies
+//!
+//! * **Bitmap Segmenter**: Splits sequences into segments optimized for bitmap
+//!   encoding
+//!
+//! ## Usage Example
+//!
+//! ```
+//! use idpack::{BitmapSegmenter, Segmenter, Encodable};
+//!
+//! // Compress a sequence of integers with maximum efficiency
+//! let values = vec![1, 2, 3, 50, 51, 52, 1000, 1001];
+//!
+//! // Segment the values with automatic encoding selection
+//! let segments = BitmapSegmenter.package(&values).unwrap();
+//!
+//! // Encode to binary representation
+//! let encoded = segments.encode().unwrap();
+//!
+//! println!("Compressed {} integers into {} bytes", values.len(), encoded.len());
+//! ```
+//!
+//! ## Safety Considerations
+//!
+//! This library implements safeguards against memory exhaustion attacks that
+//! could occur when decoding malicious inputs:
+//!
+//! * Input validation for size limits
+//! * Safe bitmap allocation limits
+//! * Protection against excessive delta ranges
+//!
+//! ## Architecture
+//!
+//! * **Segmenters**: Divide integer sequences into optimally-sized segments
+//! * **Segments**: Manage collections of un-encoded segments
+//! * **Segment**: Represents a single encoded integer range
+//! * **Codec**: Low-level encoding/decoding strategies
 
-use std::hash::{DefaultHasher, Hash, Hasher};
+mod codec;
+mod segment;
+mod segmenters;
+mod segments;
 
-/// Placeholder for the `segmenter::Error` type
-#[derive(Debug, thiserror::Error)]
-#[error("SegmenterError")]
-pub struct SegmenterError;
+#[cfg(test)]
+mod tests;
 
-/// Placeholder for the `codec::SegmentEncodeError` type
-#[derive(Debug, thiserror::Error)]
-#[error("SegmentEncodeError")]
-pub struct SegmentEncodeError;
+pub use segment::Segment;
+pub use segment::SegmentError;
 
-/// Placeholder for the `codec::SegmentDecodeError` type
-#[derive(Debug, thiserror::Error)]
-#[error("SegmentDecodeError")]
-pub struct SegmentDecodeError;
+pub use segments::Segments;
+pub use segments::SegmentsError;
 
-/// Placeholder for the `Segments` type
-#[derive(Debug, PartialEq, Eq)]
-pub struct Segments(Vec<u64>);
+pub use segmenters::BitmapSegmenter;
+pub use segmenters::Segmenter;
+pub use segmenters::SegmenterError;
 
-impl Segments {
-    /// Create a new `Segments` instance from the given values
-    pub fn from_vec(values: Vec<u64>) -> Self {
-        Self(values)
-    }
-}
+pub use codec::Decodable;
+pub use codec::DecodeError;
+pub use codec::Encodable;
 
-/// Placeholder for the `BitmapSegmenter` type
-pub struct BitmapSegmenter;
-
-/// Placeholder for the `Segmenter` trait
-pub trait Segmenter {
-    /// Package the given values into segments
-    fn package(&self, values: &[u64]) -> Result<Segments, SegmenterError> {
-        Ok(Segments(values.to_vec()))
-    }
-    /// Estimate the size of the segments
-    fn estimate_size(&self, values: &[u64]) -> Result<usize, SegmenterError> {
-        if values.is_empty() {
-            return Ok(0);
-        }
-
-        if !values.iter().is_sorted() {
-            return Err(SegmenterError);
-        }
-
-        // We expect values to be sorted, so min and max are at the ends.
-        // We just ensured the values are non-empty, so this is safe.
-        let min_value = values[0];
-        let max_value = values[values.len() - 1];
-
-        // Calculate bitmap size requirements
-        let range = max_value - min_value;
-        let bytes_needed = range.div_ceil(8) as usize;
-
-        // Safety check to prevent OOM for extremely sparse data
-        if bytes_needed > 1_000_usize {
-            return Err(SegmenterError);
-        }
-
-        // For bitmaps > 7 bytes, we need an explicit length byte
-        // Add two bytes for the segment header (naive)
-        Ok(bytes_needed + (bytes_needed > 7) as usize + 2)
-    }
-}
-
-/// Placeholder for the `Encodable` trait
-pub trait Encodable {
-    /// Encode the value into a byte array
-    fn encode(&self) -> Result<Vec<u8>, SegmentEncodeError>;
-}
-
-impl Segmenter for BitmapSegmenter {}
-impl Encodable for Segments {
-    fn encode(&self) -> Result<Vec<u8>, SegmentEncodeError> {
-        if self.0.is_empty() {
-            return Ok(vec![]);
-        }
-
-        let mut hasher = DefaultHasher::new();
-        for value in &self.0 {
-            value.hash(&mut hasher);
-        }
-        Ok(hasher.finish().to_le_bytes().to_vec())
-    }
-}
+/// Maximum allocation limit in bytes (1MB) for preventing memory allocation attacks
+/// while allowing sufficient space for optimal compression operations.
+pub const ALLOC_BYTES_LIMIT: u32 = 1 << 20; // 1MB = 2^20 bytes

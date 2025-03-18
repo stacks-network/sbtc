@@ -370,22 +370,23 @@ impl EmilyInteract for EmilyClient {
             .map_err(EmilyClientError::GetLimits)
             .map_err(Error::EmilyApi)?;
 
-        let total_cap = limits.peg_cap.and_then(|cap| cap.map(Amount::from_sat));
-        let per_deposit_minimum: Option<Amount> = limits
-            .per_deposit_minimum
-            .and_then(|min| min.map(Amount::from_sat));
-        let per_deposit_cap = limits
-            .per_deposit_cap
-            .and_then(|cap| cap.map(Amount::from_sat));
-        let per_withdrawal_cap = limits
-            .per_withdrawal_cap
-            .and_then(|cap| cap.map(Amount::from_sat));
+        let total_cap = limits.peg_cap.flatten().map(Amount::from_sat);
+        let per_deposit_minimum = limits.per_deposit_minimum.flatten().map(Amount::from_sat);
+        let per_deposit_cap = limits.per_deposit_cap.flatten().map(Amount::from_sat);
+        let per_withdrawal_cap = limits.per_withdrawal_cap.flatten().map(Amount::from_sat);
+        let rolling_withdrawal_blocks = limits.rolling_withdrawal_blocks.flatten();
+        let rolling_withdrawal_cap = limits
+            .rolling_withdrawal_cap
+            .flatten()
+            .map(Amount::from_sat);
 
         Ok(SbtcLimits::new(
             total_cap,
             per_deposit_minimum,
             per_deposit_cap,
             per_withdrawal_cap,
+            rolling_withdrawal_blocks,
+            rolling_withdrawal_cap,
             None,
         ))
     }

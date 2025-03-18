@@ -38,6 +38,10 @@ pub struct LimitEntry {
     pub per_deposit_cap: Option<u64>,
     /// Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.
     pub per_withdrawal_cap: Option<u64>,
+    /// Number of blocks that define the rolling withdrawal window.
+    pub rolling_withdrawal_blocks: Option<u64>,
+    /// Maximum total sBTC that can be withdrawn within the rolling withdrawal window.
+    pub rolling_withdrawal_cap: Option<u64>,
 }
 
 /// Convert from entry to its corresponding limit.
@@ -48,6 +52,8 @@ impl From<LimitEntry> for AccountLimits {
             per_deposit_minimum: limit_entry.per_deposit_minimum,
             per_deposit_cap: limit_entry.per_deposit_cap,
             per_withdrawal_cap: limit_entry.per_withdrawal_cap,
+            rolling_withdrawal_blocks: limit_entry.rolling_withdrawal_blocks,
+            rolling_withdrawal_cap: limit_entry.rolling_withdrawal_cap,
         }
     }
 }
@@ -72,6 +78,8 @@ impl LimitEntry {
             per_deposit_minimum: account_limit.per_deposit_minimum,
             per_deposit_cap: account_limit.per_deposit_cap,
             per_withdrawal_cap: account_limit.per_withdrawal_cap,
+            rolling_withdrawal_blocks: account_limit.rolling_withdrawal_blocks,
+            rolling_withdrawal_cap: account_limit.rolling_withdrawal_cap,
         }
     }
     /// Returns true if the limit entry has no limits set.
