@@ -26,12 +26,33 @@
 
 use std::io::Cursor;
 
-// LEB128 u64 can use at most 10 bytes
+/// Maximum number of bytes required to encode a u64 in LEB128 format.
+/// For u64 (64 bits), we need at most 10 bytes because each byte provides 7 bits,
+/// with 9 bytes covering 63 bits and the 10th byte providing the final bit.
 const MAX_BYTES: usize = 10;
+
+/// Number of value bits stored in each LEB128 byte.
+/// LEB128 encoding uses 7 bits per byte for actual data, with the 8th bit
+/// serving as a continuation flag.
 const BITS_PER_BYTE: u32 = 7;
+
+/// Maximum number of bits in a u64 value.
+/// Used for bounds checking to prevent overflow during encoding/decoding.
 const MAX_BITS: usize = 64;
+
+/// Bit mask to extract the lower 7 bits (value data) from a LEB128 byte.
+/// Each byte uses bits 0-6 for data and bit 7 for continuation.
 const LOWER_BITS_MASK: u8 = 0x7F;
+
+/// Flag bit indicating that more bytes follow in the LEB128 sequence.
+/// When this bit is set in a byte, it means the value continues in the next byte.
+/// When clear, it indicates the final byte of the encoded sequence.
 const CONTINUATION_FLAG: u8 = 0x80;
+
+// Represents the threshold where a value needs more than one byte in
+// LEB128 encoding. This is the same as 2^7, which is the highest value
+// that can be encoded in a single byte.
+const MULTI_BYTE_THRESHOLD: u64 = 0x80;
 
 /// Errors that can occur during LEB128 operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -174,7 +195,7 @@ impl Leb128 {
     /// The number of bytes required to encode the value
     pub fn calculate_size(mut value: u64) -> usize {
         let mut size = 0;
-        while value >= 0x80 {
+        while value >= MULTI_BYTE_THRESHOLD {
             size += 1;
             value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
         }
