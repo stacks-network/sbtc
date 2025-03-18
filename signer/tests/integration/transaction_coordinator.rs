@@ -3790,7 +3790,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         .is_ok()
     );
     // Check that there is no Accepted requests on emily before we broadcast them
-    assert_eq!(
+    assert!(
         testing_emily_client::apis::withdrawal_api::get_withdrawals(
             &emily_client.config().as_testing(),
             testing_emily_client::models::Status::Accepted,
@@ -3800,8 +3800,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         .await
         .unwrap()
         .withdrawals
-        .len(),
-        0
+        .is_empty()
     );
 
     for (_, db, _, _) in signers.iter() {
