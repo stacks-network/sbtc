@@ -11,6 +11,8 @@ use hashbrown::HashSet;
 use libp2p::PeerId;
 
 use crate::keys::PublicKey;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockRef;
 
 /// A struct for holding internal signer state. This struct is served by
 /// the [`SignerContext`] and can be used to cache global state instead of
@@ -23,6 +25,9 @@ pub struct SignerState {
     sbtc_contracts_deployed: AtomicBool,
     sbtc_bitcoin_start_height: AtomicU64,
     is_sbtc_bitcoin_start_height_set: AtomicBool,
+    // The current bitcoin chain tip. This gets updated at the end of the
+    // block observer's duties when it observes a new bitcoin block.
+    bitcoin_chain_tip: RwLock<BitcoinBlockRef>,
 }
 
 impl SignerState {
@@ -61,6 +66,24 @@ impl SignerState {
             .write()
             .expect("BUG: Failed to acquire write lock")
             .replace(aggregate_key);
+    }
+
+    /// Get the current bitcoin chain tip.
+    pub fn bitcoin_chain_tip(&self) -> BitcoinBlockRef {
+        self.bitcoin_chain_tip
+            .read()
+            .expect("BUG: Failed to acquire read lock")
+            .to_owned()
+    }
+
+    /// Set the current bitcoin chain tip.
+    pub fn set_bitcoin_chain_tip(&self, chain_tip: BitcoinBlockRef) {
+        let mut block = self
+            .bitcoin_chain_tip
+            .write()
+            .expect("BUG: Failed to acquire write lock");
+
+        *block = chain_tip;
     }
 
     /// Get the current sBTC limits.
@@ -120,6 +143,12 @@ impl Default for SignerState {
             sbtc_contracts_deployed: Default::default(),
             sbtc_bitcoin_start_height: Default::default(),
             is_sbtc_bitcoin_start_height_set: Default::default(),
+            // The block hash here is often used as the parent block hash
+            // of the genesis block on bitcoin.
+            bitcoin_chain_tip: RwLock::new(BitcoinBlockRef {
+                block_height: 0,
+                block_hash: BitcoinBlockHash::from([0; 32]),
+            }),
         }
     }
 }

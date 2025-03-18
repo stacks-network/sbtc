@@ -528,6 +528,7 @@ async fn process_complete_deposit() {
     let state = context.state();
     state.update_current_signer_set(signer_set_public_keys);
     state.set_current_aggregate_key(aggregate_key);
+    state.set_bitcoin_chain_tip(bitcoin_chain_tip);
 
     // Ensure we have a signers UTXO (as a donation, to not mess with the current
     // temporary `get_swept_deposit_requests` implementation)
@@ -3972,9 +3973,12 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     // When the signer binary starts up in main(), it sets the current
     // signer set public keys in the context state using the values in the
     // bootstrap_signing_set configuration parameter. Later, the aggregate
-    // key gets set in the block observer. We're not running a block
-    // observer in this test, nor are we going through main, so we manually
-    // update the state here.
+    // key and bitcoin chain tip get set in the block observer. We're not
+    // running a block observer in this test, nor are we going through
+    // main, so we manually update the state here.
+    //
+    // We hold off from updating the bitcoin chain tip for now, because we
+    // are about to generate some more blocks.
     let signer_set_public_keys = testing_signer_set.signer_keys().into_iter().collect();
     let state = context.state();
     state.update_current_signer_set(signer_set_public_keys);
@@ -4006,6 +4010,9 @@ async fn process_rejected_withdrawal(is_completed: bool, is_in_mempool: bool) {
     backfill_bitcoin_blocks(&db, rpc, &new_tip).await;
     let (bitcoin_chain_tip, _) = db.get_chain_tips().await;
 
+    // We've just updated the database with a new chain tip, so we need to
+    // update the signer's state just like the block observer would.
+    state.set_bitcoin_chain_tip(bitcoin_chain_tip);
     // Now it should be pending rejected
     assert_eq!(
         context
@@ -4256,6 +4263,8 @@ async fn coordinator_skip_onchain_completed_deposits(deposit_completed: bool) {
     setup.store_deposit_decisions(&db).await;
     setup.store_sweep_tx(&db).await;
 
+    let (bitcoin_chain_tip, _) = db.get_chain_tips().await;
+    ctx.state().set_bitcoin_chain_tip(bitcoin_chain_tip);
     // If we try to sign a complete deposit, we will ask the bitcoin node to
     // asses the fees, so we need to mock this.
     let sweep_tx_info = setup.sweep_tx_info.unwrap().tx_info;

@@ -620,6 +620,18 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
+    /// Update the `SignerState` object with current bitcoin chain tip.
+    async fn update_bitcoin_chain_tip(&self) -> Result<(), Error> {
+        let db = self.context.get_storage();
+        let chain_tip = db
+            .get_bitcoin_canonical_chain_tip_ref()
+            .await?
+            .ok_or(Error::NoChainTip)?;
+
+        self.context.state().set_bitcoin_chain_tip(chain_tip);
+        Ok(())
+    }
+
     /// Update the `SignerState` object with data that is unlikely to
     /// change until the arrival of the next bitcoin block.
     ///
@@ -629,12 +641,16 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// * sBTC limits from Emily.
     /// * The current signer set.
     /// * The current aggregate key.
+    /// * The current bitcoin chain tip.
     async fn update_signer_state(&self, chain_tip: BlockHash) -> Result<(), Error> {
         tracing::info!("loading sbtc limits from Emily");
         self.update_sbtc_limits().await?;
 
         tracing::info!("updating the signer state with the current signer set");
-        self.set_signer_set_and_aggregate_key(chain_tip).await
+        self.set_signer_set_and_aggregate_key(chain_tip).await?;
+
+        tracing::info!("updating the signer state with the current bitcoin chain tip");
+        self.update_bitcoin_chain_tip().await
     }
 
     /// Checks if the latest dkg share is pending and is no longer valid
