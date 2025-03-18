@@ -1282,17 +1282,11 @@ where
             .assess_output_fee(outpoint.vout as usize)
             .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
 
-        let votes = self
-            .context
-            .get_storage()
-            .get_withdrawal_request_signer_votes(&qualified_id, bitcoin_aggregate_key)
-            .await?;
-
         let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
             id: qualified_id,
             outpoint,
             tx_fee: assessed_bitcoin_fee.to_sat(),
-            signer_bitmap: votes.into(),
+            signer_bitmap: 0,
             deployer: self.context.config().signer.deployer,
             sweep_block_hash: req.sweep_block_hash,
             sweep_block_height: req.sweep_block_height,
@@ -1325,15 +1319,9 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
-        let votes = self
-            .context
-            .get_storage()
-            .get_withdrawal_request_signer_votes(&req.qualified_id(), bitcoin_aggregate_key)
-            .await?;
-
         let contract_call = ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
             id: req.qualified_id(),
-            signer_bitmap: votes.into(),
+            signer_bitmap: 0,
             deployer: self.context.config().signer.deployer,
         });
 
