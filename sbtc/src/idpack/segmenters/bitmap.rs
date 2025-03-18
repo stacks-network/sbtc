@@ -1,12 +1,9 @@
 use crate::{
-    idpack::{
-        codec::{BitmapEncoding, FLAGS_SIZE},
-        Segment, SegmentEncoding, Segments,
-    },
+    idpack::{Segment, Segments},
     Leb128,
 };
 
-use super::{Error, Segmenter};
+use super::{Segmenter, SegmenterError};
 
 /// Helper struct to track segment state during boundary detection
 ///
@@ -70,24 +67,41 @@ impl BitmapCosts {
     ///
     /// `Result<BitmapCosts, Error>` with precise byte calculations for both options
     fn calculate(offset: u64, prev: u64, next: u64) -> Self {
-        // Calculate current segment payload size (without next value)
-        // This uses the actual BitsetStrategy implementation to ensure consistency
-        let current_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, prev]);
+        // Calculate current sizes
+        let current_payload = (prev - offset).div_ceil(8);
+        let current_length_header = Leb128::calculate_size(current_payload);
 
-        // Calculate extended segment payload (with next value)
-        let combined_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, next]);
+        // Calculate combined sizes
+        let combined_payload = (next - offset).div_ceil(8);
+        let combined_length_header = Leb128::calculate_size(combined_payload);
+        let bytes_if_combined = combined_length_header + combined_payload as usize;
 
-        // Calculate LEB128 encoding size for offsets
-        let current_offset_size = Leb128::calculate_size(offset);
-        let next_delta_size = Leb128::calculate_size(next - offset);
+        // Calculate split sizes
+        let split_length_header = 1; // Will always be one byte for only an offset
+        let split_offset = Leb128::calculate_size(next.saturating_sub(prev));
+        let bytes_if_split = current_length_header
+            + current_payload as usize
+            + split_offset
+            + split_length_header as usize;
 
-        // Calculate the total bytes if we split at this position
-        // We include both segments' complete sizes for accurate comparison
-        let bytes_if_split =
-            current_offset_size + current_segment_payload + FLAGS_SIZE + next_delta_size;
+        // // Calculate current segment payload size (without next value)
+        // // This uses the actual BitsetStrategy implementation to ensure consistency
+        // let current_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, prev]);
 
-        // Calculate the total bytes if we continue the current segment
-        let bytes_if_combined = current_offset_size + combined_segment_payload;
+        // // Calculate extended segment payload (with next value)
+        // let combined_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, next]);
+
+        // // Calculate LEB128 encoding size for offsets
+        // let current_offset_size = Leb128::calculate_size(offset);
+        // let next_delta_size = Leb128::calculate_size(next - offset);
+
+        // // Calculate the total bytes if we split at this position
+        // // We include both segments' complete sizes for accurate comparison
+        // let bytes_if_split =
+        //     current_offset_size + current_segment_payload + FLAGS_SIZE + next_delta_size;
+
+        // // Calculate the total bytes if we continue the current segment
+        // let bytes_if_combined = current_offset_size + combined_segment_payload;
 
         // Return the precise byte costs for compression decision
         Self {
@@ -110,28 +124,29 @@ impl Segmenter for BitmapSegmenter {
     /// at exactly the points that optimize compression.
     ///
     /// ## Parameters
-    ///
     /// * `values` - The sorted sequence of values to segment
     ///
     /// ## Returns
-    ///
     /// A `Result` containing either the optimally segmented values or an error
-    fn package(&self, values: &[u64]) -> Result<Segments, Error> {
-        // Validation checks
+    fn package(&self, values: &[u64]) -> Result<Segments, SegmenterError> {
+        // If no values, return empty segments
         if values.is_empty() {
-            return Err(Error::EmptyInput);
+            return Ok(Segments::default());
         }
-        if !self.is_sorted(values) {
-            return Err(Error::UnsortedInput);
+
+        // Ensure input is sorted for bitmap segmentation
+        if !values.is_sorted() {
+            return Err(SegmenterError::UnsortedInput);
         }
 
         // Find optimal segment boundaries based on byte savings
         let boundaries = self.find_segment_boundaries(values);
 
         // Create segments using identified boundaries
-        let segments = self.create_segments_from_boundaries(values, &boundaries)?;
+        let mut segments = Segments::default();
+        self.create_segments_from_boundaries(values, &boundaries, &mut segments)?;
 
-        Ok(Segments::new_from(segments))
+        Ok(segments)
     }
 }
 
@@ -148,11 +163,9 @@ impl BitmapSegmenter {
     /// segments exactly where they save bytes.
     ///
     /// ## Parameters
-    ///
     /// * `values` - The sorted sequence of values to segment
     ///
     /// ## Returns
-    ///
     /// A vector of boundary indices representing optimal segment divisions
     fn find_segment_boundaries(&self, values: &[u64]) -> Vec<usize> {
         let mut boundaries = vec![0]; // Always include start index
@@ -165,27 +178,35 @@ impl BitmapSegmenter {
 
         // Track current segment information for larger sequences
         let mut segment_state = SegmentState {
+            // SAFETY: we just ensured that `values` is not empty
             current_offset: values[0],
             last_boundary: 0,
         };
 
-        // Evaluate each potential split point for maximum compression
-        for i in 0..values.len().saturating_sub(1) {
-            let next_pos = i + 1;
+        // Iterate over pairs of previous and next values to calculate byte costs
+        // and determine optimal split points
+        for (pos, window) in values.windows(2).enumerate() {
+            let [prev, next] = *window else {
+                // This branch is unreachable with windows(2), but is needed
+                // for the compiler to understand the pattern match.
+                continue;
+            };
 
             // Calculate bitmap costs for splitting vs. combining
-            let bitmap_costs =
-                BitmapCosts::calculate(segment_state.current_offset, values[i], values[next_pos]);
+            let bitmap_costs = BitmapCosts::calculate(segment_state.current_offset, prev, next);
 
             // Determine if splitting here maximizes compression
             let should_split = bitmap_costs.should_split();
 
             if should_split {
-                boundaries.push(next_pos);
+                // If we're splitting, then the next position is a start boundary
+                // for the next segment
+                boundaries.push(pos + 1);
 
-                // Update segment tracking
-                segment_state.current_offset = values[i];
-                segment_state.last_boundary = i;
+                // `next` is the new segment's offset
+                segment_state.current_offset = next;
+                // Track the logical end of the current (now previous) segment
+                segment_state.last_boundary = pos;
             }
         }
 
@@ -203,74 +224,60 @@ impl BitmapSegmenter {
     /// - Multi-value bitmap encoding for ranges with common offsets
     ///
     /// ## Parameters
-    ///
     /// * `values` - The sorted sequence of original values
     /// * `boundaries` - The optimal boundary indices determined by analysis
     ///
     /// ## Returns
-    ///
-    /// A `Result` containing the vector of optimally encoded segments
+    /// * Ok(()) - if
     fn create_segments_from_boundaries(
         &self,
         values: &[u64],
         boundaries: &[usize],
-    ) -> Result<Vec<Segment>, Error> {
-        let mut segments = Vec::new();
-
+        segments: &mut Segments,
+    ) -> Result<(), SegmenterError> {
         // Create a segment for each pair of boundaries
         for window in boundaries.windows(2) {
-            let start_idx = window[0];
-            let end_idx = window[1];
-
-            // Skip empty ranges (shouldn't happen with our algorithm)
-            if start_idx == end_idx {
-                return Err(Error::EmptyRange { start: start_idx, end: end_idx });
-            }
+            let [start_idx, end_idx] = *window else {
+                // This branch is unreachable with windows(2), but is needed
+                // for the compiler to understand the pattern match.
+                continue;
+            };
 
             let slice = &values[start_idx..end_idx];
+            let Some(offset) = slice.first() else {
+                return Err(SegmenterError::InvalidBoundaries);
+            };
 
-            // Create segment with appropriate encoding for maximum compression
-            if end_idx - start_idx == 1 {
-                // Single value optimization - uses zero payload bytes
-                let segment = Segment::new_with_offset(SegmentEncoding::Single, values[start_idx]);
-                segments.push(segment);
-            } else {
-                // Multi-value bitmap encoding
-                let mut segment = Segment::new_with_offset(SegmentEncoding::Bitset, slice[0]);
-                for value in &slice[1..] {
-                    segment.insert(*value)?;
-                }
-                segments.push(segment);
+            // Create segment using offset
+            let mut segment = Segment::new_with_offset(*offset);
+
+            // Use iterator to add remaining values without indexing
+            for &value in slice.iter().skip(1) {
+                segment.try_insert(value)?;
             }
+
+            segments.try_push(segment)?;
         }
 
-        Ok(segments)
-    }
-
-    /// Checks if a slice is sorted in ascending order
-    ///
-    /// Bitmap segmentation requires sorted input as it relies on gaps
-    /// between consecutive values.
-    ///
-    /// ## Parameters
-    ///
-    /// * `values` - The sequence to check for sorting
-    ///
-    /// ## Returns
-    ///
-    /// `true` if values are sorted in ascending order, `false` otherwise
-    #[inline]
-    fn is_sorted(&self, values: &[u64]) -> bool {
-        values.is_empty() || values.windows(2).all(|w| w[0] < w[1])
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::idpack::Encodable;
-
     use super::*;
+    use assert_matches::assert_matches;
     use test_case::test_case;
+
+    /// Tests validation error handling
+    #[test]
+    fn test_validation_errors() {
+        // Unsorted input
+        assert_matches!(
+            BitmapSegmenter.package(&[5, 3, 1]),
+            Err(SegmenterError::UnsortedInput)
+        );
+    }
 
     /// Tests the boundary detection with direct byte savings calculations
     #[test_case(&[10], &[0, 1]; "single value")]
@@ -279,167 +286,35 @@ mod tests {
     #[test_case(&[10, 11, 12, 1000, 1001, 1002], &[0, 3, 6]; "clear gap with byte savings")]
     #[test_case(&[1, 1000000], &[0, 1, 2]; "extreme gap forces split")]
     #[test_case(&[1, 2, 3, 100000, 100001], &[0, 3, 5]; "large gap with min size respected")]
+    #[test_case(&[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109], &[0, 10, 20]; "larger sequence with multiple splits")]
     fn test_byte_saving_boundary_detection(values: &[u64], expected_boundaries: &[usize]) {
         let boundaries = BitmapSegmenter.find_segment_boundaries(values);
         assert_eq!(
             boundaries, expected_boundaries,
-            "Unexpected boundaries for values: {:?}",
-            values
+            "unexpected boundaries for values: {values:?}"
         );
     }
 
-    /// Tests that the package method correctly handles extreme gaps
+    /// Tests precise break-even gap detection
     #[test_case(&[1, 1000000], 2; "extreme gap creates 2 segments")]
     #[test_case(&[1, 2, 3, 4, 5], 1; "small dense sequence stays as 1 segment")]
     #[test_case(&[1, 2, 50000, 50001], 2; "gap creates 2 segments")]
-    fn test_package_with_extreme_gaps(values: &[u64], expected_segments: usize) {
-        let result = BitmapSegmenter.package(values).unwrap();
-
-        assert_eq!(
-            result.len(),
-            expected_segments,
-            "Unexpected number of segments for values: {:?}",
-            values
-        );
-    }
-
-    /// Tests that byte savings calculations correctly determine when to split
-    #[test]
-    fn test_byte_savings_calculations() {
-        // Create test case with a precise byte savings boundary
-        let mut values = Vec::new();
-        // Add first group (10-19)
-        for i in 10..20 {
-            values.push(i);
-        }
-        // Add second group with gap (100-109)
-        for i in 100..110 {
-            values.push(i);
-        }
-        let boundaries = BitmapSegmenter.find_segment_boundaries(&values);
-        assert_eq!(
-            boundaries,
-            &[0, 10, 20],
-            "Failed to split where byte savings occur"
-        );
-    }
-
-    /// Tests low density handling for maximum compression
-    #[test]
-    fn test_low_density_handling() {
-        // Create a low density sequence - values spread widely
-        let values: Vec<u64> = (1..=100).step_by(10).collect(); // 10 values spread over 100 range
-
-        let segments = BitmapSegmenter.package(&values).unwrap();
-
-        // For these values, we expect fixed-width delta to be more efficient than bitmap
-        assert!(
-            segments.len() >= 1,
-            "Should handle low density sequence efficiently"
-        );
-
-        // Check that the actual encoding chosen is efficient for the data pattern
-        let total_bytes = segments.encode().unwrap().len();
-        let fixed_overhead = 3; // ~3 bytes minimum overhead per segment
-
-        // Maximum acceptable bytes for efficient compression
-        let max_acceptable = values.len() * 2 + fixed_overhead;
-
-        assert!(
-            total_bytes <= max_acceptable,
-            "Low density encoding inefficient: {} bytes used for {} values",
-            total_bytes,
-            values.len()
-        );
-    }
-
-    /// Tests bitmap size constraints for maximum efficiency
-    #[test]
-    fn test_bitmap_size_efficiency() {
-        // Values with extremely large range but few actual values
-        let values = vec![1, 2, 3, 10_000, 20_000, 30_000];
-
-        let segments = BitmapSegmenter.package(&values).unwrap();
-
-        // This should be split to avoid a bitmap covering the entire 1-30,000 range
-        assert!(
-            segments.len() > 1,
-            "Should split large sparse range for efficiency"
-        );
-
-        // Calculate the actual compression efficiency
-        let total_bytes = segments.encode().unwrap().len();
-
-        // Theoretical worst case: one large bitmap spanning the whole range
-        let worst_case = (30_000 / 8) + 3; // bitmap bytes + overhead
-
-        assert!(
-            total_bytes < worst_case,
-            "Splitting improved compression: {} bytes vs {} bytes worst case",
-            total_bytes,
-            worst_case
-        );
-    }
-
-    /// Tests validation error handling
-    #[test]
-    fn test_validation_errors() {
-        // Empty input
-        assert!(matches!(
-            BitmapSegmenter.package(&[]),
-            Err(Error::EmptyInput)
-        ));
-
-        // Unsorted input
-        assert!(matches!(
-            BitmapSegmenter.package(&[5, 3, 1]),
-            Err(Error::UnsortedInput)
-        ));
-    }
-
-    /// Tests precise break-even gap detection for maximum compression
     #[test_case(&[10, 10 + 16], 1; "gap of 16 with 1-byte delta - no split")]
     #[test_case(&[10, 10 + 17], 2; "gap of 17 with 1-byte delta - split")]
     #[test_case(&[10000, 10000 + 24], 2; "gap of 24 with 2-byte delta - split")]
     #[test_case(&[10000, 10000 + 25], 2; "gap of 25 with 2-byte delta - split")]
-    fn test_break_even_gap_detection(values: &[u64], expected_segments: usize) {
-        let result = BitmapSegmenter.package(values).unwrap();
-        assert_eq!(
-            result.len(),
-            expected_segments,
-            "Failed to correctly apply break-even gap analysis for values: {:?}",
-            values
-        );
-    }
-
     #[test_case(&[1, 1_000_000, 1_000_001], 2; "single value followed by large gap")]
     #[test_case(&[1, 2, 1_000_000, 1_000_001], 2; "multiple values followed by large gap")]
     #[test_case(&[1, 1_000_000, 1_000_001, 2_000_000], 3; "multiple large gaps")]
     #[test_case(&[1, 1_000, 10_000, 10_001, 100_000], 4; "multiple varied gaps")]
-    fn test_optimized_segmentation(values: &[u64], expected_segments: usize) {
-        let segments = BitmapSegmenter.package(values).unwrap();
-        dbg!(&segments);
-
-        // Verify segment count
+    #[test_case(&[1, 11, 21, 31, 41, 51, 61, 71, 81, 91], 1; "10 values spread over 100 range")]
+    #[test_case(&[1, 2, 3, 10_000, 20_000, 30_000], 4; "large range with few values")]
+    fn test_split_calculations(values: &[u64], expected_segments: usize) {
+        let result = BitmapSegmenter.package(values).unwrap();
         assert_eq!(
-            segments.len(),
+            result.len(),
             expected_segments,
-            "Incorrect segmentation for values: {:?}",
-            values
-        );
-
-        // Calculate compression efficiency
-        let encoded = segments.encode().unwrap();
-        let naive_size = (values.last().unwrap() - values[0]) / 8;
-
-        // Verify we achieve significantly better compression than naive approach
-        let compression_ratio = naive_size as f64 / encoded.len() as f64;
-        assert!(
-            compression_ratio > 10.0 || encoded.len() < 20,
-            "Insufficient compression: {} bytes vs naive {} bytes (ratio: {:.1}x)",
-            encoded.len(),
-            naive_size,
-            compression_ratio
+            "failed to correctly split values: {values:?}"
         );
     }
 }

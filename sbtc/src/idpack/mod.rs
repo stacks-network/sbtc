@@ -57,20 +57,22 @@ mod segment;
 mod segmenters;
 mod segments;
 
-pub use segment::Error as SegmentError;
+#[cfg(test)]
+mod tests;
+
 pub use segment::Segment;
-pub use segment::SegmentEncoding;
+pub use segment::SegmentError;
 
 pub use segments::Segments;
+pub use segments::SegmentsError;
 
 pub use segmenters::BitmapSegmenter;
 pub use segmenters::Segmenter;
+pub use segmenters::SegmenterError;
 
 pub use codec::Decodable;
+pub use codec::DecodeError;
 pub use codec::Encodable;
-pub use codec::Error as CodecError;
-pub use codec::SegmentDecodeError as DecodeError;
-pub use codec::SegmentEncodeError as EncodeError;
 
 /// Maximum allocation limit in bytes (1MB) for preventing memory allocation attacks
 /// while allowing sufficient space for optimal compression operations.
