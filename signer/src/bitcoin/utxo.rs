@@ -1684,8 +1684,8 @@ mod tests {
             None,
             None,
             None,
-            Some(Amount::from_sat(max_mintable_cap)),
             None,
+            Some(Amount::from_sat(max_mintable_cap)),
         )
     }
 
