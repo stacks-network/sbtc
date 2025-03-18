@@ -737,16 +737,17 @@ where
         );
 
         for req in swept_deposits {
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
+                return Ok(());
+            }
+
             let outpoint = req.deposit_outpoint();
 
             let is_completed = stacks.is_deposit_completed(&deployer, &outpoint).await;
             match is_completed {
                 Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        %outpoint,
-                        "could not check deposit status"
-                    );
+                    tracing::warn!(%error, %outpoint, "could not check deposit status");
                     continue;
                 }
                 Ok(true) => {
@@ -781,12 +782,7 @@ where
                     "success"
                 }
                 Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        txid = %outpoint.txid,
-                        vout = %outpoint.vout,
-                        "could not process the stacks sign request for a deposit"
-                    );
+                    tracing::warn!(%error, %outpoint, "could not process the stacks sign request for a deposit");
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
                     "failure"
                 }
@@ -841,6 +837,11 @@ where
         );
 
         for swept_request in swept_withdrawals {
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
+                return Ok(());
+            }
+
             let withdrawal_id = swept_request.qualified_id();
             let fut = self.construct_and_sign_withdrawal_accept(
                 chain_tip,
@@ -859,6 +860,11 @@ where
         }
 
         for withdrawal in rejected_withdrawals {
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
+                return Ok(());
+            }
+
             let withdrawal_id = withdrawal.qualified_id();
             let fut = self.construct_and_sign_withdrawal_reject(
                 chain_tip,
