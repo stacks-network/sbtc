@@ -383,9 +383,6 @@ mod proptests {
     const VALUE_MAX_9_BYTES: u64 = (1 << 63) - 1; // 9,223,372,036,854,775,807
     const VALUE_MAX_10_BYTES: u64 = u64::MAX; // 18,446,744,073,709,551,615
 
-    /// Number of payload bits per LEB128 byte (excluding continuation bit)
-    const BITS_PER_BYTE: u32 = 7;
-
     /// Returns maximum value encodable in n bytes
     /// Used to identify size boundaries for encoding decisions
     const fn max_value_for_bytes(n: u32) -> u64 {
@@ -425,8 +422,9 @@ mod proptests {
         );
         prop_assert_eq!(Leb128::calculate_size(value), expected_len);
 
-        let (decoded, _) = Leb128::try_decode(&bytes).unwrap();
+        let (decoded, read_byte_count) = Leb128::try_decode(&bytes).unwrap();
         prop_assert_eq!(decoded, value);
+        prop_assert_eq!(read_byte_count, expected_len);
 
         Ok(())
     }
