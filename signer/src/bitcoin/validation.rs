@@ -2174,13 +2174,31 @@ mod tests {
         }));
         "filter_out_withdrawals_over_rolling_cap"
     )]
+    #[test_case(
+        vec![Amount::MAX_MONEY.to_sat() / 4; 3],
+        RollingWithdrawalLimits::unlimited(),
+        Amount::MAX_MONEY / 4,
+        Ok(());
+        "unlimited_limits_filters_no_withdrawals"
+    )]
+    #[test_case(
+        vec![1],
+        RollingWithdrawalLimits::zero(),
+        Amount::ZERO,
+        Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
+            amounts:  1,
+            cap: Amount::ZERO.to_sat(),
+            cap_blocks: 0,
+            withdrawn_total: 0,
+        }));
+        "limits_of_zero_filters_all_withdrawals"
+    )]
     fn test_validate_withdrawal_limits(
         withdrawal_amounts: Vec<u64>,
         rolling_limits: RollingWithdrawalLimits,
         withdrawn_total: Amount,
         expected: Result<(), Error>,
     ) {
-        // Create mock context
         let limits = SbtcLimits::new(
             None,
             None,
@@ -2204,7 +2222,7 @@ mod tests {
             .map(|(report, votes)| (&report.id, (report.clone(), votes.clone())))
             .collect();
 
-        // Create request and validate
+        // Validate the cached reports
         let withdrawn_total = withdrawn_total.to_sat();
         let result =
             BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, withdrawn_total);

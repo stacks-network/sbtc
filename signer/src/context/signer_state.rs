@@ -155,6 +155,21 @@ pub struct RollingWithdrawalLimits {
     pub cap: Amount,
 }
 
+impl RollingWithdrawalLimits {
+    /// Create a new one where the caps imply no withdrawals are allowed.
+    pub fn zero() -> Self {
+        RollingWithdrawalLimits { blocks: 0, cap: Amount::ZERO }
+    }
+
+    /// Create a new one where the caps imply all withdrawals are allowed.
+    pub fn unlimited() -> Self {
+        RollingWithdrawalLimits {
+            blocks: 0,
+            cap: Amount::MAX_MONEY,
+        }
+    }
+}
+
 impl std::fmt::Display for SbtcLimits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -237,15 +252,12 @@ impl SbtcLimits {
             (Some(blocks), Some(cap)) => RollingWithdrawalLimits { blocks, cap },
             // If we did not get any limits back from the API, then we
             // assume that they are intentionally set to disable limits.
-            (None, None) => RollingWithdrawalLimits {
-                blocks: 0,
-                cap: Amount::MAX_MONEY,
-            },
+            (None, None) => RollingWithdrawalLimits::unlimited(),
             // If one of these limits is missing and not the other, then
             // things are in a bad state. Assume that they set to zero.
             _ => {
                 tracing::warn!("rolling withdrawal limits are partially set; setting them to zero");
-                RollingWithdrawalLimits { blocks: 0, cap: Amount::ZERO }
+                RollingWithdrawalLimits::zero()
             }
         }
     }
