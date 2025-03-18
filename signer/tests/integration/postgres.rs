@@ -5,7 +5,6 @@ use std::ops::Deref;
 use std::time::Duration;
 
 use bitcoin::hashes::Hash as _;
-use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
@@ -182,7 +181,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     },
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -193,7 +192,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
 	txid: StacksTxId::from([0; 32]),
 	block_hash: StacksBlockHash::from([0; 32]),
     },
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
@@ -5976,6 +5975,12 @@ async fn compute_withdrawn_total_gets_all_amounts_in_chain() {
 
 /// Check that the query in `compute_withdrawn_total` returns the total
 /// amount of withdrawal amounts on the identified blockchain.
+///
+/// This tests that if there are conflicting blockchains, where say, both
+/// chains have the same height and there are sweep transactions fulfilling
+/// withdrawals confirmed on both of them, then the the query will only
+/// return the amounts associated with the one identified by the given
+/// chain tip and context window.
 #[tokio::test]
 async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain() {
     let mut db = testing::storage::new_test_database().await;
@@ -6062,6 +6067,23 @@ async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain()
     // Let's check for the withdrawal output on that other blockchain.
     let current_total = db
         .compute_withdrawn_total(&another_block.block_hash, 0)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount2);
+
+    // The blockchain with a context window of 5 should return the same
+    // thing as a context window of zero or 1. Just an additional sanity
+    // check.
+    let current_total = db
+        .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, 5)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount1);
+
+    let current_total = db
+        .compute_withdrawn_total(&another_block.block_hash, 5)
         .await
         .unwrap();
 

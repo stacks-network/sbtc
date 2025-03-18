@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use utoipa::{ToResponse, ToSchema};
 
+use crate::common::error::ValidationError;
+
 /// Represents the current sBTC limits.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize, ToSchema, ToResponse)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +25,30 @@ pub struct Limits {
     pub rolling_withdrawal_cap: Option<u64>,
     /// Represents the individual limits for requests coming from different accounts.
     pub account_caps: HashMap<String, AccountLimits>,
+}
+
+impl Limits {
+    /// Validates the withdrawal limit configuration.
+    ///
+    /// This function checks if both `rolling_withdrawal_blocks` and `rolling_withdrawal_cap` are provided together.
+    /// If one is provided without the other, it returns an error indicating that the configuration is incomplete.
+    ///
+    /// # Returns
+    ///
+    /// - `Ok(())`: If both `rolling_withdrawal_blocks` and `rolling_withdrawal_cap` are provided together.
+    /// - `Err(ValidationError::IncompleteWithdrawalLimitConfig)`: If one of the fields is missing while the other is set.
+    ///
+    /// # Errors
+    ///
+    /// See [`ValidationError::IncompleteWithdrawalLimitConfig`].
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        match (self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap) {
+            (Some(_), None) | (None, Some(_)) => {
+                Err(ValidationError::IncompleteWithdrawalLimitConfig)
+            }
+            _ => Ok(()),
+        }
+    }
 }
 
 /// The representation of a limit for a specific account.
