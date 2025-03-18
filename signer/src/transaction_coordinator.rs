@@ -1128,9 +1128,7 @@ where
         // as the number of signatures to include in the estimation transaction
         // as each signature increases the transaction size.
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -1237,9 +1235,7 @@ where
         // Complete deposit requests should be done as soon as possible, so
         // we set the fee rate to the high priority fee.
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -1304,9 +1300,7 @@ where
 
         // Estimate the fee for the stacks transaction
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::Medium)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::Medium)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -1345,9 +1339,7 @@ where
 
         // Estimate the fee for the stacks transaction
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -2280,10 +2272,9 @@ where
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_deploy.tx_payload(), FeePriority::High)
             .await?;
+
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();
 
@@ -2461,6 +2452,32 @@ where
         let rate = total_fees as f64 / total_vsize as f64;
 
         Ok(Some(Fees { total: total_fees, rate }))
+    }
+
+    /// Estimate transaction fees for a Stacks contract call. This function
+    /// caps the calculated fee to the configured maximum fee for a Stacks
+    /// transaction.
+    async fn estimate_stacks_tx_fee<T>(
+        &self,
+        wallet: &SignerWallet,
+        contract_call: &T,
+        fee_priority: FeePriority,
+    ) -> Result<u64, Error>
+    where
+        T: AsTxPayload + Send + Sync,
+    {
+        // Get the configured max Stacks transaction fee in microSTX.
+        let stacks_fees_max_ustx = self.context.config().signer.stacks_fees_max_ustx.get();
+
+        // Calculate the stacks fee for the contract call and cap it to the configured maximum.
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, contract_call, fee_priority)
+            .await?
+            .min(stacks_fees_max_ustx);
+
+        Ok(tx_fee)
     }
 }
 
