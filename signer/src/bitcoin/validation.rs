@@ -2175,8 +2175,7 @@ mod tests {
     )]
     #[test_case(
         vec![1, Amount::MAX_MONEY.to_sat()],
-        RollingWithdrawalLimits::unlimited(),
-        Amount::ZERO,
+        RollingWithdrawalLimits::unlimited(0),
         Ok(());
         "unlimited allows more then max money"
     )]
