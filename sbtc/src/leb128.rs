@@ -543,6 +543,7 @@ mod proptests {
 
             // Verify all values were decoded correctly
             prop_assert_eq!(values, decoded);
+            prop_assert_eq!(cursor.position(), encoded.len() as u64);
         }
 
         /// Tests encoding at byte size transitions
