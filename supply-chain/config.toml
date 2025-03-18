@@ -1994,10 +1994,6 @@ criteria = "safe-to-deploy"
 version = "0.8.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.wait-timeout]]
-version = "0.2.1"
-criteria = "safe-to-run"
-
 [[exemptions.walkdir]]
 version = "2.5.0"
 criteria = "safe-to-deploy"
