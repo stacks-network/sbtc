@@ -168,6 +168,9 @@ pub struct SbtcLimits {
     rolling_withdrawal_blocks: Option<u64>,
     /// Represents the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
     rolling_withdrawal_cap: Option<u64>,
+    /// Represents the sum of all withdrawals over the rolling withdrawal
+    /// window.
+    withdrawn_total: Option<Amount>,
     /// Represents the maximum amount of sBTC that can currently be minted.
     max_mintable_cap: Option<Amount>,
 }
@@ -182,17 +185,24 @@ pub struct RollingWithdrawalLimits {
     /// Represents the maximum total sBTC that can be withdrawn within the
     /// rolling withdrawal window.
     pub cap: u64,
+    /// Represents the sum of all withdrawals over the rolling withdrawal
+    /// window.
+    pub withdrawn_total: Amount,
 }
 
 impl RollingWithdrawalLimits {
     /// Create a new one where the caps imply no withdrawals are allowed.
-    pub fn zero() -> Self {
-        RollingWithdrawalLimits { blocks: 0, cap: 0 }
+    pub fn zero(withdrawn_total: Amount) -> Self {
+        RollingWithdrawalLimits { blocks: 0, cap: 0, withdrawn_total }
     }
 
     /// Create a new one where the caps imply all withdrawals are allowed.
-    pub fn unlimited() -> Self {
-        RollingWithdrawalLimits { blocks: 0, cap: u64::MAX }
+    pub fn unlimited(withdrawn_total: Amount) -> Self {
+        RollingWithdrawalLimits {
+            blocks: 0,
+            cap: u64::MAX,
+            withdrawn_total,
+        }
     }
 }
 
@@ -215,6 +225,7 @@ impl SbtcLimits {
         per_withdrawal_cap: Option<Amount>,
         rolling_withdrawal_blocks: Option<u64>,
         rolling_withdrawal_cap: Option<u64>,
+        withdrawn_total: Option<Amount>,
         max_mintable_cap: Option<Amount>,
     ) -> Self {
         Self {
@@ -224,6 +235,7 @@ impl SbtcLimits {
             per_withdrawal_cap,
             rolling_withdrawal_blocks,
             rolling_withdrawal_cap,
+            withdrawn_total,
             max_mintable_cap,
         }
     }
@@ -236,7 +248,8 @@ impl SbtcLimits {
             Some(Amount::ZERO),
             Some(Amount::ZERO),
             Some(u64::MAX),
-            Some(0),
+            Some(Amount::ZERO),
+            Some(Amount::MAX_MONEY),
             Some(Amount::ZERO),
         )
     }
@@ -273,17 +286,18 @@ impl SbtcLimits {
 
     /// Get the rolling withdrawal limits.
     pub fn rolling_withdrawal_limits(&self) -> RollingWithdrawalLimits {
+        let withdrawn_total = self.withdrawn_total.unwrap_or(Amount::ZERO);
         match (self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap) {
             // Use explicitly set limits
-            (Some(blocks), Some(cap)) => RollingWithdrawalLimits { blocks, cap },
+            (Some(blocks), Some(cap)) => RollingWithdrawalLimits { blocks, cap, withdrawn_total },
             // If we did not get any limits back from the API, then we
             // assume that they are intentionally set to disable limits.
-            (None, None) => RollingWithdrawalLimits::unlimited(),
+            (None, None) => RollingWithdrawalLimits::unlimited(withdrawn_total),
             // If one of these limits is missing and not the other, then
             // things are in a bad state. Assume that they set to zero.
             _ => {
                 tracing::warn!("rolling withdrawal limits are partially set; setting them to zero");
-                RollingWithdrawalLimits::zero()
+                RollingWithdrawalLimits::zero(withdrawn_total)
             }
         }
     }
@@ -301,6 +315,7 @@ impl SbtcLimits {
             rolling_withdrawal_blocks: Some(0),
             rolling_withdrawal_cap: Some(u64::MAX),
             max_mintable_cap: Some(Amount::MAX_MONEY),
+            withdrawn_total: Some(Amount::ZERO),
         }
     }
 
@@ -315,6 +330,7 @@ impl SbtcLimits {
             rolling_withdrawal_blocks: None,
             rolling_withdrawal_cap: None,
             max_mintable_cap: None,
+            withdrawn_total: None,
         }
     }
 
@@ -328,6 +344,7 @@ impl SbtcLimits {
             rolling_withdrawal_blocks: None,
             rolling_withdrawal_cap: None,
             max_mintable_cap: None,
+            withdrawn_total: None,
         }
     }
 }
