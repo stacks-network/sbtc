@@ -2121,7 +2121,7 @@ mod tests {
         },
         Amount::from_sat(1_000),
         Ok(());
-        "should_accept_withdrawals_under_rolling_cap"
+        "should accept withdrawals under rolling cap"
     )]
     #[test_case(
         vec![],
@@ -2131,7 +2131,7 @@ mod tests {
         },
         Amount::from_sat(0),
         Ok(());
-        "should_accept_empty_withdrawals"
+        "should accept empty withdrawals"
     )]
     #[test_case(
         vec![10_000],
@@ -2141,7 +2141,7 @@ mod tests {
         },
         Amount::from_sat(0),
         Ok(());
-        "should_accept_withdrawals_equal_to_rolling_cap"
+        "should accept withdrawals equal to rolling cap"
     )]
     #[test_case(
         vec![5000, 5001],
@@ -2156,7 +2156,7 @@ mod tests {
             cap_blocks: 150,
             withdrawn_total: 0,
         }));
-        "should_reject_withdrawals_over_rolling_cap"
+        "should reject withdrawals over rolling cap"
     )]
     #[test_case(
         vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
@@ -2171,21 +2171,28 @@ mod tests {
             cap_blocks: 150,
             withdrawn_total: 1,
         }));
-        "filter_out_withdrawals_over_rolling_cap"
+        "filter out withdrawals over rolling cap"
     )]
     #[test_case(
         vec![Amount::MAX_MONEY.to_sat() / 4; 3],
         RollingWithdrawalLimits::unlimited(),
         Amount::MAX_MONEY / 4,
         Ok(());
-        "unlimited_limits_filters_no_withdrawals"
+        "unlimited filters no withdrawals"
+    )]
+    #[test_case(
+        vec![1, Amount::MAX_MONEY.to_sat()],
+        RollingWithdrawalLimits::unlimited(),
+        Amount::ZERO,
+        Ok(());
+        "unlimited allows more then max money"
     )]
     #[test_case(
         vec![],
         RollingWithdrawalLimits::zero(),
         Amount::MAX_MONEY,
         Ok(());
-        "no_withdrawals_when_withdrawals_are_locked_down_okay"
+        "no withdrawals when withdrawals are locked down okay"
     )]
     #[test_case(
         vec![1],
@@ -2197,7 +2204,7 @@ mod tests {
             cap_blocks: 0,
             withdrawn_total: 0,
         }));
-        "limits_of_zero_filters_all_withdrawals"
+        "limits of zero filters all withdrawals"
     )]
     fn test_validate_withdrawal_limits(
         withdrawal_amounts: Vec<u64>,
