@@ -9,7 +9,7 @@ crate from the original Emily API in order to avoid a circular
 dependency on the crate that's used to generate the openapi spec in
 the first place.
 
-## Configuration
+sss## Configuration
 
 The configuration file for the tests can be found in
 `./emily/client-tests/tests/integration/config/default.toml`. The following
