@@ -3778,7 +3778,12 @@ async fn sign_bitcoin_transaction_withdrawals() {
                 request_id: withdrawal_request.request_id,
                 sender: withdrawal_request.sender_address.to_string(),
                 stacks_block_hash: withdrawal_request.block_hash.to_string(),
-                stacks_block_height: stacks_chain_tip,
+                stacks_block_height: db
+                    .get_stacks_block(&stacks_chain_tip)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .block_height,
             }
         )
         .await
