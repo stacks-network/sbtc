@@ -748,8 +748,9 @@ mod tests {
         // Small set should fit
         assert!(bag.can_fit_withdrawal_ids(&[1, 2, 3, 4, 5]));
 
-        // Generate a large set that won't fit
-        let large_set: Vec<u64> = (1..1000).step_by(100).collect();
+        // Generate a large set with poor compression characteristics
+        // (values spaced far apart won't compress efficiently with bitmap encoding)
+        let large_set: Vec<u64> = (0..75).map(|i| i * 1000).collect();
         assert!(!bag.can_fit_withdrawal_ids(&large_set));
     }
 
@@ -854,7 +855,7 @@ mod tests {
     #[test_case(vec![], Some(42) => true; "single_withdrawal_id")]
     #[test_case((1..50).collect::<Vec<u64>>(), Some(300) => true; "many_small_ids_compatible")]
     #[test_case(vec![1, 2, 4, 5], Some(3) => true; "new_id_within_existing_range")]
-    #[test_case(vec![1], Some(1000) => false; "exceeds_op_return_size")]
+    #[test_case((0..580).collect(), Some(100_000) => false; "exceeds_op_return_size")]
     fn test_withdrawal_id_compatible(bag_ids: Vec<u64>, item_id: Option<u64>) -> bool {
         let config = PackagerConfig::new(2, 5);
 
@@ -950,13 +951,13 @@ mod tests {
         ; "incompatible_with_all_bags")]
     #[test_case(
         // Bag 1: Nearly full OP_RETURN (large range of IDs)
-        vec![RequestItem::no_votes().wid(1), RequestItem::no_votes().wid(500)],
+        (0..580).map(|id| RequestItem::no_votes().wid(id)).collect(),
         // Bag 2: Has room for more IDs (small range)
-        vec![RequestItem::no_votes().wid(10000), RequestItem::no_votes().wid(10001)],
+        vec![RequestItem::no_votes().wid(100_000), RequestItem::no_votes().wid(100_001)],
         // Bag 3: Nearly full OP_RETURN (different large range)
-        vec![RequestItem::no_votes().wid(2000), RequestItem::no_votes().wid(2500)],
+        (1000..1580).map(|id| RequestItem::no_votes().wid(id)).collect(),
         // Item with ID that fits in bag 2's range
-        RequestItem::no_votes().wid(10010),
+        RequestItem::no_votes().wid(100_010),
         Some(1) // Should select bag 2 (index 1)
         ; "selects_bag_with_room_for_withdrawal_id")]
     fn test_find_best_bag(
@@ -1042,8 +1043,12 @@ mod tests {
         assert_eq!(packager.bags[0].items.len(), 3); // No change
         assert_eq!(packager.total_vsize, original_vsize); // No change to vsize
 
-        // Check that a withdrawal that creates a large gap in IDs will create a new bag
-        packager.insert_item(RequestItem::with_votes(&[1, 2]).wid(1_000));
+        // Check that we can trigger the OP_RETURN size limit roll-over
+        (2..592).step_by(5).for_each(|id| {
+            packager.insert_item(RequestItem::with_votes(&[1, 2]).wid(id));
+        });
+        assert_eq!(packager.bags.len(), 2); // we should be really close to the limit (no change)
+        packager.insert_item(RequestItem::with_votes(&[1, 2]).wid(10_000));
         assert_eq!(packager.bags.len(), 3); // +1
     }
 
@@ -1052,16 +1057,14 @@ mod tests {
     #[test]
     fn test_withdrawal_id_packaging() {
         // Create a set of items with various withdrawal IDs
-        let items = vec![
-            RequestItem::no_votes().wid(1),
-            RequestItem::no_votes().wid(2),
-            RequestItem::no_votes().wid(3),
-            RequestItem::no_votes().sig_required().vsize(10), // Regular deposit
-            RequestItem::no_votes().wid(1000),
-            RequestItem::no_votes().wid(2000),
-            RequestItem::with_vote(1).wid(3000), // Different vote pattern
-            RequestItem::no_votes().wid(10000),  // Large ID
-        ];
+        let mut items = (0..600)
+            .map(|id| RequestItem::no_votes().wid(id))
+            .collect::<Vec<_>>();
+        items.push(RequestItem::no_votes().sig_required().vsize(10)); // Regular deposit
+        items.push(RequestItem::no_votes().wid(1000));
+        items.push(RequestItem::no_votes().wid(2000));
+        items.push(RequestItem::with_vote(1).wid(3000)); // Different vote pattern
+        items.push(RequestItem::no_votes().wid(10000)); // Large ID
 
         let bags = compute_optimal_packages(items, 1, 5).collect::<Vec<_>>();
 
@@ -1074,8 +1077,9 @@ mod tests {
             let combined_votes = bag.iter().fold(0u128, |acc, item| acc | item.votes());
 
             // Collect withdrawal IDs
-            let withdrawal_ids: Vec<u64> =
+            let mut withdrawal_ids: Vec<u64> =
                 bag.iter().filter_map(|item| item.withdrawal_id).collect();
+            withdrawal_ids.sort_unstable();
 
             // Verify vote constraint is maintained
             assert!(
@@ -1087,7 +1091,7 @@ mod tests {
             // Verify withdrawal IDs can fit in OP_RETURN
             if !withdrawal_ids.is_empty() {
                 let segmenter = BitmapSegmenter;
-                let size = segmenter.estimate_size(&withdrawal_ids).unwrap_or(100);
+                let size = segmenter.estimate_size(&withdrawal_ids).unwrap();
                 assert!(
                     size <= OP_RETURN_AVAILABLE_SIZE,
                     "withdrawal IDs exceed OP_RETURN size: {} > {}",

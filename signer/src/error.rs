@@ -24,10 +24,6 @@ pub enum Error {
     #[error("idpack segmenter error: {0}")]
     IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
 
-    /// An error occurred while attempting to encode the ID pack.
-    #[error("idpack encode error: {0}")]
-    IdPackEncode(#[from] sbtc::idpack::SegmentEncodeError),
-
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
     DkgVerification(#[source] dkg::verification::Error),

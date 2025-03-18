@@ -1113,7 +1113,7 @@ impl<'a> UnsignedTransaction<'a> {
         // If there are any withdrawal ID's, encode them and add them to the
         // OP_RETURN data.
         if !withdrawal_ids.is_empty() {
-            let encoded = BitmapSegmenter.package(&withdrawal_ids)?.encode()?;
+            let encoded = BitmapSegmenter.package(&withdrawal_ids)?.encode();
             data.extend_from_slice(&encoded)?;
         }
 
@@ -1496,19 +1496,19 @@ mod tests {
 
     use super::*;
     use bitcoin::key::TapTweak;
+    use bitcoin::opcodes::all::OP_RETURN;
+    use bitcoin::script::Instruction;
     use bitcoin::BlockHash;
     use bitcoin::CompressedPublicKey;
     use bitcoin::Txid;
     use clarity::vm::types::PrincipalData;
     use fake::Fake as _;
     use model::SignerVote;
+    use more_asserts::assert_ge;
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
     use rand::rngs::OsRng;
-    // use rand::Rng;
-    // use rand::SeedableRng as _;
     use sbtc::deposits::DepositScriptInputs;
-    use sbtc::idpack::Segments;
     use secp256k1::Keypair;
     use secp256k1::SecretKey;
     use stacks_common::types::chainstate::StacksAddress;
@@ -2000,6 +2000,7 @@ mod tests {
 
         // Verify each transaction has an OP_RETURN output with correct format
         for tx in &transactions {
+            eprintln!("Transaction: {:?}", tx.tx.compute_txid());
             let mut expected_ids = tx
                 .requests
                 .iter()
@@ -2007,37 +2008,40 @@ mod tests {
                 .map(|w| w.request_id)
                 .collect::<Vec<u64>>();
             expected_ids.sort();
-            let expected_data = Segments::from_vec(expected_ids)
-                .encode()
-                .expect("failed to encode expected withdrawal IDs");
+            let expected_segments = BitmapSegmenter.package(&expected_ids).unwrap();
+            let expected_data = expected_segments.encode();
 
-            let op_return = &tx.tx.output[1];
-            assert!(
-                op_return.script_pubkey.is_op_return(),
-                "second output should be OP_RETURN"
+            let instructions = tx.tx.output[1]
+                .script_pubkey
+                .as_script()
+                .instructions()
+                .collect::<Result<Vec<_>, _>>()
+                .expect("failed to extract OP_RETURN data");
+
+            let [Instruction::Op(OP_RETURN), Instruction::PushBytes(data)] =
+                instructions.as_slice()
+            else {
+                panic!("second output should be OP_RETURN with data");
+            };
+
+            let data = data.as_bytes();
+
+            // Verify the data meets minimum size requirements
+            assert_ge!(
+                data.len(),
+                OP_RETURN_HEADER_SIZE,
+                "data should contain at least the header bytes"
             );
 
-            let script_bytes = op_return.script_pubkey.as_bytes();
-            assert!(
-                script_bytes.len() >= 5,
-                "OP_RETURN should have at least magic bytes and version"
-            );
-            assert_eq!(
-                script_bytes[0],
-                bitcoin::opcodes::all::OP_RETURN.to_u8(),
-                "first byte should be OP_RETURN"
-            );
-
-            let data = &script_bytes[2..]; // Skip OP_RETURN and push byte
             assert_eq!(&data[0..2], &[b'S', b'T'], "magic bytes should be 'ST'");
             assert_eq!(
                 data[2], OP_RETURN_VERSION,
                 "version should match OP_RETURN_VERSION"
             );
 
-            let encoded_data = &data[3..];
             assert_eq!(
-                encoded_data, expected_data,
+                &data[3..],
+                expected_data,
                 "decoded withdrawal IDs don't match expected values"
             );
         }
@@ -2504,15 +2508,17 @@ mod tests {
             deposits: std::iter::repeat_with(|| create_deposit(123456, 100_000, 0))
                 .take(num_deposits)
                 .collect(),
-            withdrawals: vec![
-                create_withdrawal(1, 10000, 100_000, 0),
-                create_withdrawal(2, 20000, 100_000, 0),
-                create_withdrawal(3, 30000, 100_000, 0),
-                create_withdrawal(4, 40000, 100_000, 0),
-                create_withdrawal(5, 50000, 100_000, 0),
-                create_withdrawal(6, 60000, 100_000, 0),
-                create_withdrawal(multiple_txs as u64 * 1000, 70000, 100_000, 0), // Will force a 2nd transaction
-            ],
+            withdrawals: (0..600)
+                .step_by(10)
+                .map(|i| create_withdrawal(i, 10000, 100_000, 0))
+                // Will force a 2nd transaction by exceeding OP_RETURN limits if `multiple_txs` is true
+                .chain(std::iter::once(create_withdrawal(
+                    multiple_txs as u64 * 650,
+                    70000,
+                    100_000,
+                    0,
+                )))
+                .collect(),
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
