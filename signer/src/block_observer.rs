@@ -574,6 +574,8 @@ impl<C: Context, B> BlockObserver<C, B> {
             Some(limits.per_deposit_minimum()),
             Some(limits.per_deposit_cap()),
             Some(limits.per_withdrawal_cap()),
+            limits.rolling_withdrawal_blocks(),
+            limits.rolling_withdrawal_cap(),
             Some(max_mintable),
         );
 
