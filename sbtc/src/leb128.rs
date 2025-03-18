@@ -119,6 +119,19 @@ impl Leb128 {
             let byte = bytes[position];
             let value = (byte & LOWER_BITS_MASK) as u64;
 
+            // Special handling for 10th byte (maximum for u64)
+            if position == (MAX_BYTES - 1) {
+                // Check for value out of bounds (bits 1-6 should be zero)
+                if (byte & LOWER_BITS_MASK) > 0x01 {
+                    return Err(Error::ValueOutOfBounds);
+                }
+
+                // Check for invalid continuation bit (should not be set in 10th byte)
+                if (byte & CONTINUATION_FLAG) != 0 {
+                    return Err(Error::InvalidContinuation);
+                }
+            }
+
             // Use checked_shl instead of manual overflow detection
             match value.checked_shl(shift) {
                 Some(shifted) => result |= shifted,
@@ -131,11 +144,6 @@ impl Leb128 {
             // No continuation bit - we're done
             if byte & CONTINUATION_FLAG == 0 {
                 return Ok((result, position));
-            }
-
-            // Check if we've reached the maximum bytes
-            if position == MAX_BYTES {
-                return Err(Error::InvalidContinuation);
             }
 
             if position == bytes.len() {
@@ -242,6 +250,7 @@ mod tests {
     #[test_case(&[255, 255, 255, 255, 255, 255, 255, 255, 255, 1] => Ok((0xFFFFFFFFFFFFFFFF, 10)) ; "large value")]
     #[test_case(&[] => Err(Error::EmptyInput) ; "empty input")]
     #[test_case(&[0x7F, 0x00] => Ok((127, 1)) ; "value with trailing bytes")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Ok((u64::MAX, 10)); "exactly u64::MAX")]
     fn test_leb128_decode(bytes: &[u8]) -> Result<(u64, usize), Error> {
         Leb128::try_decode(bytes)
     }
@@ -267,8 +276,10 @@ mod tests {
     #[test_case(&[0x80] => Err(Error::IncompleteSequence); "incomplete byte sequence")]
     #[test_case(&[0x80, 0x80] => Err(Error::IncompleteSequence); "truncated multi-byte")]
     #[test_case(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFF] => Err(Error::InvalidContinuation) ; "too many continuation bytes")]
-    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::InvalidContinuation) ; "exceeds u64 (11 bytes)")]
-    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::InvalidContinuation) ; "exceeds u64 (12 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::ValueOutOfBounds) ; "exceeds u64 (11 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::ValueOutOfBounds) ; "exceeds u64 (12 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02] => Err(Error::ValueOutOfBounds); "exceeds u64 (bit 65 set)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x81] => Err(Error::InvalidContinuation); "continuation at 10th byte")]
     fn test_leb128_decode_invalid(bytes: &[u8]) -> Result<(u64, usize), Error> {
         Leb128::try_decode(bytes)
     }
@@ -278,10 +289,10 @@ mod tests {
     fn test_cursor_position_tracking() {
         // Create buffer with multiple LEB128 values
         let buffer = [
-            // Value 1: small (1 byte)
-            0x01, // Value 2: medium (2 bytes)
-            0x80, 0x01, // Value 3: slightly larger (2 bytes)
-            0xFF, 0x01,
+            0x01, // Value 1: small (1 byte)
+            0x80, 0x01, // Value 2: medium (2 bytes)
+            0xFF, 0x01, // Value 3: slightly larger (2 bytes)
+            0x80,
         ];
 
         let mut cursor = Cursor::new(&buffer[..]);
@@ -301,6 +312,14 @@ mod tests {
         assert_eq!(val3, 255);
         assert_eq!(cursor.position(), 5);
 
+        // Attempt to read the last "garbage byte" (should error)
+        match cursor.read_leb128() {
+            Err(Error::IncompleteSequence) => {} // Expected
+            other => panic!("expected IncompleteSequence error, got {:?}", other),
+        }
+        assert_eq!(cursor.position(), 5);
+        cursor.set_position(cursor.position() + 1); // Skip past the invalid byte
+        assert_eq!(cursor.position(), 6);
         // Attempt read at end (should error)
         match cursor.read_leb128() {
             Err(Error::IndexOutOfBounds) => {} // Expected
@@ -308,7 +327,7 @@ mod tests {
         }
 
         // Position should remain unchanged after error
-        assert_eq!(cursor.position(), 5);
+        assert_eq!(cursor.position(), 6);
     }
 
     /// Tests read operations with extremely large position values
