@@ -218,6 +218,7 @@ impl std::fmt::Display for SbtcLimits {
 
 impl SbtcLimits {
     /// Create a new `SbtcLimits` object.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         total_cap: Option<Amount>,
         per_deposit_minimum: Option<Amount>,
@@ -242,16 +243,16 @@ impl SbtcLimits {
 
     /// Create a new `SbtcLimits` object with limits set to zero (fully constraining)
     pub fn zero() -> Self {
-        Self::new(
-            Some(Amount::ZERO),
-            Some(Amount::MAX_MONEY),
-            Some(Amount::ZERO),
-            Some(Amount::ZERO),
-            Some(u64::MAX),
-            Some(Amount::ZERO),
-            Some(Amount::MAX_MONEY),
-            Some(Amount::ZERO),
-        )
+        Self {
+            total_cap: Some(Amount::ZERO),
+            per_deposit_minimum: Some(Amount::MAX_MONEY),
+            per_deposit_cap: Some(Amount::ZERO),
+            per_withdrawal_cap: Some(Amount::ZERO),
+            rolling_withdrawal_blocks: Some(u64::MAX),
+            rolling_withdrawal_cap: Some(Amount::ZERO),
+            withdrawn_total: Some(Amount::MAX_MONEY),
+            max_mintable_cap: Some(Amount::ZERO),
+        }
     }
 
     /// Get the total cap for all pegged-in BTC/sBTC.
