@@ -385,6 +385,7 @@ impl EmilyInteract for EmilyClient {
             rolling_withdrawal_blocks,
             rolling_withdrawal_cap,
             None,
+            None,
         ))
     }
 }
