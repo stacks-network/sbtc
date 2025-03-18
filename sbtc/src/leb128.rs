@@ -81,6 +81,9 @@ impl Leb128 {
     pub fn encode_into(mut value: u64, bytes: &mut Vec<u8>) {
         loop {
             let mut byte = (value & LOWER_BITS_MASK as u64) as u8;
+            // NOTE: this will never actually fail as we're only shifting by 7 bits
+            // and `checked_shr` will only ever fail if the shift is >= the bit
+            // width of the value (64 bits in this case).
             value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
 
             if value != 0 {
@@ -132,7 +135,10 @@ impl Leb128 {
                 }
             }
 
-            // Use checked_shl instead of manual overflow detection
+            // Shift and add value to result
+            // NOTE: this will never actually fail as we're only ever shifting by
+            // BITS_PER_BYTE * (MAX_BYTES - 1) = 63 bits. We've also just checked
+            // that the value is within bounds for the final byte.
             match value.checked_shl(shift) {
                 Some(shifted) => result |= shifted,
                 None => return Err(Error::ValueOutOfBounds),
