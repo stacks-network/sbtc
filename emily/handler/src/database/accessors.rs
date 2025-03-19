@@ -13,7 +13,6 @@ use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
-use super::entries::chainstate::BitcoinChainstateEntryKey;
 use super::entries::deposit::{
     DepositInfoByRecipientEntry, DepositInfoByReclaimPubkeysEntry,
     DepositTableByRecipientSecondaryIndex, DepositTableByReclaimPubkeysSecondaryIndex,
@@ -30,7 +29,7 @@ use super::entries::{
     chainstate::{
         ApiStateEntry, ApiStatus, BitcoinChainstateEntry, BitcoinChainstateTablePrimaryIndex,
         ChainstateEntry, ChainstateTablePrimaryIndex, HeightsMappingTablePrimaryIndex,
-        SpecialApiStateIndex,
+        SpecialApiStateIndex, HeightsMappingEntry, BitcoinChainstateEntryKey, HeightsMappingEntryKey
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
@@ -855,6 +854,25 @@ pub async fn set_new_bitcoin_chain_tip(
         height: new_tip.height,
     };
     put_entry::<BitcoinChainstateTablePrimaryIndex>(context, &entry).await
+}
+
+/// Updates heights mapping
+pub async fn update_heights_mapping(
+    context: &EmilyContext,
+    update: HeightsMapping,
+) -> Result<(), Error> {
+    // TODO: remove mappings for old enough blocks
+    for (bitcoin_height, stacks_height) in update.mapping {
+        let entry = HeightsMappingEntry {
+            key: HeightsMappingEntryKey { bitcoin_height },
+            version: 1,
+            first_ancored_stacks_height: stacks_height,
+    
+        };
+        put_entry::<HeightsMappingTablePrimaryIndex>(context, &entry).await?;
+
+    }
+    Ok(())
 }
 
 /// Get the limit for a specific account.
