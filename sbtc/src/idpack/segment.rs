@@ -227,6 +227,7 @@ mod tests {
         segment.try_insert(max)?;
 
         // Verify range calculation
+        assert_eq!(segment.offset(), offset);
         assert_eq!(segment.range(), max - offset);
         assert_eq!(segment.max(), max);
 
