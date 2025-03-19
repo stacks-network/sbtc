@@ -124,8 +124,7 @@ impl Segmenter for BitmapSegmenter {
         let boundaries = self.find_segment_boundaries(values);
 
         // Create segments using identified boundaries
-        let mut segments = Segments::default();
-        self.create_segments_from_boundaries(values, &boundaries, &mut segments)?;
+        let segments = self.create_segments_from_boundaries(values, &boundaries)?;
 
         Ok(segments)
     }
@@ -196,10 +195,7 @@ impl BitmapSegmenter {
 
     /// Creates bitmap segments based on the identified boundaries
     ///
-    /// Converts logical segment boundaries into actual encoded segments,
-    /// using encoding optimizations:
-    /// - Single value optimization for isolated values (zero payload bytes)
-    /// - Multi-value bitmap encoding for ranges with common offsets
+    /// Converts logical segment boundaries into actual encoded segments.
     ///
     /// ## Parameters
     /// * `values` - The sorted sequence of original values
@@ -211,8 +207,9 @@ impl BitmapSegmenter {
         &self,
         values: &[u64],
         boundaries: &[usize],
-        segments: &mut Segments,
-    ) -> Result<(), SegmenterError> {
+    ) -> Result<Segments, SegmenterError> {
+        let mut segments = Segments::default();
+
         // Create a segment for each pair of boundaries
         for window in boundaries.windows(2) {
             let [start_idx, end_idx] = *window else {
@@ -237,7 +234,7 @@ impl BitmapSegmenter {
             segments.try_push(segment)?;
         }
 
-        Ok(())
+        Ok(segments)
     }
 }
 
