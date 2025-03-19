@@ -3543,7 +3543,7 @@ mod tests {
         rolling_limits: RollingWithdrawalLimits::unlimited(0),
         fee_rate: 10.0,
         num_accepted_withdrawals: 7,
-        accepted_amount: 69_295,
+        accepted_amount: 69_001 + WITHDRAWAL_DUST_LIMIT,
     }; "unlimited withdrawal caps only applies max-fee filtering")]
     fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
         let limits =
