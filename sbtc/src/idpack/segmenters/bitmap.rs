@@ -135,10 +135,7 @@ impl BitmapSegmenter {
     /// Finds optimal segment boundaries by directly comparing byte costs
     ///
     /// This core algorithm analyzes each potential split point to optimize
-    /// compression:
-    /// - For small gaps (<17 bytes with 1-byte offset), continues the bitmap
-    /// - For larger gaps, splits to avoid bitmap waste
-    /// - For extreme gaps (e.g., 1 to 1,000,000), ensures efficient segmentation
+    /// compression by comparing byte costs for splitting vs. continuing.
     ///
     /// These byte-perfect decisions ensure optimal compression by creating
     /// segments exactly where they save bytes.
