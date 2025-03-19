@@ -202,7 +202,10 @@ impl BitmapSegmenter {
     /// * `boundaries` - The optimal boundary indices determined by analysis
     ///
     /// ## Returns
-    /// * Ok(()) - if
+    /// * Ok(Segments)
+    /// * Err(SegmenterError::InvalidBoundaries) - If boundaries are invalid
+    /// * Err(SegmenterError::Segment) - If segment manipulation fails (i.e. unsorted values)
+    /// * Err(SegmenterError::Segments) - If segments manipulation fails (i.e. overlapping segments)
     fn create_segments_from_boundaries(
         &self,
         values: &[u64],
