@@ -84,25 +84,6 @@ impl BitmapCosts {
             + split_offset
             + split_length_header as usize;
 
-        // // Calculate current segment payload size (without next value)
-        // // This uses the actual BitsetStrategy implementation to ensure consistency
-        // let current_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, prev]);
-
-        // // Calculate extended segment payload (with next value)
-        // let combined_segment_payload = BitmapEncoding.calculate_payload_size(&[offset, next]);
-
-        // // Calculate LEB128 encoding size for offsets
-        // let current_offset_size = Leb128::calculate_size(offset);
-        // let next_delta_size = Leb128::calculate_size(next - offset);
-
-        // // Calculate the total bytes if we split at this position
-        // // We include both segments' complete sizes for accurate comparison
-        // let bytes_if_split =
-        //     current_offset_size + current_segment_payload + FLAGS_SIZE + next_delta_size;
-
-        // // Calculate the total bytes if we continue the current segment
-        // let bytes_if_combined = current_offset_size + combined_segment_payload;
-
         // Return the precise byte costs for compression decision
         Self {
             bytes_if_split,
