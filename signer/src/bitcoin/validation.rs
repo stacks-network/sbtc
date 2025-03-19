@@ -28,7 +28,6 @@ use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-use crate::WITHDRAWAL_DUST_LIMIT;
 use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::utxo::DepositRequest;
@@ -985,7 +984,7 @@ impl WithdrawalRequestReport {
             return WithdrawalValidationResult::AmountTooHigh;
         }
 
-        if self.amount < WITHDRAWAL_DUST_LIMIT {
+        if self.amount < self.recipient.minimal_non_dust().to_sat() {
             return WithdrawalValidationResult::AmountIsDust;
         }
 
@@ -1025,6 +1024,8 @@ impl WithdrawalRequestReport {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use bitcoin::hashes::Hash as _;
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
@@ -1032,6 +1033,7 @@ mod tests {
     use bitcoin::TxOut;
     use bitcoin::Txid;
     use bitcoin::Witness;
+    use secp256k1::SECP256K1;
     use test_case::test_case;
 
     use crate::context::RollingWithdrawalLimits;
@@ -1438,6 +1440,9 @@ mod tests {
         limits: SbtcLimits,
     }
 
+    pub static TEST_RECIPIENT: LazyLock<ScriptBuf> =
+        LazyLock::new(|| ScriptBuf::new_p2tr(SECP256K1, *sbtc::UNSPENDABLE_TAPROOT_KEY, None));
+
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
             // This is the only acceptable status.
@@ -1456,8 +1461,8 @@ mod tests {
             // The max fee just needs to be greater than or equal to the
             // assessed fee.
             max_fee: TX_FEE.to_sat(),
-            // This does not matter during validation.
-            recipient: ScriptBuf::new(),
+            // This is used for computing the dust amount during validation.
+            recipient: TEST_RECIPIENT.clone(),
             // This needs to be WITHDRAWAL_MIN_CONFIRMATIONS less than the
             // chain_tip_height.
             bitcoin_block_height: 0,
@@ -1479,7 +1484,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat() + 1,
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         status: WithdrawalValidationResult::AmountTooHigh,
@@ -1495,9 +1500,9 @@ mod tests {
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
-            amount: WITHDRAWAL_DUST_LIMIT - 1,
+            amount: TEST_RECIPIENT.minimal_non_dust().to_sat() - 1,
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1515,7 +1520,7 @@ mod tests {
             is_accepted: Some(true),
             amount: TX_FEE.to_sat() - 1,
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1533,7 +1538,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat() - 1,
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1551,7 +1556,7 @@ mod tests {
             is_accepted: None,
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1569,7 +1574,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_BLOCKS_EXPIRY + 1,
@@ -1590,7 +1595,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1608,7 +1613,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS - 1,
@@ -1626,7 +1631,7 @@ mod tests {
             is_accepted: Some(false),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1644,7 +1649,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
