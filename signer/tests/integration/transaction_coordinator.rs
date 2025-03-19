@@ -3768,6 +3768,12 @@ async fn sign_bitcoin_transaction_withdrawals() {
 
     // Now we should manually put withdrawal request to Emily, pretending that
     // sidecar did it.
+    let stacks_tip_height = db
+        .get_stacks_block(&stacks_chain_tip)
+        .await
+        .unwrap()
+        .unwrap()
+        .block_height;
     let request_body = testing_emily_client::models::CreateWithdrawalRequestBody {
         amount: withdrawal_request.amount,
         parameters: Box::new(testing_emily_client::models::WithdrawalParameters {
@@ -3777,12 +3783,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         request_id: withdrawal_request.request_id,
         sender: withdrawal_request.sender_address.to_string(),
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
-        stacks_block_height: db
-            .get_stacks_block(&stacks_chain_tip)
-            .await
-            .unwrap()
-            .unwrap()
-            .block_height,
+        stacks_block_height: stacks_tip_height,
     };
     let response =
         withdrawal_api::create_withdrawal(&emily_client.config().as_testing(), request_body).await;
