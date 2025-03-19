@@ -1493,6 +1493,8 @@ impl bitcoin::consensus::Encodable for Hash160 {
 mod tests {
     use std::collections::BTreeSet;
     use std::str::FromStr;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::atomic::Ordering;
 
     use super::*;
     use bitcoin::key::TapTweak;
@@ -2504,20 +2506,13 @@ mod tests {
     fn unsigned_tx_digests(num_deposits: usize, multiple_txs: bool) {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
-        let requests = SbtcRequests {
+        let mut requests = SbtcRequests {
             deposits: std::iter::repeat_with(|| create_deposit(123456, 100_000, 0))
                 .take(num_deposits)
                 .collect(),
             withdrawals: (0..600)
                 .step_by(10)
                 .map(|i| create_withdrawal(i, 10000, 100_000, 0))
-                // Will force a 2nd transaction by exceeding OP_RETURN limits if `multiple_txs` is true
-                .chain(std::iter::once(create_withdrawal(
-                    multiple_txs as u64 * 650,
-                    70000,
-                    100_000,
-                    0,
-                )))
                 .collect(),
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2535,6 +2530,13 @@ mod tests {
             sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
+        // If multiple_txs is specified, we add a withdrawal that will
+        // cause the transaction to be split into two.
+        if multiple_txs {
+            requests
+                .withdrawals
+                .push(create_withdrawal(650, 70000, 100_000, 0));
+        }
         let transactions = requests.construct_transactions().unwrap();
         let expected_tx_count = if multiple_txs { 2 } else { 1 };
         assert_eq!(transactions.len(), expected_tx_count);
@@ -2603,13 +2605,28 @@ mod tests {
             .take(good_deposit_count)
             .map(|amount| create_deposit(amount, 100_000, 0));
 
+        let last_withdrawal_id = AtomicU64::new(0);
         let withdrawal_low_fee = ((BASE_WITHDRAWAL_TX_VSIZE - 1.0) * fee_rate) as u64;
         let low_fee_withdrawals = std::iter::repeat_with(|| uniform.sample(&mut OsRng))
             .take(low_fee_withdrawal_count)
-            .map(|amount| create_withdrawal(1, amount, withdrawal_low_fee, 0));
+            .map(|amount| {
+                create_withdrawal(
+                    last_withdrawal_id.fetch_add(1, Ordering::Relaxed),
+                    amount,
+                    withdrawal_low_fee,
+                    0,
+                )
+            });
         let good_fee_withdrawals = std::iter::repeat_with(|| uniform.sample(&mut OsRng))
             .take(good_withdrawal_count)
-            .map(|amount| create_withdrawal(2, amount, 100_000, 0));
+            .map(|amount| {
+                create_withdrawal(
+                    last_withdrawal_id.fetch_add(1, Ordering::Relaxed),
+                    amount,
+                    100_000,
+                    0,
+                )
+            });
 
         // Okay now generate the (unsigned) transaction that we will submit.
         let requests = SbtcRequests {
@@ -3015,7 +3032,7 @@ mod tests {
         // ensuring lots of votes against the set of request.
         const MAX_WITHDRAWALS: usize = 4000;
         let withdrawals: Vec<WithdrawalRequest> = (0..MAX_WITHDRAWALS)
-            .map(|shift| create_withdrawal(1, 1000, 10_000, 1 << (shift % 14)))
+            .map(|id| create_withdrawal(id as u64, 1000, 10_000, 1 << (id % 14)))
             .collect();
 
         let requests = SbtcRequests {
