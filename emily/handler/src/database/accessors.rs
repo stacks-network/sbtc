@@ -27,9 +27,10 @@ use super::entries::withdrawal::{
 };
 use super::entries::{
     chainstate::{
-        ApiStateEntry, ApiStatus, BitcoinChainstateEntry, BitcoinChainstateTablePrimaryIndex,
-        ChainstateEntry, ChainstateTablePrimaryIndex, HeightsMappingTablePrimaryIndex,
-        SpecialApiStateIndex, HeightsMappingEntry, BitcoinChainstateEntryKey, HeightsMappingEntryKey
+        ApiStateEntry, ApiStatus, BitcoinChainstateEntry, BitcoinChainstateEntryKey,
+        BitcoinChainstateTablePrimaryIndex, ChainstateEntry, ChainstateTablePrimaryIndex,
+        HeightsMappingEntry, HeightsMappingEntryKey, HeightsMappingTablePrimaryIndex,
+        SpecialApiStateIndex,
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
@@ -867,10 +868,8 @@ pub async fn update_heights_mapping(
             key: HeightsMappingEntryKey { bitcoin_height },
             version: 1,
             first_ancored_stacks_height: stacks_height,
-    
         };
         put_entry::<HeightsMappingTablePrimaryIndex>(context, &entry).await?;
-
     }
     Ok(())
 }
