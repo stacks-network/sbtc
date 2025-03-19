@@ -67,4 +67,3 @@ pub struct TotalWithdrawedAmount {
     /// Last block in rolling window.
     pub last_stacks_block_in_rolling_window: Option<u64>,
 }
-

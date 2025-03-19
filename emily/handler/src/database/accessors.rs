@@ -7,11 +7,13 @@ use serde_dynamo::Item;
 
 use tracing::{debug, warn};
 
+use crate::api::models::chainstate::{HeightsMapping, UpdateBitcoinChaintip};
 use crate::api::models::limits::{AccountLimits, Limits, TotalWithdrawedAmount};
 use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
 
+use super::entries::chainstate::BitcoinChainstateEntryKey;
 use super::entries::deposit::{
     DepositInfoByRecipientEntry, DepositInfoByReclaimPubkeysEntry,
     DepositTableByRecipientSecondaryIndex, DepositTableByReclaimPubkeysSecondaryIndex,
@@ -26,8 +28,9 @@ use super::entries::withdrawal::{
 };
 use super::entries::{
     chainstate::{
-        ApiStateEntry, ApiStatus, BitcoinChainstateTablePrimaryIndex, ChainstateEntry,
-        ChainstateTablePrimaryIndex, HeightsMappingTablePrimaryIndex, SpecialApiStateIndex,
+        ApiStateEntry, ApiStatus, BitcoinChainstateEntry, BitcoinChainstateTablePrimaryIndex,
+        ChainstateEntry, ChainstateTablePrimaryIndex, HeightsMappingTablePrimaryIndex,
+        SpecialApiStateIndex,
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
@@ -840,6 +843,18 @@ pub async fn get_total_withdrawed_amount_in_rolling_window(
         stacks_chain_tip: Some(stacks_chain_tip),
         last_stacks_block_in_rolling_window: Some(minimum_stacks_height),
     })
+}
+
+/// Updates bitcoin chain tip info
+pub async fn set_new_bitcoin_chain_tip(
+    context: &EmilyContext,
+    new_tip: UpdateBitcoinChaintip,
+) -> Result<(), Error> {
+    let entry = BitcoinChainstateEntry {
+        key: BitcoinChainstateEntryKey { dummy: "dummy".to_string() },
+        height: new_tip.height,
+    };
+    put_entry::<BitcoinChainstateTablePrimaryIndex>(context, &entry).await
 }
 
 /// Get the limit for a specific account.

@@ -1,7 +1,7 @@
 //! Request structures for chainstate api calls.
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use utoipa::{ToResponse, ToSchema};
 
 /// Chainstate.
@@ -42,5 +42,5 @@ pub struct UpdateBitcoinChaintip {
     /// A new bitcoin chaintip height
     pub height: u64,
     /// A new bitcoin chaintip hash
-    pub hash: String
+    pub hash: String,
 }
