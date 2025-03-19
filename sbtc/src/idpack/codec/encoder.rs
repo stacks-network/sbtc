@@ -100,21 +100,27 @@ fn encode_bitmap(segment: &Segment) -> Vec<u8> {
         // Convert from value to bit position:
         // 1. Subtract offset to get relative position
         // 2. Subtract 1 more because bit 0 represents (offset+1)
-        let relative_pos = value - segment.offset() - 1;
+        //
+        // SAFETY: The following subtractions are safe because:
+        // 1. The Segment type works explicitly with unsigned integers,
+        // 2. and segment.values() returns values in the segment excluding the
+        //    offset, hence all values from segment.values() are > offset and ≥ 0,
+        //    guaranteed by the invariant of the Segment type,
+        // 2. Therefore, the following is always ≥ 0:
+        let relative_pos: u64 = value - segment.offset() - 1;
 
         // Calculate byte and bit index within the bitmap
         let byte_index = relative_pos / 8;
         let bit_index = relative_pos % 8;
 
         // Set the corresponding bit in the bitmap
-        // SAFETY: This array indexing cannot panic because:
-        // 1. segment.values() returns values in the segment excluding the offset,
-        //    hence all values in segment.values() are > offset by design
-        // 2. Therefore: relative_pos = value - offset - 1 is always >= 0
-        // 3. This ensures: byte_index = relative_pos / 8 is in range [0, bytes_needed-1]
-        // 4. And bitmap is sized exactly to bytes_needed
         //
-        // SAFETY: The bit shift operation cannot panic because:
+        // SAFETY: The index access is safe because:
+        // 1. bytes_needed is calculated based on the range() of values in the
+        //    segment, so byte_index is always in range [0, bytes_needed-1]
+        // 2. And bitmap is sized exactly to bytes_needed
+        //
+        // SAFETY: The bit shift operation is safe because:
         // 1. bit_index = relative_pos % 8 is always in range [0, 7]
         // 2. Shifting by 0-7 bits is safe for u8 (which has 8 bits)
         bitmap[byte_index as usize] |= 1 << bit_index;
