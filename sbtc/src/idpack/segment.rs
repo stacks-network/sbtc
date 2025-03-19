@@ -90,17 +90,6 @@ impl Segment {
         self.values.len()
     }
 
-    /// Returns the number of values excluding the offset.
-    /// Important for encoding decisions and payload size calculations.
-    pub fn value_count(&self) -> usize {
-        self.values.len().saturating_sub(1)
-    }
-
-    /// Returns `true` if segment contains values beyond the offset.
-    pub fn has_values(&self) -> bool {
-        self.value_count() > 0
-    }
-
     /// Returns span of the segment (maximum value - offset).
     pub fn range(&self) -> u64 {
         self.max() - self.offset()
@@ -154,7 +143,6 @@ mod tests {
         // Verify invariant: segment is never empty
         assert!(!segment.as_slice().is_empty());
         assert_eq!(segment.len(), 1);
-        assert_eq!(segment.value_count(), 0);
 
         // Verify max equals offset when only offset exists
         assert_eq!(segment.max(), offset);
@@ -176,7 +164,6 @@ mod tests {
 
         // Verify all values are stored
         assert_eq!(segment.len(), 5);
-        assert_eq!(segment.value_count(), 4);
         assert_eq!(segment.as_slice(), &[10, 11, 12, 15, 20]);
         assert_eq!(segment.values(), &[11, 12, 15, 20]);
 
