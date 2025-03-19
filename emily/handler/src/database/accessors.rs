@@ -765,7 +765,11 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
     })
 }
 
-async fn get_bitcoin_chain_tip(context: &EmilyContext) -> Result<(u64, String), Error> {
+async fn get_bitcoin_chain_tip_height(context: &EmilyContext) -> Result<u64, Error> {
+    unimplemented!()
+}
+
+async fn get_first_stacks_block_for_ancor(ancor_height: u64) -> Result<u64, Error> {
     unimplemented!()
 }
 
@@ -779,10 +783,10 @@ pub async fn get_total_withdrawn_amount_in_rolling_window(
         .default_limits
         .rolling_withdrawal_blocks
         .unwrap_or(0);
-    // it is actually bitcoin chain tip
-    let stacks_tip_height = get_api_state(context).await?.chaintip().key.height;
-    let (bitcoin_tip_height, bitcoin_tip_hash) = get_bitcoin_chain_tip(context).await?;
+
+    let bitcoin_tip_height = get_bitcoin_chain_tip_height(context).await?;
     let minimum_height = bitcoin_tip_height - rolling_window_size;
+    let minimum_stacks_height = get_first_stacks_block_for_ancor(minimum_height).await?;
 
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
         .into_iter()
@@ -795,7 +799,7 @@ pub async fn get_total_withdrawn_amount_in_rolling_window(
             get_all_withdrawal_entries_modified_from_height_with_status(
                 context,
                 status,
-                minimum_height,
+                minimum_stacks_height,
                 None,
             )
             .await?;
