@@ -221,6 +221,10 @@ impl BitmapSegmenter {
                 continue;
             };
 
+            // SAFETY: `start_idx` and `end_idx` are always valid range values
+            // as the boundaries themselves are derived from index positions
+            // within the `values` slice (where the last `end_idx` is always
+            // `values.len()` and thus valid for the exclusive range).
             let slice = &values[start_idx..end_idx];
             let Some(offset) = slice.first() else {
                 return Err(SegmenterError::InvalidBoundaries);
