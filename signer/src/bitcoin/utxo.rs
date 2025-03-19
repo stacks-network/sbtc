@@ -54,7 +54,6 @@ use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
-use crate::WITHDRAWAL_DUST_LIMIT;
 
 /// The minimum incremental fee rate in sats per virtual byte for RBF
 /// transactions.
@@ -200,7 +199,7 @@ impl<'a> SbtcRequestsPreprocessor<'a> {
         // that the amount is above the max dust limit for standard
         // outputs. But the smart contract can change and have a mistake,
         // so we check here as well.
-        let is_above_minimum = WITHDRAWAL_DUST_LIMIT <= req.amount;
+        let is_above_minimum = req.script_pubkey.minimal_non_dust().to_sat() <= req.amount;
 
         let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.vsize() as f64;
         let is_fee_valid =
@@ -1653,6 +1652,11 @@ mod tests {
         let secret_key = SecretKey::new(&mut OsRng);
         secret_key.x_only_public_key(SECP256K1).0
     }
+
+    // The is the least non dust amount for withdrawal outputs locked by
+    // the generate_address() script, which generates P2WPKH outputs
+    const MINMAL_NON_DUST_AMOUNT_P2WPKH: LazyLock<u64> =
+        LazyLock::new(|| generate_address().minimal_non_dust().to_sat());
 
     fn generate_address() -> ScriptPubKey {
         let secret_key = SecretKey::new(&mut OsRng);
@@ -3512,7 +3516,7 @@ mod tests {
             create_withdrawal(8_000, 10_000, 0),  // rejected
             create_withdrawal(10_000, 10_000, 0), // rejected
             create_withdrawal(1_000, 10_000, 0),  // rejected
-            create_withdrawal(WITHDRAWAL_DUST_LIMIT, 10_000, 0), // rejected
+            create_withdrawal(*MINMAL_NON_DUST_AMOUNT_P2WPKH, 10_000, 0), // rejected
         ],
         per_withdrawal_cap: 0,
         rolling_limits: RollingWithdrawalLimits::unlimited(0),
@@ -3521,7 +3525,7 @@ mod tests {
         accepted_amount: 0,
     }; "zero per withdrawal cap rolling withdrawals filters everything")]
     #[test_case(WithdrawalLimitTestCase {
-        withdrawals: vec![create_withdrawal(WITHDRAWAL_DUST_LIMIT - 1, 10_000, 0)],
+        withdrawals: vec![create_withdrawal(*MINMAL_NON_DUST_AMOUNT_P2WPKH - 1, 10_000, 0)],
         per_withdrawal_cap: u64::MAX,
         rolling_limits: RollingWithdrawalLimits::unlimited(0),
         fee_rate: 1.0,
@@ -3537,13 +3541,13 @@ mod tests {
             create_withdrawal(8_000, 10_000, 0),  // accepted
             create_withdrawal(10_000, 10_000, 0), // accepted
             create_withdrawal(1_000, 10_000, 0),  // accepted
-            create_withdrawal(WITHDRAWAL_DUST_LIMIT, 10_000, 0), // accepted
+            create_withdrawal(*MINMAL_NON_DUST_AMOUNT_P2WPKH, 10_000, 0), // accepted
         ],
         per_withdrawal_cap: u64::MAX,
         rolling_limits: RollingWithdrawalLimits::unlimited(0),
         fee_rate: 10.0,
         num_accepted_withdrawals: 7,
-        accepted_amount: 69_001 + WITHDRAWAL_DUST_LIMIT,
+        accepted_amount: 69_001 + *MINMAL_NON_DUST_AMOUNT_P2WPKH,
     }; "unlimited withdrawal caps only applies max-fee filtering")]
     fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
         let limits =
