@@ -647,10 +647,24 @@ where
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
             // but emily deposit still marked as pending.
-            self.context
+
+            let _ = self
+                .context
                 .get_emily_client()
                 .accept_deposits(&transaction, &stacks_chain_tip)
-                .await?;
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "could not accept deposits on Emily");
+                });
+
+            let _ = self
+                .context
+                .get_emily_client()
+                .accept_withdrawals(&transaction, &stacks_chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "could not accept withdrawals on Emily");
+                });
         }
 
         Ok(())
