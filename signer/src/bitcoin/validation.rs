@@ -2113,118 +2113,119 @@ mod tests {
         };
     }
 
-    #[test_case(
-        vec![1000, 2000, 3000],
-        RollingWithdrawalLimits {
+    /// A helper struct for testing how the code handles withdrawals with
+    /// specific limits.
+    struct WithdrawalLimitsTestCase {
+        /// The withdrawal amounts that are being considered.
+        withdrawal_amounts: Vec<u64>,
+        /// The rolling withdrawal limits to test.
+        rolling_limits: RollingWithdrawalLimits,
+        /// The total withdrawn so far.
+        withdrawn_total: Amount,
+        /// The expected outcome after running validation on the withdrawal
+        /// requests.
+        expected: Result<(), Error>,
+    }
+
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![1000, 2000, 3000],
+        rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
         },
-        Amount::from_sat(1_000),
-        Ok(());
-        "should accept withdrawals under rolling cap"
-    )]
-    #[test_case(
-        vec![],
-        RollingWithdrawalLimits {
+        withdrawn_total: Amount::from_sat(1_000),
+        expected: Ok(()),
+    }; "should accept withdrawals under rolling cap")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![],
+        rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
         },
-        Amount::from_sat(0),
-        Ok(());
-        "should accept empty withdrawals"
-    )]
-    #[test_case(
-        vec![10_000],
-        RollingWithdrawalLimits {
+        withdrawn_total: Amount::from_sat(0),
+        expected: Ok(()),
+    }; "should accept empty withdrawals")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![10_000],
+        rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
         },
-        Amount::from_sat(0),
-        Ok(());
-        "should accept withdrawals equal to rolling cap"
-    )]
-    #[test_case(
-        vec![5000, 5001],
-        RollingWithdrawalLimits {
+        withdrawn_total: Amount::from_sat(0),
+        expected: Ok(()),
+    }; "should accept withdrawals equal to rolling cap")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![5000, 5001],
+        rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
         },
-        Amount::from_sat(0),
-        Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
+        withdrawn_total: Amount::from_sat(0),
+        expected: Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts: 10_001,
             cap: 10_000,
             cap_blocks: 150,
             withdrawn_total: 0,
-        }));
-        "should reject withdrawals over rolling cap"
-    )]
-    #[test_case(
-        vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
-        RollingWithdrawalLimits {
+        })),
+    }; "should reject withdrawals over rolling cap")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![1, 1, Amount::MAX_MONEY.to_sat() - 2],
+        rolling_limits: RollingWithdrawalLimits {
             cap: Amount::MAX_MONEY.to_sat(),
             blocks: 150,
         },
-        Amount::from_sat(1),
-        Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
+        withdrawn_total: Amount::from_sat(1),
+        expected: Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts: Amount::MAX_MONEY.to_sat() + 1,
             cap: Amount::MAX_MONEY.to_sat(),
             cap_blocks: 150,
             withdrawn_total: 1,
-        }));
-        "filter out withdrawals over rolling cap"
-    )]
-    #[test_case(
-        vec![Amount::MAX_MONEY.to_sat() / 4; 3],
-        RollingWithdrawalLimits::unlimited(),
-        Amount::MAX_MONEY / 4,
-        Ok(());
-        "unlimited filters no withdrawals"
-    )]
-    #[test_case(
-        vec![1, Amount::MAX_MONEY.to_sat()],
-        RollingWithdrawalLimits::unlimited(),
-        Amount::ZERO,
-        Ok(());
-        "unlimited allows more then max money"
-    )]
-    #[test_case(
-        vec![],
-        RollingWithdrawalLimits::zero(),
-        Amount::MAX_MONEY,
-        Ok(());
-        "no withdrawals when withdrawals are locked down okay"
-    )]
-    #[test_case(
-        vec![1],
-        RollingWithdrawalLimits::zero(),
-        Amount::ZERO,
-        Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
+        })),
+    }; "filter out withdrawals over rolling cap")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![Amount::MAX_MONEY.to_sat() / 4; 3],
+        rolling_limits: RollingWithdrawalLimits::unlimited(),
+        withdrawn_total: Amount::MAX_MONEY / 4,
+        expected: Ok(()),
+    }; "unlimited filters no withdrawals")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![1, Amount::MAX_MONEY.to_sat()],
+        rolling_limits: RollingWithdrawalLimits::unlimited(),
+        withdrawn_total: Amount::ZERO,
+        expected: Ok(()),
+    }; "unlimited allows more then max money")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![],
+        rolling_limits: RollingWithdrawalLimits::zero(),
+        withdrawn_total: Amount::MAX_MONEY,
+        expected: Ok(()),
+    }; "no withdrawals when withdrawals are locked down okay")]
+    #[test_case(WithdrawalLimitsTestCase {
+        withdrawal_amounts: vec![1],
+        rolling_limits: RollingWithdrawalLimits::zero(),
+        withdrawn_total: Amount::ZERO,
+        expected: Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts:  1,
             cap: Amount::ZERO.to_sat(),
             cap_blocks: 0,
             withdrawn_total: 0,
-        }));
-        "limits of zero filters all withdrawals"
-    )]
-    fn test_validate_withdrawal_limits(
-        withdrawal_amounts: Vec<u64>,
-        rolling_limits: RollingWithdrawalLimits,
-        withdrawn_total: Amount,
-        expected: Result<(), Error>,
-    ) {
+        })),
+    }; "limits of zero filters all withdrawals")]
+    fn test_validate_withdrawal_limits(case: WithdrawalLimitsTestCase) {
         let limits = SbtcLimits::new(
             None,
             None,
             None,
             None,
-            Some(rolling_limits.blocks),
-            Some(rolling_limits.cap),
+            Some(case.rolling_limits.blocks),
+            Some(case.rolling_limits.cap),
             None,
         );
         // Create cache with test data
         let mut cache = ValidationCache::default();
 
-        let withdrawal_reports: Vec<(WithdrawalRequestReport, SignerVotes)> = withdrawal_amounts
+        let withdrawal_reports: Vec<(WithdrawalRequestReport, SignerVotes)> = case
+            .withdrawal_amounts
             .into_iter()
             .enumerate()
             .map(|(idx, amount)| create_withdrawal_report(idx as u8, amount))
@@ -2236,11 +2237,11 @@ mod tests {
             .collect();
 
         // Validate the cached reports
-        let withdrawn_total = withdrawn_total.to_sat();
+        let withdrawn_total = case.withdrawn_total.to_sat();
         let result =
             BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, withdrawn_total);
 
-        match (result, expected) {
+        match (result, case.expected) {
             (Ok(()), Ok(())) => {}
             (
                 Err(Error::ExceedsWithdrawalCap(actual_context)),
