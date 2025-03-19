@@ -4,6 +4,7 @@ use std::sync::LazyLock;
 
 use libp2p::gossipsub::IdentTopic;
 
+mod bootstrap;
 mod errors;
 mod event_loop;
 mod multiaddr;
