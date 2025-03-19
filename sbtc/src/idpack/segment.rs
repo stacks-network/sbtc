@@ -133,7 +133,7 @@ mod tests {
     /// Test segment creation with different offsets
     #[test_case(0; "zero offset")]
     #[test_case(10; "small offset")]
-    #[test_case(u64::MAX / 2; "large offset")]
+    #[test_case(u64::MAX; "large offset")]
     fn test_new_segment(offset: u64) {
         let segment = Segment::new_with_offset(offset);
 
