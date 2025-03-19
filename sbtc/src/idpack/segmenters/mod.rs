@@ -10,10 +10,6 @@ pub use bitmap::BitmapSegmenter;
 /// Errors which can occur during the adaptive segmentation process.
 #[derive(Debug, thiserror::Error)]
 pub enum SegmenterError {
-    /// The input is empty.
-    #[error("the input is empty")]
-    EmptyInput,
-
     /// The input is not sorted.
     #[error("the input is not sorted")]
     UnsortedInput,
