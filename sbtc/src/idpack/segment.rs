@@ -81,10 +81,6 @@ impl Segment {
     /// Gets a slice of all values in the segment, excluding the offset.
     /// Returns an empty slice if there are no values beyond the offset.
     pub fn values(&self) -> &[u64] {
-        if self.values.is_empty() {
-            return &[];
-        }
-
         &self.values[1..]
     }
 
