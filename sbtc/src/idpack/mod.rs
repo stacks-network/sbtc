@@ -58,6 +58,8 @@ pub use codec::Decodable;
 pub use codec::DecodeError;
 pub use codec::Encodable;
 
-/// Maximum allocation limit in bytes (1MB) for preventing memory allocation attacks
-/// while allowing sufficient space for optimal compression operations.
+/// Maximum allocation limit in bytes (1MB) for a single bitmap payload for
+/// preventing memory allocation attacks while allowing sufficient space for
+/// optimal compression operations. This limit has no effect on the number of
+/// segments or number of values to be decoded.
 pub const ALLOC_BYTES_LIMIT: u32 = 1 << 20; // 1MB = 2^20 bytes
