@@ -116,7 +116,7 @@ pub trait GetFees {
 }
 
 /// Filter out the deposit requests that do not meet the amount or fee requirements.
-pub struct SbtcRequestsFilter<'a> {
+pub struct SbtcRequestsPreprocessor<'a> {
     /// The current sBTC limits on deposits and withdrawals.
     sbtc_limits: &'a SbtcLimits,
     /// The current market fee rate in sat/vByte.
@@ -126,7 +126,7 @@ pub struct SbtcRequestsFilter<'a> {
     last_fees: Option<Fees>,
 }
 
-impl<'a> SbtcRequestsFilter<'a> {
+impl<'a> SbtcRequestsPreprocessor<'a> {
     /// Create a new [`DepositFilter`] instance.
     pub fn new(sbtc_limits: &'a SbtcLimits, fee_rate: f64, last_fees: Option<Fees>) -> Self {
         Self {
@@ -223,12 +223,12 @@ impl<'a> SbtcRequestsFilter<'a> {
     ///
     /// The returns vector of withdrawal requests that is sorted by request
     /// ID.
-    pub fn filter_withdrawals(&self, withdrawals: &'a [WithdrawalRequest]) -> Vec<RequestRef<'a>> {
+    pub fn preprocess_withdrawals(&self, requests: &'a [WithdrawalRequest]) -> Vec<RequestRef<'a>> {
         let withdrawn_total = self.sbtc_limits.rolling_withdrawal_limits().withdrawn_total;
 
         // Let's ensure that the withdrawal requests are sorted by their
         // request ID.
-        let mut reqs: Vec<_> = withdrawals.iter().map(RequestRef::Withdrawal).collect();
+        let mut reqs: Vec<_> = requests.iter().map(RequestRef::Withdrawal).collect();
         reqs.sort();
 
         reqs.iter()
@@ -296,13 +296,13 @@ impl SbtcRequests {
             return Ok(Vec::new());
         }
 
-        let request_filter = SbtcRequestsFilter {
+        let request_preprocessor = SbtcRequestsPreprocessor {
             sbtc_limits: &self.sbtc_limits,
             fee_rate: self.signer_state.fee_rate,
             last_fees: self.signer_state.last_fees,
         };
-        let deposits = request_filter.filter_deposits(&self.deposits);
-        let withdrawals = request_filter.filter_withdrawals(&self.withdrawals);
+        let deposits = request_preprocessor.filter_deposits(&self.deposits);
+        let withdrawals = request_preprocessor.preprocess_withdrawals(&self.withdrawals);
 
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.into_iter().chain(withdrawals);
@@ -3402,7 +3402,7 @@ mod tests {
         num_accepted_deposits: usize,
         accepted_amount: u64,
     ) {
-        let filter = SbtcRequestsFilter::new(sbtc_limits, fee_rate, None);
+        let filter = SbtcRequestsPreprocessor::new(sbtc_limits, fee_rate, None);
 
         let deposits = filter.filter_deposits(deposits);
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
@@ -3533,9 +3533,9 @@ mod tests {
     fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
         let limits =
             SbtcLimits::from_withdrawal_limits(case.per_withdrawal_cap, case.rolling_limits);
-        let filter = SbtcRequestsFilter::new(&limits, case.fee_rate, None);
+        let preprocessor = SbtcRequestsPreprocessor::new(&limits, case.fee_rate, None);
 
-        let withdrawals = filter.filter_withdrawals(&case.withdrawals);
+        let withdrawals = preprocessor.preprocess_withdrawals(&case.withdrawals);
         let total_amount: u64 = withdrawals
             .iter()
             .map(|req| req.as_withdrawal().unwrap().amount)
