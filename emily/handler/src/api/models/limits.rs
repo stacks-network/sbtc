@@ -56,14 +56,15 @@ pub struct AccountLimits {
     pub rolling_withdrawal_cap: Option<u64>,
 }
 
-/// Represents the current sBTC limits.
+/// Contains info about total withdrawed amount in rolling window
 #[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize, ToSchema, ToResponse)]
 #[serde(rename_all = "camelCase")]
 pub struct TotalWithdrawedAmount {
-    /// Represents the total cap for all pegged-in BTC/sBTC.
+    /// Total withdrawed amount in rolling window
     pub total_withdrawed_amount: Option<u64>,
-    /// Per deposit minimum. If none then there is no minimum.
+    /// Stacks chain tip at the moment of calculation (begin of rolling window)
     pub stacks_chain_tip: Option<u64>,
-    /// Per deposit cap. If none then there is no cap.
+    /// Last block in rolling window.
     pub last_stacks_block_in_rolling_window: Option<u64>,
 }
+
