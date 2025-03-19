@@ -8,15 +8,11 @@ use super::{segment, segments};
 pub use bitmap::BitmapSegmenter;
 
 /// Errors which can occur during the adaptive segmentation process.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum SegmenterError {
-    /// The input is not sorted.
-    #[error("the input is not sorted")]
-    UnsortedInput,
-
-    /// The input contains duplicate values.
-    #[error("the input contains duplicate values")]
-    DuplicateValue(usize),
+    /// The input values are not sorted or contain duplicates.
+    #[error("input must be sorted and contain unique values")]
+    InvalidSequence,
 
     /// An error was returned by the segment module.
     #[error(transparent)]
@@ -101,7 +97,6 @@ pub trait Segmenter {
 mod tests {
     use super::*;
     use crate::idpack::codec::Encodable;
-    use assert_matches::assert_matches;
     use proptest::prelude::*;
     use test_case::test_case;
 
@@ -117,7 +112,6 @@ mod tests {
     #[test_case(&[u64::MAX]; "u64::max")]
     #[test_case(&[0, u64::MAX]; "full range")]
     #[test_case(&[0, 1, 2, 3, 4, 5, 6, 7, 8]; "byte boundary")]
-    #[test_case(&[1, 1, 1, 1, 10, 20, 20, 20, 20, 30, 30, 30, 30, 30, 30, 30, 30, 30, 100]; "duplicates")]
     fn test_size_estimation_accuracy(values: &[u64]) -> Result<(), Box<dyn std::error::Error>> {
         // Skip empty check for this test to avoid early return
         if values.is_empty() {
@@ -145,27 +139,10 @@ mod tests {
     }
 
     /// Test error handling for invalid inputs
-    #[test]
-    fn test_estimate_size_invalid_inputs() {
-        // Create a segmenter
-        let segmenter = BitmapSegmenter;
-
-        // Empty input should return size 0
-        let result = segmenter.estimate_size(&[]);
-        assert_matches!(result, Ok(0));
-
-        // Unsorted input should fail
-        let result = segmenter.estimate_size(&[5, 3, 10]);
-        assert_matches!(
-            result,
-            Err(SegmenterError::UnsortedInput),
-            "unsorted input should fail"
-        );
-
-        // Input with (sorted) duplicates should succeed
-        segmenter
-            .estimate_size(&[1, 2, 2, 3])
-            .expect("duplicate (but sorted) values should not cause an error");
+    #[test_case(&[5, 3, 10] => Err(SegmenterError::InvalidSequence); "unsorted input")]
+    #[test_case(&[1, 2, 2, 3] => Err(SegmenterError::InvalidSequence); "duplicate values")]
+    fn test_estimate_size_invalid_inputs(values: &[u64]) -> Result<usize, SegmenterError> {
+        BitmapSegmenter.estimate_size(values)
     }
 
     /// Test estimate consistency across multiple calls

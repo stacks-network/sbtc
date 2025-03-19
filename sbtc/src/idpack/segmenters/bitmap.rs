@@ -99,9 +99,9 @@ impl Segmenter for BitmapSegmenter {
             return Ok(Segments::default());
         }
 
-        // Ensure input is sorted for bitmap segmentation
-        if !values.is_sorted() {
-            return Err(SegmenterError::UnsortedInput);
+        // Ensure input is sorted and unique for bitmap segmentation
+        if !Self::is_unique_sorted(values) {
+            return Err(SegmenterError::InvalidSequence);
         }
 
         // Find optimal segment boundaries based on byte savings
@@ -223,6 +223,24 @@ impl BitmapSegmenter {
 
         Ok(segments)
     }
+
+    /// Checks if a slice is sorted in ascending order and contains only unique
+    /// values.
+    ///
+    /// Bitmap segmentation requires sorted input as it relies on gaps between
+    /// consecutive values.
+    ///
+    /// ## Parameters
+    /// * `values` - The sequence to check for sorting
+    ///
+    /// ## Returns
+    /// * `true` if values are sorted in ascending order and doesn't contain
+    ///    duplicates,
+    /// * `false` otherwise
+    #[inline]
+    fn is_unique_sorted(values: &[u64]) -> bool {
+        values.is_empty() || values.windows(2).all(|w| w[0] < w[1])
+    }
 }
 
 #[cfg(test)]
@@ -237,7 +255,13 @@ mod tests {
         // Unsorted input
         assert_matches!(
             BitmapSegmenter.package(&[5, 3, 1]),
-            Err(SegmenterError::UnsortedInput)
+            Err(SegmenterError::InvalidSequence)
+        );
+
+        // Duplicate values
+        assert_matches!(
+            BitmapSegmenter.package(&[5, 5, 10]),
+            Err(SegmenterError::InvalidSequence)
         );
     }
 

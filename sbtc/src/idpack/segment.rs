@@ -19,6 +19,11 @@ pub enum SegmentError {
     /// Provides the value that violated the ordering constraint.
     #[error("Value {0} is out of order (must be inserted in strictly ascending order)")]
     UnsortedValue(u64),
+
+    /// The input contains duplicate values.
+    /// Duplicate elimination is crucial for maximum compression.
+    #[error("The input contains duplicate values")]
+    DuplicateValue(u64),
 }
 
 /// Represents a segment of integer values encoded with a specific method.
@@ -64,7 +69,7 @@ impl Segment {
 
         // If the value already exists, return early (no duplicates allowed)
         if value == last_value {
-            return Ok(());
+            return Err(SegmentError::DuplicateValue(value));
         }
 
         // Add the value to the segment
@@ -172,6 +177,18 @@ mod tests {
         assert_eq!(segment.max(), 22);
         assert_eq!(segment.range(), 12); // 22 - 10
 
+        Ok(())
+    }
+
+    #[test_case(&[10, 10] => Err(SegmentError::DuplicateValue(10)); "duplicate offsets")]
+    #[test_case(&[10, 11, 11] => Err(SegmentError::DuplicateValue(11)); "duplicate values")]
+    fn test_duplicate_value_error(values: &[u64]) -> Result<(), SegmentError> {
+        let mut segment = Segment::new_with_offset(values[0]);
+
+        // Insert duplicates
+        for &value in &values[1..] {
+            segment.try_insert(value)?;
+        }
         Ok(())
     }
 
