@@ -3491,7 +3491,7 @@ mod tests {
             create_withdrawal(1_000, 10_000, 0),  // rejected
         ],
         per_withdrawal_cap: Amount::MAX_MONEY.to_sat(),
-        rolling_limits: RollingWithdrawalLimits::zero(0),
+        rolling_limits: RollingWithdrawalLimits::fully_constrained(0),
         fee_rate: 1.0,
         num_accepted_withdrawals: 0,
         accepted_amount: 0,

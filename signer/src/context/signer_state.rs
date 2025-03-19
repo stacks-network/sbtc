@@ -192,7 +192,7 @@ pub struct RollingWithdrawalLimits {
 
 impl RollingWithdrawalLimits {
     /// Create a new one where the caps imply no withdrawals are allowed.
-    pub fn zero(withdrawn_total: u64) -> Self {
+    pub fn fully_constrained(withdrawn_total: u64) -> Self {
         RollingWithdrawalLimits {
             blocks: 0,
             cap: 0,
@@ -302,7 +302,7 @@ impl SbtcLimits {
             // things are in a bad state. Assume that they set to zero.
             _ => {
                 tracing::warn!("rolling withdrawal limits are partially set; setting them to zero");
-                RollingWithdrawalLimits::zero(withdrawn_total)
+                RollingWithdrawalLimits::fully_constrained(withdrawn_total)
             }
         }
     }
