@@ -1640,7 +1640,7 @@ mod tests {
     const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
-    static REQUEST_IDS: AtomicU64 = AtomicU64::new(0);
+    static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(0);
 
     fn generate_x_only_public_key() -> XOnlyPublicKey {
         let secret_key = SecretKey::new(&mut OsRng);
@@ -1725,7 +1725,7 @@ mod tests {
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
-            request_id: REQUEST_IDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            request_id: NEXT_REQUEST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
     }
