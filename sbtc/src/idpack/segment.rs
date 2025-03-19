@@ -55,7 +55,7 @@ impl Segment {
     /// - Unsorted values (`UnsortedInput`)
     pub fn try_insert(&mut self, value: u64) -> Result<(), SegmentError> {
         // SAFETY: `values` is never empty due to struct invariants
-        let last_value = self.values[self.values.len() - 1];
+        let last_value = self.max();
 
         // Validate that the new value is greater than the last value (sorted)
         if value < last_value {
