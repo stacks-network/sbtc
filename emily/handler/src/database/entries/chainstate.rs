@@ -233,3 +233,139 @@ impl PrimaryIndexTrait for SpecialApiStateIndexInner {
         &settings.chainstate_table_name
     }
 }
+
+// HeightsMapping entry ---------------------------------------------------------------
+
+/// Deposit table entry key. This is the primary index key.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct HeightsMappingEntryKey {
+    /// Bitcoin block height.
+    pub bitcoin_height: u64,
+}
+
+/// Deposit table entry.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct HeightsMappingEntry {
+    /// Deposit table entry key.
+    #[serde(flatten)]
+    pub key: HeightsMappingEntryKey,
+    /// Table entry version. Updated on each alteration.
+    pub version: u64,
+    /// First anchored stacks block height
+    pub first_ancored_stacks_height: u64,
+}
+
+/// Implements versioned entry trait for the deposit entry.
+impl VersionedEntryTrait for HeightsMappingEntry {
+    /// Version field.
+    const VERSION_FIELD: &'static str = "Version";
+    /// Get version.
+    fn get_version(&self) -> u64 {
+        self.version
+    }
+    /// Increment version.
+    fn increment_version(&mut self) {
+        self.version += 1;
+    }
+}
+
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for HeightsMappingEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = u64;
+    /// the type of the sort key.
+    type SortKey = u64;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "BitcoinHeight";
+    /// The table field name of the sort key.
+    const SORT_KEY_NAME: &'static str = "BitcoinHeight";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for HeightsMappingEntry {
+    /// The type of the key for this entry type.
+    type Key = HeightsMappingEntryKey;
+    /// Extract the key from the deposit entry.
+    fn key(&self) -> Self::Key {
+        HeightsMappingEntryKey {
+            bitcoin_height: self.key.bitcoin_height,
+        }
+    }
+}
+
+/// Primary index struct.
+pub struct HeightsMappingTablePrimaryIndexInner;
+/// Deposit table primary index type.
+pub type HeightsMappingTablePrimaryIndex = PrimaryIndex<HeightsMappingTablePrimaryIndexInner>;
+/// Definition of Primary index trait.
+impl PrimaryIndexTrait for HeightsMappingTablePrimaryIndexInner {
+    type Entry = HeightsMappingEntry;
+    fn table_name(settings: &crate::context::Settings) -> &str {
+        &settings.heights_mapping_table_name
+    }
+}
+
+/// Implementation of deposit entry.
+impl HeightsMappingEntry {
+    /// Implement validate.
+    pub fn validate(&self) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+// BitcoinChainstate entry ---------------------------------------------------------------
+
+/// BitcoinChainstate table entry key. This is the primary index key.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct BitcoinChainstateEntryKey {
+    /// Bitcoin tip hash
+    pub dummy: String,
+}
+
+/// Chainstate table entry key. This is the primary index key.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct BitcoinChainstateEntry {
+    /// Chainstate entry key.
+    #[serde(flatten)]
+    pub key: BitcoinChainstateEntryKey,
+    /// Bitcoin tip height.
+    pub height: u64,
+}
+
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for BitcoinChainstateEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = String;
+    /// the type of the sort key.
+    type SortKey = String;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "Dummy";
+    /// The table field name of the sort key.
+    const SORT_KEY_NAME: &'static str = "Dummy";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for BitcoinChainstateEntry {
+    /// The type of the key for this entry type.
+    type Key = BitcoinChainstateEntryKey;
+    /// Extract the key from the deposit entry.
+    fn key(&self) -> Self::Key {
+        BitcoinChainstateEntryKey { dummy: self.key.dummy.clone() }
+    }
+}
+
+/// Primary index struct.
+pub struct BitcoinChainstateTablePrimaryIndexInner;
+/// Withdrawal table primary index type.
+pub type BitcoinChainstateTablePrimaryIndex = PrimaryIndex<BitcoinChainstateTablePrimaryIndexInner>;
+/// Definition of Primary index trait.
+impl PrimaryIndexTrait for BitcoinChainstateTablePrimaryIndexInner {
+    type Entry = BitcoinChainstateEntry;
+    fn table_name(settings: &crate::context::Settings) -> &str {
+        &settings.bitcoin_chainstate_table_name
+    }
+}

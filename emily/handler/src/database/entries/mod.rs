@@ -61,6 +61,7 @@ use crate::{
 
 /// Chainstate table entries.
 pub mod chainstate;
+
 /// Deposit table entries.
 pub mod deposit;
 /// Limits table entries.

@@ -26,8 +26,8 @@ use super::entries::withdrawal::{
 };
 use super::entries::{
     chainstate::{
-        ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
-        SpecialApiStateIndex,
+        ApiStateEntry, ApiStatus, BitcoinChainstateTablePrimaryIndex, ChainstateEntry,
+        ChainstateTablePrimaryIndex, HeightsMappingTablePrimaryIndex, SpecialApiStateIndex,
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
@@ -766,11 +766,38 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
 }
 
 async fn get_bitcoin_chain_tip_height(context: &EmilyContext) -> Result<u64, Error> {
-    unimplemented!()
+    let query_resp = query_with_partition_key::<BitcoinChainstateTablePrimaryIndex>(
+        context,
+        &"dummy".to_string(),
+        None,
+        None,
+    )
+    .await?
+    .0;
+    if query_resp.len() != 1 {
+        return Err(Error::NotFound);
+    }
+    let res = query_resp.first().unwrap().height;
+    Ok(res)
 }
 
-async fn get_first_stacks_block_for_ancor(ancor_height: u64) -> Result<u64, Error> {
-    unimplemented!()
+async fn get_first_stacks_block_for_ancor(
+    context: &EmilyContext,
+    ancor_height: u64,
+) -> Result<u64, Error> {
+    let query_resp = query_with_partition_key::<HeightsMappingTablePrimaryIndex>(
+        context,
+        &ancor_height,
+        None,
+        None,
+    )
+    .await?
+    .0;
+    if query_resp.len() != 1 {
+        return Err(Error::NotFound);
+    }
+    let result = query_resp.first().unwrap();
+    Ok(result.first_ancored_stacks_height)
 }
 
 /// Returns total amount of withdrawn sBTC in rolling window. All withdrawals except failed are
@@ -786,10 +813,10 @@ pub async fn get_total_withdrawn_amount_in_rolling_window(
 
     let bitcoin_tip_height = get_bitcoin_chain_tip_height(context).await?;
     let minimum_height = bitcoin_tip_height - rolling_window_size;
-    let minimum_stacks_height = get_first_stacks_block_for_ancor(minimum_height).await?;
+    let minimum_stacks_height = get_first_stacks_block_for_ancor(context, minimum_height).await?;
 
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
-        .into_iter()
+        .iter()
         .filter(|status| **status != Status::Failed)
         .collect();
 

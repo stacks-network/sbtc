@@ -23,6 +23,10 @@ use crate::common::error::Error;
 pub struct Settings {
     /// Whether the Emily lambda is running locally.
     pub is_local: bool,
+    /// HeightsMapping table name.
+    pub heights_mapping_table_name: String,
+    /// Bitcoin chainstate table name.
+    pub bitcoin_chainstate_table_name: String,
     /// Deposit table name.
     pub deposit_table_name: String,
     /// Withdrawal table name.
@@ -93,6 +97,8 @@ impl Settings {
         Ok(Settings {
             is_local: env::var("IS_LOCAL")?.to_lowercase() == "true",
             deposit_table_name: env::var("DEPOSIT_TABLE_NAME")?,
+            heights_mapping_table_name: env::var("HEIGHTS_MAPPING_TABLE_NAME")?,
+            bitcoin_chainstate_table_name: env::var("BITCOIN_CHAINSTATE_TABLE_NAME")?,
             withdrawal_table_name: env::var("WITHDRAWAL_TABLE_NAME")?,
             chainstate_table_name: env::var("CHAINSTATE_TABLE_NAME")?,
             limit_table_name: env::var("LIMIT_TABLE_NAME")?,
@@ -194,6 +200,14 @@ impl EmilyContext {
         Ok(EmilyContext {
             settings: Settings {
                 is_local: true,
+                bitcoin_chainstate_table_name: table_name_map
+                    .get("BitcoinChainstate")
+                    .expect("Failed to find valid bitcoin chainstate table in existing table list.")
+                    .to_string(),
+                heights_mapping_table_name: table_name_map
+                    .get("HeightsMapping")
+                    .expect("Failed to find valid heights mapping table in existing table list.")
+                    .to_string(),
                 deposit_table_name: table_name_map
                     .get("Deposit")
                     .expect("Couldn't find valid deposit table in existing table list.")
