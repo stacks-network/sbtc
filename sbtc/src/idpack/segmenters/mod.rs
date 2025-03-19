@@ -26,10 +26,6 @@ pub enum SegmenterError {
     #[error(transparent)]
     Segments(#[from] segments::SegmentsError),
 
-    /// An error occurred during size estimation.
-    #[error("error estimating segment size")]
-    SizeEstimation,
-
     /// The segmenter encountered invalid boundaries.
     #[error("the segmenter encountered invalid boundaries")]
     InvalidBoundaries,
