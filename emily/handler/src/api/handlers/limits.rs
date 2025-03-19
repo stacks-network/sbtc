@@ -46,7 +46,7 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
     path = "/withdrawn",
     tag = "limits",
     responses(
-        (status = 200, description = "TotalWithdrawn retrieved successfully", body = TotalWithdrawn),
+        (status = 200, description = "TotalWithdrawn retrieved successfully", body = u64),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
 )]
