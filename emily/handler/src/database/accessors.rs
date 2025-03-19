@@ -7,7 +7,7 @@ use serde_dynamo::Item;
 
 use tracing::{debug, warn};
 
-use crate::api::models::limits::{AccountLimits, Limits};
+use crate::api::models::limits::{AccountLimits, Limits, TotalWithdrawedAmount};
 use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
@@ -802,15 +802,16 @@ async fn get_first_stacks_block_for_ancor(
 
 /// Returns total amount of withdrawn sBTC in rolling window. All withdrawals except failed are
 /// counted here.
-pub async fn get_total_withdrawn_amount_in_rolling_window(
+pub async fn get_total_withdrawed_amount_in_rolling_window(
     context: &EmilyContext,
-) -> Result<u64, Error> {
+) -> Result<TotalWithdrawedAmount, Error> {
     let rolling_window_size = context
         .settings
         .default_limits
         .rolling_withdrawal_blocks
         .unwrap_or(0);
 
+    let stacks_chain_tip = get_api_state(context).await?.chaintip().key.height;
     let bitcoin_tip_height = get_bitcoin_chain_tip_height(context).await?;
     let minimum_height = bitcoin_tip_height - rolling_window_size;
     let minimum_stacks_height = get_first_stacks_block_for_ancor(context, minimum_height).await?;
@@ -834,7 +835,11 @@ pub async fn get_total_withdrawn_amount_in_rolling_window(
     }
     let total_amounts: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
 
-    Ok(total_amounts)
+    Ok(TotalWithdrawedAmount {
+        total_withdrawed_amount: Some(total_amounts),
+        stacks_chain_tip: Some(stacks_chain_tip),
+        last_stacks_block_in_rolling_window: Some(minimum_stacks_height),
+    })
 }
 
 /// Get the limit for a specific account.

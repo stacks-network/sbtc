@@ -55,3 +55,15 @@ pub struct AccountLimits {
     /// Maximum total sBTC that can be withdrawn within the rolling withdrawal window.
     pub rolling_withdrawal_cap: Option<u64>,
 }
+
+/// Represents the current sBTC limits.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Serialize, Deserialize, ToSchema, ToResponse)]
+#[serde(rename_all = "camelCase")]
+pub struct TotalWithdrawedAmount {
+    /// Represents the total cap for all pegged-in BTC/sBTC.
+    pub total_withdrawed_amount: Option<u64>,
+    /// Per deposit minimum. If none then there is no minimum.
+    pub stacks_chain_tip: Option<u64>,
+    /// Per deposit cap. If none then there is no cap.
+    pub last_stacks_block_in_rolling_window: Option<u64>,
+}
