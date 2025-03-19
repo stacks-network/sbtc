@@ -39,6 +39,31 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
         .map_or_else(Reply::into_response, Reply::into_response)
 }
 
+/// Get the global limits.
+#[utoipa::path(
+    get,
+    operation_id = "getTotalWithdrawn",
+    path = "/withdrawn",
+    tag = "limits",
+    responses(
+        (status = 200, description = "TotalWithdrawn retrieved successfully", body = TotalWithdrawn),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+)]
+#[instrument(skip(context))]
+pub async fn get_withdrawn(context: EmilyContext) -> impl warp::reply::Reply {
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(context: EmilyContext) -> Result<impl warp::reply::Reply, Error> {
+        let total_withdrawed =
+            accessors::get_total_withdrawn_amount_in_rolling_window(&context).await?;
+        Ok(with_status(json(&total_withdrawed), StatusCode::OK))
+    }
+    // Handle and respond.
+    handler(context)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
 /// Get limits handler.
 #[utoipa::path(
     post,
