@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+use test_case::test_case;
+
 use testing_emily_client::apis;
 use testing_emily_client::models;
 use testing_emily_client::models::AccountLimits;
 use testing_emily_client::models::Limits;
 
 use crate::common::clean_setup;
+use crate::common::StandardError;
 
 #[tokio::test]
 async fn empty_default_is_as_expected() {
@@ -353,4 +356,61 @@ async fn test_updating_account_limits_via_global_limit_works() {
     );
     assert_eq!(global_limits_returned_on_set, expected_global_limits);
     assert_eq!(global_limits, expected_global_limits);
+}
+
+#[test_case(Some(100), None)]
+#[test_case(None, Some(100))]
+#[tokio::test]
+async fn test_incomplete_rolling_withdrawal_limit_config_returns_error(
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
+) {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    let limits = Limits {
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(rolling_withdrawal_blocks),
+        rolling_withdrawal_cap: Some(rolling_withdrawal_cap),
+        account_caps: HashMap::new(),
+    };
+
+    // Act.
+    let result: StandardError = apis::limits_api::set_limits(&configuration, limits.clone())
+    .await
+    .expect_err("Expected an error to be returned when setting incomplete withdrawal limit configuration.")
+    .into();
+
+    // Assert.
+    assert_eq!(result.status_code, 400);
+}
+
+#[test_case(Some(100), Some(100))]
+#[test_case(None, None)]
+#[tokio::test]
+async fn test_complete_rolling_withdrawal_limit_config_works(
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
+) {
+    let configuration = clean_setup().await;
+
+    let limits = Limits {
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(rolling_withdrawal_blocks),
+        rolling_withdrawal_cap: Some(rolling_withdrawal_cap),
+        account_caps: HashMap::new(),
+    };
+
+    let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
+    assert_eq!(result.is_ok(), true);
+
+    let global_limits = apis::limits_api::get_limits(&configuration).await;
+    assert_eq!(global_limits.is_ok(), true);
+    assert_eq!(global_limits.unwrap(), limits);
 }

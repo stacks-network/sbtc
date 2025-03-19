@@ -1,28 +1,12 @@
-//! # IDPack: Maximum Compression Integer Set Encoding
+//! # IDPack: Integer Set Compression Encoding
 //!
-//! `idpack` is a high-efficiency integer compression library designed to
-//! achieve maximum byte savings through automatic segmentation and optimal
-//! encoding selection. The library specializes in compressing sorted sets of
-//! unsigned 64-bit integers by intelligently splitting them into segments and
-//! applying the most efficient encoding strategy for each segment.
-//!
-//! ## Core Compression Strategies
-//!
-//! * **Bitmap Encoding**: Represents dense integer sequences as bit flags in a
-//!   bitmap, with special optimizations for tiny ranges (embedded bitmaps)
-//!   
-//! * **Single Value**: Special-case optimization for isolated values with zero
-//!   payload overhead
-//!
-//! ## Core Segmentation Strategies
-//!
-//! * **Bitmap Segmenter**: Splits sequences into segments optimized for bitmap
-//!   encoding
+//! `idpack` is an integer compression module designed to achieve byte
+//! savings through automatic segmentation and multiple bitmaps.
 //!
 //! ## Usage Example
 //!
 //! ```
-//! use idpack::{BitmapSegmenter, Segmenter, Encodable};
+//! use sbtc::idpack::{BitmapSegmenter, Segmenter, Encodable};
 //!
 //! // Compress a sequence of integers with maximum efficiency
 //! let values = vec![1, 2, 3, 50, 51, 52, 1000, 1001];
@@ -41,16 +25,16 @@
 //! This library implements safeguards against memory exhaustion attacks that
 //! could occur when decoding malicious inputs:
 //!
-//! * Input validation for size limits
-//! * Safe bitmap allocation limits
-//! * Protection against excessive delta ranges
+//! * Input validation for semantic correctness (packaging)
+//! * Safe bitmap allocation limits (decoding)
+//! * Protection against excessive delta ranges (segmenting)
 //!
 //! ## Architecture
 //!
 //! * **Segmenters**: Divide integer sequences into optimally-sized segments
 //! * **Segments**: Manage collections of un-encoded segments
-//! * **Segment**: Represents a single encoded integer range
-//! * **Codec**: Low-level encoding/decoding strategies
+//! * **Segment**: Represents a single packaged integer range
+//! * **Codec**: Low-level encoding/decoding
 
 mod codec;
 mod segment;
@@ -74,6 +58,8 @@ pub use codec::Decodable;
 pub use codec::DecodeError;
 pub use codec::Encodable;
 
-/// Maximum allocation limit in bytes (1MB) for preventing memory allocation attacks
-/// while allowing sufficient space for optimal compression operations.
+/// Maximum allocation limit in bytes (1MB) for a single bitmap payload for
+/// preventing memory allocation attacks while allowing sufficient space for
+/// optimal compression operations. This limit has no effect on the number of
+/// segments or number of values to be decoded.
 pub const ALLOC_BYTES_LIMIT: u32 = 1 << 20; // 1MB = 2^20 bytes

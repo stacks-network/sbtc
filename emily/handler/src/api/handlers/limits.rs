@@ -62,6 +62,8 @@ pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::rep
         context: EmilyContext,
         limits: Limits,
     ) -> Result<impl warp::reply::Reply, Error> {
+        // Validate the withdrawal limit configuration.
+        limits.validate()?;
         // Set the global limits.
         accessors::set_limit_for_account(
             &context,

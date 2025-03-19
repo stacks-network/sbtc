@@ -1,6 +1,5 @@
 //! Test utilities for signer message
 
-use bitvec::array::BitArray;
 use fake::Fake;
 use rand::seq::SliceRandom;
 use stacks_common::types::chainstate::StacksAddress;
@@ -83,7 +82,7 @@ impl fake::Dummy<fake::Faker> for message::StacksTransactionSignRequest {
         Self {
             contract_tx: ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
                 id: config.fake_with_rng(rng),
-                signer_bitmap: BitArray::ZERO,
+                signer_bitmap: 0,
                 deployer: StacksAddress::burn_address(false),
             })
             .into(),
