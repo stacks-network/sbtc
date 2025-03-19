@@ -1,11 +1,14 @@
 use std::collections::HashMap;
 
+use test_case::test_case;
+
 use testing_emily_client::apis;
 use testing_emily_client::models;
 use testing_emily_client::models::AccountLimits;
 use testing_emily_client::models::Limits;
 
 use crate::common::clean_setup;
+use crate::common::StandardError;
 
 #[tokio::test]
 async fn empty_default_is_as_expected() {
@@ -16,6 +19,8 @@ async fn empty_default_is_as_expected() {
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
         per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(None),
+        rolling_withdrawal_cap: Some(None),
         account_caps: HashMap::new(),
     };
 
@@ -40,6 +45,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
                 per_deposit_minimum: Some(Some(100)),
                 per_deposit_cap: Some(Some(100)),
                 per_withdrawal_cap: Some(Some(100)),
+                rolling_withdrawal_blocks: Some(Some(100)),
+                rolling_withdrawal_cap: Some(Some(100)),
             },
         ),
         (
@@ -49,6 +56,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
                 per_deposit_minimum: Some(Some(1200)),
                 per_deposit_cap: Some(Some(1200)),
                 per_withdrawal_cap: Some(Some(1200)),
+                rolling_withdrawal_blocks: Some(Some(1200)),
+                rolling_withdrawal_cap: Some(Some(1200)),
             },
         ),
         (
@@ -58,6 +67,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
                 per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(500)),
+                rolling_withdrawal_blocks: Some(Some(600)),
+                rolling_withdrawal_cap: Some(Some(700)),
             },
         ),
         (
@@ -67,6 +78,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
                 per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
+                rolling_withdrawal_blocks: Some(Some(200)),
+                rolling_withdrawal_cap: Some(Some(200)),
             },
         ),
         (
@@ -76,6 +89,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
                 per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
+                rolling_withdrawal_blocks: Some(Some(300)),
+                rolling_withdrawal_cap: Some(Some(300)),
             },
         ),
     ];
@@ -90,6 +105,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
                 per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
+                rolling_withdrawal_blocks: Some(Some(200)),
+                rolling_withdrawal_cap: Some(Some(200)),
             },
         ),
         (
@@ -99,6 +116,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
                 per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
+                rolling_withdrawal_blocks: Some(Some(300)),
+                rolling_withdrawal_cap: Some(Some(300)),
             },
         ),
     ]
@@ -112,6 +131,8 @@ async fn adding_and_then_updating_single_accout_limit_works() {
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
         per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(None),
+        rolling_withdrawal_cap: Some(None),
         account_caps: expected_account_caps.clone(),
     };
 
@@ -164,6 +185,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(100)),
                 per_deposit_cap: Some(Some(100)),
                 per_withdrawal_cap: Some(Some(100)),
+                rolling_withdrawal_blocks: Some(Some(100)),
+                rolling_withdrawal_cap: Some(Some(100)),
             },
         ),
         (
@@ -173,6 +196,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(150)),
                 per_deposit_cap: Some(Some(150)),
                 per_withdrawal_cap: Some(Some(150)),
+                rolling_withdrawal_blocks: Some(Some(150)),
+                rolling_withdrawal_cap: Some(Some(150)),
             },
         ),
         (
@@ -182,6 +207,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(150)),
                 per_deposit_cap: Some(Some(150)),
                 per_withdrawal_cap: Some(Some(150)),
+                rolling_withdrawal_blocks: Some(Some(150)),
+                rolling_withdrawal_cap: Some(Some(150)),
             },
         ),
     ];
@@ -196,6 +223,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
+                rolling_withdrawal_blocks: Some(Some(200)),
+                rolling_withdrawal_cap: Some(Some(200)),
             },
         ),
         (
@@ -205,6 +234,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
+                rolling_withdrawal_blocks: Some(Some(300)),
+                rolling_withdrawal_cap: Some(Some(300)),
             },
         ),
         // Set all the values to none so this account should no longer show up
@@ -216,6 +247,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(None),
                 per_deposit_cap: Some(None),
                 per_withdrawal_cap: Some(None),
+                rolling_withdrawal_blocks: Some(None),
+                rolling_withdrawal_cap: Some(None),
             },
         ),
     ]
@@ -227,6 +260,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
         per_withdrawal_cap: Some(Some(789)),
+        rolling_withdrawal_blocks: Some(Some(101)),
+        rolling_withdrawal_cap: Some(Some(112)),
         account_caps: account_limits_to_set_globally.clone(),
     };
 
@@ -240,6 +275,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(100)),
                 per_deposit_cap: Some(Some(100)),
                 per_withdrawal_cap: Some(Some(100)),
+                rolling_withdrawal_blocks: Some(Some(100)),
+                rolling_withdrawal_cap: Some(Some(100)),
             },
         ),
         (
@@ -249,6 +286,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(200)),
                 per_deposit_cap: Some(Some(200)),
                 per_withdrawal_cap: Some(Some(200)),
+                rolling_withdrawal_blocks: Some(Some(200)),
+                rolling_withdrawal_cap: Some(Some(200)),
             },
         ),
         (
@@ -258,6 +297,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
                 per_deposit_minimum: Some(Some(300)),
                 per_deposit_cap: Some(Some(300)),
                 per_withdrawal_cap: Some(Some(300)),
+                rolling_withdrawal_blocks: Some(Some(300)),
+                rolling_withdrawal_cap: Some(Some(300)),
             },
         ),
     ]
@@ -269,6 +310,8 @@ async fn test_updating_account_limits_via_global_limit_works() {
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
         per_withdrawal_cap: Some(Some(789)),
+        rolling_withdrawal_blocks: Some(Some(101)),
+        rolling_withdrawal_cap: Some(Some(112)),
         account_caps: expected_global_account_limits.clone(),
     };
 
@@ -313,4 +356,61 @@ async fn test_updating_account_limits_via_global_limit_works() {
     );
     assert_eq!(global_limits_returned_on_set, expected_global_limits);
     assert_eq!(global_limits, expected_global_limits);
+}
+
+#[test_case(Some(100), None)]
+#[test_case(None, Some(100))]
+#[tokio::test]
+async fn test_incomplete_rolling_withdrawal_limit_config_returns_error(
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
+) {
+    let configuration = clean_setup().await;
+
+    // Arrange.
+    let limits = Limits {
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(rolling_withdrawal_blocks),
+        rolling_withdrawal_cap: Some(rolling_withdrawal_cap),
+        account_caps: HashMap::new(),
+    };
+
+    // Act.
+    let result: StandardError = apis::limits_api::set_limits(&configuration, limits.clone())
+    .await
+    .expect_err("Expected an error to be returned when setting incomplete withdrawal limit configuration.")
+    .into();
+
+    // Assert.
+    assert_eq!(result.status_code, 400);
+}
+
+#[test_case(Some(100), Some(100))]
+#[test_case(None, None)]
+#[tokio::test]
+async fn test_complete_rolling_withdrawal_limit_config_works(
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
+) {
+    let configuration = clean_setup().await;
+
+    let limits = Limits {
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(rolling_withdrawal_blocks),
+        rolling_withdrawal_cap: Some(rolling_withdrawal_cap),
+        account_caps: HashMap::new(),
+    };
+
+    let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
+    assert_eq!(result.is_ok(), true);
+
+    let global_limits = apis::limits_api::get_limits(&configuration).await;
+    assert_eq!(global_limits.is_ok(), true);
+    assert_eq!(global_limits.unwrap(), limits);
 }
