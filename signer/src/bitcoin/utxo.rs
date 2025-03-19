@@ -115,8 +115,9 @@ pub trait GetFees {
     fn get_fees(&self) -> Result<Option<Fees>, Error>;
 }
 
-/// Filter out the deposit requests that do not meet the amount or fee requirements.
-pub struct SbtcRequestsPreprocessor<'a> {
+/// Filter out the deposit and withdrawal requests that do not meet the
+/// amount or fee requirements.
+pub struct RequestPreprocessor<'a> {
     /// The current sBTC limits on deposits and withdrawals.
     sbtc_limits: &'a SbtcLimits,
     /// The current market fee rate in sat/vByte.
@@ -126,7 +127,7 @@ pub struct SbtcRequestsPreprocessor<'a> {
     last_fees: Option<Fees>,
 }
 
-impl<'a> SbtcRequestsPreprocessor<'a> {
+impl<'a> RequestPreprocessor<'a> {
     /// Create a new [`DepositFilter`] instance.
     pub fn new(sbtc_limits: &'a SbtcLimits, fee_rate: f64, last_fees: Option<Fees>) -> Self {
         Self {
@@ -302,7 +303,7 @@ impl SbtcRequests {
             return Ok(Vec::new());
         }
 
-        let request_preprocessor = SbtcRequestsPreprocessor {
+        let request_preprocessor = RequestPreprocessor {
             sbtc_limits: &self.sbtc_limits,
             fee_rate: self.signer_state.fee_rate,
             last_fees: self.signer_state.last_fees,
@@ -3413,7 +3414,7 @@ mod tests {
         num_accepted_deposits: usize,
         accepted_amount: u64,
     ) {
-        let filter = SbtcRequestsPreprocessor::new(sbtc_limits, fee_rate, None);
+        let filter = RequestPreprocessor::new(sbtc_limits, fee_rate, None);
 
         let deposits = filter.filter_deposits(deposits);
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
@@ -3552,7 +3553,7 @@ mod tests {
     fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
         let limits =
             SbtcLimits::from_withdrawal_limits(case.per_withdrawal_cap, case.rolling_limits);
-        let preprocessor = SbtcRequestsPreprocessor::new(&limits, case.fee_rate, None);
+        let preprocessor = RequestPreprocessor::new(&limits, case.fee_rate, None);
 
         let withdrawals = preprocessor.preprocess_withdrawals(&case.withdrawals);
         let total_amount: u64 = withdrawals
