@@ -160,16 +160,17 @@ mod tests {
         segment.try_insert(11)?;
         segment.try_insert(12)?;
         segment.try_insert(15)?;
-        segment.try_insert(20)?;
+        segment.try_insert(22)?;
 
         // Verify all values are stored
         assert_eq!(segment.len(), 5);
-        assert_eq!(segment.as_slice(), &[10, 11, 12, 15, 20]);
-        assert_eq!(segment.values(), &[11, 12, 15, 20]);
+        assert_eq!(segment.as_slice(), &[10, 11, 12, 15, 22]);
+        assert_eq!(segment.values(), &[11, 12, 15, 22]);
 
         // Verify max and range
-        assert_eq!(segment.max(), 20);
-        assert_eq!(segment.range(), 10); // 20 - 10
+        assert_eq!(segment.offset(), 10);
+        assert_eq!(segment.max(), 22);
+        assert_eq!(segment.range(), 12); // 22 - 10
 
         Ok(())
     }
