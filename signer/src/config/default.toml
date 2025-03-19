@@ -256,6 +256,15 @@ sbtc_bitcoin_start_height = 101
 # Environment: SIGNER_SIGNER__DKG_VERIFICATION_WINDOW
 # dkg_verification_window = 10
 
+# The maximum fee in microSTX that a signer will accept for a Stacks
+# transaction. If the coordinator suggests a fee higher than this value for
+# a transaction the signer will reject it. This value must be greater than
+# zero.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__STACKS_FEES_MAX_USTX
+# stacks_fees_max_ustx = 1500000
+
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration
 # !!
