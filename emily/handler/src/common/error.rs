@@ -46,6 +46,11 @@ pub enum ValidationError {
     /// The deposits are confirmed but missing the fulfillment data.
     #[error("missing fulfillment for confirmed deposit requests with txid:vout pairs: {0:?}")]
     DepositsMissingFulfillment(Vec<String>),
+
+    /// One of rolling_withdrawal_blocks or rolling_withdrawal_cap is missing while the other is set.
+    /// Fields must be provided together to configure withdrawal limits.
+    #[error("incomplete withdrawal limit configuration: rolling_withdrawal_blocks and rolling_withdrawal_cap must be provided together")]
+    IncompleteWithdrawalLimitConfig,
 }
 
 /// Errors from the internal API logic.

@@ -24,8 +24,6 @@ use std::sync::OnceLock;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
 use bitcoin::TxOut;
-use bitvec::array::BitArray;
-use bitvec::field::BitField as _;
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::chainstate::stacks::TransactionPostCondition;
@@ -640,7 +638,10 @@ pub struct AcceptWithdrawalV1 {
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
-    pub signer_bitmap: BitArray<[u8; 16]>,
+    ///
+    /// This field is currently unused, and is assumed to be zero. See
+    /// https://github.com/stacks-network/sbtc/issues/1505.
+    pub signer_bitmap: u128,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
     /// The block hash of the bitcoin block that contains a sweep
@@ -679,7 +680,10 @@ impl AsContractCall for AcceptWithdrawalV1 {
         vec![
             ClarityValue::UInt(self.id.request_id as u128),
             ClarityValue::Sequence(SequenceData::Buffer(txid.clone())),
-            ClarityValue::UInt(self.signer_bitmap.load_le()),
+            // This is the signer bitmap field. See the following for more
+            // on why this is fixed at zero.
+            // https://github.com/stacks-network/sbtc/issues/1505
+            ClarityValue::UInt(0),
             ClarityValue::UInt(self.outpoint.vout as u128),
             ClarityValue::UInt(self.tx_fee as u128),
             ClarityValue::Sequence(SequenceData::Buffer(burn_hash_buff)),
@@ -706,13 +710,12 @@ impl AsContractCall for AcceptWithdrawalV1 {
     ///  8. That the fee matches the expected assessed fee for the output.
     ///  9. That the first input into the sweep transaction is the signers'
     ///     UTXO.
-    /// 10. That the signer bitmap matches the bitmap from our records.
-    /// 11. That the withdrawal request is not already completed.
+    /// 10. That the withdrawal request is not already completed.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
     where
         C: Context + Send + Sync,
     {
-        // 11. Check whether the withdrawal request is already completed.
+        // 10. Check whether the withdrawal request is already completed.
         let withdrawal_completed = ctx
             .get_stacks_client()
             .is_withdrawal_completed(&req_ctx.deployer, self.id.request_id)
@@ -745,7 +748,6 @@ impl AcceptWithdrawalV1 {
     ///  6. The `amount` of the UTXO matches the one in the withdrawal
     ///     request.
     ///  7. That the fee is less than the desired max-fee.
-    /// 10. That the signer bitmap matches the bitmap from our records.
     async fn validate_utxo<C>(
         &self,
         ctx: &C,
@@ -806,14 +808,6 @@ impl AcceptWithdrawalV1 {
         // do a check ourselves.
         if self.tx_fee > report.max_fee {
             return Err(WithdrawalErrorMsg::FeeTooHigh.into_error(req_ctx, self));
-        }
-        // 10. That the signer bitmap matches the bitmap formed from our
-        //     records.
-        let votes = db
-            .get_withdrawal_request_signer_votes(&self.id, &req_ctx.aggregate_key)
-            .await?;
-        if self.signer_bitmap != BitArray::from(votes) {
-            return Err(WithdrawalErrorMsg::BitmapMismatch.into_error(req_ctx, self));
         }
 
         Ok(())
@@ -960,10 +954,6 @@ impl std::error::Error for WithdrawalRejectValidationError {
 /// contract call transaction.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum WithdrawalErrorMsg {
-    /// The bitmap set in the transaction object should match the one in
-    /// our database.
-    #[error("bitmap does not match expected bitmap from")]
-    BitmapMismatch,
     /// The smart contract deployer is fixed, so this should always match.
     #[error("the deployer in the transaction does not match the expected deployer")]
     DeployerMismatch,
@@ -1026,10 +1016,6 @@ impl WithdrawalErrorMsg {
 /// contract call transaction.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum WithdrawalRejectErrorMsg {
-    /// The bitmap set in the transaction object should match the one in
-    /// our database.
-    #[error("bitmap does not match expected bitmap from")]
-    BitmapMismatch,
     /// The smart contract deployer is fixed, so this should always match.
     #[error("the deployer in the transaction does not match the expected deployer")]
     DeployerMismatch,
@@ -1084,7 +1070,10 @@ pub struct RejectWithdrawalV1 {
     /// A bitmap of how the signers voted. This structure supports up to
     /// 128 distinct signers. Here, we assume that a 1 (or true) implies
     /// that the signer voted *against* the transaction.
-    pub signer_bitmap: BitArray<[u8; 16]>,
+    ///
+    /// This field is currently unused, and is assumed to be zero. See
+    /// https://github.com/stacks-network/sbtc/issues/1505.
+    pub signer_bitmap: u128,
     /// The address that deployed the contract.
     pub deployer: StacksAddress,
 }
@@ -1108,7 +1097,10 @@ impl AsContractCall for RejectWithdrawalV1 {
     fn as_contract_args(&self) -> Vec<ClarityValue> {
         vec![
             ClarityValue::UInt(self.id.request_id as u128),
-            ClarityValue::UInt(self.signer_bitmap.load_le()),
+            // This is the signer bitmap field. See the following for more
+            // on why this is fixed at zero.
+            // https://github.com/stacks-network/sbtc/issues/1505
+            ClarityValue::UInt(0),
         ]
     }
     /// Validates that the reject-withdrawal-request satisfies the
@@ -1121,11 +1113,10 @@ impl AsContractCall for RejectWithdrawalV1 {
     ///    confirmed on the canonical stacks blockchain. Fail if it is not
     ///    on the canonical stacks blockchain.
     /// 4. Whether the request has been fulfilled. Fail if it has.
-    /// 5. Whether the signer bitmap matches the bitmap from our records.
-    /// 6. Whether the withdrawal request has expired. Fail if it hasn't.
-    /// 7. Whether the withdrawal request is being serviced by a sweep
+    /// 5. Whether the withdrawal request has expired. Fail if it hasn't.
+    /// 6. Whether the withdrawal request is being serviced by a sweep
     ///    transaction that is in the mempool.
-    /// 8. Whether we need to worry about forks causing the withdrawal to
+    /// 7. Whether we need to worry about forks causing the withdrawal to
     ///    be confirmed by a sweep that was broadcast changing the status
     ///    of the request from rejected to accepted.
     async fn validate<C>(&self, ctx: &C, req_ctx: &ReqContext) -> Result<(), Error>
@@ -1175,30 +1166,17 @@ impl AsContractCall for RejectWithdrawalV1 {
             }
         }
 
-        // 5. Whether the signer bitmap matches the bitmap from our
-        //    records.
-        let signer_votes = ctx
-            .get_storage()
-            .get_withdrawal_request_signer_votes(&self.id, &req_ctx.aggregate_key)
-            .await?;
-        let signer_bitmap = BitArray::<[u8; 16]>::from(signer_votes);
-
-        if signer_bitmap != self.signer_bitmap {
-            return Err(WithdrawalRejectErrorMsg::BitmapMismatch.into_error(req_ctx, self));
-        }
-
-        // 6. Check whether the withdrawal request has expired.
+        // 5. Check whether the withdrawal request has expired.
         let blocks_observed = req_ctx
             .chain_tip
             .block_height
             .saturating_sub(report.bitcoin_block_height);
 
-        // 4. The request is expired.
         if blocks_observed <= WITHDRAWAL_BLOCKS_EXPIRY {
             return Err(WithdrawalRejectErrorMsg::RequestNotFinal.into_error(req_ctx, self));
         }
 
-        // 7. Check whether the withdrawal request may be serviced by a
+        // 6. Check whether the withdrawal request may be serviced by a
         //    sweep transaction that may be in the mempool.
         let withdrawal_is_inflight = db
             .is_withdrawal_inflight(&self.id, &req_ctx.chain_tip.block_hash)
@@ -1207,7 +1185,7 @@ impl AsContractCall for RejectWithdrawalV1 {
             return Err(WithdrawalRejectErrorMsg::RequestBeingFulfilled.into_error(req_ctx, self));
         }
 
-        // 8. Check whether the withdrawal request is still active, as in
+        // 7. Check whether the withdrawal request is still active, as in
         //    it could still be fulfilled.
         let withdrawal_is_active = db
             .is_withdrawal_active(&self.id, &req_ctx.chain_tip, WITHDRAWAL_MIN_CONFIRMATIONS)
@@ -1617,7 +1595,7 @@ mod tests {
             },
             outpoint: OutPoint::null(),
             tx_fee: 125,
-            signer_bitmap: BitArray::ZERO,
+            signer_bitmap: 0,
             deployer: StacksAddress::burn_address(false),
             sweep_block_hash: BitcoinBlockHash::from([0; 32]),
             sweep_block_height: 7,
@@ -1636,7 +1614,7 @@ mod tests {
                 txid: StacksTxId::from([0; 32]),
                 block_hash: StacksBlockHash::from([0; 32]),
             },
-            signer_bitmap: BitArray::new([1; 16]),
+            signer_bitmap: 0,
             deployer: StacksAddress::burn_address(false),
         };
 
