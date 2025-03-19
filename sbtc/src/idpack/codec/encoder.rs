@@ -34,18 +34,11 @@ impl Encodable for Segments {
         // Track the previous segment's max value for delta encoding of offsets.
         let mut last_segment_max_value = 0;
 
-        for (i, segment) in self.iter().enumerate() {
-            // Determine segment position for offset encoding
-            let is_first = i == 0; // First segment needs absolute offset
-
+        for segment in self.iter() {
             // Calculate offset to encode: absolute for first segment, delta from
             // the previous segment's max value for subsequent segments. Helps to
             // reduce the encoded offset size when there are multiple segments.
-            let actual_offset = if is_first {
-                segment.offset() // First segment uses absolute offset
-            } else {
-                segment.offset().saturating_sub(last_segment_max_value) // Delta encoding for savings
-            };
+            let actual_offset = segment.offset().saturating_sub(last_segment_max_value); // Delta encoding for savings
 
             // Encode segment using the bitmap encoder
             let mut payload_bytes = encode_bitmap(segment);
