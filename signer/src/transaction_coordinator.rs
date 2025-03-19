@@ -654,7 +654,7 @@ where
                 .accept_deposits(&transaction, &stacks_chain_tip)
                 .await
                 .inspect_err(|error| {
-                    tracing::error!(%error, "could not accept deposits on Emily");
+                    tracing::warn!(%error, "could not accept deposits on Emily");
                 });
 
             let _ = self
@@ -663,7 +663,7 @@ where
                 .accept_withdrawals(&transaction, &stacks_chain_tip)
                 .await
                 .inspect_err(|error| {
-                    tracing::error!(%error, "could not accept withdrawals on Emily");
+                    tracing::warn!(%error, "could not accept withdrawals on Emily");
                 });
         }
 
