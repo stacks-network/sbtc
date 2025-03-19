@@ -17,18 +17,6 @@ pub enum SegmentsError {
 #[derive(Debug, Default, Clone)]
 pub struct Segments(Vec<Segment>);
 
-/// Enables conversion of a Segments instance into an iterator.
-///
-/// Provides a clean way to process all segments sequentially in consumer code.
-impl IntoIterator for Segments {
-    type Item = Segment;
-    type IntoIter = std::vec::IntoIter<Segment>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
-    }
-}
-
 impl Segments {
     /// Returns an iterator over all values across all segments.
     ///
