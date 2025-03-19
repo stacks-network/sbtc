@@ -55,7 +55,6 @@ impl BitmapCosts {
     /// Performs precise byte-level analysis to determine optimal segmentation:
     /// - Calculates exact bitmap size using ceiling division
     /// - Includes accurate LEB128 overhead costs based on value sizes
-    /// - Handles special cases for byte-perfect boundary detection
     ///
     /// ## Parameters
     ///
