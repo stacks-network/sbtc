@@ -200,9 +200,9 @@ pub async fn update_bitcoin_chain_tip(
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let new_tip: UpdateBitcoinChaintip = body;
-        let result = accessors::set_new_bitcoin_chain_tip(&context, new_tip).await?;
+        accessors::set_new_bitcoin_chain_tip(&context, new_tip).await?;
         // Respond.
-        Ok(with_status(json(&result), StatusCode::CREATED))
+        Ok(with_status(json(&()), StatusCode::CREATED))
     }
     // Handle and respond.
     handler(context, api_key, request)
@@ -241,9 +241,9 @@ pub async fn update_heights_mapping(
     ) -> Result<impl warp::reply::Reply, Error> {
         // Convert body to the correct type.
         let new_mapping: HeightsMapping = body;
-        let result = accessors::update_heights_mapping(&context, new_mapping).await?;
+        accessors::update_heights_mapping(&context, new_mapping).await?;
         // Respond.
-        Ok(with_status(json(&result), StatusCode::CREATED))
+        Ok(with_status(json(&()), StatusCode::CREATED))
     }
     // Handle and respond.
     handler(context, api_key, request)
