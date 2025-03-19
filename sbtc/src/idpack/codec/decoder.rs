@@ -134,7 +134,7 @@ pub fn read_segment_into(
         .read_exact(&mut payload_bytes)
         .map_err(DecodeError::IO)?;
 
-    // Initialize segment with BitSet encoding and correct offset
+    // Initialize segment with offset
     let mut segment = Segment::new_with_offset(offset);
 
     // Decode the bitmap payload into the segment
