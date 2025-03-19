@@ -36,10 +36,6 @@ const MAX_BYTES: usize = 10;
 /// serving as a continuation flag.
 const BITS_PER_BYTE: u32 = 7;
 
-/// Maximum number of bits in a u64 value.
-/// Used for bounds checking to prevent overflow during encoding/decoding.
-const MAX_BITS: usize = 64;
-
 /// Bit mask to extract the lower 7 bits (value data) from a LEB128 byte.
 /// Each byte uses bits 0-6 for data and bit 7 for continuation.
 const LOWER_BITS_MASK: u8 = 0x7F;
@@ -71,7 +67,7 @@ pub enum Error {
     EmptyInput,
 
     /// Value exceeds 64 bits (u64 maximum).
-    #[error("attempted to decode a value exceeding {MAX_BITS} bits")]
+    #[error("attempted to decode a value exceeding {} bits", u64::BITS)]
     ValueOutOfBounds,
 
     /// Attempted to access an index outside the bounds of the input.
