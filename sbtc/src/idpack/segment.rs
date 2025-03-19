@@ -102,11 +102,11 @@ impl Segment {
     }
 }
 
-/// String representation for segments: `EncodingType(value1,value2,...)`.
+/// String representation for segments: `Segment(value1,value2,...)`.
 /// Useful for debugging during compression optimization.
 impl std::fmt::Display for Segment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "(")?;
+        write!(f, "Segment(")?;
         for (i, value) in self.values.iter().enumerate() {
             if i > 0 {
                 write!(f, ",")?;
