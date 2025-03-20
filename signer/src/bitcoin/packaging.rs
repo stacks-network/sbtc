@@ -136,7 +136,7 @@ pub trait Weighted {
 
     /// The withdrawal ID for this item, if it's a withdrawal request.
     ///
-    /// Returns `None` for deposits or other non-withdrawal items. For
+    /// Must return `Some(_)` for withdrawals and `None` otherwise. For
     /// withdrawals, the ID is used to encode a bitmap in the OP_RETURN output.
     ///
     /// ## Returns
