@@ -1551,9 +1551,10 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
         }
 
         let encoded_withdrawal_ids = &raw_bytes[3..];
-        let withdrawal_ids = Segments::decode(encoded_withdrawal_ids)
+        let withdrawal_ids: Vec<_> = Segments::decode(encoded_withdrawal_ids)
             .map_err(Error::IdPackDecodeError)?
-            .get_values();
+            .values()
+            .collect();
 
         // We checked that the first two are signers output and op return, and
         // that the rest are withdrawals

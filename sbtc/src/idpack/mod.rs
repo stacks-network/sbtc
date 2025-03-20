@@ -51,7 +51,6 @@ pub use segments::Segments;
 pub use segments::SegmentsError;
 
 pub use segmenters::BitmapSegmenter;
-pub use segmenters::Error as SegmenterError;
 pub use segmenters::Segmenter;
 pub use segmenters::SegmenterError;
 
