@@ -2062,12 +2062,11 @@ mod tests {
 
         // Verify each transaction has an OP_RETURN output with correct format
         for tx in &transactions {
-            let mut expected_ids = tx
+            let expected_ids = tx
                 .requests
                 .iter()
                 .filter_map(|req| req.withdrawal_id())
                 .collect::<Vec<u64>>();
-            expected_ids.sort();
             let expected_segments = BitmapSegmenter.package(&expected_ids).unwrap();
             let expected_data = expected_segments.encode();
 
