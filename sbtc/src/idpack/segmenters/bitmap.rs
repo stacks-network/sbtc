@@ -5,10 +5,11 @@ use crate::{
 
 use super::{Segmenter, SegmenterError};
 
-/// Bitmap cost calculation result for compression optimization
+/// Bitmap cost calculation result for compression optimization.
 ///
 /// Contains the calculated byte costs for both segmentation options:
-/// splitting at the current position or continuing the current segment.
+/// 1. splitting at the current position, or
+/// 2. continuing the current segment.
 #[derive(Debug)]
 struct BitmapCosts {
     /// Total bytes required if we split at current position
@@ -27,29 +28,26 @@ impl BitmapCosts {
     /// optimal segmentation.
     ///
     /// ## Returns
-    ///
-    /// `true` if splitting saves bytes compared to continuing the current segment,
-    /// `false` otherwise
+    /// * `true` if splitting saves bytes compared to continuing the current segment,
+    /// * `false` otherwise
     fn should_split(&self) -> bool {
         // Simple core decision: split when it saves bytes
         self.bytes_if_split < self.bytes_if_combined
     }
 
-    /// Calculates bitmap costs for both splitting and continuing scenarios
+    /// Calculates bitmap costs for both splitting and continuing scenarios.
     ///
     /// Performs precise byte-level analysis to determine optimal segmentation:
-    /// - Calculates exact bitmap size using ceiling division
-    /// - Includes accurate LEB128 overhead costs based on value sizes
+    /// * Calculates exact bitmap size using ceiling division
+    /// * Includes accurate LEB128 overhead costs based on value sizes
     ///
     /// ## Parameters
-    ///
     /// * `offset` - The current segment's offset value (first value)
     /// * `prev` - The previous value in the sequence
     /// * `next` - The next value being considered for inclusion
     ///
     /// ## Returns
-    ///
-    /// `Result<BitmapCosts, Error>` with precise byte calculations for both options
+    /// A [`BitmapCosts`] instance containing the byte costs for both options.
     fn calculate(offset: u64, prev: u64, next: u64) -> Self {
         // Calculate current sizes
         let current_payload = (prev - offset).div_ceil(8);
