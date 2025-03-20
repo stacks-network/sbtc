@@ -1162,16 +1162,22 @@ impl<'a> UnsignedTransaction<'a> {
         data.push(OP_RETURN_VERSION)?;
 
         // Extract all withdrawal request IDs
-        let withdrawal_ids: Vec<u64> = reqs
-            .iter()
-            .filter_map(|req| req.as_withdrawal().map(|w| w.request_id))
-            .collect();
+        let withdrawal_ids: Vec<u64> = reqs.iter().filter_map(|req| req.withdrawal_id()).collect();
 
         // If there are any withdrawal ID's, encode them and add them to the
         // OP_RETURN data.
         if !withdrawal_ids.is_empty() {
             let encoded = BitmapSegmenter.package(&withdrawal_ids)?.encode();
             data.extend_from_slice(&encoded)?;
+        }
+
+        // Return an error if the data we intend on putting in the OP_RETURN
+        // output exceeds the maximum size.
+        if data.len() > OP_RETURN_MAX_SIZE {
+            return Err(Error::OpReturnSizeLimitExceeded {
+                size: data.len(),
+                max_size: OP_RETURN_MAX_SIZE,
+            });
         }
 
         // Create OP_RETURN script and output
@@ -2153,21 +2159,14 @@ mod tests {
         }
 
         // Extract all withdrawal IDs that were included across all transactions
-        let included_ids: Vec<u64> = transactions
+        let actual_ids: Vec<u64> = transactions
             .iter()
-            .flat_map(|tx| {
-                tx.requests
-                    .iter()
-                    .filter_map(|req| req.as_withdrawal())
-                    .map(|w| w.request_id)
-            })
+            .flat_map(|tx| tx.requests.iter().filter_map(|req| req.withdrawal_id()))
             .collect();
 
         // Sort both lists to compare
         let mut expected_ids = withdrawal_ids.to_vec();
-        let mut actual_ids = included_ids;
         expected_ids.sort();
-        actual_ids.sort();
 
         // Verify all withdrawal IDs are included exactly once
         assert_eq!(
@@ -2177,13 +2176,11 @@ mod tests {
 
         // Verify each transaction has an OP_RETURN output with correct format
         for tx in &transactions {
-            let mut expected_ids = tx
+            let expected_ids = tx
                 .requests
                 .iter()
-                .filter_map(|req| req.as_withdrawal())
-                .map(|w| w.request_id)
+                .filter_map(|req| req.withdrawal_id())
                 .collect::<Vec<u64>>();
-            expected_ids.sort();
             let expected_segments = BitmapSegmenter.package(&expected_ids).unwrap();
             let expected_data = expected_segments.encode();
 
