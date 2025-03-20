@@ -24,10 +24,10 @@ To run your Docker image and perform attestation verification, use the following
 ```bash
 docker run --rm \
   -e TAG="signer" \
-  -e BUNDLE_PATH="/path/to/your/bundle.jsonl" \
-  -e TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl" \
-  -v /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl \
-  -v /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl \
+  -e BUNDLE_PATH="bundle.jsonl" \
+  -e TRUSTED_ROOT_PATH="trusted_root.jsonl" \
+  -v /path/to/your/bundle.jsonl:bundle.jsonl \
+  -v /path/to/your/trusted_root.jsonl:trusted_root.jsonl \
   --entrypoint /entrypoint.sh \
   image_name \
   /usr/local/bin/signer --config /signer-config.toml --migrate-db
@@ -35,11 +35,11 @@ docker run --rm \
 
 ```bash
 docker run --rm \
-  -e TAG="blocklist-cli" \
-  -e BUNDLE_PATH="/path/to/your/bundle.jsonl" \
-  -e TRUSTED_ROOT_PATH="/path/to/your/trusted_root.jsonl" \
-  -v /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl \
-  -v /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl \
+  -e TAG="blocklist-client" \
+  -e BUNDLE_PATH="bundle.jsonl" \
+  -e TRUSTED_ROOT_PATH="trusted_root.jsonl" \
+  -v /path/to/your/bundle.jsonl:bundle.jsonl \
+  -v /path/to/your/trusted_root.jsonl:trusted_root.jsonl \
   --entrypoint /entrypoint.sh \
   image_name \
   /usr/local/bin/blocklist-client
@@ -50,7 +50,7 @@ This command will:
   
 2. **Use [/entrypoint.sh](/docker/mainnet/gh-attestation/entrypoint.sh)**: The entrypoint of the Docker image is overridden to run the `entrypoint.sh` script, which performs the attestation verification before running the application.
    
-3. **Run the Signer Application**: The signer application is started with the provided configuration file (`/signer-config.toml`) and the database will be migrated using the `--migrate-db` flag.
+3. **Run the signer and the bocklist-client Application**: The signer application is started with the provided configuration file (`/signer-config.toml`).
 
 ---
 
@@ -62,11 +62,11 @@ services:
     image: signer
     environment:
       TAG: "signer"  # Set your specific image tag
-      BUNDLE_PATH: "/path/to/your/bundle.jsonl"
-      TRUSTED_ROOT_PATH: "/path/to/your/trusted_root.jsonl"
+      BUNDLE_PATH: "bundle.jsonl"
+      TRUSTED_ROOT_PATH: "trusted_root.jsonl"
     volumes:
-      - /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl
-      - /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl
+      - /path/to/your/bundle.jsonl:bundle.jsonl
+      - /path/to/your/trusted_root.jsonl:trusted_root.jsonl
       - entrypoint.sh:/entrypoint.sh
     entrypoint: ["/entrypoint.sh"]
     command: ["/usr/local/bin/signer", "--config", "/signer-config.toml", "--migrate-db"]
@@ -75,14 +75,14 @@ services:
 ```yaml
 services:
   signer:
-    image: blocklist-cli
+    image: blocklist-client
     environment:
-      TAG: "blocklist-cli"  # Set your specific image tag
-      BUNDLE_PATH: "/path/to/your/bundle.jsonl"
-      TRUSTED_ROOT_PATH: "/path/to/your/trusted_root.jsonl"
+      TAG: "blocklist-client"  # Set your specific image tag
+      BUNDLE_PATH: "bundle.jsonl"
+      TRUSTED_ROOT_PATH: "trusted_root.jsonl"
     volumes:
-      - /path/to/your/bundle.jsonl:/path/to/your/bundle.jsonl
-      - /path/to/your/trusted_root.jsonl:/path/to/your/trusted_root.jsonl
+      - /path/to/your/bundle.jsonl:bundle.jsonl
+      - /path/to/your/trusted_root.jsonl:trusted_root.jsonl
       - entrypoint.sh:/entrypoint.sh
     entrypoint: ["/entrypoint.sh"]
     command: ["/usr/local/bin/blocklist-client"]
@@ -91,7 +91,7 @@ services:
 This will:
 1. **Set up the Docker container** with the required environment variables for attestation.
 2. **Use [/entrypoint.sh](/docker/mainnet/gh-attestation/entrypoint.sh)**: The entry point script checks the attestation and proceeds if verified.
-3. **Run the signer application** with the provided config file and migration option.
+3. **Run the signer and the blocklist-client application** with the provided config file and migration option.
 
 To start the service with Docker Compose, use:
 
