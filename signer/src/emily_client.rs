@@ -95,6 +95,14 @@ pub trait EmilyInteract: Sync + Send {
         transaction: &'a UnsignedTransaction<'a>,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 
+    /// Update accepted withdrawals after their sweep bitcoin transaction has
+    /// been submitted (but before being finalized -- the stacks transaction
+    /// accepting the withdrawal has not been submitted yet).
+    fn accept_withdrawals<'a>(
+        &'a self,
+        transaction: &'a UnsignedTransaction<'a>,
+    ) -> impl std::future::Future<Output = Result<UpdateWithdrawalsResponse, Error>> + Send;
+
     /// Update the status of deposits in Emily.
     fn update_deposits(
         &self,
@@ -320,6 +328,27 @@ impl EmilyInteract for EmilyClient {
             .map_err(Error::EmilyApi)
     }
 
+    async fn accept_withdrawals<'a>(
+        &'a self,
+        transaction: &'a UnsignedTransaction<'a>,
+    ) -> Result<UpdateWithdrawalsResponse, Error> {
+        let withdrawals = transaction
+            .requests
+            .iter()
+            .filter_map(RequestRef::as_withdrawal);
+
+        let update_request: Vec<_> = withdrawals
+            .map(|withdrawal| WithdrawalUpdate {
+                request_id: withdrawal.request_id,
+                fulfillment: None,
+                status: Status::Accepted,
+                status_message: "".to_string(),
+            })
+            .collect();
+
+        self.update_withdrawals(update_request).await
+    }
+
     async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
@@ -369,11 +398,11 @@ impl EmilyInteract for EmilyClient {
         let per_deposit_minimum = limits.per_deposit_minimum.flatten().map(Amount::from_sat);
         let per_deposit_cap = limits.per_deposit_cap.flatten().map(Amount::from_sat);
         let per_withdrawal_cap = limits.per_withdrawal_cap.flatten().map(Amount::from_sat);
-        let rolling_withdrawal_blocks = limits.rolling_withdrawal_blocks.flatten();
-        let rolling_withdrawal_cap = limits
-            .rolling_withdrawal_cap
+        let rolling_withdrawal_blocks = limits
+            .rolling_withdrawal_blocks
             .flatten()
-            .map(Amount::from_sat);
+            .map(|x| x.min(u16::MAX as u64) as u16);
+        let rolling_withdrawal_cap = limits.rolling_withdrawal_cap.flatten();
 
         Ok(SbtcLimits::new(
             total_cap,
@@ -382,6 +411,7 @@ impl EmilyInteract for EmilyClient {
             per_withdrawal_cap,
             rolling_withdrawal_blocks,
             rolling_withdrawal_cap,
+            None,
             None,
         ))
     }
@@ -422,6 +452,14 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
         transaction: &'a UnsignedTransaction<'a>,
     ) -> Result<UpdateDepositsResponse, Error> {
         self.exec(|client, _| client.accept_deposits(transaction))
+            .await
+    }
+
+    async fn accept_withdrawals<'a>(
+        &'a self,
+        transaction: &'a UnsignedTransaction<'a>,
+    ) -> Result<UpdateWithdrawalsResponse, Error> {
+        self.exec(|client, _| client.accept_withdrawals(transaction))
             .await
     }
 

@@ -21,7 +21,7 @@ services:
       - ./logs:/logs
     ports:
       - "4122:4122"
-      - "8801:8801"
+      - "127.0.0.1:8801:8801" # this export is only exposed to the Docker host for security reasons. NEVER expose it to the internet!
 
   blocklist-client:
     image: blockstack/sbtc:blocklist-client-0.0.9-rc6@sha256:e4fa52ac16c357ae69f3b9eb5d5254a43bc605dbded621291b5637064b04d105

@@ -522,6 +522,13 @@ impl EmilyInteract for TestHarness {
         unimplemented!()
     }
 
+    async fn accept_withdrawals<'a>(
+        &'a self,
+        _transaction: &'a utxo::UnsignedTransaction<'a>,
+    ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
+        unimplemented!()
+    }
+
     async fn update_withdrawals(
         &self,
         _update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,

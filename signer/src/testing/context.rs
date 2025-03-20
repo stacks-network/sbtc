@@ -544,6 +544,17 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
         self.inner.lock().await.accept_deposits(transaction).await
     }
 
+    async fn accept_withdrawals<'a>(
+        &'a self,
+        transaction: &'a UnsignedTransaction<'a>,
+    ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
+        self.inner
+            .lock()
+            .await
+            .accept_withdrawals(transaction)
+            .await
+    }
+
     async fn update_withdrawals(
         &self,
         update_withdrawals: Vec<emily_client::models::WithdrawalUpdate>,
