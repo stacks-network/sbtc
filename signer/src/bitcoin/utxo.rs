@@ -3493,4 +3493,173 @@ mod tests {
         assert_eq!(total_amount, case.accepted_amount);
         assert!(withdrawals.is_sorted())
     }
+
+    #[derive(Default)]
+    struct TestTxOut {
+        pub tx_outputs: Vec<TxOutput>,
+    }
+
+    impl TestTxOut {
+        pub fn tx_info(&self) -> BitcoinTxInfo {
+            BitcoinTxInfo {
+                in_active_chain: true,
+                fee: Amount::from_sat(1000),
+                txid: Txid::all_zeros(),
+                hash: bitcoin::Wtxid::all_zeros(),
+                size: 100,
+                vsize: 100,
+                block_hash: bitcoin::BlockHash::all_zeros(),
+                confirmations: 0,
+                block_time: 0,
+                tx: Transaction {
+                    version: Version::TWO,
+                    lock_time: LockTime::ZERO,
+                    input: Vec::new(),
+                    output: Vec::new(),
+                },
+                vin: Vec::new(),
+                vout: Vec::new(),
+            }
+        }
+        pub fn output(&mut self, output_type: TxOutputType) -> &mut Self {
+            self.tx_outputs.push(TxOutput {
+                txid: Txid::all_zeros().into(),
+                output_index: self.tx_outputs.len() as u32,
+                script_pubkey: ScriptPubKey::from_bytes(vec![]),
+                amount: 0,
+                output_type,
+            });
+            self
+        }
+        pub fn op_return(&mut self, script: ScriptBuf) -> &mut Self {
+            self.tx_outputs.push(TxOutput {
+                txid: Txid::all_zeros().into(),
+                output_index: self.tx_outputs.len() as u32,
+                script_pubkey: script.into(),
+                amount: 0,
+                output_type: TxOutputType::SignersOpReturn,
+            });
+            self
+        }
+    }
+
+    #[test_case(&TestTxOut::default(); "no outputs")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+    ; "one output")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::SignersOpReturn)
+    ; "no withdrawals")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOpReturn)
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::Withdrawal)
+    ; "swapped")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::Donation)
+        .output(TxOutputType::SignersOpReturn)
+        .output(TxOutputType::Withdrawal)
+    ; "wrong first")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::Donation)
+        .output(TxOutputType::Withdrawal)
+    ; "wrong second")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0, 0]).unwrap();
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "version 0")]
+    fn test_to_withdrawal_outputs_no_outputs(tx: &TestTxOut) {
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap();
+        assert!(withdrawal_outs.is_empty());
+    }
+
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::SignersOpReturn)
+        .output(TxOutputType::Withdrawal)
+        .output(TxOutputType::Donation)
+    ; "not all withdrawals")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0, 1]).unwrap();
+            // no withdrawals encoded
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "mismatched outputs")]
+    fn test_to_withdrawal_outputs_malformed_tx(tx: &TestTxOut) {
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap_err();
+        assert!(matches!(withdrawal_outs, Error::SbtcTxMalformed));
+    }
+
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new())
+        .output(TxOutputType::Withdrawal)
+    ; "wrong opreturn")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0]).unwrap();
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "short pushbytes")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0, 42]).unwrap();
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "wrong version")]
+    fn test_to_withdrawal_outputs_malformed_opreturn(tx: &TestTxOut) {
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap_err();
+        assert!(matches!(withdrawal_outs, Error::SbtcTxOpReturnFormatError));
+    }
+
+    #[test]
+    fn test_to_withdrawal_outputs_happy_path() {
+        let mut pb = PushBytesBuf::new();
+        pb.extend_from_slice(&[0, 0, 1]).unwrap();
+        pb.extend_from_slice(&BitmapSegmenter.package(&[42, 51]).unwrap().encode())
+            .unwrap();
+
+        let mut tx = TestTxOut::default();
+        tx.output(TxOutputType::SignersOutput)
+            .op_return(ScriptBuf::new_op_return(pb))
+            .output(TxOutputType::Withdrawal)
+            .output(TxOutputType::Withdrawal);
+
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap();
+
+        let expected = vec![
+            WithdrawalTxOutput {
+                txid: tx_info.txid.into(),
+                output_index: 2,
+                request_id: 42,
+            },
+            WithdrawalTxOutput {
+                txid: tx_info.txid.into(),
+                output_index: 3,
+                request_id: 51,
+            },
+        ];
+        assert_eq!(withdrawal_outs, expected);
+    }
 }
