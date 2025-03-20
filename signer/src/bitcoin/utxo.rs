@@ -1816,17 +1816,18 @@ mod tests {
 
         println!("Solo deposit vsize: {}", unsigned.tx.vsize());
 
-        // For solo withdrawals
+        // For solo withdrawals. We set the withdrawal ID to be u64::MAX so
+        // that the withdrawal ID encoding takes up the maximum amount of
+        // space in the OP_RETURN output.
         requests.deposits = Vec::new();
         requests.withdrawals = vec![create_withdrawal(154_321, 40_000, 0).wid(u64::MAX)];
 
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
-        
+
         let mut unsigned = transactions.pop().unwrap();
         assert_eq!(unsigned.tx.input.len(), 1);
         assert_eq!(unsigned.tx.output.len(), 3);
-        println!("{} {:?}", OP_RETURN.to_u8(), unsigned.tx.output[1].script_pubkey.instructions().collect::<Vec<_>>());
 
         // We need to zero out the withdrawal script since this value
         // changes depending on the user.
