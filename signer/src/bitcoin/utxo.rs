@@ -1157,10 +1157,7 @@ impl<'a> UnsignedTransaction<'a> {
         data.push(OP_RETURN_VERSION)?;
 
         // Extract all withdrawal request IDs
-        let withdrawal_ids: Vec<u64> = reqs
-            .iter()
-            .filter_map(|req| req.as_withdrawal().map(|w| w.request_id))
-            .collect();
+        let withdrawal_ids: Vec<u64> = reqs.iter().filter_map(|req| req.withdrawal_id()).collect();
 
         // If there are any withdrawal ID's, encode them and add them to the
         // OP_RETURN data.
