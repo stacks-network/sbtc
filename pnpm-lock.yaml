@@ -59,7 +59,7 @@ importers:
         specifier: ^3.0.9
         version: 3.0.9(@types/node@22.13.10)(yaml@2.7.0)
       vitest-environment-clarinet:
-        specifier: ^2.3.0
+        specifier: 2.3.0
         version: 2.3.0(@hirosystems/clarinet-sdk@2.15.2(@types/node@22.13.10)(yaml@2.7.0))(vitest@3.0.9(@types/node@22.13.10)(yaml@2.7.0))
     devDependencies:
       '@eslint/js':
