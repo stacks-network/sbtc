@@ -80,8 +80,8 @@ services:
       - ./logs:/logs
     ports:
       - "4122:4122" # P2P communication between sBTC signers
-      - "8801:8801" # So that Stacks event-observer can reach the sBTC signer
       - "9184:9184" # Prometheus metrics
+      - "127.0.0.1:8801:8801" # this export is only exposed to the Docker host for security reasons. NEVER expose it to the internet!
 
   blocklist-client:
     restart: on-failure

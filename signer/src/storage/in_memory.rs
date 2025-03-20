@@ -834,10 +834,43 @@ impl super::DbRead for SharedStore {
 
     async fn compute_withdrawn_total(
         &self,
-        _: &model::BitcoinBlockHash,
-        _: u16,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
     ) -> Result<u64, Error> {
-        unimplemented!()
+        let db = self.lock().await;
+        // Get the blockchain
+        let bitcoin_blocks = std::iter::successors(Some(chain_tip), |block_hash| {
+            db.bitcoin_blocks
+                .get(block_hash)
+                .map(|block| &block.parent_hash)
+        })
+        .take(context_window.max(1) as usize)
+        .collect::<HashSet<_>>();
+
+        // Get all transactions in the blockchain
+        let txs = bitcoin_blocks
+            .iter()
+            .flat_map(|block_hash| db.bitcoin_block_to_transactions.get(block_hash))
+            .flatten()
+            .collect::<HashSet<_>>();
+
+        // Get withdrawal IDs related to the above transactions.
+        let swept_withdrawals = db
+            .bitcoin_withdrawal_outputs
+            .values()
+            .filter(|x| txs.contains(&x.bitcoin_txid))
+            .map(|x| (x.request_id, x.stacks_block_hash))
+            .collect::<HashSet<_>>();
+
+        // Compute the total amount from all of these swept withdrawal
+        // requests.
+        let total_withdrawn = swept_withdrawals
+            .iter()
+            .filter_map(|id| db.withdrawal_requests.get(id))
+            .map(|req| req.amount)
+            .sum();
+
+        Ok(total_withdrawn)
     }
 
     async fn get_bitcoin_tx(
