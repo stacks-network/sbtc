@@ -787,16 +787,6 @@ mod tests {
         let expected_ids = [5, 42, 50, 100, 200];
         assert_eq!(bag.withdrawal_ids, expected_ids);
 
-        // Verify IDs are in strictly ascending order
-        for i in 1..bag.withdrawal_ids.len() {
-            assert!(
-                bag.withdrawal_ids[i - 1] < bag.withdrawal_ids[i],
-                "withdrawal IDs should be sorted, but found {} before {}",
-                bag.withdrawal_ids[i - 1],
-                bag.withdrawal_ids[i]
-            );
-        }
-
         // IDs should already be sorted, so this should work properly
         assert!(bag.can_fit_withdrawal_ids(&bag.withdrawal_ids));
     }
