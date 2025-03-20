@@ -1783,9 +1783,8 @@ mod tests {
             .expect_err("signature verification should have failed");
     }
 
-    #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
     #[test]
-    fn create_deposit_only_tx() {
+    fn calculate_solo_tx_sizes_for_consts() {
         // For solo deposits
         let mut requests = SbtcRequests {
             deposits: vec![create_deposit(123456, 30_000, 0)],
@@ -1814,7 +1813,11 @@ mod tests {
         let mut unsigned = transactions.pop().unwrap();
         testing::set_witness_data(&mut unsigned, keypair);
 
-        println!("Solo deposit vsize: {}", unsigned.tx.vsize());
+        assert_eq!(
+            SOLO_DEPOSIT_TX_VSIZE as usize,
+            unsigned.tx.vsize(),
+            "solo deposit vsize needs updating"
+        );
 
         // For solo withdrawals. We set the withdrawal ID to be u64::MAX so
         // that the withdrawal ID encoding takes up the maximum amount of
@@ -1834,7 +1837,11 @@ mod tests {
         unsigned.tx.output.pop();
         testing::set_witness_data(&mut unsigned, keypair);
 
-        println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
+        assert_eq!(
+            MAX_BASE_TX_VSIZE as usize,
+            unsigned.tx.vsize(),
+            "Base tx vsize needs updating"
+        );
     }
 
     #[ignore = "this is for generating the MIN_BITCOIN_INPUT_VSIZE constant"]
