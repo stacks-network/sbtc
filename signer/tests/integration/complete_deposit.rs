@@ -548,8 +548,6 @@ async fn complete_deposit_validation_fee_too_low() {
     }
 
     // Now a sanity check to see what happens if we are above the dust limit.
-    // With deposit_amount = 2716, we get 2716 - 2170 = 546 sats,
-    // which equals the dust limit and should pass validation.
     let deposit_amount = deposit_amount + 1;
     sqlx::query(
         r#"
