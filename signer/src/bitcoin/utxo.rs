@@ -1557,7 +1557,7 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
         // so starting a slice at index 3 is safe due to slice behavior.
         // If raw_bytes.len() is exactly 3, this produces an empty slice rather
         // than panicking.
-        let encoded_withdrawal_ids = &raw_bytes[3..];
+        let encoded_withdrawal_ids = &raw_bytes[OP_RETURN_HEADER_SIZE..];
         let withdrawal_ids: Vec<_> = Segments::decode(encoded_withdrawal_ids)
             .map_err(Error::IdPackDecode)?
             .values()
