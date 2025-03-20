@@ -1169,6 +1169,15 @@ impl<'a> UnsignedTransaction<'a> {
             data.extend_from_slice(&encoded)?;
         }
 
+        // Return an error if the data we intend on putting in the OP_RETURN
+        // output exceeds the maximum size.
+        if data.len() > OP_RETURN_MAX_SIZE {
+            return Err(Error::OpReturnSizeLimitExceeded {
+                size: data.len(),
+                max_size: OP_RETURN_MAX_SIZE,
+            });
+        }
+
         // Create OP_RETURN script and output
         let script_pubkey = ScriptBuf::new_op_return(data);
         let txout = TxOut {

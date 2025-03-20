@@ -21,6 +21,15 @@ use crate::wsts_state_machine::StateMachineId;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The length of bytes to write to an OP_RETURN output exceeds the maximum allowed size.
+    #[error("OP_RETURN output size limit exceeded: {size} bytes, max allowed: {max_size} bytes")]
+    OpReturnSizeLimitExceeded {
+        /// The size of the OP_RETURN output in bytes.
+        size: usize,
+        /// The maximum allowed size of the OP_RETURN output in bytes.
+        max_size: usize,
+    },
+
     /// An error occurred while attempting to perform withdrawal ID segmentation.
     #[error("idpack segmenter error: {0}")]
     IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
