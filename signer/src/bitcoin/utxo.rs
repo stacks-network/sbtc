@@ -69,7 +69,7 @@ const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
 /// of the signers' input UTXO and a UTXO for a deposit request. The output
 /// is the signers' new UTXO. The deposit request is such that the sweep
 /// transaction has the largest size of solo deposit sweep transactions.
-const SOLO_DEPOSIT_TX_VSIZE: f64 = 267.0;
+const SOLO_DEPOSIT_TX_VSIZE: f64 = 249.0;
 
 /// This constant represents the virtual size (in vBytes) of a BTC
 /// transaction servicing only one withdrawal request, except the
@@ -80,7 +80,7 @@ const BASE_WITHDRAWAL_TX_VSIZE: f64 = MAX_BASE_TX_VSIZE as f64;
 
 /// This constant represents the maximum virtual size (in vBytes) of a BTC
 /// transaction excluding withdrawals outputs and deposit inputs.
-pub const MAX_BASE_TX_VSIZE: u64 = 164;
+pub const MAX_BASE_TX_VSIZE: u64 = 137;
 
 /// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
 /// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
@@ -1818,14 +1818,15 @@ mod tests {
 
         // For solo withdrawals
         requests.deposits = Vec::new();
-        requests.withdrawals = vec![create_withdrawal(154_321, 40_000, 0)];
+        requests.withdrawals = vec![create_withdrawal(154_321, 40_000, 0).wid(u64::MAX)];
 
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
-
+        
         let mut unsigned = transactions.pop().unwrap();
         assert_eq!(unsigned.tx.input.len(), 1);
         assert_eq!(unsigned.tx.output.len(), 3);
+        println!("{} {:?}", OP_RETURN.to_u8(), unsigned.tx.output[1].script_pubkey.instructions().collect::<Vec<_>>());
 
         // We need to zero out the withdrawal script since this value
         // changes depending on the user.
