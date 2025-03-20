@@ -1553,8 +1553,10 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             return Err(Error::SbtcTxOpReturnFormatError);
         }
 
-        // SAFETY: 3 <= OP_RETURN_HEADER_SIZE (3), if the encoded is empty we
-        // get an empty slice (but no panic)
+        // SAFETY: We've verified raw_bytes.len() >= OP_RETURN_HEADER_SIZE (3),
+        // so starting a slice at index 3 is safe due to slice behavior.
+        // If raw_bytes.len() is exactly 3, this produces an empty slice rather
+        // than panicking.
         let encoded_withdrawal_ids = &raw_bytes[3..];
         let withdrawal_ids: Vec<_> = Segments::decode(encoded_withdrawal_ids)
             .map_err(Error::IdPackDecode)?
