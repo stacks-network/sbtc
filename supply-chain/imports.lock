@@ -467,6 +467,25 @@ criteria = "safe-to-deploy"
 version = "0.1.0"
 notes = "No unsafe usage or ambient capabilities, sane build script"
 
+[[audits.google.audits.arrayvec]]
+who = "Lukasz Anforowicz <lukasza@chromium.org>"
+criteria = "safe-to-deploy"
+version = "0.7.6"
+notes = '''
+Grepped for `-i cipher`, `-i crypto`, `'\bfs\b'`, `'\bnet\b'` and there were
+no hits, except for some `net` usage in tests.
+
+The crate has quite a few bits of `unsafe` Rust.  The audit comments can be
+found in https://chromium-review.googlesource.com/c/chromium/src/+/6187726/2
+'''
+aggregated-from = "https://chromium.googlesource.com/chromium/src/+/main/third_party/rust/chromium_crates_io/supply-chain/audits.toml?format=TEXT"
+
+[[audits.google.audits.assert_matches]]
+who = "ChromeOS"
+criteria = "safe-to-run"
+version = "1.5.0"
+aggregated-from = "https://chromium.googlesource.com/chromiumos/third_party/rust_crates/+/refs/heads/main/cargo-vet/audits.toml?format=TEXT"
+
 [[audits.google.audits.async-stream]]
 who = "Tyler Mandry <tmandry@google.com>"
 criteria = "safe-to-deploy"

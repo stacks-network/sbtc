@@ -66,10 +66,6 @@ criteria = "safe-to-deploy"
 version = "0.3.8"
 criteria = "safe-to-deploy"
 
-[[exemptions.arrayvec]]
-version = "0.7.4"
-criteria = "safe-to-deploy"
-
 [[exemptions.asn1-rs]]
 version = "0.6.2"
 criteria = "safe-to-deploy"

@@ -128,9 +128,9 @@ checksum = "9d151e35f61089500b617991b791fc8bfd237ae50cd5950803758a179b41e67a"
 
 [[package]]
 name = "arrayvec"
-version = "0.7.4"
+version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96d30a06541fbafbc7f82ed10c06164cfbd2c401138f6addd8404629c4b16711"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "asn1-rs"
@@ -186,6 +186,12 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "assert_matches"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
 
 [[package]]
 name = "async-channel"
@@ -5395,11 +5401,13 @@ dependencies = [
 name = "sbtc"
 version = "0.1.0"
 dependencies = [
+ "assert_matches",
  "bitcoin",
  "bitcoincore-rpc",
  "bitcoincore-rpc-json",
  "clarity",
  "hex",
+ "more-asserts",
  "proptest",
  "rand",
  "secp256k1 0.29.0",
