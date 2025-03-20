@@ -84,7 +84,7 @@ where
         packager.insert_item(item);
     }
 
-    packager.finalize().into_iter()
+    packager.finalize()
 }
 
 /// A trait for items that can be packaged together according to specific
@@ -495,12 +495,14 @@ impl<T: Weighted> BestFitPackager<T> {
         }
     }
 
-    /// Finalize the packager, consuming it and returning a vector of item vectors.
+    /// Consumes the packager and returns an iterator over the packed item
+    /// groups.
     ///
     /// ## Returns
-    /// A vector where each inner vector represents a bag of compatible items.
-    fn finalize(self) -> Vec<Vec<T>> {
-        self.bags.into_iter().map(|bag| bag.items).collect()
+    /// An iterator that yields each bag's contents as a `Vec<T>`, preserving
+    /// the original compatibility constraints established during insertion.
+    fn finalize(self) -> impl Iterator<Item = Vec<T>> {
+        self.bags.into_iter().map(|bag| bag.items)
     }
 }
 
