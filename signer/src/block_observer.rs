@@ -570,11 +570,10 @@ impl<C: Context, B> BlockObserver<C, B> {
         };
 
         let rolling_limits = limits.rolling_withdrawal_limits();
-        let context_window = rolling_limits.blocks.min(u16::MAX as u64) as u16;
         let withdrawn_total = self
             .context
             .get_storage()
-            .compute_withdrawn_total(&chain_tip.into(), context_window)
+            .compute_withdrawn_total(&chain_tip.into(), rolling_limits.blocks)
             .await?;
 
         let limits = SbtcLimits::new(

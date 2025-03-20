@@ -676,7 +676,7 @@ pub struct WithdrawalCapContext {
     pub cap: u64,
     /// The number of bitcoin blocks that are used in the rolling
     /// withdrawal cap.
-    pub cap_blocks: u64,
+    pub cap_blocks: u16,
     /// The currently withdrawal total over the last N bitcoin blocks in
     /// sats.
     pub withdrawn_total: u64,
