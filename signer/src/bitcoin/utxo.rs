@@ -2047,12 +2047,7 @@ mod tests {
         // Extract all withdrawal IDs that were included across all transactions
         let included_ids: Vec<u64> = transactions
             .iter()
-            .flat_map(|tx| {
-                tx.requests
-                    .iter()
-                    .filter_map(|req| req.as_withdrawal())
-                    .map(|w| w.request_id)
-            })
+            .flat_map(|tx| tx.requests.iter().filter_map(|req| req.withdrawal_id()))
             .collect();
 
         // Sort both lists to compare
