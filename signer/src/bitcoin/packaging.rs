@@ -113,8 +113,8 @@ pub trait Weighted {
     /// bag.
     fn needs_signature(&self) -> bool;
 
-    /// Returns a bitmap where each bit set to 1 indicates a signer voted
-    /// against this item.
+    /// Returns a bitmap where a bit that is set to 1 indicates a signer
+    /// voted against this item.
     ///
     /// The combined votes against (using bitwise OR) for all items in a bag
     /// must not exceed the `max_votes_against` threshold.
