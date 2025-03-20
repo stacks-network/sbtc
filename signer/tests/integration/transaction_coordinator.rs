@@ -51,6 +51,7 @@ use signer::bitcoin::BitcoinInteract as _;
 use signer::context::RequestDeciderEvent;
 use signer::message::Payload;
 use signer::network::MessageTransfer;
+use signer::storage::model::WithdrawalTxOutput;
 use testing_emily_client::apis::testing_api;
 use testing_emily_client::apis::withdrawal_api;
 use testing_emily_client::models::Status as TestingEmilyStatus;
@@ -3923,7 +3924,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     let withdrawal_amount = withdrawal_request.amount;
     assert_eq!(tx_info.tx.output[2].value.to_sat(), withdrawal_amount);
 
-    // Lastly we check that out database has the sweep transaction
+    // We check that our database has the sweep transaction
     let tx = sqlx::query_scalar::<_, BitcoinTx>(
         r#"
         SELECT tx
@@ -3935,6 +3936,22 @@ async fn sign_bitcoin_transaction_withdrawals() {
     .fetch_one(ctx.storage.pool())
     .await
     .unwrap();
+
+    // We check that that our database has the withdrawal tx output
+    let withdrawal_output = sqlx::query_as::<_, WithdrawalTxOutput>(
+        r#"
+        SELECT txid, output_index, request_id
+        FROM sbtc_signer.bitcoin_withdrawal_tx_outputs
+        WHERE txid = $1
+        "#,
+    )
+    .bind(txid.to_byte_array())
+    .fetch_one(ctx.storage.pool())
+    .await
+    .unwrap();
+
+    assert_eq!(withdrawal_output.output_index, 2);
+    assert_eq!(withdrawal_output.request_id, withdrawal_request.request_id);
 
     let script = tx.output[0].script_pubkey.clone().into();
     for (_, db, _, _) in signers {

@@ -328,7 +328,7 @@ impl TestSweepSetup {
             db.write_tx_prevout(&prevout).await.unwrap();
         }
 
-        for output in self.sweep_tx_info.to_outputs(&signer_script_pubkeys) {
+        for output in self.sweep_tx_info.to_tx_outputs(&signer_script_pubkeys) {
             db.write_tx_output(&output).await.unwrap();
         }
     }
@@ -1123,7 +1123,7 @@ impl TestSweepSetup2 {
             db.write_tx_prevout(&prevout).await.unwrap();
         }
 
-        for output in sweep.tx_info.to_outputs(&signer_script_pubkeys) {
+        for output in sweep.tx_info.to_tx_outputs(&signer_script_pubkeys) {
             db.write_tx_output(&output).await.unwrap();
         }
     }

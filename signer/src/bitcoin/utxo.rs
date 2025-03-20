@@ -7,6 +7,8 @@ use std::sync::LazyLock;
 use bitcoin::absolute::LockTime;
 use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
+use bitcoin::opcodes::all::OP_RETURN;
+use bitcoin::script::Instruction;
 use bitcoin::script::PushBytesBuf;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
@@ -31,8 +33,10 @@ use bitcoin::Witness;
 use bitvec::array::BitArray;
 use bitvec::field::BitField;
 use sbtc::idpack::BitmapSegmenter;
+use sbtc::idpack::Decodable as _;
 use sbtc::idpack::Encodable as _;
 use sbtc::idpack::Segmenter;
+use sbtc::idpack::Segments;
 use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
 use serde::Deserialize;
@@ -56,6 +60,7 @@ use crate::storage::model::TxOutput;
 use crate::storage::model::TxOutputType;
 use crate::storage::model::TxPrevout;
 use crate::storage::model::TxPrevoutType;
+use crate::storage::model::WithdrawalTxOutput;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::MAX_MEMPOOL_PACKAGE_TX_COUNT;
 
@@ -1431,13 +1436,24 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             .collect()
     }
 
+    /// Return all outputs in this transaction that are related to the signers
+    /// and any relevant withdrawal output.
+    fn to_outputs(
+        &self,
+        signer_script_pubkeys: &HashSet<ScriptBuf>,
+    ) -> Result<(Vec<TxOutput>, Vec<WithdrawalTxOutput>), Error> {
+        let tx_outputs = self.to_tx_outputs(signer_script_pubkeys);
+        let withdrawal_outputs = self.to_withdrawal_outputs(&tx_outputs)?;
+        Ok((tx_outputs, withdrawal_outputs))
+    }
+
     /// Return all outputs in this transaction that are related to the
     /// signers.
     ///
     /// This function returns all outputs if the transaction is an
     /// sBTC transaction, and only outputs that the signers can sign for
     /// otherwise.
-    fn to_outputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxOutput> {
+    fn to_tx_outputs(&self, signer_script_pubkeys: &HashSet<ScriptBuf>) -> Vec<TxOutput> {
         // This transaction might not be related to the signers at all. If
         // not then we can exit early.
         let mut outputs = self.outputs().iter();
@@ -1470,6 +1486,98 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
                 _ => self.vout_to_output(index, TxOutputType::Withdrawal),
             })
             .collect()
+    }
+
+    /// Return the withdrawal outputs, matching the tx outputs to the decoded
+    /// withdrawal IDs
+    fn to_withdrawal_outputs(
+        &self,
+        tx_outputs: &[TxOutput],
+    ) -> Result<Vec<WithdrawalTxOutput>, Error> {
+        // If the first output is not a SignersOutput, nothing to do
+        match tx_outputs.first() {
+            Some(output) if output.output_type == TxOutputType::SignersOutput => (),
+            _ => return Ok(Vec::new()),
+        }
+
+        // If the second output is not a SignersOpReturn, nothing to do
+        let op_return_output = match tx_outputs.get(1) {
+            Some(output) if output.output_type == TxOutputType::SignersOpReturn => output,
+            _ => return Ok(Vec::new()),
+        };
+
+        // If there are no withdrawals, nothing to do
+        if tx_outputs.len() == 2 {
+            return Ok(Vec::new());
+        }
+
+        // SAFETY: we checked that we have at least two outputs in the matches
+        let tx_withdrawals_outputs = &tx_outputs[2..];
+
+        // Sanity check: all the other outputs must be withdrawals
+        let is_all_withdrawals = tx_withdrawals_outputs
+            .iter()
+            .all(|out| out.output_type == TxOutputType::Withdrawal);
+        if !is_all_withdrawals {
+            return Err(Error::SbtcTxMalformed);
+        }
+
+        let op_return_instructions: Vec<_> = op_return_output
+            .script_pubkey
+            .as_script()
+            .instructions()
+            .collect();
+
+        // The op return script must be a OP_RETURN and a push bytes
+        let [Ok(Instruction::Op(OP_RETURN)), Ok(Instruction::PushBytes(push_bytes))] =
+            op_return_instructions[..]
+        else {
+            return Err(Error::SbtcTxOpReturnFormatError);
+        };
+
+        let raw_bytes = push_bytes.as_bytes();
+        if raw_bytes.len() < OP_RETURN_HEADER_SIZE {
+            return Err(Error::SbtcTxOpReturnFormatError);
+        }
+
+        // First two bytes are magic bytes, we don't care about them.
+        // The third one is the version byte.
+        // SAFETY: 2 < OP_RETURN_HEADER_SIZE (3)
+        let version = raw_bytes[2];
+
+        if version == 0 {
+            // In version 0 we didn't store withdrawal ids
+            return Ok(Vec::new());
+        } else if version != OP_RETURN_VERSION {
+            // Unknown version byte
+            return Err(Error::SbtcTxOpReturnFormatError);
+        }
+
+        // SAFETY: We've verified raw_bytes.len() >= OP_RETURN_HEADER_SIZE (3),
+        // so starting a slice at index 3 is safe due to slice behavior.
+        // If raw_bytes.len() is exactly 3, this produces an empty slice rather
+        // than panicking.
+        let encoded_withdrawal_ids = &raw_bytes[OP_RETURN_HEADER_SIZE..];
+        let withdrawal_ids: Vec<_> = Segments::decode(encoded_withdrawal_ids)
+            .map_err(Error::IdPackDecode)?
+            .values()
+            .collect();
+
+        // We checked that the first two outputs are signers output and op
+        // return, and that the rest of outputs are withdrawals.
+        if withdrawal_ids.len() != tx_outputs.len() - 2 {
+            return Err(Error::SbtcTxMalformed);
+        }
+
+        Ok(tx_withdrawals_outputs
+            .iter()
+            .zip(withdrawal_ids)
+            .map(|(out, request_id)| WithdrawalTxOutput {
+                txid: out.txid,
+                output_index: out.output_index,
+                request_id,
+            })
+            .collect())
     }
 
     /// Take an output index and the known output type and return the
@@ -3393,5 +3501,174 @@ mod tests {
         assert_eq!(withdrawals.len(), case.num_accepted_withdrawals);
         assert_eq!(total_amount, case.accepted_amount);
         assert!(withdrawals.is_sorted())
+    }
+
+    #[derive(Default)]
+    struct TestTxOut {
+        pub tx_outputs: Vec<TxOutput>,
+    }
+
+    impl TestTxOut {
+        pub fn tx_info(&self) -> BitcoinTxInfo {
+            BitcoinTxInfo {
+                in_active_chain: true,
+                fee: Amount::from_sat(1000),
+                txid: Txid::all_zeros(),
+                hash: bitcoin::Wtxid::all_zeros(),
+                size: 100,
+                vsize: 100,
+                block_hash: bitcoin::BlockHash::all_zeros(),
+                confirmations: 0,
+                block_time: 0,
+                tx: Transaction {
+                    version: Version::TWO,
+                    lock_time: LockTime::ZERO,
+                    input: Vec::new(),
+                    output: Vec::new(),
+                },
+                vin: Vec::new(),
+                vout: Vec::new(),
+            }
+        }
+        pub fn output(&mut self, output_type: TxOutputType) -> &mut Self {
+            self.tx_outputs.push(TxOutput {
+                txid: Txid::all_zeros().into(),
+                output_index: self.tx_outputs.len() as u32,
+                script_pubkey: ScriptPubKey::from_bytes(vec![]),
+                amount: 0,
+                output_type,
+            });
+            self
+        }
+        pub fn op_return(&mut self, script: ScriptBuf) -> &mut Self {
+            self.tx_outputs.push(TxOutput {
+                txid: Txid::all_zeros().into(),
+                output_index: self.tx_outputs.len() as u32,
+                script_pubkey: script.into(),
+                amount: 0,
+                output_type: TxOutputType::SignersOpReturn,
+            });
+            self
+        }
+    }
+
+    #[test_case(&TestTxOut::default(); "no outputs")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+    ; "one output")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::SignersOpReturn)
+    ; "no withdrawals")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOpReturn)
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::Withdrawal)
+    ; "swapped")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::Donation)
+        .output(TxOutputType::SignersOpReturn)
+        .output(TxOutputType::Withdrawal)
+    ; "wrong first")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::Donation)
+        .output(TxOutputType::Withdrawal)
+    ; "wrong second")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0, 0]).unwrap();
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "version 0")]
+    fn test_to_withdrawal_outputs_no_outputs(tx: &TestTxOut) {
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap();
+        assert!(withdrawal_outs.is_empty());
+    }
+
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .output(TxOutputType::SignersOpReturn)
+        .output(TxOutputType::Withdrawal)
+        .output(TxOutputType::Donation)
+    ; "not all withdrawals")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0, 1]).unwrap();
+            // no withdrawals encoded
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "mismatched outputs")]
+    fn test_to_withdrawal_outputs_malformed_tx(tx: &TestTxOut) {
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap_err();
+        assert!(matches!(withdrawal_outs, Error::SbtcTxMalformed));
+    }
+
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new())
+        .output(TxOutputType::Withdrawal)
+    ; "wrong opreturn")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0]).unwrap();
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "short pushbytes")]
+    #[test_case(&TestTxOut::default()
+        .output(TxOutputType::SignersOutput)
+        .op_return(ScriptBuf::new_op_return({
+            let mut pb = PushBytesBuf::new();
+            pb.extend_from_slice(&[0, 0, 42]).unwrap();
+            pb
+        }))
+        .output(TxOutputType::Withdrawal)
+    ; "wrong version")]
+    fn test_to_withdrawal_outputs_malformed_opreturn(tx: &TestTxOut) {
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap_err();
+        assert!(matches!(withdrawal_outs, Error::SbtcTxOpReturnFormatError));
+    }
+
+    #[test]
+    fn test_to_withdrawal_outputs_happy_path() {
+        let mut pb = PushBytesBuf::new();
+        pb.extend_from_slice(&[0, 0, 1]).unwrap();
+        pb.extend_from_slice(&BitmapSegmenter.package(&[42, 51]).unwrap().encode())
+            .unwrap();
+
+        let mut tx = TestTxOut::default();
+        tx.output(TxOutputType::SignersOutput)
+            .op_return(ScriptBuf::new_op_return(pb))
+            .output(TxOutputType::Withdrawal)
+            .output(TxOutputType::Withdrawal);
+
+        let tx_info = tx.tx_info();
+        let withdrawal_outs = tx_info.to_withdrawal_outputs(&tx.tx_outputs).unwrap();
+
+        let expected = vec![
+            WithdrawalTxOutput {
+                txid: tx_info.txid.into(),
+                output_index: 2,
+                request_id: 42,
+            },
+            WithdrawalTxOutput {
+                txid: tx_info.txid.into(),
+                output_index: 3,
+                request_id: 51,
+            },
+        ];
+        assert_eq!(withdrawal_outs, expected);
     }
 }

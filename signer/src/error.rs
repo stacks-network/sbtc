@@ -34,6 +34,10 @@ pub enum Error {
     #[error("idpack segmenter error: {0}")]
     IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
 
+    /// IdPack segments decode error
+    #[error("idpack segments decode error: {0}")]
+    IdPackDecode(#[from] sbtc::idpack::DecodeError),
+
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
     DkgVerification(#[source] dkg::verification::Error),
@@ -702,6 +706,14 @@ pub enum Error {
         /// Maximum sBTC mintable
         max_mintable: u64,
     },
+
+    /// sBTC transaction is malformed
+    #[error("sbtc transaction is malformed")]
+    SbtcTxMalformed,
+
+    /// sBTC transaction op return format error
+    #[error("sbtc transaction op return format error")]
+    SbtcTxOpReturnFormatError,
 
     /// Error when withdrawal requests would exceed sBTC's rolling withdrawal caps
     #[error("total withdrawal amounts ({amounts}) exceeds rolling caps ({cap} over
