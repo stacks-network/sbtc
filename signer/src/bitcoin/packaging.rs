@@ -859,7 +859,6 @@ mod tests {
     #[test_case(vec![], Some(42) => true; "single_withdrawal_id")]
     #[test_case((1..50).collect::<Vec<u64>>(), Some(300) => true; "many_small_ids_compatible")]
     #[test_case(vec![1, 2, 4, 5], Some(3) => true; "new_id_within_existing_range")]
-    #[test_case((0..580).collect(), Some(100_000) => false; "exceeds_op_return_size")]
     fn test_withdrawal_id_compatible(bag_ids: Vec<u64>, item_id: Option<u64>) -> bool {
         let config = PackagerConfig::new(2, 5);
 
@@ -879,6 +878,56 @@ mod tests {
         };
 
         bag.withdrawal_id_compatible(&item)
+    }
+
+    /// Test withdrawal id compatibility at the exact OP_RETURN size boundary.
+    #[test]
+    fn test_withdrawal_id_compatible_at_exact_op_return_boundary() {
+        let mut ids: Vec<u64> = Vec::new();
+        let mut next_id: u64 = 0;
+
+        // Fill the ID list until we've precisely exceeded the OP_RETURN limit
+        while BitmapSegmenter.estimate_size(&ids).unwrap() <= OP_RETURN_AVAILABLE_SIZE {
+            ids.push(next_id);
+            next_id += 1;
+        }
+
+        // At this point ids are just over the limit - remove the last one
+        // to get ≤ OP_RETURN_AVAILABLE_SIZE
+        ids.pop();
+
+        // Verify that the new size is at/under the limit
+        let safe_size = BitmapSegmenter.estimate_size(&ids).unwrap();
+        more_asserts::assert_le!(
+            safe_size,
+            OP_RETURN_AVAILABLE_SIZE,
+            "expected safe size to be under the limit"
+        );
+
+        // The last ID in the list is now the last safe ID. Remove it so we can
+        // do a proper verification below
+        let last_safe_id = ids.pop().unwrap();
+
+        // Create the bag with the IDs that are just under the limit
+        let config = PackagerConfig::new(2, 5);
+        let mut bag = Bag::<RequestItem>::new(config);
+        bag.withdrawal_ids = ids;
+
+        // This ID should be compatible
+        let last_safe_item = RequestItem::no_votes().wid(last_safe_id);
+        assert!(
+            bag.withdrawal_id_compatible(&last_safe_item),
+            "expected last safe ID to be compatible"
+        );
+        bag.withdrawal_ids.push(last_safe_id); // Re-add the ID to the bag
+
+        // This ID should push us over the limit (next_id is the first ID that would
+        // exceed the limit)
+        let too_big_item = RequestItem::no_votes().wid(next_id);
+        assert!(
+            !bag.is_compatible(&too_big_item),
+            "expected too big ID to be incompatible"
+        );
     }
 
     /// Tests the combined compatibility evaluation including votes, signatures,
