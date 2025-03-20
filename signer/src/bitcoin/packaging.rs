@@ -826,7 +826,6 @@ mod tests {
     #[test_case(5, false, 5 => true; "max_sigs_in_bag_no_sig_required")]
     #[test_case(4, true, 5 => true; "under_max_sigs_sig_required")]
     #[test_case(5, true, 5 => false; "at_max_sigs_sig_required")]
-    #[test_case(3, true, 3 => false; "exactly_at_limit")]
     fn test_signatures_compatible(bag_sigs: u16, item_needs_sig: bool, max_sigs: u16) -> bool {
         let config = PackagerConfig::new(2, max_sigs);
 
