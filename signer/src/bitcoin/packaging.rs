@@ -833,7 +833,7 @@ mod tests {
         // Create a bag with the specified number of signatures
         let mut bag = Bag::from_items(
             config,
-            vec![RequestItem::no_votes().vsize(10); 0], // Empty initially
+            vec![], // Empty initially
         );
 
         // Add items requiring signatures to match bag_sigs
