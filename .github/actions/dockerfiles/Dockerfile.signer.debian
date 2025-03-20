@@ -10,6 +10,7 @@ RUN apt-get update
 RUN apt-get install -y --no-install-recommends \
     libclang-dev \
     git \
+    curl \
     pkg-config \
     libssl-dev \
     make \

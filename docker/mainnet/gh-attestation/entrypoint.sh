@@ -2,7 +2,7 @@
 set -e  # Exit on error
 
 # Ensure required environment variables are set
-if [[ -z "$BUNDLE_PATH" || -z "$TRUSTED_ROOT_PATH" ]]; then
+if [[ -z "$BUNDLE_PATH" || -z "$TRUSTED_ROOT_PATH" || -z "$TAG" ]]; then
   echo "❌ ERROR: BUNDLE_PATH and TRUSTED_ROOT_PATH environment variables must be set."
   exit 1
 fi
@@ -13,13 +13,11 @@ REPO="stacks-network/sbtc"
 
 # Verifying attestation
 echo "✅ Verifying attestation for image: $IMAGE..."
-apt-get update
-apt-get install -y curl
 curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
 && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
 && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
 && apt update \
-&& apt install gh -y
+&& apt install gh=2.67.0 -y
 gh --version
 gh attestation verify \
   oci://$IMAGE \
