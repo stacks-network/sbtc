@@ -586,7 +586,6 @@ impl<C: Context, B> BlockObserver<C, B> {
             Some(withdrawn_total),
             Some(max_mintable),
         );
-
         let signer_state = self.context.state();
         if limits == signer_state.get_current_limits() {
             tracing::trace!(%limits, "sBTC limits have not changed");

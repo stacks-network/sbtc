@@ -54,6 +54,7 @@ metrics = { version = "0.24.1", default-features = false }
 metrics-exporter-prometheus = { version = "0.16.1", default-features = false, features = ["http-listener"] }
 openssl = { version = "0.10.68", default-features = false, features = ["vendored"] }
 p256k1 = { version = "7.2.2", default-features = false }
+proptest = { version = "1.6.0", default-features = false, features = ["std"] }
 prost = { version = "0.13.4", default-features = false, features = ["derive"] }
 rand = { version = "0.8.5", default-features = false }
 reqwest = { version = "0.11.27", default-features = false, features = ["json", "rustls-tls"] }

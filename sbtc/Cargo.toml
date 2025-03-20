@@ -31,3 +31,4 @@ stackslib = { workspace = true, optional = true }
 bitcoincore-rpc.workspace = true
 bitcoincore-rpc-json.workspace = true
 test-case.workspace = true
+proptest.workspace = true
