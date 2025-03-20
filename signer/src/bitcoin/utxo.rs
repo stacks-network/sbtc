@@ -1964,8 +1964,9 @@ mod tests {
 
         if BitmapSegmenter.estimate_size(withdrawal_ids).unwrap() > OP_RETURN_AVAILABLE_SIZE {
             // Verify multiple transactions were created
-            assert!(
-                transactions.len() > 1,
+            more_asserts::assert_gt!(
+                transactions.len(),
+                1,
                 "should create multiple transactions for large withdrawal ID set"
             );
         } else {
