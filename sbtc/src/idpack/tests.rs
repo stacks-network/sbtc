@@ -117,19 +117,19 @@ fn roundtrip_test(values: &[u64]) -> Result<(), String> {
     // Step 4: Extract values from decoded segments
     let decoded_values = decoded_segments.values().collect::<Vec<_>>();
 
-    // Step 5: Sort and deduplicate (in case there are any overlaps between segments)
-    let decoded_unique = to_sorted_unique(&decoded_values);
-
-    // Step 6: Compare original and decoded values
-    if values.len() != decoded_unique.len() {
+    // Step 5: Compare original and decoded lengths
+    if values.len() != decoded_values.len() {
         return Err(format!(
             "mismatched lengths: original={}, decoded={}",
             values.len(),
-            decoded_unique.len()
+            decoded_values.len()
         ));
     }
 
-    for (idx, (original, decoded)) in values.iter().zip(decoded_unique.iter()).enumerate() {
+    // Step 6: Compare original and decoded values (in order)
+    // Note: we don't use a simple equals just so that we can provide a more
+    // detailed error message in case of a mismatch.
+    for (idx, (original, decoded)) in values.iter().zip(decoded_values.iter()).enumerate() {
         if original != decoded {
             return Err(format!(
                 "mismatch at index {}: original={}, decoded={}",
