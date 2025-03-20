@@ -86,6 +86,7 @@ impl Segment {
     /// Gets a slice of all values in the segment, excluding the offset.
     /// Returns an empty slice if there are no values beyond the offset.
     pub fn payload_values(&self) -> &[u64] {
+        // SAFETY: `values` is never empty due to struct invariants
         &self.values[1..]
     }
 
