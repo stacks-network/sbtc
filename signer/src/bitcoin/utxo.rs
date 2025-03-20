@@ -69,7 +69,7 @@ const DEFAULT_INCREMENTAL_RELAY_FEE_RATE: f64 =
 /// of the signers' input UTXO and a UTXO for a deposit request. The output
 /// is the signers' new UTXO. The deposit request is such that the sweep
 /// transaction has the largest size of solo deposit sweep transactions.
-const SOLO_DEPOSIT_TX_VSIZE: f64 = 267.0;
+const SOLO_DEPOSIT_TX_VSIZE: f64 = 249.0;
 
 /// This constant represents the virtual size (in vBytes) of a BTC
 /// transaction servicing only one withdrawal request, except the
@@ -80,7 +80,7 @@ const BASE_WITHDRAWAL_TX_VSIZE: f64 = MAX_BASE_TX_VSIZE as f64;
 
 /// This constant represents the maximum virtual size (in vBytes) of a BTC
 /// transaction excluding withdrawals outputs and deposit inputs.
-pub const MAX_BASE_TX_VSIZE: u64 = 164;
+pub const MAX_BASE_TX_VSIZE: u64 = 137;
 
 /// It appears that bitcoin-core tracks fee rates in sats per kilo-vbyte
 /// (or BTC per kilo-vbyte). Since we work in sats per vbyte, this constant
@@ -1789,9 +1789,8 @@ mod tests {
             .expect_err("signature verification should have failed");
     }
 
-    #[ignore = "For generating the SOLO_(DEPOSIT|WITHDRAWAL)_SIZE constants"]
     #[test]
-    fn create_deposit_only_tx() {
+    fn calculate_solo_tx_sizes_for_consts() {
         // For solo deposits
         let mut requests = SbtcRequests {
             deposits: vec![create_deposit(123456, 30_000, 0)],
@@ -1820,11 +1819,17 @@ mod tests {
         let mut unsigned = transactions.pop().unwrap();
         testing::set_witness_data(&mut unsigned, keypair);
 
-        println!("Solo deposit vsize: {}", unsigned.tx.vsize());
+        assert_eq!(
+            SOLO_DEPOSIT_TX_VSIZE as usize,
+            unsigned.tx.vsize(),
+            "solo deposit vsize needs updating"
+        );
 
-        // For solo withdrawals
+        // For solo withdrawals. We set the withdrawal ID to be u64::MAX so
+        // that the withdrawal ID encoding takes up the maximum amount of
+        // space in the OP_RETURN output.
         requests.deposits = Vec::new();
-        requests.withdrawals = vec![create_withdrawal(154_321, 40_000, 0)];
+        requests.withdrawals = vec![create_withdrawal(154_321, 40_000, 0).wid(u64::MAX)];
 
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -1838,7 +1843,11 @@ mod tests {
         unsigned.tx.output.pop();
         testing::set_witness_data(&mut unsigned, keypair);
 
-        println!("Solo withdrawal vsize: {}", unsigned.tx.vsize());
+        assert_eq!(
+            MAX_BASE_TX_VSIZE as usize,
+            unsigned.tx.vsize(),
+            "Base tx vsize needs updating"
+        );
     }
 
     #[ignore = "this is for generating the MIN_BITCOIN_INPUT_VSIZE constant"]
