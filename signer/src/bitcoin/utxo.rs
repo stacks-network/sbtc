@@ -1496,21 +1496,13 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
     ) -> Result<Vec<WithdrawalTxOutput>, Error> {
         // If the first output is not a SignersOutput, nothing to do
         match tx_outputs.first() {
-            Some(TxOutput {
-                output_type: TxOutputType::SignersOutput,
-                ..
-            }) => (),
+            Some(output) if output.output_type == TxOutputType::SignersOutput => (),
             _ => return Ok(Vec::new()),
         }
 
         // If the second output is not a SignersOpReturn, nothing to do
         let op_return_output = match tx_outputs.get(1) {
-            Some(
-                op_return_output @ TxOutput {
-                    output_type: TxOutputType::SignersOpReturn,
-                    ..
-                },
-            ) => op_return_output,
+            Some(output) if output.output_type == TxOutputType::SignersOpReturn => output,
             _ => return Ok(Vec::new()),
         };
 
@@ -1565,7 +1557,7 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
         // get an empty slice (but no panic)
         let encoded_withdrawal_ids = &raw_bytes[3..];
         let withdrawal_ids: Vec<_> = Segments::decode(encoded_withdrawal_ids)
-            .map_err(Error::IdPackDecodeError)?
+            .map_err(Error::IdPackDecode)?
             .values()
             .collect();
 

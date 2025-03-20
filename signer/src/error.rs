@@ -36,7 +36,7 @@ pub enum Error {
 
     /// IdPack segments decode error
     #[error("idpack segments decode error: {0}")]
-    IdPackDecodeError(#[source] sbtc::idpack::DecodeError),
+    IdPackDecode(#[from] sbtc::idpack::DecodeError),
 
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
