@@ -28,7 +28,6 @@ use crate::storage::DbRead;
 use crate::DEPOSIT_DUST_LIMIT;
 use crate::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-use crate::WITHDRAWAL_DUST_LIMIT;
 use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use super::utxo::DepositRequest;
@@ -198,7 +197,6 @@ impl BitcoinPreSignRequest {
     fn assert_request_amount_limits(
         cache: &ValidationCache<'_>,
         limits: &SbtcLimits,
-        withdrawn_total: u64,
     ) -> Result<(), Error> {
         let max_mintable = limits.max_mintable_cap().to_sat();
 
@@ -224,6 +222,7 @@ impl BitcoinPreSignRequest {
             })?;
 
         let rolling_limits = limits.rolling_withdrawal_limits();
+        let withdrawn_total = rolling_limits.withdrawn_total;
 
         cache
             .withdrawal_reports
@@ -262,14 +261,7 @@ impl BitcoinPreSignRequest {
         // We now check that the withdrawal amounts adhere to the rolling
         // limits. We check the individual withdrawal caps later.
         let limits = ctx.state().get_current_limits();
-        let context_window = limits
-            .rolling_withdrawal_limits()
-            .blocks
-            .min(u16::MAX as u64) as u16;
-        let withdrawn_total = db
-            .compute_withdrawn_total(&btc_ctx.chain_tip, context_window)
-            .await?;
-        Self::assert_request_amount_limits(&cache, &limits, withdrawn_total)?;
+        Self::assert_request_amount_limits(&cache, &limits)?;
 
         let signer_utxo = db
             .get_signer_utxo(&btc_ctx.chain_tip)
@@ -684,7 +676,7 @@ pub struct WithdrawalCapContext {
     pub cap: u64,
     /// The number of bitcoin blocks that are used in the rolling
     /// withdrawal cap.
-    pub cap_blocks: u64,
+    pub cap_blocks: u16,
     /// The currently withdrawal total over the last N bitcoin blocks in
     /// sats.
     pub withdrawn_total: u64,
@@ -992,7 +984,7 @@ impl WithdrawalRequestReport {
             return WithdrawalValidationResult::AmountTooHigh;
         }
 
-        if self.amount < WITHDRAWAL_DUST_LIMIT {
+        if self.amount < self.recipient.minimal_non_dust().to_sat() {
             return WithdrawalValidationResult::AmountIsDust;
         }
 
@@ -1032,6 +1024,8 @@ impl WithdrawalRequestReport {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::LazyLock;
+
     use bitcoin::hashes::Hash as _;
     use bitcoin::ScriptBuf;
     use bitcoin::Sequence;
@@ -1039,6 +1033,7 @@ mod tests {
     use bitcoin::TxOut;
     use bitcoin::Txid;
     use bitcoin::Witness;
+    use secp256k1::SECP256K1;
     use test_case::test_case;
 
     use crate::context::RollingWithdrawalLimits;
@@ -1445,6 +1440,9 @@ mod tests {
         limits: SbtcLimits,
     }
 
+    pub static TEST_RECIPIENT: LazyLock<ScriptBuf> =
+        LazyLock::new(|| ScriptBuf::new_p2tr(SECP256K1, *sbtc::UNSPENDABLE_TAPROOT_KEY, None));
+
     #[test_case(WithdrawalReportErrorMapping {
         report: WithdrawalRequestReport {
             // This is the only acceptable status.
@@ -1463,8 +1461,8 @@ mod tests {
             // The max fee just needs to be greater than or equal to the
             // assessed fee.
             max_fee: TX_FEE.to_sat(),
-            // This does not matter during validation.
-            recipient: ScriptBuf::new(),
+            // This is used for computing the dust amount during validation.
+            recipient: TEST_RECIPIENT.clone(),
             // This needs to be WITHDRAWAL_MIN_CONFIRMATIONS less than the
             // chain_tip_height.
             bitcoin_block_height: 0,
@@ -1486,7 +1484,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat() + 1,
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         status: WithdrawalValidationResult::AmountTooHigh,
@@ -1502,9 +1500,9 @@ mod tests {
                 block_hash: StacksBlockHash::from([0; 32]),
             },
             is_accepted: Some(true),
-            amount: WITHDRAWAL_DUST_LIMIT - 1,
+            amount: TEST_RECIPIENT.minimal_non_dust().to_sat() - 1,
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1522,7 +1520,7 @@ mod tests {
             is_accepted: Some(true),
             amount: TX_FEE.to_sat() - 1,
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1540,7 +1538,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat() - 1,
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1558,7 +1556,7 @@ mod tests {
             is_accepted: None,
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1576,7 +1574,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_BLOCKS_EXPIRY + 1,
@@ -1597,7 +1595,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1615,7 +1613,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS - 1,
@@ -1633,7 +1631,7 @@ mod tests {
             is_accepted: Some(false),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -1651,7 +1649,7 @@ mod tests {
             is_accepted: Some(true),
             amount: Amount::ONE_BTC.to_sat(),
             max_fee: TX_FEE.to_sat(),
-            recipient: ScriptBuf::new(),
+            recipient: TEST_RECIPIENT.clone(),
             bitcoin_block_height: 0,
         },
         chain_tip_height: WITHDRAWAL_MIN_CONFIRMATIONS,
@@ -2075,6 +2073,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(total_cap - sbtc_supply),
         );
         // Create cache with test data
@@ -2092,7 +2091,7 @@ mod tests {
             .collect();
 
         // Create request and validate
-        let result = BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, 0);
+        let result = BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits);
 
         match (result, expected) {
             (Ok(()), Ok(())) => {}
@@ -2120,8 +2119,6 @@ mod tests {
         withdrawal_amounts: Vec<u64>,
         /// The rolling withdrawal limits to test.
         rolling_limits: RollingWithdrawalLimits,
-        /// The total withdrawn so far.
-        withdrawn_total: Amount,
         /// The expected outcome after running validation on the withdrawal
         /// requests.
         expected: Result<(), Error>,
@@ -2132,8 +2129,8 @@ mod tests {
         rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: 1_000,
         },
-        withdrawn_total: Amount::from_sat(1_000),
         expected: Ok(()),
     }; "should accept withdrawals under rolling cap")]
     #[test_case(WithdrawalLimitsTestCase {
@@ -2141,8 +2138,8 @@ mod tests {
         rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: 0,
         },
-        withdrawn_total: Amount::from_sat(0),
         expected: Ok(()),
     }; "should accept empty withdrawals")]
     #[test_case(WithdrawalLimitsTestCase {
@@ -2150,8 +2147,8 @@ mod tests {
         rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: 0,
         },
-        withdrawn_total: Amount::from_sat(0),
         expected: Ok(()),
     }; "should accept withdrawals equal to rolling cap")]
     #[test_case(WithdrawalLimitsTestCase {
@@ -2159,8 +2156,8 @@ mod tests {
         rolling_limits: RollingWithdrawalLimits {
             cap: 10_000,
             blocks: 150,
+            withdrawn_total: 0,
         },
-        withdrawn_total: Amount::from_sat(0),
         expected: Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts: 10_001,
             cap: 10_000,
@@ -2173,8 +2170,8 @@ mod tests {
         rolling_limits: RollingWithdrawalLimits {
             cap: Amount::MAX_MONEY.to_sat(),
             blocks: 150,
+            withdrawn_total: 1,
         },
-        withdrawn_total: Amount::from_sat(1),
         expected: Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts: Amount::MAX_MONEY.to_sat() + 1,
             cap: Amount::MAX_MONEY.to_sat(),
@@ -2184,43 +2181,31 @@ mod tests {
     }; "filter out withdrawals over rolling cap")]
     #[test_case(WithdrawalLimitsTestCase {
         withdrawal_amounts: vec![Amount::MAX_MONEY.to_sat() / 4; 3],
-        rolling_limits: RollingWithdrawalLimits::unlimited(),
-        withdrawn_total: Amount::MAX_MONEY / 4,
+        rolling_limits: RollingWithdrawalLimits::unlimited(Amount::MAX_MONEY.to_sat() / 4),
         expected: Ok(()),
     }; "unlimited filters no withdrawals")]
     #[test_case(WithdrawalLimitsTestCase {
         withdrawal_amounts: vec![1, Amount::MAX_MONEY.to_sat()],
-        rolling_limits: RollingWithdrawalLimits::unlimited(),
-        withdrawn_total: Amount::ZERO,
+        rolling_limits: RollingWithdrawalLimits::unlimited(0),
         expected: Ok(()),
     }; "unlimited allows more then max money")]
     #[test_case(WithdrawalLimitsTestCase {
         withdrawal_amounts: vec![],
-        rolling_limits: RollingWithdrawalLimits::zero(),
-        withdrawn_total: Amount::MAX_MONEY,
+        rolling_limits: RollingWithdrawalLimits::fully_constrained(u64::MAX),
         expected: Ok(()),
     }; "no withdrawals when withdrawals are locked down okay")]
     #[test_case(WithdrawalLimitsTestCase {
         withdrawal_amounts: vec![1],
-        rolling_limits: RollingWithdrawalLimits::zero(),
-        withdrawn_total: Amount::ZERO,
+        rolling_limits: RollingWithdrawalLimits::fully_constrained(0),
         expected: Err(Error::ExceedsWithdrawalCap(WithdrawalCapContext {
             amounts:  1,
-            cap: Amount::ZERO.to_sat(),
+            cap: 0,
             cap_blocks: 0,
             withdrawn_total: 0,
         })),
     }; "limits of zero filters all withdrawals")]
     fn test_validate_withdrawal_limits(case: WithdrawalLimitsTestCase) {
-        let limits = SbtcLimits::new(
-            None,
-            None,
-            None,
-            None,
-            Some(case.rolling_limits.blocks),
-            Some(case.rolling_limits.cap),
-            None,
-        );
+        let limits = SbtcLimits::from_withdrawal_limits(u64::MAX, case.rolling_limits);
         // Create cache with test data
         let mut cache = ValidationCache::default();
 
@@ -2236,10 +2221,8 @@ mod tests {
             .map(|(report, votes)| (&report.id, (report.clone(), votes.clone())))
             .collect();
 
-        // Validate the cached reports
-        let withdrawn_total = case.withdrawn_total.to_sat();
-        let result =
-            BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits, withdrawn_total);
+        // Create request and validate
+        let result = BitcoinPreSignRequest::assert_request_amount_limits(&cache, &limits);
 
         match (result, case.expected) {
             (Ok(()), Ok(())) => {}

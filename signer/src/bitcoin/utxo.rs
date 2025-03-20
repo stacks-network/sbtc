@@ -115,16 +115,26 @@ pub trait GetFees {
     fn get_fees(&self) -> Result<Option<Fees>, Error>;
 }
 
-/// Filter out the deposit requests that do not meet the amount or fee requirements.
-pub struct SbtcRequestsFilter<'a> {
+/// Filter out the deposit and withdrawal requests that do not meet the
+/// amount or fee requirements.
+pub struct RequestPreprocessor<'a> {
+    /// The current sBTC limits on deposits and withdrawals.
     sbtc_limits: &'a SbtcLimits,
-    minimum_fee: u64,
+    /// The current market fee rate in sat/vByte.
+    fee_rate: f64,
+    /// The total fee amount and the fee rate for the last transaction that
+    /// used this UTXO as an input.
+    last_fees: Option<Fees>,
 }
 
-impl<'a> SbtcRequestsFilter<'a> {
+impl<'a> RequestPreprocessor<'a> {
     /// Create a new [`DepositFilter`] instance.
-    pub fn new(sbtc_limits: &'a SbtcLimits, minimum_fee: u64) -> Self {
-        Self { sbtc_limits, minimum_fee }
+    pub fn new(sbtc_limits: &'a SbtcLimits, fee_rate: f64, last_fees: Option<Fees>) -> Self {
+        Self {
+            sbtc_limits,
+            fee_rate,
+            last_fees,
+        }
     }
 
     /// Validate deposit requests based on four constraints:
@@ -132,14 +142,17 @@ impl<'a> SbtcRequestsFilter<'a> {
     ///     (based on fixed deposit tx size)
     /// 2. The deposit amount must be greater than or equal to the per-deposit minimum
     /// 3. The deposit amount must be less than or equal to the per-deposit cap
-    /// 4. The total amount being minted must stay under the maximum allowed mintable amount
+    /// 4. The total amount being minted must stay under the peg cap
     fn validate_deposit_amount(
         &self,
         amount_to_mint: &mut Amount,
         req: &'a DepositRequest,
     ) -> Option<RequestRef<'a>> {
-        let is_fee_valid = req.max_fee.min(req.amount) >= self.minimum_fee;
-        let is_above_dust = req.amount.saturating_sub(self.minimum_fee) >= DEPOSIT_DUST_LIMIT;
+        let minimum_fee =
+            compute_transaction_fee(SOLO_DEPOSIT_TX_VSIZE, self.fee_rate, self.last_fees);
+
+        let is_fee_valid = req.max_fee.min(req.amount) >= minimum_fee;
+        let is_above_dust = req.amount.saturating_sub(minimum_fee) >= DEPOSIT_DUST_LIMIT;
         let req_amount = Amount::from_sat(req.amount);
         let is_above_per_deposit_minimum = req_amount >= self.sbtc_limits.per_deposit_minimum();
         let is_within_per_deposit_cap = req_amount <= self.sbtc_limits.per_deposit_cap();
@@ -163,12 +176,72 @@ impl<'a> SbtcRequestsFilter<'a> {
         }
     }
 
+    /// Validate withdrawal requests based on three constraints:
+    /// 1. The user's max fee must be >= our minimum required fee for
+    ///     withdrawals (based on the max transaction size for the allowed
+    ///     scriptPubKeys).
+    /// 2. The withdrawal amount must be less than or equal to the
+    ///    per-withdrawal cap.
+    /// 3. The total amount being withdrawn must stay under the rolling
+    ///    withdrawal limits.
+    fn validate_withdrawal_amounts(
+        &self,
+        withdrawal_amounts: &mut u64,
+        req: &'a WithdrawalRequest,
+    ) -> Option<RequestRef<'a>> {
+        let rolling_limits = self.sbtc_limits.rolling_withdrawal_limits();
+
+        let new_cumulative_total = withdrawal_amounts.saturating_add(req.amount);
+        let is_within_rolling_limits = new_cumulative_total <= rolling_limits.cap;
+
+        let is_within_cap = req.amount <= self.sbtc_limits.per_withdrawal_cap().to_sat();
+
+        // This shouldn't be necessary since the smart contract checks
+        // that the amount is above the max dust limit for standard
+        // outputs. But the smart contract can change and have a mistake,
+        // so we check here as well.
+        let is_above_minimum = req.script_pubkey.minimal_non_dust().to_sat() <= req.amount;
+
+        let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + req.vsize() as f64;
+        let is_fee_valid =
+            req.max_fee >= compute_transaction_fee(tx_vsize, self.fee_rate, self.last_fees);
+
+        if is_within_rolling_limits && is_fee_valid && is_within_cap && is_above_minimum {
+            *withdrawal_amounts = new_cumulative_total;
+            Some(RequestRef::Withdrawal(req))
+        } else {
+            None
+        }
+    }
+
     /// Filter sbtc deposits that don't meet the validation criteria.
     pub fn filter_deposits(&self, deposits: &'a [DepositRequest]) -> Vec<RequestRef<'a>> {
         deposits
             .iter()
             .scan(Amount::from_sat(0), |amount_to_mint, deposit| {
                 Some(self.validate_deposit_amount(amount_to_mint, deposit))
+            })
+            .flatten()
+            .collect()
+    }
+
+    /// Filter withdrawal requests that do not meet the amount validation
+    /// criteria.
+    ///
+    /// The returns vector of withdrawal requests that is sorted by request
+    /// ID.
+    pub fn preprocess_withdrawals(&self, requests: &'a [WithdrawalRequest]) -> Vec<RequestRef<'a>> {
+        let withdrawn_total = self.sbtc_limits.rolling_withdrawal_limits().withdrawn_total;
+
+        // Let's ensure that the withdrawal requests are sorted by their
+        // request ID.
+        let mut reqs: Vec<_> = requests.iter().map(RequestRef::Withdrawal).collect();
+        reqs.sort();
+
+        reqs.iter()
+            .filter_map(RequestRef::as_withdrawal)
+            .scan(withdrawn_total, |withdrawal_amounts, req| {
+                Some(self.validate_withdrawal_amounts(withdrawal_amounts, req))
             })
             .flatten()
             .collect()
@@ -230,25 +303,13 @@ impl SbtcRequests {
             return Ok(Vec::new());
         }
 
-        // Now we filter withdrawal requests where the user's max fee
-        // could be less than fee we may charge.
-        let withdrawals = self
-            .withdrawals
-            .iter()
-            .filter(|req| {
-                // This is the size for a BTC transaction servicing
-                // a single withdrawal.
-                let withdrawal_output = req.as_tx_output();
-                let tx_vsize = BASE_WITHDRAWAL_TX_VSIZE + withdrawal_output.size() as f64;
-                req.max_fee >= self.compute_minimum_fee(tx_vsize)
-            })
-            .map(RequestRef::Withdrawal);
-
-        let request_filter = SbtcRequestsFilter::new(
-            &self.sbtc_limits,
-            self.compute_minimum_fee(SOLO_DEPOSIT_TX_VSIZE),
-        );
-        let deposits = request_filter.filter_deposits(&self.deposits);
+        let request_preprocessor = RequestPreprocessor {
+            sbtc_limits: &self.sbtc_limits,
+            fee_rate: self.signer_state.fee_rate,
+            last_fees: self.signer_state.last_fees,
+        };
+        let deposits = request_preprocessor.filter_deposits(&self.deposits);
+        let withdrawals = request_preprocessor.preprocess_withdrawals(&self.withdrawals);
 
         // Create a list of requests where each request can be approved on its own.
         let items = deposits.into_iter().chain(withdrawals);
@@ -278,15 +339,6 @@ impl SbtcRequests {
 
     fn reject_capacity(&self) -> u32 {
         self.num_signers.saturating_sub(self.accept_threshold) as u32
-    }
-
-    /// Calculates the minimum fee threshold for servicing a user's
-    /// request based on the maximum transaction vsize the user is
-    /// required to pay for.
-    fn compute_minimum_fee(&self, tx_vsize: f64) -> u64 {
-        let fee_rate = self.signer_state.fee_rate;
-        let last_fees = self.signer_state.last_fees;
-        compute_transaction_fee(tx_vsize, fee_rate, last_fees)
     }
 }
 
@@ -1559,6 +1611,7 @@ impl bitcoin::consensus::Encodable for Hash160 {
 mod tests {
     use std::collections::BTreeSet;
     use std::str::FromStr;
+    use std::sync::atomic::AtomicU64;
 
     use super::*;
     use bitcoin::key::TapTweak;
@@ -1582,6 +1635,7 @@ mod tests {
     use stacks_common::types::chainstate::StacksAddress;
     use test_case::test_case;
 
+    use crate::context::RollingWithdrawalLimits;
     use crate::testing;
     use crate::testing::btc::base_signer_transaction;
     use crate::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
@@ -1593,10 +1647,17 @@ mod tests {
     const X_ONLY_PUBLIC_KEY1: &'static str =
         "2e58afe51f9ed8ad3cc7897f634d881fdbe49a81564629ded8156bebd2ffd1af";
 
+    static NEXT_REQUEST_ID: AtomicU64 = AtomicU64::new(0);
+
     fn generate_x_only_public_key() -> XOnlyPublicKey {
         let secret_key = SecretKey::new(&mut OsRng);
         secret_key.x_only_public_key(SECP256K1).0
     }
+
+    // The is the least non dust amount for withdrawal outputs locked by
+    // the generate_address() script, which generates P2WPKH outputs
+    const MINMAL_NON_DUST_AMOUNT_P2WPKH: LazyLock<u64> =
+        LazyLock::new(|| generate_address().minimal_non_dust().to_sat());
 
     fn generate_address() -> ScriptPubKey {
         let secret_key = SecretKey::new(&mut OsRng);
@@ -1639,6 +1700,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(Amount::from_sat(max_mintable_cap)),
         )
     }
@@ -1675,7 +1737,7 @@ mod tests {
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
-            request_id: (0..u32::MAX as u64).fake_with_rng(&mut OsRng),
+            request_id: NEXT_REQUEST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
     }
@@ -3258,14 +3320,14 @@ mod tests {
             DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64, 10_000, 0
         )],
         &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
-        SOLO_DEPOSIT_TX_VSIZE as u64,
+        1.0,
         1, DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64; "deposit_amounts_over_the_dust_limit_accepted")]
     #[test_case(
         &vec![create_deposit(
             DEPOSIT_DUST_LIMIT + SOLO_DEPOSIT_TX_VSIZE as u64 - 1, 10_000, 0
         )],
         &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
-        SOLO_DEPOSIT_TX_VSIZE as u64,
+        1.0,
         0, 0; "should_reject_deposits_under_dust_limit")]
     #[test_case(
         &vec![
@@ -3275,7 +3337,7 @@ mod tests {
             create_deposit(13_000, 0, 0),
         ],
         &create_limits_for_deposits_and_max_mintable(0, 20_000, 100_000),
-        1_000,
+        1.0,
         2, 22_000; "should_accept_all_deposits_above_or_equal_min_fee")]
     #[test_case(
         &vec![
@@ -3286,7 +3348,7 @@ mod tests {
             create_deposit(10_000, 10_000, 0),
         ],
         &create_limits_for_deposits_and_max_mintable(0, 10_000, 30_000),
-        1_000,
+        1.0,
         3, 30_000; "should_accept_deposits_until_max_mintable_reached")]
     #[test_case(
         &vec![
@@ -3294,12 +3356,12 @@ mod tests {
             create_deposit(10_000, 10_000, 0),
         ],
         &create_limits_for_deposits_and_max_mintable(0, 10_000, 15_000),
-        1_000,
+        1.0,
         1, 10_000; "should_accept_all_deposits_when_under_max_mintable")]
     #[test_case(
         &vec![create_deposit(10_000, 10_000, 0),],
         &create_limits_for_deposits_and_max_mintable(0, 0, 0),
-        1_000,
+        1.0,
         0, 0; "should_handle_empty_deposit_list")]
     #[test_case(
         &vec![
@@ -3308,21 +3370,21 @@ mod tests {
             create_deposit(9_000, 10_000, 0),
         ],
         &create_limits_for_deposits_and_max_mintable(0, 10_000, 10_000),
-        1_000,
+        1.0,
         1, 9_000; "should_skip_invalid_fee_and_accept_valid_deposits")]
     #[test_case(
         &vec![
             create_deposit(10_001, 10_000, 0),
         ],
         &create_limits_for_deposits_and_max_mintable(0, 10_001, 10_000),
-        1_000,
+        1.0,
         0, 0; "should_reject_single_deposit_exceeding_max_mintable")]
     #[test_case(
         &vec![
             create_deposit(10_000, 10_000, 0),
         ],
         &create_limits_for_deposits_and_max_mintable(0, 8_000, 10_000),
-        1_000,
+        1.0,
         0, 0; "should_reject_single_deposit_exceeding_per_deposit_cap")]
     #[test_case(
         &vec![
@@ -3330,7 +3392,7 @@ mod tests {
             create_deposit(15_000, 2_000, 0),
         ],
         &create_limits_for_deposits_and_max_mintable(10_000, 20_000, 30_000),
-        1_000,
+        1.0,
         1, 15_000; "should_reject_deposits_below_per_deposit_minimum")]
     #[test_case(
         &vec![
@@ -3343,17 +3405,16 @@ mod tests {
             create_deposit(5_000, 500, 0),     // rejected (below minimum_fee)
         ],
         &create_limits_for_deposits_and_max_mintable(10_000, 20_000, 40_000),
-        1_000,
+        1.0,
         2, 30_000; "should_respect_all_limits")]
-    #[tokio::test]
-    async fn test_deposit_filter_filters_deposits_over_limits(
+    fn test_deposit_filter_filters_deposits_over_limits(
         deposits: &Vec<DepositRequest>,
         sbtc_limits: &SbtcLimits,
-        minimum_fee: u64,
+        fee_rate: f64,
         num_accepted_deposits: usize,
         accepted_amount: u64,
     ) {
-        let filter = SbtcRequestsFilter::new(sbtc_limits, minimum_fee);
+        let filter = RequestPreprocessor::new(sbtc_limits, fee_rate, None);
 
         let deposits = filter.filter_deposits(deposits);
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
@@ -3365,5 +3426,143 @@ mod tests {
 
         assert_eq!(deposits.len(), num_accepted_deposits);
         assert_eq!(total_amount, accepted_amount);
+    }
+
+    struct WithdrawalLimitTestCase {
+        /// The withdrawal requests under consideration.
+        withdrawals: Vec<WithdrawalRequest>,
+        /// The maximum amount that can be withdrawn in a single withdrawal
+        /// request.
+        per_withdrawal_cap: u64,
+        /// The rolling withdrawal limits that are being applied to withdrawals.
+        rolling_limits: RollingWithdrawalLimits,
+        /// The prevailing fee-rate.
+        fee_rate: f64,
+        /// The expected number of non-filtered withdrawal requests.
+        num_accepted_withdrawals: usize,
+        /// The expected sum of the withdrawal amounts after filtering.
+        accepted_amount: u64,
+    }
+
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(20_001, 10_000, 0), // rejected (above per_withdrawal_cap)
+            create_withdrawal(20_000, 10_000, 0), // accepted
+            create_withdrawal(5_000, 500, 0),     // rejected (max-fee is too low)
+            create_withdrawal(8_000, 10_000, 0),  // accepted
+            create_withdrawal(10_000, 10_000, 0), // rejected (above rolling cap)
+            create_withdrawal(1_000, 10_000, 0),  // accepted
+        ],
+        per_withdrawal_cap: 20_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 40_000, withdrawn_total: 0 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 4,
+        accepted_amount: 39_000,
+    }; "should respect all limits")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(10_000, 10_000, 0)],
+        per_withdrawal_cap: 10_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 0 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 1,
+        accepted_amount: 10_000,
+    }; "regular withdrawal within limits v1")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(9_999, 10_000, 0)],
+        per_withdrawal_cap: 10_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 1 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 1,
+        accepted_amount: 9_999,
+    }; "regular withdrawal within limits v2")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(10_000, 10_000, 0)],
+        per_withdrawal_cap: 10_000,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 1 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "regular withdrawal just outside of limits")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(10_000, 10_000, 0)],
+        per_withdrawal_cap: 9_999,
+        rolling_limits: RollingWithdrawalLimits { blocks: 0, cap: 10_000, withdrawn_total: 0 },
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "over the per withdrawal cap gets filtered")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(20_001, 10_000, 0), // rejected
+            create_withdrawal(20_000, 10_000, 0), // rejected
+            create_withdrawal(5_000, 500, 0),     // rejected
+            create_withdrawal(8_000, 10_000, 0),  // rejected
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(1_000, 10_000, 0),  // rejected
+        ],
+        per_withdrawal_cap: Amount::MAX_MONEY.to_sat(),
+        rolling_limits: RollingWithdrawalLimits::fully_constrained(0),
+        fee_rate: 1.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "zero for rolling withdrawals filters everything")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(20_001, 10_000, 0), // rejected
+            create_withdrawal(20_000, 10_000, 0), // rejected
+            create_withdrawal(5_000, 10_000, 0),  // rejected
+            create_withdrawal(8_000, 10_000, 0),  // rejected
+            create_withdrawal(10_000, 10_000, 0), // rejected
+            create_withdrawal(1_000, 10_000, 0),  // rejected
+            create_withdrawal(*MINMAL_NON_DUST_AMOUNT_P2WPKH, 10_000, 0), // rejected
+        ],
+        per_withdrawal_cap: 0,
+        rolling_limits: RollingWithdrawalLimits::unlimited(0),
+        fee_rate: 1.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "zero per withdrawal cap rolling withdrawals filters everything")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![create_withdrawal(*MINMAL_NON_DUST_AMOUNT_P2WPKH - 1, 10_000, 0)],
+        per_withdrawal_cap: u64::MAX,
+        rolling_limits: RollingWithdrawalLimits::unlimited(0),
+        fee_rate: 1.0,
+        num_accepted_withdrawals: 0,
+        accepted_amount: 0,
+    }; "amounts below the dust limit are filtered")]
+    #[test_case(WithdrawalLimitTestCase {
+        withdrawals: vec![
+            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(20_001, 10_000, 0), // accepted
+            create_withdrawal(20_000, 10_000, 0), // accepted
+            create_withdrawal(5_000, 500, 0),     // rejected (max-fee is too low)
+            create_withdrawal(8_000, 10_000, 0),  // accepted
+            create_withdrawal(10_000, 10_000, 0), // accepted
+            create_withdrawal(1_000, 10_000, 0),  // accepted
+            create_withdrawal(*MINMAL_NON_DUST_AMOUNT_P2WPKH, 10_000, 0), // accepted
+        ],
+        per_withdrawal_cap: u64::MAX,
+        rolling_limits: RollingWithdrawalLimits::unlimited(0),
+        fee_rate: 10.0,
+        num_accepted_withdrawals: 7,
+        accepted_amount: 69_001 + *MINMAL_NON_DUST_AMOUNT_P2WPKH,
+    }; "unlimited withdrawal caps only applies max-fee filtering")]
+    fn test_withdrawal_request_filtering(case: WithdrawalLimitTestCase) {
+        let limits =
+            SbtcLimits::from_withdrawal_limits(case.per_withdrawal_cap, case.rolling_limits);
+        let preprocessor = RequestPreprocessor::new(&limits, case.fee_rate, None);
+
+        let withdrawals = preprocessor.preprocess_withdrawals(&case.withdrawals);
+        let total_amount: u64 = withdrawals
+            .iter()
+            .map(|req| req.as_withdrawal().unwrap().amount)
+            .sum();
+
+        assert_eq!(withdrawals.len(), case.num_accepted_withdrawals);
+        assert_eq!(total_amount, case.accepted_amount);
+        assert!(withdrawals.is_sorted())
     }
 }
