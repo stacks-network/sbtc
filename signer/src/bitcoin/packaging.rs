@@ -358,15 +358,14 @@ where
     /// - `new_id`: Withdrawal ID to check
     ///
     /// ## Returns
-    /// - `Ok(true)` if the ID can be added
-    /// - `Ok(false)` if adding the ID would exceed size limits
-    /// - `Err(e)` on error
+    /// - `true` if the ID can be added
+    /// - `false` if adding the ID would exceed size limits
     ///
     /// ## Implementation Notes
     /// This method simulates adding the new withdrawal ID to the bag's existing
     /// IDs while maintaining sorted order. The [`BitmapSegmenter`] is then used
     /// to estimate the size of the combined IDs, which requires sorted and
-    /// deduplicated IDs.
+    /// de-duplicated IDs.
     fn can_add_withdrawal_id(&self, new_id: u64) -> bool {
         // If no existing IDs then the range is 0, so we can add any ID
         if self.withdrawal_ids.is_empty() {
@@ -389,13 +388,17 @@ where
         }
     }
 
-    /// Check if a set of withdrawal IDs can fit within the OP_RETURN size limit.
+    /// Check if a set of withdrawal IDs can fit within the OP_RETURN size
+    /// limit.
     ///
     /// ## Parameters
     /// - `ids`: Collection of withdrawal IDs to check
     ///
     /// ## Returns
-    /// `true` if the IDs will fit within the OP_RETURN size limits.
+    /// - `true` if the IDs will fit within the OP_RETURN size limits.
+    /// - `false` if the IDs exceed the size limits, or an error occurs during
+    ///    estimation (for example if the id's have become unsorted or contain
+    ///    duplicates).
     fn can_fit_withdrawal_ids(&self, ids: &[u64]) -> bool {
         if ids.is_empty() {
             return true;
