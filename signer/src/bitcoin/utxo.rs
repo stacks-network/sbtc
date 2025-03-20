@@ -2045,16 +2045,14 @@ mod tests {
         }
 
         // Extract all withdrawal IDs that were included across all transactions
-        let included_ids: Vec<u64> = transactions
+        let actual_ids: Vec<u64> = transactions
             .iter()
             .flat_map(|tx| tx.requests.iter().filter_map(|req| req.withdrawal_id()))
             .collect();
 
         // Sort both lists to compare
         let mut expected_ids = withdrawal_ids.to_vec();
-        let mut actual_ids = included_ids;
         expected_ids.sort();
-        actual_ids.sort();
 
         // Verify all withdrawal IDs are included exactly once
         assert_eq!(
