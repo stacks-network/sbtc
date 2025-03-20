@@ -96,8 +96,8 @@ where
 /// 1. How the signers have voted on the request,
 /// 2. Whether we are dealing with a deposit or a withdrawal request,
 /// 3. The virtual size of the request when included in a sweep transaction.
-/// 4. Withdrawal request IDs - for withdrawals, IDs must fit within OP_RETURN
-///    size limits
+/// 4. Whether the withdrawal IDs can fit within an OP_RETURN output's
+///    size limits.
 ///
 /// This trait has methods that capture all of these factors.
 pub trait Weighted {
