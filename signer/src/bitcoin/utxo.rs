@@ -2065,8 +2065,7 @@ mod tests {
             let mut expected_ids = tx
                 .requests
                 .iter()
-                .filter_map(|req| req.as_withdrawal())
-                .map(|w| w.request_id)
+                .filter_map(|req| req.withdrawal_id())
                 .collect::<Vec<u64>>();
             expected_ids.sort();
             let expected_segments = BitmapSegmenter.package(&expected_ids).unwrap();
