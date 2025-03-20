@@ -89,14 +89,7 @@ fn encode_bitmap(segment: &Segment) -> Vec<u8> {
 
     // Populate the bitmap by setting bits for each value (excluding the
     // offset).
-    for &value in segment.values() {
-        // Ensure value is greater than offset before subtraction
-        // This defensive check ensures we never panic due to overflow if, for
-        // example, the offset itself is duplicated.
-        if value <= segment.offset() {
-            continue;
-        }
-
+    for &value in segment.payload_values() {
         // Convert from value to bit position:
         // 1. Subtract offset to get relative position
         // 2. Subtract 1 more because bit 0 represents (offset+1)
@@ -178,7 +171,7 @@ mod tests {
             let bitmap = encode_bitmap(&segment);
 
             // Verify bitmap contents
-            for &value in segment.values() {
+            for &value in segment.payload_values() {
                 let relative_pos = value - segment.offset() - 1;
                 let byte_index = (relative_pos / 8) as usize;
                 let bit_index = (relative_pos % 8) as usize;

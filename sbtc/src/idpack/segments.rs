@@ -131,8 +131,15 @@ mod tests {
         "minimal spacing"
     )]
     #[test_case(
-        &[segment(&[10, 15, 20]), segment(&[15, 25])] => Err(SegmentsError::OverlappingSegments {
-            offset: 15,
+        &[segment(&[10]), segment(&[10])] => Err(SegmentsError::OverlappingSegments {
+            offset: 10,
+            prev_max: 10,
+        });
+        "overlapping offset-only segments"
+    )]
+    #[test_case(
+        &[segment(&[10, 15, 20]), segment(&[20, 25])] => Err(SegmentsError::OverlappingSegments {
+            offset: 20,
             prev_max: 20,
         });
         "second offset equals first max"

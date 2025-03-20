@@ -143,7 +143,7 @@ impl Leb128 {
             // Special handling for 10th byte (maximum for u64)
             if position == (MAX_BYTES - 1) {
                 // Check for value out of bounds (bits 1-6 should be zero)
-                if (byte & LOWER_BITS_MASK) > 0x01 {
+                if value > 0x01 {
                     return Err(Error::ValueOutOfBounds);
                 }
 

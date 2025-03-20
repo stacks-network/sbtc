@@ -85,7 +85,8 @@ impl Segment {
 
     /// Gets a slice of all values in the segment, excluding the offset.
     /// Returns an empty slice if there are no values beyond the offset.
-    pub fn values(&self) -> &[u64] {
+    pub fn payload_values(&self) -> &[u64] {
+        // SAFETY: `values` is never empty due to struct invariants
         &self.values[1..]
     }
 
@@ -170,7 +171,7 @@ mod tests {
         // Verify all values are stored
         assert_eq!(segment.len(), 5);
         assert_eq!(segment.as_slice(), &[10, 11, 12, 15, 22]);
-        assert_eq!(segment.values(), &[11, 12, 15, 22]);
+        assert_eq!(segment.payload_values(), &[11, 12, 15, 22]);
 
         // Verify max and range
         assert_eq!(segment.offset(), 10);

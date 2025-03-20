@@ -273,7 +273,7 @@ mod tests {
 
         assert_eq!(segment.offset(), 10, "correct offset should be decoded");
         assert_eq!(
-            segment.values().len(),
+            segment.payload_values().len(),
             2,
             "correct number of values should be decoded"
         );
