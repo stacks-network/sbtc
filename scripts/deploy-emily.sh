@@ -35,7 +35,16 @@ fi
     npx aws-cdk bootstrap \
         --profile "${AWS_DEPLOYMENT_PROFILE}"
     echo "Done bootstrapping CDK."
-    npx aws-cdk deploy \
-        --profile "${AWS_DEPLOYMENT_PROFILE}" \
-        --require-approval any-change
+    npx aws-cdk diff \
+        --profile "${AWS_DEPLOYMENT_PROFILE}"
+    # Confirmation prompt before deployment
+    read -p "Do you want to proceed with the deployment? (y/N): " CONFIRM
+    if [[ "$CONFIRM" =~ ^[Yy]$ ]]; then
+      echo "Deploying the stack..."
+      npx aws-cdk deploy \
+        --profile "${AWS_DEPLOYMENT_PROFILE}"
+    else
+      echo "Deployment aborted."
+      exit 1
+    fi
 }

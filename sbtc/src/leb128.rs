@@ -26,12 +26,30 @@
 
 use std::io::Cursor;
 
-// LEB128 u64 can use at most 10 bytes
+/// Maximum number of bytes required to encode a u64 in LEB128 format.
+/// For u64 (64 bits), we need at most 10 bytes because each byte provides 7 bits,
+/// with 9 bytes covering 63 bits and the 10th byte providing the final bit.
 const MAX_BYTES: usize = 10;
+
+/// Number of value bits stored in each LEB128 byte.
+/// LEB128 encoding uses 7 bits per byte for actual data, with the 8th bit
+/// serving as a continuation flag.
 const BITS_PER_BYTE: u32 = 7;
-const MAX_BITS: usize = 64;
+
+/// Bit mask to extract the lower 7 bits (value data) from a LEB128 byte.
+/// Each byte uses bits 0-6 for data and bit 7 for continuation.
 const LOWER_BITS_MASK: u8 = 0x7F;
+
+/// Flag bit indicating that more bytes follow in the LEB128 sequence.
+/// When this bit is set in a byte, it means the value continues in the next byte.
+/// When clear, it indicates the final byte of the encoded sequence.
 const CONTINUATION_FLAG: u8 = 0x80;
+
+/// Represents the threshold where a value needs more than one byte in
+/// Values from 0-127 (0x7F) fit in a single byte, while values ≥128 (0x80)
+/// require multiple bytes. Used in calculation of encoded byte length without
+/// performing actual encoding.
+const MULTI_BYTE_THRESHOLD: u64 = 0x80;
 
 /// Errors that can occur during LEB128 operations.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -49,7 +67,7 @@ pub enum Error {
     EmptyInput,
 
     /// Value exceeds 64 bits (u64 maximum).
-    #[error("attempted to decode a value exceeding {MAX_BITS} bits")]
+    #[error("attempted to decode a value exceeding {} bits", u64::BITS)]
     ValueOutOfBounds,
 
     /// Attempted to access an index outside the bounds of the input.
@@ -81,6 +99,9 @@ impl Leb128 {
     pub fn encode_into(mut value: u64, bytes: &mut Vec<u8>) {
         loop {
             let mut byte = (value & LOWER_BITS_MASK as u64) as u8;
+            // NOTE: this will never actually fail as we're only shifting by 7 bits
+            // and `checked_shr` will only ever fail if the shift is >= the bit
+            // width of the value (64 bits in this case).
             value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
 
             if value != 0 {
@@ -119,7 +140,23 @@ impl Leb128 {
             let byte = bytes[position];
             let value = (byte & LOWER_BITS_MASK) as u64;
 
-            // Use checked_shl instead of manual overflow detection
+            // Special handling for 10th byte (maximum for u64)
+            if position == (MAX_BYTES - 1) {
+                // Check for value out of bounds (bits 1-6 should be zero)
+                if value > 0x01 {
+                    return Err(Error::ValueOutOfBounds);
+                }
+
+                // Check for invalid continuation bit (should not be set in 10th byte)
+                if (byte & CONTINUATION_FLAG) != 0 {
+                    return Err(Error::InvalidContinuation);
+                }
+            }
+
+            // Shift and add value to result
+            // NOTE: this will never actually fail as we're only ever shifting by
+            // BITS_PER_BYTE * (MAX_BYTES - 1) = 63 bits. We've also just checked
+            // that the value is within bounds for the final byte.
             match value.checked_shl(shift) {
                 Some(shifted) => result |= shifted,
                 None => return Err(Error::ValueOutOfBounds),
@@ -131,11 +168,6 @@ impl Leb128 {
             // No continuation bit - we're done
             if byte & CONTINUATION_FLAG == 0 {
                 return Ok((result, position));
-            }
-
-            // Check if we've reached the maximum bytes
-            if position == MAX_BYTES {
-                return Err(Error::InvalidContinuation);
             }
 
             if position == bytes.len() {
@@ -160,7 +192,7 @@ impl Leb128 {
     /// The number of bytes required to encode the value
     pub fn calculate_size(mut value: u64) -> usize {
         let mut size = 0;
-        while value >= 0x80 {
+        while value >= MULTI_BYTE_THRESHOLD {
             size += 1;
             value = value.checked_shr(BITS_PER_BYTE).unwrap_or(0);
         }
@@ -242,6 +274,7 @@ mod tests {
     #[test_case(&[255, 255, 255, 255, 255, 255, 255, 255, 255, 1] => Ok((0xFFFFFFFFFFFFFFFF, 10)) ; "large value")]
     #[test_case(&[] => Err(Error::EmptyInput) ; "empty input")]
     #[test_case(&[0x7F, 0x00] => Ok((127, 1)) ; "value with trailing bytes")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Ok((u64::MAX, 10)); "exactly u64::MAX")]
     fn test_leb128_decode(bytes: &[u8]) -> Result<(u64, usize), Error> {
         Leb128::try_decode(bytes)
     }
@@ -267,8 +300,10 @@ mod tests {
     #[test_case(&[0x80] => Err(Error::IncompleteSequence); "incomplete byte sequence")]
     #[test_case(&[0x80, 0x80] => Err(Error::IncompleteSequence); "truncated multi-byte")]
     #[test_case(&[0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0xFF] => Err(Error::InvalidContinuation) ; "too many continuation bytes")]
-    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::InvalidContinuation) ; "exceeds u64 (11 bytes)")]
-    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::InvalidContinuation) ; "exceeds u64 (12 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::ValueOutOfBounds) ; "exceeds u64 (11 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x01] => Err(Error::ValueOutOfBounds) ; "exceeds u64 (12 bytes)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x02] => Err(Error::ValueOutOfBounds); "exceeds u64 (bit 65 set)")]
+    #[test_case(&[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x81] => Err(Error::InvalidContinuation); "continuation at 10th byte")]
     fn test_leb128_decode_invalid(bytes: &[u8]) -> Result<(u64, usize), Error> {
         Leb128::try_decode(bytes)
     }
@@ -278,10 +313,10 @@ mod tests {
     fn test_cursor_position_tracking() {
         // Create buffer with multiple LEB128 values
         let buffer = [
-            // Value 1: small (1 byte)
-            0x01, // Value 2: medium (2 bytes)
-            0x80, 0x01, // Value 3: slightly larger (2 bytes)
-            0xFF, 0x01,
+            0x01, // Value 1: small (1 byte)
+            0x80, 0x01, // Value 2: medium (2 bytes)
+            0xFF, 0x01, // Value 3: slightly larger (2 bytes)
+            0x80,
         ];
 
         let mut cursor = Cursor::new(&buffer[..]);
@@ -301,6 +336,14 @@ mod tests {
         assert_eq!(val3, 255);
         assert_eq!(cursor.position(), 5);
 
+        // Attempt to read the last "garbage byte" (should error)
+        match cursor.read_leb128() {
+            Err(Error::IncompleteSequence) => {} // Expected
+            other => panic!("expected IncompleteSequence error, got {:?}", other),
+        }
+        assert_eq!(cursor.position(), 5);
+        cursor.set_position(cursor.position() + 1); // Skip past the invalid byte
+        assert_eq!(cursor.position(), 6);
         // Attempt read at end (should error)
         match cursor.read_leb128() {
             Err(Error::IndexOutOfBounds) => {} // Expected
@@ -308,7 +351,7 @@ mod tests {
         }
 
         // Position should remain unchanged after error
-        assert_eq!(cursor.position(), 5);
+        assert_eq!(cursor.position(), 6);
     }
 
     /// Tests read operations with extremely large position values
@@ -364,19 +407,15 @@ mod proptests {
     const VALUE_MAX_9_BYTES: u64 = (1 << 63) - 1; // 9,223,372,036,854,775,807
     const VALUE_MAX_10_BYTES: u64 = u64::MAX; // 18,446,744,073,709,551,615
 
-    /// Number of payload bits per LEB128 byte (excluding continuation bit)
-    const BITS_PER_BYTE: u32 = 7;
-
     /// Returns maximum value encodable in n bytes
     /// Used to identify size boundaries for encoding decisions
     const fn max_value_for_bytes(n: u32) -> u64 {
-        (1u64 << (BITS_PER_BYTE * n)) - 1
-    }
+        if n >= 10 {
+            // For 10 bytes (max u64), return u64::MAX
+            return u64::MAX;
+        }
 
-    /// Returns minimum value requiring exactly n+1 bytes
-    /// Used to identify size transition points
-    const fn min_value_for_next_bytes(n: u32) -> u64 {
-        1u64 << (BITS_PER_BYTE * n)
+        (1u64 << (BITS_PER_BYTE * n)) - 1
     }
 
     /// Helper function for property-based testing of LEB128 encoding
@@ -406,8 +445,9 @@ mod proptests {
         );
         prop_assert_eq!(Leb128::calculate_size(value), expected_len);
 
-        let (decoded, _) = Leb128::try_decode(&bytes).unwrap();
+        let (decoded, read_byte_count) = Leb128::try_decode(&bytes).unwrap();
         prop_assert_eq!(decoded, value);
+        prop_assert_eq!(read_byte_count, expected_len);
 
         Ok(())
     }
@@ -486,9 +526,26 @@ mod proptests {
             let mut bytes = Vec::new();
             Leb128::encode_into(value, &mut bytes);
 
+            // Encoding should never be empty, not even for 0.
+            prop_assert!(!bytes.is_empty(), "encoding should not be empty");
+
             // Encoding size should never exceed 10 bytes (for u64 maximum)
             prop_assert!(bytes.len() <= 10,
-                "Encoding should be at most 10 bytes for u64");
+                "encoding should be at most 10 bytes for u64");
+
+            // Explicitly verify continuation bits. All bytes except the last
+            // should have continuation bit set
+            for &byte in bytes.iter().take(bytes.len() - 1) {
+                prop_assert!(
+                    byte & CONTINUATION_FLAG != 0,
+                    "non-final byte missing continuation flag"
+                );
+            }
+            // Last byte should not have continuation bit set
+            prop_assert!(
+                bytes.last().unwrap() & CONTINUATION_FLAG == 0,
+                "final byte should not have continuation flag set"
+            );
 
             // Reconstruct value manually to verify encoding integrity
             let mut reconstructed = 0u64;
@@ -497,7 +554,7 @@ mod proptests {
             }
 
             prop_assert_eq!(reconstructed, value,
-                "Manual reconstruction from bytes failed");
+                "manual reconstruction from bytes failed");
         }
 
         /// Tests sequential reading of multiple values
@@ -526,6 +583,7 @@ mod proptests {
 
             // Verify all values were decoded correctly
             prop_assert_eq!(values, decoded);
+            prop_assert_eq!(cursor.position(), encoded.len() as u64);
         }
 
         /// Tests encoding at byte size transitions
@@ -535,10 +593,9 @@ mod proptests {
         /// - Minimum values requiring additional bytes
         /// - Consistent encoding across all boundaries
         #[test]
-        fn test_all_compression_boundaries(bytes in 1u32..MAX_BYTES as u32) {
+        fn test_all_compression_boundaries(bytes in 1u32..=MAX_BYTES as u32) {
             // Get boundary values
             let max_value = max_value_for_bytes(bytes);
-            let min_next_value = if bytes < 10 { min_value_for_next_bytes(bytes) } else { u64::MAX };
 
             // Test maximum value for this byte size
             let mut encoded = Vec::new();
@@ -546,7 +603,8 @@ mod proptests {
             prop_assert_eq!(encoded.len(), bytes as usize);
 
             // Test minimum value requiring next byte size
-            if bytes < 10 {
+            if (bytes as usize) < MAX_BYTES {
+                let min_next_value = max_value + 1;
                 let mut encoded = Vec::new();
                 Leb128::encode_into(min_next_value, &mut encoded);
                 prop_assert_eq!(encoded.len(), bytes as usize + 1);

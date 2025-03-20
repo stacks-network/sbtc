@@ -5,6 +5,7 @@ use bitcoin::script::PushBytesError;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use sbtc::idpack;
 
+use crate::bitcoin::validation::WithdrawalCapContext;
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
 use crate::dkg;
@@ -21,6 +22,10 @@ use crate::wsts_state_machine::StateMachineId;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An error occurred while attempting to perform withdrawal ID segmentation.
+    #[error("idpack segmenter error: {0}")]
+    IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
+
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
     DkgVerification(#[source] dkg::verification::Error),
@@ -160,6 +165,11 @@ pub enum Error {
     /// transaction.
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
+
+    /// An error occurred while attempting to push bytes into a bitcoin
+    /// `PushBytes` type.
+    #[error("bitcoin push-bytes error: {0}")]
+    BitcoinPushBytes(#[from] PushBytesError),
 
     /// This can only be thrown when the number of bytes for a sighash or
     /// not exactly equal to 32. This should never occur.
@@ -444,6 +454,10 @@ pub enum Error {
     #[error("stacks transaction rejected: {0}")]
     StacksTxRejection(#[from] crate::stacks::api::TxRejection),
 
+    /// The stacks fee was too high.
+    #[error("coordinator Stacks txn with fee too high: {0}. Highest acceptable fee: {1}")]
+    StacksFeeLimitExceeded(u64, u64),
+
     /// Reqwest error
     #[error("response from stacks node did not conform to the expected schema: {0}")]
     UnexpectedStacksResponse(#[source] reqwest::Error),
@@ -673,7 +687,7 @@ pub enum Error {
     PreSignInvalidFeeRate(f64),
 
     /// Error when deposit requests would exceed sBTC supply cap
-    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
+    #[error("total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
     ExceedsSbtcSupplyCap {
         /// Total deposit amount in sats
         total_amount: u64,
@@ -689,21 +703,15 @@ pub enum Error {
     #[error("sbtc transaction op return format error")]
     SbtcTxOpReturnFormatError,
 
-    /// Bitcoin script push bytes error
-    #[error("bitcoin script push bytes error: {0}")]
-    BitcoinScriptPushBytesError(#[source] PushBytesError),
-
-    /// IdPack segmenter error
-    #[error("segmenter error: {0}")]
-    IdPackSegmenterError(#[source] idpack::SegmenterError),
-
-    /// IdPack segments encode error
-    #[error("idpack segments encode error: {0}")]
-    IdPackEncodeError(#[source] idpack::EncodeError),
-
     /// IdPack segments decode error
     #[error("idpack segments decode error: {0}")]
     IdPackDecodeError(#[source] idpack::DecodeError),
+
+    /// Error when withdrawal requests would exceed sBTC's rolling withdrawal caps
+    #[error("total withdrawal amounts ({amounts}) exceeds rolling caps ({cap} over
+            {cap_blocks}) with the currently withdrawn total {withdrawn_total})", 
+            amounts = .0.amounts, cap = .0.cap, cap_blocks = .0.cap_blocks, withdrawn_total = .0.withdrawn_total)]
+    ExceedsWithdrawalCap(WithdrawalCapContext),
 
     /// An error which can be used in test code instead of `unimplemented!()` or
     /// other alternatives, so that an an actual error is returned instead of

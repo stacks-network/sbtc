@@ -647,10 +647,24 @@ where
             // TODO: if this (considering also fallback clients) fails, we will
             // need to handle the inconsistency of having the sweep tx confirmed
             // but emily deposit still marked as pending.
-            self.context
+
+            let _ = self
+                .context
                 .get_emily_client()
                 .accept_deposits(&transaction, &stacks_chain_tip)
-                .await?;
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "could not accept deposits on Emily");
+                });
+
+            let _ = self
+                .context
+                .get_emily_client()
+                .accept_withdrawals(&transaction, &stacks_chain_tip)
+                .await
+                .inspect_err(|error| {
+                    tracing::warn!(%error, "could not accept withdrawals on Emily");
+                });
         }
 
         Ok(())
@@ -737,16 +751,17 @@ where
         );
 
         for req in swept_deposits {
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
+                return Ok(());
+            }
+
             let outpoint = req.deposit_outpoint();
 
             let is_completed = stacks.is_deposit_completed(&deployer, &outpoint).await;
             match is_completed {
                 Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        %outpoint,
-                        "could not check deposit status"
-                    );
+                    tracing::warn!(%error, %outpoint, "could not check deposit status");
                     continue;
                 }
                 Ok(true) => {
@@ -781,12 +796,7 @@ where
                     "success"
                 }
                 Err(error) => {
-                    tracing::warn!(
-                        %error,
-                        txid = %outpoint.txid,
-                        vout = %outpoint.vout,
-                        "could not process the stacks sign request for a deposit"
-                    );
+                    tracing::warn!(%error, %outpoint, "could not process the stacks sign request for a deposit");
                     wallet.set_nonce(wallet.get_nonce().saturating_sub(1));
                     "failure"
                 }
@@ -841,6 +851,11 @@ where
         );
 
         for swept_request in swept_withdrawals {
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
+                return Ok(());
+            }
+
             let withdrawal_id = swept_request.qualified_id();
             let fut = self.construct_and_sign_withdrawal_accept(
                 chain_tip,
@@ -859,6 +874,11 @@ where
         }
 
         for withdrawal in rejected_withdrawals {
+            if &self.context.state().bitcoin_chain_tip() != chain_tip {
+                tracing::info!("new bitcoin chain tip, stopping coordinator activities");
+                return Ok(());
+            }
+
             let withdrawal_id = withdrawal.qualified_id();
             let fut = self.construct_and_sign_withdrawal_reject(
                 chain_tip,
@@ -1128,9 +1148,7 @@ where
         // as the number of signatures to include in the estimation transaction
         // as each signature increases the transaction size.
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -1237,9 +1255,7 @@ where
         // Complete deposit requests should be done as soon as possible, so
         // we set the fee rate to the high priority fee.
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -1286,17 +1302,11 @@ where
             .assess_output_fee(outpoint.vout as usize)
             .ok_or_else(|| Error::VoutMissing(outpoint.txid, outpoint.vout))?;
 
-        let votes = self
-            .context
-            .get_storage()
-            .get_withdrawal_request_signer_votes(&qualified_id, bitcoin_aggregate_key)
-            .await?;
-
         let contract_call = ContractCall::AcceptWithdrawalV1(AcceptWithdrawalV1 {
             id: qualified_id,
             outpoint,
             tx_fee: assessed_bitcoin_fee.to_sat(),
-            signer_bitmap: votes.into(),
+            signer_bitmap: 0,
             deployer: self.context.config().signer.deployer,
             sweep_block_hash: req.sweep_block_hash,
             sweep_block_height: req.sweep_block_height,
@@ -1304,9 +1314,7 @@ where
 
         // Estimate the fee for the stacks transaction
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::Medium)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::Medium)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -1331,23 +1339,15 @@ where
         bitcoin_aggregate_key: &PublicKey,
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
-        let votes = self
-            .context
-            .get_storage()
-            .get_withdrawal_request_signer_votes(&req.qualified_id(), bitcoin_aggregate_key)
-            .await?;
-
         let contract_call = ContractCall::RejectWithdrawalV1(RejectWithdrawalV1 {
             id: req.qualified_id(),
-            signer_bitmap: votes.into(),
+            signer_bitmap: 0,
             deployer: self.context.config().signer.deployer,
         });
 
         // Estimate the fee for the stacks transaction
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_call, FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_call, FeePriority::High)
             .await?;
 
         let multi_tx = MultisigTx::new_tx(&contract_call, wallet, tx_fee);
@@ -2280,10 +2280,9 @@ where
         wallet: &SignerWallet,
     ) -> Result<(StacksTransactionSignRequest, MultisigTx), Error> {
         let tx_fee = self
-            .context
-            .get_stacks_client()
-            .estimate_fees(wallet, &contract_deploy.tx_payload(), FeePriority::High)
+            .estimate_stacks_tx_fee(wallet, &contract_deploy.tx_payload(), FeePriority::High)
             .await?;
+
         let multi_tx = MultisigTx::new_tx(&contract_deploy, wallet, tx_fee);
         let tx = multi_tx.tx();
 
@@ -2461,6 +2460,32 @@ where
         let rate = total_fees as f64 / total_vsize as f64;
 
         Ok(Some(Fees { total: total_fees, rate }))
+    }
+
+    /// Estimate transaction fees for a Stacks contract call. This function
+    /// caps the calculated fee to the configured maximum fee for a Stacks
+    /// transaction.
+    async fn estimate_stacks_tx_fee<T>(
+        &self,
+        wallet: &SignerWallet,
+        contract_call: &T,
+        fee_priority: FeePriority,
+    ) -> Result<u64, Error>
+    where
+        T: AsTxPayload + Send + Sync,
+    {
+        // Get the configured max Stacks transaction fee in microSTX.
+        let stacks_fees_max_ustx = self.context.config().signer.stacks_fees_max_ustx.get();
+
+        // Calculate the stacks fee for the contract call and cap it to the configured maximum.
+        let tx_fee = self
+            .context
+            .get_stacks_client()
+            .estimate_fees(wallet, contract_call, fee_priority)
+            .await?
+            .min(stacks_fees_max_ustx);
+
+        Ok(tx_fee)
     }
 }
 

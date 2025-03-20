@@ -488,6 +488,15 @@ where
         chain_tip: &model::BitcoinBlockRef,
         origin_public_key: &PublicKey,
     ) -> Result<(), Error> {
+        // Ensure that the Stacks fee is within the acceptable range.
+        let highest_acceptable_fee = self.context.config().signer.stacks_fees_max_ustx.get();
+        if request.tx_fee > highest_acceptable_fee {
+            return Err(Error::StacksFeeLimitExceeded(
+                request.tx_fee,
+                highest_acceptable_fee,
+            ));
+        }
+
         let db = self.context.get_storage();
         let public_key = self.signer_public_key();
 

@@ -241,6 +241,15 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<WithdrawalRequestReport>, Error>> + Send;
 
+    /// This function returns the total amount of BTC (in sats) that has
+    /// been swept out and confirmed on the bitcoin blockchain identified
+    /// by the given chain tip and context window.
+    fn compute_withdrawn_total(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> impl Future<Output = Result<u64, Error>> + Send;
+
     /// Get bitcoin blocks that include a particular transaction
     fn get_bitcoin_blocks_with_transaction(
         &self,

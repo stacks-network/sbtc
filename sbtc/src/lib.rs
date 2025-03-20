@@ -19,8 +19,6 @@ pub mod webhooks;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
-pub use leb128::Leb128;
-
 /// The x-coordinate public key with no known discrete logarithm.
 ///
 /// # Notes
