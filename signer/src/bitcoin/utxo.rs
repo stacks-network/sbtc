@@ -1513,11 +1513,14 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             return Ok(Vec::new());
         }
 
+        // SAFETY: we checked that we have at least two outputs in the matches
+        let tx_withdrawals_outputs = &tx_outputs[2..];
+
         // Sanity check: all the other outputs must be withdrawals
-        if !tx_outputs[2..]
+        let is_all_withdrawals = tx_withdrawals_outputs
             .iter()
-            .all(|out| out.output_type == TxOutputType::Withdrawal)
-        {
+            .all(|out| out.output_type == TxOutputType::Withdrawal);
+        if !is_all_withdrawals {
             return Err(Error::SbtcTxMalformed);
         }
 
@@ -1527,7 +1530,7 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             .instructions()
             .collect();
 
-        // The op return must be a OP_RETURN and a push bytes
+        // The op return script must be a OP_RETURN and a push bytes
         let [Ok(Instruction::Op(OP_RETURN)), Ok(Instruction::PushBytes(push_bytes))] =
             op_return_instructions[..]
         else {
@@ -1541,7 +1544,9 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
 
         // First two bytes are magic bytes, we don't care about them.
         // The third one is the version byte.
+        // SAFETY: 2 < OP_RETURN_HEADER_SIZE (3)
         let version = raw_bytes[2];
+
         if version == 0 {
             // In version 0 we didn't store withdrawal ids
             return Ok(Vec::new());
@@ -1550,19 +1555,21 @@ pub trait TxDeconstructor: BitcoinInputsOutputs {
             return Err(Error::SbtcTxOpReturnFormatError);
         }
 
+        // SAFETY: 3 <= OP_RETURN_HEADER_SIZE (3), if the encoded is empty we
+        // get an empty slice (but no panic)
         let encoded_withdrawal_ids = &raw_bytes[3..];
         let withdrawal_ids: Vec<_> = Segments::decode(encoded_withdrawal_ids)
             .map_err(Error::IdPackDecodeError)?
             .values()
             .collect();
 
-        // We checked that the first two are signers output and op return, and
-        // that the rest are withdrawals
+        // We checked that the first two outputs are signers output and op
+        // return, and that the rest of outputs are withdrawals.
         if withdrawal_ids.len() != tx_outputs.len() - 2 {
             return Err(Error::SbtcTxMalformed);
         }
 
-        Ok(tx_outputs[2..]
+        Ok(tx_withdrawals_outputs
             .iter()
             .zip(withdrawal_ids)
             .map(|(out, request_id)| WithdrawalTxOutput {

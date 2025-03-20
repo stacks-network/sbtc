@@ -3,7 +3,6 @@ use std::borrow::Cow;
 
 use bitcoin::script::PushBytesError;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use sbtc::idpack;
 
 use crate::bitcoin::validation::WithdrawalCapContext;
 use crate::blocklist_client::BlocklistClientError;
@@ -25,6 +24,10 @@ pub enum Error {
     /// An error occurred while attempting to perform withdrawal ID segmentation.
     #[error("idpack segmenter error: {0}")]
     IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
+
+    /// IdPack segments decode error
+    #[error("idpack segments decode error: {0}")]
+    IdPackDecodeError(#[source] sbtc::idpack::DecodeError),
 
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
@@ -702,10 +705,6 @@ pub enum Error {
     /// sBTC transaction op return format error
     #[error("sbtc transaction op return format error")]
     SbtcTxOpReturnFormatError,
-
-    /// IdPack segments decode error
-    #[error("idpack segments decode error: {0}")]
-    IdPackDecodeError(#[source] idpack::DecodeError),
 
     /// Error when withdrawal requests would exceed sBTC's rolling withdrawal caps
     #[error("total withdrawal amounts ({amounts}) exceeds rolling caps ({cap} over
