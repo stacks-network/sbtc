@@ -1091,7 +1091,7 @@ mod tests {
 
         // Add item that exceeds vsize limit
         let original_vsize = packager.total_vsize;
-        packager.insert_item(RequestItem::no_votes().vsize(PACKAGE_MAX_VSIZE + 1));
+        packager.insert_item(RequestItem::no_votes().vsize(PACKAGE_MAX_VSIZE - original_vsize + 1));
         assert_eq!(packager.bags.len(), 2); // No change
         assert_eq!(packager.bags[0].items.len(), 3); // No change
         assert_eq!(packager.total_vsize, original_vsize); // No change to vsize
