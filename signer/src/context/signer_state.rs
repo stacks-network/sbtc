@@ -165,7 +165,7 @@ pub struct SbtcLimits {
     /// Represents the maximum amount of sBTC allowed to be pegged-out per transaction.
     per_withdrawal_cap: Option<Amount>,
     /// Represents the number of blocks that define the rolling withdrawal window.
-    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_blocks: Option<u16>,
     /// Represents the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
     rolling_withdrawal_cap: Option<u64>,
     /// Represents the sum of all withdrawals over the rolling withdrawal
@@ -181,7 +181,7 @@ pub struct SbtcLimits {
 pub struct RollingWithdrawalLimits {
     /// Represents the number of blocks that define the rolling withdrawal
     /// window.
-    pub blocks: u64,
+    pub blocks: u16,
     /// Represents the maximum total sBTC that can be withdrawn within the
     /// rolling withdrawal window.
     pub cap: u64,
@@ -228,7 +228,7 @@ impl SbtcLimits {
         per_deposit_minimum: Option<Amount>,
         per_deposit_cap: Option<Amount>,
         per_withdrawal_cap: Option<Amount>,
-        rolling_withdrawal_blocks: Option<u64>,
+        rolling_withdrawal_blocks: Option<u16>,
         rolling_withdrawal_cap: Option<u64>,
         withdrawn_total: Option<u64>,
         max_mintable_cap: Option<Amount>,
