@@ -1546,7 +1546,6 @@ mod tests {
     use std::collections::BTreeSet;
     use std::str::FromStr;
     use std::sync::atomic::AtomicU64;
-    use std::sync::atomic::Ordering;
 
     use super::*;
     use bitcoin::key::TapTweak;
@@ -1662,24 +1661,15 @@ mod tests {
         }
     }
 
-    fn next_withdrawal_id() -> u64 {
-        NEXT_REQUEST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-    }
-
     /// Create a new withdrawal request withdrawing to a random address.
-    fn create_withdrawal(
-        id: u64,
-        amount: u64,
-        max_fee: u64,
-        signer_bitmap: u128,
-    ) -> WithdrawalRequest {
+    fn create_withdrawal(amount: u64, max_fee: u64, signer_bitmap: u128) -> WithdrawalRequest {
         WithdrawalRequest {
             max_fee,
             signer_bitmap: BitArray::new(signer_bitmap.to_le_bytes()),
             amount,
             script_pubkey: generate_address(),
             txid: fake::Faker.fake_with_rng(&mut OsRng),
-            request_id: id,
+            request_id: NEXT_REQUEST_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             block_hash: fake::Faker.fake_with_rng(&mut OsRng),
         }
     }
@@ -1700,6 +1690,14 @@ mod tests {
                 confirmations: 1,
                 block_time: 0,
             }
+        }
+    }
+
+    impl WithdrawalRequest {
+        /// Sets the withdrawal id for this request.
+        pub fn wid(mut self, id: u64) -> Self {
+            self.request_id = id;
+            self
         }
     }
 
@@ -1820,7 +1818,7 @@ mod tests {
 
         // For solo withdrawals
         requests.deposits = Vec::new();
-        requests.withdrawals = vec![create_withdrawal(1, 154_321, 40_000, 0)];
+        requests.withdrawals = vec![create_withdrawal(154_321, 40_000, 0)];
 
         let mut transactions = requests.construct_transactions().unwrap();
         assert_eq!(transactions.len(), 1);
@@ -1905,10 +1903,7 @@ mod tests {
     fn the_first_input_and_output_is_signers_second_output_data() {
         let requests = SbtcRequests {
             deposits: vec![create_deposit(123456, 0, 0)],
-            withdrawals: vec![
-                create_withdrawal(1, 1000, 0, 0),
-                create_withdrawal(2, 2000, 0, 0),
-            ],
+            withdrawals: vec![create_withdrawal(1000, 0, 0), create_withdrawal(2000, 0, 0)],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(5500, 0),
@@ -1999,7 +1994,7 @@ mod tests {
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
         let withdrawals = withdrawal_ids
             .iter()
-            .map(|&id| create_withdrawal(id, 10000, 10000, 0))
+            .map(|&id| create_withdrawal(10000, 10000, 0).wid(id))
             .collect::<Vec<_>>();
 
         let requests = SbtcRequests {
@@ -2220,9 +2215,9 @@ mod tests {
         let requests = SbtcRequests {
             deposits: Vec::new(),
             withdrawals: vec![
-                create_withdrawal(1, 1000, 0, 0),
-                create_withdrawal(2, 2000, 0, 0),
-                create_withdrawal(3, 3000, 0, 0),
+                create_withdrawal(1000, 0, 0),
+                create_withdrawal(2000, 0, 0),
+                create_withdrawal(3000, 0, 0),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2267,10 +2262,10 @@ mod tests {
                 create_deposit(9012, 0, 1 << 3 | 1 << 4),
             ],
             withdrawals: vec![
-                create_withdrawal(1, 1000, 0, 1 << 5),
-                create_withdrawal(2, 2000, 0, 1 << 6),
-                create_withdrawal(3, 3000, 0, 1 << 7),
-                create_withdrawal(4, 4000, 0, 1 << 8 | 1 << 9),
+                create_withdrawal(1000, 0, 1 << 5),
+                create_withdrawal(2000, 0, 1 << 6),
+                create_withdrawal(3000, 0, 1 << 7),
+                create_withdrawal(4000, 0, 1 << 8 | 1 << 9),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2324,13 +2319,13 @@ mod tests {
                 create_deposit(7890, 0, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(1, 1000, 0, 1 << 6),
-                create_withdrawal(2, 2000, 0, 1 << 7),
-                create_withdrawal(3, 3000, 0, 1 << 8),
-                create_withdrawal(4, 4000, 0, 1 << 9 | 1 << 10),
-                create_withdrawal(5, 5000, 0, 0),
-                create_withdrawal(6, 6000, 0, 0),
-                create_withdrawal(7, 7000, 0, 0),
+                create_withdrawal(1000, 0, 1 << 6),
+                create_withdrawal(2000, 0, 1 << 7),
+                create_withdrawal(3000, 0, 1 << 8),
+                create_withdrawal(4000, 0, 1 << 9 | 1 << 10),
+                create_withdrawal(5000, 0, 0),
+                create_withdrawal(6000, 0, 0),
+                create_withdrawal(7000, 0, 0),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2424,13 +2419,13 @@ mod tests {
                 create_deposit(78900, 100_000, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(1, 10000, 100_000, 1 << 6),
-                create_withdrawal(2, 20000, 100_000, 1 << 7),
-                create_withdrawal(3, 30000, 100_000, 1 << 8),
-                create_withdrawal(4, 40000, 100_000, 1 << 9 | 1 << 10),
-                create_withdrawal(5, 50000, 100_000, 0),
-                create_withdrawal(6, 60000, 100_000, 0),
-                create_withdrawal(7, 70000, 100_000, 0),
+                create_withdrawal(10000, 100_000, 1 << 6),
+                create_withdrawal(20000, 100_000, 1 << 7),
+                create_withdrawal(30000, 100_000, 1 << 8),
+                create_withdrawal(40000, 100_000, 1 << 9 | 1 << 10),
+                create_withdrawal(50000, 100_000, 0),
+                create_withdrawal(60000, 100_000, 0),
+                create_withdrawal(70000, 100_000, 0),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2495,8 +2490,8 @@ mod tests {
                 create_deposit(78900, 100_000, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(1, 10000, 100_000, 0),
-                create_withdrawal(1000, 20000, 100_000, 0),
+                create_withdrawal(10000, 100_000, 0).wid(1),
+                create_withdrawal(20000, 100_000, 0).wid(1000),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2577,7 +2572,7 @@ mod tests {
                 .collect(),
             withdrawals: (0..600)
                 .step_by(10)
-                .map(|i| create_withdrawal(i, 10000, 100_000, 0))
+                .map(|id| create_withdrawal(10_000, 100_000, 0).wid(id))
                 .collect(),
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2600,7 +2595,7 @@ mod tests {
         if multiple_txs {
             requests
                 .withdrawals
-                .push(create_withdrawal(650, 70000, 100_000, 0));
+                .push(create_withdrawal(70000, 100_000, 0).wid(650));
         }
         let transactions = requests.construct_transactions().unwrap();
         let expected_tx_count = if multiple_txs { 2 } else { 1 };
@@ -2620,9 +2615,9 @@ mod tests {
         let requests = SbtcRequests {
             deposits: Vec::new(),
             withdrawals: vec![
-                create_withdrawal(1, 1000, 0, 0),
-                create_withdrawal(2, 2000, 0, 0),
-                create_withdrawal(3, 3000, 0, 0),
+                create_withdrawal(1000, 0, 0),
+                create_withdrawal(2000, 0, 0),
+                create_withdrawal(3000, 0, 0),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2670,28 +2665,13 @@ mod tests {
             .take(good_deposit_count)
             .map(|amount| create_deposit(amount, 100_000, 0));
 
-        let last_withdrawal_id = AtomicU64::new(0);
         let withdrawal_low_fee = ((BASE_WITHDRAWAL_TX_VSIZE - 1.0) * fee_rate) as u64;
         let low_fee_withdrawals = std::iter::repeat_with(|| uniform.sample(&mut OsRng))
             .take(low_fee_withdrawal_count)
-            .map(|amount| {
-                create_withdrawal(
-                    last_withdrawal_id.fetch_add(1, Ordering::Relaxed),
-                    amount,
-                    withdrawal_low_fee,
-                    0,
-                )
-            });
+            .map(|amount| create_withdrawal(amount, withdrawal_low_fee, 0));
         let good_fee_withdrawals = std::iter::repeat_with(|| uniform.sample(&mut OsRng))
             .take(good_withdrawal_count)
-            .map(|amount| {
-                create_withdrawal(
-                    last_withdrawal_id.fetch_add(1, Ordering::Relaxed),
-                    amount,
-                    100_000,
-                    0,
-                )
-            });
+            .map(|amount| create_withdrawal(amount, 100_000, 0));
 
         // Okay now generate the (unsigned) transaction that we will submit.
         let requests = SbtcRequests {
@@ -3041,7 +3021,7 @@ mod tests {
             .map(|shift| create_deposit(10_000, 10_000, 1 << shift))
             .collect();
         let withdrawals: Vec<WithdrawalRequest> = (0..30)
-            .map(|shift| create_withdrawal(1, 10_000, 10_000, 1 << shift + 30))
+            .map(|shift| create_withdrawal(10_000, 10_000, 1 << shift + 30))
             .collect();
 
         let requests = SbtcRequests {
@@ -3097,7 +3077,7 @@ mod tests {
         // ensuring lots of votes against the set of request.
         const MAX_WITHDRAWALS: usize = 4000;
         let withdrawals: Vec<WithdrawalRequest> = (0..MAX_WITHDRAWALS)
-            .map(|id| create_withdrawal(id as u64, 1000, 10_000, 1 << (id % 14)))
+            .map(|id| create_withdrawal(1_000, 10_000, 1 << (id % 14)).wid(id as u64))
             .collect();
 
         let requests = SbtcRequests {
