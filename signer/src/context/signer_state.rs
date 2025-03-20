@@ -167,9 +167,33 @@ pub struct SbtcLimits {
     /// Represents the number of blocks that define the rolling withdrawal window.
     rolling_withdrawal_blocks: Option<u64>,
     /// Represents the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
-    rolling_withdrawal_cap: Option<Amount>,
+    rolling_withdrawal_cap: Option<u64>,
     /// Represents the maximum amount of sBTC that can currently be minted.
     max_mintable_cap: Option<Amount>,
+}
+
+/// A structing containing the two parameters that define the rolling
+/// withdrawal limits.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct RollingWithdrawalLimits {
+    /// Represents the number of blocks that define the rolling withdrawal
+    /// window.
+    pub blocks: u64,
+    /// Represents the maximum total sBTC that can be withdrawn within the
+    /// rolling withdrawal window.
+    pub cap: u64,
+}
+
+impl RollingWithdrawalLimits {
+    /// Create a new one where the caps imply no withdrawals are allowed.
+    pub fn zero() -> Self {
+        RollingWithdrawalLimits { blocks: 0, cap: 0 }
+    }
+
+    /// Create a new one where the caps imply all withdrawals are allowed.
+    pub fn unlimited() -> Self {
+        RollingWithdrawalLimits { blocks: 0, cap: u64::MAX }
+    }
 }
 
 impl std::fmt::Display for SbtcLimits {
@@ -190,7 +214,7 @@ impl SbtcLimits {
         per_deposit_cap: Option<Amount>,
         per_withdrawal_cap: Option<Amount>,
         rolling_withdrawal_blocks: Option<u64>,
-        rolling_withdrawal_cap: Option<Amount>,
+        rolling_withdrawal_cap: Option<u64>,
         max_mintable_cap: Option<Amount>,
     ) -> Self {
         Self {
@@ -212,7 +236,7 @@ impl SbtcLimits {
             Some(Amount::ZERO),
             Some(Amount::ZERO),
             Some(u64::MAX),
-            Some(Amount::ZERO),
+            Some(0),
             Some(Amount::ZERO),
         )
     }
@@ -247,14 +271,21 @@ impl SbtcLimits {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
 
-    /// Get the number of blocks that define the rolling withdrawal window.
-    pub fn rolling_withdrawal_blocks(&self) -> Option<u64> {
-        self.rolling_withdrawal_blocks
-    }
-
-    /// Get the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
-    pub fn rolling_withdrawal_cap(&self) -> Option<Amount> {
-        self.rolling_withdrawal_cap
+    /// Get the rolling withdrawal limits.
+    pub fn rolling_withdrawal_limits(&self) -> RollingWithdrawalLimits {
+        match (self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap) {
+            // Use explicitly set limits
+            (Some(blocks), Some(cap)) => RollingWithdrawalLimits { blocks, cap },
+            // If we did not get any limits back from the API, then we
+            // assume that they are intentionally set to disable limits.
+            (None, None) => RollingWithdrawalLimits::unlimited(),
+            // If one of these limits is missing and not the other, then
+            // things are in a bad state. Assume that they set to zero.
+            _ => {
+                tracing::warn!("rolling withdrawal limits are partially set; setting them to zero");
+                RollingWithdrawalLimits::zero()
+            }
+        }
     }
 }
 
@@ -268,7 +299,7 @@ impl SbtcLimits {
             per_deposit_cap: Some(Amount::MAX_MONEY),
             per_withdrawal_cap: Some(Amount::MAX_MONEY),
             rolling_withdrawal_blocks: Some(0),
-            rolling_withdrawal_cap: Some(Amount::MAX_MONEY),
+            rolling_withdrawal_cap: Some(u64::MAX),
             max_mintable_cap: Some(Amount::MAX_MONEY),
         }
     }

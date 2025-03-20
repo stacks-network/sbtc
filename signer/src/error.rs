@@ -3,6 +3,7 @@ use std::borrow::Cow;
 
 use blockstack_lib::types::chainstate::StacksBlockId;
 
+use crate::bitcoin::validation::WithdrawalCapContext;
 use crate::blocklist_client::BlocklistClientError;
 use crate::codec;
 use crate::dkg;
@@ -675,13 +676,19 @@ pub enum Error {
     PreSignInvalidFeeRate(f64),
 
     /// Error when deposit requests would exceed sBTC supply cap
-    #[error("Total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
+    #[error("total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
     ExceedsSbtcSupplyCap {
         /// Total deposit amount in sats
         total_amount: u64,
         /// Maximum sBTC mintable
         max_mintable: u64,
     },
+
+    /// Error when withdrawal requests would exceed sBTC's rolling withdrawal caps
+    #[error("total withdrawal amounts ({amounts}) exceeds rolling caps ({cap} over
+            {cap_blocks}) with the currently withdrawn total {withdrawn_total})", 
+            amounts = .0.amounts, cap = .0.cap, cap_blocks = .0.cap_blocks, withdrawn_total = .0.withdrawn_total)]
+    ExceedsWithdrawalCap(WithdrawalCapContext),
 
     /// An error which can be used in test code instead of `unimplemented!()` or
     /// other alternatives, so that an an actual error is returned instead of
