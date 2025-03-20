@@ -1266,6 +1266,10 @@ criteria = "safe-to-deploy"
 version = "0.4.2"
 criteria = "safe-to-deploy"
 
+[[exemptions.proptest]]
+version = "1.6.0"
+criteria = "safe-to-run"
+
 [[exemptions.prost]]
 version = "0.13.4"
 criteria = "safe-to-deploy"
@@ -1325,6 +1329,10 @@ criteria = "safe-to-deploy"
 [[exemptions.rand_core]]
 version = "0.5.1"
 criteria = "safe-to-deploy"
+
+[[exemptions.rand_xorshift]]
+version = "0.3.0"
+criteria = "safe-to-run"
 
 [[exemptions.rand_xoshiro]]
 version = "0.6.0"
@@ -1775,15 +1783,7 @@ version = "0.2.17"
 criteria = "safe-to-run"
 
 [[exemptions.thiserror]]
-version = "1.0.69"
-criteria = "safe-to-deploy"
-
-[[exemptions.thiserror]]
 version = "2.0.11"
-criteria = "safe-to-deploy"
-
-[[exemptions.thiserror-impl]]
-version = "1.0.69"
 criteria = "safe-to-deploy"
 
 [[exemptions.thiserror-impl]]
@@ -1941,6 +1941,10 @@ criteria = "safe-to-deploy"
 [[exemptions.uint]]
 version = "0.10.0"
 criteria = "safe-to-deploy"
+
+[[exemptions.unarray]]
+version = "0.1.4"
+criteria = "safe-to-run"
 
 [[exemptions.unicase]]
 version = "2.7.0"
