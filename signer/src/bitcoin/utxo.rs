@@ -2002,7 +2002,6 @@ mod tests {
 
         // Verify each transaction has an OP_RETURN output with correct format
         for tx in &transactions {
-            eprintln!("Transaction: {:?}", tx.tx.compute_txid());
             let mut expected_ids = tx
                 .requests
                 .iter()
