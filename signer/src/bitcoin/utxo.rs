@@ -5,8 +5,9 @@ use std::ops::Deref as _;
 use std::sync::LazyLock;
 
 use bitcoin::absolute::LockTime;
-use bitcoin::consensus::Encodable;
+use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
+use bitcoin::script::PushBytesBuf;
 use bitcoin::sighash::Prevouts;
 use bitcoin::sighash::SighashCache;
 use bitcoin::taproot::LeafVersion;
@@ -29,6 +30,9 @@ use bitcoin::Weight;
 use bitcoin::Witness;
 use bitvec::array::BitArray;
 use bitvec::field::BitField;
+use sbtc::idpack::BitmapSegmenter;
+use sbtc::idpack::Encodable as _;
+use sbtc::idpack::Segmenter;
 use secp256k1::XOnlyPublicKey;
 use secp256k1::SECP256K1;
 use serde::Deserialize;
@@ -86,7 +90,16 @@ const SATS_PER_VBYTE_INCREMENT: f64 = 0.001;
 
 /// The OP_RETURN version byte for deposit or withdrawal sweep
 /// transactions.
-const OP_RETURN_VERSION: u8 = 0;
+const OP_RETURN_VERSION: u8 = 1;
+
+/// The OP_RETURN header size (magic bytes + version)
+const OP_RETURN_HEADER_SIZE: usize = 3;
+
+/// The maximum total size of an OP_RETURN output
+const OP_RETURN_MAX_SIZE: usize = 80;
+
+/// The available size for encoded withdrawal IDs in OP_RETURN
+pub(super) const OP_RETURN_AVAILABLE_SIZE: usize = OP_RETURN_MAX_SIZE - OP_RETURN_HEADER_SIZE;
 
 /// A dummy Schnorr signature.
 static DUMMY_SIGNATURE: LazyLock<Signature> = LazyLock::new(|| Signature {
@@ -555,33 +568,6 @@ impl WithdrawalRequest {
         }
     }
 
-    /// Return a byte array with enough data to uniquely identify this
-    /// withdrawal request on the Stacks blockchain.
-    ///
-    /// The data returned from this function is a concatenation of the
-    /// stacks block ID, the stacks transaction ID, and the request-id
-    /// associated with this withdrawal request. Thus, the layout of the
-    /// data is as follows:
-    ///
-    /// ```text
-    /// 0                 32                             64           72
-    /// |-----------------|------------------------------|------------|
-    ///   Stacks block ID   Txid of Stacks withdrawal tx   request-id
-    /// ```
-    ///
-    /// where the request-id is encoded as an 8 byte big endian unsigned
-    /// integer. We need all three because a transaction can be included in
-    /// more than one stacks block (because of reorgs), and a transaction
-    /// can generate more than one withdrawal request.
-    fn sbtc_data(&self) -> [u8; 72] {
-        let mut data = [0u8; 72];
-        data[..32].copy_from_slice(&self.block_hash.into_bytes());
-        data[32..64].copy_from_slice(&self.txid.into_bytes());
-        data[64..72].copy_from_slice(&self.request_id.to_be_bytes());
-
-        data
-    }
-
     /// Try convert from a model::DepositRequest with some additional info.
     pub fn from_model(request: model::WithdrawalRequest, votes: SignerVotes) -> Self {
         Self {
@@ -614,6 +600,9 @@ impl Weighted for WithdrawalRequest {
     }
     fn vsize(&self) -> u64 {
         self.as_tx_output().weight().to_vbytes_ceil()
+    }
+    fn withdrawal_id(&self) -> Option<u64> {
+        Some(self.request_id)
     }
 }
 
@@ -670,6 +659,9 @@ impl Weighted for RequestRef<'_> {
             Self::Deposit(req) => req.vsize(),
             Self::Withdrawal(req) => req.vsize(),
         }
+    }
+    fn withdrawal_id(&self) -> Option<u64> {
+        self.as_withdrawal().map(|req| req.request_id)
     }
 }
 
@@ -1116,7 +1108,7 @@ impl<'a> UnsignedTransaction<'a> {
             lock_time: LockTime::ZERO,
             input: std::iter::once(signer_input).chain(reqs.tx_ins()).collect(),
             output: std::iter::once(signer_output)
-                .chain(Self::new_op_return_output(reqs, state))
+                .chain(Some(Self::new_op_return_output(reqs, state)?))
                 .chain(reqs.tx_outs())
                 .collect(),
         })
@@ -1134,115 +1126,63 @@ impl<'a> UnsignedTransaction<'a> {
         }
     }
 
-    /// An OP_RETURN output with the bitmap for how the signers voted for
-    /// the package.
+    /// An OP_RETURN output with (conditionally) encoded withdrawal request IDs.
     ///
-    /// None is only returned if there are no requests in the input slice.
+    /// The `OP_RETURN` output has a generally-accepted 80 bytes available for
+    /// data (it is not constrained by the Bitcoin protocol itself but rather by
+    /// the miners' policy). We use this space to encode the withdrawal request
+    /// IDs.
     ///
-    /// The data layout for the OP_RETURN depends on whether there are
-    /// withdrawal requests in the input slice. If there are withdrawal
-    /// requests then the output data is:
-    ///
-    /// ```text
-    ///  0       2    3     5        21            41
-    ///  |-------|----|-----|--------|-------------|
-    ///    magic   op   N_d   bitmap   merkle root
-    /// ```
-    ///
-    /// A more full description of the merkle root can be found in the
-    /// comments for [`UnsignedTransaction::withdrawal_merkle_root`]. If
-    /// there are no withdrawal requests in the input slice then the layout
-    /// looks like:
+    /// ## Wire Format
+    /// The layout of the OP_RETURN output is as follows:
     ///
     /// ```text
-    ///  0       2    3     5        21
-    ///  |-------|----|-----|--------|
-    ///    magic   op   N_d   bitmap
+    ///  0       2    3                                           X<80
+    ///  |-------|----|--------------------------------------------|
+    ///    magic   op   [encoded withdrawal IDs (variable-length)]
     /// ```
     ///
-    /// In the above layout, magic is the UTF-8 encoded string "ST", op is
-    /// the version byte, and N_d is the of deposits in this transaction
-    /// encoded as a big-endian two byte unsigned integer.
+    /// In the above layout:
+    /// - magic: UTF-8 encoded string indicator (2 bytes)
+    /// - op: version byte (1 byte)
+    /// - encoded IDs: withdrawal request IDs encoded using idpack (variable
+    ///   length, if there are withdrawals serviced by the transaction)
     ///
-    /// `None` is only returned if there are no requests in the input slice.
-    fn new_op_return_output(reqs: &Requests, state: &SignerBtcState) -> Option<TxOut> {
-        let sbtc_data = Self::sbtc_data(reqs, state)?;
-        let script_pubkey = match Self::withdrawal_merkle_root(reqs) {
-            Some(merkle_root) => {
-                let mut data: [u8; 41] = [0; 41];
-                data[..21].copy_from_slice(&sbtc_data);
-                data[21..].copy_from_slice(&merkle_root);
+    /// ## Returns
+    /// - `Some(TxOut)`: the resulting OP_RETURN output
+    fn new_op_return_output(reqs: &Requests, state: &SignerBtcState) -> Result<TxOut, Error> {
+        // Create OP_RETURN data
+        let mut data = PushBytesBuf::with_capacity(OP_RETURN_MAX_SIZE);
+        data.extend_from_slice(&state.magic_bytes)?;
+        data.push(OP_RETURN_VERSION)?;
 
-                ScriptBuf::new_op_return(data)
-            }
-            None => ScriptBuf::new_op_return(sbtc_data),
+        // Extract all withdrawal request IDs
+        let withdrawal_ids: Vec<u64> = reqs.iter().filter_map(|req| req.withdrawal_id()).collect();
+
+        // If there are any withdrawal ID's, encode them and add them to the
+        // OP_RETURN data.
+        if !withdrawal_ids.is_empty() {
+            let encoded = BitmapSegmenter.package(&withdrawal_ids)?.encode();
+            data.extend_from_slice(&encoded)?;
+        }
+
+        // Return an error if the data we intend on putting in the OP_RETURN
+        // output exceeds the maximum size.
+        if data.len() > OP_RETURN_MAX_SIZE {
+            return Err(Error::OpReturnSizeLimitExceeded {
+                size: data.len(),
+                max_size: OP_RETURN_MAX_SIZE,
+            });
+        }
+
+        // Create OP_RETURN script and output
+        let script_pubkey = ScriptBuf::new_op_return(data);
+        let txout = TxOut {
+            value: Amount::ZERO,
+            script_pubkey,
         };
 
-        let value = Amount::ZERO;
-        Some(TxOut { value, script_pubkey })
-    }
-
-    /// Return the first part of the sbtc related data included in the
-    /// OP_RETURN output.
-    ///
-    /// BTC sweep transactions include an OP_RETURN output with data on how
-    /// the signers voted for the transaction. This function returns that
-    /// data, which is laid out as follows:
-    ///
-    /// ```text
-    ///  0       2    3     5                21
-    ///  |-------|----|-----|----------------|
-    ///    magic   op   N_d   signer  bitmap
-    /// ```
-    ///
-    /// In the above layout, magic is the UTF-8 encoded string "ST", op is
-    /// the version byte, and N_d is the of deposits in this transaction
-    /// encoded as a big-endian two byte unsigned integer.
-    ///
-    /// `None` is only returned if there are no requests in the input
-    /// slice.
-    fn sbtc_data(reqs: &Requests, state: &SignerBtcState) -> Option<[u8; 21]> {
-        let bitmap: BitArray<[u8; 16]> = reqs
-            .iter()
-            .map(RequestRef::signer_bitmap)
-            .reduce(|bm1, bm2| bm1 | bm2)?;
-        let num_deposits = reqs.iter().filter_map(RequestRef::as_deposit).count() as u16;
-
-        let mut data: [u8; 21] = [0; 21];
-        // The magic_bytes is exactly 2 bytes
-        data[0..2].copy_from_slice(&state.magic_bytes);
-        // Yeah, this is one byte.
-        data[2..3].copy_from_slice(&[OP_RETURN_VERSION]);
-        // The num_deposits variable is an u16, so 2 bytes.
-        data[3..5].copy_from_slice(&num_deposits.to_be_bytes());
-        // The bitmap is 16 bytes so this fits exactly.
-        data[5..].copy_from_slice(&bitmap.into_inner());
-
-        Some(data)
-    }
-
-    /// The OP_RETURN output includes a merkle tree of the Stacks
-    /// transactions that lead to the inclusion of the UTXOs in this
-    /// transaction.
-    ///
-    /// Create the OP_RETURN UTXO for the associated withdrawal request.
-    ///
-    /// The data returned from this function is a merkle tree constructed
-    /// from the HASH160 of each withdrawal request's sBTC data returned by
-    /// the [`WithdrawalRequest::sbtc_data`].
-    ///
-    /// For more on the rationale for this output, see this ticket:
-    /// <https://github.com/stacks-network/sbtc/issues/483>.
-    ///
-    /// `None` is returned if there are no withdrawal requests in the input
-    /// slice.
-    fn withdrawal_merkle_root(reqs: &Requests) -> Option<[u8; 20]> {
-        let hashes = reqs
-            .iter()
-            .filter_map(RequestRef::as_withdrawal)
-            .map(|req| Hash160::hash(&req.sbtc_data()));
-
-        bitcoin::merkle_tree::calculate_root(hashes).map(|hash| hash.to_byte_array())
+        Ok(txout)
     }
 
     /// Compute the final amount for the signers' UTXO given the current
@@ -1615,23 +1555,21 @@ mod tests {
 
     use super::*;
     use bitcoin::key::TapTweak;
+    use bitcoin::opcodes::all::OP_RETURN;
+    use bitcoin::script::Instruction;
     use bitcoin::BlockHash;
     use bitcoin::CompressedPublicKey;
     use bitcoin::Txid;
     use clarity::vm::types::PrincipalData;
     use fake::Fake as _;
     use model::SignerVote;
+    use more_asserts::assert_ge;
     use rand::distributions::Distribution;
     use rand::distributions::Uniform;
     use rand::rngs::OsRng;
-    use rand::Rng;
-    use rand::SeedableRng as _;
-    use ripemd::Ripemd160;
     use sbtc::deposits::DepositScriptInputs;
     use secp256k1::Keypair;
     use secp256k1::SecretKey;
-    use sha2::Digest as _;
-    use sha2::Sha256;
     use stacks_common::types::chainstate::StacksAddress;
     use test_case::test_case;
 
@@ -1742,66 +1680,6 @@ mod tests {
         }
     }
 
-    fn random_withdrawal<R: Rng>(rng: &mut R, votes_against: usize) -> WithdrawalRequest {
-        let mut signer_bitmap: BitArray<[u8; 16]> = BitArray::ZERO;
-        signer_bitmap[..votes_against].fill(true);
-
-        WithdrawalRequest {
-            max_fee: rng.next_u32() as u64,
-            signer_bitmap,
-            amount: rng.next_u32() as u64,
-            script_pubkey: generate_address(),
-            txid: fake::Faker.fake_with_rng(rng),
-            request_id: (0..u32::MAX as u64).fake_with_rng(rng),
-            block_hash: fake::Faker.fake_with_rng(rng),
-        }
-    }
-
-    /// This is a naive implementation of a function that computes a merkle root
-    fn calculate_merkle_root(reqs: &mut [WithdrawalRequest]) -> Option<[u8; 20]> {
-        // The withdrawals' are sorted before inclusion as a bitcoin
-        // transaction output.
-        reqs.sort();
-        let mut leafs = reqs
-            .iter()
-            .map(|req| {
-                // We use the Hash160 for the hash function, which is
-                // SHA256 followed by RIPEMD160.
-                let sha256_data = Sha256::digest(req.sbtc_data());
-                let rip160_data = Ripemd160::digest(sha256_data);
-                rip160_data.as_slice().try_into().unwrap()
-            })
-            .collect::<Vec<[u8; 20]>>();
-
-        while leafs.len() > 1 {
-            leafs = leafs
-                .chunks(2)
-                .map(|nodes| {
-                    let [leaf1, leaf2] = match nodes {
-                        [leaf1, leaf2] => [leaf1, leaf2],
-                        // If a leaf node does not have a partner, it gets paired with itself.
-                        [leaf] => [leaf, leaf],
-                        // Yeah chunks(2) return slices of size 1 or 2 here.
-                        _ => unreachable!(),
-                    };
-                    // Compute the hash160 of the two leafs
-                    let sha256_data = Sha256::default()
-                        .chain_update(leaf1)
-                        .chain_update(leaf2)
-                        .finalize();
-
-                    Ripemd160::digest(sha256_data)
-                        .as_slice()
-                        .try_into()
-                        .unwrap()
-                })
-                .collect();
-        }
-
-        // There are either 1 or 0 elements in the leafs vector, so lets get it
-        leafs.pop()
-    }
-
     impl BitcoinTxInfo {
         fn from_tx(tx: Transaction, fee: Amount) -> BitcoinTxInfo {
             BitcoinTxInfo {
@@ -1818,6 +1696,14 @@ mod tests {
                 confirmations: 1,
                 block_time: 0,
             }
+        }
+    }
+
+    impl WithdrawalRequest {
+        /// Sets the withdrawal id for this request.
+        pub fn wid(mut self, id: u64) -> Self {
+            self.request_id = id;
+            self
         }
     }
 
@@ -2104,194 +1990,119 @@ mod tests {
         assert!(sweep.is_err());
     }
 
-    /// We aggregate the bitmaps to form a single one at the end. Check
-    /// that it is aggregated correctly.
-    #[test]
-    fn the_bitmaps_merge_correctly() {
-        const OP_RETURN: u8 = bitcoin::opcodes::all::OP_RETURN.to_u8();
-        const OP_PUSHBYTES_41: u8 = bitcoin::opcodes::all::OP_PUSHBYTES_41.to_u8();
+    #[test_case(&[]; "no_withdrawal_ids")]
+    #[test_case(&[42]; "single_withdrawal_id")]
+    #[test_case(&[1, 2, 3, 4, 5]; "multiple_sequential_withdrawal_ids")]
+    #[test_case(&[1000, 2000, 3000]; "sparse_withdrawal_ids")]
+    #[test_case(&(1..100).map(|i| i * 23).collect::<Vec<u64>>(); "ids_causing_multiple_transactions")]
+    fn test_withdrawal_id_packaging(withdrawal_ids: &[u64]) {
+        // Setup test environment
+        let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
+        let withdrawals = withdrawal_ids
+            .iter()
+            .map(|&id| create_withdrawal(10000, 10000, 0).wid(id))
+            .collect::<Vec<_>>();
 
-        let mut requests = SbtcRequests {
-            deposits: vec![create_deposit(123456, 0, 0)],
-            withdrawals: vec![create_withdrawal(1000, 0, 0), create_withdrawal(2000, 0, 0)],
+        let requests = SbtcRequests {
+            deposits: vec![create_deposit(100_000, 5_000, 0)],
+            withdrawals,
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
-                    outpoint: generate_outpoint(5500, 0),
-                    amount: 5500,
-                    public_key: generate_x_only_public_key(),
+                    outpoint: generate_outpoint(500_000_000, 0),
+                    amount: 500_000_000,
+                    public_key,
                 },
-                fee_rate: 0.0,
-                public_key: generate_x_only_public_key(),
+                fee_rate: 1.0,
+                public_key,
                 last_fees: None,
-                magic_bytes: [b'T', b'3'],
+                magic_bytes: [b'S', b'T'],
             },
             num_signers: 10,
-            accept_threshold: 0,
+            accept_threshold: 8,
             sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
-        // We'll have the deposit get two vote against, and the withdrawals
-        // each have three votes against. We will have each them share one
-        // overlapping voter. The votes look like this:
-        //
-        // 1 1 0 0 0 0 0 0 0 0
-        // 0 1 1 1 0 0 0 0 0 0
-        // 0 1 0 0 1 1 0 0 0 0
-        //
-        // So the aggregated bit map should look like this
-        //
-        // 1 1 1 1 1 1 0 0 0 0
+        // Generate transactions
+        let transactions = requests
+            .construct_transactions()
+            .expect("failed to construct transactions");
 
-        // Okay, this one looks like
-        // 1 1 0 0 0 0 0 0 0 0
-        requests.deposits[0].signer_bitmap.set(0, true);
-        requests.deposits[0].signer_bitmap.set(1, true);
-        // This one looks like
-        // 0 1 1 1 0 0 0 0 0 0
-        requests.withdrawals[0].signer_bitmap.set(1, true);
-        requests.withdrawals[0].signer_bitmap.set(2, true);
-        requests.withdrawals[0].signer_bitmap.set(3, true);
-        // And this one looks like
-        // 0 1 0 0 1 1 0 0 0 0
-        requests.withdrawals[1].signer_bitmap.set(1, true);
-        requests.withdrawals[1].signer_bitmap.set(4, true);
-        requests.withdrawals[1].signer_bitmap.set(5, true);
-
-        // This should all be in one transaction given the threshold
-        let mut transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 1);
-
-        let unsigned_tx = transactions.pop().unwrap();
-        // We have one input for the signers' UTXO and another input for
-        // the deposit.
-        assert_eq!(unsigned_tx.tx.input.len(), 2);
-        // We have one output for the signers' UTXO and another for the
-        // OP_RETURN output, and two more for the withdrawals.
-        assert_eq!(unsigned_tx.tx.output.len(), 4);
-
-        let sbtc_data = match unsigned_tx.tx.output[1].script_pubkey.as_bytes() {
-            // The data layout is detailed in the documentation for the
-            // UnsignedTransaction::new_op_return_output function.
-            [OP_RETURN, OP_PUSHBYTES_41, b'T', b'3', OP_RETURN_VERSION, 0, 1, data @ ..] => data,
-            _ => panic!("Invalid OP_RETURN FORMAT"),
-        };
-        // Since there are withdrawal requests in this transaction, the
-        // merkle root is included at the end of the `data`, bringing its
-        // length from 16 to 36 bytes.
-        assert_eq!(sbtc_data.len(), 36);
-        // This is the aggregate bitmap for the votes, so it should start
-        // like this:
-        // 1 1 1 1 1 1 0 0 0 0
-        // Note that the first 16 bytes are the bitmap, and the merkle root
-        // follows this data.
-        let bitmap_data = *sbtc_data.first_chunk().unwrap();
-        let bitmap = BitArray::<[u8; 16]>::new(bitmap_data);
-
-        assert_eq!(bitmap.count_ones(), 6);
-        // And the first six bits are all ones followed by all zeros.
-        assert!(bitmap[..6].all());
-        assert!(!bitmap[6..].any());
-    }
-
-    #[test_case(Vec::new(), vec![create_deposit(123456, 0, 0)]; "no withdrawals, one deposits")]
-    #[test_case([create_withdrawal(1000, 0, 0)], Vec::new(); "one withdrawals")]
-    #[test_case({
-        let mut rng = rand::rngs::StdRng::seed_from_u64(3);
-        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(2)
-    }, Vec::new(); "two withdrawals")]
-    #[test_case({
-        let mut rng = rand::rngs::StdRng::seed_from_u64(30);
-        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(3)
-    }, Vec::new(); "three withdrawals")]
-    #[test_case({
-        let mut rng = rand::rngs::StdRng::seed_from_u64(300);
-        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(5)
-    }, Vec::new(); "five withdrawals")]
-    #[test_case({
-        let mut rng = rand::rngs::StdRng::seed_from_u64(3000);
-        std::iter::repeat_with(move || random_withdrawal(&mut rng, 0)).take(20)
-    }, Vec::new(); "twenty withdrawals")]
-    fn merkle_root_in_op_return<I>(withdrawals: I, deposits: Vec<DepositRequest>)
-    where
-        I: IntoIterator<Item = WithdrawalRequest>,
-    {
-        const OP_RETURN: u8 = bitcoin::opcodes::all::OP_RETURN.to_u8();
-        const OP_PUSHBYTES_21: u8 = bitcoin::opcodes::all::OP_PUSHBYTES_21.to_u8();
-        const OP_PUSHBYTES_41: u8 = bitcoin::opcodes::all::OP_PUSHBYTES_41.to_u8();
-
-        let mut requests = SbtcRequests {
-            deposits,
-            withdrawals: withdrawals.into_iter().collect(),
-            signer_state: SignerBtcState {
-                utxo: SignerUtxo {
-                    outpoint: generate_outpoint(500_000_000_000, 0),
-                    amount: 500_000_000_000,
-                    public_key: generate_x_only_public_key(),
-                },
-                fee_rate: 0.0,
-                public_key: generate_x_only_public_key(),
-                last_fees: None,
-                magic_bytes: [b'T', b'3'],
-            },
-            num_signers: 10,
-            accept_threshold: 0,
-            sbtc_limits: SbtcLimits::unlimited(),
-            max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
-        };
-
-        let mut transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 1);
-
-        let unsigned_tx = transactions.pop().unwrap();
-        // Okay, the let's look at the raw data in our OP_RETURN UTXO
-        let sbtc_data = match unsigned_tx.tx.output[1].script_pubkey.as_bytes() {
-            // The data layout is detailed in the documentation for the
-            // UnsignedTransaction::new_op_return_output function when
-            // there are withdrawal request UTXOs.
-            [OP_RETURN, OP_PUSHBYTES_41, b'T', b'3', OP_RETURN_VERSION, 0, nd, data @ ..]
-                if *nd == requests.deposits.len() as u8 =>
-            {
-                data
-            }
-            // The data layout is detailed in the documentation for the
-            // UnsignedTransaction::new_op_return_output function when
-            // there are no withdrawal request UTXOs.
-            [OP_RETURN, OP_PUSHBYTES_21, b'T', b'3', OP_RETURN_VERSION, 0, nd, data @ ..]
-                if *nd == requests.deposits.len() as u8 =>
-            {
-                data
-            }
-            data => panic!("Invalid OP_RETURN FORMAT {data:?}"),
-        };
-        // If there are no deposits or withdrawals then there is no bitmap
-        // and no merkle root.
-
-        // I apologize for the nested if statements :(.
-        if let Some((_bitmap, actual_merkle_root)) = sbtc_data.split_first_chunk::<16>() {
-            // if we have 16 bytes here then we know that we have at
-            // least one deposit or withdrawal request.
-            assert!(requests.deposits.is_empty() || requests.withdrawals.is_empty());
-
-            // If we do not have any withdrawal requests then there is no
-            // merkle root for the depositors to pay for.
-            if requests.withdrawals.is_empty() {
-                assert!(actual_merkle_root.is_empty());
-            } else {
-                // If we have a withdrawal then there is a merkle root, and
-                // it's constructed in a standard way.
-                let actual_merkle_root: [u8; 20] = actual_merkle_root.try_into().unwrap();
-                let expected_merkle_root =
-                    calculate_merkle_root(&mut requests.withdrawals).unwrap();
-
-                assert_eq!(actual_merkle_root, expected_merkle_root);
-            }
+        if BitmapSegmenter.estimate_size(withdrawal_ids).unwrap() > OP_RETURN_AVAILABLE_SIZE {
+            // Verify multiple transactions were created
+            more_asserts::assert_gt!(
+                transactions.len(),
+                1,
+                "should create multiple transactions for large withdrawal ID set"
+            );
         } else {
-            // If there isn't 16 bytes here then there is nothing. Note
-            // that this isn't hit in our test cases, it's only ever hit if
-            // there are no deposits and no withdrawals we do not create a
-            // transaction in that case.
-            assert!(sbtc_data.is_empty());
+            // Verify only one transaction was created
+            assert_eq!(
+                transactions.len(),
+                1,
+                "should create a single transaction for small withdrawal ID set"
+            );
+        }
+
+        // Extract all withdrawal IDs that were included across all transactions
+        let actual_ids: Vec<u64> = transactions
+            .iter()
+            .flat_map(|tx| tx.requests.iter().filter_map(|req| req.withdrawal_id()))
+            .collect();
+
+        // Sort both lists to compare
+        let mut expected_ids = withdrawal_ids.to_vec();
+        expected_ids.sort();
+
+        // Verify all withdrawal IDs are included exactly once
+        assert_eq!(
+            actual_ids, expected_ids,
+            "all withdrawal IDs should be included exactly once across transactions"
+        );
+
+        // Verify each transaction has an OP_RETURN output with correct format
+        for tx in &transactions {
+            let expected_ids = tx
+                .requests
+                .iter()
+                .filter_map(|req| req.withdrawal_id())
+                .collect::<Vec<u64>>();
+            let expected_segments = BitmapSegmenter.package(&expected_ids).unwrap();
+            let expected_data = expected_segments.encode();
+
+            let instructions = tx.tx.output[1]
+                .script_pubkey
+                .as_script()
+                .instructions()
+                .collect::<Result<Vec<_>, _>>()
+                .expect("failed to extract OP_RETURN data");
+
+            let [Instruction::Op(OP_RETURN), Instruction::PushBytes(data)] =
+                instructions.as_slice()
+            else {
+                panic!("second output should be OP_RETURN with data");
+            };
+
+            let data = data.as_bytes();
+
+            // Verify the data meets minimum size requirements
+            assert_ge!(
+                data.len(),
+                OP_RETURN_HEADER_SIZE,
+                "data should contain at least the header bytes"
+            );
+
+            assert_eq!(&data[0..2], &[b'S', b'T'], "magic bytes should be 'ST'");
+            assert_eq!(
+                data[2], OP_RETURN_VERSION,
+                "version should match OP_RETURN_VERSION"
+            );
+
+            assert_eq!(
+                &data[3..],
+                expected_data,
+                "decoded withdrawal IDs don't match expected values"
+            );
         }
     }
 
@@ -2676,8 +2487,8 @@ mod tests {
                 create_deposit(78900, 100_000, 0),
             ],
             withdrawals: vec![
-                create_withdrawal(10000, 100_000, 0),
-                create_withdrawal(20000, 100_000, 0),
+                create_withdrawal(10000, 100_000, 0).wid(1),
+                create_withdrawal(20000, 100_000, 0).wid(1000),
             ],
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
@@ -2696,8 +2507,12 @@ mod tests {
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
 
+        // In the below code, we need to make sure that we take the _first_
+        // transaction in each package as that is the one that will be RBF'd.
+
         let (old_fee_total, old_fee_rate) = {
-            let utx = requests.construct_transactions().unwrap().pop().unwrap();
+            let transactions = requests.construct_transactions().unwrap();
+            let utx = transactions.first().unwrap();
 
             let output_amounts: u64 = utx.output_amounts();
             let input_amounts: u64 = utx.input_amounts();
@@ -2713,7 +2528,8 @@ mod tests {
             rate: old_fee_rate,
         });
 
-        let utx = requests.construct_transactions().unwrap().pop().unwrap();
+        let transactions = requests.construct_transactions().unwrap();
+        let utx = transactions.first().unwrap();
 
         let output_amounts: u64 = utx.output_amounts();
         let input_amounts: u64 = utx.input_amounts();
@@ -2741,24 +2557,20 @@ mod tests {
         more_asserts::assert_le!(requests.signer_state.fee_rate, fee_rate);
     }
 
-    #[test_case(2; "Some deposits")]
-    #[test_case(0; "No deposits")]
-    fn unsigned_tx_digests(num_deposits: usize) {
+    #[test_case(2, false; "some deposits, single tx")]
+    #[test_case(2, true; "some deposits, multiple txs")]
+    #[test_case(0, false; "no deposits, single tx")]
+    fn unsigned_tx_digests(num_deposits: usize, multiple_txs: bool) {
         // Each deposit and withdrawal has a max fee greater than the current market fee rate
         let public_key = XOnlyPublicKey::from_str(X_ONLY_PUBLIC_KEY1).unwrap();
-        let requests = SbtcRequests {
+        let mut requests = SbtcRequests {
             deposits: std::iter::repeat_with(|| create_deposit(123456, 100_000, 0))
                 .take(num_deposits)
                 .collect(),
-            withdrawals: vec![
-                create_withdrawal(10000, 100_000, 0),
-                create_withdrawal(20000, 100_000, 0),
-                create_withdrawal(30000, 100_000, 0),
-                create_withdrawal(40000, 100_000, 0),
-                create_withdrawal(50000, 100_000, 0),
-                create_withdrawal(60000, 100_000, 0),
-                create_withdrawal(70000, 100_000, 0),
-            ],
+            withdrawals: (0..600)
+                .step_by(10)
+                .map(|id| create_withdrawal(10_000, 100_000, 0).wid(id))
+                .collect(),
             signer_state: SignerBtcState {
                 utxo: SignerUtxo {
                     outpoint: generate_outpoint(300_000, 0),
@@ -2775,10 +2587,18 @@ mod tests {
             sbtc_limits: SbtcLimits::unlimited(),
             max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
         };
-        let mut transactions = requests.construct_transactions().unwrap();
-        assert_eq!(transactions.len(), 1);
+        // If multiple_txs is specified, we add a withdrawal that will
+        // cause the transaction to be split into two.
+        if multiple_txs {
+            requests
+                .withdrawals
+                .push(create_withdrawal(70000, 100_000, 0).wid(650));
+        }
+        let transactions = requests.construct_transactions().unwrap();
+        let expected_tx_count = if multiple_txs { 2 } else { 1 };
+        assert_eq!(transactions.len(), expected_tx_count);
 
-        let unsigned = transactions.pop().unwrap();
+        let unsigned = transactions.first().unwrap();
         let sighashes = unsigned.construct_digests().unwrap();
 
         assert_eq!(sighashes.deposits.len(), num_deposits)
@@ -3254,7 +3074,7 @@ mod tests {
         // ensuring lots of votes against the set of request.
         const MAX_WITHDRAWALS: usize = 4000;
         let withdrawals: Vec<WithdrawalRequest> = (0..MAX_WITHDRAWALS)
-            .map(|shift| create_withdrawal(1000, 10_000, 1 << (shift % 14)))
+            .map(|id| create_withdrawal(1_000, 10_000, 1 << (id % 14)).wid(id as u64))
             .collect();
 
         let requests = SbtcRequests {

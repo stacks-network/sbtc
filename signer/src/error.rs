@@ -1,6 +1,7 @@
 //! Top-level error type for the signer
 use std::borrow::Cow;
 
+use bitcoin::script::PushBytesError;
 use blockstack_lib::types::chainstate::StacksBlockId;
 
 use crate::bitcoin::validation::WithdrawalCapContext;
@@ -20,6 +21,19 @@ use crate::wsts_state_machine::StateMachineId;
 /// Top-level signer error
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// The length of bytes to write to an OP_RETURN output exceeds the maximum allowed size.
+    #[error("OP_RETURN output size limit exceeded: {size} bytes, max allowed: {max_size} bytes")]
+    OpReturnSizeLimitExceeded {
+        /// The size of the OP_RETURN output in bytes.
+        size: usize,
+        /// The maximum allowed size of the OP_RETURN output in bytes.
+        max_size: usize,
+    },
+
+    /// An error occurred while attempting to perform withdrawal ID segmentation.
+    #[error("idpack segmenter error: {0}")]
+    IdPackSegmenter(#[from] sbtc::idpack::SegmenterError),
+
     /// The DKG verification state machine raised an error.
     #[error("the dkg verification state machine raised an error: {0}")]
     DkgVerification(#[source] dkg::verification::Error),
@@ -159,6 +173,11 @@ pub enum Error {
     /// transaction.
     #[error("bitcoin validation error: {0}")]
     BitcoinValidation(#[from] Box<crate::bitcoin::validation::BitcoinValidationError>),
+
+    /// An error occurred while attempting to push bytes into a bitcoin
+    /// `PushBytes` type.
+    #[error("bitcoin push-bytes error: {0}")]
+    BitcoinPushBytes(#[from] PushBytesError),
 
     /// This can only be thrown when the number of bytes for a sighash or
     /// not exactly equal to 32. This should never occur.
