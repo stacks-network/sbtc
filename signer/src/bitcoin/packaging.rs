@@ -84,7 +84,7 @@ where
         packager.insert_item(item);
     }
 
-    packager.finalize().into_iter()
+    packager.finalize()
 }
 
 /// A trait for items that can be packaged together according to specific
@@ -495,12 +495,14 @@ impl<T: Weighted> BestFitPackager<T> {
         }
     }
 
-    /// Finalize the packager, consuming it and returning a vector of item vectors.
+    /// Consumes the packager and returns an iterator over the packed item
+    /// groups.
     ///
     /// ## Returns
-    /// A vector where each inner vector represents a bag of compatible items.
-    fn finalize(self) -> Vec<Vec<T>> {
-        self.bags.into_iter().map(|bag| bag.items).collect()
+    /// An iterator that yields each bag's contents as a `Vec<T>`, preserving
+    /// the original compatibility constraints established during insertion.
+    fn finalize(self) -> impl Iterator<Item = Vec<T>> {
+        self.bags.into_iter().map(|bag| bag.items)
     }
 }
 
@@ -785,16 +787,6 @@ mod tests {
         let expected_ids = [5, 42, 50, 100, 200];
         assert_eq!(bag.withdrawal_ids, expected_ids);
 
-        // Verify IDs are in strictly ascending order
-        for i in 1..bag.withdrawal_ids.len() {
-            assert!(
-                bag.withdrawal_ids[i - 1] < bag.withdrawal_ids[i],
-                "withdrawal IDs should be sorted, but found {} before {}",
-                bag.withdrawal_ids[i - 1],
-                bag.withdrawal_ids[i]
-            );
-        }
-
         // IDs should already be sorted, so this should work properly
         assert!(bag.can_fit_withdrawal_ids(&bag.withdrawal_ids));
     }
@@ -824,14 +816,13 @@ mod tests {
     #[test_case(5, false, 5 => true; "max_sigs_in_bag_no_sig_required")]
     #[test_case(4, true, 5 => true; "under_max_sigs_sig_required")]
     #[test_case(5, true, 5 => false; "at_max_sigs_sig_required")]
-    #[test_case(3, true, 3 => false; "exactly_at_limit")]
     fn test_signatures_compatible(bag_sigs: u16, item_needs_sig: bool, max_sigs: u16) -> bool {
         let config = PackagerConfig::new(2, max_sigs);
 
         // Create a bag with the specified number of signatures
         let mut bag = Bag::from_items(
             config,
-            vec![RequestItem::no_votes().vsize(10); 0], // Empty initially
+            vec![], // Empty initially
         );
 
         // Add items requiring signatures to match bag_sigs
@@ -858,7 +849,6 @@ mod tests {
     #[test_case(vec![], Some(42) => true; "single_withdrawal_id")]
     #[test_case((1..50).collect::<Vec<u64>>(), Some(300) => true; "many_small_ids_compatible")]
     #[test_case(vec![1, 2, 4, 5], Some(3) => true; "new_id_within_existing_range")]
-    #[test_case((0..580).collect(), Some(100_000) => false; "exceeds_op_return_size")]
     fn test_withdrawal_id_compatible(bag_ids: Vec<u64>, item_id: Option<u64>) -> bool {
         let config = PackagerConfig::new(2, 5);
 
@@ -878,6 +868,56 @@ mod tests {
         };
 
         bag.withdrawal_id_compatible(&item)
+    }
+
+    /// Test withdrawal id compatibility at the exact OP_RETURN size boundary.
+    #[test]
+    fn test_withdrawal_id_compatible_at_exact_op_return_boundary() {
+        let mut ids: Vec<u64> = Vec::new();
+        let mut next_id: u64 = 0;
+
+        // Fill the ID list until we've precisely exceeded the OP_RETURN limit
+        while BitmapSegmenter.estimate_size(&ids).unwrap() <= OP_RETURN_AVAILABLE_SIZE {
+            ids.push(next_id);
+            next_id += 1;
+        }
+
+        // At this point ids are just over the limit - remove the last one
+        // to get ≤ OP_RETURN_AVAILABLE_SIZE
+        ids.pop();
+
+        // Verify that the new size is at/under the limit
+        let safe_size = BitmapSegmenter.estimate_size(&ids).unwrap();
+        more_asserts::assert_le!(
+            safe_size,
+            OP_RETURN_AVAILABLE_SIZE,
+            "expected safe size to be under the limit"
+        );
+
+        // The last ID in the list is now the last safe ID. Remove it so we can
+        // do a proper verification below
+        let last_safe_id = ids.pop().unwrap();
+
+        // Create the bag with the IDs that are just under the limit
+        let config = PackagerConfig::new(2, 5);
+        let mut bag = Bag::<RequestItem>::new(config);
+        bag.withdrawal_ids = ids;
+
+        // This ID should be compatible
+        let last_safe_item = RequestItem::no_votes().wid(last_safe_id);
+        assert!(
+            bag.withdrawal_id_compatible(&last_safe_item),
+            "expected last safe ID to be compatible"
+        );
+        bag.withdrawal_ids.push(last_safe_id); // Re-add the ID to the bag
+
+        // This ID should push us over the limit (next_id is the first ID that would
+        // exceed the limit)
+        let too_big_item = RequestItem::no_votes().wid(next_id);
+        assert!(
+            !bag.is_compatible(&too_big_item),
+            "expected too big ID to be incompatible"
+        );
     }
 
     /// Tests the combined compatibility evaluation including votes, signatures,
@@ -1041,7 +1081,7 @@ mod tests {
 
         // Add item that exceeds vsize limit
         let original_vsize = packager.total_vsize;
-        packager.insert_item(RequestItem::no_votes().vsize(PACKAGE_MAX_VSIZE + 1));
+        packager.insert_item(RequestItem::no_votes().vsize(PACKAGE_MAX_VSIZE - original_vsize + 1));
         assert_eq!(packager.bags.len(), 2); // No change
         assert_eq!(packager.bags[0].items.len(), 3); // No change
         assert_eq!(packager.total_vsize, original_vsize); // No change to vsize
