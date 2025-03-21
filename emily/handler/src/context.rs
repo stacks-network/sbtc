@@ -184,10 +184,12 @@ impl EmilyContext {
             .table_names
             .unwrap_or_default();
 
+
         // Attempt to get all the tables by searching the output of the
         // list tables operation.
         let mut table_name_map: HashMap<&str, String> = HashMap::new();
-        let tables_to_find: Vec<&str> = vec!["Deposit", "Chainstate", "Withdrawal", "Limit"];
+        let tables_to_find: Vec<&str> = vec!["Deposit", "Chainstate", "Withdrawal", "Limit", "bitcoinChainstate", "heightsMapping"];
+        
         for name in table_names {
             for table_to_find in &tables_to_find {
                 if name.contains(table_to_find) {
@@ -201,11 +203,11 @@ impl EmilyContext {
             settings: Settings {
                 is_local: true,
                 bitcoin_chainstate_table_name: table_name_map
-                    .get("BitcoinChainstate")
+                    .get("bitcoinChainstate")
                     .expect("Failed to find valid bitcoin chainstate table in existing table list.")
                     .to_string(),
                 heights_mapping_table_name: table_name_map
-                    .get("HeightsMapping")
+                    .get("heightsMapping")
                     .expect("Failed to find valid heights mapping table in existing table list.")
                     .to_string(),
                 deposit_table_name: table_name_map

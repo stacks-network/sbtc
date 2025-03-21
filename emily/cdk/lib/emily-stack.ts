@@ -410,7 +410,7 @@ export class EmilyStack extends cdk.Stack {
                     type: dynamodb.AttributeType.NUMBER,
                 },
                 sortKey: {
-                    name: 'BitcoinHeight',
+                    name: 'BitcoinHeight2',
                     type: dynamodb.AttributeType.NUMBER,
                 },
                 removalPolicy: removalPolicy,
@@ -440,7 +440,7 @@ export class EmilyStack extends cdk.Stack {
                 type: dynamodb.AttributeType.STRING,
             },
             sortKey: {
-                name: 'Dummy',
+                name: 'Dummy2',
                 type: dynamodb.AttributeType.STRING,
             },
             removalPolicy: removalPolicy,
