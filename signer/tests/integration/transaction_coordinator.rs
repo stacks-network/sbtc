@@ -52,8 +52,10 @@ use signer::context::RequestDeciderEvent;
 use signer::message::Payload;
 use signer::network::MessageTransfer;
 use signer::storage::model::WithdrawalTxOutput;
+use testing_emily_client::apis::chainstate_api;
 use testing_emily_client::apis::testing_api;
 use testing_emily_client::apis::withdrawal_api;
+use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Status as TestingEmilyStatus;
 
 use signer::context::SbtcLimits;
@@ -3493,9 +3495,9 @@ async fn sign_bitcoin_transaction_withdrawals() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let testing_config = emily_client.config().as_testing();
+
+    testing_api::wipe_databases(&testing_config).await.unwrap();
 
     let network = WanNetwork::default();
 
@@ -3767,7 +3769,6 @@ async fn sign_bitcoin_transaction_withdrawals() {
         txid: StacksTxId::from([123; 32]),
         sender_address: PrincipalData::from(StandardPrincipalData::transient()).into(),
     };
-
     // Now we should manually put withdrawal request to Emily, pretending that
     // sidecar did it.
     let stacks_tip_height = db
@@ -3776,6 +3777,18 @@ async fn sign_bitcoin_transaction_withdrawals() {
         .unwrap()
         .unwrap()
         .block_height;
+
+    // Set the chainstate to Emily before we create the withdrawal request
+    chainstate_api::set_chainstate(
+        &testing_config,
+        Chainstate {
+            stacks_block_hash: stacks_chain_tip.to_string(),
+            stacks_block_height: stacks_tip_height,
+        },
+    )
+    .await
+    .expect("Failed to set chainstate");
+
     let request_body = testing_emily_client::models::CreateWithdrawalRequestBody {
         amount: withdrawal_request.amount,
         parameters: Box::new(testing_emily_client::models::WithdrawalParameters {
@@ -3787,20 +3800,23 @@ async fn sign_bitcoin_transaction_withdrawals() {
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
         stacks_block_height: stacks_tip_height,
     };
-    let response =
-        withdrawal_api::create_withdrawal(&emily_client.config().as_testing(), request_body).await;
+    let response = withdrawal_api::create_withdrawal(&testing_config, request_body).await;
     assert!(response.is_ok());
     // Check that there is no Accepted requests on emily before we broadcast them
-    let withdrawals_on_emily = withdrawal_api::get_withdrawals(
-        &emily_client.config().as_testing(),
-        TestingEmilyStatus::Accepted,
-        None,
-        None,
-    )
-    .await
-    .unwrap()
-    .withdrawals;
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&testing_config, TestingEmilyStatus::Accepted, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
     assert!(withdrawals_on_emily.is_empty());
+
+    // Check that there is no Accepted requests on emily before we broadcast them
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&testing_config, TestingEmilyStatus::Pending, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
+    assert_eq!(withdrawals_on_emily.len(), 1);
 
     for (_, db, _, _) in signers.iter() {
         db.write_withdrawal_request(&withdrawal_request)
@@ -3854,15 +3870,11 @@ async fn sign_bitcoin_transaction_withdrawals() {
     //   amount.
     // =========================================================================
 
-    let withdrawals_on_emily = withdrawal_api::get_withdrawals(
-        &emily_client.config().as_testing(),
-        TestingEmilyStatus::Accepted,
-        None,
-        None,
-    )
-    .await
-    .unwrap()
-    .withdrawals;
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&testing_config, TestingEmilyStatus::Accepted, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
 
     assert_eq!(withdrawals_on_emily.len(), 1);
 
