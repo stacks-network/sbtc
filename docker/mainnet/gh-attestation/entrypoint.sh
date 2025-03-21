@@ -21,5 +21,5 @@ gh attestation verify \
   --custom-trusted-root "$TRUSTED_ROOT_PATH"
 
 # If verification succeeds, run the signer app
-echo "🎉 Attestation verified successfully! Running the signer..."
+echo "🎉 Attestation verified successfully! Running the image..."
 exec "$@"
