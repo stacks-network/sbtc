@@ -2,7 +2,7 @@
 use crate::{
     api::{
         handlers::internal::{execute_reorg_handler, ExecuteReorgRequest},
-        models::chainstate::Chainstate,
+        models::chainstate::{Chainstate, HeightsMapping, UpdateBitcoinChaintip},
     },
     common::error::{Error, Inconsistency},
     context::EmilyContext,
@@ -162,6 +162,88 @@ pub async fn update_chainstate(
         add_chainstate_entry_or_reorg(&context, can_reorg, &chainstate).await?;
         // Respond.
         Ok(with_status(json(&chainstate), StatusCode::CREATED))
+    }
+    // Handle and respond.
+    handler(context, api_key, request)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Update bitcoin chainstate handler.
+#[utoipa::path(
+    put,
+    operation_id = "updateBitcoinChainstate",
+    path = "/bitcoinChainstate",
+    tag = "bitcoinChainstate",
+    request_body = UpdateBitcoinChaintip,
+    responses(
+        (status = 201, description = "Bitcoin chainstate updated successfully", body = ()),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    security(("ApiGatewayKey" = []))
+)]
+#[instrument(skip(context, api_key))]
+pub async fn update_bitcoin_chain_tip(
+    context: EmilyContext,
+    api_key: String,
+    request: UpdateBitcoinChaintip,
+) -> impl warp::reply::Reply {
+    debug!("Attempting to update bitcoin chainstate: {request:?}");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        _api_key: String,
+        body: UpdateBitcoinChaintip,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Convert body to the correct type.
+        let new_tip: UpdateBitcoinChaintip = body;
+        accessors::set_new_bitcoin_chain_tip(&context, new_tip).await?;
+        // Respond.
+        Ok(with_status(json(&()), StatusCode::CREATED))
+    }
+    // Handle and respond.
+    handler(context, api_key, request)
+        .await
+        .map_or_else(Reply::into_response, Reply::into_response)
+}
+
+/// Update bitcoin chainstate handler.
+#[utoipa::path(
+    put,
+    operation_id = "updateHeightsMapping",
+    path = "/heightsMapping",
+    tag = "heightsMapping",
+    request_body = HeightsMapping,
+    responses(
+        (status = 201, description = "Heights mapping updated successfully", body = ()),
+        (status = 400, description = "Invalid request body", body = ErrorResponse),
+        (status = 404, description = "Address not found", body = ErrorResponse),
+        (status = 405, description = "Method not allowed", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    security(("ApiGatewayKey" = []))
+)]
+#[instrument(skip(context, api_key))]
+pub async fn update_heights_mapping(
+    context: EmilyContext,
+    api_key: String,
+    request: HeightsMapping,
+) -> impl warp::reply::Reply {
+    debug!("Attempting to update heights mapping: {request:?}");
+    // Internal handler so `?` can be used correctly while still returning a reply.
+    async fn handler(
+        context: EmilyContext,
+        _api_key: String,
+        body: HeightsMapping,
+    ) -> Result<impl warp::reply::Reply, Error> {
+        // Convert body to the correct type.
+        let new_mapping: HeightsMapping = body;
+        accessors::update_heights_mapping(&context, new_mapping).await?;
+        // Respond.
+        Ok(with_status(json(&()), StatusCode::CREATED))
     }
     // Handle and respond.
     handler(context, api_key, request)

@@ -7,7 +7,8 @@ use serde_dynamo::Item;
 
 use tracing::{debug, warn};
 
-use crate::api::models::limits::{AccountLimits, Limits};
+use crate::api::models::chainstate::{HeightsMapping, UpdateBitcoinChaintip};
+use crate::api::models::limits::{AccountLimits, Limits, TotalWithdrawedAmount};
 use crate::common::error::{Error, Inconsistency};
 
 use crate::{api::models::common::Status, context::EmilyContext};
@@ -26,7 +27,9 @@ use super::entries::withdrawal::{
 };
 use super::entries::{
     chainstate::{
-        ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
+        ApiStateEntry, ApiStatus, BitcoinChainstateEntry, BitcoinChainstateEntryKey,
+        BitcoinChainstateTablePrimaryIndex, ChainstateEntry, ChainstateTablePrimaryIndex,
+        HeightsMappingEntry, HeightsMappingEntryKey, HeightsMappingTablePrimaryIndex,
         SpecialApiStateIndex,
     },
     deposit::{
@@ -765,6 +768,112 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
     })
 }
 
+async fn get_bitcoin_chain_tip_height(context: &EmilyContext) -> Result<u64, Error> {
+    let query_resp = query_with_partition_key::<BitcoinChainstateTablePrimaryIndex>(
+        context,
+        &"dummy".to_string(),
+        None,
+        None,
+    )
+    .await?
+    .0;
+    if query_resp.len() != 1 {
+        return Err(Error::NotFound);
+    }
+    let res = query_resp.first().unwrap().height;
+    Ok(res)
+}
+
+async fn get_first_stacks_block_for_ancor(
+    context: &EmilyContext,
+    ancor_height: u64,
+) -> Result<u64, Error> {
+    let query_resp = query_with_partition_key::<HeightsMappingTablePrimaryIndex>(
+        context,
+        &ancor_height,
+        None,
+        None,
+    )
+    .await?
+    .0;
+    if query_resp.len() != 1 {
+        return Err(Error::NotFound);
+    }
+    let result = query_resp.first().unwrap();
+    Ok(result.first_ancored_stacks_height)
+}
+
+/// Returns total amount of withdrawn sBTC in rolling window. All withdrawals except failed are
+/// counted here.
+pub async fn get_total_withdrawed_amount_in_rolling_window(
+    context: &EmilyContext,
+) -> Result<TotalWithdrawedAmount, Error> {
+    let rolling_window_size = context
+        .settings
+        .default_limits
+        .rolling_withdrawal_blocks
+        .unwrap_or(0);
+
+    let stacks_chain_tip = get_api_state(context).await?.chaintip().key.height;
+    let bitcoin_tip_height = get_bitcoin_chain_tip_height(context).await?;
+    let minimum_height = bitcoin_tip_height - rolling_window_size;
+    let minimum_stacks_height = get_first_stacks_block_for_ancor(context, minimum_height).await?;
+
+    let all_statuses_except_failed: Vec<_> = ALL_STATUSES
+        .iter()
+        .filter(|status| **status != Status::Failed)
+        .collect();
+
+    let mut withdrawals = vec![];
+    for status in all_statuses_except_failed {
+        let mut withdrawals_for_status =
+            get_all_withdrawal_entries_modified_from_height_with_status(
+                context,
+                status,
+                minimum_stacks_height,
+                None,
+            )
+            .await?;
+        withdrawals.append(&mut withdrawals_for_status);
+    }
+    let total_amounts: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
+
+    Ok(TotalWithdrawedAmount {
+        total_withdrawed_amount: Some(total_amounts),
+        stacks_chain_tip: Some(stacks_chain_tip),
+        last_stacks_block_in_rolling_window: Some(minimum_stacks_height),
+    })
+}
+
+/// Updates bitcoin chain tip info
+pub async fn set_new_bitcoin_chain_tip(
+    context: &EmilyContext,
+    new_tip: UpdateBitcoinChaintip,
+) -> Result<(), Error> {
+    let entry = BitcoinChainstateEntry {
+        key: BitcoinChainstateEntryKey { dummy: "dummy".to_string() },
+        height: new_tip.height,
+    };
+    put_entry::<BitcoinChainstateTablePrimaryIndex>(context, &entry).await
+}
+
+/// Updates heights mapping
+pub async fn update_heights_mapping(
+    context: &EmilyContext,
+    update: HeightsMapping,
+) -> Result<(), Error> {
+    // TODO: remove mappings for old enough blocks
+    for (bitcoin_height, stacks_height) in update.mapping {
+        let entry = HeightsMappingEntry {
+            key: HeightsMappingEntryKey { bitcoin_height },
+            version: 1,
+            first_ancored_stacks_height: stacks_height,
+        };
+        put_entry::<HeightsMappingTablePrimaryIndex>(context, &entry).await?;
+    }
+    Ok(())
+}
+
 /// Get the limit for a specific account.
 pub async fn get_limit_for_account(
     context: &EmilyContext,
@@ -804,7 +913,20 @@ pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_withdrawal_table(context).await?;
     wipe_chainstate_table(context).await?;
     wipe_limit_table(context).await?;
+    wipe_heights_mapping_table(context).await?;
+    wipe_bitcoin_chainstate_table(context).await?;
     Ok(())
+}
+
+#[cfg(feature = "testing")]
+async fn wipe_heights_mapping_table(context: &EmilyContext) -> Result<(), Error> {
+    panic!("we are in heights mapping wipe");
+    wipe::<HeightsMappingTablePrimaryIndex>(context).await
+}
+
+#[cfg(feature = "testing")]
+async fn wipe_bitcoin_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe::<BitcoinChainstateTablePrimaryIndex>(context).await
 }
 
 /// Wipes the deposit table.

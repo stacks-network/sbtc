@@ -63,6 +63,8 @@ describe('EmilyStack Test', () => {
                 expect(environment.WITHDRAWAL_TABLE_NAME).toMatch(`WithdrawalTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
                 expect(environment.CHAINSTATE_TABLE_NAME).toMatch(`ChainstateTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
                 expect(environment.LIMIT_TABLE_NAME).toMatch(`LimitTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`);
+                expect(environment.BITCOIN_CHAINSTATE_TABLE_NAME).toMatch(`BitcoinChainstateTable-account-region-${Constants.UNIT_TEST_STAGE_NAME}`)
+                expect(environment.HEIGHTS_MAPPING_TABLE_NAME).toMatch(`HeightsMapping-account-region-${Constants.UNIT_TEST_STAGE_NAME}`)
                 expect(environment.TRUSTED_REORG_API_KEY).toEqual("testApiKey");
                 expect(environment.IS_LOCAL).toEqual("false");
                 expect(environment.IS_MAINNET).toEqual("false");
