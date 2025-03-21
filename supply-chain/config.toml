@@ -22,6 +22,9 @@ url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
 [policy.stacks-common]
 audit-as-crates-io = true
 
+[policy.wsts]
+audit-as-crates-io = true
+
 [[exemptions.addr2line]]
 version = "0.21.0"
 criteria = "safe-to-deploy"

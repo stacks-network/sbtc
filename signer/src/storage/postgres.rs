@@ -3271,6 +3271,31 @@ impl super::DbWrite for PgStore {
         Ok(())
     }
 
+    async fn write_withdrawal_tx_output(
+        &self,
+        output: &model::WithdrawalTxOutput,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO bitcoin_withdrawal_tx_outputs (
+                txid
+              , output_index
+              , request_id
+            )
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING;
+            "#,
+        )
+        .bind(output.txid)
+        .bind(i32::try_from(output.output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(output.request_id).map_err(Error::ConversionDatabaseInt)?)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
     async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
         sqlx::query(
             r#"
