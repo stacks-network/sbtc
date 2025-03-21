@@ -77,12 +77,32 @@ export class EmilyStack extends cdk.Stack {
             pointInTimeRecovery,
         );
 
+        const heightsMappingTableId: string = 'heightsMappingTable';
+        const heightsMappingTableName: string = EmilyStackUtils.getResourceName(heightsMappingTableId, props);
+        const heightsMappingTable: dynamodb.Table = this.createOrUpdateHeightsMappingTable(
+            heightsMappingTableId,
+            heightsMappingTableName,
+            persistentResourceRemovalPolicy,
+            pointInTimeRecovery,
+        );
+
+        const bitcoinChainstateTableId: string = 'bitcoinChainstateTable';
+        const bitcoinChainstateTableName: string = EmilyStackUtils.getResourceName(bitcoinChainstateTableId, props);
+        const bitcoinChainstateTable: dynamodb.Table = this.createOrUpdateBitcoinChainstateTable(
+            bitcoinChainstateTableId,
+            bitcoinChainstateTableName,
+            persistentResourceRemovalPolicy,
+            pointInTimeRecovery,
+        );
+
         if (!EmilyStackUtils.isTablesOnly()) {
             const operationLambda: lambda.Function = this.createOrUpdateOperationLambda(
                 depositTableName,
                 withdrawalTableName,
                 chainstateTableName,
                 limitTableName,
+                heightsMappingTableName,
+                bitcoinChainstateTableName,
                 persistentResourceRemovalPolicy,
                 props
             );
@@ -370,6 +390,66 @@ export class EmilyStack extends cdk.Stack {
     }
 
     /**
+     * Creates or updates a DynamoDB table for heights mapping.
+     * @param {string} tableId The id of the table AWS resource.
+     * @param {string} tableName The name of the DynamoDB table.
+     * @returns {dynamodb.Table} The created or updated DynamoDB table.
+     * @post A DynamoDB table is returned without additional configuration.
+     */
+        createOrUpdateHeightsMappingTable(
+            tableId: string,
+            tableName: string,
+            removalPolicy: cdk.RemovalPolicy,
+            pointInTimeRecovery: undefined | boolean,
+        ): dynamodb.Table {
+            // Create DynamoDB table to store the messages. Encrypted by default.
+            return new dynamodb.Table(this, tableId, {
+                tableName: tableName,
+                partitionKey: {
+                    name: 'BitcoinHeight',
+                    type: dynamodb.AttributeType.NUMBER,
+                },
+                sortKey: {
+                    name: 'BitcoinHeight',
+                    type: dynamodb.AttributeType.NUMBER,
+                },
+                removalPolicy: removalPolicy,
+                billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
+                pointInTimeRecovery: pointInTimeRecovery,
+            });
+        }
+
+    /**
+     * Creates or updates a DynamoDB table for heights mapping.
+     * @param {string} tableId The id of the table AWS resource.
+     * @param {string} tableName The name of the DynamoDB table.
+     * @returns {dynamodb.Table} The created or updated DynamoDB table.
+     * @post A DynamoDB table is returned without additional configuration.
+     */
+    createOrUpdateBitcoinChainstateTable(
+        tableId: string,
+        tableName: string,
+        removalPolicy: cdk.RemovalPolicy,
+        pointInTimeRecovery: undefined | boolean,
+    ): dynamodb.Table {
+        // Create DynamoDB table to store the messages. Encrypted by default.
+        return new dynamodb.Table(this, tableId, {
+            tableName: tableName,
+            partitionKey: {
+                name: 'Dummy',
+                type: dynamodb.AttributeType.STRING,
+            },
+            sortKey: {
+                name: 'Dummy',
+                type: dynamodb.AttributeType.STRING,
+            },
+            removalPolicy: removalPolicy,
+            billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
+            pointInTimeRecovery: pointInTimeRecovery,
+        });
+    }
+
+    /**
      * Creates or updates the operation Lambda function.
      * @param {string} depositTableName The name of the deposit DynamoDB table.
      * @param {string} withdrawalTableName The name of the withdrawal DynamoDB table.
@@ -383,6 +463,8 @@ export class EmilyStack extends cdk.Stack {
         withdrawalTableName: string,
         chainstateTableName: string,
         limitTableName: string,
+        heightsMappingTableName: string,
+        bitcoinChainstateTableName: string,
         removalPolicy: cdk.RemovalPolicy,
         props: EmilyStackProps,
     ): lambda.Function {
@@ -406,6 +488,8 @@ export class EmilyStack extends cdk.Stack {
                 WITHDRAWAL_TABLE_NAME: withdrawalTableName,
                 CHAINSTATE_TABLE_NAME: chainstateTableName,
                 LIMIT_TABLE_NAME: limitTableName,
+                HEIGHTS_MAPPING_TABLE_NAME: heightsMappingTableName,
+                BITCOIN_CHAINSTATE_TABLE_NAME: bitcoinChainstateTableName,
                 // Declare an environment variable that will be overwritten in local SAM
                 // deployments the AWS stack. SAM can only set environment variables that are
                 // already expected to be present in the lambda.
