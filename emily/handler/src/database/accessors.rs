@@ -913,7 +913,20 @@ pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_withdrawal_table(context).await?;
     wipe_chainstate_table(context).await?;
     wipe_limit_table(context).await?;
+    wipe_heights_mapping_table(context).await?;
+    wipe_bitcoin_chainstate_table(context).await?;
     Ok(())
+}
+
+#[cfg(feature = "testing")]
+async fn wipe_heights_mapping_table(context: &EmilyContext) -> Result<(), Error> {
+    panic!("we are in heights mapping wipe");
+    wipe::<HeightsMappingTablePrimaryIndex>(context).await
+}
+
+#[cfg(feature = "testing")]
+async fn wipe_bitcoin_chainstate_table(context: &EmilyContext) -> Result<(), Error> {
+    wipe::<BitcoinChainstateTablePrimaryIndex>(context).await
 }
 
 /// Wipes the deposit table.

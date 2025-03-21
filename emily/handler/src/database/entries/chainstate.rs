@@ -280,7 +280,7 @@ impl KeyTrait for HeightsMappingEntryKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "BitcoinHeight";
     /// The table field name of the sort key.
-    const SORT_KEY_NAME: &'static str = "BitcoinHeight";
+    const SORT_KEY_NAME: &'static str = "BitcoinHeight2";
 }
 
 /// Implements the entry trait for the deposit entry.
@@ -345,7 +345,7 @@ impl KeyTrait for BitcoinChainstateEntryKey {
     /// The table field name of the partition key.
     const PARTITION_KEY_NAME: &'static str = "Dummy";
     /// The table field name of the sort key.
-    const SORT_KEY_NAME: &'static str = "Dummy";
+    const SORT_KEY_NAME: &'static str = "Dummy2";
 }
 
 /// Implements the entry trait for the deposit entry.
