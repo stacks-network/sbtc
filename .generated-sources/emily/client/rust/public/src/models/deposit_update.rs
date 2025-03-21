@@ -27,12 +27,6 @@ pub struct DepositUpdate {
         skip_serializing_if = "Option::is_none"
     )]
     pub fulfillment: Option<Option<Box<models::Fulfillment>>>,
-    /// The most recent Stacks block hash the API was aware of when the deposit was last updated. If the most recent update is tied to an artifact on the Stacks blockchain then this hash is the Stacks block hash that contains that artifact.
-    #[serde(rename = "lastUpdateBlockHash")]
-    pub last_update_block_hash: String,
-    /// The most recent Stacks block height the API was aware of when the deposit was last updated. If the most recent update is tied to an artifact on the Stacks blockchain then this height is the Stacks block height that contains that artifact.
-    #[serde(rename = "lastUpdateHeight")]
-    pub last_update_height: u64,
     #[serde(rename = "status")]
     pub status: models::Status,
     /// The status message of the deposit.
@@ -45,8 +39,6 @@ impl DepositUpdate {
     pub fn new(
         bitcoin_tx_output_index: u32,
         bitcoin_txid: String,
-        last_update_block_hash: String,
-        last_update_height: u64,
         status: models::Status,
         status_message: String,
     ) -> DepositUpdate {
@@ -54,8 +46,6 @@ impl DepositUpdate {
             bitcoin_tx_output_index,
             bitcoin_txid,
             fulfillment: None,
-            last_update_block_hash,
-            last_update_height,
             status,
             status_message,
         }

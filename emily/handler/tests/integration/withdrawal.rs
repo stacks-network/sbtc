@@ -3,11 +3,12 @@ use std::collections::HashMap;
 
 use test_case::test_case;
 
+use testing_emily_client::apis::chainstate_api::set_chainstate;
 use testing_emily_client::apis::configuration::{ApiKey, Configuration};
 use testing_emily_client::apis::{self, ResponseContent};
 use testing_emily_client::models::{
-    CreateWithdrawalRequestBody, Fulfillment, Status, UpdateWithdrawalsRequestBody, Withdrawal,
-    WithdrawalInfo, WithdrawalParameters, WithdrawalUpdate,
+    Chainstate, CreateWithdrawalRequestBody, Fulfillment, Status, UpdateWithdrawalsRequestBody,
+    Withdrawal, WithdrawalInfo, WithdrawalParameters, WithdrawalUpdate,
 };
 
 use crate::common::clean_setup;
@@ -407,8 +408,10 @@ async fn update_withdrawals() {
     let parameters = WithdrawalParameters { max_fee: 123 };
 
     let update_status_message: &str = "test_status_message";
-    let update_block_hash: &str = "update_block_hash";
-    let update_block_height: u64 = 34;
+    let update_chainstate = Chainstate {
+        stacks_block_hash: "update_block_hash".to_string(),
+        stacks_block_height: 42,
+    };
     let update_status: Status = Status::Confirmed;
 
     let update_fulfillment: Fulfillment = Fulfillment {
@@ -441,8 +444,6 @@ async fn update_withdrawals() {
         let withdrawal_update = WithdrawalUpdate {
             request_id,
             fulfillment: Some(Some(Box::new(update_fulfillment.clone()))),
-            last_update_block_hash: update_block_hash.into(),
-            last_update_height: update_block_height.clone(),
             status: update_status.clone(),
             status_message: update_status_message.into(),
         };
@@ -451,8 +452,8 @@ async fn update_withdrawals() {
         let expected = Withdrawal {
             amount,
             fulfillment: Some(Some(Box::new(update_fulfillment.clone()))),
-            last_update_block_hash: update_block_hash.into(),
-            last_update_height: update_block_height.clone(),
+            last_update_block_hash: update_chainstate.stacks_block_hash.clone(),
+            last_update_height: update_chainstate.stacks_block_height,
             parameters: Box::new(parameters.clone()),
             recipient: RECIPIENT.into(),
             sender: SENDER.into(),
@@ -472,6 +473,13 @@ async fn update_withdrawals() {
     // Act.
     // ----
     batch_create_withdrawals(&configuration, create_requests).await;
+
+    // Not strictly necessary, but we do it to make sure that the updates
+    // are connected with the current chainstate.
+    set_chainstate(&configuration, update_chainstate.clone())
+        .await
+        .expect("Received an error after making a valid set chainstate api call.");
+
     let update_withdrawals_response =
         apis::withdrawal_api::update_withdrawals(&configuration, update_request)
             .await
@@ -483,95 +491,6 @@ async fn update_withdrawals() {
     updated_withdrawals.sort_by(arbitrary_withdrawal_partial_cmp);
     expected_withdrawals.sort_by(arbitrary_withdrawal_partial_cmp);
     assert_eq!(expected_withdrawals, updated_withdrawals);
-}
-
-#[tokio::test]
-async fn update_withdrawals_updates_chainstate() {
-    let configuration = clean_setup().await;
-
-    // Arrange.
-    // --------
-    let request_id = 123;
-    let amount = 0;
-    let parameters = WithdrawalParameters { max_fee: 123 };
-
-    let create_request = CreateWithdrawalRequestBody {
-        amount,
-        parameters: Box::new(parameters.clone()),
-        recipient: RECIPIENT.into(),
-        sender: SENDER.into(),
-        request_id,
-        stacks_block_hash: BLOCK_HASH.into(),
-        stacks_block_height: BLOCK_HEIGHT,
-    };
-
-    // It's okay to say it's accepted over and over.
-    let update_status: Status = Status::Accepted;
-    let update_status_message: &str = "test_status_message";
-
-    let min_height: i64 = 20;
-    let max_height: i64 = 30;
-    let range = min_height..max_height;
-
-    let mut withdrawal_updates = Vec::new();
-    for update_block_height in range.clone() {
-        let withdrawal_update = WithdrawalUpdate {
-            request_id,
-            fulfillment: None,
-            last_update_block_hash: format!("hash_{}", update_block_height),
-            last_update_height: update_block_height as u64,
-            status: update_status.clone(),
-            status_message: update_status_message.into(),
-        };
-        withdrawal_updates.push(withdrawal_update);
-    }
-
-    // Order the updates pecularily so that they are not in order.
-    withdrawal_updates.sort_by_key(|update| {
-        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs()
-    });
-
-    let expected_last_update_height_at_output_index: Vec<(usize, u64)> = withdrawal_updates
-        .iter()
-        .enumerate()
-        .map(|(index, update)| (index, update.last_update_height))
-        .collect();
-
-    let update_request = UpdateWithdrawalsRequestBody {
-        withdrawals: withdrawal_updates,
-    };
-
-    // Act.
-    // ----
-
-    // Create a withdrawal.
-    apis::withdrawal_api::create_withdrawal(&configuration, create_request)
-        .await
-        .expect("Received an error after making a valid create withdrawal request api call.");
-
-    // Send it a bunch of updates.
-    let update_withdrawals_response =
-        apis::withdrawal_api::update_withdrawals(&configuration, update_request)
-            .await
-            .expect("Received an error after making a valid update withdrawals api call.");
-
-    for height in range {
-        let chainstate =
-            apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
-                .await
-                .expect(
-                    "Received an error after making a valid get chainstate at height api call.",
-                );
-        assert_eq!(chainstate.stacks_block_height, height as u64);
-        assert_eq!(chainstate.stacks_block_hash, format!("hash_{}", height));
-    }
-
-    for (index, last_update_height) in expected_last_update_height_at_output_index {
-        assert_eq!(
-            update_withdrawals_response.withdrawals[index].last_update_height,
-            last_update_height
-        );
-    }
 }
 
 #[test_case(Status::Pending, Status::Pending, "untrusted_api_key", true; "untrusted_key_pending_to_pending")]
@@ -613,6 +532,15 @@ async fn update_withdrawals_is_forbidden(
     // --------
     let request_id = 1;
 
+    let chainstate = Chainstate {
+        stacks_block_hash: "test_block_hash".to_string(),
+        stacks_block_height: 1,
+    };
+
+    set_chainstate(&testing_configuration, chainstate.clone())
+        .await
+        .expect("Received an error after making a valid set chainstate api call.");
+
     // Setup test withdrawal transaction.
     let request = CreateWithdrawalRequestBody {
         amount: 10000,
@@ -620,10 +548,11 @@ async fn update_withdrawals_is_forbidden(
         recipient: RECIPIENT.into(),
         sender: SENDER.into(),
         request_id,
-        stacks_block_hash: BLOCK_HASH.into(),
-        stacks_block_height: BLOCK_HEIGHT,
+        stacks_block_hash: chainstate.stacks_block_hash.clone(),
+        stacks_block_height: chainstate.stacks_block_height,
     };
 
+    // Create the withdrawal with the privileged configuration.
     apis::withdrawal_api::create_withdrawal(&testing_configuration, request.clone())
         .await
         .expect("Received an error after making a valid create withdrawal request api call.");
@@ -649,8 +578,6 @@ async fn update_withdrawals_is_forbidden(
                 withdrawals: vec![WithdrawalUpdate {
                     request_id,
                     fulfillment,
-                    last_update_block_hash: "update_block_hash".into(),
-                    last_update_height: 34,
                     status: previous_status,
                     status_message: "foo".into(),
                 }],
@@ -679,8 +606,6 @@ async fn update_withdrawals_is_forbidden(
             withdrawals: vec![WithdrawalUpdate {
                 request_id,
                 fulfillment,
-                last_update_block_hash: "update_block_hash".into(),
-                last_update_height: 34,
                 status: new_status,
                 status_message: "foo".into(),
             }],

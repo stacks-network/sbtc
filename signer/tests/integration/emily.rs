@@ -736,8 +736,6 @@ async fn test_get_deposits_returns_pending_and_accepted() {
             bitcoin_tx_output_index: 0,
             bitcoin_txid: setup.tx.compute_txid().to_string(),
             fulfillment: None,
-            last_update_block_hash: "block-hash".to_string(),
-            last_update_height: 42,
             status: Status::Accepted,
             status_message: "accepted".to_string(),
         })

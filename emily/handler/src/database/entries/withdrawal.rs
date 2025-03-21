@@ -1,19 +1,14 @@
 //! Entries into the withdrawal table.
 
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
     api::models::{
         chainstate::Chainstate,
         common::Status,
-        withdrawal::{
-            requests::{UpdateWithdrawalsRequestBody, WithdrawalUpdate},
-            Withdrawal, WithdrawalInfo, WithdrawalParameters,
-        },
+        withdrawal::{Withdrawal, WithdrawalInfo, WithdrawalParameters},
     },
-    common::error::{Error, Inconsistency, ValidationError},
+    common::error::{Error, Inconsistency},
 };
 
 use super::{
@@ -620,60 +615,6 @@ pub struct ValidatedUpdateWithdrawalRequest {
     pub withdrawals: Vec<(usize, ValidatedWithdrawalUpdate)>,
 }
 
-/// Implement try from for the validated withdrawal requests.
-impl TryFrom<UpdateWithdrawalsRequestBody> for ValidatedUpdateWithdrawalRequest {
-    type Error = Error;
-    fn try_from(update_request: UpdateWithdrawalsRequestBody) -> Result<Self, Self::Error> {
-        // Validate all the withdrawal updates.
-        let mut withdrawals: Vec<(usize, ValidatedWithdrawalUpdate)> = vec![];
-        let mut failed_ids: Vec<u64> = vec![];
-
-        for (index, update) in update_request.withdrawals.into_iter().enumerate() {
-            match update.clone().try_into() {
-                Ok(validated_update) => withdrawals.push((index, validated_update)),
-                Err(_) => failed_ids.push(update.request_id),
-            }
-        }
-
-        // If there are failed conversion, return an error.
-        if !failed_ids.is_empty() {
-            return Err(ValidationError::WithdrawalsMissingFulfillment(failed_ids).into());
-        }
-
-        // Order the updates by order of when they occur so that it's as though we got them in
-        // chronological order.
-        withdrawals.sort_by_key(|(_, update)| update.event.stacks_block_height);
-
-        Ok(ValidatedUpdateWithdrawalRequest { withdrawals })
-    }
-}
-
-impl ValidatedUpdateWithdrawalRequest {
-    /// Infers all chainstates that need to be present in the API for the
-    /// withdrawal updates to be valid.
-    pub fn inferred_chainstates(&self) -> Vec<Chainstate> {
-        // TODO(TBD): Error if the inferred chainstates have conflicting block hashes
-        // for a the same block height.
-        let mut inferred_chainstates = self
-            .withdrawals
-            .clone()
-            .into_iter()
-            .map(|(_, update)| Chainstate {
-                stacks_block_hash: update.event.stacks_block_hash,
-                stacks_block_height: update.event.stacks_block_height,
-            })
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-
-        // Sort the chainstates in the order that they should come in.
-        inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
-
-        // Return.
-        inferred_chainstates
-    }
-}
-
 /// Validated withdrawal update.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedWithdrawalUpdate {
@@ -681,41 +622,6 @@ pub struct ValidatedWithdrawalUpdate {
     pub request_id: u64,
     /// Withdrawal event.
     pub event: WithdrawalEvent,
-}
-
-impl TryFrom<WithdrawalUpdate> for ValidatedWithdrawalUpdate {
-    type Error = ValidationError;
-
-    fn try_from(update: WithdrawalUpdate) -> Result<Self, Self::Error> {
-        // Make status entry.
-        let status_entry: StatusEntry = match update.status {
-            Status::Confirmed => {
-                let fulfillment =
-                    update
-                        .fulfillment
-                        .ok_or(ValidationError::WithdrawalMissingFulfillment(
-                            update.request_id,
-                        ))?;
-                StatusEntry::Confirmed(fulfillment)
-            }
-            Status::Accepted => StatusEntry::Accepted,
-            Status::Pending => StatusEntry::Pending,
-            Status::Reprocessing => StatusEntry::Reprocessing,
-            Status::Failed => StatusEntry::Failed,
-        };
-        // Make the new event.
-        let event = WithdrawalEvent {
-            status: status_entry,
-            message: update.status_message,
-            stacks_block_height: update.last_update_height,
-            stacks_block_hash: update.last_update_block_hash,
-        };
-        // Return the validated update.
-        Ok(ValidatedWithdrawalUpdate {
-            request_id: update.request_id,
-            event,
-        })
-    }
 }
 
 impl ValidatedWithdrawalUpdate {
