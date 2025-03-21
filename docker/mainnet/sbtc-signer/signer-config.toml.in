@@ -188,7 +188,6 @@ dkg_target_rounds = 2
 # Required: true
 # Environment: SIGNER_SIGNER__EVENT_OBSERVER__BIND
 bind = "0.0.0.0:8801"
-timemout_ms = 10_000
 
 # !! ==============================================================================
 # !! Signer P2P Networking Configuration

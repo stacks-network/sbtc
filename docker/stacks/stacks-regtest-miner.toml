@@ -91,14 +91,17 @@ events_keys = [
 [[events_observer]]
 endpoint = "stacks-signer-1:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+timemout_ms = 10_000
 
 [[events_observer]]
 endpoint = "stacks-signer-2:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+timemout_ms = 10_000
 
 [[events_observer]]
 endpoint = "stacks-signer-3:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+timemout_ms = 10_000
 
 [burnchain]
 chain = "bitcoin"
