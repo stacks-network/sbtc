@@ -3495,9 +3495,9 @@ async fn sign_bitcoin_transaction_withdrawals() {
     )
     .unwrap();
 
-    let testing_config = emily_client.config().as_testing();
+    let emily_config = emily_client.config().as_testing();
 
-    testing_api::wipe_databases(&testing_config).await.unwrap();
+    testing_api::wipe_databases(&emily_config).await.unwrap();
 
     let network = WanNetwork::default();
 
@@ -3780,7 +3780,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
 
     // Set the chainstate to Emily before we create the withdrawal request
     chainstate_api::set_chainstate(
-        &testing_config,
+        &emily_config,
         Chainstate {
             stacks_block_hash: stacks_chain_tip.to_string(),
             stacks_block_height: stacks_tip_height,
@@ -3800,11 +3800,11 @@ async fn sign_bitcoin_transaction_withdrawals() {
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
         stacks_block_height: stacks_tip_height,
     };
-    let response = withdrawal_api::create_withdrawal(&testing_config, request_body).await;
+    let response = withdrawal_api::create_withdrawal(&emily_config, request_body).await;
     assert!(response.is_ok());
     // Check that there is no Accepted requests on emily before we broadcast them
     let withdrawals_on_emily =
-        withdrawal_api::get_withdrawals(&testing_config, TestingEmilyStatus::Accepted, None, None)
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Accepted, None, None)
             .await
             .unwrap()
             .withdrawals;
@@ -3812,7 +3812,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
 
     // Check that there is no Accepted requests on emily before we broadcast them
     let withdrawals_on_emily =
-        withdrawal_api::get_withdrawals(&testing_config, TestingEmilyStatus::Pending, None, None)
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Pending, None, None)
             .await
             .unwrap()
             .withdrawals;
@@ -3871,7 +3871,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
     // =========================================================================
 
     let withdrawals_on_emily =
-        withdrawal_api::get_withdrawals(&testing_config, TestingEmilyStatus::Accepted, None, None)
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Accepted, None, None)
             .await
             .unwrap()
             .withdrawals;
