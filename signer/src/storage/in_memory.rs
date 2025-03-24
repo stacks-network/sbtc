@@ -1340,6 +1340,13 @@ impl super::DbWrite for SharedStore {
         Ok(())
     }
 
+    async fn write_withdrawal_tx_output(
+        &self,
+        _output: &model::WithdrawalTxOutput,
+    ) -> Result<(), Error> {
+        unimplemented!()
+    }
+
     async fn write_tx_prevout(&self, prevout: &model::TxPrevout) -> Result<(), Error> {
         self.lock()
             .await

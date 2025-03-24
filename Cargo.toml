@@ -28,7 +28,7 @@ stackslib = { git = "https://github.com/stacks-network/stacks-core", rev = "4977
 stacks-common = { git = "https://github.com/stacks-network/stacks-core", rev = "49777d3fd73a6dbb610be80c376b7d9389c9871a", default-features = false, features = ["canonical"] }
 
 # Trust Machines Dependencies
-wsts = { version = "13.0.1" }
+wsts = { git = "https://github.com/Trust-Machines/wsts", rev = "11e2316aa0edf996f8e8f9ccbbbfd4bd2975ed1d" }
 
 # Crates.io
 aquamarine = { version = "0.6.0", default-features = false }

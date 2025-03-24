@@ -1,5 +1,7 @@
+use std::collections::HashSet;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use test_case::test_case;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::transaction::Version;
@@ -24,12 +26,16 @@ use sbtc::deposits::CreateDepositRequest;
 use sbtc::deposits::DepositInfo;
 use sbtc::deposits::DepositScriptInputs;
 use sbtc::deposits::ReclaimScriptInputs;
+use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::utxo::DepositRequest;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::utxo::SignerUtxo;
+use signer::bitcoin::utxo::TxDeconstructor;
 use signer::bitcoin::utxo::WithdrawalRequest;
+use signer::config::Settings;
 use signer::context::SbtcLimits;
+use signer::keys::SignerScriptPubKey;
 use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 use stacks_common::types::chainstate::StacksAddress;
 
@@ -372,4 +378,131 @@ fn withdrawals_reduce_to_signers_amounts() {
     // And what about the person that they just sent coins to?
     let another_recipient_balance = another_recipient.get_balance(rpc).to_sat();
     assert_eq!(another_recipient_balance, 50_000);
+}
+
+#[test_case(0; "no withdrawals")]
+#[test_case(1; "single withdrawals")]
+#[test_case(11; "multiple withdrawals")]
+fn parse_withdrawal_ids(withdrawal_numbers: u64) {
+    const FEE_RATE: f64 = 10.0;
+
+    let (rpc, faucet) = regtest::initialize_blockchain();
+    let signer = Recipient::new(AddressType::P2tr);
+    let signers_public_key = signer.keypair.x_only_public_key().0;
+    let depositor = Recipient::new(AddressType::P2tr);
+
+    // Start off with some initial UTXOs to work with.
+    let signers_funds = 100_000_000 * (1 + withdrawal_numbers);
+    faucet.send_to(signers_funds, &signer.address);
+    faucet.send_to(50_000_000, &depositor.address);
+    faucet.generate_block();
+
+    // Now lets make a deposit transaction and submit it. We do this to ensure
+    // we can create a transaction with zero withdrawals
+    let depositor_utxo = depositor.get_utxos(rpc, None).pop().unwrap();
+    let deposit_amount = 25_000_000;
+    let max_fee = deposit_amount / 2;
+
+    let (deposit_tx, deposit_request, _) = make_deposit_request(
+        &depositor,
+        deposit_amount,
+        depositor_utxo,
+        max_fee,
+        signers_public_key,
+    );
+    rpc.send_raw_transaction(&deposit_tx).unwrap();
+    faucet.generate_blocks(1);
+
+    let signer_utxo = signer.get_utxos(rpc, None).pop().unwrap();
+
+    // Now lets make some withdrawal requests
+    let mut withdrawal_requests = vec![];
+    for i in 0..withdrawal_numbers {
+        let (withdrawal_request, _) = generate_withdrawal();
+        withdrawal_requests.push(withdrawal_request);
+        // Add some gaps in the request ids
+        if i % 2 == 1 {
+            REQUEST_IDS.fetch_add(i, Ordering::Relaxed);
+        }
+    }
+
+    // Now build the struct with the outstanding peg-in and peg-out requests.
+    let requests = SbtcRequests {
+        deposits: vec![deposit_request],
+        withdrawals: withdrawal_requests.clone(),
+        signer_state: SignerBtcState {
+            utxo: SignerUtxo {
+                outpoint: OutPoint::new(signer_utxo.txid, signer_utxo.vout),
+                amount: signer_utxo.amount.to_sat(),
+                public_key: signers_public_key,
+            },
+            fee_rate: FEE_RATE,
+            public_key: signers_public_key,
+            last_fees: None,
+            magic_bytes: [b'T', b'3'],
+        },
+        accept_threshold: 4,
+        num_signers: 7,
+        sbtc_limits: SbtcLimits::unlimited(),
+        max_deposits_per_bitcoin_tx: DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX,
+    };
+
+    // There should only be one transaction here since there are only
+    // withdrawal requests and no deposit requests.
+    let mut transactions = requests.construct_transactions().unwrap();
+    assert_eq!(transactions.len(), 1);
+    let mut unsigned = transactions.pop().unwrap();
+
+    // Add the signature and/or other required information to the witness data.
+    signer::testing::set_witness_data(&mut unsigned, signer.keypair);
+
+    // Ship it
+    rpc.send_raw_transaction(&unsigned.tx).unwrap();
+    let sweep_block_hash = faucet.generate_block();
+
+    // The signer's balance should now reflect the withdrawal.
+    let signers_balance = signer.get_balance(rpc).to_sat();
+    assert_eq!(
+        signers_balance,
+        signers_funds
+            - withdrawal_requests
+                .iter()
+                .map(|req| req.amount)
+                .sum::<u64>()
+            - unsigned.tx_fee
+            + deposit_amount
+    );
+
+    // Let's check we correctly parse the withdrawal IDs
+    let settings = Settings::new_from_default_config().unwrap();
+    let client = BitcoinCoreClient::try_from(&settings.bitcoin.rpc_endpoints[0]).unwrap();
+    let tx_info = client
+        .get_tx_info(&unsigned.tx.compute_txid(), &sweep_block_hash)
+        .unwrap()
+        .unwrap();
+
+    let signer_script_pubkeys = HashSet::from([signers_public_key.signers_script_pubkey()]);
+    let (_, withdrawal_outputs) = tx_info.to_outputs(&signer_script_pubkeys).unwrap();
+
+    // Sanity check: we got a output for each request
+    assert_eq!(withdrawal_requests.len(), withdrawal_outputs.len());
+    assert_eq!(
+        withdrawal_requests.len(),
+        withdrawal_outputs
+            .iter()
+            .map(|out| out.request_id)
+            .collect::<HashSet<_>>()
+            .len()
+    );
+
+    for output in withdrawal_outputs {
+        assert_eq!(output.txid, tx_info.txid.into());
+        let request = withdrawal_requests
+            .iter()
+            .find(|req| req.request_id == output.request_id)
+            .unwrap();
+
+        let amount = tx_info.vout[output.output_index as usize].value;
+        assert_eq!(amount.to_sat(), request.amount);
+    }
 }
