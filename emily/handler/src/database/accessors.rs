@@ -736,6 +736,47 @@ async fn calculate_associated_stacks_block(context: &EmilyContext, height: u64) 
     Ok(actual_location)
 }
 
+async fn calculate_sbtc_left_for_withdrawals(context: &EmilyContext) -> Result<u64, Error> {
+    let default_global_cap = context.settings.default_limits.clone();
+
+    let chaintip = get_api_state(&context).await?.chaintip();
+    let bitcoin_end_block = match default_global_cap.rolling_withdrawal_blocks {
+        Some(window) => chaintip.bitcoin_height - window,
+        // If `rolling_withdrawal_blocks` is None we assume that rolling cap is disabled and
+        // thus return u64_max.
+        // TODO: maybe return Result<Option<u64>> from this function and return Ok(None) if
+        // `rolling_withdrawal_blocks` is not set?
+        None => {
+            return Ok(u64::max_value())
+        }
+    };
+
+    let minimum_stacks_height = calculate_associated_stacks_block(&context, bitcoin_end_block).await?;
+    let all_statuses_except_failed: Vec<_> = ALL_STATUSES
+    .iter()
+    .filter(|status| **status != Status::Failed)
+    .collect();
+
+    let mut withdrawals = vec![];
+    for status in all_statuses_except_failed {
+        let mut withdrawals_for_status =
+            get_all_withdrawal_entries_modified_from_height_with_status(
+                context,
+                status,
+                minimum_stacks_height,
+                None,
+            )
+            .await?;
+        withdrawals.append(&mut withdrawals_for_status);
+    }
+    let total_withdrawn: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
+    let amount_left = match default_global_cap.rolling_withdrawal_cap {
+        Some(cap) => cap - total_withdrawn,
+        None => u64::max_value(),
+    };
+    Ok(amount_left)
+}
+
 /// Note, this function provides the direct output structure for the api call
 /// to get the limits for the full sbtc system, and therefore is breaching the
 /// typical contract for these accessor functions. We do this here because the
@@ -764,15 +805,7 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         rolling_withdrawal_cap: default_global_cap.rolling_withdrawal_cap,
     };
     // Calculate total withdrawn amount.
-    let chaintip = get_api_state(&context).await?.chaintip();
-    let bitcoin_end_block = match default_global_cap.rolling_withdrawal_blocks {
-        Some(window) => chaintip.bitcoin_height - window,
-        None => chaintip.bitcoin_height
-    };
-
-    let associated_stacks_block = calculate_associated_stacks_block(&context, bitcoin_end_block).await?;
-
-
+    let sbtc_left_for_withdrawals = calculate_sbtc_left_for_withdrawals(context).await?;
 
     // Aggregate all the latest entries by account.
     let mut limit_by_account: HashMap<String, LimitEntry> = HashMap::new();
@@ -806,6 +839,7 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         .collect();
     // Get the global limit for the whole thing.
     Ok(Limits {
+        available_to_withdraw: Some(sbtc_left_for_withdrawals),
         peg_cap: global_cap.peg_cap,
         per_deposit_minimum: global_cap.per_deposit_minimum,
         per_deposit_cap: global_cap.per_deposit_cap,
