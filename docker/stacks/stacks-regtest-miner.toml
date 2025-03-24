@@ -60,6 +60,7 @@ auth_token = "12345"
 [[events_observer]]
 endpoint = "stacks-api:3700"
 events_keys = ["*"]
+timeout_ms = 10_000
 
 # Add emily-sidecar as an event observer
 [[events_observer]]
