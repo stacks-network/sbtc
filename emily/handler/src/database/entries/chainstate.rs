@@ -27,6 +27,10 @@ pub struct ChainstateEntry {
     /// Chainstate entry key.
     #[serde(flatten)]
     pub key: ChainstateEntryKey,
+    /// Bitcoin block hash
+    pub bitcoin_hash: String,
+    /// Bitcoin block height
+    pub bitcoin_height: u64,
 }
 
 /// Convert from entry to its corresponding chainstate.
@@ -35,6 +39,8 @@ impl From<ChainstateEntry> for Chainstate {
         Chainstate {
             stacks_block_hash: chainstate_entry.key.hash,
             stacks_block_height: chainstate_entry.key.height,
+            bitcoin_block_hash: chainstate_entry.bitcoin_hash,
+            bitcoin_block_height: chainstate_entry.bitcoin_height,
         }
     }
 }
@@ -47,6 +53,8 @@ impl From<Chainstate> for ChainstateEntry {
                 hash: chainstate_entry.stacks_block_hash,
                 height: chainstate_entry.stacks_block_height,
             },
+            bitcoin_hash: chainstate_entry.bitcoin_block_hash,
+            bitcoin_height: chainstate_entry.bitcoin_block_height,
         }
     }
 }

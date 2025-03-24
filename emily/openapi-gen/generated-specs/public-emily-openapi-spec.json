@@ -1870,9 +1870,21 @@
         "description": "Chainstate.",
         "required": [
           "stacksBlockHeight",
-          "stacksBlockHash"
+          "stacksBlockHash",
+          "bitcoinBlockHash",
+          "bitcoinBlockHeight"
         ],
         "properties": {
+          "bitcoinBlockHash": {
+            "type": "string",
+            "description": "Bitcoin block hash."
+          },
+          "bitcoinBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitcoin block height",
+            "minimum": 0
+          },
           "stacksBlockHash": {
             "type": "string",
             "description": "Stacks block hash at the height."

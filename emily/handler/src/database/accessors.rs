@@ -801,9 +801,14 @@ pub async fn set_limit_for_account(
 #[cfg(feature = "testing")]
 pub async fn wipe_all_tables(context: &EmilyContext) -> Result<(), Error> {
     wipe_deposit_table(context).await?;
+    warn!("deposits wiped");
     wipe_withdrawal_table(context).await?;
+    warn!("withdrawals wiped");
     wipe_chainstate_table(context).await?;
+    warn!("chainstate wiped");
     wipe_limit_table(context).await?;
+    warn!("limits wiped");
+    warn!("all wiped");
     Ok(())
 }
 

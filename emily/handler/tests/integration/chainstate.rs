@@ -8,10 +8,12 @@ use crate::common::clean_setup;
 use test_case::test_case;
 
 /// Make a test chainstate.
-fn new_test_chainstate(height: u64, fork_id: i32) -> Chainstate {
+fn new_test_chainstate(bitcoin_height: u64, height: u64, fork_id: i32) -> Chainstate {
     Chainstate {
         stacks_block_hash: format!("test-hash-{height}-fork-{fork_id}"),
         stacks_block_height: height,
+        bitcoin_block_hash: Default::default(),
+        bitcoin_block_height: bitcoin_height,
     }
 }
 
@@ -50,10 +52,10 @@ async fn create_and_get_chainstate_happy_path(min_height: u64, max_height: u64) 
     // Arrange.
     // --------
     let mut expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
-        .map(|height| new_test_chainstate(height, 0))
+        .map(|height| new_test_chainstate(height, height, 0))
         .collect();
 
-    let expected_chaintip = new_test_chainstate(max_height, 0);
+    let expected_chaintip = new_test_chainstate(max_height, max_height, 0);
 
     // Act.
     // --------
@@ -99,10 +101,10 @@ async fn create_and_get_chainstate_reorg_happy_path(
     // Arrange.
     // --------
     let original_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
-        .map(|height| new_test_chainstate(height, 0))
+        .map(|height| new_test_chainstate(height, height, 0))
         .collect();
 
-    let expected_post_reorg_chaintip = new_test_chainstate(reorg_height, 1);
+    let expected_post_reorg_chaintip = new_test_chainstate(reorg_height, reorg_height, 1);
 
     // Act.
     // --------
@@ -131,10 +133,10 @@ async fn create_and_replay_does_not_initiate_reorg(min_height: u64, max_height: 
     // Arrange.
     // --------
     let mut expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
-        .map(|height| new_test_chainstate(height, 0))
+        .map(|height| new_test_chainstate(height, height, 0))
         .collect();
 
-    let expected_chaintip = new_test_chainstate(max_height, 0);
+    let expected_chaintip = new_test_chainstate(max_height, max_height, 0);
 
     // Act.
     // --------

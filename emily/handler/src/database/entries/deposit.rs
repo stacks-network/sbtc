@@ -694,6 +694,9 @@ impl ValidatedUpdateDepositsRequest {
             .map(|(_, update)| Chainstate {
                 stacks_block_hash: update.event.stacks_block_hash,
                 stacks_block_height: update.event.stacks_block_height,
+                bitcoin_block_hash: Default::default(),
+                bitcoin_block_height: 0,
+
             })
             .collect::<HashSet<_>>()
             .into_iter()
@@ -944,6 +947,8 @@ mod tests {
         let chainstate = Chainstate {
             stacks_block_height: reorg_height,
             stacks_block_hash: reorg_hash.to_string(),
+            bitcoin_block_hash: Default::default(),
+            bitcoin_block_height: 0,
         };
         deposit.reorganize_around(&chainstate).unwrap();
 
