@@ -696,6 +696,46 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 
 // Limits ----------------------------------------------------------------------
 
+/// Returns height of first stacks block ancored to bitcoin block with provided height
+async fn calculate_associated_stacks_block(context: &EmilyContext, height: u64) -> Result<u64, Error> {
+    async fn bitcoin_height(context: &EmilyContext, stacks_height: u64) -> Result<u64, Error> {
+        Ok(get_chainstate_entry_at_height(context, &stacks_height).await?.bitcoin_height)
+    }
+
+    let stacks_blocks_per_bitcoin_block = 100;
+
+    let chaintip = get_api_state(context).await?.chaintip();
+    let amount_of_bitcoin_blocks_back = chaintip.bitcoin_height - height;
+    let mut expected_location = chaintip.key.height - amount_of_bitcoin_blocks_back * stacks_blocks_per_bitcoin_block;
+    let mut right_border = chaintip.key.height;
+    let mut left_border = expected_location;
+    // Doubling search window until it is valid window for binsearch 
+    while bitcoin_height(context, left_border).await? >= height {
+        left_border -= (right_border - left_border) * 2;
+    }
+    // Performing  binsearch
+    let mut actual_location = expected_location;
+    while left_border < right_border {
+        let mid = left_border + (right_border - left_border) / 2;
+        let mid_height = bitcoin_height(context, mid).await?;
+        if mid_height == height {
+            actual_location = mid;
+            break;
+        }
+        if mid_height < height {
+            left_border = mid + 1;
+            continue;
+        }
+        right_border = mid - 1;
+    }
+    // Now we have in actual_location _some_ stacks block ancored to given bitcoin block,
+    // but we want to found smallest stacks block with this property
+    while bitcoin_height(context, actual_location - 1) == height {
+        actual_location -= 1;
+    }
+    Ok(actual_location)
+}
+
 /// Note, this function provides the direct output structure for the api call
 /// to get the limits for the full sbtc system, and therefore is breaching the
 /// typical contract for these accessor functions. We do this here because the
@@ -723,6 +763,17 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         rolling_withdrawal_blocks: default_global_cap.rolling_withdrawal_blocks,
         rolling_withdrawal_cap: default_global_cap.rolling_withdrawal_cap,
     };
+    // Calculate total withdrawn amount.
+    let chaintip = get_api_state(&context).await?.chaintip();
+    let bitcoin_end_block = match default_global_cap.rolling_withdrawal_blocks {
+        Some(window) => chaintip.bitcoin_height - window,
+        None => chaintip.bitcoin_height
+    };
+
+    let associated_stacks_block = calculate_associated_stacks_block(&context, bitcoin_end_block).await?;
+
+
+
     // Aggregate all the latest entries by account.
     let mut limit_by_account: HashMap<String, LimitEntry> = HashMap::new();
     for entry in all_entries.iter() {
