@@ -746,18 +746,18 @@ async fn calculate_associated_stacks_block(
 async fn calculate_sbtc_left_for_withdrawals(context: &EmilyContext) -> Result<u64, Error> {
     let default_global_cap = context.settings.default_limits.clone();
 
-    let chaintip = get_api_state(&context).await?.chaintip();
+    let chaintip = get_api_state(context).await?.chaintip();
     let bitcoin_end_block = match default_global_cap.rolling_withdrawal_blocks {
         Some(window) => chaintip.bitcoin_height - window,
         // If `rolling_withdrawal_blocks` is None we assume that rolling cap is disabled and
         // thus return u64_max.
         // TODO: maybe return Result<Option<u64>> from this function and return Ok(None) if
         // `rolling_withdrawal_blocks` is not set?
-        None => return Ok(u64::max_value()),
+        None => return Ok(u64::MAX),
     };
 
     let minimum_stacks_height =
-        calculate_associated_stacks_block(&context, bitcoin_end_block).await?;
+        calculate_associated_stacks_block(context, bitcoin_end_block).await?;
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
         .iter()
         .filter(|status| **status != Status::Failed)
@@ -778,7 +778,7 @@ async fn calculate_sbtc_left_for_withdrawals(context: &EmilyContext) -> Result<u
     let total_withdrawn: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
     let amount_left = match default_global_cap.rolling_withdrawal_cap {
         Some(cap) => cap - total_withdrawn,
-        None => u64::max_value(),
+        None => u64::MAX,
     };
     Ok(amount_left)
 }
