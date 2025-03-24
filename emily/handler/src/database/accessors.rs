@@ -697,7 +697,7 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 // Limits ----------------------------------------------------------------------
 
 /// Returns height of first stacks block ancored to bitcoin block with provided height
-async fn calculate_associated_stacks_block(
+async fn calculate_associated_stacks_block_fast(
     context: &EmilyContext,
     height: u64,
 ) -> Result<u64, Error> {
@@ -753,7 +753,7 @@ async fn calculate_associated_stacks_block_slow(
     let mut stacks_height = chaintip.key.height;
 
     // Amount of blocks after which we stop our search and report that we are unable to calculate
-    // stacks block we searching for 
+    // stacks block we searching for
     let blocks_to_look_at = (chaintip.bitcoin_height - height) * 1000;
     for _ in 0..blocks_to_look_at {
         match bitcoin_height(context, stacks_height - 1).await {
@@ -762,15 +762,33 @@ async fn calculate_associated_stacks_block_slow(
                     return Ok(stacks_height);
                 }
             }
-            Err => {}
-        } 
+            Err(e) => match e {
+                Error::NotFound => {}
+                _ => {
+                    return Err(e);
+                }
+            },
+        }
         stacks_height -= 1;
     }
 
-    Err(error::)
+    Err(Error::NotFound)
 }
 
-
+async fn calculate_associated_stacks_block(
+    context: &EmilyContext,
+    height: u64,
+) -> Result<u64, Error> {
+    match calculate_associated_stacks_block_fast(context, height).await {
+        Ok(value) => Ok(value),
+        Err(e) => match e {
+            Error::NotFound => {
+                return calculate_associated_stacks_block_slow(context, height).await;
+            }
+            _ => Err(e),
+        },
+    }
+}
 
 async fn calculate_sbtc_left_for_withdrawals(
     context: &EmilyContext,
@@ -885,16 +903,25 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         .collect();
 
     // Calculate total withdrawn amount.
-    let sbtc_left_for_withdrawals = calculate_sbtc_left_for_withdrawals(
+    let sbtc_left_for_withdrawals = match calculate_sbtc_left_for_withdrawals(
         context,
         global_cap.rolling_withdrawal_blocks,
         global_cap.rolling_withdrawal_cap,
     )
-    .await?;
+    .await
+    {
+        Ok(val) => Some(val),
+        Err(e) => match e {
+            Error::NotFound => None,
+            _ => {
+                return Err(e);
+            }
+        },
+    };
 
     // Get the global limit for the whole thing.
     Ok(Limits {
-        available_to_withdraw: Some(sbtc_left_for_withdrawals),
+        available_to_withdraw: sbtc_left_for_withdrawals,
         peg_cap: global_cap.peg_cap,
         per_deposit_minimum: global_cap.per_deposit_minimum,
         per_deposit_cap: global_cap.per_deposit_cap,
