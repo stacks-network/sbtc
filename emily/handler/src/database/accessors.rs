@@ -701,12 +701,6 @@ async fn calculate_associated_stacks_block(
     context: &EmilyContext,
     height: u64,
 ) -> Result<u64, Error> {
-    async fn bitcoin_height(context: &EmilyContext, stacks_height: u64) -> Result<u64, Error> {
-        Ok(get_chainstate_entry_at_height(context, &stacks_height)
-            .await?
-            .bitcoin_height)
-    }
-
     // It is generally speaking a `const` but I don't think we want it in global scope
     let stacks_blocks_per_bitcoin_block = 100;
 
@@ -743,21 +737,66 @@ async fn calculate_associated_stacks_block(
     Ok(actual_location)
 }
 
-async fn calculate_sbtc_left_for_withdrawals(context: &EmilyContext) -> Result<u64, Error> {
-    let default_global_cap = context.settings.default_limits.clone();
+async fn bitcoin_height(context: &EmilyContext, stacks_height: u64) -> Result<u64, Error> {
+    Ok(get_chainstate_entry_at_height(context, &stacks_height)
+        .await?
+        .bitcoin_height)
+}
+
+/// Returns height of first stacks block ancored to bitcoin block with provided height
+/// Comparing to simple version, performs linear search back in memory.
+async fn calculate_associated_stacks_block_slow(
+    context: &EmilyContext,
+    height: u64,
+) -> Result<u64, Error> {
+    let chaintip = get_api_state(context).await?.chaintip();
+    let mut stacks_height = chaintip.key.height;
+
+    // Amount of blocks after which we stop our search and report that we are unable to calculate
+    // stacks block we searching for 
+    let blocks_to_look_at = (chaintip.bitcoin_height - height) * 1000;
+    for _ in 0..blocks_to_look_at {
+        match bitcoin_height(context, stacks_height - 1).await {
+            Ok(current_bitcoin_height) => {
+                if current_bitcoin_height == height {
+                    return Ok(stacks_height);
+                }
+            }
+            Err => {}
+        } 
+        stacks_height -= 1;
+    }
+
+    Err(error::)
+}
+
+
+
+async fn calculate_sbtc_left_for_withdrawals(
+    context: &EmilyContext,
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
+) -> Result<u64, Error> {
+    warn!("calculate_sbtc_left_for_withdrawals");
 
     let chaintip = get_api_state(context).await?.chaintip();
-    let bitcoin_end_block = match default_global_cap.rolling_withdrawal_blocks {
-        Some(window) => chaintip.bitcoin_height - window,
+    let bitcoin_end_block = match rolling_withdrawal_blocks {
+        Some(window) => chaintip.bitcoin_height.saturating_sub(window),
         // If `rolling_withdrawal_blocks` is None we assume that rolling cap is disabled and
         // thus return u64_max.
         // TODO: maybe return Result<Option<u64>> from this function and return Ok(None) if
         // `rolling_withdrawal_blocks` is not set?
-        None => return Ok(u64::MAX),
+        None => {
+            warn!("rolling_withdrawal_blocks is none, exiting with u64_max");
+            return Ok(u64::MAX);
+        }
     };
+
+    warn!("Stacks tip = {:#?}", chaintip.key.height);
 
     let minimum_stacks_height =
         calculate_associated_stacks_block(context, bitcoin_end_block).await?;
+    warn!("Calculated stacks end = {:#?}", minimum_stacks_height);
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
         .iter()
         .filter(|status| **status != Status::Failed)
@@ -775,8 +814,10 @@ async fn calculate_sbtc_left_for_withdrawals(context: &EmilyContext) -> Result<u
             .await?;
         withdrawals.append(&mut withdrawals_for_status);
     }
+    warn!("withdrawals len = {:#?}", withdrawals.len());
     let total_withdrawn: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
-    let amount_left = match default_global_cap.rolling_withdrawal_cap {
+    warn!("total withdran = {:#?}", total_withdrawn);
+    let amount_left = match rolling_withdrawal_cap {
         Some(cap) => cap - total_withdrawn,
         None => u64::MAX,
     };
@@ -790,6 +831,7 @@ async fn calculate_sbtc_left_for_withdrawals(context: &EmilyContext) -> Result<u
 /// needs to be first gathered, then filtered. It does not neatly fit into a
 /// return type that is within the table as an entry.
 pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
+    warn!("get_limits");
     // Get all the entries of the limit table. This table shouldn't be too large.
     let all_entries =
         LimitTablePrimaryIndex::get_all_entries(&context.dynamodb_client, &context.settings)
@@ -810,8 +852,6 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         rolling_withdrawal_blocks: default_global_cap.rolling_withdrawal_blocks,
         rolling_withdrawal_cap: default_global_cap.rolling_withdrawal_cap,
     };
-    // Calculate total withdrawn amount.
-    let sbtc_left_for_withdrawals = calculate_sbtc_left_for_withdrawals(context).await?;
 
     // Aggregate all the latest entries by account.
     let mut limit_by_account: HashMap<String, LimitEntry> = HashMap::new();
@@ -843,6 +883,15 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         .filter(|(_, limit_entry)| !limit_entry.is_empty())
         .map(|(account, limit_entry)| (account, AccountLimits::from(limit_entry)))
         .collect();
+
+    // Calculate total withdrawn amount.
+    let sbtc_left_for_withdrawals = calculate_sbtc_left_for_withdrawals(
+        context,
+        global_cap.rolling_withdrawal_blocks,
+        global_cap.rolling_withdrawal_cap,
+    )
+    .await?;
+
     // Get the global limit for the whole thing.
     Ok(Limits {
         available_to_withdraw: Some(sbtc_left_for_withdrawals),
