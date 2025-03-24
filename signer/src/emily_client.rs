@@ -32,7 +32,6 @@ use crate::config::EmilyClientConfig;
 use crate::context::SbtcLimits;
 use crate::error::Error;
 use crate::storage::model::BitcoinTxId;
-use crate::storage::model::StacksBlock;
 use crate::util::ApiFallbackClient;
 
 /// Emily client error variants.
@@ -94,7 +93,6 @@ pub trait EmilyInteract: Sync + Send {
     fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> impl std::future::Future<Output = Result<UpdateDepositsResponse, Error>> + Send;
 
     /// Update accepted withdrawals after their sweep bitcoin transaction has
@@ -103,7 +101,6 @@ pub trait EmilyInteract: Sync + Send {
     fn accept_withdrawals<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> impl std::future::Future<Output = Result<UpdateWithdrawalsResponse, Error>> + Send;
 
     /// Update the status of deposits in Emily.
@@ -334,7 +331,6 @@ impl EmilyInteract for EmilyClient {
     async fn accept_withdrawals<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateWithdrawalsResponse, Error> {
         let withdrawals = transaction
             .requests
@@ -347,8 +343,6 @@ impl EmilyInteract for EmilyClient {
                 fulfillment: None,
                 status: Status::Accepted,
                 status_message: "".to_string(),
-                last_update_block_hash: stacks_chain_tip.block_hash.to_string(),
-                last_update_height: stacks_chain_tip.block_height,
             })
             .collect();
 
@@ -358,7 +352,6 @@ impl EmilyInteract for EmilyClient {
     async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateDepositsResponse, Error> {
         let deposits = transaction
             .requests
@@ -372,8 +365,6 @@ impl EmilyInteract for EmilyClient {
                 status: Status::Accepted,
                 fulfillment: None,
                 status_message: "".to_string(),
-                last_update_block_hash: stacks_chain_tip.block_hash.to_string(),
-                last_update_height: stacks_chain_tip.block_height,
             })
             .collect();
 
@@ -459,18 +450,16 @@ impl EmilyInteract for ApiFallbackClient<EmilyClient> {
     async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateDepositsResponse, Error> {
-        self.exec(|client, _| client.accept_deposits(transaction, stacks_chain_tip))
+        self.exec(|client, _| client.accept_deposits(transaction))
             .await
     }
 
     async fn accept_withdrawals<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<UpdateWithdrawalsResponse, Error> {
-        self.exec(|client, _| client.accept_withdrawals(transaction, stacks_chain_tip))
+        self.exec(|client, _| client.accept_withdrawals(transaction))
             .await
     }
 

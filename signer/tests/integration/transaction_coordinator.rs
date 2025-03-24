@@ -52,8 +52,10 @@ use signer::context::RequestDeciderEvent;
 use signer::message::Payload;
 use signer::network::MessageTransfer;
 use signer::storage::model::WithdrawalTxOutput;
+use testing_emily_client::apis::chainstate_api;
 use testing_emily_client::apis::testing_api;
 use testing_emily_client::apis::withdrawal_api;
+use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Status as TestingEmilyStatus;
 
 use signer::context::SbtcLimits;
@@ -3205,7 +3207,7 @@ async fn test_conservative_initial_sbtc_limits() {
                 .returning(|| Box::pin(std::future::ready(Ok(vec![]))));
 
             // We don't care about this
-            client.expect_accept_deposits().returning(|_, _| {
+            client.expect_accept_deposits().returning(|_| {
                 Box::pin(std::future::ready(Err(Error::InvalidStacksResponse(
                     "dummy",
                 ))))
@@ -3493,9 +3495,9 @@ async fn sign_bitcoin_transaction_withdrawals() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let emily_config = emily_client.config().as_testing();
+
+    testing_api::wipe_databases(&emily_config).await.unwrap();
 
     let network = WanNetwork::default();
 
@@ -3767,7 +3769,6 @@ async fn sign_bitcoin_transaction_withdrawals() {
         txid: StacksTxId::from([123; 32]),
         sender_address: PrincipalData::from(StandardPrincipalData::transient()).into(),
     };
-
     // Now we should manually put withdrawal request to Emily, pretending that
     // sidecar did it.
     let stacks_tip_height = db
@@ -3776,6 +3777,18 @@ async fn sign_bitcoin_transaction_withdrawals() {
         .unwrap()
         .unwrap()
         .block_height;
+
+    // Set the chainstate to Emily before we create the withdrawal request
+    chainstate_api::set_chainstate(
+        &emily_config,
+        Chainstate {
+            stacks_block_hash: stacks_chain_tip.to_string(),
+            stacks_block_height: stacks_tip_height,
+        },
+    )
+    .await
+    .expect("Failed to set chainstate");
+
     let request_body = testing_emily_client::models::CreateWithdrawalRequestBody {
         amount: withdrawal_request.amount,
         parameters: Box::new(testing_emily_client::models::WithdrawalParameters {
@@ -3787,20 +3800,23 @@ async fn sign_bitcoin_transaction_withdrawals() {
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
         stacks_block_height: stacks_tip_height,
     };
-    let response =
-        withdrawal_api::create_withdrawal(&emily_client.config().as_testing(), request_body).await;
+    let response = withdrawal_api::create_withdrawal(&emily_config, request_body).await;
     assert!(response.is_ok());
     // Check that there is no Accepted requests on emily before we broadcast them
-    let withdrawals_on_emily = withdrawal_api::get_withdrawals(
-        &emily_client.config().as_testing(),
-        TestingEmilyStatus::Accepted,
-        None,
-        None,
-    )
-    .await
-    .unwrap()
-    .withdrawals;
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Accepted, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
     assert!(withdrawals_on_emily.is_empty());
+
+    // Check that there is no Accepted requests on emily before we broadcast them
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Pending, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
+    assert_eq!(withdrawals_on_emily.len(), 1);
 
     for (_, db, _, _) in signers.iter() {
         db.write_withdrawal_request(&withdrawal_request)
@@ -3854,15 +3870,11 @@ async fn sign_bitcoin_transaction_withdrawals() {
     //   amount.
     // =========================================================================
 
-    let withdrawals_on_emily = withdrawal_api::get_withdrawals(
-        &emily_client.config().as_testing(),
-        TestingEmilyStatus::Accepted,
-        None,
-        None,
-    )
-    .await
-    .unwrap()
-    .withdrawals;
+    let withdrawals_on_emily =
+        withdrawal_api::get_withdrawals(&emily_config, TestingEmilyStatus::Accepted, None, None)
+            .await
+            .unwrap()
+            .withdrawals;
 
     assert_eq!(withdrawals_on_emily.len(), 1);
 
@@ -4620,7 +4632,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "insufficient_confirmations_one_too_few")]
     #[test_case(TestParams {
         // This case will calculate the confirmations as:
-        // chain_length (10) - min_confirmations(6) = 4 (maximum block height), 
+        // chain_length (10) - min_confirmations(6) = 4 (maximum block height),
         // at_block_height (4) <= 4.
         chain_length: 10,
         at_block_height: 4,
@@ -4646,7 +4658,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "soft_expiry_one_block_too_old")]
     #[test_case(TestParams {
         // This case will calculate the soft expiry as:
-        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4, 
+        // chain_length (10) - expiry_window (10) + expiry_buffer (4) = 4,
         // and at_block_height (4) == 4.
         chain_length: 10,
         expiry_window: 10,
@@ -4657,7 +4669,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "soft_expiry_exact_block_allowed")]
     #[test_case(TestParams {
         // This case will calculate the hard expiry as:
-        // chain_length (10) - expiry_window (5) = 5, 
+        // chain_length (10) - expiry_window (5) = 5,
         // and at_block_height (5) == 5
         chain_length: 10,
         expiry_window: 5,
@@ -4668,7 +4680,7 @@ mod get_eligible_pending_withdrawal_requests {
     }; "hard_expiry_exact_block_allowed")]
     #[test_case(TestParams {
         // This case will calculate the hard expiry as:
-        // chain_length (10) - expiry_window (5) = 5, 
+        // chain_length (10) - expiry_window (5) = 5,
         // and at_block_height (4) < 5
         chain_length: 10,
         expiry_window: 5,
