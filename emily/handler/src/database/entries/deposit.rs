@@ -696,7 +696,6 @@ impl ValidatedUpdateDepositsRequest {
                 stacks_block_height: update.event.stacks_block_height,
                 bitcoin_block_hash: Default::default(),
                 bitcoin_block_height: 0,
-
             })
             .collect::<HashSet<_>>()
             .into_iter()
