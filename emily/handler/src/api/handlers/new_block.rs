@@ -46,7 +46,6 @@ struct StacksBlock {
 
 #[derive(Clone)]
 struct BitcoinBlock {
-    pub block_hash: String,
     pub block_height: u64,
 }
 
@@ -97,7 +96,6 @@ pub async fn new_block(
         };
 
         let bitcoin_chaintip = BitcoinBlock {
-            block_hash: new_block_event.burn_block_hash.to_hex(),
             block_height: new_block_event.burn_block_height as u64,
         };
 
@@ -125,7 +123,6 @@ pub async fn new_block(
                 Chainstate {
                     stacks_block_height: stacks_chaintip.block_height,
                     stacks_block_hash: stacks_chaintip.block_hash.clone(),
-                    bitcoin_block_hash: bitcoin_chaintip.block_hash.clone(),
                     bitcoin_block_height: bitcoin_chaintip.block_height,
                 },
             ),

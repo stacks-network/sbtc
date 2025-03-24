@@ -708,7 +708,6 @@ async fn update_deposits() {
     let update_chainstate = Chainstate {
         stacks_block_hash: "update_block_hash".to_string(),
         stacks_block_height: 42,
-        bitcoin_block_hash: "update_block_hash".to_string(),
         bitcoin_block_height: 42,
     };
 
