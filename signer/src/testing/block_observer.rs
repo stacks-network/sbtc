@@ -518,7 +518,6 @@ impl EmilyInteract for TestHarness {
     async fn accept_deposits<'a>(
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
-        _stacks_chain_tip: &'a model::StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
         unimplemented!()
     }
@@ -526,7 +525,6 @@ impl EmilyInteract for TestHarness {
     async fn accept_withdrawals<'a>(
         &'a self,
         _transaction: &'a utxo::UnsignedTransaction<'a>,
-        _stacks_chain_tip: &'a model::StacksBlock,
     ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         unimplemented!()
     }
