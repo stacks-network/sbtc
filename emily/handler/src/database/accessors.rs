@@ -730,7 +730,7 @@ async fn calculate_associated_stacks_block(context: &EmilyContext, height: u64) 
     }
     // Now we have in actual_location _some_ stacks block ancored to given bitcoin block,
     // but we want to found smallest stacks block with this property
-    while bitcoin_height(context, actual_location - 1) == height {
+    while bitcoin_height(context, actual_location - 1).await? == height {
         actual_location -= 1;
     }
     Ok(actual_location)
