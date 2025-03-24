@@ -15,6 +15,7 @@ async fn empty_default_is_as_expected() {
     let configuration = clean_setup().await;
 
     let expected_empty_default = models::Limits {
+        available_to_withdraw: Some(None),
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
@@ -127,6 +128,7 @@ async fn adding_and_then_updating_single_accout_limit_works() {
 
     // The global limits should show the latest account caps.
     let expected_limits = Limits {
+        available_to_withdraw: Some(None),
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
@@ -256,6 +258,7 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .map(|(account_name, limits)| (account_name.to_string(), limits.clone()))
     .collect();
     let global_limits_to_set = Limits {
+        available_to_withdraw: Some(Some(1000)),
         peg_cap: Some(Some(123)),
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
@@ -306,6 +309,7 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .map(|(account_name, limits)| (account_name.to_string(), limits.clone()))
     .collect();
     let expected_global_limits = Limits {
+        available_to_withdraw: Some(Some(1000)),
         peg_cap: Some(Some(123)),
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
@@ -369,6 +373,7 @@ async fn test_incomplete_rolling_withdrawal_limit_config_returns_error(
 
     // Arrange.
     let limits = Limits {
+        available_to_withdraw: Some(None),
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
@@ -398,6 +403,7 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     let configuration = clean_setup().await;
 
     let limits = Limits {
+        available_to_withdraw: Some(None),
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),

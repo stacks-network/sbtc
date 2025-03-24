@@ -697,19 +697,26 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 // Limits ----------------------------------------------------------------------
 
 /// Returns height of first stacks block ancored to bitcoin block with provided height
-async fn calculate_associated_stacks_block(context: &EmilyContext, height: u64) -> Result<u64, Error> {
+async fn calculate_associated_stacks_block(
+    context: &EmilyContext,
+    height: u64,
+) -> Result<u64, Error> {
     async fn bitcoin_height(context: &EmilyContext, stacks_height: u64) -> Result<u64, Error> {
-        Ok(get_chainstate_entry_at_height(context, &stacks_height).await?.bitcoin_height)
+        Ok(get_chainstate_entry_at_height(context, &stacks_height)
+            .await?
+            .bitcoin_height)
     }
 
+    // It is generally speaking a `const` but I don't think we want it in global scope
     let stacks_blocks_per_bitcoin_block = 100;
 
     let chaintip = get_api_state(context).await?.chaintip();
     let amount_of_bitcoin_blocks_back = chaintip.bitcoin_height - height;
-    let mut expected_location = chaintip.key.height - amount_of_bitcoin_blocks_back * stacks_blocks_per_bitcoin_block;
+    let expected_location =
+        chaintip.key.height - amount_of_bitcoin_blocks_back * stacks_blocks_per_bitcoin_block;
     let mut right_border = chaintip.key.height;
     let mut left_border = expected_location;
-    // Doubling search window until it is valid window for binsearch 
+    // Doubling search window until it is valid window for binsearch
     while bitcoin_height(context, left_border).await? >= height {
         left_border -= (right_border - left_border) * 2;
     }
@@ -746,16 +753,15 @@ async fn calculate_sbtc_left_for_withdrawals(context: &EmilyContext) -> Result<u
         // thus return u64_max.
         // TODO: maybe return Result<Option<u64>> from this function and return Ok(None) if
         // `rolling_withdrawal_blocks` is not set?
-        None => {
-            return Ok(u64::max_value())
-        }
+        None => return Ok(u64::max_value()),
     };
 
-    let minimum_stacks_height = calculate_associated_stacks_block(&context, bitcoin_end_block).await?;
+    let minimum_stacks_height =
+        calculate_associated_stacks_block(&context, bitcoin_end_block).await?;
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
-    .iter()
-    .filter(|status| **status != Status::Failed)
-    .collect();
+        .iter()
+        .filter(|status| **status != Status::Failed)
+        .collect();
 
     let mut withdrawals = vec![];
     for status in all_statuses_except_failed {
