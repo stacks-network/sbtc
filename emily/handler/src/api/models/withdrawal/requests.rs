@@ -135,13 +135,12 @@ impl UpdateWithdrawalsRequestBody {
             }
         }
 
-        // If there are failed conversion, return an error.
+        // If there are failed conversions, return an error.
         if !failed_ids.is_empty() {
             return Err(ValidationError::WithdrawalsMissingFulfillment(failed_ids).into());
         }
 
-        // Order the updates by order of when they occur so that it's as though we got them in
-        // chronological order.
+        // Sort updates by stacks_block_height to process them in chronological order.
         withdrawals.sort_by_key(|(_, update)| update.event.stacks_block_height);
 
         Ok(ValidatedUpdateWithdrawalRequest { withdrawals })
