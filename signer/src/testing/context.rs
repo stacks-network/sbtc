@@ -39,7 +39,6 @@ use crate::{
     },
     storage::{
         in_memory::{SharedStore, Store},
-        model::StacksBlock,
         DbRead, DbWrite,
     },
 };
@@ -541,24 +540,18 @@ impl EmilyInteract for WrappedMock<MockEmilyInteract> {
     async fn accept_deposits<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<emily_client::models::UpdateDepositsResponse, Error> {
-        self.inner
-            .lock()
-            .await
-            .accept_deposits(transaction, stacks_chain_tip)
-            .await
+        self.inner.lock().await.accept_deposits(transaction).await
     }
 
     async fn accept_withdrawals<'a>(
         &'a self,
         transaction: &'a UnsignedTransaction<'a>,
-        stacks_chain_tip: &'a StacksBlock,
     ) -> Result<emily_client::models::UpdateWithdrawalsResponse, Error> {
         self.inner
             .lock()
             .await
-            .accept_withdrawals(transaction, stacks_chain_tip)
+            .accept_withdrawals(transaction)
             .await
     }
 

@@ -10,9 +10,10 @@ use test_case::test_case;
 
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
+use testing_emily_client::apis::chainstate_api::set_chainstate;
 use testing_emily_client::apis::configuration::ApiKey;
 use testing_emily_client::apis::ResponseContent;
-use testing_emily_client::models::{Fulfillment, Status, UpdateDepositsRequestBody};
+use testing_emily_client::models::{Chainstate, Fulfillment, Status, UpdateDepositsRequestBody};
 use testing_emily_client::{
     apis::{self, configuration::Configuration},
     models::{CreateDepositRequestBody, Deposit, DepositInfo, DepositParameters, DepositUpdate},
@@ -704,8 +705,11 @@ async fn update_deposits() {
         (0..2).map(|_| DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, &amounts));
 
     let update_status_message: &str = "test_status_message";
-    let update_block_hash: &str = "update_block_hash";
-    let update_block_height: u64 = 34;
+    let update_chainstate = Chainstate {
+        stacks_block_hash: "update_block_hash".to_string(),
+        stacks_block_height: 42,
+    };
+
     let update_status: Status = Status::Confirmed;
 
     let update_fulfillment: Fulfillment = Fulfillment {
@@ -721,6 +725,7 @@ async fn update_deposits() {
     let mut create_requests: Vec<CreateDepositRequestBody> = Vec::with_capacity(num_deposits);
     let mut deposit_updates: Vec<DepositUpdate> = Vec::with_capacity(num_deposits);
     let mut expected_deposits: Vec<Deposit> = Vec::with_capacity(num_deposits);
+
     for tx in deposits_txs {
         let DepositTxnData {
             recipients,
@@ -748,8 +753,6 @@ async fn update_deposits() {
                 bitcoin_tx_output_index: i as u32,
                 bitcoin_txid: bitcoin_txid.clone().into(),
                 fulfillment: Some(Some(Box::new(update_fulfillment.clone()))),
-                last_update_block_hash: update_block_hash.into(),
-                last_update_height: update_block_height,
                 status: update_status.clone(),
                 status_message: update_status_message.into(),
             };
@@ -760,8 +763,8 @@ async fn update_deposits() {
                 bitcoin_tx_output_index: i as u32,
                 bitcoin_txid: bitcoin_txid.clone().into(),
                 fulfillment: Some(Some(Box::new(update_fulfillment.clone()))),
-                last_update_block_hash: update_block_hash.into(),
-                last_update_height: update_block_height,
+                last_update_block_hash: update_chainstate.stacks_block_hash.clone(),
+                last_update_height: update_chainstate.stacks_block_height,
                 reclaim_script: reclaim_script.clone(),
                 deposit_script: deposit_script.clone(),
                 parameters: Box::new(DepositParameters {
@@ -782,6 +785,12 @@ async fn update_deposits() {
     // Act.
     // ----
     batch_create_deposits(&configuration, create_requests).await;
+    // Not strictly necessary, but we do it to make sure that the updates
+    // are connected with the current chainstate.
+    set_chainstate(&configuration, update_chainstate.clone())
+        .await
+        .expect("Received an error after making a valid set chainstate api call.");
+
     let update_deposits_response =
         apis::deposit_api::update_deposits(&configuration, update_request)
             .await
@@ -793,102 +802,6 @@ async fn update_deposits() {
     updated_deposits.sort_by(arbitrary_deposit_partial_cmp);
     expected_deposits.sort_by(arbitrary_deposit_partial_cmp);
     assert_eq!(expected_deposits, updated_deposits);
-}
-
-#[tokio::test]
-async fn update_deposits_updates_chainstate() {
-    let configuration = clean_setup().await;
-
-    // Arrange.
-    // --------
-    let bitcoin_tx_output_index = 0;
-
-    // Setup test deposit transaction.
-    let DepositTxnData {
-        recipients: _,
-        reclaim_scripts,
-        deposit_scripts,
-        bitcoin_txid,
-        transaction_hex,
-    } = DepositTxnData::new(DEPOSIT_LOCK_TIME, DEPOSIT_MAX_FEE, &[DEPOSIT_AMOUNT_SATS]);
-    let reclaim_script = reclaim_scripts.first().unwrap().clone();
-    let deposit_script = deposit_scripts.first().unwrap().clone();
-
-    let create_request = CreateDepositRequestBody {
-        bitcoin_tx_output_index,
-        bitcoin_txid: bitcoin_txid.clone().into(),
-        deposit_script: deposit_script.clone(),
-        reclaim_script: reclaim_script.clone(),
-        transaction_hex: transaction_hex.clone(),
-    };
-
-    // It's okay to say it's accepted over and over.
-    let update_status: Status = Status::Accepted;
-    let update_status_message: &str = "test_status_message";
-
-    let min_height: i64 = 20;
-    let max_height: i64 = 30;
-    let range = min_height..max_height;
-
-    let mut deposit_updates = Vec::new();
-    for update_block_height in range.clone() {
-        let deposit_update = DepositUpdate {
-            bitcoin_tx_output_index: bitcoin_tx_output_index,
-            bitcoin_txid: bitcoin_txid.clone().into(),
-            fulfillment: None,
-            last_update_block_hash: format!("hash_{}", update_block_height),
-            last_update_height: update_block_height as u64,
-            status: update_status.clone(),
-            status_message: update_status_message.into(),
-        };
-        deposit_updates.push(deposit_update);
-    }
-
-    // Order the updates pecularily so that they are not in order.
-    deposit_updates.sort_by_key(|update| {
-        (update.last_update_height as i64 - (min_height + (max_height - min_height) / 2)).abs()
-    });
-
-    let expected_last_update_height_at_output_index: Vec<(usize, u64)> = deposit_updates
-        .iter()
-        .enumerate()
-        .map(|(index, update)| (index, update.last_update_height))
-        .collect();
-
-    // Create the deposits here.
-    let update_request = UpdateDepositsRequestBody { deposits: deposit_updates };
-
-    // Act.
-    // ----
-
-    // Create deposit.
-    apis::deposit_api::create_deposit(&configuration, create_request)
-        .await
-        .expect("Received an error after making a valid create deposit request api call.");
-
-    // Send it a bunch of updates.
-    let update_deposits_response =
-        apis::deposit_api::update_deposits(&configuration, update_request.clone())
-            .await
-            .expect("Received an error after making a valid update deposits api call.");
-
-    for height in range {
-        let chainstate =
-            apis::chainstate_api::get_chainstate_at_height(&configuration, height as u64)
-                .await
-                .expect(
-                    "Received an error after making a valid get chainstate at height api call.",
-                );
-        assert_eq!(chainstate.stacks_block_height, height as u64);
-        assert_eq!(chainstate.stacks_block_hash, format!("hash_{}", height));
-    }
-
-    for (index, last_update_height) in expected_last_update_height_at_output_index {
-        assert_eq!(
-            update_deposits_response.deposits[index].last_update_height,
-            last_update_height
-        );
-    }
 }
 
 #[test_case(Status::Pending; "pending")]
@@ -956,8 +869,6 @@ async fn create_deposit_handles_duplicates(status: Status) {
                 bitcoin_tx_output_index: bitcoin_tx_output_index,
                 bitcoin_txid: bitcoin_txid.clone().into(),
                 fulfillment,
-                last_update_block_hash: "update_block_hash".into(),
-                last_update_height: 34,
                 status,
                 status_message: "foo".into(),
             }],
@@ -1079,8 +990,6 @@ async fn update_deposits_is_forbidden(
                     bitcoin_tx_output_index: bitcoin_tx_output_index,
                     bitcoin_txid: bitcoin_txid.clone().into(),
                     fulfillment,
-                    last_update_block_hash: "update_block_hash".into(),
-                    last_update_height: 34,
                     status: previous_status,
                     status_message: "foo".into(),
                 }],
@@ -1110,8 +1019,6 @@ async fn update_deposits_is_forbidden(
                 bitcoin_tx_output_index: bitcoin_tx_output_index,
                 bitcoin_txid: bitcoin_txid.clone().into(),
                 fulfillment,
-                last_update_block_hash: "update_block_hash".into(),
-                last_update_height: 34,
                 status: new_status,
                 status_message: "foo".into(),
             }],

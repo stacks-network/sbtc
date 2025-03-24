@@ -2691,8 +2691,6 @@
         "required": [
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
-          "lastUpdateHeight",
-          "lastUpdateBlockHash",
           "status",
           "statusMessage"
         ],
@@ -2714,16 +2712,6 @@
               }
             ],
             "nullable": true
-          },
-          "lastUpdateBlockHash": {
-            "type": "string",
-            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
-          },
-          "lastUpdateHeight": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
-            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -3160,8 +3148,6 @@
         "description": "A singular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "requestId",
-          "lastUpdateHeight",
-          "lastUpdateBlockHash",
           "status",
           "statusMessage"
         ],
@@ -3173,16 +3159,6 @@
               }
             ],
             "nullable": true
-          },
-          "lastUpdateBlockHash": {
-            "type": "string",
-            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
-          },
-          "lastUpdateHeight": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
-            "minimum": 0
           },
           "requestId": {
             "type": "integer",
