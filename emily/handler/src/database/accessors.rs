@@ -542,7 +542,7 @@ pub async fn add_chainstate_entry(
     let mut api_state = get_api_state(context).await?;
     debug!("Adding chainstate entry, current api state: {api_state:?}");
     if let ApiStatus::Reorg(reorg_chaintip) = &api_state.api_status {
-        if reorg_chaintip != entry {
+        if reorg_chaintip.key != entry.key {
             warn!("Attempting to update chainstate during a reorg [ new entry {entry:?} | reorg chaintip {reorg_chaintip:?} ]");
             return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
                 "Attempting to update chainstate during a reorg.".to_string(),
@@ -556,7 +556,7 @@ pub async fn add_chainstate_entry(
         get_chainstate_entry_at_height(context, &entry.key.height)
             .await
             .and_then(|existing_entry: ChainstateEntry| {
-                if &existing_entry != entry {
+                if existing_entry.key != entry.key {
                     debug!("Inconsistent state because of a conflict with the current interpretation of a height.");
                     debug!("Existing entry: {existing_entry:?} | New entry: {entry:?}");
                     Err(Error::from_inconsistent_chainstate_entry(existing_entry))
