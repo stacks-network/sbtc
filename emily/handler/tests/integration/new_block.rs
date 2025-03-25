@@ -120,13 +120,22 @@ async fn test_new_blocks_sends_create_withdrawal_request() {
     // Check that the withdrawal is confirmed
     assert_eq!(withdrawal.amount, withdrawal_event.amount);
     assert!(withdrawal.fulfillment.is_none());
-    assert_eq!(withdrawal.last_update_block_hash, withdrawal_event.block_id.to_hex());
+    assert_eq!(
+        withdrawal.last_update_block_hash,
+        withdrawal_event.block_id.to_hex()
+    );
     assert_eq!(withdrawal.last_update_height, 253);
     assert_eq!(withdrawal.parameters.max_fee, withdrawal_event.max_fee);
-    assert_eq!(withdrawal.recipient, withdrawal_event.recipient.to_hex_string() );
+    assert_eq!(
+        withdrawal.recipient,
+        withdrawal_event.recipient.to_hex_string()
+    );
     assert_eq!(withdrawal.sender, withdrawal_event.sender.to_string());
     assert_eq!(withdrawal.request_id, withdrawal_event.request_id);
-    assert_eq!(withdrawal.stacks_block_hash, withdrawal_event.block_id.to_hex());
+    assert_eq!(
+        withdrawal.stacks_block_hash,
+        withdrawal_event.block_id.to_hex()
+    );
     assert_eq!(withdrawal.stacks_block_height, 253);
     assert_eq!(withdrawal.status, Status::Pending);
 }
