@@ -2251,14 +2251,14 @@
         "description": "Chainstate.",
         "required": [
           "stacksBlockHeight",
-          "stacksBlockHash",
-          "bitcoinBlockHeight"
+          "stacksBlockHash"
         ],
         "properties": {
           "bitcoinBlockHeight": {
             "type": "integer",
             "format": "int64",
             "description": "Bitcoin block height",
+            "nullable": true,
             "minimum": 0
           },
           "stacksBlockHash": {

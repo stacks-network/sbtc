@@ -31,7 +31,7 @@ pub struct ChainstateEntry {
     #[serde(flatten)]
     pub key: ChainstateEntryKey,
     /// Bitcoin block height
-    pub bitcoin_height: u64,
+    pub bitcoin_height: Option<u64>,
 }
 
 /// Convert from entry to its corresponding chainstate.
@@ -270,7 +270,7 @@ impl From<ChainstateByBitcoinHeightEntry> for Chainstate {
         Chainstate {
             stacks_block_hash: chainstate_entry.hash,
             stacks_block_height: chainstate_entry.key.height,
-            bitcoin_block_height: chainstate_entry.key.bitcoin_height,
+            bitcoin_block_height: Some(chainstate_entry.key.bitcoin_height),
         }
     }
 }
@@ -280,7 +280,7 @@ impl From<Chainstate> for ChainstateByBitcoinHeightEntry {
     fn from(chainstate_entry: Chainstate) -> Self {
         ChainstateByBitcoinHeightEntry {
             key: ChainstateByBitcoinHeightEntryKey {
-                bitcoin_height: chainstate_entry.bitcoin_block_height,
+                bitcoin_height: chainstate_entry.bitcoin_block_height.unwrap_or(0), // default is 0 since we don't meet 0 in real world and it can be good indicator of "none". However, this should never be None
                 height: chainstate_entry.stacks_block_height,
             },
             hash: chainstate_entry.stacks_block_hash,

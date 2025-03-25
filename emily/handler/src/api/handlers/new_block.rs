@@ -123,7 +123,7 @@ pub async fn new_block(
                 Chainstate {
                     stacks_block_height: stacks_chaintip.block_height,
                     stacks_block_hash: stacks_chaintip.block_hash.clone(),
-                    bitcoin_block_height: bitcoin_chaintip.block_height,
+                    bitcoin_block_height: Some(bitcoin_chaintip.block_height),
                 },
             ),
             "failed to update chainstate in Emily",

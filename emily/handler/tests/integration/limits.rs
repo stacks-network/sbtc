@@ -429,7 +429,7 @@ fn new_test_chainstate(bitcoin_height: u64, height: u64, fork_id: i32) -> Chains
     Chainstate {
         stacks_block_hash: format!("test-hash-{height}-fork-{fork_id}"),
         stacks_block_height: height,
-        bitcoin_block_height: bitcoin_height,
+        bitcoin_block_height: Some(Some(bitcoin_height)),
     }
 }
 

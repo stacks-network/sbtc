@@ -25,5 +25,5 @@ pub struct Chainstate {
     /// Stacks block hash at the height.
     pub stacks_block_hash: String,
     /// Bitcoin block height
-    pub bitcoin_block_height: u64,
+    pub bitcoin_block_height: Option<u64>,
 }
