@@ -720,16 +720,14 @@ async fn calculate_sbtc_left_for_withdrawals(
     rolling_withdrawal_blocks: Option<u64>,
     rolling_withdrawal_cap: Option<u64>,
 ) -> Result<u64, Error> {
+    if rolling_withdrawal_blocks.is_none() || rolling_withdrawal_cap.is_none() {
+        return Err(Error::NotFound);
+    }
     let chaintip = get_api_state(context).await?.chaintip();
-    let bitcoin_tip = chaintip.bitcoin_height.ok_or(Error::NotFound)?;
-    let bitcoin_end_block = match rolling_withdrawal_blocks {
-        // We want to get oldest bitcoin block _included_ into rolling window, thus we substracting not
-        // window, but window - 1.
-        Some(window) => bitcoin_tip.saturating_sub(window - 1),
-        None => {
-            return Err(Error::NotFound);
-        }
-    };
+    let bitcoin_tip = chaintip.bitcoin_height.unwrap();
+    let bitcoin_end_block =
+        bitcoin_tip.saturating_sub(rolling_withdrawal_blocks.unwrap().saturating_sub(1));
+
     let minimum_stacks_height_in_window =
         get_oldest_stacks_block_for_bitcoin_block(context, bitcoin_end_block).await?;
 
@@ -738,22 +736,23 @@ async fn calculate_sbtc_left_for_withdrawals(
         .filter(|status| **status != Status::Failed)
         .collect();
 
-    let mut withdrawals = vec![];
+    let mut total_withdrawn = 0u64;
     for status in all_statuses_except_failed {
-        let mut withdrawals_for_status =
-            get_all_withdrawal_entries_modified_from_height_with_status(
-                context,
-                status,
-                minimum_stacks_height_in_window,
-                None,
-            )
-            .await?;
-        withdrawals.append(&mut withdrawals_for_status);
+        let withdrawals = get_all_withdrawal_entries_modified_from_height_with_status(
+            context,
+            status,
+            minimum_stacks_height_in_window,
+            None,
+        )
+        .await?;
+        total_withdrawn += withdrawals
+            .iter()
+            .map(|withdrawal| withdrawal.amount)
+            .sum::<u64>();
     }
-
-    let total_withdrawn: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
-    let amount_left = rolling_withdrawal_cap.map(|cap| cap - total_withdrawn);
-    amount_left.ok_or(Error::NotFound)
+    Ok(rolling_withdrawal_cap
+        .unwrap()
+        .saturating_sub(total_withdrawn))
 }
 
 /// Note, this function provides the direct output structure for the api call
