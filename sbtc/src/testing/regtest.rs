@@ -67,14 +67,14 @@ const FAUCET_LABEL: Option<&str> = Some("faucet");
 /// recipient once.
 ///
 /// This function does the following:
-/// * Creates an RPC client to bitcoin-core
+/// * Creates an RPC client to bitcoin-core using the default endpoint and
+///   credentials.
 /// * Creates or loads a watch-only wallet on bitcoin-core
 /// * Loads a "faucet" private-public key pair with a P2WPKH address.
 /// * Has the bitcoin-core wallet watch the generated address.
 /// * Ensures that the faucet has at least 1 bitcoin spent to its address.
 pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
     static BTC_CLIENT: OnceLock<Client> = OnceLock::new();
-    static FAUCET: OnceLock<Faucet> = OnceLock::new();
     let rpc = BTC_CLIENT.get_or_init(|| {
         let username = BITCOIN_CORE_RPC_USERNAME.to_string();
         let password = BITCOIN_CORE_RPC_PASSWORD.to_string();
@@ -82,12 +82,58 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
         Client::new("http://localhost:18443", auth).unwrap()
     });
 
+    let faucet = initialize_faucet(&BTC_CLIENT.get().unwrap());
+
+    (rpc, faucet)
+}
+
+/// Initializes a blockchain and wallet on bitcoin-core at the specified
+/// endpoint. It can be called multiple times (even concurrently) but only
+/// generates the client and recipient once.
+///
+/// This function does the following:
+/// * Creates an RPC client to bitcoin-core using the specified endpoint and
+///   default credentials.
+/// * Creates or loads a watch-only wallet on bitcoin-core.
+/// * Loads a "faucet" private-public key pair with a P2WPKH address.
+/// * Has the bitcoin-core wallet watch the generated address.
+/// * Ensures that the faucet has at least 1 bitcoin spent to its address.
+pub fn initialize_blockchain_at(endpoint: &str) -> (&'static Client, &'static Faucet) {
+    static BTC_CLIENT: OnceLock<Client> = OnceLock::new();
+
+    let rpc = BTC_CLIENT.get_or_init(|| {
+        let username = BITCOIN_CORE_RPC_USERNAME.to_string();
+        let password = BITCOIN_CORE_RPC_PASSWORD.to_string();
+        let auth = Auth::UserPass(username, password);
+        Client::new(endpoint, auth).unwrap()
+    });
+
+    let faucet = initialize_faucet(&BTC_CLIENT.get().unwrap());
+
+    (rpc, faucet)
+}
+
+/// Initializes a blockchain and wallet on bitcoin-core using the provided
+/// client. It can be called multiple times (even concurrently) but only
+/// generates the recipient/faucet once.
+///
+/// This function does the following:
+/// * Creates or loads a watch-only wallet on bitcoin-core using the provided
+///   client.
+/// * Loads a "faucet" private-public key pair with a P2WPKH address.
+/// * Has the bitcoin-core wallet watch the generated address.
+/// * Ensures that the faucet has at least 1 bitcoin spent to its address.
+pub fn initialize_faucet(client: &'static Client) -> &'static Faucet {
+    static FAUCET: OnceLock<Faucet> = OnceLock::new();
+
     let faucet = FAUCET.get_or_init(|| {
-        get_or_create_wallet(rpc, BITCOIN_CORE_WALLET_NAME);
-        let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, rpc);
+        get_or_create_wallet(client, BITCOIN_CORE_WALLET_NAME);
+        let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, client);
         faucet.track_address(FAUCET_LABEL);
 
-        let amount = rpc.get_received_by_address(&faucet.address, None).unwrap();
+        let amount = client
+            .get_received_by_address(&faucet.address, None)
+            .unwrap();
 
         if amount < Amount::from_int_btc(1) {
             faucet.generate_blocks(MIN_BLOCKCHAIN_HEIGHT);
@@ -96,7 +142,7 @@ pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
         faucet
     });
 
-    (rpc, faucet)
+    faucet
 }
 
 fn get_or_create_wallet(rpc: &Client, wallet: &str) {
@@ -309,6 +355,19 @@ impl Faucet {
         };
         self.rpc.send_raw_transaction(&tx).unwrap();
         OutPoint::new(tx.compute_txid(), 0)
+    }
+
+    /// Creates enough dummy transactions to ensure that fee estimation will
+    /// not fail with "insufficient data".
+    pub fn init_for_fee_estimation(&self) {
+        let dummy = Recipient::new(AddressType::P2tr);
+        for _ in 0..5 {
+            self.generate_blocks(1);
+            for _ in 0..10 {
+                self.send_to(1_000_000, &dummy.address);
+            }
+        }
+        self.generate_blocks(1);
     }
 }
 

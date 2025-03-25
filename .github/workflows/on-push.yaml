@@ -148,6 +148,13 @@ jobs:
           tool: nextest@${{ env.NEXTEST_VERSION }}
       - name: Install Package Dependencies
         run: make install
+      - name: Enable Docker Remote API on Localhost
+        shell: bash
+        run: |
+          sudo mkdir -p /etc/systemd/system/docker.service.d/
+          sudo cp ./.github/actions/docker.override.conf /etc/systemd/system/docker.service.d/override.conf
+          sudo systemctl daemon-reload
+          sudo systemctl restart docker
       - name: Start Integration Test Environment
         run: make integration-env-up-ci
       - name: Wait for Test Artifacts

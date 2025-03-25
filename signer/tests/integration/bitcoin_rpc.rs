@@ -14,29 +14,26 @@ use bitcoincore_rpc::RpcApi;
 use bitcoincore_rpc_json::Utxo;
 use fake::{Fake, Faker};
 use rand::rngs::OsRng;
-use sbtc::testing::regtest;
 use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Recipient;
-use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::bitcoin::BitcoinInteract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 
-#[test]
-fn btc_client_getstransaction() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
-    let (rpc, faucet) = regtest::initialize_blockchain();
+use crate::docker;
+
+#[tokio::test]
+async fn btc_client_getstransaction() {
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
     let signer = Recipient::new(AddressType::P2tr);
 
     // Newly created "recipients" do not have any UTXOs associated with
     // their address.
-    let balance = signer.get_balance(rpc);
+    let balance = signer.get_balance(&client);
     assert_eq!(balance.to_sat(), 0);
 
     // Okay now we send coins to an address from the one address that
@@ -66,21 +63,17 @@ fn btc_client_getstransaction() {
     assert_eq!(response.confirmations, Some(1));
 }
 
-#[test]
-fn btc_client_getblockheader() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
-    let (rpc, _) = regtest::initialize_blockchain();
+#[tokio::test]
+async fn btc_client_getblockheader() {
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    bitcoind.initialize_blockchain();
 
     // Let's get the chain-tip
-    let block_hash = rpc.get_best_block_hash().unwrap();
+    let block_hash = client.as_ref().get_best_block_hash().unwrap();
     let header = client.get_block_header(&block_hash).unwrap().unwrap();
 
-    let block = rpc.get_block(&block_hash).unwrap();
+    let block = client.as_ref().get_block(&block_hash).unwrap();
 
     assert_eq!(header.hash, block.block_hash());
     assert_eq!(header.previous_block_hash, block.header.prev_blockhash);
@@ -91,20 +84,17 @@ fn btc_client_getblockheader() {
     assert!(client.get_block_header(&random_hash).unwrap().is_none());
 }
 
-#[test]
-fn btc_client_gets_transaction_info() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
-    let (rpc, faucet) = regtest::initialize_blockchain();
+#[tokio::test]
+async fn btc_client_gets_transaction_info() {
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
     let signer = Recipient::new(AddressType::P2tr);
 
     // Newly created "recipients" do not have any UTXOs associated with
     // their address.
-    let balance = signer.get_balance(rpc);
+    let balance = signer.get_balance(&client);
     assert_eq!(balance.to_sat(), 0);
 
     // Okay now we send coins to an address from the one address that
@@ -133,20 +123,17 @@ fn btc_client_gets_transaction_info() {
     assert_eq!(response.tx.output[vout].value.to_sat(), 500_000);
 }
 
-#[test]
-fn btc_client_gets_transaction_info_missing_tx() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
-    let (rpc, faucet) = regtest::initialize_blockchain();
+#[tokio::test]
+async fn btc_client_gets_transaction_info_missing_tx() {
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
     let signer = Recipient::new(AddressType::P2tr);
 
     // Newly created "recipients" do not have any UTXOs associated with
     // their address.
-    let balance = signer.get_balance(rpc);
+    let balance = signer.get_balance(&client);
     assert_eq!(balance.to_sat(), 0);
 
     // Okay now we send coins to an address from the one address that
@@ -173,15 +160,12 @@ fn btc_client_gets_transaction_info_missing_tx() {
     assert!(response.is_none());
 }
 
-#[test]
-fn btc_client_unsubmitted_tx() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
-    let _ = regtest::initialize_blockchain();
+#[tokio::test]
+async fn btc_client_unsubmitted_tx() {
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    bitcoind.initialize_blockchain();
+
     let txid = bitcoin::Txid::all_zeros();
 
     assert!(client.get_tx(&txid).unwrap().is_none());
@@ -193,16 +177,13 @@ fn btc_client_unsubmitted_tx() {
 /// estimate the fee rate, otherwise it will return an error. Since we do
 /// not ensure that bitcoin-core has enough transactions to estimate fees
 /// in the test, we just check that fee is positive.
-#[test]
-fn estimate_fee_rate() {
-    let _ = regtest::initialize_blockchain();
-    let btc_client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
-    let resp = btc_client.estimate_fee_rate(1);
+#[tokio::test]
+async fn estimate_fee_rate() {
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    bitcoind.initialize_blockchain();
+
+    let resp = client.estimate_fee_rate(1);
 
     if resp.is_ok() {
         assert!(resp.unwrap().sats_per_vbyte > 0.0);
@@ -211,14 +192,10 @@ fn estimate_fee_rate() {
 
 #[tokio::test]
 async fn get_tx_spending_prevout() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let (rpc, faucet) = regtest::initialize_blockchain();
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
     // Get some coins to spend (and our "utxo" outpoint).
@@ -231,7 +208,7 @@ async fn get_tx_spending_prevout() {
     assert!(response.is_empty());
 
     // Get a utxo to spend.
-    let utxo = addr1.get_utxos(rpc, Some(1_000)).pop().unwrap();
+    let utxo = addr1.get_utxos(&client, Some(1_000)).pop().unwrap();
 
     // Create a transaction that spends the utxo.
     let mut tx = bitcoin::Transaction {
@@ -276,15 +253,11 @@ async fn get_tx_spending_prevout() {
 
 #[tokio::test]
 async fn get_tx_spending_prevout_nonexistent_txid() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // Make a little noise on the blockchain so it's not empty.
-    let (_, faucet) = regtest::initialize_blockchain();
     let addr = Recipient::new(AddressType::P2wpkh);
     faucet.send_to(500_000, &addr.address);
     faucet.generate_blocks(1);
@@ -299,14 +272,10 @@ async fn get_tx_spending_prevout_nonexistent_txid() {
 
 #[tokio::test]
 async fn get_mempool_descendants() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let (rpc, faucet) = regtest::initialize_blockchain();
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
     // Get some coins to spend (and our "utxo" outpoint).
@@ -318,7 +287,7 @@ async fn get_mempool_descendants() {
     assert!(response.is_empty());
 
     // Get a utxo to spend.
-    let utxo = addr1.get_utxos(rpc, Some(10_000)).pop().unwrap();
+    let utxo = addr1.get_utxos(&client, Some(10_000)).pop().unwrap();
     assert_eq!(utxo.txid, outpoint.txid);
 
     // Create a transaction that spends the utxo.
@@ -431,14 +400,10 @@ async fn get_mempool_descendants() {
 
 #[tokio::test]
 async fn get_tx_out_confirmed_no_mempool() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let (_, faucet) = regtest::initialize_blockchain();
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
     // Get some coins to spend (and our "utxo" outpoint).
@@ -456,14 +421,10 @@ async fn get_tx_out_confirmed_no_mempool() {
 
 #[tokio::test]
 async fn get_tx_out_confirmed_with_mempool() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let (_, faucet) = regtest::initialize_blockchain();
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
     // Get some coins to spend (and our "utxo" outpoint).
@@ -481,14 +442,10 @@ async fn get_tx_out_confirmed_with_mempool() {
 
 #[tokio::test]
 async fn get_tx_out_unconfirmed_no_mempool() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let (_, faucet) = regtest::initialize_blockchain();
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
     // Get some coins to spend (and our "utxo" outpoint).
@@ -503,14 +460,10 @@ async fn get_tx_out_unconfirmed_no_mempool() {
 
 #[tokio::test]
 async fn get_tx_out_unconfirmed_with_mempool() {
-    let client = BitcoinCoreClient::new(
-        "http://localhost:18443",
-        regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
-        regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
-    )
-    .unwrap();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let (_, faucet) = regtest::initialize_blockchain();
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
     // Get some coins to spend (and our "utxo" outpoint).

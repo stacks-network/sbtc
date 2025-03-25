@@ -101,6 +101,7 @@ test-log = { version = "0.2.17", default-features = false, features = ["trace"] 
 toml_edit = { version = "0.22.22", default-features = false, features = ["display"] }
 tempfile = { version = "3.15.0", default-features = false }
 tower = { version = "0.5.2", default-features = false, features = ["util"] }
+testcontainers = { version = "0.23.3", default-features = false}
 
 [profile.dev]
 # Disabling debug info speeds up builds a bunch,
