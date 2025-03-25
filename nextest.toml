@@ -1,0 +1,21 @@
+[test-groups]
+serial = { max-threads = 1 }
+
+# all integration tests in the 'sbtc' package
+[[profile.default.overrides]]
+filter = 'package(sbtc) & kind(test)'
+test-group = 'serial'
+
+# all integration tests in the 'emily-handler' package
+[[profile.default.overrides]]
+filter = 'package(emily-handler) & kind(test)'
+test-group = 'serial'
+
+# all integration tests in the 'signer' package, except for tests in the
+# following modules:
+# - bitcoin_client
+# - bitcoin_rpc
+# - tls_checking
+[[profile.default.overrides]]
+filter = 'package(signer) & kind(test) - (test(/^bitcoin_client/) | test(/^bitcoin_rpc/) | test(/^tls_checking/))'
+test-group = 'serial'
