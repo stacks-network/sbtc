@@ -557,7 +557,12 @@ async fn test_available_to_withdraw_success() {
 
     // Here we put different amount to withdrawals that should be included in window and to ones that shouldn't.
     // Thus, if total sum is correct, then only correct withdrawals was counted
-    for (stacks_height, amount) in [(2000050, 1000), (2000049, 999), (2000099, 1000), (2000070, 1000)] {
+    for (stacks_height, amount) in [
+        (2000050, 1000),
+        (2000049, 999),
+        (2000099, 1000),
+        (2000070, 1000),
+    ] {
         let request = CreateWithdrawalRequestBody {
             amount,
             parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
