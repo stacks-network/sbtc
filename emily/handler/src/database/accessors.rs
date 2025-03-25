@@ -697,7 +697,7 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 // Limits ----------------------------------------------------------------------
 
 /// Returns height of oldest stacks block anchored to given bitcoin block
-async fn get_smallest_stack_block_for_bitcoin_block(
+async fn get_oldest_stacks_block_for_bitcoin_block(
     context: &EmilyContext,
     bitcoin_height: u64,
 ) -> Result<u64, Error> {
@@ -731,7 +731,7 @@ async fn calculate_sbtc_left_for_withdrawals(
         }
     };
     let minimum_stacks_height_in_window =
-        get_smallest_stack_block_for_bitcoin_block(context, bitcoin_end_block).await?;
+        get_oldest_stacks_block_for_bitcoin_block(context, bitcoin_end_block).await?;
 
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
         .iter()
