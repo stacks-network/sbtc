@@ -724,7 +724,11 @@ async fn calculate_sbtc_left_for_withdrawals(
         return Err(Error::NotFound);
     }
     let chaintip = get_api_state(context).await?.chaintip();
-    let bitcoin_tip = chaintip.bitcoin_height.unwrap();
+    let bitcoin_tip = chaintip.bitcoin_height;
+    if bitcoin_tip.is_none() {
+        return Err(Error::NotFound);
+    }
+    let bitcoin_tip = bitcoin_tip.unwrap();
     let bitcoin_end_block =
         bitcoin_tip.saturating_sub(rolling_withdrawal_blocks.unwrap().saturating_sub(1));
 
@@ -815,13 +819,12 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         .collect();
 
     // Calculate total withdrawn amount.
-    let sbtc_left_for_withdrawals = match calculate_sbtc_left_for_withdrawals(
+    let fut = calculate_sbtc_left_for_withdrawals(
         context,
         global_cap.rolling_withdrawal_blocks,
         global_cap.rolling_withdrawal_cap,
-    )
-    .await
-    {
+    );
+    let sbtc_left_for_withdrawals = match fut.await {
         Ok(val) => Some(val),
         Err(e) => match e {
             Error::NotFound => None,
