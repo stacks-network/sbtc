@@ -8,7 +8,7 @@ use testing_emily_client::models;
 use testing_emily_client::models::AccountLimits;
 use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Limits;
-use testing_emily_client::models::{CreateWithdrawalRequestBody, Status, WithdrawalParameters};
+use testing_emily_client::models::{CreateWithdrawalRequestBody, WithdrawalParameters};
 
 use crate::common::clean_setup;
 use crate::common::StandardError;
