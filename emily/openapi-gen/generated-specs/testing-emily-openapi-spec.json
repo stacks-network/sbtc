@@ -2875,6 +2875,13 @@
               "$ref": "#/components/schemas/AccountLimits"
             }
           },
+          "availableToWithdraw": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total amount sBTC still available for withdrawals in current window. All withdrawals except rejected\ncounted here",
+            "nullable": true,
+            "minimum": 0
+          },
           "pegCap": {
             "type": "integer",
             "format": "int64",
