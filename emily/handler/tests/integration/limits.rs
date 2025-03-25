@@ -463,6 +463,8 @@ async fn batch_set_chainstates(
 
 #[tokio::test]
 async fn test_available_to_withdraw_success_fallback_to_slow_resolution() {
+    // Available sBTC to withdraw usually is calculated via binary search, however, sometimes it fallback
+    // to linear search, this test tests second case.
     let configuration = clean_setup().await;
 
     // Set limits
@@ -517,6 +519,8 @@ async fn test_available_to_withdraw_success_fallback_to_slow_resolution() {
 
 #[tokio::test]
 async fn test_available_to_withdraw_success_fast_resolution() {
+    // Available sBTC to withdraw usually is calculated via binary search, however, sometimes it fallback
+    // to linear search, this test tests first case.
     let configuration = clean_setup().await;
 
     // Set limits
@@ -535,14 +539,14 @@ async fn test_available_to_withdraw_success_fast_resolution() {
 
     // Create chainstates
     let min_bitcoin_height = 1000000;
-    let max_bitcoin_height = 1000288; // 2 days of bitcoins
+    let max_bitcoin_height = 1000289; // 2 days of bitcoins + 1 block
     let stacks_block_per_bitcoin_block = 10; // some big number I feel sensible after looking on stacks explorer
     let mut stacks_height = 2000000;
     let mut chainstates: Vec<_> = Default::default();
 
     println!("starting creating chainstates");
     eprintln!("starting creating chainstates");
-    
+
     for bitcoin_height in min_bitcoin_height..max_bitcoin_height {
         if bitcoin_height == 1000145 {
             println!("first stacks block in window: {:#?}", stacks_height);
@@ -588,26 +592,24 @@ async fn test_available_to_withdraw_success_fast_resolution() {
     // Here we put different amount to withdrawals that should be included in window and to ones that shouldn't.
     // Thus, if total sum is correct, then only correct withdrawals was counted
     for (stacks_height, amount) in [(2001450, 1000), (2001449, 999), (2002879, 1000)] {
-    let request = CreateWithdrawalRequestBody {
-        amount,
-        parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
-        recipient: "test_recepient".into(),
-        sender: "test_sender".into(),
-        request_id: stacks_height,
-        stacks_block_hash: "test_hash".into(),
-        stacks_block_height: stacks_height,
-    };
-    println!(
-        "Inserting withdrawal on height {:#?}",
-        request.stacks_block_height
-    );
+        let request = CreateWithdrawalRequestBody {
+            amount,
+            parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
+            recipient: "test_recepient".into(),
+            sender: "test_sender".into(),
+            request_id: stacks_height,
+            stacks_block_hash: "test_hash".into(),
+            stacks_block_height: stacks_height,
+        };
+        println!(
+            "Inserting withdrawal on height {:#?}",
+            request.stacks_block_height
+        );
 
-    apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
-        .await
-        .expect("Received an error after making a valid create withdrawal request api call.");
-
+        apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
+            .await
+            .expect("Received an error after making a valid create withdrawal request api call.");
     }
-
 
     let withdrawals_on_emily =
         apis::withdrawal_api::get_withdrawals(&configuration, Status::Pending, None, None).await;

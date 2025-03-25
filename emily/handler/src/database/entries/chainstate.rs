@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{api::models::chainstate::Chainstate, common::error::Error};
 
-use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, VersionedEntryTrait};
+use super::{
+    EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
+    VersionedEntryTrait,
+};
 
 // Chainstate entry ---------------------------------------------------------------
 
@@ -236,4 +239,88 @@ impl PrimaryIndexTrait for SpecialApiStateIndexInner {
     fn table_name(settings: &crate::context::Settings) -> &str {
         &settings.chainstate_table_name
     }
+}
+
+// Chainstate by bitcoin height --------------------------------------------------------------
+
+/// Chainstate table entry key. This is the primary index key.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChainstateByBitcoinHeightEntryKey {
+    /// Output index on the bitcoin transaction associated with this specific deposit.
+    pub bitcoin_height: u64,
+    /// Bitcoin transaction id.
+    pub height: u64,
+}
+
+/// Chainstate table entry key. This is the primary index key.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChainstateByBitcoinHeightEntry {
+    /// Chainstate entry key.
+    #[serde(flatten)]
+    pub key: ChainstateByBitcoinHeightEntryKey,
+    /// Bitcoin block height
+    pub hash: String,
+}
+
+/// Convert from entry to its corresponding chainstate.
+impl From<ChainstateByBitcoinHeightEntry> for Chainstate {
+    fn from(chainstate_entry: ChainstateByBitcoinHeightEntry) -> Self {
+        Chainstate {
+            stacks_block_hash: chainstate_entry.hash,
+            stacks_block_height: chainstate_entry.key.height,
+            bitcoin_block_height: chainstate_entry.key.bitcoin_height,
+        }
+    }
+}
+
+/// Convert from chainstate to its corresponding entry.
+impl From<Chainstate> for ChainstateByBitcoinHeightEntry {
+    fn from(chainstate_entry: Chainstate) -> Self {
+        ChainstateByBitcoinHeightEntry {
+            key: ChainstateByBitcoinHeightEntryKey {
+                bitcoin_height: chainstate_entry.bitcoin_block_height,
+                height: chainstate_entry.stacks_block_height,
+            },
+            hash: chainstate_entry.stacks_block_hash,
+        }
+    }
+}
+
+/// Implements the key trait for the deposit entry key.
+impl KeyTrait for ChainstateByBitcoinHeightEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = u64;
+    /// the type of the sort key.
+    type SortKey = u64;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "BitcoinHeight";
+    /// The table field name of the sort key.
+    const SORT_KEY_NAME: &'static str = "Height";
+}
+
+/// Implements the entry trait for the deposit entry.
+impl EntryTrait for ChainstateByBitcoinHeightEntry {
+    /// The type of the key for this entry type.
+    type Key = ChainstateByBitcoinHeightEntryKey;
+    /// Extract the key from the deposit entry.
+    fn key(&self) -> Self::Key {
+        ChainstateByBitcoinHeightEntryKey {
+            height: self.key.height,
+            bitcoin_height: self.key.bitcoin_height,
+        }
+    }
+}
+
+/// Secondary index struct.
+pub struct ChainstateByBitcoinHeightTableSecondaryIndexInner;
+/// Withdrawal table Secondary index type.
+pub type ChainstateByBitcoinHeightTableSecondaryIndex =
+    SecondaryIndex<ChainstateByBitcoinHeightTableSecondaryIndexInner>;
+/// Definition of Secondary index trait.
+impl SecondaryIndexTrait for ChainstateByBitcoinHeightTableSecondaryIndexInner {
+    type Entry = ChainstateByBitcoinHeightEntry;
+    type PrimaryIndex = ChainstateTablePrimaryIndex;
+    const INDEX_NAME: &'static str = "BitcoinHeight";
 }

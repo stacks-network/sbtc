@@ -26,8 +26,8 @@ use super::entries::withdrawal::{
 };
 use super::entries::{
     chainstate::{
-        ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
-        SpecialApiStateIndex,
+        ApiStateEntry, ApiStatus, ChainstateByBitcoinHeightTableSecondaryIndex, ChainstateEntry,
+        ChainstateTablePrimaryIndex, SpecialApiStateIndex,
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
@@ -696,106 +696,23 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 
 // Limits ----------------------------------------------------------------------
 
-/// Returns height of first stacks block ancored to bitcoin block with provided height
-async fn calculate_associated_stacks_block_fast(
+/// Returns height of oldest stacks block anchored to given bitcoin block
+async fn get_smallest_stack_block_for_bitcoin_block(
     context: &EmilyContext,
-    height: u64,
+    bitcoin_height: u64,
 ) -> Result<u64, Error> {
-    // It is generally speaking a `const` but I don't think we want it in global scope
-    let stacks_blocks_per_bitcoin_block = 10;
-
-    let chaintip = get_api_state(context).await?.chaintip();
-    let amount_of_bitcoin_blocks_back = chaintip.bitcoin_height.saturating_sub(height);
-    let expected_location = chaintip
-        .key
-        .height
-        .saturating_sub(amount_of_bitcoin_blocks_back)
-        * stacks_blocks_per_bitcoin_block;
-    let mut right_border = chaintip.key.height;
-    let mut left_border = expected_location;
-    // Doubling search window until it is valid window for binsearch
-    while bitcoin_height(context, left_border).await? >= height {
-        left_border -= (right_border - left_border) * 2;
-    }
-    // Performing  binsearch
-    let mut actual_location = expected_location;
-    while left_border < right_border {
-        let mid = left_border + (right_border - left_border) / 2;
-        let mid_height = bitcoin_height(context, mid).await?;
-        if mid_height == height {
-            actual_location = mid;
-            break;
-        }
-        if mid_height < height {
-            left_border = mid + 1;
-            continue;
-        }
-        right_border = mid - 1;
-    }
-    // Now we have in actual_location _some_ stacks block ancored to given bitcoin block,
-    // but we want to found smallest stacks block with this property
-    while bitcoin_height(context, actual_location - 1).await? == height {
-        actual_location -= 1;
-    }
-    Ok(actual_location)
-}
-
-async fn bitcoin_height(context: &EmilyContext, stacks_height: u64) -> Result<u64, Error> {
-    Ok(get_chainstate_entry_at_height(context, &stacks_height)
-        .await?
-        .bitcoin_height)
-}
-
-/// Returns height of first stacks block ancored to bitcoin block with provided height
-/// Comparing to simple version, performs linear search back in memory.
-async fn calculate_associated_stacks_block_slow(
-    context: &EmilyContext,
-    height: u64,
-) -> Result<u64, Error> {
-    let chaintip = get_api_state(context).await?.chaintip();
-    let mut stacks_height = chaintip.key.height;
-
-    // Amount of blocks after which we stop our search and report that we are unable to calculate
-    // stacks block we searching for
-    let blocks_to_look_at = chaintip.bitcoin_height.saturating_sub(height) * 1000;
-    let mut smallest_present_stacks_block = u64::MAX;
-    for _ in 0..blocks_to_look_at {
-        match bitcoin_height(context, stacks_height.saturating_sub(1)).await {
-            Ok(current_bitcoin_height) => {
-                smallest_present_stacks_block = stacks_height.saturating_sub(1);
-                if current_bitcoin_height == height {
-                    return Ok(stacks_height);
-                }
-            }
-            Err(e) => match e {
-                Error::NotFound => {}
-                _ => {
-                    return Err(e);
-                }
-            },
-        }
-        if stacks_height == 0 {
-            break;
-        }
-        stacks_height -= 1;
-    }
-
-    Ok(smallest_present_stacks_block)
-}
-
-async fn calculate_associated_stacks_block(
-    context: &EmilyContext,
-    height: u64,
-) -> Result<u64, Error> {
-    match calculate_associated_stacks_block_fast(context, height).await {
-        Ok(value) => Ok(value),
-        Err(e) => match e {
-            Error::NotFound => {
-                return calculate_associated_stacks_block_slow(context, height).await;
-            }
-            _ => Err(e),
-        },
-    }
+    query_with_partition_key::<ChainstateByBitcoinHeightTableSecondaryIndex>(
+        context,
+        &bitcoin_height,
+        None,
+        None,
+    )
+    .await?
+    .0
+    .iter()
+    .min_by_key(|entry| entry.key.height)
+    .map(|entry| entry.key.height)
+    .ok_or(Error::NotFound)
 }
 
 async fn calculate_sbtc_left_for_withdrawals(
@@ -806,6 +723,8 @@ async fn calculate_sbtc_left_for_withdrawals(
     warn!("calculate_sbtc_left_for_withdrawals");
 
     let chaintip = get_api_state(context).await?.chaintip();
+    warn!("bitcoin tip = {:#?}", chaintip.bitcoin_height);
+    warn!("window = {:#?}", rolling_withdrawal_blocks.unwrap());
     let bitcoin_end_block = match rolling_withdrawal_blocks {
         // We want to get last oldest bitcoin block _included_ into rolling window, thus we substracting not
         // window, but window - 1.
@@ -819,16 +738,14 @@ async fn calculate_sbtc_left_for_withdrawals(
             return Ok(u64::MAX);
         }
     };
-
     warn!("Stacks tip = {:#?}", chaintip.key.height);
-
+    warn!("Bitcoin end block = {:#?}", bitcoin_end_block);
     warn!(
         "calculated_min_stacks_block {:#?}",
-        calculate_associated_stacks_block(context, bitcoin_end_block).await?
+        get_smallest_stack_block_for_bitcoin_block(context, bitcoin_end_block).await?
     );
-
     let minimum_stacks_height =
-        calculate_associated_stacks_block(context, bitcoin_end_block).await?;
+        get_smallest_stack_block_for_bitcoin_block(context, bitcoin_end_block).await?;
     warn!("Calculated stacks end = {:#?}", minimum_stacks_height);
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
         .iter()
