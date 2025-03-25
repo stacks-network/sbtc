@@ -312,7 +312,7 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .map(|(account_name, limits)| (account_name.to_string(), limits.clone()))
     .collect();
     let expected_global_limits = Limits {
-        available_to_withdraw: Some(None),
+        available_to_withdraw: Some(Some(112)),
         peg_cap: Some(Some(123)),
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
@@ -413,7 +413,7 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     // Emily db and it is impossible to calculate such value.
     let available_to_withdraw =
         if rolling_withdrawal_blocks.is_some() && rolling_withdrawal_cap.is_some() {
-            None
+            rolling_withdrawal_cap
         } else {
             Some(u64::MAX)
         };
