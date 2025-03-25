@@ -807,7 +807,9 @@ async fn calculate_sbtc_left_for_withdrawals(
 
     let chaintip = get_api_state(context).await?.chaintip();
     let bitcoin_end_block = match rolling_withdrawal_blocks {
-        Some(window) => chaintip.bitcoin_height.saturating_sub(window),
+        // We want to get last oldest bitcoin block _included_ into rolling window, thus we substracting not
+        // window, but window - 1.
+        Some(window) => chaintip.bitcoin_height.saturating_sub(window - 1),
         // If `rolling_withdrawal_blocks` is None we assume that rolling cap is disabled and
         // thus return u64_max.
         // TODO: maybe return Result<Option<u64>> from this function and return Ok(None) if

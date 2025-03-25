@@ -537,19 +537,23 @@ async fn test_available_to_withdraw_success_fast_resolution() {
     let min_bitcoin_height = 1000000;
     let max_bitcoin_height = 1000288; // 2 days of bitcoins
     let stacks_block_per_bitcoin_block = 10; // some big number I feel sensible after looking on stacks explorer
-
     let mut stacks_height = 2000000;
     let mut chainstates: Vec<_> = Default::default();
 
     println!("starting creating chainstates");
     eprintln!("starting creating chainstates");
+    
     for bitcoin_height in min_bitcoin_height..max_bitcoin_height {
+        if bitcoin_height == 1000145 {
+            println!("first stacks block in window: {:#?}", stacks_height);
+        }
         for _ in 0..stacks_block_per_bitcoin_block {
             let chainstate = new_test_chainstate(bitcoin_height, stacks_height, 0);
             chainstates.push(chainstate);
             stacks_height += 1;
         }
     }
+    println!("last stacks block in window: {:#?}", stacks_height - 1);
     println!("starting adding chainstates");
     eprintln!("starting adding chainstates");
     let _ = batch_set_chainstates(&configuration, chainstates).await;
@@ -578,6 +582,33 @@ async fn test_available_to_withdraw_success_fast_resolution() {
             .expect("Received an error after making a valid create withdrawal request api call.");
     }
 
+    // bitcoin blocks included in rolling window: [1000145;1000288] (both sides including)
+    // stacks blocks included in rolling window: [2001450;2002879]  (both sides including)
+
+    // Here we put different amount to withdrawals that should be included in window and to ones that shouldn't.
+    // Thus, if total sum is correct, then only correct withdrawals was counted
+    for (stacks_height, amount) in [(2001450, 1000), (2001449, 999), (2002879, 1000)] {
+    let request = CreateWithdrawalRequestBody {
+        amount,
+        parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
+        recipient: "test_recepient".into(),
+        sender: "test_sender".into(),
+        request_id: stacks_height,
+        stacks_block_hash: "test_hash".into(),
+        stacks_block_height: stacks_height,
+    };
+    println!(
+        "Inserting withdrawal on height {:#?}",
+        request.stacks_block_height
+    );
+
+    apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
+        .await
+        .expect("Received an error after making a valid create withdrawal request api call.");
+
+    }
+
+
     let withdrawals_on_emily =
         apis::withdrawal_api::get_withdrawals(&configuration, Status::Pending, None, None).await;
     println!("withdrawals on emily: {:#?}", withdrawals_on_emily);
@@ -586,5 +617,5 @@ async fn test_available_to_withdraw_success_fast_resolution() {
     let limits = apis::limits_api::get_limits(&configuration)
         .await
         .expect("failed to get limits during a valid api call");
-    assert_eq!(limits.available_to_withdraw, Some(Some(9000)))
+    assert_eq!(limits.available_to_withdraw, Some(Some(7000)))
 }
