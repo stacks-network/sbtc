@@ -3,9 +3,12 @@ use std::collections::HashMap;
 use test_case::test_case;
 
 use testing_emily_client::apis;
+use testing_emily_client::apis::configuration::Configuration;
 use testing_emily_client::models;
 use testing_emily_client::models::AccountLimits;
+use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Limits;
+use testing_emily_client::models::{CreateWithdrawalRequestBody, Status, WithdrawalParameters};
 
 use crate::common::clean_setup;
 use crate::common::StandardError;
@@ -432,4 +435,156 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     let global_limits = apis::limits_api::get_limits(&configuration).await;
     assert_eq!(global_limits.is_ok(), true);
     assert_eq!(global_limits.unwrap(), limits);
+}
+
+/// Make a test chainstate.
+fn new_test_chainstate(bitcoin_height: u64, height: u64, fork_id: i32) -> Chainstate {
+    Chainstate {
+        stacks_block_hash: format!("test-hash-{height}-fork-{fork_id}"),
+        stacks_block_height: height,
+        bitcoin_block_height: bitcoin_height,
+    }
+}
+
+async fn batch_set_chainstates(
+    configuration: &Configuration,
+    create_requests: Vec<Chainstate>,
+) -> Vec<Chainstate> {
+    let mut created: Vec<Chainstate> = Vec::with_capacity(create_requests.len());
+    for request in create_requests {
+        created.push(
+            apis::chainstate_api::set_chainstate(&configuration, request)
+                .await
+                .expect("Received an error after making a valid create deposit request api call."),
+        );
+    }
+    created
+}
+
+#[tokio::test]
+async fn test_available_to_withdraw_success_fallback_to_slow_resolution() {
+    let configuration = clean_setup().await;
+
+    // Set limits
+    let limits = Limits {
+        available_to_withdraw: Some(None),
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(Some(100)),
+        rolling_withdrawal_cap: Some(Some(10000)),
+        account_caps: HashMap::new(),
+    };
+    let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
+    assert!(result.is_ok());
+
+    // Create chainstates
+    let min_height = 1000;
+    let max_height = 1010;
+    let expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
+        .map(|height| new_test_chainstate(height, height, 0))
+        .collect();
+    let _ = new_test_chainstate(max_height, max_height, 0);
+    let _ = batch_set_chainstates(&configuration, expected_chainstates.clone()).await;
+
+    // Create withdrawal
+    // Setup test withdrawal transaction.
+    let request = CreateWithdrawalRequestBody {
+        amount: 1000,
+        parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
+        recipient: "test_recepient".into(),
+        sender: "test_sender".into(),
+        request_id: 1,
+        stacks_block_hash: "test_hash".into(),
+        stacks_block_height: 1005,
+    };
+
+    apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
+        .await
+        .expect("Received an error after making a valid create withdrawal request api call.");
+
+    let withdrawal_on_emily = apis::withdrawal_api::get_withdrawal(&configuration, 1).await;
+
+    println!("{:#?}", withdrawal_on_emily);
+
+    // Get limits and perform assertions
+    let limits = apis::limits_api::get_limits(&configuration)
+        .await
+        .expect("failed to get limits during a valid api call");
+    assert_eq!(limits.available_to_withdraw, Some(Some(9000)))
+}
+
+#[tokio::test]
+async fn test_available_to_withdraw_success_fast_resolution() {
+    let configuration = clean_setup().await;
+
+    // Set limits
+    let limits = Limits {
+        available_to_withdraw: Some(None),
+        peg_cap: Some(None),
+        per_deposit_minimum: Some(None),
+        per_deposit_cap: Some(None),
+        per_withdrawal_cap: Some(None),
+        rolling_withdrawal_blocks: Some(Some(144)), // 24 hours of bitcoin blocks, close to real life limit
+        rolling_withdrawal_cap: Some(Some(10000)),
+        account_caps: HashMap::new(),
+    };
+    let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
+    assert!(result.is_ok());
+
+    // Create chainstates
+    let min_bitcoin_height = 1000000;
+    let max_bitcoin_height = 1000288; // 2 days of bitcoins
+    let stacks_block_per_bitcoin_block = 10; // some big number I feel sensible after looking on stacks explorer
+
+    let mut stacks_height = 2000000;
+    let mut chainstates: Vec<_> = Default::default();
+
+    println!("starting creating chainstates");
+    eprintln!("starting creating chainstates");
+    for bitcoin_height in min_bitcoin_height..max_bitcoin_height {
+        for _ in 0..stacks_block_per_bitcoin_block {
+            let chainstate = new_test_chainstate(bitcoin_height, stacks_height, 0);
+            chainstates.push(chainstate);
+            stacks_height += 1;
+        }
+    }
+    println!("starting adding chainstates");
+    eprintln!("starting adding chainstates");
+    let _ = batch_set_chainstates(&configuration, chainstates).await;
+
+    // Create withdrawal
+    // Setup test withdrawal transaction.
+    println!("starting adding withdrawals");
+    eprintln!("starting adding withdrawals");
+    for offset in 10..20 {
+        let request = CreateWithdrawalRequestBody {
+            amount: 100,
+            parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
+            recipient: "test_recepient".into(),
+            sender: "test_sender".into(),
+            request_id: offset,
+            stacks_block_hash: "test_hash".into(),
+            stacks_block_height: stacks_height - offset,
+        };
+        println!(
+            "Inserting withdrawal on height {:#?}",
+            request.stacks_block_height
+        );
+
+        apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
+            .await
+            .expect("Received an error after making a valid create withdrawal request api call.");
+    }
+
+    let withdrawals_on_emily =
+        apis::withdrawal_api::get_withdrawals(&configuration, Status::Pending, None, None).await;
+    println!("withdrawals on emily: {:#?}", withdrawals_on_emily);
+
+    // Get limits and perform assertions
+    let limits = apis::limits_api::get_limits(&configuration)
+        .await
+        .expect("failed to get limits during a valid api call");
+    assert_eq!(limits.available_to_withdraw, Some(Some(9000)))
 }

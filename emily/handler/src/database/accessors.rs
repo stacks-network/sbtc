@@ -702,12 +702,15 @@ async fn calculate_associated_stacks_block_fast(
     height: u64,
 ) -> Result<u64, Error> {
     // It is generally speaking a `const` but I don't think we want it in global scope
-    let stacks_blocks_per_bitcoin_block = 100;
+    let stacks_blocks_per_bitcoin_block = 10;
 
     let chaintip = get_api_state(context).await?.chaintip();
-    let amount_of_bitcoin_blocks_back = chaintip.bitcoin_height - height;
-    let expected_location =
-        chaintip.key.height - amount_of_bitcoin_blocks_back * stacks_blocks_per_bitcoin_block;
+    let amount_of_bitcoin_blocks_back = chaintip.bitcoin_height.saturating_sub(height);
+    let expected_location = chaintip
+        .key
+        .height
+        .saturating_sub(amount_of_bitcoin_blocks_back)
+        * stacks_blocks_per_bitcoin_block;
     let mut right_border = chaintip.key.height;
     let mut left_border = expected_location;
     // Doubling search window until it is valid window for binsearch
@@ -754,10 +757,12 @@ async fn calculate_associated_stacks_block_slow(
 
     // Amount of blocks after which we stop our search and report that we are unable to calculate
     // stacks block we searching for
-    let blocks_to_look_at = (chaintip.bitcoin_height - height) * 1000;
+    let blocks_to_look_at = chaintip.bitcoin_height.saturating_sub(height) * 1000;
+    let mut smallest_present_stacks_block = u64::MAX;
     for _ in 0..blocks_to_look_at {
-        match bitcoin_height(context, stacks_height - 1).await {
+        match bitcoin_height(context, stacks_height.saturating_sub(1)).await {
             Ok(current_bitcoin_height) => {
+                smallest_present_stacks_block = stacks_height.saturating_sub(1);
                 if current_bitcoin_height == height {
                     return Ok(stacks_height);
                 }
@@ -769,10 +774,13 @@ async fn calculate_associated_stacks_block_slow(
                 }
             },
         }
+        if stacks_height == 0 {
+            break;
+        }
         stacks_height -= 1;
     }
 
-    Err(Error::NotFound)
+    Ok(smallest_present_stacks_block)
 }
 
 async fn calculate_associated_stacks_block(
@@ -811,6 +819,11 @@ async fn calculate_sbtc_left_for_withdrawals(
     };
 
     warn!("Stacks tip = {:#?}", chaintip.key.height);
+
+    warn!(
+        "calculated_min_stacks_block {:#?}",
+        calculate_associated_stacks_block(context, bitcoin_end_block).await?
+    );
 
     let minimum_stacks_height =
         calculate_associated_stacks_block(context, bitcoin_end_block).await?;
@@ -914,10 +927,18 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         Err(e) => match e {
             Error::NotFound => None,
             _ => {
+                warn!(
+                    "got error from calculate sbtc left for withdrawals {:#?}",
+                    e
+                );
                 return Err(e);
             }
         },
     };
+    warn!(
+        "calculated sbtc left for withdrawals: {:#?}",
+        sbtc_left_for_withdrawals
+    );
 
     // Get the global limit for the whole thing.
     Ok(Limits {
