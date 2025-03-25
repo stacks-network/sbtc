@@ -44,11 +44,6 @@ struct StacksBlock {
     pub block_height: u64,
 }
 
-#[derive(Clone)]
-struct BitcoinBlock {
-    pub block_height: u64,
-}
-
 /// Get limits handler.
 #[utoipa::path(
     post,
@@ -95,10 +90,6 @@ pub async fn new_block(
             block_height: new_block_event.block_height,
         };
 
-        let bitcoin_chaintip = BitcoinBlock {
-            block_height: new_block_event.burn_block_height as u64,
-        };
-
         tracing::debug!(
             block_height = stacks_chaintip.block_height,
             block_hash = %stacks_chaintip.block_hash,
@@ -123,7 +114,7 @@ pub async fn new_block(
                 Chainstate {
                     stacks_block_height: stacks_chaintip.block_height,
                     stacks_block_hash: stacks_chaintip.block_hash.clone(),
-                    bitcoin_block_height: Some(bitcoin_chaintip.block_height),
+                    bitcoin_block_height: Some(new_block_event.burn_block_height as u64),
                 },
             ),
             "failed to update chainstate in Emily",

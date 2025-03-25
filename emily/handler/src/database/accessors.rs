@@ -720,33 +720,19 @@ async fn calculate_sbtc_left_for_withdrawals(
     rolling_withdrawal_blocks: Option<u64>,
     rolling_withdrawal_cap: Option<u64>,
 ) -> Result<u64, Error> {
-    warn!("calculate_sbtc_left_for_withdrawals");
-
     let chaintip = get_api_state(context).await?.chaintip();
     let bitcoin_tip = chaintip.bitcoin_height.ok_or(Error::NotFound)?;
-    warn!("bitcoin tip = {:#?}", chaintip.bitcoin_height);
     let bitcoin_end_block = match rolling_withdrawal_blocks {
         // We want to get last oldest bitcoin block _included_ into rolling window, thus we substracting not
         // window, but window - 1.
         Some(window) => bitcoin_tip.saturating_sub(window - 1),
-        // If `rolling_withdrawal_blocks` is None we assume that rolling cap is disabled and
-        // thus return u64_max.
-        // TODO: maybe return Result<Option<u64>> from this function and return Ok(None) if
-        // `rolling_withdrawal_blocks` is not set?
         None => {
-            warn!("rolling_withdrawal_blocks is none, exiting with u64_max");
             return Err(Error::NotFound);
         }
     };
-    warn!("Stacks tip = {:#?}", chaintip.key.height);
-    warn!("Bitcoin end block = {:#?}", bitcoin_end_block);
-    warn!(
-        "calculated_min_stacks_block {:#?}",
-        get_smallest_stack_block_for_bitcoin_block(context, bitcoin_end_block).await?
-    );
-    let minimum_stacks_height =
+    let minimum_stacks_height_in_window =
         get_smallest_stack_block_for_bitcoin_block(context, bitcoin_end_block).await?;
-    warn!("Calculated stacks end = {:#?}", minimum_stacks_height);
+
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
         .iter()
         .filter(|status| **status != Status::Failed)
@@ -758,15 +744,14 @@ async fn calculate_sbtc_left_for_withdrawals(
             get_all_withdrawal_entries_modified_from_height_with_status(
                 context,
                 status,
-                minimum_stacks_height,
+                minimum_stacks_height_in_window,
                 None,
             )
             .await?;
         withdrawals.append(&mut withdrawals_for_status);
     }
-    warn!("withdrawals len = {:#?}", withdrawals.len());
+
     let total_withdrawn: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
-    warn!("total withdran = {:#?}", total_withdrawn);
     let amount_left = rolling_withdrawal_cap.map(|cap| cap - total_withdrawn);
     amount_left.ok_or(Error::NotFound)
 }
@@ -778,7 +763,6 @@ async fn calculate_sbtc_left_for_withdrawals(
 /// needs to be first gathered, then filtered. It does not neatly fit into a
 /// return type that is within the table as an entry.
 pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
-    warn!("get_limits");
     // Get all the entries of the limit table. This table shouldn't be too large.
     let all_entries =
         LimitTablePrimaryIndex::get_all_entries(&context.dynamodb_client, &context.settings)
@@ -843,18 +827,10 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         Err(e) => match e {
             Error::NotFound => None,
             _ => {
-                warn!(
-                    "got error from calculate sbtc left for withdrawals {:#?}",
-                    e
-                );
                 return Err(e);
             }
         },
     };
-    warn!(
-        "calculated sbtc left for withdrawals: {:#?}",
-        sbtc_left_for_withdrawals
-    );
 
     // Get the global limit for the whole thing.
     Ok(Limits {

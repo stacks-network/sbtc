@@ -243,7 +243,7 @@ impl PrimaryIndexTrait for SpecialApiStateIndexInner {
 
 // Chainstate by bitcoin height --------------------------------------------------------------
 
-/// Chainstate table entry key. This is the primary index key.
+/// Chainstate table entry key. This is the secondary index key.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ChainstateByBitcoinHeightEntryKey {
@@ -253,7 +253,7 @@ pub struct ChainstateByBitcoinHeightEntryKey {
     pub height: u64,
 }
 
-/// Chainstate table entry key. This is the primary index key.
+/// Chainstate  table entry. This is secondary entry
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ChainstateByBitcoinHeightEntry {
@@ -288,7 +288,7 @@ impl From<Chainstate> for ChainstateByBitcoinHeightEntry {
     }
 }
 
-/// Implements the key trait for the deposit entry key.
+/// Implements the key trait for the ChainstateByBitcoinHeightEntryKey.
 impl KeyTrait for ChainstateByBitcoinHeightEntryKey {
     /// The type of the partition key.
     type PartitionKey = u64;
@@ -300,11 +300,11 @@ impl KeyTrait for ChainstateByBitcoinHeightEntryKey {
     const SORT_KEY_NAME: &'static str = "Height";
 }
 
-/// Implements the entry trait for the deposit entry.
+/// Implements the entry trait for the ChainstateByBitcoinHeightEntry.
 impl EntryTrait for ChainstateByBitcoinHeightEntry {
     /// The type of the key for this entry type.
     type Key = ChainstateByBitcoinHeightEntryKey;
-    /// Extract the key from the deposit entry.
+    /// Extract the key from the entry.
     fn key(&self) -> Self::Key {
         ChainstateByBitcoinHeightEntryKey {
             height: self.key.height,
@@ -315,7 +315,7 @@ impl EntryTrait for ChainstateByBitcoinHeightEntry {
 
 /// Secondary index struct.
 pub struct ChainstateByBitcoinHeightTableSecondaryIndexInner;
-/// Withdrawal table Secondary index type.
+/// Chainstate table Secondary index type.
 pub type ChainstateByBitcoinHeightTableSecondaryIndex =
     SecondaryIndex<ChainstateByBitcoinHeightTableSecondaryIndexInner>;
 /// Definition of Secondary index trait.

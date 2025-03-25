@@ -58,7 +58,6 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
 #[instrument(skip(context))]
 pub async fn set_limits(context: EmilyContext, limits: Limits) -> impl warp::reply::Reply {
     // Internal handler so `?` can be used correctly while still returning a reply.
-    tracing::warn!("set limits: {:#?}", limits);
     async fn handler(
         context: EmilyContext,
         limits: Limits,

@@ -450,8 +450,6 @@ async fn batch_set_chainstates(
 
 #[tokio::test]
 async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
-    // Available sBTC to withdraw usually is calculated via binary search, however, sometimes it fallback
-    // to linear search, this test tests second case.
     let configuration = clean_setup().await;
 
     // Set limits
@@ -493,10 +491,6 @@ async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
         .await
         .expect("Received an error after making a valid create withdrawal request api call.");
 
-    let withdrawal_on_emily = apis::withdrawal_api::get_withdrawal(&configuration, 1).await;
-
-    println!("{:#?}", withdrawal_on_emily);
-
     // Get limits and perform assertions
     let limits = apis::limits_api::get_limits(&configuration)
         .await
@@ -506,8 +500,6 @@ async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
 
 #[tokio::test]
 async fn test_available_to_withdraw_success() {
-    // Available sBTC to withdraw usually is calculated via binary search, however, sometimes it fallback
-    // to linear search, this test tests first case.
     let configuration = clean_setup().await;
 
     // Set limits
@@ -517,7 +509,7 @@ async fn test_available_to_withdraw_success() {
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
         per_withdrawal_cap: Some(None),
-        rolling_withdrawal_blocks: Some(Some(10)), // 24 hours of bitcoin blocks, close to real life limit
+        rolling_withdrawal_blocks: Some(Some(10)),
         rolling_withdrawal_cap: Some(Some(10000)),
         account_caps: HashMap::new(),
     };
@@ -531,26 +523,17 @@ async fn test_available_to_withdraw_success() {
     let mut stacks_height = 2000000;
     let mut chainstates: Vec<_> = Default::default();
 
-    println!("starting creating chainstates");
-    eprintln!("starting creating chainstates");
-
     for bitcoin_height in min_bitcoin_height..max_bitcoin_height {
-        if bitcoin_height == 1000010 {
-            println!("first stacks block in window: {:#?}", stacks_height);
-        }
         for _ in 0..stacks_block_per_bitcoin_block {
             let chainstate = new_test_chainstate(bitcoin_height, stacks_height, 0);
             chainstates.push(chainstate);
             stacks_height += 1;
         }
     }
-    println!("last stacks block in window: {:#?}", stacks_height - 1);
-    println!("starting adding chainstates");
-    eprintln!("starting adding chainstates");
+
     let _ = batch_set_chainstates(&configuration, chainstates).await;
 
-    // Create withdrawal
-    // Setup test withdrawal transaction.
+    // Create withdrawals
 
     // bitcoin heights in window: [1000010;1000019] (both sides including)
     // stacks heights in window: [2000050;2000099] (both sides including)
@@ -572,19 +555,11 @@ async fn test_available_to_withdraw_success() {
             stacks_block_hash: "test_hash".into(),
             stacks_block_height: stacks_height,
         };
-        println!(
-            "Inserting withdrawal on height {:#?}",
-            request.stacks_block_height
-        );
 
         apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
             .await
             .expect("Received an error after making a valid create withdrawal request api call.");
     }
-
-    let withdrawals_on_emily =
-        apis::withdrawal_api::get_withdrawals(&configuration, Status::Pending, None, None).await;
-    println!("withdrawals on emily: {:#?}", withdrawals_on_emily);
 
     // Get limits and perform assertions
     let limits = apis::limits_api::get_limits(&configuration)
