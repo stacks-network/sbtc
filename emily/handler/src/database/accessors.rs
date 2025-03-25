@@ -723,7 +723,7 @@ async fn calculate_sbtc_left_for_withdrawals(
     let chaintip = get_api_state(context).await?.chaintip();
     let bitcoin_tip = chaintip.bitcoin_height.ok_or(Error::NotFound)?;
     let bitcoin_end_block = match rolling_withdrawal_blocks {
-        // We want to get last oldest bitcoin block _included_ into rolling window, thus we substracting not
+        // We want to get oldest bitcoin block _included_ into rolling window, thus we substracting not
         // window, but window - 1.
         Some(window) => bitcoin_tip.saturating_sub(window - 1),
         None => {

@@ -247,13 +247,13 @@ impl PrimaryIndexTrait for SpecialApiStateIndexInner {
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ChainstateByBitcoinHeightEntryKey {
-    /// Output index on the bitcoin transaction associated with this specific deposit.
+    /// Bitcoin height
     pub bitcoin_height: u64,
-    /// Bitcoin transaction id.
+    /// Stacks height
     pub height: u64,
 }
 
-/// Chainstate  table entry. This is secondary entry
+/// Chainstate table entry. This is secondary entry
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub struct ChainstateByBitcoinHeightEntry {
