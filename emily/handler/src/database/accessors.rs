@@ -724,7 +724,6 @@ async fn calculate_sbtc_left_for_withdrawals(
 
     let chaintip = get_api_state(context).await?.chaintip();
     warn!("bitcoin tip = {:#?}", chaintip.bitcoin_height);
-    warn!("window = {:#?}", rolling_withdrawal_blocks.unwrap());
     let bitcoin_end_block = match rolling_withdrawal_blocks {
         // We want to get last oldest bitcoin block _included_ into rolling window, thus we substracting not
         // window, but window - 1.
@@ -735,7 +734,7 @@ async fn calculate_sbtc_left_for_withdrawals(
         // `rolling_withdrawal_blocks` is not set?
         None => {
             warn!("rolling_withdrawal_blocks is none, exiting with u64_max");
-            return Ok(u64::MAX);
+            return Err(Error::NotFound);
         }
     };
     warn!("Stacks tip = {:#?}", chaintip.key.height);
@@ -767,11 +766,8 @@ async fn calculate_sbtc_left_for_withdrawals(
     warn!("withdrawals len = {:#?}", withdrawals.len());
     let total_withdrawn: u64 = withdrawals.iter().map(|withdrawal| withdrawal.amount).sum();
     warn!("total withdran = {:#?}", total_withdrawn);
-    let amount_left = match rolling_withdrawal_cap {
-        Some(cap) => cap - total_withdrawn,
-        None => u64::MAX,
-    };
-    Ok(amount_left)
+    let amount_left = rolling_withdrawal_cap.map(|cap| cap - total_withdrawn);
+    amount_left.ok_or(Error::NotFound)
 }
 
 /// Note, this function provides the direct output structure for the api call

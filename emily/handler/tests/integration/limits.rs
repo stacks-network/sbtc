@@ -18,7 +18,7 @@ async fn empty_default_is_as_expected() {
     let configuration = clean_setup().await;
 
     let expected_empty_default = models::Limits {
-        available_to_withdraw: Some(Some(u64::MAX)),
+        available_to_withdraw: Some(None),
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
@@ -131,7 +131,7 @@ async fn adding_and_then_updating_single_accout_limit_works() {
 
     // The global limits should show the latest account caps.
     let expected_limits = Limits {
-        available_to_withdraw: Some(Some(u64::MAX)),
+        available_to_withdraw: Some(None),
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
@@ -312,7 +312,7 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .map(|(account_name, limits)| (account_name.to_string(), limits.clone()))
     .collect();
     let expected_global_limits = Limits {
-        available_to_withdraw: Some(Some(112)),
+        available_to_withdraw: Some(None), // Will fail to calculate available to withdraw since chainstate table is empty
         peg_cap: Some(Some(123)),
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
@@ -405,21 +405,8 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
 ) {
     let configuration = clean_setup().await;
 
-    // Unlike other fields, available_to_withdraw cannot be set directly, instead it is calculated based on
-    // other settings and state of Emily.
-    // If any of rolling_withdrawal_blocks or rolling_withdrawal_cap are none, we treat it as "no withdrawal cap set",
-    // and return limit equal to u64::MAX.
-    // If both of them are Some, in this test available_to_withdraw will be calculated as Some, because there are no data in
-    // Emily db and it is impossible to calculate such value.
-    let available_to_withdraw =
-        if rolling_withdrawal_blocks.is_some() && rolling_withdrawal_cap.is_some() {
-            rolling_withdrawal_cap
-        } else {
-            Some(u64::MAX)
-        };
-
     let limits = Limits {
-        available_to_withdraw: Some(available_to_withdraw),
+        available_to_withdraw: Some(None), // Will fail to calculate available to withdraw because chainstate table is empty
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
@@ -462,7 +449,7 @@ async fn batch_set_chainstates(
 }
 
 #[tokio::test]
-async fn test_available_to_withdraw_success_fallback_to_slow_resolution() {
+async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
     // Available sBTC to withdraw usually is calculated via binary search, however, sometimes it fallback
     // to linear search, this test tests second case.
     let configuration = clean_setup().await;
@@ -514,11 +501,11 @@ async fn test_available_to_withdraw_success_fallback_to_slow_resolution() {
     let limits = apis::limits_api::get_limits(&configuration)
         .await
         .expect("failed to get limits during a valid api call");
-    assert_eq!(limits.available_to_withdraw, Some(Some(9000)))
+    assert_eq!(limits.available_to_withdraw, Some(None))
 }
 
 #[tokio::test]
-async fn test_available_to_withdraw_success_fast_resolution() {
+async fn test_available_to_withdraw_success() {
     // Available sBTC to withdraw usually is calculated via binary search, however, sometimes it fallback
     // to linear search, this test tests first case.
     let configuration = clean_setup().await;
