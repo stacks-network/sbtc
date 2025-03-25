@@ -4,7 +4,20 @@ use serde::{Deserialize, Serialize};
 use utoipa::{ToResponse, ToSchema};
 
 /// Chainstate.
-#[derive(Clone, Default, Debug, Hash, Serialize, Deserialize, ToSchema, ToResponse)]
+#[derive(
+    Clone,
+    Default,
+    Debug,
+    Eq,
+    PartialEq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    ToSchema,
+    ToResponse,
+)]
 #[serde(rename_all = "camelCase")]
 pub struct Chainstate {
     /// Stacks block height.

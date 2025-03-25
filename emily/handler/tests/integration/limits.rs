@@ -517,7 +517,7 @@ async fn test_available_to_withdraw_success() {
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
         per_withdrawal_cap: Some(None),
-        rolling_withdrawal_blocks: Some(Some(144)), // 24 hours of bitcoin blocks, close to real life limit
+        rolling_withdrawal_blocks: Some(Some(10)), // 24 hours of bitcoin blocks, close to real life limit
         rolling_withdrawal_cap: Some(Some(10000)),
         account_caps: HashMap::new(),
     };
@@ -526,8 +526,8 @@ async fn test_available_to_withdraw_success() {
 
     // Create chainstates
     let min_bitcoin_height = 1000000;
-    let max_bitcoin_height = 1000289; // 2 days of bitcoins + 1 block
-    let stacks_block_per_bitcoin_block = 10; // some big number I feel sensible after looking on stacks explorer
+    let max_bitcoin_height = 1000020;
+    let stacks_block_per_bitcoin_block = 5;
     let mut stacks_height = 2000000;
     let mut chainstates: Vec<_> = Default::default();
 
@@ -535,7 +535,7 @@ async fn test_available_to_withdraw_success() {
     eprintln!("starting creating chainstates");
 
     for bitcoin_height in min_bitcoin_height..max_bitcoin_height {
-        if bitcoin_height == 1000145 {
+        if bitcoin_height == 1000010 {
             println!("first stacks block in window: {:#?}", stacks_height);
         }
         for _ in 0..stacks_block_per_bitcoin_block {
@@ -551,34 +551,13 @@ async fn test_available_to_withdraw_success() {
 
     // Create withdrawal
     // Setup test withdrawal transaction.
-    println!("starting adding withdrawals");
-    eprintln!("starting adding withdrawals");
-    for offset in 10..20 {
-        let request = CreateWithdrawalRequestBody {
-            amount: 100,
-            parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
-            recipient: "test_recepient".into(),
-            sender: "test_sender".into(),
-            request_id: offset,
-            stacks_block_hash: "test_hash".into(),
-            stacks_block_height: stacks_height - offset,
-        };
-        println!(
-            "Inserting withdrawal on height {:#?}",
-            request.stacks_block_height
-        );
 
-        apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
-            .await
-            .expect("Received an error after making a valid create withdrawal request api call.");
-    }
-
-    // bitcoin blocks included in rolling window: [1000145;1000288] (both sides including)
-    // stacks blocks included in rolling window: [2001450;2002879]  (both sides including)
+    // bitcoin heights in window: [1000010;1000019] (both sides including)
+    // stacks heights in window: [2000050;2000099] (both sides including)
 
     // Here we put different amount to withdrawals that should be included in window and to ones that shouldn't.
     // Thus, if total sum is correct, then only correct withdrawals was counted
-    for (stacks_height, amount) in [(2001450, 1000), (2001449, 999), (2002879, 1000)] {
+    for (stacks_height, amount) in [(2000050, 1000), (2000049, 999), (2000099, 1000), (2000070, 1000)] {
         let request = CreateWithdrawalRequestBody {
             amount,
             parameters: Box::new(WithdrawalParameters { max_fee: 100 }),
