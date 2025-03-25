@@ -266,6 +266,7 @@ pub async fn create_withdrawal(
                 request_id,
                 stacks_block_hash: stacks_block_hash.clone(),
             },
+            stacks_block_height,
             recipient,
             sender,
             amount,
