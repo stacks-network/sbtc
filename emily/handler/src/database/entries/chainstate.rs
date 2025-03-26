@@ -250,7 +250,7 @@ pub struct ChainstateByBitcoinHeightEntryKey {
     /// Bitcoin height
     pub bitcoin_height: u64,
     /// Stacks height
-    #[serde(rename = "height")]
+    #[serde(rename = "Height")]
     pub stacks_height: u64,
 }
 
