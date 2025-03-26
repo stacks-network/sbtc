@@ -369,9 +369,11 @@ impl MultisigTx {
     /// Creates a signed transaction with the available signatures
     pub fn finalize_transaction(mut self) -> StacksTransaction {
         use TransactionSpendingCondition::OrderIndependentMultisig;
-        let cond = match &mut self.tx.auth {
-            TransactionAuth::Standard(OrderIndependentMultisig(cond)) => cond,
-            _ => unreachable!("spending condition invariant not upheld"),
+        // This struct maintains the fact that it only uses the
+        // TransactionSpendingCondition::OrderIndependentMultisig variant
+        // for the transaction auth.
+        let TransactionAuth::Standard(OrderIndependentMultisig(cond)) = &mut self.tx.auth else {
+            unreachable!("spending condition invariant not upheld");
         };
         let key_encoding = TransactionPublicKeyEncoding::Compressed;
 
