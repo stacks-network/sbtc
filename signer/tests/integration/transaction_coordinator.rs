@@ -3213,6 +3213,13 @@ async fn test_conservative_initial_sbtc_limits() {
                 ))))
             });
 
+            // We don't care about this
+            client.expect_accept_withdrawals().returning(|_| {
+                Box::pin(std::future::ready(Err(Error::InvalidStacksResponse(
+                    "dummy",
+                ))))
+            });
+
             let enable_emily_limits = enable_emily_limits.clone();
             let i = i;
             client.expect_get_limits().times(1..).returning(move || {
