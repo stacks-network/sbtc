@@ -710,8 +710,8 @@ async fn get_oldest_stacks_block_for_bitcoin_block(
     .await?
     .0
     .iter()
-    .min_by_key(|entry| entry.key.height)
-    .map(|entry| entry.key.height)
+    .min_by_key(|entry| entry.key.stacks_height)
+    .map(|entry| entry.key.stacks_height)
     .ok_or(Error::NotFound)
 }
 
@@ -720,17 +720,17 @@ async fn calculate_sbtc_left_for_withdrawals(
     rolling_withdrawal_blocks: Option<u64>,
     rolling_withdrawal_cap: Option<u64>,
 ) -> Result<u64, Error> {
-    if rolling_withdrawal_blocks.is_none() || rolling_withdrawal_cap.is_none() {
+    let (Some(rolling_withdrawal_blocks), Some(rolling_withdrawal_cap)) =
+        (rolling_withdrawal_blocks, rolling_withdrawal_cap)
+    else {
         return Err(Error::NotFound);
-    }
+    };
     let chaintip = get_api_state(context).await?.chaintip();
     let bitcoin_tip = chaintip.bitcoin_height;
-    if bitcoin_tip.is_none() {
+    let Some(bitcoin_tip) = bitcoin_tip else {
         return Err(Error::NotFound);
-    }
-    let bitcoin_tip = bitcoin_tip.unwrap();
-    let bitcoin_end_block =
-        bitcoin_tip.saturating_sub(rolling_withdrawal_blocks.unwrap().saturating_sub(1));
+    };
+    let bitcoin_end_block = bitcoin_tip.saturating_sub(rolling_withdrawal_blocks.saturating_sub(1));
 
     let minimum_stacks_height_in_window =
         get_oldest_stacks_block_for_bitcoin_block(context, bitcoin_end_block).await?;
@@ -749,14 +749,11 @@ async fn calculate_sbtc_left_for_withdrawals(
             None,
         )
         .await?;
-        total_withdrawn += withdrawals
-            .iter()
-            .map(|withdrawal| withdrawal.amount)
-            .sum::<u64>();
+        for withdrawal in withdrawals {
+            total_withdrawn = total_withdrawn.saturating_add(withdrawal.amount);
+        }
     }
-    Ok(rolling_withdrawal_cap
-        .unwrap()
-        .saturating_sub(total_withdrawn))
+    Ok(rolling_withdrawal_cap.saturating_sub(total_withdrawn))
 }
 
 /// Note, this function provides the direct output structure for the api call

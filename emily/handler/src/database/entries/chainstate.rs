@@ -250,7 +250,8 @@ pub struct ChainstateByBitcoinHeightEntryKey {
     /// Bitcoin height
     pub bitcoin_height: u64,
     /// Stacks height
-    pub height: u64,
+    #[serde(rename = "height")]
+    pub stacks_height: u64,
 }
 
 /// Chainstate table entry. This is secondary entry
@@ -260,7 +261,7 @@ pub struct ChainstateByBitcoinHeightEntry {
     /// Chainstate entry key.
     #[serde(flatten)]
     pub key: ChainstateByBitcoinHeightEntryKey,
-    /// Bitcoin block height
+    /// Stacks block hash
     pub hash: String,
 }
 
@@ -269,7 +270,7 @@ impl From<ChainstateByBitcoinHeightEntry> for Chainstate {
     fn from(chainstate_entry: ChainstateByBitcoinHeightEntry) -> Self {
         Chainstate {
             stacks_block_hash: chainstate_entry.hash,
-            stacks_block_height: chainstate_entry.key.height,
+            stacks_block_height: chainstate_entry.key.stacks_height,
             bitcoin_block_height: Some(chainstate_entry.key.bitcoin_height),
         }
     }
@@ -281,7 +282,7 @@ impl From<Chainstate> for ChainstateByBitcoinHeightEntry {
         ChainstateByBitcoinHeightEntry {
             key: ChainstateByBitcoinHeightEntryKey {
                 bitcoin_height: chainstate_entry.bitcoin_block_height.unwrap_or(0), // default is 0 since we don't meet 0 in real world and it can be good indicator of "none". However, this should never be None
-                height: chainstate_entry.stacks_block_height,
+                stacks_height: chainstate_entry.stacks_block_height,
             },
             hash: chainstate_entry.stacks_block_hash,
         }
@@ -307,7 +308,7 @@ impl EntryTrait for ChainstateByBitcoinHeightEntry {
     /// Extract the key from the entry.
     fn key(&self) -> Self::Key {
         ChainstateByBitcoinHeightEntryKey {
-            height: self.key.height,
+            stacks_height: self.key.stacks_height,
             bitcoin_height: self.key.bitcoin_height,
         }
     }
