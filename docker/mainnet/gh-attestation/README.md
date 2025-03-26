@@ -102,7 +102,6 @@ docker-compose up
 
 ## **Additional Information**
 
-The entrypoint install the last version the GitHub CLI (`gh`) to verify the attestation.
 Remember to run 
 
 ```bash
