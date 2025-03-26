@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use test_case::test_case;
 
 use testing_emily_client::apis;
-use testing_emily_client::apis::configuration::Configuration;
 use testing_emily_client::models;
 use testing_emily_client::models::AccountLimits;
 use testing_emily_client::models::Chainstate;
@@ -489,7 +488,7 @@ async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
         .expect("Received an error after making a valid create withdrawal request api call.");
 
     // Get limits and perform assertions
-    let limits = apis::limits_api::get_limits(&configuration)
+    let _limits = apis::limits_api::get_limits(&configuration)
         .await
         .expect_err("Should fail because necessary chainstates don't present in the db");
 }
