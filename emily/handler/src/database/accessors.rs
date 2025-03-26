@@ -719,17 +719,15 @@ async fn calculate_sbtc_left_for_withdrawals(
     context: &EmilyContext,
     rolling_withdrawal_blocks: Option<u64>,
     rolling_withdrawal_cap: Option<u64>,
-) -> Result<u64, Error> {
+) -> Result<Option<u64>, Error> {
     let (Some(rolling_withdrawal_blocks), Some(rolling_withdrawal_cap)) =
         (rolling_withdrawal_blocks, rolling_withdrawal_cap)
     else {
-        return Err(Error::NotFound);
+        // Note that we validate in set_limits that these values are both Some or both None
+        return Ok(None);
     };
     let chaintip = get_api_state(context).await?.chaintip();
-    let bitcoin_tip = chaintip.bitcoin_height;
-    let Some(bitcoin_tip) = bitcoin_tip else {
-        return Err(Error::NotFound);
-    };
+    let bitcoin_tip = chaintip.bitcoin_height.ok_or(Error::NotFound)?;
     let bitcoin_end_block = bitcoin_tip.saturating_sub(rolling_withdrawal_blocks.saturating_sub(1));
 
     let minimum_stacks_height_in_window =
@@ -753,7 +751,7 @@ async fn calculate_sbtc_left_for_withdrawals(
             total_withdrawn = total_withdrawn.saturating_add(withdrawal.amount);
         }
     }
-    Ok(rolling_withdrawal_cap.saturating_sub(total_withdrawn))
+    Ok(Some(rolling_withdrawal_cap.saturating_sub(total_withdrawn)))
 }
 
 /// Note, this function provides the direct output structure for the api call
@@ -816,24 +814,17 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         .collect();
 
     // Calculate total withdrawn amount.
-    let fut = calculate_sbtc_left_for_withdrawals(
+
+    let available_to_withdraw = calculate_sbtc_left_for_withdrawals(
         context,
         global_cap.rolling_withdrawal_blocks,
         global_cap.rolling_withdrawal_cap,
-    );
-    let sbtc_left_for_withdrawals = match fut.await {
-        Ok(val) => Some(val),
-        Err(e) => match e {
-            Error::NotFound => None,
-            _ => {
-                return Err(e);
-            }
-        },
-    };
+    )
+    .await?;
 
     // Get the global limit for the whole thing.
     Ok(Limits {
-        available_to_withdraw: sbtc_left_for_withdrawals,
+        available_to_withdraw,
         peg_cap: global_cap.peg_cap,
         per_deposit_minimum: global_cap.per_deposit_minimum,
         per_deposit_cap: global_cap.per_deposit_cap,
