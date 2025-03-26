@@ -1,22 +1,22 @@
 //! Handlers for withdrawal endpoints.
 use tracing::{debug, instrument};
-use warp::reply::{json, with_status, Reply};
+use warp::reply::{Reply, json, with_status};
 
-use crate::api::models::common::requests::BasicPaginationQuery;
 use crate::api::models::common::Status;
+use crate::api::models::common::requests::BasicPaginationQuery;
+use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::api::models::withdrawal::{
     requests::{CreateWithdrawalRequestBody, GetWithdrawalsQuery, UpdateWithdrawalsRequestBody},
     responses::{GetWithdrawalsResponse, UpdateWithdrawalsResponse},
 };
-use crate::api::models::withdrawal::{Withdrawal, WithdrawalInfo};
 use crate::common::error::Error;
 use crate::context::EmilyContext;
 use crate::database::accessors;
+use crate::database::entries::StatusEntry;
 use crate::database::entries::withdrawal::{
     ValidatedUpdateWithdrawalRequest, WithdrawalEntry, WithdrawalEntryKey, WithdrawalEvent,
     WithdrawalParametersEntry,
 };
-use crate::database::entries::StatusEntry;
 use warp::http::StatusCode;
 
 /// Get withdrawal handler.

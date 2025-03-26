@@ -1,6 +1,5 @@
 //! Helper functions for the bitcoin module
 //!
-use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::Amount;
 use bitcoin::BlockHash;
 use bitcoin::OutPoint;
@@ -10,6 +9,7 @@ use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitcoin::Witness;
+use bitcoin::consensus::encode::serialize_hex;
 
 use emily_client::models::CreateDepositRequestBody;
 use futures::StreamExt as _;

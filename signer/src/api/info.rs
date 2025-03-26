@@ -1,6 +1,6 @@
 //! Handler for the `/info` endpoint.
 
-use axum::{extract::State, response::IntoResponse, Json};
+use axum::{Json, extract::State, response::IntoResponse};
 use clarity::types::chainstate::StacksBlockId;
 use serde::Serialize;
 
@@ -10,8 +10,8 @@ use crate::{
     context::Context,
     stacks::api::StacksInteract,
     storage::{
-        model::{BitcoinBlockHash, StacksBlockHash},
         DbRead,
+        model::{BitcoinBlockHash, StacksBlockHash},
     },
 };
 
@@ -345,8 +345,8 @@ mod tests {
         api::ApiState,
         error::Error,
         storage::{
-            model::{BitcoinBlock, StacksBlock},
             DbWrite,
+            model::{BitcoinBlock, StacksBlock},
         },
         testing::context::*,
     };

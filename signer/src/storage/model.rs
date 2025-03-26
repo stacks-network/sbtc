@@ -3,8 +3,8 @@
 use std::collections::BTreeSet;
 use std::ops::Deref;
 
-use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
+use bitcoin::hashes::Hash as _;
 use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use clarity::vm::types::PrincipalData;

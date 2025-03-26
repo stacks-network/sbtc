@@ -5,8 +5,8 @@ use std::{
     future::Future,
     ops::Deref,
     sync::{
-        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
         Arc,
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
     },
 };
 

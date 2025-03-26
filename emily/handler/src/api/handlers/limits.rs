@@ -7,12 +7,12 @@ use crate::{
     context::EmilyContext,
     database::{
         accessors,
-        entries::limits::{LimitEntry, GLOBAL_CAP_ACCOUNT},
+        entries::limits::{GLOBAL_CAP_ACCOUNT, LimitEntry},
     },
 };
 use tracing::instrument;
 use warp::http::StatusCode;
-use warp::reply::{json, with_status, Reply};
+use warp::reply::{Reply, json, with_status};
 
 /// Get the global limits.
 #[utoipa::path(
