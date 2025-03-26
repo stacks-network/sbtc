@@ -10,8 +10,8 @@ use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Limits;
 use testing_emily_client::models::{CreateWithdrawalRequestBody, WithdrawalParameters};
 
-use crate::common::clean_setup;
 use crate::common::StandardError;
+use crate::common::{batch_set_chainstates, clean_setup, new_test_chainstate};
 
 #[tokio::test]
 async fn empty_default_is_as_expected() {
@@ -312,7 +312,7 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .map(|(account_name, limits)| (account_name.to_string(), limits.clone()))
     .collect();
     let expected_global_limits = Limits {
-        available_to_withdraw: Some(None), // Will fail to calculate available to withdraw since chainstate table is empty
+        available_to_withdraw: Some(Some(112)), // Will fail to calculate available to withdraw since chainstate table is empty
         peg_cap: Some(Some(123)),
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
@@ -321,6 +321,12 @@ async fn test_updating_account_limits_via_global_limit_works() {
         rolling_withdrawal_cap: Some(Some(112)),
         account_caps: expected_global_account_limits.clone(),
     };
+
+    let chainstates: Vec<Chainstate> = (0..103)
+        .into_iter()
+        .map(|height| new_test_chainstate(height, height, 0))
+        .collect();
+    let _ = batch_set_chainstates(&configuration, chainstates).await;
 
     // Act.
     // ----
@@ -406,7 +412,7 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     let configuration = clean_setup().await;
 
     let limits = Limits {
-        available_to_withdraw: Some(None), // Will fail to calculate available to withdraw because chainstate table is empty
+        available_to_withdraw: Some(rolling_withdrawal_cap),
         peg_cap: Some(None),
         per_deposit_minimum: Some(None),
         per_deposit_cap: Some(None),
@@ -415,6 +421,14 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
         rolling_withdrawal_cap: Some(rolling_withdrawal_cap),
         account_caps: HashMap::new(),
     };
+    if let Some(window_size) = rolling_withdrawal_blocks {
+        // Set some chainstates to make set_limits work
+        let chainstates: Vec<Chainstate> = (0..window_size + 2)
+            .into_iter()
+            .map(|height| new_test_chainstate(height, height, 0))
+            .collect();
+        let _ = batch_set_chainstates(&configuration, chainstates).await;
+    }
 
     let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
     assert_eq!(result.is_ok(), true);
@@ -422,30 +436,6 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     let global_limits = apis::limits_api::get_limits(&configuration).await;
     assert_eq!(global_limits.is_ok(), true);
     assert_eq!(global_limits.unwrap(), limits);
-}
-
-/// Make a test chainstate.
-fn new_test_chainstate(bitcoin_height: u64, height: u64, fork_id: i32) -> Chainstate {
-    Chainstate {
-        stacks_block_hash: format!("test-hash-{height}-fork-{fork_id}"),
-        stacks_block_height: height,
-        bitcoin_block_height: Some(Some(bitcoin_height)),
-    }
-}
-
-async fn batch_set_chainstates(
-    configuration: &Configuration,
-    create_requests: Vec<Chainstate>,
-) -> Vec<Chainstate> {
-    let mut created: Vec<Chainstate> = Vec::with_capacity(create_requests.len());
-    for request in create_requests {
-        created.push(
-            apis::chainstate_api::set_chainstate(&configuration, request)
-                .await
-                .expect("Received an error after making a valid create deposit request api call."),
-        );
-    }
-    created
 }
 
 #[tokio::test]
@@ -463,6 +453,13 @@ async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
         rolling_withdrawal_cap: Some(Some(10000)),
         account_caps: HashMap::new(),
     };
+    // Set some chainstates to make set_limits work
+    let chainstates: Vec<Chainstate> = (0..110)
+        .into_iter()
+        .map(|height| new_test_chainstate(height, height, 0))
+        .collect();
+    let _ = batch_set_chainstates(&configuration, chainstates).await;
+
     let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
     assert!(result.is_ok());
 
@@ -494,8 +491,7 @@ async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
     // Get limits and perform assertions
     let limits = apis::limits_api::get_limits(&configuration)
         .await
-        .expect("failed to get limits during a valid api call");
-    assert_eq!(limits.available_to_withdraw, Some(None))
+        .expect_err("Should fail because necessary chainstates don't present in the db");
 }
 
 #[tokio::test]
@@ -513,6 +509,12 @@ async fn test_available_to_withdraw_success() {
         rolling_withdrawal_cap: Some(Some(10000)),
         account_caps: HashMap::new(),
     };
+    // Set some chainstates to make set_limits work
+    let chainstates: Vec<Chainstate> = (0..12)
+        .into_iter()
+        .map(|height| new_test_chainstate(height, height, 0))
+        .collect();
+    let _ = batch_set_chainstates(&configuration, chainstates).await;
     let result = apis::limits_api::set_limits(&configuration, limits.clone()).await;
     assert!(result.is_ok());
 

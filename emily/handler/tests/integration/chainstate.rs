@@ -1,20 +1,10 @@
 use std::cmp::Ordering;
 
 use testing_emily_client::apis;
-use testing_emily_client::apis::configuration::Configuration;
 use testing_emily_client::models::Chainstate;
 
-use crate::common::clean_setup;
+use crate::common::{batch_set_chainstates, clean_setup, new_test_chainstate};
 use test_case::test_case;
-
-/// Make a test chainstate.
-fn new_test_chainstate(bitcoin_height: u64, height: u64, fork_id: i32) -> Chainstate {
-    Chainstate {
-        stacks_block_hash: format!("test-hash-{height}-fork-{fork_id}"),
-        stacks_block_height: height,
-        bitcoin_block_height: Some(Some(bitcoin_height)),
-    }
-}
 
 /// An arbitrary fully ordered partial cmp comparator for Chainstate.
 /// This is useful for sorting vectors of chainstates so that vectors with
@@ -25,22 +15,6 @@ fn arbitrary_chainstate_partial_cmp(a: &Chainstate, b: &Chainstate) -> Ordering 
     b_str
         .partial_cmp(&a_str)
         .expect("Failed to compare two strings that should be comparable")
-}
-
-/// Makes a bunch of chainstates.
-async fn batch_set_chainstates(
-    configuration: &Configuration,
-    create_requests: Vec<Chainstate>,
-) -> Vec<Chainstate> {
-    let mut created: Vec<Chainstate> = Vec::with_capacity(create_requests.len());
-    for request in create_requests {
-        created.push(
-            apis::chainstate_api::set_chainstate(&configuration, request)
-                .await
-                .expect("Received an error after making a valid create deposit request api call."),
-        );
-    }
-    created
 }
 
 #[test_case(1123, 1128; "create-5-chainstates")]
