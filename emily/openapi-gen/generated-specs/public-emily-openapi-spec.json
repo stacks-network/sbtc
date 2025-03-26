@@ -2391,8 +2391,7 @@
           "lastUpdateBlockHash",
           "status",
           "statusMessage",
-          "parameters",
-          "txid"
+          "parameters"
         ],
         "properties": {
           "amount": {
@@ -2455,7 +2454,8 @@
           },
           "txid": {
             "type": "string",
-            "description": "Txid of stacks tx initiated withdrawal"
+            "description": "Txid of stacks tx initiated withdrawal",
+            "nullable": true
           }
         }
       },
@@ -2471,8 +2471,7 @@
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
-          "status",
-          "txid"
+          "status"
         ],
         "properties": {
           "amount": {
@@ -2520,7 +2519,8 @@
           },
           "txid": {
             "type": "string",
-            "description": "Txid of stacks tx initiated withdrawal"
+            "description": "Txid of stacks tx initiated withdrawal",
+            "nullable": true
           }
         }
       },

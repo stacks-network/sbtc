@@ -41,8 +41,13 @@ pub struct WithdrawalInfo {
     #[serde(rename = "status")]
     pub status: models::Status,
     /// Txid of stacks tx initiated withdrawal
-    #[serde(rename = "txid")]
-    pub txid: String,
+    #[serde(
+        rename = "txid",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub txid: Option<Option<String>>,
 }
 
 impl WithdrawalInfo {
@@ -57,7 +62,6 @@ impl WithdrawalInfo {
         stacks_block_hash: String,
         stacks_block_height: u64,
         status: models::Status,
-        txid: String,
     ) -> WithdrawalInfo {
         WithdrawalInfo {
             amount,
@@ -69,7 +73,7 @@ impl WithdrawalInfo {
             stacks_block_hash,
             stacks_block_height,
             status,
-            txid,
+            txid: None,
         }
     }
 }
