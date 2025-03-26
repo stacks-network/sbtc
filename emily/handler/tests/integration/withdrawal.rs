@@ -77,6 +77,7 @@ async fn create_and_get_withdrawal_happy_path() {
         request_id,
         stacks_block_hash: BLOCK_HASH.into(),
         stacks_block_height: BLOCK_HEIGHT,
+        txid: "test_txid".to_string(),
     };
 
     let expected = Withdrawal {
@@ -92,6 +93,7 @@ async fn create_and_get_withdrawal_happy_path() {
         stacks_block_height: BLOCK_HEIGHT,
         status: Status::Pending,
         status_message: INITIAL_WITHDRAWAL_STATUS_MESSAGE.into(),
+        txid: "test_txid".to_string(),
     };
 
     // Act.
@@ -132,6 +134,7 @@ async fn get_withdrawals() {
             request_id,
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
+            txid: "test_txid".to_string(),
         };
         create_requests.push(request);
 
@@ -145,6 +148,7 @@ async fn get_withdrawals() {
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
             status: Status::Pending,
+            txid: "test_txid".to_string(),
         };
         expected_withdrawal_infos.push(expected_withdrawal_info);
     }
@@ -225,6 +229,7 @@ async fn get_withdrawals_by_recipient() {
                 request_id,
                 stacks_block_hash: BLOCK_HASH.into(),
                 stacks_block_height: BLOCK_HEIGHT,
+                txid: "test_txid".to_string(),
             };
             create_requests.push(request);
 
@@ -238,6 +243,7 @@ async fn get_withdrawals_by_recipient() {
                 stacks_block_hash: BLOCK_HASH.into(),
                 stacks_block_height: BLOCK_HEIGHT,
                 status: Status::Pending,
+                txid: "test_txid".to_string(),
             };
             request_id += 1;
             expected_withdrawal_infos.push(expected_withdrawal_info);
@@ -325,6 +331,7 @@ async fn get_withdrawals_by_sender() {
                 request_id,
                 stacks_block_hash: BLOCK_HASH.into(),
                 stacks_block_height: BLOCK_HEIGHT,
+                txid: "test_txid".to_string(),
             };
             create_requests.push(request);
 
@@ -338,6 +345,7 @@ async fn get_withdrawals_by_sender() {
                 stacks_block_hash: BLOCK_HASH.into(),
                 stacks_block_height: BLOCK_HEIGHT,
                 status: Status::Pending,
+                txid: "test_txid".to_string(),
             };
             request_id += 1;
             expected_withdrawal_infos.push(expected_withdrawal_info);
@@ -438,6 +446,7 @@ async fn update_withdrawals() {
             request_id,
             stacks_block_hash: BLOCK_HASH.into(),
             stacks_block_height: BLOCK_HEIGHT,
+            txid: "test_txid".to_string(),
         };
         create_requests.push(request);
 
@@ -462,6 +471,7 @@ async fn update_withdrawals() {
             stacks_block_height: BLOCK_HEIGHT,
             status: update_status.clone(),
             status_message: update_status_message.into(),
+            txid: "test_txid".to_string(),
         };
         expected_withdrawals.push(expected);
     }
@@ -550,6 +560,7 @@ async fn update_withdrawals_is_forbidden(
         request_id,
         stacks_block_hash: chainstate.stacks_block_hash.clone(),
         stacks_block_height: chainstate.stacks_block_height,
+        txid: "test_txid".to_string(),
     };
 
     // Create the withdrawal with the privileged configuration.

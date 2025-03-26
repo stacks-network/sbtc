@@ -256,6 +256,7 @@ pub async fn create_withdrawal(
             sender,
             amount,
             parameters,
+            txid,
         } = body;
 
         let status = Status::Pending;
@@ -280,6 +281,7 @@ pub async fn create_withdrawal(
             status,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
+            txid,
             ..Default::default()
         };
         // Validate withdrawal entry.
