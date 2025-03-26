@@ -123,6 +123,12 @@ jobs:
         run: |
           set -euo pipefail
           TAG_NAME=$(printf "${TAG}" | sed 's/[^a-zA-Z0-9_.-]//g')
+
+          if [ "$TAG" != "$TAG_NAME" ]; then
+            echo "Error: TAG_NAME '$TAG_NAME' does not match the original tag '$TAG'."
+            exit 1
+          fi
+
           printf "TAG_NAME=$TAG_NAME" >> "$GITHUB_ENV"
         env:
           TAG: ${{ github.ref_name }}
