@@ -1,3 +1,6 @@
+use std::ops::Deref;
+use std::time::Duration;
+
 use bitcoincore_rpc::RpcApi;
 use sbtc::testing::regtest;
 use signer::bitcoin::rpc::BitcoinCoreClient;
@@ -8,10 +11,13 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers::ContainerAsync;
 use testcontainers::Image;
 use testcontainers::ImageExt;
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
 use super::container_name;
 use super::DEFAULT_BITCOIN_CORE_TAG;
+
+const STARTUP_TIMEOUT_MILLIS: u64 = 1500;
 
 pub struct BitcoinCore {
     image_tag: &'static str,
@@ -24,9 +30,14 @@ impl BitcoinCore {
             image_tag: DEFAULT_BITCOIN_CORE_TAG,
             exposed_ports: vec![ContainerPort::Tcp(18443), ContainerPort::Tcp(28332)],
         }
-        .with_container_name(container_name("bitcoind"));
+        .with_container_name(container_name("bitcoind"))
+        .with_mapped_port(0, ContainerPort::Tcp(18443))
+        .with_mapped_port(0, ContainerPort::Tcp(28332));
+
         let bitcoind = bitcoind.start().await.expect("failed to start bitcoind");
-        BitcoinCoreContainer::new(bitcoind).await
+        let container = BitcoinCoreContainer::new(bitcoind).await;
+
+        container
     }
 }
 
@@ -41,10 +52,6 @@ impl Image for BitcoinCore {
 
     fn ready_conditions(&self) -> Vec<WaitFor> {
         vec![WaitFor::message_on_stdout("dnsseed thread exit")]
-    }
-
-    fn expose_ports(&self) -> &[ContainerPort] {
-        &self.exposed_ports
     }
 
     fn entrypoint(&self) -> Option<&str> {
@@ -69,6 +76,7 @@ pub struct BitcoinCoreContainer {
     rpc_password: String,
     rpc_port: u16,
     zmq_port: u16,
+    client: BitcoinCoreClient,
 }
 
 impl BitcoinCoreContainer {
@@ -77,6 +85,13 @@ impl BitcoinCoreContainer {
         let rpc_port = container.get_host_port_ipv4(18443).await.unwrap();
         let zmq_port = container.get_host_port_ipv4(28332).await.unwrap();
 
+        let client = BitcoinCoreClient::new(
+            format!("http://{host}:{rpc_port}").as_str(),
+            regtest::BITCOIN_CORE_RPC_USERNAME.to_string(),
+            regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
+        )
+        .expect("failed to create new bitcoin core client");
+
         Self {
             container,
             host,
@@ -84,6 +99,7 @@ impl BitcoinCoreContainer {
             rpc_password: regtest::BITCOIN_CORE_RPC_PASSWORD.to_string(),
             rpc_port,
             zmq_port,
+            client,
         }
     }
 
@@ -98,7 +114,6 @@ impl BitcoinCoreContainer {
         Url::parse(&url).unwrap()
     }
 
-    #[allow(unused)]
     pub fn zmq_endpoint(&self) -> Url {
         let url = format!(
             "tcp://{host}:{port}",
@@ -108,13 +123,19 @@ impl BitcoinCoreContainer {
         Url::parse(&url).unwrap()
     }
 
+    pub async fn zmq_block_hash_stream(
+        &self,
+    ) -> ReceiverStream<Result<bitcoin::BlockHash, signer::error::Error>> {
+        signer::testing::btc::new_zmq_block_hash_stream(self.zmq_endpoint().as_str()).await
+    }
+
     pub fn client(&self) -> BitcoinCoreClient {
-        BitcoinCoreClient::new(
-            self.rpc_endpoint().as_str(),
-            self.rpc_username.clone(),
-            self.rpc_password.clone(),
-        )
-        .unwrap()
+        self.client.clone()
+    }
+
+    #[allow(unused)]
+    pub fn rpc_client(&self) -> &bitcoincore_rpc::Client {
+        self.client.inner_client()
     }
 
     #[allow(unused)]
@@ -131,6 +152,14 @@ impl BitcoinCoreContainer {
     pub fn initialize_blockchain(&self) -> &regtest::Faucet {
         let (_, faucet) = regtest::initialize_blockchain_at(self.rpc_endpoint().as_str());
         faucet
+    }
+}
+
+impl Deref for BitcoinCoreContainer {
+    type Target = BitcoinCoreClient;
+
+    fn deref(&self) -> &Self::Target {
+        &self.client
     }
 }
 

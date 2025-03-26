@@ -7,7 +7,6 @@ use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
 use test_case::test_case;
 
-use sbtc::testing::regtest;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::validation::BitcoinTxContext;
@@ -25,6 +24,7 @@ use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
@@ -95,11 +95,13 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
 async fn one_tx_per_request_set() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -112,9 +114,9 @@ async fn one_tx_per_request_set() {
         is_deposit: true,
     }];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
 
     setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
@@ -191,11 +193,13 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -217,9 +221,9 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
 
     setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
@@ -354,11 +358,13 @@ async fn one_invalid_deposit_invalidates_tx() {
 async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -369,9 +375,9 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
 
     setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
@@ -387,7 +393,7 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
         .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS)
         .pop()
         .unwrap();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     let chain_tip_ref = db
         .get_bitcoin_canonical_chain_tip_ref()
@@ -449,11 +455,13 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
 async fn swept_withdrawals_fail_validation() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -469,9 +477,9 @@ async fn swept_withdrawals_fail_validation() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
 
     setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
@@ -484,7 +492,7 @@ async fn swept_withdrawals_fail_validation() {
     setup.store_withdrawal_decisions(&db).await;
 
     // Let's confirm a sweep transaction
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
     setup.store_bitcoin_withdrawals_outputs(&db).await;
     setup.store_sweep_tx(&db).await;
 
@@ -496,7 +504,7 @@ async fn swept_withdrawals_fail_validation() {
         .generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS)
         .pop()
         .unwrap();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     let chain_tip_ref = db
         .get_bitcoin_canonical_chain_tip_ref()
@@ -558,13 +566,15 @@ async fn swept_withdrawals_fail_validation() {
 async fn cannot_sign_deposit_is_ok() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -585,7 +595,7 @@ async fn cannot_sign_deposit_is_ok() {
 
     // When making assertions below, we need to make sure that we're
     // comparing the right deposits transaction outputs, so we sort.
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
     // Let's suppose that signer 0 cannot sign for the deposit, but that
     // they still accept the deposit. That means the bitmap at signer 0
@@ -593,7 +603,7 @@ async fn cannot_sign_deposit_is_ok() {
     // the inputs in the transaction.
     setup.deposits[0].1.signer_bitmap.set(0, true);
 
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
 
     setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
@@ -725,11 +735,13 @@ async fn cannot_sign_deposit_is_ok() {
 async fn sighashes_match_from_sbtc_requests_object() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -749,9 +761,9 @@ async fn sighashes_match_from_sbtc_requests_object() {
         },
     ];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
 
     setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;
@@ -859,11 +871,13 @@ async fn sighashes_match_from_sbtc_requests_object() {
 async fn outcome_is_independent_of_input_order() {
     let db = testing::storage::new_test_database().await;
     let mut rng = OsRng;
-    let (rpc, faucet) = regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -893,9 +907,9 @@ async fn outcome_is_independent_of_input_order() {
         },
     ];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &amounts);
     setup.deposits.sort_by_key(|(x, _, _)| x.outpoint);
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
 
     setup.store_stacks_genesis_block(&db).await;
     setup.store_dkg_shares(&db).await;

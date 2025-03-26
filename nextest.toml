@@ -1,3 +1,6 @@
+[profile.default]
+#test-threads = 16
+
 [test-groups]
 serial = { max-threads = 1 }
 
@@ -11,11 +14,19 @@ test-group = 'serial'
 filter = 'package(emily-handler) & kind(test)'
 test-group = 'serial'
 
-# all integration tests in the 'signer' package, except for tests in the
-# following modules:
-# - bitcoin_client
-# - bitcoin_rpc
-# - tls_checking
+# all integration tests in the 'signer' package, except for tests listed in the
+# below filter will run in parallel
 [[profile.default.overrides]]
-filter = 'package(signer) & kind(test) - (test(/^bitcoin_client/) | test(/^bitcoin_rpc/) | test(/^tls_checking/))'
+filter = """
+package(signer) & kind(test) & (
+    test(/^emily/)
+    | test(block_observer::block_observer_stores_donation_and_sbtc_utxos)
+    | test(transaction_coordinator::sign_bitcoin_transaction)
+    | test(transaction_coordinator::sign_bitcoin_transaction_multiple_locking_keys)
+    | test(transaction_coordinator::skip_smart_contract_deployment_and_key_rotation_if_up_to_date)
+    | test(transaction_coordinator::sign_bitcoin_transaction_withdrawals)
+    | test(request_decider::persist_received_deposit_decision_fetches_missing_deposit_requests)
+    | test(/^zmq/)
+
+)"""
 test-group = 'serial'

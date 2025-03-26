@@ -1,7 +1,6 @@
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
-use sbtc::testing::regtest;
 use signer::error::Error;
 use signer::stacks::contracts::AcceptWithdrawalV1;
 use signer::stacks::contracts::AsContractCall as _;
@@ -15,6 +14,7 @@ use fake::Fake;
 use rand::SeedableRng;
 use signer::testing::context::*;
 
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::set_withdrawal_completed;
 use crate::setup::set_withdrawal_incomplete;
@@ -101,19 +101,23 @@ async fn accept_withdrawal_validation_happy_path() {
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction that we just submitted and
     // store it in the database.
@@ -136,7 +140,7 @@ async fn accept_withdrawal_validation_happy_path() {
     // This should not return an Err.
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -158,19 +162,23 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -195,7 +203,7 @@ async fn accept_withdrawal_validation_deployer_mismatch() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -224,19 +232,23 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -262,7 +274,7 @@ async fn accept_withdrawal_validation_missing_withdrawal_request() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -291,19 +303,23 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -329,7 +345,7 @@ async fn accept_withdrawal_validation_recipient_mismatch() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -358,19 +374,23 @@ async fn accept_withdrawal_validation_invalid_amount() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -394,7 +414,7 @@ async fn accept_withdrawal_validation_invalid_amount() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -423,19 +443,23 @@ async fn accept_withdrawal_validation_invalid_fee() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -468,7 +492,7 @@ async fn accept_withdrawal_validation_invalid_fee() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -497,19 +521,23 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -537,7 +565,7 @@ async fn accept_withdrawal_validation_sweep_tx_missing() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -566,19 +594,23 @@ async fn accept_withdrawal_validation_sweep_reorged() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -614,7 +646,7 @@ async fn accept_withdrawal_validation_sweep_reorged() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -644,19 +676,23 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -684,7 +720,7 @@ async fn accept_withdrawal_validation_withdrawal_not_in_sweep() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -714,19 +750,23 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -751,7 +791,7 @@ async fn accept_withdrawal_validation_withdrawal_incorrect_fee() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -780,19 +820,23 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction as is from the test setup and
     // store it in the database.
@@ -815,7 +859,7 @@ async fn accept_withdrawal_validation_withdrawal_invalid_sweep() {
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -845,19 +889,23 @@ async fn accept_withdrawal_validation_request_completed() {
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let mut setup = TestSweepSetup2::new_setup(signers, &faucet, &WITHDRAWAL_AMOUNT);
+    let mut setup =
+        TestSweepSetup2::new_setup(signers, client.clone(), &faucet, &WITHDRAWAL_AMOUNT);
 
     // Normal: The withdrawal must be swept on bitcoin.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash().unwrap()).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash().unwrap()).await;
 
     // Normal: we take the sweep transaction that we just submitted and
     // store it in the database.

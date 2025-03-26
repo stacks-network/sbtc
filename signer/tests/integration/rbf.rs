@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -23,6 +25,7 @@ use signer::context::SbtcLimits;
 use signer::storage::model::ScriptPubKey;
 use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
+use crate::docker;
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
 use regtest::Recipient;
@@ -137,7 +140,8 @@ struct RbfContext {
     [8., 16.],
     [5, 100]
 )]
-pub fn transaction_with_rbf(
+#[test_log::test(tokio::test)]
+pub async fn transaction_with_rbf(
     rbf_deposits: usize,
     rbf_withdrawals: usize,
     rbf_fee_rate: f64,
@@ -157,7 +161,10 @@ pub fn transaction_with_rbf(
         rbf_withdrawals,
         rbf_fee_rate,
     };
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // ** Step 1 **
     // Construct and send a simple BTC transaction.
@@ -171,7 +178,7 @@ pub fn transaction_with_rbf(
     // we cannot generate new blocks once we submit the transaction that
     // we want to RBF (since it would then be confirmed).
     let deposits: Vec<DepositRequest> =
-        std::iter::repeat_with(|| generate_depositor(rpc, faucet, &signer))
+        std::iter::repeat_with(|| generate_depositor(&client, faucet, &signer))
             .take(ctx.initial_deposits.max(ctx.rbf_deposits))
             .enumerate()
             .map(|(index, mut req)| {
@@ -195,11 +202,11 @@ pub fn transaction_with_rbf(
     // We deposited the transaction to the signer, but it's not clear to the
     // wallet tracking the signer's address that the deposit is associated
     // with the signer since it's hidden within the merkle tree.
-    assert_eq!(signer.get_balance(rpc).to_sat(), 100_000_000);
+    assert_eq!(signer.get_balance(&client).to_sat(), 100_000_000);
 
     // Okay now we try to peg-in the deposit by making a transaction. Let's
     // start by getting the signer's sole UTXO.
-    let signer_utxo = signer.get_utxos(rpc, None).pop().unwrap();
+    let signer_utxo = signer.get_utxos(&client, None).pop().unwrap();
 
     // Now build the struct with the outstanding peg-in and peg-out requests.
     // We only use the specified initial number of deposits and withdrawals.
@@ -247,14 +254,14 @@ pub fn transaction_with_rbf(
         // Add the signature and/or other required information to the witness data.
         transactions.iter_mut().for_each(|unsigned| {
             signer::testing::set_witness_data(unsigned, signer.keypair);
-            rpc.send_raw_transaction(&unsigned.tx).unwrap();
+            client.send_raw_transaction(&unsigned.tx).unwrap();
 
             last_fee += unsigned.input_amounts() - unsigned.output_amounts();
             last_size += unsigned.tx.vsize();
         });
 
         // ** Step 2 **
-        // Ccreate an RBF transaction that will fail.
+        // Create an RBF transaction that will fail.
         //
         // This is a little sanity check where we submit an RBF transaction
         // but where we change the fee but an amount that is too small.
@@ -266,7 +273,7 @@ pub fn transaction_with_rbf(
             .iter_mut()
             .map(|unsigned| {
                 signer::testing::set_witness_data(unsigned, signer.keypair);
-                rpc.send_raw_transaction(&unsigned.tx)
+                client.send_raw_transaction(&unsigned.tx)
             })
             .collect();
         match one_response {
@@ -292,7 +299,7 @@ pub fn transaction_with_rbf(
 
     transactions.iter_mut().for_each(|unsigned| {
         signer::testing::set_witness_data(unsigned, signer.keypair);
-        rpc.send_raw_transaction(&unsigned.tx).unwrap();
+        client.send_raw_transaction(&unsigned.tx).unwrap();
     });
 
     faucet.generate_blocks(1);
@@ -317,7 +324,7 @@ pub fn transaction_with_rbf(
 
     // The signer's balance should now reflect the deposits and withdrawals
     // less the fees that depositors are supposed to pay.
-    let signers_balance = signer.get_balance(rpc);
+    let signers_balance = signer.get_balance(&client);
     let expected_balance = 100_000_000 + deposit_amounts - withdrawal_amounts - fees;
     assert_eq!(signers_balance.to_sat(), expected_balance);
 
@@ -332,7 +339,7 @@ pub fn transaction_with_rbf(
             utx.requests
                 .iter()
                 .filter_map(RequestRef::as_withdrawal)
-                // We only care about the outputs that coorrespond to
+                // We only care about the outputs that correspond to
                 // withdrawals. The first two outputs are the signers' UTXO
                 // and the OP_RETURN output, so we skip them first.
                 .zip(utx.tx.output.iter().skip(2))
@@ -349,7 +356,7 @@ pub fn transaction_with_rbf(
         .zip(withdrawal_recipients)
         .enumerate();
     for (index, (req, recipient)) in iter {
-        let balance = recipient.get_balance(rpc);
+        let balance = recipient.get_balance(&client);
         if index < ctx.rbf_withdrawals {
             let expected_balance = req.amount - fee_map.get(&req.script_pubkey).unwrap();
             assert_eq!(balance.to_sat(), expected_balance);

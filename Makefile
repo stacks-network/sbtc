@@ -76,7 +76,7 @@ integration-env-up: emily-cdk-synth
 	docker compose --file docker/docker-compose.test.yml up -d
 
 integration-test:
-	cargo $(CARGO_FLAGS) nextest run --features "testing" $(CARGO_EXCLUDES) --test integration --no-fail-fast --test-threads 1
+	cargo $(CARGO_FLAGS) nextest --config-file nextest.toml run --features "testing" $(CARGO_EXCLUDES) --test integration --no-fail-fast
 
 integration-test-build:
 	cargo $(CARGO_FLAGS) test build --features "testing" $(CARGO_EXCLUDES) --test integration --no-run --locked

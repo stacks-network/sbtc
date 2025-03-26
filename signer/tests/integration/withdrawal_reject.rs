@@ -1,8 +1,8 @@
 use bitcoin::hashes::Hash;
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
-use sbtc::testing::regtest;
 use sbtc::testing::regtest::Faucet;
+use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::error::Error;
 use signer::stacks::contracts::AsContractCall as _;
 use signer::stacks::contracts::RejectWithdrawalV1;
@@ -21,6 +21,7 @@ use signer::testing::storage::DbReadTestExt;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
+use crate::docker;
 use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::set_withdrawal_completed;
 use crate::setup::set_withdrawal_incomplete;
@@ -73,7 +74,11 @@ async fn make_withdrawal_reject(
     (complete_withdrawal_tx, req_ctx)
 }
 
-fn new_sweep_setup(signers: &TestSignerSet, faucet: &Faucet) -> TestSweepSetup2 {
+fn new_sweep_setup(
+    signers: &TestSignerSet,
+    bitcoin_client: BitcoinCoreClient,
+    faucet: &Faucet,
+) -> TestSweepSetup2 {
     let amount = 1_000_000;
     let withdraw_amounts = SweepAmounts {
         amount,
@@ -81,7 +86,12 @@ fn new_sweep_setup(signers: &TestSignerSet, faucet: &Faucet) -> TestSweepSetup2 
         is_deposit: false,
     };
 
-    TestSweepSetup2::new_setup(signers.clone(), &faucet, &[withdraw_amounts])
+    TestSweepSetup2::new_setup(
+        signers.clone(),
+        bitcoin_client,
+        &faucet,
+        &[withdraw_amounts],
+    )
 }
 
 /// For this test we check that the `RejectWithdrawalV1::validate` function
@@ -93,14 +103,17 @@ async fn reject_withdrawal_validation_happy_path() {
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let setup = new_sweep_setup(&test_signer_set, &faucet);
+    let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -128,7 +141,7 @@ async fn reject_withdrawal_validation_happy_path() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Normal: The signers normally have a UTXO, so we add one here too. It
     // is necessary when checking for whether the withdrawal being
@@ -152,14 +165,17 @@ async fn reject_withdrawal_validation_not_final() {
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let setup = new_sweep_setup(&test_signer_set, &faucet);
+    let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -188,7 +204,7 @@ async fn reject_withdrawal_validation_not_final() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Normal: The signers normally have a UTXO, so we add one here too. It
     // is necessary when checking for whether the withdrawal being
@@ -208,7 +224,7 @@ async fn reject_withdrawal_validation_not_final() {
 
     // Generate more blocks and backfill the DB
     faucet.generate_blocks(1);
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -227,14 +243,17 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let setup = new_sweep_setup(&test_signer_set, &faucet);
+    let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -262,7 +281,7 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Normal: The signers normally have a UTXO, so we add one here too. It
     // is necessary when checking for whether the withdrawal being
@@ -296,14 +315,17 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     // sweeping out the funds for a withdrawal request.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let setup = new_sweep_setup(&test_signer_set, &faucet);
+    let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -331,7 +353,7 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Normal: The signers normally have a UTXO, so we add one here too. It
     // is necessary when checking for whether the withdrawal being
@@ -367,14 +389,17 @@ async fn reject_withdrawal_validation_request_completed() {
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let setup = new_sweep_setup(&test_signer_set, &faucet);
+    let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -402,7 +427,7 @@ async fn reject_withdrawal_validation_request_completed() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Normal: The signers normally have a UTXO, so we add one here too. It
     // is necessary when checking for whether the withdrawal being
@@ -435,14 +460,17 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
-    let mut setup = new_sweep_setup(&test_signer_set, &faucet);
+    let mut setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -455,7 +483,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    let chain_tip = fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    let chain_tip = fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. This is
@@ -472,7 +500,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // to submit the transaction in order for
     // `TestSweepSetup2::store_bitcoin_withdrawals_outputs` to work as
     // expected.
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.submit_sweep_tx(faucet);
 
     let sweep = setup.sweep_tx_info.as_ref().unwrap();
 
@@ -515,7 +543,7 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Generate the transaction and corresponding request context.
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
@@ -542,7 +570,10 @@ async fn reject_withdrawal_validation_request_still_active() {
     // and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let (rpc, faucet) = regtest::initialize_blockchain();
+
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let amount = 1_000_000;
     let signers = TestSignerSet::new(&mut rng);
@@ -559,11 +590,11 @@ async fn reject_withdrawal_validation_request_still_active() {
         },
     ];
 
-    let mut setup = TestSweepSetup2::new_setup(signers, faucet, &amounts);
+    let mut setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &amounts);
 
     let mut ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_mocked_stacks_client()
         .with_mocked_emily_client()
         .build();
@@ -576,7 +607,7 @@ async fn reject_withdrawal_validation_request_still_active() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Normal: we need to store a row in the dkg_shares table so that we
     // have a record of the scriptPubKey that the signers control. We need
@@ -603,12 +634,12 @@ async fn reject_withdrawal_validation_request_still_active() {
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // Different: We broadcast a sweep transaction into the mempool so that
     // the TestSweepSetup2 struct has the `broadcast_info` is set, which is
     // required for `TestSweepSetup2::store_bitcoin_withdrawals_outputs`.
-    setup.broadcast_sweep_tx(rpc);
+    setup.broadcast_sweep_tx();
 
     // Different: We're adding rows that let the signer know that someone
     // may have tried to fulfill the withdrawal request. If that
@@ -645,8 +676,8 @@ async fn reject_withdrawal_validation_request_still_active() {
     // that they do not get included in the sweep transaction.
     let withdrawals = setup.withdrawals.drain(..).collect::<Vec<_>>();
 
-    setup.broadcast_sweep_tx(rpc);
-    setup.submit_sweep_tx(rpc, faucet);
+    setup.broadcast_sweep_tx();
+    setup.submit_sweep_tx(faucet);
     setup.store_sweep_tx(&db).await;
 
     // This confirms the sweep in the mempool. It is the first sweep after
@@ -658,7 +689,7 @@ async fn reject_withdrawal_validation_request_still_active() {
     // Let's add some blocks, but one shy of the number of blocks necessary
     // for the withdrawal to be "inactive".
     faucet.generate_blocks(WITHDRAWAL_MIN_CONFIRMATIONS - 1);
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // We need to add back the withdrawals so that `make_withdrawal_reject`
     // works.
@@ -677,7 +708,7 @@ async fn reject_withdrawal_validation_request_still_active() {
     // Generate one more block. After seeing that next block, the
     // withdrawal should be considered inactive.
     faucet.generate_block();
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     let (reject_withdrawal_tx, req_ctx) = make_withdrawal_reject(&setup, &db).await;
 

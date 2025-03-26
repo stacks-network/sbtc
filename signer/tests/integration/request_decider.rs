@@ -33,6 +33,7 @@ use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
 use testing_emily_client::apis::testing_api;
 
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
@@ -144,15 +145,17 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -230,15 +233,17 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -323,9 +328,13 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
         .await
         .unwrap();
 
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
     let ctx = TestContext::builder()
         .with_storage(db.clone())
-        .with_first_bitcoin_core_client()
+        .with_bitcoin_client(client.clone())
         .with_emily_client(emily_client.clone())
         .with_mocked_stacks_client()
         .build();
@@ -335,15 +344,13 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
     // error when trying to send a message at the end.
     let _rec = ctx.get_signal_receiver();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     let network = SignerNetwork::single(&ctx);
 
@@ -440,15 +447,17 @@ async fn blocklist_client_retry(num_failures: u8, failing_iters: u8) {
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     // We need to store the deposit request because of the foreign key
     // constraint on the deposit_signers table.
@@ -562,14 +571,16 @@ async fn do_not_procceed_with_blocked_addresses(is_withdrawal: bool, is_blocked:
         .with_mocked_clients()
         .build();
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // Creating test setup which will help store transactions and requests
-    let setup = TestSweepSetup::new_setup(rpc, faucet, 10000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);
 
     // Let's get the blockchain data into the database.
     let chain_tip: BitcoinBlockHash = setup.sweep_block_hash.into();
-    backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     if is_withdrawal {
         // For withdrawals we can store only request and dkg shares

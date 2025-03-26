@@ -75,6 +75,7 @@ use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use test_case::test_case;
 use test_log::test;
 
+use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::SweepAmounts;
@@ -398,7 +399,9 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 async fn get_pending_deposit_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
@@ -408,9 +411,9 @@ async fn get_pending_deposit_requests_only_pending() {
         is_deposit: true,
     };
     let signers = TestSignerSet::new(&mut rng);
-    let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+    let setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &[amounts]);
 
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
     // There aren't any deposit requests in the database.
@@ -454,7 +457,9 @@ async fn get_pending_deposit_requests_only_pending() {
 async fn get_pending_withdrawal_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
@@ -464,9 +469,9 @@ async fn get_pending_withdrawal_requests_only_pending() {
         is_deposit: false,
     };
     let signers = TestSignerSet::new(&mut rng);
-    let setup = TestSweepSetup2::new_setup(signers, faucet, &[amounts]);
+    let setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &[amounts]);
 
-    backfill_bitcoin_blocks(&db, rpc, &setup.deposit_block_hash).await;
+    backfill_bitcoin_blocks(&db, &client, &setup.deposit_block_hash).await;
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
     // There aren't any withdrawal requests in the database.
@@ -656,8 +661,11 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     let chain_tip = setup.sweep_block_hash.into();
     let context_window = 20;
@@ -665,7 +673,7 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
@@ -2131,12 +2139,15 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
     setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
@@ -2400,12 +2411,15 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &setup.sweep_block_hash).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &client, &setup.sweep_block_hash).await;
 
     // This isn't technically required right now, but the deposit
     // transaction is supposed to be there, so future versions of our query
@@ -2450,9 +2464,12 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let mut setup_fork = TestSweepSetup::new_setup(&rpc, &faucet, 2_000_000, &mut rng);
-    let mut setup_canonical = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
+    let mut setup_fork = TestSweepSetup::new_setup(&client, &faucet, 2_000_000, &mut rng);
+    let mut setup_canonical = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     let context_window = 20;
 
@@ -2461,7 +2478,7 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
 
     for setup in [&mut setup_fork, &mut setup_canonical] {
         // We almost always need a stacks genesis block, so let's store it.
@@ -2785,9 +2802,11 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     let context_window = 20;
 
@@ -2796,7 +2815,7 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
 
     // We need to manually update the database with new bitcoin block
     // headers.
-    crate::setup::backfill_bitcoin_blocks(&db, rpc, &chain_tip).await;
+    crate::setup::backfill_bitcoin_blocks(&db, &client, &chain_tip).await;
     setup.store_stacks_genesis_block(&db).await;
 
     // This isn't technically required right now, but the deposit
@@ -2886,13 +2905,16 @@ async fn get_swept_deposit_requests_boundary() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
-    let setup = TestSweepSetup::new_setup(&rpc, &faucet, 1_000_000, &mut rng);
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
+
+    let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     let context_window = 10;
 
     // We need to manually update the database with new bitcoin block headers.
-    let chain_tip = fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    let chain_tip = fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     // We almost always need a stacks genesis block, so let's store it.
     setup.store_stacks_genesis_block(&db).await;
@@ -2967,7 +2989,7 @@ async fn get_swept_deposit_requests_boundary() {
     // for the sweep tx
     for _ in 1..context_window - 1 {
         faucet.generate_block();
-        let chain_tip = fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+        let chain_tip = fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
         let requests = db
             .get_swept_deposit_requests(&chain_tip, context_window)
@@ -2980,7 +3002,7 @@ async fn get_swept_deposit_requests_boundary() {
     // But once we reach the boundary of the context window, we will lose track
     // of the completed event
     faucet.generate_block();
-    let chain_tip = fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    let chain_tip = fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     let requests = db
         .get_swept_deposit_requests(&chain_tip, context_window)
@@ -5650,16 +5672,18 @@ async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
 
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     let signers = TestSignerSet::new(&mut rng);
-    let setup = TestSweepSetup2::new_setup(signers, faucet, &[]);
+    let setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &[]);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
 
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
@@ -5722,18 +5746,20 @@ async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
 async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
-    let (rpc, faucet) = sbtc::testing::regtest::initialize_blockchain();
+    let bitcoind = docker::BitcoinCore::start().await;
+    let client = bitcoind.client();
+    let faucet = bitcoind.initialize_blockchain();
 
     // We use TestSweepSetup2 to help set up the signers' UTXO, which needs
     // to be available for this test.
     let signers = TestSignerSet::new(&mut rng);
-    let setup = TestSweepSetup2::new_setup(signers, faucet, &[]);
+    let setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &[]);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't
     // hooked up our block observer, so we need to manually update the
     // database with new bitcoin block headers.
-    fetch_canonical_bitcoin_blockchain(&db, rpc).await;
+    fetch_canonical_bitcoin_blockchain(&db, &client).await;
     let chain_tip = db.get_bitcoin_canonical_chain_tip().await.unwrap().unwrap();
 
     // This is needed for the part of the query that fetches the signers'
