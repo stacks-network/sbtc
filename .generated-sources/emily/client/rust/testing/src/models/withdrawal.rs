@@ -52,7 +52,7 @@ pub struct Withdrawal {
     /// The status message of the withdrawal.
     #[serde(rename = "statusMessage")]
     pub status_message: String,
-    /// Txid of stacks tx initiated withdrawal
+    /// The txid of the stacks transaction that generated this event.
     #[serde(rename = "txid")]
     pub txid: String,
 }

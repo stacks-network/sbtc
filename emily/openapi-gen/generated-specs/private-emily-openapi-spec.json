@@ -2350,7 +2350,7 @@
           },
           "txid": {
             "type": "string",
-            "description": "Txid of stacks tx initiated withdrawal"
+            "description": "The txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2893,7 +2893,7 @@
           },
           "txid": {
             "type": "string",
-            "description": "Txid of stacks tx initiated withdrawal"
+            "description": "The txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2958,7 +2958,7 @@
           },
           "txid": {
             "type": "string",
-            "description": "Txid of stacks tx initiated withdrawal"
+            "description": "The txid of the stacks transaction that generated this event."
           }
         }
       },

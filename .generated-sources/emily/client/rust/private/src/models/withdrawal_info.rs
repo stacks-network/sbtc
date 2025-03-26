@@ -40,7 +40,7 @@ pub struct WithdrawalInfo {
     pub stacks_block_height: u64,
     #[serde(rename = "status")]
     pub status: models::Status,
-    /// Txid of stacks tx initiated withdrawal
+    /// The txid of the stacks transaction that generated this event.
     #[serde(rename = "txid")]
     pub txid: String,
 }

@@ -59,7 +59,7 @@ pub struct WithdrawalEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
-    /// Txid of stacks tx initiated withdrawal
+    /// The txid of the stacks transaction that generated this event.
     pub txid: String,
     /// History of this withdrawal transaction.
     pub history: Vec<WithdrawalEvent>,
@@ -344,7 +344,7 @@ pub struct WithdrawalInfoEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
-    /// Txid of stacks tx initiated withdrawal
+    /// The txid of the stacks transaction that generated this event.
     pub txid: String,
 }
 
@@ -449,7 +449,7 @@ pub struct WithdrawalInfoByRecipientEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
-    /// Txid of stacks tx initiated withdrawal
+    /// The txid of the stacks transaction that generated this event.
     pub txid: String,
 }
 
@@ -555,7 +555,7 @@ pub struct WithdrawalInfoBySenderEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
-    /// Txid of stacks tx initiated withdrawal
+    /// The txid of the stacks transaction that generated this event.
     pub txid: String,
 }
 

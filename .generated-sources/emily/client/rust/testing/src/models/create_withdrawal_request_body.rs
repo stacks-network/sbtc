@@ -34,7 +34,7 @@ pub struct CreateWithdrawalRequestBody {
     /// The stacks block hash in which this request id was initiated.
     #[serde(rename = "stacksBlockHeight")]
     pub stacks_block_height: u64,
-    /// Txid of stacks tx initiated withdrawal
+    /// The txid of the stacks transaction that generated this event.
     #[serde(rename = "txid")]
     pub txid: String,
 }
