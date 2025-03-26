@@ -56,6 +56,9 @@ async fn set_api_state_status(
             }
             // Handle trying to set the api status to reorganizing.
             (ApiStatus::Reorg(new_reorg_tip), ApiStatus::Reorg(current_reorg_tip)) => {
+                // Compare only `.key` (stacks height and hash) since old chainstate entries lack 
+                // `bitcoin_block_height`. A Stacks block always has the same Bitcoin height, so
+                // ignoring it prevents false mismatches for old data.
                 if new_reorg_tip.key == current_reorg_tip.key {
                     return Ok(None);
                 } else {
