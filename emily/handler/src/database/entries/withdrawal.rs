@@ -60,7 +60,7 @@ pub struct WithdrawalEntry {
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
     /// Txid of stacks tx initiated withdrawal
-    pub txid: Option<String>,
+    pub txid: String,
     /// History of this withdrawal transaction.
     pub history: Vec<WithdrawalEvent>,
 }
@@ -345,7 +345,7 @@ pub struct WithdrawalInfoEntry {
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
     /// Txid of stacks tx initiated withdrawal
-    pub txid: Option<String>,
+    pub txid: String,
 }
 
 /// Implements the key trait for the withdrawal info entry key.
@@ -450,7 +450,7 @@ pub struct WithdrawalInfoByRecipientEntry {
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
     /// Txid of stacks tx initiated withdrawal
-    pub txid: Option<String>,
+    pub txid: String,
 }
 
 /// Implements the key trait for the withdrawal info entry key.
@@ -556,7 +556,7 @@ pub struct WithdrawalInfoBySenderEntry {
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
     /// Txid of stacks tx initiated withdrawal
-    pub txid: Option<String>,
+    pub txid: String,
 }
 
 /// Implements the key trait for the withdrawal info entry key.
@@ -730,7 +730,7 @@ mod tests {
             last_update_height: 1,
             last_update_block_hash: "hash".to_string(),
             history: vec![pending, failed.clone()],
-            txid: Some("txid".to_string()),
+            txid: "txid".to_string(),
         };
 
         let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
@@ -774,7 +774,7 @@ mod tests {
             last_update_height: 1,
             last_update_block_hash: "hash".to_string(),
             history: vec![pending.clone()],
-            txid: Some("txid".to_string()),
+            txid: "txid".to_string(),
         };
 
         let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
@@ -835,7 +835,7 @@ mod tests {
             last_update_height: 6,
             last_update_block_hash: "hash6".to_string(),
             history: vec![pending.clone(), accepted.clone(), confirmed.clone()],
-            txid: Some("txid".to_string()),
+            txid: "txid".to_string(),
         };
 
         // Ensure the withdrawal is valid.

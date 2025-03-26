@@ -281,7 +281,7 @@ pub async fn create_withdrawal(
             status,
             last_update_block_hash: stacks_block_hash,
             last_update_height: stacks_block_height,
-            txid: Some(txid),
+            txid,
             ..Default::default()
         };
         // Validate withdrawal entry.

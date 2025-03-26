@@ -57,7 +57,7 @@ pub struct Withdrawal {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment: Option<Fulfillment>,
     /// Txid of stacks tx initiated withdrawal
-    pub txid: Option<String>,
+    pub txid: String,
 }
 
 /// Withdrawal parameters.
@@ -122,7 +122,7 @@ pub struct WithdrawalInfo {
     /// The status of the withdrawal.
     pub status: Status,
     /// Txid of stacks tx initiated withdrawal
-    pub txid: Option<String>,
+    pub txid: String,
 }
 
 /// Create a WithdrawalInfo, which has a subset of the data within a Withdrawal, from a Withdrawal.
