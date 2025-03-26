@@ -294,7 +294,7 @@ async fn handle_key_rotation(
         txid: stacks_txid,
         address: event.new_address,
         aggregate_key: event.new_aggregate_pubkey,
-        signer_set: event.new_keys.into_iter().map(Into::into).collect(),
+        signer_set: event.new_keys,
         signatures_required: event.new_signature_threshold,
     };
 

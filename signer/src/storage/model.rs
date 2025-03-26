@@ -1259,11 +1259,7 @@ impl From<sbtc::events::WithdrawalCreateEvent> for WithdrawalRequest {
 impl From<sbtc::events::KeyRotationEvent> for KeyRotationEvent {
     fn from(sbtc_event: sbtc::events::KeyRotationEvent) -> KeyRotationEvent {
         KeyRotationEvent {
-            new_keys: sbtc_event
-                .new_keys
-                .into_iter()
-                .map(|key| key.into())
-                .collect(),
+            new_keys: sbtc_event.new_keys.into_iter().map(Into::into).collect(),
             new_address: sbtc_event.new_address.into(),
             new_aggregate_pubkey: sbtc_event.new_aggregate_pubkey.into(),
             new_signature_threshold: sbtc_event.new_signature_threshold,
