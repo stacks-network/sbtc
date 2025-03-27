@@ -6,6 +6,7 @@ use std::net::SocketAddr;
 use metrics_exporter_prometheus::PrometheusBuilder;
 
 use crate::error::Error;
+use crate::block_observer::Deposit;
 
 /// The buckets used for metric histograms
 const METRIC_BUCKETS: [f64; 9] = [1e-4, 1e-3, 1e-2, 0.1, 0.5, 1.0, 5.0, 20.0, f64::INFINITY];
@@ -56,7 +57,7 @@ impl From<Metrics> for metrics::KeyName {
 
 impl Metrics {
     /// Increment the deposit request counter for incoming deposit requests
-    pub fn increment_deposit(deposit: &Result<Option<crate::block_observer::Deposit>, Error>) {
+    pub fn increment_deposit_total(deposit: &Result<Option<Deposit>, Error>) {
         let deposit_status = match deposit {
             Ok(Some(_)) => "success",
             Ok(None) => "unconfirmed",

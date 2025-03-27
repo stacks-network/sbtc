@@ -229,7 +229,7 @@ impl<C: Context, B> BlockObserver<C, B> {
 
             // We log the error above, so we just need to extract the
             // deposit now.
-            Metrics::increment_deposit(&deposit);
+            Metrics::increment_deposit_total(&deposit);
             let Ok(Some(deposit)) = deposit else { continue };
 
             self.process_bitcoin_blocks_until(deposit.tx_info.block_hash)
