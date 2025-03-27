@@ -8,7 +8,7 @@ ignored = ["bitcoincore-rpc-json", "stackslib"]
 
 [features]
 default = []
-testing = ["dep:bitcoincore-rpc", "dep:bitcoincore-rpc-json"]
+testing = ["dep:bitcoincore-rpc", "dep:bitcoincore-rpc-json", "dep:sbtc-docker-testing"]
 webhooks = ["dep:stackslib", "dep:hex"]
 
 [dependencies]
@@ -26,6 +26,7 @@ bitcoincore-rpc = { workspace = true, optional = true }
 bitcoincore-rpc-json = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 stackslib = { workspace = true, optional = true }
+sbtc-docker-testing = { workspace = true, optional = true}
 
 [dev-dependencies]
 bitcoincore-rpc.workspace = true
@@ -34,3 +35,4 @@ test-case.workspace = true
 proptest.workspace = true
 assert_matches.workspace = true
 more-asserts.workspace = true
+sbtc-docker-testing.workspace = true

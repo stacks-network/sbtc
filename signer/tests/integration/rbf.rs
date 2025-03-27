@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;

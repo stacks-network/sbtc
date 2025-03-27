@@ -53,7 +53,6 @@ use signer::message::Payload;
 use signer::network::MessageTransfer;
 use signer::storage::model::WithdrawalTxOutput;
 use testing_emily_client::apis::chainstate_api;
-use testing_emily_client::apis::testing_api;
 use testing_emily_client::apis::withdrawal_api;
 use testing_emily_client::models::Chainstate;
 use testing_emily_client::models::Status as TestingEmilyStatus;
@@ -95,7 +94,6 @@ use stacks_common::types::chainstate::SortitionId;
 use test_case::test_case;
 use test_log::test;
 use tokio_stream::wrappers::BroadcastStream;
-use url::Url;
 
 use signer::block_observer::BlockObserver;
 use signer::context::Context;
@@ -1358,16 +1356,9 @@ async fn sign_bitcoin_transaction() {
     faucet.init_for_fee_estimation();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
-
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let emily = docker::Emily::start().await;
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
     let network = WanNetwork::default();
 
@@ -1791,16 +1782,9 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     faucet.init_for_fee_estimation();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
-
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let emily = docker::Emily::start().await;
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
     let network = WanNetwork::default();
 
@@ -2408,16 +2392,9 @@ async fn skip_smart_contract_deployment_and_key_rotation_if_up_to_date() {
     let faucet = bitcoind.initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client: EmilyClient = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
-
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let emily = docker::Emily::start().await;
+    let emily_client: EmilyClient =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
     let network = WanNetwork::default();
 
@@ -3501,25 +3478,19 @@ async fn sign_bitcoin_transaction_withdrawals() {
     let (_, signer_key_pairs): (_, [Keypair; 3]) = testing::wallet::regtest_bootstrap_wallet();
 
     let bitcoind = docker::BitcoinCore::start().await;
-    let client = bitcoind.client();
     let faucet = bitcoind.initialize_blockchain();
     faucet.init_for_fee_estimation();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
+    let emily = docker::Emily::start().await;
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
     let emily_config = emily_client.config().as_testing();
 
-    testing_api::wipe_databases(&emily_config).await.unwrap();
-
     let network = WanNetwork::default();
 
-    let chain_tip_info = client.get_chain_tips().unwrap().pop().unwrap();
+    let chain_tip_info = bitcoind.get_chain_tips().unwrap().pop().unwrap();
 
     // =========================================================================
     // Step 1 - Create a database, an associated context, and a Keypair for
@@ -3533,12 +3504,12 @@ async fn sign_bitcoin_transaction_withdrawals() {
         let db = testing::storage::new_test_database().await;
         let ctx = TestContext::builder()
             .with_storage(db.clone())
-            .with_bitcoin_client(client.clone())
+            .with_bitcoin_client(bitcoind.client())
             .with_emily_client(emily_client.clone())
             .with_mocked_stacks_client()
             .build();
 
-        backfill_bitcoin_blocks(&db, &client, &chain_tip_info.hash).await;
+        backfill_bitcoin_blocks(&db, &bitcoind, &chain_tip_info.hash).await;
 
         let network = network.connect(&ctx);
 
@@ -3862,14 +3833,14 @@ async fn sign_bitcoin_transaction_withdrawals() {
         // The mempool should be empty, since the signers do not act on the
         // withdrawal unless they've observed WITHDRAWAL_MIN_CONFIRMATIONS
         // from the chain tip of when the withdrawal request was created.
-        let txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
+        let txids = bitcoind.get_raw_mempool().unwrap();
         assert!(txids.is_empty());
     }
 
     faucet.generate_block();
     wait_for_signers(&signers).await;
 
-    let mut txids = ctx.bitcoin_client.inner_client().get_raw_mempool().unwrap();
+    let mut txids = bitcoind.get_raw_mempool().unwrap();
     assert_eq!(txids.len(), 1);
 
     let block_hash = faucet.generate_block();

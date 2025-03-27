@@ -9,7 +9,6 @@ use fake::Faker;
 use mockito::Server;
 use rand::SeedableRng as _;
 use serde_json::json;
-use url::Url;
 
 use emily_client::apis::deposit_api;
 use emily_client::models::CreateDepositRequestBody;
@@ -31,11 +30,9 @@ use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
-use testing_emily_client::apis::testing_api;
 
 use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
-use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
 
 fn test_environment(
@@ -317,16 +314,9 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
-
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let emily = docker::Emily::start().await;
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
     let bitcoind = docker::BitcoinCore::start().await;
     let client = bitcoind.client();

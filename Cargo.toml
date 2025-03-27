@@ -11,11 +11,13 @@ members = [
     "emily/openapi-gen",
     "sbtc",
     "signer",
+    "docker-testing",
 ]
 
 [workspace.dependencies]
 # Local Dependencies
 sbtc = { path = "./sbtc" }
+sbtc-docker-testing = { path = "./docker-testing" }
 emily-handler = { path = "./emily/handler" }
 emily-client = { path = "./.generated-sources/emily/client/rust/public" }
 testing-emily-client = { path = "./.generated-sources/emily/client/rust/testing" }

@@ -1,32 +1,38 @@
-[profile.default]
-#test-threads = 16
-
+################################################################################
+# Define test groups
+################################################################################
 [test-groups]
+# Test group for integration tests that need to be run serially. Tests in this
+# group will be run one at a time.
 serial = { max-threads = 1 }
 
-# all integration tests in the 'sbtc' package
+################################################################################
+# Apply the 'serial' test-group to all integration tests which need to be run
+# serially. This is primarily tests which need to interact with Emily as it is
+# not run using `testcontainers` at the moment.
+################################################################################
+
+# All integration tests in the 'sbtc' package. This is because at the moment
+# `testcontainers` are in the `signer` package, which can't be referenced by
+# `sbtc`.
 [[profile.default.overrides]]
 filter = 'package(sbtc) & kind(test)'
 test-group = 'serial'
 
-# all integration tests in the 'emily-handler' package
+# All integration tests in the 'emily-handler' package as these interact with
+# Emily.
 [[profile.default.overrides]]
 filter = 'package(emily-handler) & kind(test)'
 test-group = 'serial'
 
-# all integration tests in the 'signer' package, except for tests listed in the
-# below filter will run in parallel
+# Most integration tests in the 'signer' package can be run in parallel, but the
+# few that do interact with Emily or for other reasons need to be run serially
+# are individually listed here.
 [[profile.default.overrides]]
 filter = """
 package(signer) & kind(test) & (
-    test(/^emily/)
-    | test(block_observer::block_observer_stores_donation_and_sbtc_utxos)
-    | test(transaction_coordinator::sign_bitcoin_transaction)
-    | test(transaction_coordinator::sign_bitcoin_transaction_multiple_locking_keys)
-    | test(transaction_coordinator::skip_smart_contract_deployment_and_key_rotation_if_up_to_date)
-    | test(transaction_coordinator::sign_bitcoin_transaction_withdrawals)
-    | test(request_decider::persist_received_deposit_decision_fetches_missing_deposit_requests)
-    | test(/^zmq/)
-
-)"""
+    test(/^zmq/) 
+)
+"""
 test-group = 'serial'
+threads-required = 100

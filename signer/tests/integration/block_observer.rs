@@ -44,7 +44,6 @@ use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
-use testing_emily_client::apis::testing_api;
 
 use signer::block_observer::BlockObserver;
 use signer::context::Context as _;
@@ -61,7 +60,6 @@ use signer::transaction_signer::assert_allow_dkg_begin;
 use url::Url;
 
 use crate::docker;
-use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
 use crate::transaction_coordinator::mock_reqwests_status_code_error;
 use crate::utxo_construction::make_deposit_request;
@@ -360,16 +358,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     let faucet = bitcoind.initialize_blockchain();
 
     // We need to populate our databases, so let's fetch the data.
-    let emily_client = EmilyClient::try_new(
-        &Url::parse("http://testApiKey@localhost:3031").unwrap(),
-        Duration::from_secs(1),
-        None,
-    )
-    .unwrap();
-
-    testing_api::wipe_databases(&emily_client.config().as_testing())
-        .await
-        .unwrap();
+    let emily = docker::Emily::start().await;
+    let emily_client =
+        EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
     let chain_tip_info = bitcoind.get_chain_tips().unwrap().pop().unwrap();
 

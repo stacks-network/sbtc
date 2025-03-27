@@ -7,7 +7,6 @@ mod block_observer;
 mod communication;
 mod complete_deposit;
 mod contracts;
-mod docker;
 mod emily;
 mod fees;
 mod postgres;
