@@ -1203,7 +1203,7 @@ impl<'a> UnsignedTransaction<'a> {
 
         // This should never happen
         if amount < 0 {
-            tracing::error!("Transaction withdrawal amounts were greater than the inputs!");
+            tracing::error!("withdrawal amounts were greater than the input amounts!");
             return Err(Error::InvalidAmount(amount));
         }
 
