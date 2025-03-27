@@ -725,9 +725,10 @@ async fn get_oldest_stacks_block_for_bitcoin_block_with_retry(
     let mut attempts_left = retry_times + 1;
     while attempts_left > 0 {
         let height_to_search = bitcoin_height + attempts_left - retry_times - 1;
-        match get_oldest_stacks_block_for_bitcoin_block(context, height_to_search).await {
-            Ok(stacks_height) => return Ok(stacks_height),
-            Err(_) => {}
+        if let Ok(stacks_height) =
+            get_oldest_stacks_block_for_bitcoin_block(context, height_to_search).await
+        {
+            return Ok(stacks_height);
         }
         attempts_left -= 1;
     }
