@@ -56,7 +56,7 @@ pub struct Withdrawal {
     /// Details about the on chain artifacts that fulfilled the withdrawal.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fulfillment: Option<Fulfillment>,
-    /// The txid of the stacks transaction that generated this event.
+    /// The hex encoded txid of the stacks transaction that generated this event.
     pub txid: String,
 }
 
@@ -121,7 +121,7 @@ pub struct WithdrawalInfo {
     pub last_update_block_hash: String,
     /// The status of the withdrawal.
     pub status: Status,
-    /// The txid of the stacks transaction that generated this event.
+    /// The hex encoded txid of the stacks transaction that generated this event.
     pub txid: String,
 }
 

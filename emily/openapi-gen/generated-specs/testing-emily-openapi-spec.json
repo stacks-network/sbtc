@@ -2531,7 +2531,7 @@
           },
           "txid": {
             "type": "string",
-            "description": "The txid of the stacks transaction that generated this event."
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -3074,7 +3074,7 @@
           },
           "txid": {
             "type": "string",
-            "description": "The txid of the stacks transaction that generated this event."
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -3139,7 +3139,7 @@
           },
           "txid": {
             "type": "string",
-            "description": "The txid of the stacks transaction that generated this event."
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
