@@ -160,7 +160,7 @@ impl SignerWallet {
         })
     }
 
-    /// Load the multi-sig wallet from the last rotate-keys-transaction
+    /// Load the multi-sig wallet from the last rotate-keys transaction
     /// stored in the database. If it's not there, fall back to the
     /// bootstrap multi-sig wallet in the signer's config.
     ///
