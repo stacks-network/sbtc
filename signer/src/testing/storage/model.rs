@@ -318,7 +318,7 @@ impl TestData {
         num_stacks_blocks: usize,
     ) -> Vec<model::StacksBlock> {
         let mut stacks_block: model::StacksBlock = fake::Faker.fake_with_rng(rng);
-        stacks_block.bitcoin_anchor = new_bitcoin_block.parent_hash;
+        stacks_block.bitcoin_anchor = new_bitcoin_block.block_hash;
 
         let stacks_parent_block_summary = self
             .bitcoin_blocks
@@ -466,7 +466,7 @@ impl WithdrawData {
                     withdraw_request.block_hash = stacks_block_hash;
                     withdraw_request.request_id = next_withdraw_request_id;
                     withdraw_request.recipient = fake::Faker.fake_with_rng(rng);
-                    withdraw_request.bitcoin_block_height = bitcoin_block.block_height - 1;
+                    withdraw_request.bitcoin_block_height = bitcoin_block.block_height;
 
                     let mut raw_transaction: model::Transaction = fake::Faker.fake_with_rng(rng);
                     raw_transaction.tx_type = model::TransactionType::WithdrawRequest;
