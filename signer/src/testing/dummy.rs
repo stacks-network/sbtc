@@ -523,7 +523,6 @@ pub struct DepositTxConfig {
     pub lock_time: u32,
 }
 
-
 impl fake::Dummy<DepositTxConfig> for model::Transaction {
     fn dummy_with_rng<R: Rng + ?Sized>(_: &DepositTxConfig, rng: &mut R) -> Self {
         model::Transaction {
