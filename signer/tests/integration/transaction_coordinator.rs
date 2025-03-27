@@ -70,7 +70,6 @@ use signer::stacks::contracts::RejectWithdrawalV1;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::contracts::SmartContract;
 use signer::storage::model::BitcoinBlockHash;
-use signer::storage::model::BitcoinTx;
 use signer::storage::model::BitcoinTxSigHash;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::StacksTxId;
@@ -1713,11 +1712,12 @@ async fn sign_bitcoin_transaction() {
     assert_eq!(&tx_info.tx.output[0].script_pubkey, &script_pub_key);
 
     // Lastly we check that out database has the sweep transaction
-    let tx = sqlx::query_scalar::<_, BitcoinTx>(
+    let script_pubkey = sqlx::query_scalar::<_, model::ScriptPubKey>(
         r#"
-        SELECT tx
-        FROM sbtc_signer.transactions
+        SELECT script_pubkey
+        FROM sbtc_signer.bitcoin_tx_outputs
         WHERE txid = $1
+          AND output_type = 'signers_output'
         "#,
     )
     .bind(txid.to_byte_array())
@@ -1725,9 +1725,8 @@ async fn sign_bitcoin_transaction() {
     .await
     .unwrap();
 
-    let script = tx.output[0].script_pubkey.clone().into();
     for (_, db, _, _) in signers {
-        assert!(db.is_signer_script_pub_key(&script).await.unwrap());
+        assert!(db.is_signer_script_pub_key(&script_pubkey).await.unwrap());
         testing::storage::drop_db(db).await;
     }
 }
@@ -2127,20 +2126,20 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
     // Now we check that each database has the sweep transaction and is
     // recognized as a signer script_pubkey.
     for (_, db, _, _) in signers.iter() {
-        let tx = sqlx::query_scalar::<_, BitcoinTx>(
+        let script_pubkey = sqlx::query_scalar::<_, model::ScriptPubKey>(
             r#"
-            SELECT tx
-            FROM sbtc_signer.transactions
+            SELECT script_pubkey
+            FROM sbtc_signer.bitcoin_tx_outputs
             WHERE txid = $1
+              AND output_type = 'signers_output'
             "#,
         )
         .bind(txid.to_byte_array())
-        .fetch_one(db.pool())
+        .fetch_one(ctx.storage.pool())
         .await
         .unwrap();
 
-        let script = tx.output[0].script_pubkey.clone().into();
-        assert!(db.is_signer_script_pub_key(&script).await.unwrap());
+        assert!(db.is_signer_script_pub_key(&script_pubkey).await.unwrap());
     }
 
     // =========================================================================
@@ -2360,11 +2359,12 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
 
     for (_, db, _, _) in signers {
         // Lastly we check that our database has the sweep transaction
-        let tx = sqlx::query_scalar::<_, BitcoinTx>(
+        let script_pubkey = sqlx::query_scalar::<_, model::ScriptPubKey>(
             r#"
-            SELECT tx
-            FROM sbtc_signer.transactions
+            SELECT script_pubkey
+            FROM sbtc_signer.bitcoin_tx_outputs
             WHERE txid = $1
+              AND output_type = 'signers_output'
             "#,
         )
         .bind(txid.to_byte_array())
@@ -2372,8 +2372,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
         .await
         .unwrap();
 
-        let script = tx.output[0].script_pubkey.clone().into();
-        assert!(db.is_signer_script_pub_key(&script).await.unwrap());
+        assert!(db.is_signer_script_pub_key(&script_pubkey).await.unwrap());
         testing::storage::drop_db(db).await;
     }
 }
@@ -3928,11 +3927,12 @@ async fn sign_bitcoin_transaction_withdrawals() {
     assert_eq!(tx_info.tx.output[2].value.to_sat(), withdrawal_amount);
 
     // We check that our database has the sweep transaction
-    let tx = sqlx::query_scalar::<_, BitcoinTx>(
+    let script_pubkey = sqlx::query_scalar::<_, model::ScriptPubKey>(
         r#"
-        SELECT tx
-        FROM sbtc_signer.transactions
+        SELECT script_pubkey
+        FROM sbtc_signer.bitcoin_tx_outputs
         WHERE txid = $1
+          AND output_type = 'signers_output'
         "#,
     )
     .bind(txid.to_byte_array())
@@ -3956,9 +3956,8 @@ async fn sign_bitcoin_transaction_withdrawals() {
     assert_eq!(withdrawal_output.output_index, 2);
     assert_eq!(withdrawal_output.request_id, withdrawal_request.request_id);
 
-    let script = tx.output[0].script_pubkey.clone().into();
     for (_, db, _, _) in signers {
-        assert!(db.is_signer_script_pub_key(&script).await.unwrap());
+        assert!(db.is_signer_script_pub_key(&script_pubkey).await.unwrap());
         testing::storage::drop_db(db).await;
     }
 }

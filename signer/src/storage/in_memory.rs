@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::ops::Deref;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
@@ -108,10 +107,10 @@ pub struct Store {
     pub completed_deposit_events: HashMap<OutPoint, CompletedDepositEvent>,
 
     /// Bitcoin transaction outputs
-    pub bitcoin_outputs: HashMap<model::BitcoinTxId, model::TxOutput>,
+    pub bitcoin_outputs: HashMap<model::BitcoinTxId, Vec<model::TxOutput>>,
 
     /// Bitcoin transaction inputs
-    pub bitcoin_prevouts: HashMap<model::BitcoinTxId, model::TxPrevout>,
+    pub bitcoin_prevouts: HashMap<model::BitcoinTxId, Vec<model::TxPrevout>>,
 
     /// Bitcoin signhashes
     pub bitcoin_sighashes: HashMap<model::SigHash, model::BitcoinTxSigHash>,
@@ -154,11 +153,31 @@ impl Store {
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::Donation)
                     .filter_map(|tx| {
                         let txid = model::BitcoinTxId::from(tx.txid);
-                        let block_hash = model::BitcoinBlockHash::from(tx.block_hash);
-                        self.bitcoin_transactions
-                            .get(&(txid, block_hash))
-                            .map(|tx| tx.deref())
-                            .cloned()
+                        let outputs = self.bitcoin_outputs.get(&txid)?;
+                        let prevouts = self.bitcoin_prevouts.get(&txid)?;
+                        Some(bitcoin::Transaction {
+                            version: bitcoin::transaction::Version::TWO,
+                            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+                            input: prevouts
+                                .iter()
+                                .map(|prevout| bitcoin::TxIn {
+                                    previous_output: bitcoin::OutPoint {
+                                        txid: prevout.txid.into(),
+                                        vout: prevout.prevout_output_index,
+                                    },
+                                    script_sig: bitcoin::ScriptBuf::new(),
+                                    sequence: bitcoin::Sequence::ZERO,
+                                    witness: bitcoin::Witness::new(),
+                                })
+                                .collect(),
+                            output: outputs
+                                .iter()
+                                .map(|outpout| bitcoin::TxOut {
+                                    value: bitcoin::Amount::from_sat(outpout.amount),
+                                    script_pubkey: outpout.script_pubkey.clone().into(),
+                                })
+                                .collect(),
+                        })
                     })
                     .filter(|tx| {
                         tx.output
@@ -242,7 +261,7 @@ impl Store {
         let context_window_end_block = std::iter::successors(first_block, |block| {
             Some(self.bitcoin_blocks.get(&block.parent_hash).unwrap_or(block))
         })
-        .nth(context_window as usize);
+        .nth(context_window as usize - 1);
 
         let Some(context_window_end_block) = context_window_end_block else {
             return Vec::new();
@@ -683,12 +702,31 @@ impl super::DbRead for SharedStore {
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::SbtcTransaction)
                     .filter_map(|tx| {
                         let txid = model::BitcoinTxId::from(tx.txid);
-                        let block_hash = model::BitcoinBlockHash::from(tx.block_hash);
-                        store
-                            .bitcoin_transactions
-                            .get(&(txid, block_hash))
-                            .map(|tx| tx.deref())
-                            .cloned()
+                        let outputs = store.bitcoin_outputs.get(&txid)?;
+                        let prevouts = store.bitcoin_prevouts.get(&txid)?;
+                        Some(bitcoin::Transaction {
+                            version: bitcoin::transaction::Version::TWO,
+                            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+                            input: prevouts
+                                .iter()
+                                .map(|prevout| bitcoin::TxIn {
+                                    previous_output: bitcoin::OutPoint {
+                                        txid: prevout.txid.into(),
+                                        vout: prevout.prevout_output_index,
+                                    },
+                                    script_sig: bitcoin::ScriptBuf::new(),
+                                    sequence: bitcoin::Sequence::ZERO,
+                                    witness: bitcoin::Witness::new(),
+                                })
+                                .collect(),
+                            output: outputs
+                                .iter()
+                                .map(|outpout| bitcoin::TxOut {
+                                    value: bitcoin::Amount::from_sat(outpout.amount),
+                                    script_pubkey: outpout.script_pubkey.clone().into(),
+                                })
+                                .collect(),
+                        })
                     })
                     .filter(|tx| {
                         tx.output
@@ -882,20 +920,6 @@ impl super::DbRead for SharedStore {
             .sum();
 
         Ok(total_withdrawn)
-    }
-
-    async fn get_bitcoin_tx(
-        &self,
-        txid: &model::BitcoinTxId,
-        block_hash: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::BitcoinTx>, Error> {
-        let store = self.lock().await;
-        let maybe_tx = store
-            .bitcoin_transactions
-            .get(&(*txid, *block_hash))
-            .cloned();
-
-        Ok(maybe_tx)
     }
 
     async fn get_swept_deposit_requests(
@@ -1346,7 +1370,9 @@ impl super::DbWrite for SharedStore {
         self.lock()
             .await
             .bitcoin_outputs
-            .insert(output.txid, output.clone());
+            .entry(output.txid)
+            .or_default()
+            .push(output.clone());
 
         Ok(())
     }
@@ -1362,7 +1388,9 @@ impl super::DbWrite for SharedStore {
         self.lock()
             .await
             .bitcoin_prevouts
-            .insert(prevout.txid, prevout.clone());
+            .entry(prevout.txid)
+            .or_default()
+            .push(prevout.clone());
 
         Ok(())
     }

@@ -2290,27 +2290,6 @@ impl super::DbRead for PgStore {
         Ok(txo_confirmations <= min_confirmations)
     }
 
-    async fn get_bitcoin_tx(
-        &self,
-        txid: &model::BitcoinTxId,
-        block_hash: &model::BitcoinBlockHash,
-    ) -> Result<Option<model::BitcoinTx>, Error> {
-        sqlx::query_scalar::<_, model::BitcoinTx>(
-            r#"
-            SELECT txs.tx
-            FROM sbtc_signer.bitcoin_transactions AS bt
-            JOIN sbtc_signer.transactions AS txs USING (txid)
-            WHERE bt.block_hash = $1
-              AND bt.txid = $2
-        "#,
-        )
-        .bind(block_hash)
-        .bind(txid)
-        .fetch_optional(&self.0)
-        .await
-        .map_err(Error::SqlxQuery)
-    }
-
     async fn get_swept_deposit_requests(
         &self,
         chain_tip: &model::BitcoinBlockHash,

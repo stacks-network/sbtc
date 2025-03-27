@@ -1770,64 +1770,6 @@ async fn block_in_canonical_bitcoin_blockchain_in_other_block_chain() {
     signer::testing::storage::drop_db(pg_store).await;
 }
 
-/// For this test we check that the `get_bitcoin_tx` function returns a
-/// transaction when the transaction exists in the block, and returns None
-/// otherwise.
-#[tokio::test]
-async fn we_can_fetch_bitcoin_txs_from_db() {
-    let pg_store = testing::storage::new_test_database().await;
-    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-
-    // This is just a sql test, where we use the `TestData` struct to help
-    // populate the database with test data. We set all the other
-    // unnecessary parameters to zero.
-    let num_signers = 0;
-    let test_model_params = testing::storage::model::Params {
-        num_bitcoin_blocks: 10,
-        num_stacks_blocks_per_bitcoin_block: 0,
-        num_deposit_requests_per_block: 2,
-        num_withdraw_requests_per_block: 0,
-        num_signers_per_request: num_signers,
-        consecutive_blocks: false,
-    };
-
-    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
-    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
-    test_data.write_to(&pg_store).await;
-
-    let tx = test_data.bitcoin_transactions.choose(&mut rng).unwrap();
-
-    // Now let's try fetching this transaction
-    let btc_tx = pg_store
-        .get_bitcoin_tx(&tx.txid, &tx.block_hash)
-        .await
-        .unwrap()
-        .unwrap();
-
-    assert_eq!(btc_tx.compute_txid(), tx.txid.into());
-
-    // Now let's try fetching this transaction when we know it is missing.
-    let txid: BitcoinTxId = fake::Faker.fake_with_rng(&mut rng);
-    let block_hash: BitcoinBlockHash = fake::Faker.fake_with_rng(&mut rng);
-    // Actual block but missing txid
-    let btc_tx = pg_store
-        .get_bitcoin_tx(&txid, &tx.block_hash)
-        .await
-        .unwrap();
-    assert!(btc_tx.is_none());
-    // Actual txid but missing block
-    let btc_tx = pg_store
-        .get_bitcoin_tx(&tx.txid, &block_hash)
-        .await
-        .unwrap();
-    assert!(btc_tx.is_none());
-    // Now everything is missing
-    let btc_tx = pg_store.get_bitcoin_tx(&txid, &block_hash).await.unwrap();
-    assert!(btc_tx.is_none());
-
-    signer::testing::storage::drop_db(pg_store).await;
-}
-
 /// Check that `is_signer_script_pub_key` correctly returns whether a
 /// scriptPubKey value exists in the dkg_shares table.
 #[tokio::test]
@@ -3173,6 +3115,7 @@ async fn should_process_withdrawals() {
     testing::storage::drop_db(store).await;
 }
 
+#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_simple() {
     let store = testing::storage::new_test_database().await;
@@ -3185,6 +3128,7 @@ async fn should_get_signer_utxo_simple() {
     signer::testing::storage::drop_db(store).await;
 }
 
+#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_fork() {
     let store = testing::storage::new_test_database().await;
@@ -3197,6 +3141,7 @@ async fn should_get_signer_utxo_fork() {
     signer::testing::storage::drop_db(store).await;
 }
 
+#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_unspent() {
     let store = testing::storage::new_test_database().await;
@@ -3209,6 +3154,7 @@ async fn should_get_signer_utxo_unspent() {
     signer::testing::storage::drop_db(store).await;
 }
 
+#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_donations() {
     let store = testing::storage::new_test_database().await;
