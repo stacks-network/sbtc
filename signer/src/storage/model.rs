@@ -743,29 +743,6 @@ pub trait ToLittleEndianOrder: Sized {
     fn to_le_bytes(&self) -> [u8; 32];
 }
 
-/// A bitcoin transaction
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BitcoinTx(bitcoin::Transaction);
-
-impl Deref for BitcoinTx {
-    type Target = bitcoin::Transaction;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<bitcoin::Transaction> for BitcoinTx {
-    fn from(value: bitcoin::Transaction) -> Self {
-        Self(value)
-    }
-}
-
-impl From<BitcoinTx> for bitcoin::Transaction {
-    fn from(value: BitcoinTx) -> Self {
-        value.0
-    }
-}
-
 /// The bitcoin transaction ID
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BitcoinTxId(bitcoin::Txid);

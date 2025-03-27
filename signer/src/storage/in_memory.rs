@@ -67,10 +67,6 @@ pub struct Store {
     /// Bitcoin transactions to blocks
     pub bitcoin_transactions_to_blocks: HashMap<model::BitcoinTxId, Vec<model::BitcoinBlockHash>>,
 
-    /// Bitcoin transactions to blocks
-    pub bitcoin_transactions:
-        HashMap<(model::BitcoinTxId, model::BitcoinBlockHash), model::BitcoinTx>,
-
     /// Stacks blocks to transactions
     pub stacks_block_to_transactions: HashMap<model::StacksBlockHash, Vec<model::StacksTxId>>,
 
