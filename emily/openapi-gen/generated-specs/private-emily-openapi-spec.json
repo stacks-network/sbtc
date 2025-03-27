@@ -1287,7 +1287,8 @@
         "tags": [
           "limits"
         ],
-        "summary": "Get limits handler.",
+        "summary": "Set limits handler.",
+        "description": "Note, that `available_to_withdraw` is not settable, but is calculated based on the other fields.\nValue of `available_to_withdraw` passed to this endpoint will be ignored.",
         "operationId": "setLimits",
         "requestBody": {
           "content": {

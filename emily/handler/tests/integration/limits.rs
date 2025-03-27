@@ -260,7 +260,7 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .map(|(account_name, limits)| (account_name.to_string(), limits.clone()))
     .collect();
     let global_limits_to_set = Limits {
-        available_to_withdraw: Some(Some(1000)),
+        available_to_withdraw: Some(None),
         peg_cap: Some(Some(123)),
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
@@ -311,7 +311,7 @@ async fn test_updating_account_limits_via_global_limit_works() {
     .map(|(account_name, limits)| (account_name.to_string(), limits.clone()))
     .collect();
     let expected_global_limits = Limits {
-        available_to_withdraw: Some(Some(112)), // Will fail to calculate available to withdraw since chainstate table is empty
+        available_to_withdraw: Some(Some(112)),
         peg_cap: Some(Some(123)),
         per_deposit_minimum: Some(Some(654)),
         per_deposit_cap: Some(Some(456)),
@@ -437,8 +437,13 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     assert_eq!(global_limits.unwrap(), limits);
 }
 
+#[test_case(3, false)]
+#[test_case(4, true)]
 #[tokio::test]
-async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
+async fn test_available_to_withdraw_no_chainstate_in_db(
+    offset_before_target: u64,
+    should_fail: bool,
+) {
     let configuration = clean_setup().await;
 
     // Set limits
@@ -463,12 +468,22 @@ async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
     assert!(result.is_ok());
 
     // Create chainstates
+    // End bitcoin block of rolling window is max_height - 100 + 1
+    // If this block is not in db, Emily will look at 3 blocks before it
+    // With this test we test that it is really 3.
+    // Now we set some chainstates to create chaintip, and a chainstate at max_height - 100 + 1 - offset_before_target.
     let min_height = 1000;
     let max_height = 1010;
+    let chainstate = new_test_chainstate(
+        max_height - 100 + 1 - offset_before_target,
+        max_height - 100 + 1 - offset_before_target,
+        0,
+    );
+    let _ = batch_set_chainstates(&configuration, vec![chainstate]).await;
+
     let expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
         .map(|height| new_test_chainstate(height, height, 0))
         .collect();
-    let _ = new_test_chainstate(max_height, max_height, 0);
     let _ = batch_set_chainstates(&configuration, expected_chainstates.clone()).await;
 
     // Create withdrawal
@@ -488,9 +503,14 @@ async fn test_available_to_withdraw_fail_no_chainstate_in_db() {
         .expect("Received an error after making a valid create withdrawal request api call.");
 
     // Get limits and perform assertions
-    let _limits = apis::limits_api::get_limits(&configuration)
-        .await
-        .expect_err("Should fail because necessary chainstates don't present in the db");
+    let limits = apis::limits_api::get_limits(&configuration).await;
+
+    if should_fail {
+        assert!(limits.is_err());
+    } else {
+        assert!(limits.is_ok());
+        assert_eq!(limits.unwrap().available_to_withdraw, Some(Some(9000)))
+    }
 }
 
 #[tokio::test]
