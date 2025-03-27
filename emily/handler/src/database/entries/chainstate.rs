@@ -248,10 +248,10 @@ impl PrimaryIndexTrait for SpecialApiStateIndexInner {
 #[serde(rename_all = "PascalCase")]
 pub struct ChainstateByBitcoinHeightEntryKey {
     /// Bitcoin height
-    pub bitcoin_height: u64,
+    pub bitcoin_block_height: u64,
     /// Stacks height
     #[serde(rename = "Height")]
-    pub stacks_height: u64,
+    pub stacks_block_height: u64,
 }
 
 /// Chainstate table entry. This is secondary entry
@@ -270,8 +270,8 @@ impl From<ChainstateByBitcoinHeightEntry> for Chainstate {
     fn from(chainstate_entry: ChainstateByBitcoinHeightEntry) -> Self {
         Chainstate {
             stacks_block_hash: chainstate_entry.hash,
-            stacks_block_height: chainstate_entry.key.stacks_height,
-            bitcoin_block_height: Some(chainstate_entry.key.bitcoin_height),
+            stacks_block_height: chainstate_entry.key.stacks_block_height,
+            bitcoin_block_height: Some(chainstate_entry.key.bitcoin_block_height),
         }
     }
 }
@@ -281,8 +281,8 @@ impl From<Chainstate> for ChainstateByBitcoinHeightEntry {
     fn from(chainstate_entry: Chainstate) -> Self {
         ChainstateByBitcoinHeightEntry {
             key: ChainstateByBitcoinHeightEntryKey {
-                bitcoin_height: chainstate_entry.bitcoin_block_height.unwrap_or(0), // default is 0 since we don't meet 0 in real world and it can be good indicator of "none". However, this should never be None
-                stacks_height: chainstate_entry.stacks_block_height,
+                bitcoin_block_height: chainstate_entry.bitcoin_block_height.unwrap_or(0), // default is 0 since we don't meet 0 in real world and it can be good indicator of "none". However, this should never be None
+                stacks_block_height: chainstate_entry.stacks_block_height,
             },
             hash: chainstate_entry.stacks_block_hash,
         }
@@ -308,8 +308,8 @@ impl EntryTrait for ChainstateByBitcoinHeightEntry {
     /// Extract the key from the entry.
     fn key(&self) -> Self::Key {
         ChainstateByBitcoinHeightEntryKey {
-            stacks_height: self.key.stacks_height,
-            bitcoin_height: self.key.bitcoin_height,
+            stacks_block_height: self.key.stacks_block_height,
+            bitcoin_block_height: self.key.bitcoin_block_height,
         }
     }
 }

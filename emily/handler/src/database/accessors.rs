@@ -710,8 +710,8 @@ async fn get_oldest_stacks_block_for_bitcoin_block(
     .await?
     .0
     .iter()
-    .min_by_key(|entry| entry.key.stacks_height)
-    .map(|entry| entry.key.stacks_height)
+    .min_by_key(|entry| entry.key.stacks_block_height)
+    .map(|entry| entry.key.stacks_block_height)
     .ok_or(Error::NotFound)
 }
 
