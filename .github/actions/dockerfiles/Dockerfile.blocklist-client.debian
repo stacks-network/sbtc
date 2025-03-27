@@ -28,9 +28,18 @@ RUN cargo build --bin blocklist-client ${CARGO_BUILD_ARGS}
 FROM debian:bookworm-slim AS blocklist-client
 COPY --from=build /code/sbtc/target/release/blocklist-client /usr/local/bin/blocklist-client
 
+RUN apt-get update && \
+    apt-get install -y curl && \
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && \
+    apt-get update && \
+    apt-get install -y gh=2.67.0
+
 # ca-certificates is required to establish TLS connections.
 # gettext provides envsubst
 
-RUN apt-get update && apt-get install -y ca-certificates gettext --no-install-recommends && \
-        apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get install -y ca-certificates gettext --no-install-recommends && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 CMD ["/usr/local/bin/blocklist-client"]
