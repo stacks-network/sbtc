@@ -2311,7 +2311,8 @@
           "recipient",
           "sender",
           "amount",
-          "parameters"
+          "parameters",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2346,6 +2347,10 @@
             "format": "int64",
             "description": "The stacks block hash in which this request id was initiated.",
             "minimum": 0
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2824,7 +2829,8 @@
           "lastUpdateBlockHash",
           "status",
           "statusMessage",
-          "parameters"
+          "parameters",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2884,6 +2890,10 @@
           "statusMessage": {
             "type": "string",
             "description": "The status message of the withdrawal."
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2899,7 +2909,8 @@
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
-          "status"
+          "status",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2944,6 +2955,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/Status"
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },

@@ -3806,6 +3806,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         sender: withdrawal_request.sender_address.to_string(),
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
         stacks_block_height: stacks_tip_height,
+        txid: withdrawal_request.txid.to_string(),
     };
     let response = withdrawal_api::create_withdrawal(&emily_config, request_body).await;
     assert!(response.is_ok());
