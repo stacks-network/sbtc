@@ -3,7 +3,6 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -575,17 +574,9 @@ impl fake::Dummy<fake::Faker> for BitcoinTx {
 }
 
 impl fake::Dummy<DepositTxConfig> for model::Transaction {
-    fn dummy_with_rng<R: Rng + ?Sized>(config: &DepositTxConfig, rng: &mut R) -> Self {
-        let mut tx = Vec::new();
-
-        let bitcoin_tx: BitcoinTx = config.fake_with_rng(rng);
-        bitcoin_tx
-            .consensus_encode(&mut tx)
-            .expect("In-memory writers never fail");
-
+    fn dummy_with_rng<R: Rng + ?Sized>(_: &DepositTxConfig, rng: &mut R) -> Self {
         model::Transaction {
-            tx,
-            txid: bitcoin_tx.compute_txid().to_byte_array(),
+            txid: fake::Faker.fake_with_rng(rng),
             tx_type: model::TransactionType::DepositRequest,
             block_hash: fake::Faker.fake_with_rng(rng),
         }
@@ -653,15 +644,9 @@ impl fake::Dummy<SweepTxConfig> for BitcoinTx {
 }
 
 impl fake::Dummy<SweepTxConfig> for model::Transaction {
-    fn dummy_with_rng<R: Rng + ?Sized>(config: &SweepTxConfig, rng: &mut R) -> Self {
-        let mut tx = Vec::new();
-
-        let bitcoin_tx: BitcoinTx = config.fake_with_rng(rng);
-        bitcoin_tx.consensus_encode(&mut tx).unwrap();
-
+    fn dummy_with_rng<R: Rng + ?Sized>(_: &SweepTxConfig, rng: &mut R) -> Self {
         model::Transaction {
-            tx,
-            txid: bitcoin_tx.compute_txid().to_byte_array(),
+            txid: fake::Faker.fake_with_rng(rng),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: fake::Faker.fake_with_rng(rng),
         }

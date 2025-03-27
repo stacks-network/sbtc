@@ -2,7 +2,6 @@
 
 use std::collections::HashSet;
 
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use fake::Fake;
 
@@ -177,12 +176,8 @@ impl TestData {
         let mut tx_outputs = Vec::new();
 
         for (tx_type, tx) in sbtc_txs {
-            let mut tx_bytes = Vec::new();
-            tx.consensus_encode(&mut tx_bytes).unwrap();
-
             let model_tx = model::Transaction {
                 txid: tx.compute_txid().to_byte_array(),
-                tx: tx_bytes,
                 tx_type,
                 block_hash: block.block_hash.into_bytes(),
             };

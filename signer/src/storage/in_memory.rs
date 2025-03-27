@@ -1,12 +1,12 @@
 //! In-memory store implementation - useful for tests
 
-use bitcoin::consensus::Decodable as _;
 use bitcoin::OutPoint;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::ops::Deref;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
@@ -153,7 +153,12 @@ impl Store {
                     .filter_map(|tx| self.raw_transactions.get(&tx.into_bytes()))
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::Donation)
                     .filter_map(|tx| {
-                        bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice()).ok()
+                        let txid = model::BitcoinTxId::from(tx.txid);
+                        let block_hash = model::BitcoinBlockHash::from(tx.block_hash);
+                        self.bitcoin_transactions
+                            .get(&(txid, block_hash))
+                            .map(|tx| tx.deref())
+                            .cloned()
                     })
                     .filter(|tx| {
                         tx.output
@@ -677,7 +682,13 @@ impl super::DbRead for SharedStore {
                     .filter_map(|tx| store.raw_transactions.get(&tx.into_bytes()))
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::SbtcTransaction)
                     .filter_map(|tx| {
-                        bitcoin::Transaction::consensus_decode(&mut tx.tx.as_slice()).ok()
+                        let txid = model::BitcoinTxId::from(tx.txid);
+                        let block_hash = model::BitcoinBlockHash::from(tx.block_hash);
+                        store
+                            .bitcoin_transactions
+                            .get(&(txid, block_hash))
+                            .map(|tx| tx.deref())
+                            .cloned()
                     })
                     .filter(|tx| {
                         tx.output

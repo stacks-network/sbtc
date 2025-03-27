@@ -2246,7 +2246,6 @@ async fn get_swept_withdrawal_requests_returns_swept_withdrawal_requests() {
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: bitcoin_block.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -2646,7 +2645,6 @@ async fn get_swept_withdrawal_requests_does_not_return_withdrawal_requests_with_
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: bitcoin_block.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -3060,7 +3058,6 @@ async fn get_swept_withdrawal_requests_response_tx_reorged() {
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: bitcoin_block.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -3284,7 +3281,6 @@ async fn deposit_report_with_only_deposit_request() {
     let random_block: model::BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
     let tx = model::Transaction {
         txid: deposit_request.txid.into_bytes(),
-        tx: Vec::new(),
         tx_type: model::TransactionType::DepositRequest,
         block_hash: random_block.block_hash.into_bytes(),
     };
@@ -3372,7 +3368,6 @@ async fn deposit_report_with_deposit_request_reorged() {
     let random_block: model::BitcoinBlock = fake::Faker.fake_with_rng(&mut rng);
     let tx = model::Transaction {
         txid: deposit_request.txid.into_bytes(),
-        tx: Vec::new(),
         tx_type: model::TransactionType::DepositRequest,
         block_hash: random_block.block_hash.into_bytes(),
     };
@@ -3446,7 +3441,6 @@ async fn deposit_report_with_deposit_request_spent() {
 
     let tx = model::Transaction {
         txid: deposit_request.txid.into_bytes(),
-        tx: Vec::new(),
         tx_type: model::TransactionType::DepositRequest,
         block_hash: chain_tip.into_bytes(),
     };
@@ -3478,7 +3472,6 @@ async fn deposit_report_with_deposit_request_spent() {
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_prevout.txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: chain_tip.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -3547,7 +3540,6 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     // change the chain tip and test certain conditions.
     let tx = model::Transaction {
         txid: deposit_request.txid.into_bytes(),
-        tx: Vec::new(),
         tx_type: model::TransactionType::DepositRequest,
         block_hash: chain_tip_block.parent_hash.into_bytes(),
     };
@@ -3586,7 +3578,6 @@ async fn deposit_report_with_deposit_request_swept_but_swept_reorged() {
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_prevout.txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: alt_chain_tip_block.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -3675,7 +3666,6 @@ async fn deposit_report_with_deposit_request_confirmed() {
 
     let tx = model::Transaction {
         txid: deposit_request.txid.into_bytes(),
-        tx: Vec::new(),
         tx_type: model::TransactionType::DepositRequest,
         block_hash: chain_tip.into_bytes(),
     };
@@ -4073,7 +4063,6 @@ async fn withdrawal_report_with_withdrawal_request_fulfilled() {
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: bitcoin_chain_tip.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -4198,7 +4187,6 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged() {
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: bitcoin_chain_tip_ref.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -4358,7 +4346,6 @@ async fn withdrawal_report_with_withdrawal_request_swept_but_swept_reorged2() {
     let sweep_tx_model = model::Transaction {
         tx_type: model::TransactionType::SbtcTransaction,
         txid: swept_output.bitcoin_txid.to_byte_array(),
-        tx: Vec::new(),
         block_hash: bitcoin_chain_tip.block_hash.to_byte_array(),
     };
     let sweep_tx_ref = model::BitcoinTxRef {
@@ -4748,7 +4735,6 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
             let sweep_tx_model = model::Transaction {
                 tx_type: model::TransactionType::Donation,
                 txid: swept_output.txid.to_byte_array(),
-                tx: Vec::new(),
                 block_hash: chain_tip_ref.block_hash.to_byte_array(),
             };
             let sweep_tx_ref = model::BitcoinTxRef {
@@ -4780,7 +4766,6 @@ async fn signer_utxo_reorg_suite<const N: usize>(desc: ReorgDescription<N>) {
                 let sweep_tx_model = model::Transaction {
                     tx_type: model::TransactionType::SbtcTransaction,
                     txid: swept_prevout.txid.to_byte_array(),
-                    tx: Vec::new(),
                     block_hash: chain_tip_ref.block_hash.to_byte_array(),
                 };
                 let sweep_tx_ref = model::BitcoinTxRef {
@@ -5565,7 +5550,6 @@ async fn pending_rejected_withdrawal_already_accepted() {
         .unwrap();
     db.write_transaction(&model::Transaction {
         txid: forked_withdrawal_output.bitcoin_txid.into_bytes(),
-        tx: vec![],
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: forked_block.block_hash.into_bytes(),
     })
@@ -5619,7 +5603,6 @@ async fn pending_rejected_withdrawal_already_accepted() {
     // Confirming it (putting the output txid in a confirmed block)
     db.write_transaction(&model::Transaction {
         txid: canonical_withdrawal_output.bitcoin_txid.into_bytes(),
-        tx: vec![],
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: fork_base.block_hash.into_bytes(),
     })
@@ -5932,7 +5915,6 @@ async fn compute_withdrawn_total_gets_all_amounts_in_chain() {
 
         let tx = model::Transaction {
             txid: output.txid.into_bytes(),
-            tx: Vec::new(),
             tx_type: model::TransactionType::SbtcTransaction,
             block_hash: block.block_hash.into_bytes(),
         };
@@ -6024,7 +6006,6 @@ async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain()
 
     let tx = model::Transaction {
         txid: output1.txid.into_bytes(),
-        tx: Vec::new(),
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: bitcoin_chain_tip.block_hash.into_bytes(),
     };
@@ -6046,7 +6027,6 @@ async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain()
 
     let tx = model::Transaction {
         txid: output2.txid.into_bytes(),
-        tx: Vec::new(),
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: another_block.block_hash.into_bytes(),
     };
@@ -6182,7 +6162,6 @@ mod get_pending_accepted_withdrawal_requests {
             txid: Faker.fake(),
             block_hash: at_bitcoin_block.into_bytes(),
             tx_type: model::TransactionType::SbtcTransaction,
-            tx: Vec::new(),
         };
         let bitcoin_sweep_tx = model::BitcoinTxRef {
             txid: transaction.txid.into(),

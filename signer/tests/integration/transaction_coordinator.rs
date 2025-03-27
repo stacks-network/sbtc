@@ -8,7 +8,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bitcoin::consensus::Encodable as _;
 use bitcoin::hashes::Hash as _;
 use bitcoin::Address;
 use bitcoin::AddressType;
@@ -210,12 +209,8 @@ where
         }],
     };
 
-    let mut tx_bytes = Vec::new();
-    tx.consensus_encode(&mut tx_bytes).unwrap();
-
     let tx = model::Transaction {
         txid: tx.compute_txid().to_byte_array(),
-        tx: tx_bytes,
         tx_type: model::TransactionType::Donation,
         block_hash: *block_hash.as_byte_array(),
     };
@@ -2757,10 +2752,6 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
         },
     );
     let signer_utxo_txid = signer_utxo_tx.compute_txid();
-    let mut signer_utxo_encoded = Vec::new();
-    signer_utxo_tx
-        .consensus_encode(&mut signer_utxo_encoded)
-        .unwrap();
 
     let utxo_input = model::TxPrevout {
         txid: signer_utxo_txid.into(),
@@ -2779,7 +2770,6 @@ async fn test_get_btc_state_with_no_available_sweep_transactions() {
     db.write_bitcoin_block(&bitcoin_block).await.unwrap();
     db.write_transaction(&model::Transaction {
         txid: *signer_utxo_txid.as_byte_array(),
-        tx: signer_utxo_encoded,
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: bitcoin_block.block_hash.into_bytes(),
     })
@@ -2883,12 +2873,6 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
     let signer_utxo_tx = client.get_tx(&outpoint.txid).unwrap().unwrap();
     let signer_utxo_txid = signer_utxo_tx.tx.compute_txid();
 
-    let mut signer_utxo_tx_encoded = Vec::new();
-    signer_utxo_tx
-        .tx
-        .consensus_encode(&mut signer_utxo_tx_encoded)
-        .unwrap();
-
     let utxo_input = model::TxPrevout {
         txid: signer_utxo_txid.into(),
         prevout_type: model::TxPrevoutType::SignersInput,
@@ -2913,7 +2897,6 @@ async fn test_get_btc_state_with_available_sweep_transactions_and_rbf() {
 
     db.write_transaction(&model::Transaction {
         txid: signer_utxo_txid.to_byte_array(),
-        tx: signer_utxo_tx_encoded,
         tx_type: model::TransactionType::SbtcTransaction,
         block_hash: signer_utxo_block_hash.to_byte_array(),
     })

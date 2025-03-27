@@ -8,7 +8,6 @@ use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
-use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::Executor as _;
@@ -91,7 +90,6 @@ pub fn extract_relevant_transactions(
                 Some(model::Transaction {
                     txid: tx.txid().into_bytes(),
                     block_hash: block_id.into_bytes(),
-                    tx: tx.serialize_to_vec(),
                     tx_type: *transaction_kinds.get(&x.function_name.as_str())?,
                 })
             }
@@ -350,13 +348,11 @@ impl PgStore {
         }
 
         let mut tx_ids = Vec::with_capacity(txs.len());
-        let mut txs_bytes = Vec::with_capacity(txs.len());
         let mut tx_types = Vec::with_capacity(txs.len());
         let mut block_hashes = Vec::with_capacity(txs.len());
 
         for tx in txs {
             tx_ids.push(tx.txid);
-            txs_bytes.push(tx.tx);
             tx_types.push(tx.tx_type.to_string());
             block_hashes.push(tx.block_hash)
         }
@@ -367,26 +363,19 @@ impl PgStore {
                 SELECT ROW_NUMBER() OVER (), txid
                 FROM UNNEST($1::bytea[]) AS txid
             )
-            , txs AS (
-                SELECT ROW_NUMBER() OVER (), tx
-                FROM UNNEST($2::bytea[]) AS tx
-            )
             , transaction_types AS (
                 SELECT ROW_NUMBER() OVER (), tx_type::sbtc_signer.transaction_type
-                FROM UNNEST($3::VARCHAR[]) AS tx_type
+                FROM UNNEST($2::VARCHAR[]) AS tx_type
             )
-            INSERT INTO sbtc_signer.transactions (txid, tx, tx_type)
+            INSERT INTO sbtc_signer.transactions (txid, tx_type)
             SELECT
                 txid
-              , tx
               , tx_type
             FROM tx_ids
-            JOIN txs USING (row_number)
             JOIN transaction_types USING (row_number)
             ON CONFLICT DO NOTHING"#,
         )
         .bind(&tx_ids)
-        .bind(txs_bytes)
         .bind(tx_types)
         .execute(&self.0)
         .await
@@ -2904,14 +2893,12 @@ impl super::DbWrite for PgStore {
         sqlx::query(
             "INSERT INTO sbtc_signer.transactions
               ( txid
-              , tx
               , tx_type
               )
-            VALUES ($1, $2, $3)
+            VALUES ($1, $2)
             ON CONFLICT DO NOTHING",
         )
         .bind(transaction.txid)
-        .bind(&transaction.tx)
         .bind(transaction.tx_type)
         .execute(&self.0)
         .await
@@ -3560,6 +3547,7 @@ mod tests {
     use blockstack_lib::clarity::vm::ContractName;
     use blockstack_lib::types::chainstate::StacksAddress;
     use blockstack_lib::util::hash::Hash160;
+    use clarity::codec::StacksMessageCodec as _;
     use test_case::test_case;
 
     /// Test that we can extract the types of function calls that we care

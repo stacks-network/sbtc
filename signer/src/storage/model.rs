@@ -388,8 +388,6 @@ pub struct TransactionIds {
 pub struct Transaction {
     /// Transaction ID.
     pub txid: [u8; 32],
-    /// Encoded transaction.
-    pub tx: Bytes,
     /// The type of the transaction.
     pub tx_type: TransactionType,
     /// The block id of the stacks block that includes this transaction
