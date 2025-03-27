@@ -248,6 +248,7 @@ impl PrimaryIndexTrait for SpecialApiStateIndexInner {
 #[serde(rename_all = "PascalCase")]
 pub struct ChainstateByBitcoinHeightEntryKey {
     /// Bitcoin height
+    #[serde(rename = "BitcoinHeight")]
     pub bitcoin_block_height: u64,
     /// Stacks height
     #[serde(rename = "Height")]
