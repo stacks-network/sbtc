@@ -995,7 +995,7 @@ where
             return Ok(());
         }
 
-        // The `DbRead::is_withdrawal_inflight` function considers whether
+        // The `DbRead::is_withdrawal_active` function considers whether
         // we need to worry about a fork making a sweep fulfilling
         // withdrawal active in the mempool.
         let withdrawal_is_active = db
