@@ -5605,6 +5605,7 @@ dependencies = [
  "more-asserts",
  "proptest",
  "rand",
+ "sbtc",
  "sbtc-docker-testing",
  "secp256k1 0.29.0",
  "serde",
@@ -5613,6 +5614,7 @@ dependencies = [
  "stackslib",
  "test-case",
  "thiserror 2.0.11",
+ "tokio",
 ]
 
 [[package]]

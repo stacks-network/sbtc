@@ -35,4 +35,6 @@ test-case.workspace = true
 proptest.workspace = true
 assert_matches.workspace = true
 more-asserts.workspace = true
+sbtc = { path = ".", features = ["testing"] }
 sbtc-docker-testing.workspace = true
+tokio.workspace = true

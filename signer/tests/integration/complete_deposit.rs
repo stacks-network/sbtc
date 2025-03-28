@@ -2,6 +2,8 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
 use rand::SeedableRng;
 
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::error::Error;
 use signer::stacks::contracts::AsContractCall as _;
 use signer::stacks::contracts::CompleteDepositV1;
@@ -14,9 +16,9 @@ use signer::testing;
 use signer::testing::context::*;
 
 use fake::Fake;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::DEPOSIT_DUST_LIMIT;
 
-use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::set_deposit_completed;
 use crate::setup::set_deposit_incomplete;
@@ -154,9 +156,11 @@ async fn complete_deposit_validation_happy_path() {
     // This is just setup and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -220,9 +224,11 @@ async fn complete_deposit_validation_deployer_mismatch() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -291,9 +297,11 @@ async fn complete_deposit_validation_missing_deposit_request() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -356,9 +364,11 @@ async fn complete_deposit_validation_recipient_mismatch() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -442,9 +452,9 @@ async fn complete_deposit_validation_fee_too_low() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let signers = TestSignerSet::new(&mut rng);
     // We are trying to trigger the AmountBelowDustLimit error.
@@ -595,9 +605,11 @@ async fn complete_deposit_validation_fee_too_high() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let mut setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -671,9 +683,11 @@ async fn complete_deposit_validation_sweep_tx_missing() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -745,9 +759,9 @@ async fn complete_deposit_validation_sweep_reorged() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
@@ -829,9 +843,11 @@ async fn complete_deposit_validation_deposit_not_in_sweep() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -904,9 +920,11 @@ async fn complete_deposit_validation_deposit_incorrect_fee() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -976,9 +994,11 @@ async fn complete_deposit_validation_deposit_invalid_sweep() {
     // transactions and a transaction sweeping in the deposited funds.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block
@@ -1045,9 +1065,11 @@ async fn complete_deposit_validation_request_completed() {
     // This is just setup and should be essentially the same between tests.
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
+
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
     // Normal: the signers' block observer should be getting new block

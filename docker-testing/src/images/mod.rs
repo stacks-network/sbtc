@@ -23,7 +23,7 @@ pub const DEFAULT_BITCOIN_CORE_TAG: &str = "28";
 fn container_name(name: &str) -> String {
     let suffix: String = rand::thread_rng()
         .sample_iter(&Alphanumeric)
-        .take(8)
+        .take(12)
         .map(char::from)
         .collect();
 
@@ -52,7 +52,7 @@ pub async fn wait_for_tcp_connectivity(host: &str, port: u16, timeout: Duration)
             match tokio::net::TcpStream::connect(&endpoint).await {
                 Ok(_) => break,
                 Err(_) => {
-                    tokio::time::sleep(Duration::from_millis(25)).await;
+                    tokio::time::sleep(Duration::from_millis(10)).await;
                 }
             }
         }

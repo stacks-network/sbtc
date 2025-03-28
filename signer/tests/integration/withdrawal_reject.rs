@@ -1,7 +1,9 @@
 use bitcoin::hashes::Hash;
 use blockstack_lib::types::chainstate::StacksAddress;
 use rand::rngs::OsRng;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
 use sbtc::testing::regtest::Faucet;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::error::Error;
 use signer::stacks::contracts::AsContractCall as _;
@@ -17,11 +19,11 @@ use signer::testing;
 use fake::Fake;
 use rand::SeedableRng;
 use signer::testing::context::*;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::testing::storage::DbReadTestExt;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
-use crate::docker;
 use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::set_withdrawal_completed;
 use crate::setup::set_withdrawal_incomplete;
@@ -104,9 +106,9 @@ async fn reject_withdrawal_validation_happy_path() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
     let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
@@ -166,9 +168,9 @@ async fn reject_withdrawal_validation_not_final() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
     let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
@@ -244,9 +246,9 @@ async fn reject_withdrawal_validation_deployer_mismatch() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
     let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
@@ -316,9 +318,9 @@ async fn reject_withdrawal_validation_missing_withdrawal_request() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
     let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
@@ -390,9 +392,9 @@ async fn reject_withdrawal_validation_request_completed() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
     let setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
@@ -461,9 +463,9 @@ async fn reject_withdrawal_validation_request_being_fulfilled() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let test_signer_set = TestSignerSet::new(&mut rng);
     let mut setup = new_sweep_setup(&test_signer_set, client.clone(), &faucet);
@@ -571,9 +573,9 @@ async fn reject_withdrawal_validation_request_still_active() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let amount = 1_000_000;
     let signers = TestSignerSet::new(&mut rng);

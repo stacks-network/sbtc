@@ -32,11 +32,12 @@ use bitcoincore_rpc::json::Timestamp;
 use bitcoincore_rpc::json::Utxo;
 use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
 use bitcoincore_rpc::jsonrpc::error::RpcError;
-use bitcoincore_rpc::Auth;
 use bitcoincore_rpc::Client;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
+use sbtc_docker_testing::images::BitcoinCore;
 use secp256k1::SECP256K1;
+use std::future::Future;
 use std::sync::OnceLock;
 
 /// These must match the username and password in bitcoin.conf
@@ -62,87 +63,44 @@ const FAUCET_SECRET_KEY: &str = "00000000000000000000000000000000000000000000000
 
 const FAUCET_LABEL: Option<&str> = Some("faucet");
 
-/// Initializes a blockchain and wallet on bitcoin-core. It can be called
-/// multiple times (even concurrently) but only generates the client and
-/// recipient once.
-///
-/// This function does the following:
-/// * Creates an RPC client to bitcoin-core using the default endpoint and
-///   credentials.
-/// * Creates or loads a watch-only wallet on bitcoin-core
-/// * Loads a "faucet" private-public key pair with a P2WPKH address.
-/// * Has the bitcoin-core wallet watch the generated address.
-/// * Ensures that the faucet has at least 1 bitcoin spent to its address.
-pub fn initialize_blockchain() -> (&'static Client, &'static Faucet) {
-    static BTC_CLIENT: OnceLock<Client> = OnceLock::new();
-    let rpc = BTC_CLIENT.get_or_init(|| {
-        let username = BITCOIN_CORE_RPC_USERNAME.to_string();
-        let password = BITCOIN_CORE_RPC_PASSWORD.to_string();
-        let auth = Auth::UserPass(username, password);
-        Client::new("http://localhost:18443", auth).unwrap()
-    });
+/// Bitcoin Core regtest functionality
+pub trait BitcoinCoreRegtestExt {
+    /// Create a new [`BitcoinCore`] instance with regtest state.
+    fn start_regtest() -> impl Future<Output = BitcoinCore<BitcoinCoreRegtestState>>;
 
-    let faucet = initialize_faucet(&BTC_CLIENT.get().unwrap());
-
-    (rpc, faucet)
+    /// Get a reference to the faucet for this [`BitcoinCore`] instance
+    fn faucet(&self) -> &Faucet;
+}
+/// State for [`BitcoinCore`] in regtest mode.
+#[derive(Default)]
+pub struct BitcoinCoreRegtestState {
+    faucet: OnceLock<Faucet>,
 }
 
-/// Initializes a blockchain and wallet on bitcoin-core at the specified
-/// endpoint. It can be called multiple times (even concurrently) but only
-/// generates the client and recipient once.
-///
-/// This function does the following:
-/// * Creates an RPC client to bitcoin-core using the specified endpoint and
-///   default credentials.
-/// * Creates or loads a watch-only wallet on bitcoin-core.
-/// * Loads a "faucet" private-public key pair with a P2WPKH address.
-/// * Has the bitcoin-core wallet watch the generated address.
-/// * Ensures that the faucet has at least 1 bitcoin spent to its address.
-pub fn initialize_blockchain_at(endpoint: &str) -> (&'static Client, &'static Faucet) {
-    static BTC_CLIENT: OnceLock<Client> = OnceLock::new();
-
-    let rpc = BTC_CLIENT.get_or_init(|| {
-        let username = BITCOIN_CORE_RPC_USERNAME.to_string();
-        let password = BITCOIN_CORE_RPC_PASSWORD.to_string();
-        let auth = Auth::UserPass(username, password);
-        Client::new(endpoint, auth).unwrap()
-    });
-
-    let faucet = initialize_faucet(&BTC_CLIENT.get().unwrap());
-
-    (rpc, faucet)
+impl BitcoinCoreRegtestState {
+    /// Initialize the faucet if not already initialized
+    fn init_faucet(&self, client: Client) -> &Faucet {
+        self.faucet.get_or_init(|| {
+            // Initialize the faucet
+            Faucet::new_init(client)
+        })
+    }
 }
 
-/// Initializes a blockchain and wallet on bitcoin-core using the provided
-/// client. It can be called multiple times (even concurrently) but only
-/// generates the recipient/faucet once.
-///
-/// This function does the following:
-/// * Creates or loads a watch-only wallet on bitcoin-core using the provided
-///   client.
-/// * Loads a "faucet" private-public key pair with a P2WPKH address.
-/// * Has the bitcoin-core wallet watch the generated address.
-/// * Ensures that the faucet has at least 1 bitcoin spent to its address.
-pub fn initialize_faucet(client: &'static Client) -> &'static Faucet {
-    static FAUCET: OnceLock<Faucet> = OnceLock::new();
+impl BitcoinCoreRegtestExt for BitcoinCore<BitcoinCoreRegtestState> {
+    async fn start_regtest() -> BitcoinCore<BitcoinCoreRegtestState> {
+        let state = BitcoinCoreRegtestState::default();
+        BitcoinCore::start_with_state(state)
+            .await
+            .expect("failed to start bitcoind")
+    }
 
-    let faucet = FAUCET.get_or_init(|| {
-        get_or_create_wallet(client, BITCOIN_CORE_WALLET_NAME);
-        let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, client);
-        faucet.track_address(FAUCET_LABEL);
-
-        let amount = client
-            .get_received_by_address(&faucet.address, None)
-            .unwrap();
-
-        if amount < Amount::from_int_btc(1) {
-            faucet.generate_blocks(MIN_BLOCKCHAIN_HEIGHT);
-        }
-
-        faucet
-    });
-
-    faucet
+    fn faucet(&self) -> &Faucet {
+        let client = self
+            .rpc_client()
+            .expect("failed to create new bitcoin core rpc client");
+        self.state().init_faucet(client)
+    }
 }
 
 fn get_or_create_wallet(rpc: &Client, wallet: &str) {
@@ -161,15 +119,15 @@ fn get_or_create_wallet(rpc: &Client, wallet: &str) {
     };
 }
 
-/// Struct representing the bitcoin miner, all coins are usually generated
-/// to this recipient.
-pub struct Faucet {
-    /// The public/private key pair.
-    pub keypair: secp256k1::Keypair,
-    /// The address associated with the above keypair.
-    pub address: Address,
-    /// The rpc client for interacting with bitcoin core.
-    pub rpc: &'static Client,
+fn descriptor_base(public_key: &PublicKey, kind: AddressType) -> String {
+    match kind {
+        AddressType::P2wpkh => format!("wpkh({public_key})"),
+        AddressType::P2tr => format!("tr({public_key})"),
+        AddressType::P2pkh => format!("pkh({public_key})"),
+        // We're missing pay-to-script-hash (P2SH) and
+        // pay-to-witness-script-hash (P2WSH)
+        _ => unimplemented!(""),
+    }
 }
 
 /// Helper struct for representing an address we control on bitcoin.
@@ -181,17 +139,6 @@ pub struct Recipient {
     pub address: Address,
     /// The script pubkey associated with the above keypair.
     pub script_pubkey: ScriptBuf,
-}
-
-fn descriptor_base(public_key: &PublicKey, kind: AddressType) -> String {
-    match kind {
-        AddressType::P2wpkh => format!("wpkh({public_key})"),
-        AddressType::P2tr => format!("tr({public_key})"),
-        AddressType::P2pkh => format!("pkh({public_key})"),
-        // We're missing pay-to-script-hash (P2SH) and
-        // pay-to-witness-script-hash (P2WSH)
-        _ => unimplemented!(""),
-    }
 }
 
 impl Recipient {
@@ -249,8 +196,19 @@ impl Recipient {
     }
 }
 
+/// Struct representing the bitcoin miner, all coins are usually generated
+/// to this recipient.
+pub struct Faucet {
+    /// The public/private key pair.
+    pub keypair: secp256k1::Keypair,
+    /// The address associated with the above keypair.
+    pub address: Address,
+    /// The rpc client for interacting with bitcoin core.
+    pub rpc: Client,
+}
+
 impl Faucet {
-    fn new(secret_key: &str, kind: AddressType, rpc: &'static Client) -> Self {
+    fn new(secret_key: &str, kind: AddressType, rpc: Client) -> Self {
         let keypair = secp256k1::Keypair::from_seckey_str_global(secret_key).unwrap();
         let pk = keypair.public_key();
         let address = match kind {
@@ -266,16 +224,39 @@ impl Faucet {
         Faucet { keypair, address, rpc }
     }
 
+    fn new_init(client: Client) -> Self {
+        get_or_create_wallet(&client, BITCOIN_CORE_WALLET_NAME);
+        let faucet = Faucet::new(FAUCET_SECRET_KEY, AddressType::P2wpkh, client);
+        faucet.track_address(FAUCET_LABEL);
+
+        let amount = faucet
+            .rpc
+            .get_received_by_address(&faucet.address, None)
+            .expect("failed to retrieve faucet balance from bitcoin core");
+
+        if amount < Amount::from_int_btc(1) {
+            faucet.generate_blocks(MIN_BLOCKCHAIN_HEIGHT);
+        }
+
+        faucet
+    }
+
     /// Tell bitcoin core to track transactions associated with this address,
     ///
     /// Note: this is needed in order for get_utxos and get_balance to work
     /// as expected.
     fn track_address(&self, label: Option<&str>) {
         let public_key = PublicKey::new(self.keypair.public_key());
-        let kind = self.address.address_type().unwrap();
+        let kind = self
+            .address
+            .address_type()
+            .expect("address has invalid or unsupported address type");
 
         let desc = descriptor_base(&public_key, kind);
-        let descriptor_info = self.rpc.get_descriptor_info(&desc).unwrap();
+        let descriptor_info = self
+            .rpc
+            .get_descriptor_info(&desc)
+            .expect("failed to get descriptor info from bitcoin core");
 
         let req = ImportDescriptors {
             descriptor: descriptor_info.descriptor,
@@ -286,8 +267,12 @@ impl Faucet {
             next_index: None,
             range: None,
         };
-        let response = self.rpc.import_descriptors(req).unwrap();
-        response.into_iter().for_each(|item| assert!(item.success));
+
+        self.rpc
+            .import_descriptors(req)
+            .expect("failed to import descriptors to bitcoin core")
+            .into_iter()
+            .for_each(|item| assert!(item.success, "bitcoin core failed to import descriptor"))
     }
 
     /// Generate num_blocks blocks with coinbase rewards being sent to this

@@ -11,6 +11,8 @@ use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
 use rand::distributions::Uniform;
 use rand::Rng;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::bitcoin::utxo::DepositRequest;
 use signer::bitcoin::utxo::Fees;
 use signer::bitcoin::utxo::RequestRef;
@@ -21,9 +23,9 @@ use signer::bitcoin::utxo::UnsignedTransaction;
 use signer::bitcoin::utxo::WithdrawalRequest;
 use signer::context::SbtcLimits;
 use signer::storage::model::ScriptPubKey;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::DEFAULT_MAX_DEPOSITS_PER_BITCOIN_TX;
 
-use crate::docker;
 use crate::utxo_construction::generate_withdrawal;
 use crate::utxo_construction::make_deposit_request;
 use regtest::Recipient;
@@ -160,9 +162,9 @@ pub async fn transaction_with_rbf(
         rbf_fee_rate,
     };
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     // ** Step 1 **
     // Construct and send a simple BTC transaction.

@@ -8,6 +8,9 @@ use fake::Fake;
 use fake::Faker;
 use mockito::Server;
 use rand::SeedableRng as _;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
+use sbtc_docker_testing::images::Emily;
 use serde_json::json;
 
 use emily_client::apis::deposit_api;
@@ -29,9 +32,9 @@ use signer::storage::postgres::PgStore;
 use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::*;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::testing::request_decider::TestEnvironment;
 
-use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::TestSweepSetup;
 
@@ -142,9 +145,9 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
         .with_mocked_clients()
         .build();
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
@@ -230,9 +233,9 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         .with_mocked_clients()
         .build();
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
@@ -314,13 +317,13 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
 
-    let emily = docker::Emily::start().await;
+    let emily = Emily::start().await.expect("failed to start emily");
     let emily_client =
         EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -437,9 +440,9 @@ async fn blocklist_client_retry(num_failures: u8, failing_iters: u8) {
         .with_mocked_clients()
         .build();
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     // This confirms a deposit transaction, and has a nice helper function
     // for storing a real deposit.
@@ -561,9 +564,9 @@ async fn do_not_procceed_with_blocked_addresses(is_withdrawal: bool, is_blocked:
         .with_mocked_clients()
         .build();
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     // Creating test setup which will help store transactions and requests
     let setup = TestSweepSetup::new_setup(&client, faucet, 10000, &mut rng);

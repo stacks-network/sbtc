@@ -17,11 +17,14 @@ use more_asserts::assert_gt;
 use more_asserts::assert_le;
 use rand::seq::IteratorRandom as _;
 use rand::seq::SliceRandom as _;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::bitcoin::validation::WithdrawalRequestStatus;
 use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::SweptWithdrawalRequest;
 use signer::storage::model::WithdrawalRequest;
+use signer::testing::docker::BitcoinCoreTestExt;
 use signer::testing::IterTestExt as _;
 use signer::WITHDRAWAL_BLOCKS_EXPIRY;
 use time::OffsetDateTime;
@@ -75,7 +78,6 @@ use signer::DEPOSIT_LOCKTIME_BLOCK_BUFFER;
 use test_case::test_case;
 use test_log::test;
 
-use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::fetch_canonical_bitcoin_blockchain;
 use crate::setup::SweepAmounts;
@@ -399,9 +401,9 @@ async fn should_return_the_same_pending_deposit_requests_as_in_memory_store() {
 async fn get_pending_deposit_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
@@ -457,9 +459,9 @@ async fn get_pending_deposit_requests_only_pending() {
 async fn get_pending_withdrawal_requests_only_pending() {
     let db = testing::storage::new_test_database().await;
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let mut rng = rand::rngs::StdRng::seed_from_u64(43);
 
@@ -661,9 +663,9 @@ async fn should_not_return_swept_deposits_as_pending_accepted() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
@@ -2139,9 +2141,9 @@ async fn get_swept_deposit_requests_returns_swept_deposit_requests() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
@@ -2411,9 +2413,9 @@ async fn get_swept_deposit_requests_does_not_return_unswept_deposit_requests() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
@@ -2464,9 +2466,9 @@ async fn get_swept_deposit_requests_does_not_return_deposit_requests_with_respon
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let mut setup_fork = TestSweepSetup::new_setup(&client, &faucet, 2_000_000, &mut rng);
     let mut setup_canonical = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
@@ -2802,9 +2804,9 @@ async fn get_swept_deposit_requests_response_tx_reorged() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
@@ -2905,9 +2907,9 @@ async fn get_swept_deposit_requests_boundary() {
     // structure because it has helper functions for generating and storing
     // sweep transactions, and the [`TestSweepSetup`] structure correctly
     // sets up the database.
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let setup = TestSweepSetup::new_setup(&client, &faucet, 1_000_000, &mut rng);
 
@@ -5672,9 +5674,9 @@ async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
 
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let signers = TestSignerSet::new(&mut rng);
     let setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &[]);
@@ -5746,14 +5748,15 @@ async fn is_withdrawal_inflight_catches_withdrawals_with_rows_in_table() {
 async fn is_withdrawal_inflight_catches_withdrawals_in_package() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     // We use TestSweepSetup2 to help set up the signers' UTXO, which needs
     // to be available for this test.
     let signers = TestSignerSet::new(&mut rng);
-    let setup = TestSweepSetup2::new_setup(signers, client.clone(), faucet, &[]);
+    let setup = TestSweepSetup2::new_setup(signers, bitcoind.client(), faucet, &[]);
 
     // Normal: the signer follows the bitcoin blockchain and event observer
     // should be getting new block events from bitcoin-core. We haven't

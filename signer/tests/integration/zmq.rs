@@ -3,17 +3,17 @@ use std::time::Duration;
 use bitcoin::Block;
 use bitcoin::BlockHash;
 use futures::StreamExt;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::bitcoin::zmq::BitcoinCoreMessageStream;
-
-use crate::docker;
 
 /// This tests that out bitcoin block stream receives new blocks from
 /// bitcoin-core as it receives them. We create the stream, generate
 /// bitcoin blocks, and wait for the blocks to be received from the stream.
 #[tokio::test]
 async fn block_stream_streams_blocks() -> Result<(), Box<dyn std::error::Error>> {
-    let bitcoind = docker::BitcoinCore::start().await;
-    let faucet = bitcoind.initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
     let zmq_endpoint = bitcoind.zmq_endpoint();
 
     // Ensure ZMQ endpoint is ready before proceeding
@@ -81,8 +81,8 @@ async fn block_stream_streams_blocks() -> Result<(), Box<dyn std::error::Error>>
 /// they are supposed to be little-endian formatted.
 #[tokio::test]
 async fn block_hash_stream_streams_block_hashes() -> Result<(), Box<dyn std::error::Error>> {
-    let bitcoind = docker::BitcoinCore::start().await;
-    let faucet = bitcoind.initialize_blockchain();
+    let bitcoind = BitcoinCore::start_regtest().await;
+    let faucet = bitcoind.faucet();
     let zmq_endpoint = bitcoind.zmq_endpoint();
 
     // Ensure ZMQ endpoint is ready before proceeding

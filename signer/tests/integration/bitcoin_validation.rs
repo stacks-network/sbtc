@@ -5,6 +5,9 @@ use bitcoin::hashes::Hash as _;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
 use rand::SeedableRng as _;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt;
+use sbtc_docker_testing::images::BitcoinCore;
+use signer::testing::docker::BitcoinCoreTestExt;
 use test_case::test_case;
 
 use signer::bitcoin::utxo::SbtcRequests;
@@ -24,7 +27,6 @@ use signer::testing::context::TestContext;
 use signer::testing::context::*;
 use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
-use crate::docker;
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
@@ -95,9 +97,10 @@ impl AssertConstantInvariants for Vec<BitcoinTxValidationData> {
 async fn one_tx_per_request_set() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -193,9 +196,10 @@ async fn one_invalid_deposit_invalidates_tx() {
 
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -358,9 +362,10 @@ async fn one_invalid_deposit_invalidates_tx() {
 async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>) {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -455,9 +460,10 @@ async fn withdrawals_and_deposits_can_pass_validation(amounts: Vec<SweepAmounts>
 async fn swept_withdrawals_fail_validation() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(2);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -566,9 +572,10 @@ async fn swept_withdrawals_fail_validation() {
 async fn cannot_sign_deposit_is_ok() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let signers = TestSignerSet::new(&mut rng);
 
@@ -735,9 +742,10 @@ async fn cannot_sign_deposit_is_ok() {
 async fn sighashes_match_from_sbtc_requests_object() {
     let db = testing::storage::new_test_database().await;
     let mut rng = rand::rngs::StdRng::seed_from_u64(51);
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())
@@ -871,9 +879,10 @@ async fn sighashes_match_from_sbtc_requests_object() {
 async fn outcome_is_independent_of_input_order() {
     let db = testing::storage::new_test_database().await;
     let mut rng = OsRng;
-    let bitcoind = docker::BitcoinCore::start().await;
+
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let ctx = TestContext::builder()
         .with_storage(db.clone())

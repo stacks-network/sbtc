@@ -757,7 +757,7 @@ impl TestSweepSetup2 {
         amounts: &[SweepAmounts],
     ) -> Self {
         let signer = &signers.signer;
-        let rpc = faucet.rpc;
+        let rpc = &faucet.rpc;
         let signers_public_key = signer.keypair.x_only_public_key().0;
 
         let depositors: Vec<_> = amounts

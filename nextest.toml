@@ -5,6 +5,9 @@
 # Test group for integration tests that need to be run serially. Tests in this
 # group will be run one at a time.
 serial = { max-threads = 1 }
+# Test group for heavy integration tests. We'll run them first since they take
+# the longest (priority=100) and ensure they have 2 threads.
+heavy = { max-threads = 4 }
 
 ################################################################################
 # Apply the 'serial' test-group to all integration tests which need to be run
@@ -25,14 +28,24 @@ test-group = 'serial'
 filter = 'package(emily-handler) & kind(test)'
 test-group = 'serial'
 
-# Most integration tests in the 'signer' package can be run in parallel, but the
-# few that do interact with Emily or for other reasons need to be run serially
-# are individually listed here.
+# Due to the way that ZMQ works, it's possible for subscribers in tests to
+# get messages from other tests' bitcoin core instances, so these need to be
+# run serially.
+[[profile.default.overrides]]
+filter = 'package(signer) & kind(test) & test(/^zmq/)'
+test-group = 'serial'
+threads-required = 100  # Require all available threads = guaranteed to run "alone"
+
+### For our heavier tests (e.g. 
 [[profile.default.overrides]]
 filter = """
 package(signer) & kind(test) & (
-    test(/^zmq/) 
+    test(transaction_coordinator::skip_smart_contract_deployment_and_key_rotation_if_up_to_date)
+    | test(transaction_coordinator::sign_bitcoin_transaction)
+    | test(transaction_coordinator::sign_bitcoin_transaction_withdrawals)
+    | test(transaction_coordinator::sign_bitcoin_transaction_multiple_locking_keys)
 )
 """
-test-group = 'serial'
-threads-required = 100
+test-group = 'heavy'
+priority = 100          # Highest priority is 100 (-100..=100, default is 0)
+threads-required = 2    # Give them two threads each

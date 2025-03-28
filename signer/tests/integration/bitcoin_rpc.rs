@@ -16,18 +16,19 @@ use fake::{Fake, Faker};
 use rand::rngs::OsRng;
 use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use sbtc::testing::regtest::AsUtxo;
+use sbtc::testing::regtest::BitcoinCoreRegtestExt as _;
 use sbtc::testing::regtest::Recipient;
+use sbtc_docker_testing::images::BitcoinCore;
 use signer::bitcoin::BitcoinInteract;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
-
-use crate::docker;
+use signer::testing::docker::BitcoinCoreTestExt;
 
 #[tokio::test]
 async fn btc_client_getstransaction() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let signer = Recipient::new(AddressType::P2tr);
 
@@ -65,9 +66,10 @@ async fn btc_client_getstransaction() {
 
 #[tokio::test]
 async fn btc_client_getblockheader() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    bitcoind.initialize_blockchain();
+    // Quick way to get some blocks
+    let _ = bitcoind.faucet();
 
     // Let's get the chain-tip
     let block_hash = client.as_ref().get_best_block_hash().unwrap();
@@ -86,9 +88,9 @@ async fn btc_client_getblockheader() {
 
 #[tokio::test]
 async fn btc_client_gets_transaction_info() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let signer = Recipient::new(AddressType::P2tr);
 
@@ -125,9 +127,9 @@ async fn btc_client_gets_transaction_info() {
 
 #[tokio::test]
 async fn btc_client_gets_transaction_info_missing_tx() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let signer = Recipient::new(AddressType::P2tr);
 
@@ -162,9 +164,8 @@ async fn btc_client_gets_transaction_info_missing_tx() {
 
 #[tokio::test]
 async fn btc_client_unsubmitted_tx() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    bitcoind.initialize_blockchain();
 
     let txid = bitcoin::Txid::all_zeros();
 
@@ -179,9 +180,10 @@ async fn btc_client_unsubmitted_tx() {
 /// in the test, we just check that fee is positive.
 #[tokio::test]
 async fn estimate_fee_rate() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    bitcoind.initialize_blockchain();
+    // Quick way to get some blocks/transactions
+    bitcoind.faucet().init_for_fee_estimation();
 
     let resp = client.estimate_fee_rate(1);
 
@@ -192,9 +194,9 @@ async fn estimate_fee_rate() {
 
 #[tokio::test]
 async fn get_tx_spending_prevout() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
@@ -253,9 +255,9 @@ async fn get_tx_spending_prevout() {
 
 #[tokio::test]
 async fn get_tx_spending_prevout_nonexistent_txid() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     // Make a little noise on the blockchain so it's not empty.
     let addr = Recipient::new(AddressType::P2wpkh);
@@ -272,9 +274,9 @@ async fn get_tx_spending_prevout_nonexistent_txid() {
 
 #[tokio::test]
 async fn get_mempool_descendants() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
@@ -400,9 +402,9 @@ async fn get_mempool_descendants() {
 
 #[tokio::test]
 async fn get_tx_out_confirmed_no_mempool() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
@@ -421,9 +423,9 @@ async fn get_tx_out_confirmed_no_mempool() {
 
 #[tokio::test]
 async fn get_tx_out_confirmed_with_mempool() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
@@ -442,9 +444,9 @@ async fn get_tx_out_confirmed_with_mempool() {
 
 #[tokio::test]
 async fn get_tx_out_unconfirmed_no_mempool() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let addr1 = Recipient::new(AddressType::P2wpkh);
 
@@ -460,9 +462,9 @@ async fn get_tx_out_unconfirmed_no_mempool() {
 
 #[tokio::test]
 async fn get_tx_out_unconfirmed_with_mempool() {
-    let bitcoind = docker::BitcoinCore::start().await;
+    let bitcoind = BitcoinCore::start_regtest().await;
     let client = bitcoind.client();
-    let faucet = bitcoind.initialize_blockchain();
+    let faucet = bitcoind.faucet();
 
     let addr1 = Recipient::new(AddressType::P2wpkh);
 

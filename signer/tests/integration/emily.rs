@@ -16,6 +16,7 @@ use bitcoincore_rpc_json::Utxo;
 use fake::Fake as _;
 use futures::future::join_all;
 use rand::SeedableRng;
+use sbtc_docker_testing::images::Emily;
 use test_case::test_case;
 use test_log::test;
 
@@ -63,7 +64,6 @@ use signer::testing::transaction_coordinator::select_coordinator;
 use signer::testing::wsts::SignerSet;
 use signer::transaction_coordinator;
 
-use crate::docker;
 use crate::utxo_construction::make_deposit_request;
 
 async fn run_dkg<Rng, C>(
@@ -158,7 +158,7 @@ async fn deposit_flow() {
     let network = network::in_memory::InMemoryNetwork::new();
     let signer_info = testing::wsts::generate_signer_info(&mut rng, num_signers);
 
-    let emily = docker::Emily::start().await;
+    let emily = Emily::start().await.expect("failed to start emily");
     let emily_client =
         EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
     let stacks_client = WrappedMock::default();
@@ -572,7 +572,7 @@ async fn get_deposit_request_works() {
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let emily = docker::Emily::start().await;
+    let emily = Emily::start().await.expect("failed to start emily");
     let emily_client =
         EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(1), None).unwrap();
 
@@ -618,7 +618,7 @@ async fn test_get_deposits_with_status_request_paging(
     let amount_sats = 49_900_000;
     let lock_time = 150;
 
-    let emily = docker::Emily::start().await;
+    let emily = Emily::start().await.expect("failed to start emily");
     let emily_client = EmilyClient::try_new(
         &emily.endpoint(),
         Duration::from_secs(timeout_secs),
@@ -668,7 +668,7 @@ async fn test_get_deposits_returns_pending_and_accepted() {
     let num_deposits = 5;
     let num_accepted = 2;
 
-    let emily = docker::Emily::start().await;
+    let emily = Emily::start().await.expect("failed to start emily");
     let emily_client =
         EmilyClient::try_new(&emily.endpoint(), Duration::from_secs(10), None).unwrap();
 
