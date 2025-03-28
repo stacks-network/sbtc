@@ -5074,6 +5074,38 @@ async fn verification_status_one_way_street() {
     signer::testing::storage::drop_db(db).await;
 }
 
+/// Return a stacks block that is anchored to the bitcoin block with the
+/// given block hash that is also on the canonical stacks blockchain.
+async fn get_stacks_block(
+    test_data: &TestData,
+    db: &PgStore,
+    anchor: &BitcoinBlockHash,
+) -> Option<StacksBlock> {
+    let request_stacks_blocks = test_data
+        .stacks_blocks
+        .iter()
+        .filter(|block| &block.bitcoin_anchor == anchor);
+
+    let (_, stacks_chain_tip) = db.get_chain_tips().await;
+
+    for block in request_stacks_blocks {
+        let in_canonical_stacks_blockchain = db
+            .in_canonical_stacks_blockchain(
+                &stacks_chain_tip,
+                &block.block_hash,
+                block.block_height,
+            )
+            .await
+            .unwrap();
+
+        if in_canonical_stacks_blockchain {
+            return Some(block.clone());
+        }
+    }
+
+    None
+}
+
 /// Tests that get_pending_rejected_withdrawal_requests correctly return expired
 /// requests in case there are no events affecting them.
 #[test_log::test(tokio::test)]
@@ -5203,35 +5235,10 @@ async fn pending_rejected_withdrawal_expiration() {
         .unwrap();
 
     // We want to get a candidate stacks block for our withdrawal request
-    // and we want one anchored to the above bitcoin block. There are many
-    // candidates, but a stacks block may be orphaned, it may not be on the
-    // canonical chain, so we do some further filtering for this.
-    let request_stacks_blocks = test_data
-        .stacks_blocks
-        .iter()
-        .filter(|block| block.bitcoin_anchor == request_bitcoin_block.block_hash);
-
-    let (_, stacks_chain_tip) = db.get_chain_tips().await;
-
-    let mut request_stacks_block = db
-        .get_stacks_block(&stacks_chain_tip)
+    // that is anchored to the above bitcoin block.
+    let request_stacks_block = get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash)
         .await
-        .unwrap()
         .unwrap();
-    for block in request_stacks_blocks {
-        let in_canonical_stacks_blockchain = db
-            .in_canonical_stacks_blockchain(
-                &stacks_chain_tip,
-                &block.block_hash,
-                block.block_height,
-            )
-            .await
-            .unwrap();
-        if in_canonical_stacks_blockchain {
-            request_stacks_block = block.clone();
-            break;
-        }
-    }
 
     let request = WithdrawalRequest {
         block_hash: request_stacks_block.block_hash,
@@ -5328,36 +5335,12 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
         .bitcoin_blocks
         .get(test_data.bitcoin_blocks.len() - request_confirmations - 1)
         .unwrap();
+
     // We want to get a candidate stacks block for our withdrawal request
-    // and we want one anchored to the above bitcoin block. There are many
-    // candidates, but a stacks block may be orphaned, it may not be on the
-    // canonical chain, so we do some further filtering for this.
-    let request_candidates = test_data
-        .stacks_blocks
-        .iter()
-        .filter(|block| block.bitcoin_anchor == request_bitcoin_block.block_hash);
-
-    let (_, stacks_chain_tip) = db.get_chain_tips().await;
-
-    let mut request_stacks_block = db
-        .get_stacks_block(&stacks_chain_tip)
+    // that is anchored to the above bitcoin block.
+    let request_stacks_block = get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash)
         .await
-        .unwrap()
         .unwrap();
-    for block in request_candidates {
-        let in_canonical_stacks_blockchain = db
-            .in_canonical_stacks_blockchain(
-                &stacks_chain_tip,
-                &block.block_hash,
-                block.block_height,
-            )
-            .await
-            .unwrap();
-        if in_canonical_stacks_blockchain {
-            request_stacks_block = block.clone();
-            break;
-        }
-    }
 
     let request = WithdrawalRequest {
         block_hash: request_stacks_block.block_hash,
@@ -5490,35 +5473,10 @@ async fn pending_rejected_withdrawal_already_accepted() {
         .get(test_data.bitcoin_blocks.len() - request_confirmations - 1)
         .unwrap();
     // We want to get a candidate stacks block for our withdrawal request
-    // and we want one anchored to the above bitcoin block. There are many
-    // candidates, but a stacks block may be orphaned, it may not be on the
-    // canonical chain, so we do some further filtering for this.
-    let request_candidates = test_data
-        .stacks_blocks
-        .iter()
-        .filter(|block| block.bitcoin_anchor == request_bitcoin_block.block_hash);
-
-    let (_, stacks_chain_tip) = db.get_chain_tips().await;
-
-    let mut request_stacks_block = db
-        .get_stacks_block(&stacks_chain_tip)
+    // that is anchored to the above bitcoin block.
+    let request_stacks_block = get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash)
         .await
-        .unwrap()
         .unwrap();
-    for block in request_candidates {
-        let in_canonical_stacks_blockchain = db
-            .in_canonical_stacks_blockchain(
-                &stacks_chain_tip,
-                &block.block_hash,
-                block.block_height,
-            )
-            .await
-            .unwrap();
-        if in_canonical_stacks_blockchain {
-            request_stacks_block = block.clone();
-            break;
-        }
-    }
 
     let request = WithdrawalRequest {
         block_hash: request_stacks_block.block_hash,
