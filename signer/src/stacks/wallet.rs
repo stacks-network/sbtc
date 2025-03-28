@@ -160,7 +160,7 @@ impl SignerWallet {
         })
     }
 
-    /// Load the multi-sig wallet from the last rotate-keys-trasnaction
+    /// Load the multi-sig wallet from the last rotate-keys transaction
     /// stored in the database. If it's not there, fall back to the
     /// bootstrap multi-sig wallet in the signer's config.
     ///
@@ -386,7 +386,7 @@ impl MultisigTx {
     }
 }
 
-/// Get the number of bytes for a fully signed stacks trasnaction with the
+/// Get the number of bytes for a fully signed stacks transaction with the
 /// given payload.
 ///
 /// This function is very unlikely to fail in practice.

@@ -163,6 +163,7 @@ async fn test_new_blocks_sends_withdrawal_accept_update() {
         request_id: withdrawal_accept_event.request_id,
         stacks_block_hash: withdrawal_accept_event.block_id.to_hex(),
         stacks_block_height: new_block_event.block_height,
+        txid: "test_txid".to_string(),
     };
 
     withdrawal_api::create_withdrawal(&configuration, withdrawal_request)
@@ -206,6 +207,7 @@ async fn test_new_blocks_sends_withdrawal_reject_update() {
         request_id: withdrawal_reject_event.request_id,
         stacks_block_hash: withdrawal_reject_event.block_id.to_hex(),
         stacks_block_height: new_block_event.block_height,
+        txid: "test_txid".to_string(),
     };
     withdrawal_api::create_withdrawal(&configuration, withdrawal_request)
         .await

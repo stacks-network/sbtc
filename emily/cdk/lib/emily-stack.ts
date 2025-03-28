@@ -258,6 +258,7 @@ export class EmilyStack extends cdk.Stack {
                 "Sender",
                 "Amount",
                 "LastUpdateBlockHash",
+                "Txid",
             ]
         });
 
@@ -281,6 +282,7 @@ export class EmilyStack extends cdk.Stack {
                 "Sender",
                 "Amount",
                 "LastUpdateBlockHash",
+                "Txid",
             ]
         });
 
@@ -304,6 +306,7 @@ export class EmilyStack extends cdk.Stack {
                 "Recipient",
                 "Amount",
                 "LastUpdateBlockHash",
+                "Txid",
             ]
         });
         return table;
