@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{api::models::chainstate::Chainstate, common::error::Error};
 
-use super::{EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, VersionedEntryTrait};
+use super::{
+    EntryTrait, KeyTrait, PrimaryIndex, PrimaryIndexTrait, SecondaryIndex, SecondaryIndexTrait,
+    VersionedEntryTrait,
+};
 
 // Chainstate entry ---------------------------------------------------------------
 
@@ -27,6 +30,8 @@ pub struct ChainstateEntry {
     /// Chainstate entry key.
     #[serde(flatten)]
     pub key: ChainstateEntryKey,
+    /// Bitcoin block height
+    pub bitcoin_height: Option<u64>,
 }
 
 /// Convert from entry to its corresponding chainstate.
@@ -35,6 +40,7 @@ impl From<ChainstateEntry> for Chainstate {
         Chainstate {
             stacks_block_hash: chainstate_entry.key.hash,
             stacks_block_height: chainstate_entry.key.height,
+            bitcoin_block_height: chainstate_entry.bitcoin_height,
         }
     }
 }
@@ -47,6 +53,7 @@ impl From<Chainstate> for ChainstateEntry {
                 hash: chainstate_entry.stacks_block_hash,
                 height: chainstate_entry.stacks_block_height,
             },
+            bitcoin_height: chainstate_entry.bitcoin_block_height,
         }
     }
 }
@@ -232,4 +239,90 @@ impl PrimaryIndexTrait for SpecialApiStateIndexInner {
     fn table_name(settings: &crate::context::Settings) -> &str {
         &settings.chainstate_table_name
     }
+}
+
+// Chainstate by bitcoin height --------------------------------------------------------------
+
+/// Chainstate table entry key. This is the secondary index key.
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChainstateByBitcoinHeightEntryKey {
+    /// Bitcoin height
+    #[serde(rename = "BitcoinHeight")]
+    pub bitcoin_block_height: u64,
+    /// Stacks height
+    #[serde(rename = "Height")]
+    pub stacks_block_height: u64,
+}
+
+/// Chainstate table entry. This is secondary entry
+#[derive(Clone, Default, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub struct ChainstateByBitcoinHeightEntry {
+    /// Chainstate entry key.
+    #[serde(flatten)]
+    pub key: ChainstateByBitcoinHeightEntryKey,
+    /// Stacks block hash
+    pub hash: String,
+}
+
+/// Convert from entry to its corresponding chainstate.
+impl From<ChainstateByBitcoinHeightEntry> for Chainstate {
+    fn from(chainstate_entry: ChainstateByBitcoinHeightEntry) -> Self {
+        Chainstate {
+            stacks_block_hash: chainstate_entry.hash,
+            stacks_block_height: chainstate_entry.key.stacks_block_height,
+            bitcoin_block_height: Some(chainstate_entry.key.bitcoin_block_height),
+        }
+    }
+}
+
+/// Convert from chainstate to its corresponding entry.
+impl From<Chainstate> for ChainstateByBitcoinHeightEntry {
+    fn from(chainstate_entry: Chainstate) -> Self {
+        ChainstateByBitcoinHeightEntry {
+            key: ChainstateByBitcoinHeightEntryKey {
+                bitcoin_block_height: chainstate_entry.bitcoin_block_height.unwrap_or(0), // default is 0 since we don't meet 0 in real world and it can be good indicator of "none". However, this should never be None
+                stacks_block_height: chainstate_entry.stacks_block_height,
+            },
+            hash: chainstate_entry.stacks_block_hash,
+        }
+    }
+}
+
+/// Implements the key trait for the ChainstateByBitcoinHeightEntryKey.
+impl KeyTrait for ChainstateByBitcoinHeightEntryKey {
+    /// The type of the partition key.
+    type PartitionKey = u64;
+    /// the type of the sort key.
+    type SortKey = u64;
+    /// The table field name of the partition key.
+    const PARTITION_KEY_NAME: &'static str = "BitcoinHeight";
+    /// The table field name of the sort key.
+    const SORT_KEY_NAME: &'static str = "Height";
+}
+
+/// Implements the entry trait for the ChainstateByBitcoinHeightEntry.
+impl EntryTrait for ChainstateByBitcoinHeightEntry {
+    /// The type of the key for this entry type.
+    type Key = ChainstateByBitcoinHeightEntryKey;
+    /// Extract the key from the entry.
+    fn key(&self) -> Self::Key {
+        ChainstateByBitcoinHeightEntryKey {
+            stacks_block_height: self.key.stacks_block_height,
+            bitcoin_block_height: self.key.bitcoin_block_height,
+        }
+    }
+}
+
+/// Secondary index struct.
+pub struct ChainstateByBitcoinHeightTableSecondaryIndexInner;
+/// Chainstate table Secondary index type.
+pub type ChainstateByBitcoinHeightTableSecondaryIndex =
+    SecondaryIndex<ChainstateByBitcoinHeightTableSecondaryIndexInner>;
+/// Definition of Secondary index trait.
+impl SecondaryIndexTrait for ChainstateByBitcoinHeightTableSecondaryIndexInner {
+    type Entry = ChainstateByBitcoinHeightEntry;
+    type PrimaryIndex = ChainstateTablePrimaryIndex;
+    const INDEX_NAME: &'static str = "BitcoinBlockHeightIndex";
 }

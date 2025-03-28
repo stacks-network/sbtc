@@ -132,6 +132,7 @@ pub async fn get_limits_for_account(
     }
 }
 
+/// Note, that `available_to_withdraw` is not settable, but is calculated based on the other fields. Value of `available_to_withdraw` passed to this endpoint will be ignored.
 pub async fn set_limits(
     configuration: &configuration::Configuration,
     limits: models::Limits,

@@ -848,6 +848,7 @@ mod tests {
         let chainstate = Chainstate {
             stacks_block_height: reorg_height,
             stacks_block_hash: reorg_hash.to_string(),
+            bitcoin_block_height: Some(0),
         };
         withdrawal_entry.reorganize_around(&chainstate).unwrap();
 

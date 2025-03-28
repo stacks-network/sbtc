@@ -17,6 +17,14 @@ pub struct Limits {
     /// Represents the individual limits for requests coming from different accounts.
     #[serde(rename = "accountCaps")]
     pub account_caps: std::collections::HashMap<String, models::AccountLimits>,
+    /// Total amount sBTC still available for withdrawals in current window. All withdrawals except rejected counted here
+    #[serde(
+        rename = "availableToWithdraw",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub available_to_withdraw: Option<Option<u64>>,
     /// Represents the total cap for all pegged-in BTC/sBTC.
     #[serde(
         rename = "pegCap",
@@ -72,6 +80,7 @@ impl Limits {
     pub fn new(account_caps: std::collections::HashMap<String, models::AccountLimits>) -> Limits {
         Limits {
             account_caps,
+            available_to_withdraw: None,
             peg_cap: None,
             per_deposit_cap: None,
             per_deposit_minimum: None,

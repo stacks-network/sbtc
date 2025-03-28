@@ -56,7 +56,7 @@ Class | Method | HTTP request | Description
 *HealthApi* | [**check_health**](docs/HealthApi.md#check_health) | **GET** /health | Get health handler.
 *LimitsApi* | [**get_limits**](docs/LimitsApi.md#get_limits) | **GET** /limits | Get the global limits.
 *LimitsApi* | [**get_limits_for_account**](docs/LimitsApi.md#get_limits_for_account) | **GET** /limits/{account} | Get limits for account handler.
-*LimitsApi* | [**set_limits**](docs/LimitsApi.md#set_limits) | **POST** /limits | Get limits handler.
+*LimitsApi* | [**set_limits**](docs/LimitsApi.md#set_limits) | **POST** /limits | Set limits handler.
 *LimitsApi* | [**set_limits_for_account**](docs/LimitsApi.md#set_limits_for_account) | **POST** /limits/{account} | Set limits for account handler.
 *NewBlockApi* | [**new_block**](docs/NewBlockApi.md#new_block) | **POST** /new_block | Get limits handler.
 *TestingApi* | [**wipe_databases**](docs/TestingApi.md#wipe_databases) | **POST** /testing/wipe | Wipe databases handler.

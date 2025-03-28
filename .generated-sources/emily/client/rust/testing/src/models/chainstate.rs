@@ -14,6 +14,14 @@ use serde::{Deserialize, Serialize};
 /// Chainstate : Chainstate.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Chainstate {
+    /// Bitcoin block height
+    #[serde(
+        rename = "bitcoinBlockHeight",
+        default,
+        with = "::serde_with::rust::double_option",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub bitcoin_block_height: Option<Option<u64>>,
     /// Stacks block hash at the height.
     #[serde(rename = "stacksBlockHash")]
     pub stacks_block_hash: String,
@@ -26,6 +34,7 @@ impl Chainstate {
     /// Chainstate.
     pub fn new(stacks_block_hash: String, stacks_block_height: u64) -> Chainstate {
         Chainstate {
+            bitcoin_block_height: None,
             stacks_block_hash,
             stacks_block_height,
         }

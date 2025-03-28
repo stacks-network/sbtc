@@ -39,7 +39,9 @@ pub async fn get_limits(context: EmilyContext) -> impl warp::reply::Reply {
         .map_or_else(Reply::into_response, Reply::into_response)
 }
 
-/// Get limits handler.
+/// Set limits handler.
+/// Note, that `available_to_withdraw` is not settable, but is calculated based on the other fields.
+/// Value of `available_to_withdraw` passed to this endpoint will be ignored.
 #[utoipa::path(
     post,
     operation_id = "setLimits",
