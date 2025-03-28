@@ -5075,12 +5075,13 @@ async fn verification_status_one_way_street() {
 }
 
 /// Return a stacks block that is anchored to the bitcoin block with the
-/// given block hash that is also on the canonical stacks blockchain.
+/// given block hash that is also on the canonical stacks blockchain, if
+/// one exists. If one doesn't exist then return the stacks chain tip.
 async fn get_stacks_block(
     test_data: &TestData,
     db: &PgStore,
     anchor: &BitcoinBlockHash,
-) -> Option<StacksBlock> {
+) -> StacksBlockHash {
     let request_stacks_blocks = test_data
         .stacks_blocks
         .iter()
@@ -5099,11 +5100,11 @@ async fn get_stacks_block(
             .unwrap();
 
         if in_canonical_stacks_blockchain {
-            return Some(block.clone());
+            return block.block_hash;
         }
     }
 
-    None
+    stacks_chain_tip
 }
 
 /// Tests that get_pending_rejected_withdrawal_requests correctly return expired
@@ -5236,12 +5237,11 @@ async fn pending_rejected_withdrawal_expiration() {
 
     // We want to get a candidate stacks block for our withdrawal request
     // that is anchored to the above bitcoin block.
-    let request_stacks_block = get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash)
-        .await
-        .unwrap();
+    let request_stacks_block_hash =
+        get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash).await;
 
     let request = WithdrawalRequest {
-        block_hash: request_stacks_block.block_hash,
+        block_hash: request_stacks_block_hash,
         bitcoin_block_height: request_bitcoin_block.block_height,
         ..fake::Faker.fake_with_rng(&mut rng)
     };
@@ -5338,12 +5338,11 @@ async fn pending_rejected_withdrawal_rejected_already_rejected() {
 
     // We want to get a candidate stacks block for our withdrawal request
     // that is anchored to the above bitcoin block.
-    let request_stacks_block = get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash)
-        .await
-        .unwrap();
+    let request_stacks_block_hash =
+        get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash).await;
 
     let request = WithdrawalRequest {
-        block_hash: request_stacks_block.block_hash,
+        block_hash: request_stacks_block_hash,
         bitcoin_block_height: request_bitcoin_block.block_height,
         ..fake::Faker.fake_with_rng(&mut rng)
     };
@@ -5474,12 +5473,10 @@ async fn pending_rejected_withdrawal_already_accepted() {
         .unwrap();
     // We want to get a candidate stacks block for our withdrawal request
     // that is anchored to the above bitcoin block.
-    let request_stacks_block = get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash)
-        .await
-        .unwrap();
-
+    let request_stacks_block_hash =
+        get_stacks_block(&test_data, &db, &request_bitcoin_block.block_hash).await;
     let request = WithdrawalRequest {
-        block_hash: request_stacks_block.block_hash,
+        block_hash: request_stacks_block_hash,
         bitcoin_block_height: request_bitcoin_block.block_height,
         ..fake::Faker.fake_with_rng(&mut rng)
     };
