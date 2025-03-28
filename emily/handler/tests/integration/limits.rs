@@ -437,13 +437,10 @@ async fn test_complete_rolling_withdrawal_limit_config_works(
     assert_eq!(global_limits.unwrap(), limits);
 }
 
-#[test_case(3, false)]
-#[test_case(4, true)]
+// Tests correctness of available_to_withdraw calculation in case, where there is no chainstate
+// on height (tip - window size).
 #[tokio::test]
-async fn test_available_to_withdraw_no_chainstate_in_db(
-    offset_before_target: u64,
-    should_fail: bool,
-) {
+async fn test_available_to_withdraw_no_chainstate_in_db_at_target_height() {
     let configuration = clean_setup().await;
 
     // Set limits
@@ -468,19 +465,8 @@ async fn test_available_to_withdraw_no_chainstate_in_db(
     assert!(result.is_ok());
 
     // Create chainstates
-    // End bitcoin block of rolling window is max_height - 100 + 1
-    // If this block is not in db, Emily will look at 3 blocks before it
-    // With this test we test that it is really 3.
-    // Now we set some chainstates to create chaintip, and a chainstate at max_height - 100 + 1 - offset_before_target.
     let min_height = 1000;
     let max_height = 1010;
-    let chainstate = new_test_chainstate(
-        max_height - 100 + 1 - offset_before_target,
-        max_height - 100 + 1 - offset_before_target,
-        0,
-    );
-    let _ = batch_set_chainstates(&configuration, vec![chainstate]).await;
-
     let expected_chainstates: Vec<Chainstate> = (min_height..max_height + 1)
         .map(|height| new_test_chainstate(height, height, 0))
         .collect();
@@ -505,12 +491,8 @@ async fn test_available_to_withdraw_no_chainstate_in_db(
     // Get limits and perform assertions
     let limits = apis::limits_api::get_limits(&configuration).await;
 
-    if should_fail {
-        assert!(limits.is_err());
-    } else {
-        assert!(limits.is_ok());
-        assert_eq!(limits.unwrap().available_to_withdraw, Some(Some(9000)))
-    }
+    assert!(limits.is_ok());
+    assert_eq!(limits.unwrap().available_to_withdraw, Some(Some(9000)));
 }
 
 #[tokio::test]

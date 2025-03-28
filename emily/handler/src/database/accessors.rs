@@ -715,22 +715,20 @@ async fn get_oldest_stacks_block_for_bitcoin_block(
     .ok_or(Error::NotFound)
 }
 
-// Do same that `get_oldest_stacks_block_for_bitcoin_block` but if we didn't have any `chanstate` entry
-// for the given `bitcoin_height` we will search at `retry_times` smaller blocks
-async fn get_oldest_stacks_block_for_bitcoin_block_with_retry(
+// Returns oldest stacks block height, ancored to some block in range [bitcoin_end_height, bitcoin_tip_height].
+// (both sides inclusive)
+// If no stacks block is found, returns Error::NotFound.
+async fn get_oldest_stacks_block_in_range(
     context: &EmilyContext,
-    bitcoin_height: u64,
-    retry_times: u64,
+    range_start_bitcoin_height: u64,
+    range_end_bitcoin_height: u64,
 ) -> Result<u64, Error> {
-    let mut attempts_left = retry_times + 1;
-    while attempts_left > 0 {
-        let height_to_search = bitcoin_height + attempts_left - retry_times - 1;
-        if let Ok(stacks_height) =
-            get_oldest_stacks_block_for_bitcoin_block(context, height_to_search).await
+    debug_assert!(range_start_bitcoin_height <= range_end_bitcoin_height);
+    for height in range_start_bitcoin_height..(range_end_bitcoin_height + 1) {
+        if let Ok(stacks_height) = get_oldest_stacks_block_for_bitcoin_block(context, height).await
         {
             return Ok(stacks_height);
         }
-        attempts_left -= 1;
     }
     Err(Error::NotFound)
 }
@@ -751,7 +749,7 @@ async fn calculate_sbtc_left_for_withdrawals(
     let bitcoin_end_block = bitcoin_tip.saturating_sub(rolling_withdrawal_blocks.saturating_sub(1));
 
     let minimum_stacks_height_in_window =
-        get_oldest_stacks_block_for_bitcoin_block_with_retry(context, bitcoin_end_block, 3).await?;
+        get_oldest_stacks_block_in_range(context, bitcoin_end_block, bitcoin_tip).await?;
 
     let all_statuses_except_failed: Vec<_> = ALL_STATUSES
         .iter()
