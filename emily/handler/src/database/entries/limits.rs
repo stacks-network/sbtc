@@ -123,5 +123,3 @@ impl PrimaryIndexTrait for LimitTablePrimaryIndexInner {
         &settings.limit_table_name
     }
 }
-
-// Api State Entry -------------------------------------------------------------

@@ -6,7 +6,6 @@ use std::sync::LazyLock;
 
 use bitcoin::absolute::LockTime;
 use bitcoin::consensus::Encodable as _;
-use bitcoin::hashes::Hash as _;
 use bitcoin::opcodes::all::OP_RETURN;
 use bitcoin::script::Instruction;
 use bitcoin::script::PushBytesBuf;
@@ -1204,7 +1203,7 @@ impl<'a> UnsignedTransaction<'a> {
 
         // This should never happen
         if amount < 0 {
-            tracing::error!("Transaction deposits greater than the inputs!");
+            tracing::error!("withdrawal amounts were greater than the input amounts!");
             return Err(Error::InvalidAmount(amount));
         }
 
@@ -1632,29 +1631,6 @@ impl TxDeconstructor for BitcoinTxInfo {
     }
 }
 
-bitcoin::hashes::hash_newtype! {
-    /// For some reason, the rust-bitcoin folks do not implement both
-    /// [`bitcoin::consensus::Encodable`] and [`bitcoin::hashes::Hash`] for
-    /// their [`bitcoin::hashes::hash160::Hash`] type. So we create a
-    /// newtype that implements both of those traits so that we can use
-    /// [`bitcoin::merkle_tree::calculate_root`].
-    struct Hash160(pub bitcoin::hashes::hash160::Hash);
-}
-
-impl bitcoin::consensus::Encodable for Hash160 {
-    fn consensus_encode<W: bitcoin::io::Write + ?Sized>(
-        &self,
-        writer: &mut W,
-    ) -> Result<usize, bitcoin::io::Error> {
-        use bitcoin::consensus::WriteExt as _;
-        // All types that implement bitcoin::io::Write implement the
-        // extension type. And this implementation follows the
-        // implementation of their other types.
-        writer.emit_slice(&self.0[..])?;
-        Ok(Self::LEN)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
@@ -1662,6 +1638,7 @@ mod tests {
     use std::sync::atomic::AtomicU64;
 
     use super::*;
+    use bitcoin::hashes::Hash as _;
     use bitcoin::key::TapTweak;
     use bitcoin::opcodes::all::OP_RETURN;
     use bitcoin::script::Instruction;
