@@ -127,6 +127,49 @@ impl Store {
         Arc::new(Mutex::new(Self::new()))
     }
 
+    /// Create the bitcoin transaction from the stored Prevouts and outputs
+    /// for the given transaction ID.
+    fn reconstruct_transaction(&self, txid: &model::BitcoinTxId) -> Option<bitcoin::Transaction> {
+        let outputs = self
+            .bitcoin_outputs
+            .get(txid)
+            .cloned()
+            .unwrap_or_else(Vec::new);
+        let prevouts = self
+            .bitcoin_prevouts
+            .get(txid)
+            .cloned()
+            .unwrap_or_else(Vec::new);
+
+        if outputs.is_empty() && prevouts.is_empty() {
+            return None;
+        }
+
+        Some(bitcoin::Transaction {
+            version: bitcoin::transaction::Version::TWO,
+            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+            input: prevouts
+                .into_iter()
+                .map(|prevout| bitcoin::TxIn {
+                    previous_output: bitcoin::OutPoint {
+                        txid: prevout.txid.into(),
+                        vout: prevout.prevout_output_index,
+                    },
+                    script_sig: bitcoin::ScriptBuf::new(),
+                    sequence: bitcoin::Sequence::ZERO,
+                    witness: bitcoin::Witness::new(),
+                })
+                .collect(),
+            output: outputs
+                .into_iter()
+                .map(|outpout| bitcoin::TxOut {
+                    value: bitcoin::Amount::from_sat(outpout.amount),
+                    script_pubkey: outpout.script_pubkey.into(),
+                })
+                .collect(),
+        })
+    }
+
     async fn get_utxo_from_donation(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -149,31 +192,7 @@ impl Store {
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::Donation)
                     .filter_map(|tx| {
                         let txid = model::BitcoinTxId::from(tx.txid);
-                        let outputs = self.bitcoin_outputs.get(&txid)?;
-                        let prevouts = self.bitcoin_prevouts.get(&txid)?;
-                        Some(bitcoin::Transaction {
-                            version: bitcoin::transaction::Version::TWO,
-                            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
-                            input: prevouts
-                                .iter()
-                                .map(|prevout| bitcoin::TxIn {
-                                    previous_output: bitcoin::OutPoint {
-                                        txid: prevout.txid.into(),
-                                        vout: prevout.prevout_output_index,
-                                    },
-                                    script_sig: bitcoin::ScriptBuf::new(),
-                                    sequence: bitcoin::Sequence::ZERO,
-                                    witness: bitcoin::Witness::new(),
-                                })
-                                .collect(),
-                            output: outputs
-                                .iter()
-                                .map(|outpout| bitcoin::TxOut {
-                                    value: bitcoin::Amount::from_sat(outpout.amount),
-                                    script_pubkey: outpout.script_pubkey.clone().into(),
-                                })
-                                .collect(),
-                        })
+                        self.reconstruct_transaction(&txid)
                     })
                     .filter(|tx| {
                         tx.output
@@ -698,31 +717,7 @@ impl super::DbRead for SharedStore {
                     .filter(|sbtc_tx| sbtc_tx.tx_type == model::TransactionType::SbtcTransaction)
                     .filter_map(|tx| {
                         let txid = model::BitcoinTxId::from(tx.txid);
-                        let outputs = store.bitcoin_outputs.get(&txid)?;
-                        let prevouts = store.bitcoin_prevouts.get(&txid)?;
-                        Some(bitcoin::Transaction {
-                            version: bitcoin::transaction::Version::TWO,
-                            lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
-                            input: prevouts
-                                .iter()
-                                .map(|prevout| bitcoin::TxIn {
-                                    previous_output: bitcoin::OutPoint {
-                                        txid: prevout.txid.into(),
-                                        vout: prevout.prevout_output_index,
-                                    },
-                                    script_sig: bitcoin::ScriptBuf::new(),
-                                    sequence: bitcoin::Sequence::ZERO,
-                                    witness: bitcoin::Witness::new(),
-                                })
-                                .collect(),
-                            output: outputs
-                                .iter()
-                                .map(|outpout| bitcoin::TxOut {
-                                    value: bitcoin::Amount::from_sat(outpout.amount),
-                                    script_pubkey: outpout.script_pubkey.clone().into(),
-                                })
-                                .collect(),
-                        })
+                        store.reconstruct_transaction(&txid)
                     })
                     .filter(|tx| {
                         tx.output
