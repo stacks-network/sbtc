@@ -2135,7 +2135,7 @@ async fn sign_bitcoin_transaction_multiple_locking_keys() {
             "#,
         )
         .bind(txid.to_byte_array())
-        .fetch_one(ctx.storage.pool())
+        .fetch_one(db.pool())
         .await
         .unwrap();
 
