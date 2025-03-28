@@ -136,7 +136,7 @@ class TestDepositProcessor(unittest.TestCase):
 
     @patch('app.clients.PublicEmilyAPI.fetch_deposits')
     @patch('app.clients.PrivateEmilyAPI.update_deposits')
-    @patch('app.clients.MempoolAPI.get_bitcoin_block_at')
+    @patch('app.clients.MempoolAPI.get_block_at')
     @patch('app.clients.HiroAPI.get_stacks_block')
     def test_update_deposits_workflow(self, mock_stacks_block, mock_btc_block,
                                      mock_update_deposits, mock_fetch_deposits):
@@ -169,8 +169,6 @@ class TestDepositProcessor(unittest.TestCase):
                 locktime_update = DepositUpdate(
                     bitcoin_txid="expired_locktime_tx",
                     bitcoin_tx_output_index=0,
-                    last_update_height=self.stacks_chaintip.height,
-                    last_update_block_hash=self.stacks_chaintip.hash,
                     status=RequestStatus.FAILED.value,
                     status_message="Locktime expired"
                 )
@@ -197,7 +195,7 @@ class TestDepositProcessor(unittest.TestCase):
                 self.assertEqual(len(updates), 1)
                 self.assertEqual(updates[0].bitcoin_txid, "expired_locktime_tx")
 
-    @patch('app.clients.MempoolAPI.get_bitcoin_transaction')
+    @patch('app.clients.MempoolAPI.get_transaction')
     def test_enrich_deposits(self, mock_get_tx):
         """Test the deposit enrichment process."""
         # Create test deposits

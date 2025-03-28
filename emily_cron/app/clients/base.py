@@ -20,7 +20,7 @@ class APIClient:
         headers: Optional[dict[str, str]] = None,
     ) -> dict[str, Any]:
         """Make an HTTP request and return JSON response."""
-        url = f"{cls.BASE_URL}{endpoint}"
+        url = f"{cls.BASE_URL}{endpoint}".rstrip("/")
         try:
             response = requests.request(
                 method=method,

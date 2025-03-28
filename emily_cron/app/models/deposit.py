@@ -148,8 +148,6 @@ class DepositUpdate:
 
     bitcoin_txid: str
     bitcoin_tx_output_index: int
-    last_update_height: int
-    last_update_block_hash: str
     status: str
     status_message: str
     fulfillment: Optional[Fulfillment] = None

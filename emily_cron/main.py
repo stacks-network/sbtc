@@ -27,7 +27,6 @@ logger.info(f"PRIVATE_EMILY_ENDPOINT: {settings.PRIVATE_EMILY_ENDPOINT}")
 logger.info(f"MEMPOOL_API_URL: {settings.MEMPOOL_API_URL}")
 logger.info(f"HIRO_API_URL: {settings.HIRO_API_URL}")
 logger.info(f"MIN_BLOCK_CONFIRMATIONS: {settings.MIN_BLOCK_CONFIRMATIONS}")
-logger.info(f"MAX_UNCONFIRMED_TIME: {settings.MAX_UNCONFIRMED_TIME}")
 logger.info("=" * 80)
 
 

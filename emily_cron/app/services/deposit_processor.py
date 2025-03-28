@@ -61,8 +61,6 @@ class DepositProcessor:
                 DepositUpdate(
                     bitcoin_txid=tx.bitcoin_txid,
                     bitcoin_tx_output_index=tx.bitcoin_tx_output_index,
-                    last_update_height=stacks_chaintip.height,
-                    last_update_block_hash=stacks_chaintip.hash,
                     status=RequestStatus.FAILED.value,
                     status_message=f"Locktime expired at height {bitcoin_chaintip.height}",
                 )
@@ -80,7 +78,7 @@ class DepositProcessor:
         logger.info("Running deposit status update job")
 
         # Get current blockchain state
-        bitcoin_chaintip = MempoolAPI.get_bitcoin_block_at()
+        bitcoin_chaintip = MempoolAPI.get_block_at()
         stacks_chaintip = HiroAPI.get_stacks_block()
 
         logger.info(f"Bitcoin chain tip: {bitcoin_chaintip}")
@@ -125,7 +123,7 @@ class DepositProcessor:
         """
         transaction_details = []
         for deposit in deposits:
-            tx_data = MempoolAPI.get_bitcoin_transaction(deposit.bitcoin_txid)
+            tx_data = MempoolAPI.get_transaction(deposit.bitcoin_txid)
 
             if not tx_data:
                 transaction_details.append(EnrichedDepositInfo.from_missing(deposit))

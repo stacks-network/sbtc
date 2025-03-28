@@ -7,7 +7,7 @@ PRIVATE_EMILY_ENDPOINT = os.getenv(
     "PRIVATE_EMILY_ENDPOINT", f"https://private.sbtc-emily.com"
 ).removesuffix("/")
 MEMPOOL_API_URL = os.getenv("MEMPOOL_API_URL", "https://mempool.space/api").removesuffix("/")
-HIRO_API_URL = os.getenv("HIRO_API_URL", "https://api.hiro.so/extended").removesuffix("/")
+HIRO_API_URL = os.getenv("HIRO_API_URL", "https://api.hiro.so").removesuffix("/")
 
 # The address of the deployer of the sbtc-registry contract
 DEPLOYER_ADDRESS = os.getenv("DEPLOYER_ADDRESS", "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS")

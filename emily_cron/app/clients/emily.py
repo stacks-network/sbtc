@@ -14,9 +14,6 @@ class PublicEmilyAPI(APIClient):
 
     BASE_URL = settings.EMILY_ENDPOINT
 
-    def __init__(self, api_key: str):
-        self.headers = {"x-api-key": api_key}
-
     @classmethod
     def fetch_deposits(cls, status: RequestStatus) -> list[DepositInfo]:
         """Fetch deposits based on status."""
@@ -40,7 +37,8 @@ class PrivateEmilyAPI(APIClient):
         Returns:
             list[dict[str, Any]]: The updated deposits
         """
-        assert len(updates) > 0, "Updates must contain at least one deposit update"
+        if len(updates) == 0:
+            return []
 
         return cls.put(
             f"/deposit",

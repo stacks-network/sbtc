@@ -5,7 +5,7 @@ from typing import Any
 def to_camel_case(s: str) -> str:
     """Convert snake_case to camelCase."""
     parts = s.split("_")
-    return parts[0] + "".join(word.capitalize() for word in parts[1:])
+    return parts[0].lower() + "".join(word.capitalize() for word in parts[1:])
 
 
 def asdict_camel(d: Any) -> dict:
