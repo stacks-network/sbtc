@@ -324,5 +324,5 @@ pub type ChainstateByBitcoinHeightTableSecondaryIndex =
 impl SecondaryIndexTrait for ChainstateByBitcoinHeightTableSecondaryIndexInner {
     type Entry = ChainstateByBitcoinHeightEntry;
     type PrimaryIndex = ChainstateTablePrimaryIndex;
-    const INDEX_NAME: &'static str = "BitcoinHeight";
+    const INDEX_NAME: &'static str = "BitcoinBlockHeightIndex";
 }

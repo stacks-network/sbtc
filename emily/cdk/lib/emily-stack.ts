@@ -337,7 +337,7 @@ export class EmilyStack extends cdk.Stack {
             billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand provisioning
             pointInTimeRecovery: pointInTimeRecovery,
         });
-        const byBitcoinHeight: string = "BitcoinHeight";
+        const byBitcoinHeight: string = "BitcoinBlockHeightIndex";
         table.addGlobalSecondaryIndex({
             indexName: byBitcoinHeight,
             partitionKey: {
