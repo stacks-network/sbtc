@@ -504,7 +504,7 @@ mod tests {
         });
 
         // This is the connected signer, signer 2, it should receive all
-        // messages pretty quicky.
+        // messages pretty quickly.
         let mut gossiped_messages = gossip_msg_stream
             .take(number_of_messages)
             .take_until(tokio::time::sleep(Duration::from_secs(4)))
@@ -524,7 +524,7 @@ mod tests {
             .collect::<Vec<_>>()
             .await;
 
-        // Messages from signer 3 should not be propogated to signer 1,
+        // Messages from signer 3 should not be propagated to signer 1,
         // since it is not in that signer's signing set.
         assert!(received_messages.is_empty());
 
@@ -634,7 +634,7 @@ mod tests {
             .build()
             .expect("Failed to build swarm 3");
 
-        // Create the network liasons for the swarms (i.e. `MessageTransfer`
+        // Create the network liaisons for the swarms (i.e. `MessageTransfer`
         // instances).
         let mut trusted1 = P2PNetwork::new(&context1);
         let mut trusted2 = P2PNetwork::new(&context2);

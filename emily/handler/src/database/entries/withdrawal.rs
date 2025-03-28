@@ -59,6 +59,8 @@ pub struct WithdrawalEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
+    /// The hex encoded txid of the stacks transaction that generated this event.
+    pub txid: String,
     /// History of this withdrawal transaction.
     pub history: Vec<WithdrawalEvent>,
 }
@@ -200,6 +202,7 @@ impl TryFrom<WithdrawalEntry> for Withdrawal {
             parameters: WithdrawalParameters {
                 max_fee: withdrawal_entry.parameters.max_fee,
             },
+            txid: withdrawal_entry.txid,
             fulfillment,
         })
     }
@@ -341,6 +344,8 @@ pub struct WithdrawalInfoEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
+    /// The hex encoded txid of the stacks transaction that generated this event.
+    pub txid: String,
 }
 
 /// Implements the key trait for the withdrawal info entry key.
@@ -392,6 +397,7 @@ impl From<WithdrawalInfoEntry> for WithdrawalInfo {
             last_update_height: withdrawal_info_entry.key.last_update_height,
             last_update_block_hash: withdrawal_info_entry.last_update_block_hash,
             status: withdrawal_info_entry.key.status,
+            txid: withdrawal_info_entry.txid,
         }
     }
 }
@@ -443,6 +449,8 @@ pub struct WithdrawalInfoByRecipientEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
+    /// The hex encoded txid of the stacks transaction that generated this event.
+    pub txid: String,
 }
 
 /// Implements the key trait for the withdrawal info entry key.
@@ -495,6 +503,7 @@ impl From<WithdrawalInfoByRecipientEntry> for WithdrawalInfo {
             last_update_height: withdrawal_info_entry.key.last_update_height,
             last_update_block_hash: withdrawal_info_entry.last_update_block_hash,
             status: withdrawal_info_entry.status,
+            txid: withdrawal_info_entry.txid,
         }
     }
 }
@@ -546,6 +555,8 @@ pub struct WithdrawalInfoBySenderEntry {
     /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
     /// then this hash is the Stacks block hash that contains that artifact.
     pub last_update_block_hash: String,
+    /// The hex encoded txid of the stacks transaction that generated this event.
+    pub txid: String,
 }
 
 /// Implements the key trait for the withdrawal info entry key.
@@ -598,6 +609,7 @@ impl From<WithdrawalInfoBySenderEntry> for WithdrawalInfo {
             last_update_height: withdrawal_info_entry.key.last_update_height,
             last_update_block_hash: withdrawal_info_entry.last_update_block_hash,
             status: withdrawal_info_entry.status,
+            txid: withdrawal_info_entry.txid,
         }
     }
 }
@@ -718,6 +730,7 @@ mod tests {
             last_update_height: 1,
             last_update_block_hash: "hash".to_string(),
             history: vec![pending, failed.clone()],
+            txid: "txid".to_string(),
         };
 
         let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
@@ -761,6 +774,7 @@ mod tests {
             last_update_height: 1,
             last_update_block_hash: "hash".to_string(),
             history: vec![pending.clone()],
+            txid: "txid".to_string(),
         };
 
         let withdrawal_update = ValidatedWithdrawalUpdate { request_id: 1, event: failed };
@@ -821,6 +835,7 @@ mod tests {
             last_update_height: 6,
             last_update_block_hash: "hash6".to_string(),
             history: vec![pending.clone(), accepted.clone(), confirmed.clone()],
+            txid: "txid".to_string(),
         };
 
         // Ensure the withdrawal is valid.

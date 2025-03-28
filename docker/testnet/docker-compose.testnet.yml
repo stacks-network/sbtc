@@ -1,3 +1,11 @@
+x-common-vars:
+# Attestation
+- &SIGNER_TAG ${SIGNER_TAG:?} # Required
+- &BLOCKLIST_TAG ${BLOCKLIST_TAG:?} # Required
+- &SIGNER_BUNDLE_PATH ${SIGNER_BUNDLE_PATH:?} # Required
+- &BLOCKLIST_BUNDLE_PATH ${BLOCKLIST_BUNDLE_PATH:?} # Required
+- &TRUSTED_ROOT_PATH ${TRUSTED_ROOT_PATH:?} # Required
+
 services:
   postgres:
     image: postgres:16.6-bookworm@sha256:c965017e1d29eb03e18a11abc25f5e3cd78cb5ac799d495922264b8489d5a3a1
@@ -11,21 +19,29 @@ services:
 
   sbtc-signer:
     image: blockstack/sbtc:signer-0.0.9-rc6@sha256:44d2c828c6452f75ea2fabe5160ba95a9f944c0fcaeeaea5523dff81da8bc342
-    entrypoint: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs'"
+    entrypoint: "/entrypoint.sh"
+    command: "/bin/bash -c '/usr/local/bin/signer -c /signer-config.toml --migrate-db -o json | tee /logs/sbtc_signer.logs'"
     depends_on:
       - postgres
     environment:
       RUST_LOG: info,signer=debug
+      TAG: *SIGNER_TAG  
+      BUNDLE_PATH: signer_bundle.jsonl
+      TRUSTED_ROOT_PATH: trusted_root.jsonl
     volumes:
       - ./config/signer-config.toml:/signer-config.toml:ro
       - ./logs:/logs
+      - ${SIGNER_BUNDLE_PATH}:signer_bundle.jsonl:ro
+      - ${TRUSTED_ROOT_PATH}:trusted_root.jsonl:ro
+      - ./entrypoint.sh:/entrypoint.sh
     ports:
       - "4122:4122"
       - "127.0.0.1:8801:8801" # this export is only exposed to the Docker host for security reasons. NEVER expose it to the internet!
 
   blocklist-client:
     image: blockstack/sbtc:blocklist-client-0.0.9-rc6@sha256:e4fa52ac16c357ae69f3b9eb5d5254a43bc605dbded621291b5637064b04d105
-    entrypoint: "/usr/local/bin/blocklist-client"
+    entrypoint: "/entrypoint.sh"
+    command: "/usr/local/bin/blocklist-client"
     ports:
       - "3032:3032"
     environment:
@@ -33,6 +49,13 @@ services:
       BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY}
       BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
       BLOCKLIST_CLIENT_SERVER__PORT: "3032"
+      TAG: *BLOCKLIST_TAG  
+      BUNDLE_PATH: blocklist_bundle.jsonl
+      TRUSTED_ROOT_PATH: trusted_root.jsonl
+    volumes:
+      - ${BLOCKLIST_BUNDLE_PATH}:blocklist_bundle.jsonl:ro
+      - ${TRUSTED_ROOT_PATH}:trusted_root.jsonl:ro
+      - ./entrypoint.sh:/entrypoint.sh
 
   vector:
     container_name: vector

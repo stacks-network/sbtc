@@ -16,6 +16,7 @@ Name | Type | Description | Notes
 **stacks_block_height** | **u64** | The height of the Stacks block in which this request id was initiated. | 
 **status** | [**models::Status**](Status.md) |  | 
 **status_message** | **String** | The status message of the withdrawal. | 
+**txid** | **String** | The hex encoded txid of the stacks transaction that generated this event. | 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 

@@ -52,6 +52,9 @@ pub struct Withdrawal {
     /// The status message of the withdrawal.
     #[serde(rename = "statusMessage")]
     pub status_message: String,
+    /// The hex encoded txid of the stacks transaction that generated this event.
+    #[serde(rename = "txid")]
+    pub txid: String,
 }
 
 impl Withdrawal {
@@ -68,6 +71,7 @@ impl Withdrawal {
         stacks_block_height: u64,
         status: models::Status,
         status_message: String,
+        txid: String,
     ) -> Withdrawal {
         Withdrawal {
             amount,
@@ -82,6 +86,7 @@ impl Withdrawal {
             stacks_block_height,
             status,
             status_message,
+            txid,
         }
     }
 }
