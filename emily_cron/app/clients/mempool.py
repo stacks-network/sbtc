@@ -15,27 +15,13 @@ class MempoolAPI(APIClient):
     BASE_URL = settings.MEMPOOL_API_URL
 
     @classmethod
-    def get_block_at(cls, timestamp: Optional[int] = None) -> BlockInfo:
-        """Fetch the Bitcoin block at a given timestamp.
-
-        Args:
-            timestamp: Unix timestamp to get the block at, or None for current time
-
-        Returns:
-            BlockInfo: Information about the Bitcoin block
-        """
-        if timestamp is None:
-            timestamp = int(datetime.now().timestamp())
-        return BlockInfo.from_bitcoin(cls.get(f"/v1/mining/blocks/timestamp/{timestamp}"))
-
-    @classmethod
     def get_tip_height(cls) -> int:
         """Get the height of the tip of the Bitcoin chain.
 
         Returns:
             int: The height of the tip of the Bitcoin chain
         """
-        return cls.get("/v1/blocks/tip/height")
+        return cls.get("/v1/blocks/tip/height", raise_on_error=True)
 
     @classmethod
     def get_transaction(cls, txid: str) -> dict[str, Any]:

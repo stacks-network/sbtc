@@ -17,7 +17,7 @@ class PublicEmilyAPI(APIClient):
     @classmethod
     def fetch_deposits(cls, status: RequestStatus) -> list[DepositInfo]:
         """Fetch deposits based on status."""
-        data = cls.get(f"/deposit?status={status.value}")
+        data: dict[str, Any] = cls.get(f"/deposit?status={status.value}")
         return [DepositInfo.from_json(deposit) for deposit in data.get("deposits", [])]
 
 
@@ -41,7 +41,7 @@ class PrivateEmilyAPI(APIClient):
             return []
 
         return cls.put(
-            f"/deposit",
+            "/deposit",
             json_data={"deposits": [asdict_camel(update) for update in updates]},
             headers=cls.HEADERS,
         )

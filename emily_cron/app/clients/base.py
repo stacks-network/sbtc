@@ -18,17 +18,47 @@ class APIClient:
         params: Optional[dict[str, Any]] = None,
         json_data: Optional[dict[str, Any]] = None,
         headers: Optional[dict[str, str]] = None,
-    ) -> dict[str, Any]:
-        """Make an HTTP request and return JSON response."""
+        raise_for_error: bool = False,
+    ) -> Any:
+        """Make an HTTP request and return JSON response.
+
+        Args:
+            method: HTTP method (GET, POST, PUT, etc.)
+            endpoint: API endpoint to call
+            params: Optional query parameters
+            json_data: Optional JSON data for request body
+            headers: Optional HTTP headers
+            raise_on_error: If True, raises exceptions for HTTP or JSON errors
+                            If False, logs errors and returns empty dict
+
+        Returns:
+            Parsed JSON response or empty dict on error
+        """
         url = f"{cls.BASE_URL}{endpoint}".rstrip("/")
+
         try:
             response = requests.request(
-                method=method, url=url, params=params, json=json_data, headers=headers
+                method=method,
+                url=url,
+                params=params,
+                json=json_data,
+                headers=headers,
+                timeout=30,  # Add timeout to prevent hanging requests
             )
             response.raise_for_status()
-            return response.json()
+
+            try:
+                return response.json()
+            except Exception as e:
+                logger.error(f"Invalid JSON response from {method} {url}: {e}")
+                if raise_for_error:
+                    raise
+                return {}
+
         except requests.RequestException as e:
             logger.error(f"Error {method} {url}: {e}")
+            if raise_for_error:
+                raise
             return {}
 
     @classmethod

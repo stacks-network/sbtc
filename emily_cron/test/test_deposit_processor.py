@@ -21,7 +21,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         self.current_time = int(datetime.now().timestamp())
 
         # Mock blockchain state
-        self.bitcoin_chaintip = BlockInfo(height=1000, hash="btc_hash", time=self.current_time)
+        self.bitcoin_chaintip_height = 1000
         self.stacks_chaintip = BlockInfo(height=100, hash="stx_hash", time=self.current_time)
 
         # Create test deposits
@@ -56,7 +56,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         # Test with only transactions that shouldn't be marked as failed
         deposits = [self.confirmed_active, self.unconfirmed]
 
-        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip_height)
 
         self.assertEqual(len(updates), 0, "No transactions should be marked as failed")
 
@@ -64,7 +64,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         # Test with a transaction that should be marked as failed
         deposits = [self.confirmed_expired]
 
-        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip_height)
 
         self.assertEqual(len(updates), 1, "One transaction should be marked as failed")
         self.assertEqual(updates[0].bitcoin_txid, "confirmed_expired")
@@ -75,7 +75,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         # Test with a mix of transactions
         deposits = [self.confirmed_expired, self.confirmed_active, self.unconfirmed]
 
-        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip_height)
 
         self.assertEqual(len(updates), 1, "Only one transaction should be marked as failed")
         self.assertEqual(updates[0].bitcoin_txid, "confirmed_expired")
@@ -92,7 +92,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
 
         deposits = [edge_case]
 
-        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip_height)
 
         # With MIN_BLOCK_CONFIRMATIONS=10, this should not be marked as expired yet
         self.assertEqual(
@@ -110,7 +110,7 @@ class TestDepositProcessor(unittest.TestCase):
         self.current_time = int(datetime.now().timestamp())
 
         # Mock blockchain state
-        self.bitcoin_chaintip = BlockInfo(height=1000, hash="btc_hash", time=self.current_time)
+        self.bitcoin_chaintip_height = 1000
         self.stacks_chaintip = BlockInfo(height=100, hash="stx_hash", time=self.current_time)
 
         # Create mock deposits for testing
@@ -139,18 +139,18 @@ class TestDepositProcessor(unittest.TestCase):
 
     @patch("app.clients.PublicEmilyAPI.fetch_deposits")
     @patch("app.clients.PrivateEmilyAPI.update_deposits")
-    @patch("app.clients.MempoolAPI.get_block_at")
+    @patch("app.clients.MempoolAPI.get_tip_height")
     @patch("app.clients.HiroAPI.get_stacks_block")
     def test_update_deposits_workflow(
         self,
         mock_stacks_block,
-        mock_btc_block,
+        mock_btc_tip_height,
         mock_update_deposits,
         mock_fetch_deposits,
     ):
         """Test the complete deposit update workflow."""
         # Set up mocks
-        mock_btc_block.return_value = self.bitcoin_chaintip
+        mock_btc_tip_height.return_value = self.bitcoin_chaintip_height
         mock_stacks_block.return_value = self.stacks_chaintip
 
         # Mock deposit fetching

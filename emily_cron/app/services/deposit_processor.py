@@ -8,10 +8,8 @@ from ..models import (
     DepositUpdate,
     EnrichedDepositInfo,
     RequestStatus,
-    BlockInfo,
     DepositInfo,
 )
-from .. import settings
 
 logger = logging.getLogger(__name__)
 
@@ -22,14 +20,13 @@ class DepositProcessor:
     def process_expired_locktime(
         self,
         enriched_deposits: list[EnrichedDepositInfo],
-        bitcoin_chaintip: BlockInfo,
+        bitcoin_chaintip_height: int,
     ) -> list[DepositUpdate]:
         """Process transactions with expired locktime.
 
         Args:
             enriched_deposits: List of enriched deposit information
-            bitcoin_chaintip: Current Bitcoin block info
-            stacks_chaintip: Current Stacks block info
+            bitcoin_chaintip_height: Current Bitcoin chain tip height
 
         Returns:
             list[DepositUpdate]: List of deposit updates
@@ -38,7 +35,7 @@ class DepositProcessor:
 
         # Find transactions with expired locktime
         locktime_expired_txs = [
-            tx for tx in enriched_deposits if tx.is_expired(bitcoin_chaintip.height)
+            tx for tx in enriched_deposits if tx.is_expired(bitcoin_chaintip_height)
         ]
 
         if not locktime_expired_txs:
@@ -55,7 +52,7 @@ class DepositProcessor:
                     bitcoin_txid=tx.bitcoin_txid,
                     bitcoin_tx_output_index=tx.bitcoin_tx_output_index,
                     status=RequestStatus.FAILED.value,
-                    status_message=f"Locktime expired at height {bitcoin_chaintip.height}",
+                    status_message=f"Locktime expired at height {bitcoin_chaintip_height}",
                 )
             )
 
@@ -70,10 +67,10 @@ class DepositProcessor:
         logger.info("Running deposit status update job")
 
         # Get current blockchain state
-        bitcoin_chaintip = MempoolAPI.get_block_at()
+        bitcoin_chaintip_height = MempoolAPI.get_tip_height()
         stacks_chaintip = HiroAPI.get_stacks_block()
 
-        logger.info(f"Bitcoin chain tip: {bitcoin_chaintip}")
+        logger.info(f"Bitcoin chain tip: {bitcoin_chaintip_height}")
         logger.info(f"Stacks chain tip: {stacks_chaintip}")
 
         # Fetch pending and accepted deposits
@@ -89,7 +86,7 @@ class DepositProcessor:
         # Process transactions with expired locktime
         locktime_updates = self.process_expired_locktime(
             enriched_deposits,
-            bitcoin_chaintip,
+            bitcoin_chaintip_height,
         )
         updates.extend(locktime_updates)
 

@@ -1,5 +1,6 @@
 import logging
 import functools
+from typing import Any
 
 from ..models import BlockInfo
 from .base import APIClient
@@ -31,7 +32,7 @@ class HiroAPI(APIClient):
                 f"{hex(vout)}100000000000000000000000000000000",
             ],
         }
-        result = cls.post(
+        result: dict[str, Any] = cls.post(
             f"/v2/contracts/call-read/{settings.DEPLOYER_ADDRESS}/sbtc-registry/get-completed-deposit",
             json_data=params,
         )
@@ -46,7 +47,7 @@ class HiroAPI(APIClient):
 
     @classmethod
     @functools.lru_cache(maxsize=256)
-    def _get_stacks_block_cached(cls, height_or_hash: int | str) -> dict:
+    def _get_stacks_block_cached(cls, height_or_hash: int | str) -> dict[str, Any]:
         """Cached version of get_stacks_block for non-latest queries.
 
         Args:
@@ -55,7 +56,7 @@ class HiroAPI(APIClient):
         Returns:
             dict: Block information
         """
-        return cls.get(f"/extended/v2/blocks/{height_or_hash}")
+        return cls.get(f"/extended/v2/blocks/{height_or_hash}", raise_on_error=True)
 
     @classmethod
     def get_stacks_block(cls, height_or_hash: int | str = "latest") -> BlockInfo:
@@ -71,7 +72,9 @@ class HiroAPI(APIClient):
         """
         if height_or_hash == "latest":
             # Don't cache "latest" queries
-            block_data = cls.get(f"/extended/v2/blocks/{height_or_hash}")
+            block_data: dict[str, Any] = cls.get(
+                f"/extended/v2/blocks/{height_or_hash}", raise_on_error=True
+            )
         else:
             # Use cached version for specific heights or hashes
             block_data = cls._get_stacks_block_cached(height_or_hash)
