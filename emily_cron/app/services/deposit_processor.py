@@ -23,7 +23,6 @@ class DepositProcessor:
         self,
         enriched_deposits: list[EnrichedDepositInfo],
         bitcoin_chaintip: BlockInfo,
-        stacks_chaintip: BlockInfo,
     ) -> list[DepositUpdate]:
         """Process transactions with expired locktime.
 
@@ -39,13 +38,7 @@ class DepositProcessor:
 
         # Find transactions with expired locktime
         locktime_expired_txs = [
-            tx
-            for tx in enriched_deposits
-            if tx.confirmed_height > 0  # Only process confirmed transactions
-            and bitcoin_chaintip.height
-            >= tx.confirmed_height
-            + tx.lock_time
-            + settings.MIN_BLOCK_CONFIRMATIONS  # Check if locktime has expired
+            tx for tx in enriched_deposits if tx.is_expired(bitcoin_chaintip.height)
         ]
 
         if not locktime_expired_txs:
@@ -97,7 +90,6 @@ class DepositProcessor:
         locktime_updates = self.process_expired_locktime(
             enriched_deposits,
             bitcoin_chaintip,
-            stacks_chaintip,
         )
         updates.extend(locktime_updates)
 

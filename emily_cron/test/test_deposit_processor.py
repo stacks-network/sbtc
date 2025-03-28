@@ -2,7 +2,13 @@ import unittest
 from datetime import datetime
 from unittest.mock import patch, MagicMock
 
-from app.models import EnrichedDepositInfo, BlockInfo, RequestStatus, DepositUpdate, DepositInfo
+from app.models import (
+    EnrichedDepositInfo,
+    BlockInfo,
+    RequestStatus,
+    DepositUpdate,
+    DepositInfo,
+)
 from app.services.deposit_processor import DepositProcessor
 from app import settings
 
@@ -41,15 +47,16 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         deposit.bitcoin_tx_output_index = 0
         deposit.confirmed_height = confirmed_height
         deposit.lock_time = lock_time
+
+        # Mock the is_expired method to use the real logic
+        deposit.is_expired = lambda x: EnrichedDepositInfo.is_expired(deposit, x)
         return deposit
 
     def test_no_expired_locktime(self):
         # Test with only transactions that shouldn't be marked as failed
         deposits = [self.confirmed_active, self.unconfirmed]
 
-        updates = self.processor.process_expired_locktime(
-            deposits, self.bitcoin_chaintip, self.stacks_chaintip
-        )
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
 
         self.assertEqual(len(updates), 0, "No transactions should be marked as failed")
 
@@ -57,9 +64,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         # Test with a transaction that should be marked as failed
         deposits = [self.confirmed_expired]
 
-        updates = self.processor.process_expired_locktime(
-            deposits, self.bitcoin_chaintip, self.stacks_chaintip
-        )
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
 
         self.assertEqual(len(updates), 1, "One transaction should be marked as failed")
         self.assertEqual(updates[0].bitcoin_txid, "confirmed_expired")
@@ -70,9 +75,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         # Test with a mix of transactions
         deposits = [self.confirmed_expired, self.confirmed_active, self.unconfirmed]
 
-        updates = self.processor.process_expired_locktime(
-            deposits, self.bitcoin_chaintip, self.stacks_chaintip
-        )
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
 
         self.assertEqual(len(updates), 1, "Only one transaction should be marked as failed")
         self.assertEqual(updates[0].bitcoin_txid, "confirmed_expired")
@@ -89,9 +92,7 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
 
         deposits = [edge_case]
 
-        updates = self.processor.process_expired_locktime(
-            deposits, self.bitcoin_chaintip, self.stacks_chaintip
-        )
+        updates = self.processor.process_expired_locktime(deposits, self.bitcoin_chaintip)
 
         # With MIN_BLOCK_CONFIRMATIONS=10, this should not be marked as expired yet
         self.assertEqual(
@@ -141,7 +142,11 @@ class TestDepositProcessor(unittest.TestCase):
     @patch("app.clients.MempoolAPI.get_block_at")
     @patch("app.clients.HiroAPI.get_stacks_block")
     def test_update_deposits_workflow(
-        self, mock_stacks_block, mock_btc_block, mock_update_deposits, mock_fetch_deposits
+        self,
+        mock_stacks_block,
+        mock_btc_block,
+        mock_update_deposits,
+        mock_fetch_deposits,
     ):
         """Test the complete deposit update workflow."""
         # Set up mocks

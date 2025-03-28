@@ -106,6 +106,24 @@ class EnrichedDepositInfo(DepositInfo):
         }
         return cls(**asdict(d), **missing_data)
 
+    def is_expired(self, bitcoin_chaintip_height: int) -> bool:
+        """Check if the deposit is expired.
+
+        Args:
+            bitcoin_chaintip_height: The height of the tip of the Bitcoin chain
+
+        Returns:
+            bool: True if the deposit is expired, False otherwise
+        """
+        # Check if the deposit is confirmed
+        if self.confirmed_height < 0:
+            return False
+
+        return (
+            bitcoin_chaintip_height
+            >= self.confirmed_height + self.lock_time + settings.MIN_BLOCK_CONFIRMATIONS
+        )
+
 
 @dataclass
 class BlockInfo:
