@@ -3116,7 +3116,6 @@ async fn should_process_withdrawals() {
     testing::storage::drop_db(store).await;
 }
 
-#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_simple() {
     let store = testing::storage::new_test_database().await;
@@ -3129,7 +3128,6 @@ async fn should_get_signer_utxo_simple() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_fork() {
     let store = testing::storage::new_test_database().await;
@@ -3142,7 +3140,6 @@ async fn should_get_signer_utxo_fork() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_unspent() {
     let store = testing::storage::new_test_database().await;
@@ -3155,7 +3152,6 @@ async fn should_get_signer_utxo_unspent() {
     signer::testing::storage::drop_db(store).await;
 }
 
-#[ignore = "some test fixtures need some work before this can be enabled"]
 #[tokio::test]
 async fn should_get_signer_utxo_donations() {
     let store = testing::storage::new_test_database().await;
