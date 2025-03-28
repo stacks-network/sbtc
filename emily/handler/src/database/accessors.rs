@@ -715,8 +715,8 @@ async fn get_oldest_stacks_block_for_bitcoin_block(
     .ok_or(Error::NotFound)
 }
 
-// Returns oldest stacks block height, ancored to some block in range [bitcoin_end_height, bitcoin_tip_height].
-// (both sides inclusive)
+// Returns oldest stacks block height, ancored to some block in range
+// [range_start_bitcoin_height; range_end_bitcoin_height] (both sides inclusive)
 // If no stacks block is found, returns Error::NotFound.
 async fn get_oldest_stacks_block_in_range(
     context: &EmilyContext,
