@@ -542,7 +542,6 @@ services:
   # Mempool.
   # --------
   electrs:
-    image: electrs:latest
     container_name: electrs
     stop_grace_period: 5s
     build: electrs
