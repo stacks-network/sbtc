@@ -255,11 +255,11 @@ pub enum Error {
 
     /// This happens when parsing a string, usually from the database, into
     /// a PrincipalData.
-    #[error("Could not parse the string into PrincipalData: {0}")]
+    #[error("could not parse the string into PrincipalData: {0}")]
     ParsePrincipalData(#[source] clarity::vm::errors::Error),
 
     /// Could not send a message
-    #[error("Could not send a message from the in-memory MessageTransfer broadcast function")]
+    #[error("could not send a message from the in-memory MessageTransfer broadcast function")]
     SendMessage,
 
     /// Could not receive a message from the channel.
@@ -576,7 +576,7 @@ pub enum Error {
 
     /// We throw this when signer produced txid and coordinator produced txid differ.
     #[error(
-        "Signer and coordinator txid mismatch. Signer produced txid {0}, but coordinator send txid {1}"
+        "signer and coordinator txid mismatch. Signer produced txid {0}, but coordinator send txid {1}"
     )]
     SignerCoordinatorTxidMismatch(
         blockstack_lib::burnchains::Txid,
@@ -603,7 +603,7 @@ pub enum Error {
 
     /// This is thrown when there is a deposit that parses correctly but
     /// the public key in the deposit script is not known to the signer.
-    #[error("Unknown x-only public key in deposit outpoint: {0}, public key {1}")]
+    #[error("unknown x-only public key in deposit outpoint: {0}, public key {1}")]
     UnknownAggregateKey(bitcoin::OutPoint, secp256k1::XOnlyPublicKey),
 
     /// The error for when the request to sign a withdrawal-accept
@@ -680,22 +680,22 @@ pub enum Error {
     NotChainTipCoordinator,
 
     /// Indicates that the request packages contain duplicate deposit or withdrawal entries.
-    #[error("The request packages contain duplicate deposit or withdrawal entries.")]
+    #[error("the request packages contain duplicate deposit or withdrawal entries.")]
     DuplicateRequests,
 
     /// Indicates that the BitcoinPreSignRequest object does not contain
     /// any deposit or withdrawal requests.
-    #[error("The BitcoinPreSignRequest object does not contain deposit or withdrawal requests")]
+    #[error("the BitcoinPreSignRequest object does not contain deposit or withdrawal requests")]
     PreSignContainsNoRequests,
 
     /// Indicates that we tried to create an UnsignedTransaction object
     /// without any deposit or withdrawal requests.
-    #[error("The UnsignedTransaction must contain deposit or withdrawal requests")]
+    #[error("the UnsignedTransaction must contain deposit or withdrawal requests")]
     BitcoinNoRequests,
 
     /// Indicates that the BitcoinPreSignRequest object contains a fee rate
     /// that is less than or equal to zero.
-    #[error("The fee rate in the BitcoinPreSignRequest object is not greater than zero: {0}")]
+    #[error("the fee rate in the BitcoinPreSignRequest object is not greater than zero: {0}")]
     PreSignInvalidFeeRate(f64),
 
     /// Error when deposit requests would exceed sBTC supply cap
