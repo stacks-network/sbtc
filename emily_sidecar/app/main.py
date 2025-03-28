@@ -7,9 +7,6 @@ import requests
 
 from app import settings, logging_config
 
-# Initialize the FastAPI app
-app = FastAPI()
-
 # Set up logging when the app starts
 logging_config.setup_logging()
 
@@ -28,6 +25,10 @@ headers = {"x-api-key": settings.API_KEY}
 class NewBlockEventModel(BaseModel, extra="allow"):
     block_height: int
     index_block_hash: str
+
+
+# Initialize the FastAPI app
+app = FastAPI()
 
 
 @app.post("/new_block")
