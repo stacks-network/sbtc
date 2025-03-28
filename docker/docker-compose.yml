@@ -260,6 +260,7 @@ services:
       SBTC_CONTRACT_DEPLOYER: SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
       BANNER_CONTENT: devenv!
       STACKS_API_URL: http://stacks-api:3999
+      WITHDRAWAL_FEE_MULTIPLIER: 100
 
   # Bitcoin / Burnchain.
   # --------------------
@@ -542,19 +543,30 @@ services:
   # Mempool.
   # --------
   electrs:
+    image: mempool/electrs:latest
     container_name: electrs
     stop_grace_period: 5s
-    build: electrs
     ports:
       - 60401:60401
       - 3002:3002
     depends_on:
       - bitcoin
       - bitcoin-miner
-    environment:
-      RUST_BACKTRACE: 1
-      BITCOIN_RPC_HOST: "bitcoin"
-      BITCOIN_RPC_PORT: "18443"
+    entrypoint: 
+      - /bin/bash
+      - -c
+      - |
+        electrs --network regtest \
+          --jsonrpc-import \
+          --cookie "devnet:devnet" \
+          --http-addr="0.0.0.0:3002" \
+          --electrum-rpc-addr="0.0.0.0:60401" \
+          --daemon-rpc-addr="bitcoin:18443" \
+          --electrum-txs-limit=2048 \
+          --utxos-limit=2048 \
+          --db-dir="/opt" \
+          --cors="*" \
+          -vv
     profiles:
       - bitcoin-mempool
 
