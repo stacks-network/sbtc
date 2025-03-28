@@ -482,6 +482,7 @@ async fn test_available_to_withdraw_no_chainstate_in_db_at_target_height() {
         request_id: 1,
         stacks_block_hash: "test_hash".into(),
         stacks_block_height: 1005,
+        txid: "test_txid".into(),
     };
 
     apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
@@ -557,6 +558,7 @@ async fn test_available_to_withdraw_success() {
             request_id: stacks_height,
             stacks_block_hash: "test_hash".into(),
             stacks_block_height: stacks_height,
+            txid: "test_txid".into(),
         };
 
         apis::withdrawal_api::create_withdrawal(&configuration, request.clone())
