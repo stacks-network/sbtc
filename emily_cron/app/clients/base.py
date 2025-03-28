@@ -23,11 +23,7 @@ class APIClient:
         url = f"{cls.BASE_URL}{endpoint}".rstrip("/")
         try:
             response = requests.request(
-                method=method,
-                url=url,
-                params=params,
-                json=json_data,
-                headers=headers
+                method=method, url=url, params=params, json=json_data, headers=headers
             )
             response.raise_for_status()
             return response.json()

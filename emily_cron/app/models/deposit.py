@@ -6,6 +6,8 @@ from typing import Any, Optional, Self
 
 from btclib.script import script
 
+from app import settings
+
 
 class RequestStatus(Enum):
     PENDING = "pending"

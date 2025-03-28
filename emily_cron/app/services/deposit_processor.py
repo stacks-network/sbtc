@@ -68,7 +68,6 @@ class DepositProcessor:
 
         return updates
 
-
     def update_deposits(self) -> None:
         """Update deposit statuses.
 
@@ -110,7 +109,6 @@ class DepositProcessor:
             logger.info("No deposit updates needed")
 
         logger.info("Deposit status update job completed")
-
 
     def _enrich_deposits(self, deposits: Iterable[DepositInfo]) -> list[EnrichedDepositInfo]:
         """Fetch transaction details and enrich deposit info.

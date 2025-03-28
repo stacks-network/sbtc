@@ -22,19 +22,17 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         self.confirmed_expired = self._create_mock_deposit(
             txid="confirmed_expired",
             confirmed_height=890,  # Confirmed 110 blocks ago
-            lock_time=50  # Locktime of 50 blocks
+            lock_time=50,  # Locktime of 50 blocks
         )
 
         self.confirmed_active = self._create_mock_deposit(
             txid="confirmed_active",
             confirmed_height=990,  # Confirmed 10 blocks ago
-            lock_time=50  # Locktime of 50 blocks
+            lock_time=50,  # Locktime of 50 blocks
         )
 
         self.unconfirmed = self._create_mock_deposit(
-            txid="unconfirmed",
-            confirmed_height=-1,  # Not confirmed
-            lock_time=20
+            txid="unconfirmed", confirmed_height=-1, lock_time=20  # Not confirmed
         )
 
     def _create_mock_deposit(self, txid, confirmed_height, lock_time):
@@ -79,14 +77,14 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         self.assertEqual(len(updates), 1, "Only one transaction should be marked as failed")
         self.assertEqual(updates[0].bitcoin_txid, "confirmed_expired")
 
-    @patch('app.settings.MIN_BLOCK_CONFIRMATIONS', 10)  # Increase confirmations required
+    @patch("app.settings.MIN_BLOCK_CONFIRMATIONS", 10)  # Increase confirmations required
     def test_with_custom_confirmations(self):
         # Test with a custom confirmations setting
         # Create a deposit that would expire with default settings but not with increased confirmations
         edge_case = self._create_mock_deposit(
             txid="edge_case",
             confirmed_height=944,  # Just 56 blocks ago
-            lock_time=50  # Locktime of 50 blocks
+            lock_time=50,  # Locktime of 50 blocks
         )
 
         deposits = [edge_case]
@@ -96,7 +94,11 @@ class TestExpiredLocktimeProcessor(unittest.TestCase):
         )
 
         # With MIN_BLOCK_CONFIRMATIONS=10, this should not be marked as expired yet
-        self.assertEqual(len(updates), 0, "Transaction should not be marked as failed with increased confirmations")
+        self.assertEqual(
+            len(updates),
+            0,
+            "Transaction should not be marked as failed with increased confirmations",
+        )
 
 
 class TestDepositProcessor(unittest.TestCase):
@@ -134,12 +136,13 @@ class TestDepositProcessor(unittest.TestCase):
             "active_locktime": active_locktime,
         }
 
-    @patch('app.clients.PublicEmilyAPI.fetch_deposits')
-    @patch('app.clients.PrivateEmilyAPI.update_deposits')
-    @patch('app.clients.MempoolAPI.get_block_at')
-    @patch('app.clients.HiroAPI.get_stacks_block')
-    def test_update_deposits_workflow(self, mock_stacks_block, mock_btc_block,
-                                     mock_update_deposits, mock_fetch_deposits):
+    @patch("app.clients.PublicEmilyAPI.fetch_deposits")
+    @patch("app.clients.PrivateEmilyAPI.update_deposits")
+    @patch("app.clients.MempoolAPI.get_block_at")
+    @patch("app.clients.HiroAPI.get_stacks_block")
+    def test_update_deposits_workflow(
+        self, mock_stacks_block, mock_btc_block, mock_update_deposits, mock_fetch_deposits
+    ):
         """Test the complete deposit update workflow."""
         # Set up mocks
         mock_btc_block.return_value = self.bitcoin_chaintip
@@ -151,26 +154,26 @@ class TestDepositProcessor(unittest.TestCase):
 
         mock_fetch_deposits.side_effect = lambda status: {
             RequestStatus.PENDING: [pending_deposit],
-            RequestStatus.ACCEPTED: [accepted_deposit]
+            RequestStatus.ACCEPTED: [accepted_deposit],
         }[status]
 
         # Mock the _enrich_deposits method
-        with patch.object(self.processor, '_enrich_deposits') as mock_enrich:
+        with patch.object(self.processor, "_enrich_deposits") as mock_enrich:
             # Return our test deposits when enriching
             mock_enrich.return_value = [
                 self.mock_deposits["expired_locktime"],
-                self.mock_deposits["active_locktime"]
+                self.mock_deposits["active_locktime"],
             ]
 
             # Mock the processing methods to return known updates
-            with patch.object(self.processor, 'process_expired_locktime') as mock_process_locktime:
+            with patch.object(self.processor, "process_expired_locktime") as mock_process_locktime:
 
                 # Set up the mock returns
                 locktime_update = DepositUpdate(
                     bitcoin_txid="expired_locktime_tx",
                     bitcoin_tx_output_index=0,
                     status=RequestStatus.FAILED.value,
-                    status_message="Locktime expired"
+                    status_message="Locktime expired",
                 )
 
                 mock_process_locktime.return_value = [locktime_update]
@@ -195,7 +198,7 @@ class TestDepositProcessor(unittest.TestCase):
                 self.assertEqual(len(updates), 1)
                 self.assertEqual(updates[0].bitcoin_txid, "expired_locktime_tx")
 
-    @patch('app.clients.MempoolAPI.get_transaction')
+    @patch("app.clients.MempoolAPI.get_transaction")
     def test_enrich_deposits(self, mock_get_tx):
         """Test the deposit enrichment process."""
         # Create test deposits
@@ -210,7 +213,7 @@ class TestDepositProcessor(unittest.TestCase):
             "vin": [{"prevout": {"value": 2000000}}],
             "vout": [{"scriptpubkey_address": "bc1q...", "value": 1900000}],
             "fee": 100000,
-            "status": {"block_height": 1000, "block_time": self.current_time - 3600}
+            "status": {"block_height": 1000, "block_time": self.current_time - 3600},
         }
 
         # tx2 is not found in mempool
@@ -219,8 +222,9 @@ class TestDepositProcessor(unittest.TestCase):
         mock_get_tx.side_effect = lambda txid: tx1_data if txid == "tx1" else tx2_data
 
         # Mock the from_deposit_info and from_missing methods
-        with patch('app.models.EnrichedDepositInfo.from_deposit_info') as mock_from_info, \
-             patch('app.models.EnrichedDepositInfo.from_missing') as mock_from_missing:
+        with patch("app.models.EnrichedDepositInfo.from_deposit_info") as mock_from_info, patch(
+            "app.models.EnrichedDepositInfo.from_missing"
+        ) as mock_from_missing:
 
             # Set up the mock returns
             enriched1 = MagicMock(spec=EnrichedDepositInfo)

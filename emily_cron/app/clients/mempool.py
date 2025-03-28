@@ -28,7 +28,6 @@ class MempoolAPI(APIClient):
             timestamp = int(datetime.now().timestamp())
         return BlockInfo.from_bitcoin(cls.get(f"/v1/mining/blocks/timestamp/{timestamp}"))
 
-
     @classmethod
     def get_tip_height(cls) -> int:
         """Get the height of the tip of the Bitcoin chain.
