@@ -106,8 +106,8 @@ pub fn routes_with_stage_prefix(
 /// This is useful if you called the API and it doesn't recognize the call that was made internally,
 /// but APIGateway let it through.
 #[cfg(feature = "testing")]
-fn verbose_not_found_route(
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+fn verbose_not_found_route()
+-> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::any()
         .and(warp::get())
         .and(warp::path::full())

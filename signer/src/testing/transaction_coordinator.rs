@@ -1,14 +1,14 @@
 //! Test utilities for the transaction coordinator
 
 use std::cell::RefCell;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
+use crate::bitcoin::MockBitcoinInteract;
 use crate::bitcoin::rpc::BitcoinTxInfo;
 use crate::bitcoin::utxo::SignerUtxo;
-use crate::bitcoin::MockBitcoinInteract;
 use crate::context::Context;
 use crate::context::RequestDeciderEvent;
 use crate::emily_client::MockEmilyInteract;
@@ -27,31 +27,31 @@ use crate::stacks::contracts::AsContractCall;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::StacksTx;
+use crate::storage::DbRead;
+use crate::storage::DbWrite;
 use crate::storage::model;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::ToLittleEndianOrder as _;
-use crate::storage::DbRead;
-use crate::storage::DbWrite;
 use crate::testing;
-use crate::testing::storage::model::TestData;
 use crate::testing::storage::DbReadTestExt as _;
+use crate::testing::storage::model::TestData;
 use crate::testing::wsts::SignerSet;
 use crate::transaction_coordinator;
-use crate::transaction_coordinator::coordinator_public_key;
 use crate::transaction_coordinator::TxCoordinatorEventLoop;
+use crate::transaction_coordinator::coordinator_public_key;
 use bitcoin::hashes::Hash as _;
 
 use blockstack_lib::chainstate::stacks::TransactionContractCall;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::net::api::getcontractsrc::ContractSrcResponse;
+use clarity::vm::Value;
 use clarity::vm::types::BuffData;
 use clarity::vm::types::SequenceData;
-use clarity::vm::Value;
 use fake::Fake as _;
 use fake::Faker;
-use rand::seq::IteratorRandom;
 use rand::SeedableRng as _;
+use rand::seq::IteratorRandom;
 
 use super::context::TestContext;
 use super::context::WrappedMock;
@@ -311,9 +311,11 @@ where
                 block_height = %withdrawal.bitcoin_block_height,
                 %max_processable_height,
                 "checking withdrawal");
-            assert!(withdrawals
-                .iter()
-                .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid));
+            assert!(
+                withdrawals
+                    .iter()
+                    .any(|w| w.request_id == withdrawal.request_id && w.txid == withdrawal.txid)
+            );
         }
     }
 
@@ -1074,11 +1076,13 @@ where
         }
 
         // Check context window
-        assert!(storage
-            .get_signer_utxo(&block_c2.block_hash)
-            .await
-            .unwrap()
-            .is_some());
+        assert!(
+            storage
+                .get_signer_utxo(&block_c2.block_hash)
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     /// Assert we get the correct UTXO with a spending chain in a block

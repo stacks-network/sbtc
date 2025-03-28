@@ -2,12 +2,13 @@ use std::collections::HashSet;
 use std::ops::Deref;
 
 use bitcoin::hashes::Hash as _;
+use rand::SeedableRng as _;
 use rand::rngs::OsRng;
 use rand::seq::SliceRandom;
-use rand::SeedableRng as _;
 use test_case::test_case;
 
 use sbtc::testing::regtest;
+use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 use signer::bitcoin::utxo::SbtcRequests;
 use signer::bitcoin::utxo::SignerBtcState;
 use signer::bitcoin::validation::BitcoinTxContext;
@@ -18,17 +19,16 @@ use signer::bitcoin::validation::WithdrawalValidationResult;
 use signer::context::Context;
 use signer::context::SbtcLimits;
 use signer::message::BitcoinPreSignRequest;
-use signer::storage::model::TxPrevoutType;
 use signer::storage::DbRead as _;
+use signer::storage::model::TxPrevoutType;
 use signer::testing;
 use signer::testing::context::TestContext;
 use signer::testing::context::*;
-use signer::WITHDRAWAL_MIN_CONFIRMATIONS;
 
-use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::SweepAmounts;
 use crate::setup::TestSignerSet;
 use crate::setup::TestSweepSetup2;
+use crate::setup::backfill_bitcoin_blocks;
 
 const TEST_FEE_RATE: f64 = 10.0;
 

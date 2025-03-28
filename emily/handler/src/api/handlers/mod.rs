@@ -4,7 +4,7 @@ use crate::common::error::ErrorResponse;
 
 use std::convert::Infallible;
 use tracing::error;
-use warp::{http::StatusCode, Rejection, Reply};
+use warp::{Rejection, Reply, http::StatusCode};
 
 /// Chainstate handlers.
 pub mod chainstate;

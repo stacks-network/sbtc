@@ -1,16 +1,16 @@
 //! Helper functions for creating deposit transactions
 //!
 
-use bitcoin::absolute::LockTime;
-use bitcoin::transaction::Version;
 use bitcoin::Amount;
 use bitcoin::ScriptBuf;
 use bitcoin::Transaction;
 use bitcoin::TxOut;
+use bitcoin::absolute::LockTime;
+use bitcoin::transaction::Version;
 use clarity::vm::types::PrincipalData;
 use rand::rngs::OsRng;
-use secp256k1::SecretKey;
 use secp256k1::SECP256K1;
+use secp256k1::SecretKey;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::deposits;

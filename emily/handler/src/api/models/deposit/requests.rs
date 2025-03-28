@@ -14,10 +14,10 @@ use sbtc::deposits::{CreateDepositRequest, DepositInfo};
 use crate::api::models::chainstate::Chainstate;
 use crate::api::models::common::{Fulfillment, Status};
 use crate::common::error::{self, Error, ValidationError};
+use crate::database::entries::StatusEntry;
 use crate::database::entries::deposit::{
     DepositEntryKey, DepositEvent, ValidatedDepositUpdate, ValidatedUpdateDepositsRequest,
 };
-use crate::database::entries::StatusEntry;
 
 /// Query structure for the GetDepositsQuery struct.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]

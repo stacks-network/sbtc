@@ -145,8 +145,8 @@ mod tests {
     use fake::Fake as _;
     use fake::Faker;
     use prost::bytes::Buf as _;
-    use rand::rngs::OsRng;
     use rand::SeedableRng as _;
+    use rand::rngs::OsRng;
     use test_case::test_case;
 
     use p256k1::point::Point;

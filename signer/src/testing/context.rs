@@ -15,18 +15,18 @@ use blockstack_lib::{
 };
 use clarity::types::chainstate::{StacksAddress, StacksBlockId};
 use emily_client::models::Status;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{Mutex, broadcast};
 use tokio::time::error::Elapsed;
 
-use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::bitcoin::GetTransactionFeeResult;
+use crate::bitcoin::rpc::BitcoinBlockHeader;
 use crate::context::SbtcLimits;
 use crate::stacks::api::TenureBlocks;
 use crate::stacks::wallet::SignerWallet;
 use crate::storage::model::BitcoinTxId;
 use crate::{
     bitcoin::{
-        rpc::GetTxResponse, utxo::UnsignedTransaction, BitcoinInteract, MockBitcoinInteract,
+        BitcoinInteract, MockBitcoinInteract, rpc::GetTxResponse, utxo::UnsignedTransaction,
     },
     config::Settings,
     context::{Context, SignerContext, SignerSignal, SignerState, TerminationHandle},
@@ -38,8 +38,8 @@ use crate::{
         contracts::AsTxPayload,
     },
     storage::{
-        in_memory::{SharedStore, Store},
         DbRead, DbWrite,
+        in_memory::{SharedStore, Store},
     },
 };
 
@@ -904,8 +904,8 @@ where
 mod tests {
     use std::{
         sync::{
-            atomic::{AtomicBool, AtomicU8, Ordering},
             Arc,
+            atomic::{AtomicBool, AtomicU8, Ordering},
         },
         time::Duration,
     };

@@ -2,16 +2,16 @@
 //!
 
 use axum::{
+    Router,
     extract::DefaultBodyLimit,
     routing::{get, post},
-    Router,
 };
 
 use crate::context::Context;
 
 use axum::http::StatusCode;
 
-use super::{info, new_block, status, ApiState};
+use super::{ApiState, info, new_block, status};
 
 async fn new_attachment_handler() -> StatusCode {
     StatusCode::OK
@@ -35,14 +35,14 @@ pub fn get_router<C: Context + 'static>() -> Router<ApiState<C>> {
 #[cfg(test)]
 mod tests {
     use axum::{
+        Router,
         body::Body,
         http::{Method, Request, StatusCode},
-        Router,
     };
     use tower::ServiceExt;
 
     use crate::{
-        api::{router::get_router, ApiState},
+        api::{ApiState, router::get_router},
         testing::context::TestContext,
     };
 

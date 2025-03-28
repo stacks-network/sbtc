@@ -2,8 +2,8 @@
 
 use std::collections::BTreeSet;
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
     RwLock,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use bitcoin::Amount;
@@ -215,7 +215,13 @@ impl std::fmt::Display for SbtcLimits {
         write!(
             f,
             "[total cap: {:?}, per-deposit min: {:?}, per-deposit cap: {:?}, per-withdrawal cap: {:?}, max-mintable cap: {:?}, rolling-withdrawal blocks: {:?}, rolling-withdrawal cap: {:?}]",
-            self.total_cap, self.per_deposit_minimum, self.per_deposit_cap, self.per_withdrawal_cap, self.max_mintable_cap, self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap
+            self.total_cap,
+            self.per_deposit_minimum,
+            self.per_deposit_cap,
+            self.per_withdrawal_cap,
+            self.max_mintable_cap,
+            self.rolling_withdrawal_blocks,
+            self.rolling_withdrawal_cap
         )
     }
 }

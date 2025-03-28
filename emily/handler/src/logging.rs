@@ -1,10 +1,10 @@
 //! This module sets up logging for the application using `tracing_subscriber`
 //! It provides functions to initialize logging in either JSON format or pretty format
 
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::EnvFilter;
 
 /// Sets up logging based on the provided format preference
 ///

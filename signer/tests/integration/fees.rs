@@ -1,6 +1,6 @@
 //! Tests for the fees module.
 
-use signer::bitcoin::fees::{estimate_fee_rate, EstimateFees, MempoolSpace};
+use signer::bitcoin::fees::{EstimateFees, MempoolSpace, estimate_fee_rate};
 
 #[ignore = "This uses external sources and is not currently used in the codebase"]
 #[tokio::test]

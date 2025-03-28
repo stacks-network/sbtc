@@ -1,8 +1,5 @@
 //! Test the RPC clients
 
-use bitcoin::absolute::LockTime;
-use bitcoin::hashes::Hash;
-use bitcoin::transaction::Version;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -10,16 +7,19 @@ use bitcoin::ScriptBuf;
 use bitcoin::Sequence;
 use bitcoin::Txid;
 use bitcoin::Witness;
+use bitcoin::absolute::LockTime;
+use bitcoin::hashes::Hash;
+use bitcoin::transaction::Version;
 use bitcoincore_rpc::RpcApi;
 use bitcoincore_rpc_json::Utxo;
 use fake::{Fake, Faker};
 use rand::rngs::OsRng;
 use sbtc::testing::regtest;
-use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Recipient;
-use signer::bitcoin::rpc::BitcoinCoreClient;
+use sbtc::testing::regtest::p2wpkh_sign_transaction;
 use signer::bitcoin::BitcoinInteract;
+use signer::bitcoin::rpc::BitcoinCoreClient;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::BitcoinTxId;
 

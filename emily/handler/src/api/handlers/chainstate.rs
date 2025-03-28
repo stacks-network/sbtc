@@ -1,7 +1,7 @@
 //! Handlers for chainstate endpoints.
 use crate::{
     api::{
-        handlers::internal::{execute_reorg_handler, ExecuteReorgRequest},
+        handlers::internal::{ExecuteReorgRequest, execute_reorg_handler},
         models::chainstate::Chainstate,
     },
     common::error::{Error, Inconsistency},
@@ -10,7 +10,7 @@ use crate::{
 };
 use tracing::{debug, info, instrument, warn};
 use warp::http::StatusCode;
-use warp::reply::{json, with_status, Reply};
+use warp::reply::{Reply, json, with_status};
 
 // TODO(TBD): Add conflict handling to the chainstate endpoint.
 

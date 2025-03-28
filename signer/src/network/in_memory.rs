@@ -6,11 +6,11 @@
 
 use std::{
     collections::VecDeque,
-    sync::{atomic::AtomicU16, Arc},
+    sync::{Arc, atomic::AtomicU16},
 };
 
-use tokio::sync::broadcast;
 use tokio::sync::Mutex;
+use tokio::sync::broadcast;
 
 use crate::{
     codec::{Decode as _, Encode as _},

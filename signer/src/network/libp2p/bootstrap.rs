@@ -8,12 +8,12 @@ use std::{
 };
 
 use libp2p::{
-    core::{transport::PortUse, Endpoint},
-    swarm::{
-        dial_opts::DialOpts, dummy, ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour,
-        THandler, THandlerInEvent, ToSwarm,
-    },
     Multiaddr, PeerId,
+    core::{Endpoint, transport::PortUse},
+    swarm::{
+        ConnectionDenied, ConnectionId, FromSwarm, NetworkBehaviour, THandler, THandlerInEvent,
+        ToSwarm, dial_opts::DialOpts, dummy,
+    },
 };
 
 use super::MultiaddrExt;

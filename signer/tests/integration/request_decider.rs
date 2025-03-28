@@ -1,6 +1,6 @@
+use std::sync::Arc;
 use std::sync::atomic::AtomicU8;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
 use bitcoin::consensus::encode::serialize_hex;
@@ -21,21 +21,21 @@ use signer::emily_client::MockEmilyInteract;
 use signer::keys::PrivateKey;
 use signer::keys::PublicKey;
 use signer::message::SignerDepositDecision;
-use signer::network::in_memory2::SignerNetwork;
 use signer::network::InMemoryNetwork;
+use signer::network::in_memory2::SignerNetwork;
 use signer::request_decider::RequestDeciderEventLoop;
 use signer::stacks::api::MockStacksInteract;
+use signer::storage::DbRead as _;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbRead as _;
 use signer::testing;
 use signer::testing::context::*;
 use signer::testing::request_decider::TestEnvironment;
 use testing_emily_client::apis::testing_api;
 
-use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
+use crate::setup::backfill_bitcoin_blocks;
 
 fn test_environment(
     db: PgStore,

@@ -10,8 +10,6 @@
 
 use std::collections::BTreeMap;
 
-use bitcoin::hashes::Hash;
-use bitcoin::hex::DisplayHex;
 use bitcoin::BlockHash as BitcoinBlockHash;
 use bitcoin::OutPoint;
 use bitcoin::PubkeyHash;
@@ -20,12 +18,14 @@ use bitcoin::ScriptHash;
 use bitcoin::Txid as BitcoinTxid;
 use bitcoin::WitnessProgram;
 use bitcoin::WitnessVersion;
+use bitcoin::hashes::Hash;
+use bitcoin::hex::DisplayHex;
+use clarity::vm::ClarityName;
+use clarity::vm::Value as ClarityValue;
 use clarity::vm::types::CharType;
 use clarity::vm::types::PrincipalData;
 use clarity::vm::types::SequenceData;
 use clarity::vm::types::TupleData;
-use clarity::vm::ClarityName;
-use clarity::vm::Value as ClarityValue;
 use secp256k1::PublicKey;
 use stacks_common::types::chainstate::StacksBlockId;
 
@@ -744,9 +744,9 @@ mod tests {
 
     use bitcoin::key::CompressedPublicKey;
     use bitcoin::key::TweakedPublicKey;
+    use clarity::vm::types::BUFF_33;
     use clarity::vm::types::ListData;
     use clarity::vm::types::ListTypeData;
-    use clarity::vm::types::BUFF_33;
     use rand::rngs::OsRng;
     use secp256k1::SECP256K1;
 

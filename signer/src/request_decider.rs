@@ -26,12 +26,12 @@ use crate::message::SignerDepositDecision;
 use crate::message::SignerMessage;
 use crate::message::SignerWithdrawalDecision;
 use crate::network::MessageTransfer;
+use crate::storage::DbRead as _;
+use crate::storage::DbWrite as _;
 use crate::storage::model;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::DepositSigner;
 use crate::storage::model::WithdrawalSigner;
-use crate::storage::DbRead as _;
-use crate::storage::DbWrite as _;
 
 use futures::StreamExt;
 use futures::TryStreamExt;

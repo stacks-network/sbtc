@@ -1,6 +1,6 @@
 use blockstack_lib::types::chainstate::StacksAddress;
-use rand::rngs::OsRng;
 use rand::SeedableRng;
+use rand::rngs::OsRng;
 
 use sbtc::testing::regtest;
 use signer::error::Error;
@@ -11,6 +11,8 @@ use signer::stacks::contracts::ReqContext;
 use signer::stacks::contracts::RotateKeysErrorMsg;
 use signer::stacks::contracts::RotateKeysV1;
 use signer::stacks::wallet::SignerWallet;
+use signer::storage::DbRead;
+use signer::storage::DbWrite as _;
 use signer::storage::model::BitcoinBlock;
 use signer::storage::model::DkgSharesStatus;
 use signer::storage::model::EncryptedDkgShares;
@@ -19,8 +21,6 @@ use signer::storage::model::StacksPrincipal;
 use signer::storage::model::Transaction;
 use signer::storage::model::TransactionType;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbRead;
-use signer::storage::DbWrite as _;
 use signer::testing;
 use signer::testing::context::*;
 

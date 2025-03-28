@@ -23,13 +23,13 @@ use wsts::common::PolyCommitment;
 use wsts::net::Message;
 use wsts::net::Packet;
 use wsts::net::SignatureType;
-use wsts::state_machine::coordinator::fire;
-use wsts::state_machine::coordinator::frost;
+use wsts::state_machine::OperationResult;
+use wsts::state_machine::StateMachine as _;
 use wsts::state_machine::coordinator::Config;
 use wsts::state_machine::coordinator::Coordinator as _;
 use wsts::state_machine::coordinator::State as WstsState;
-use wsts::state_machine::OperationResult;
-use wsts::state_machine::StateMachine as _;
+use wsts::state_machine::coordinator::fire;
+use wsts::state_machine::coordinator::frost;
 use wsts::traits::Signer as _;
 use wsts::v2::Aggregator;
 

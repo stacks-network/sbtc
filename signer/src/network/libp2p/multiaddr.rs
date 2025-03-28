@@ -1,7 +1,7 @@
 //! Helper logic for working with multiaddresses.
 
-use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
+use libp2p::multiaddr::Protocol;
 
 /// Extensions for [`Multiaddr`].
 pub trait MultiaddrExt {

@@ -4,7 +4,7 @@ use std::time::Duration;
 use futures::StreamExt;
 use libp2p::kad::RoutingUpdate;
 use libp2p::swarm::SwarmEvent;
-use libp2p::{gossipsub, identify, kad, mdns, Swarm};
+use libp2p::{Swarm, gossipsub, identify, kad, mdns};
 use tokio::sync::Mutex;
 
 use crate::codec::Encode;
@@ -12,8 +12,8 @@ use crate::context::{Context, P2PEvent, SignerCommand, SignerSignal};
 use crate::error::Error;
 use crate::network::Msg;
 
-use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 use super::TOPIC;
+use super::swarm::{SignerBehavior, SignerBehaviorEvent};
 
 #[tracing::instrument(skip_all, name = "swarm")]
 pub async fn run(ctx: &impl Context, swarm: Arc<Mutex<Swarm<SignerBehavior>>>) {

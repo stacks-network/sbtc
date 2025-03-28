@@ -9,10 +9,10 @@ use bitcoin::OutPoint;
 use blockstack_lib::burnchains::Txid;
 use blockstack_lib::chainstate::burn::ConsensusHash;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
-use blockstack_lib::chainstate::stacks::db::blocks::MINIMUM_TX_FEE_RATE_PER_BYTE;
 use blockstack_lib::chainstate::stacks::StacksTransaction;
 use blockstack_lib::chainstate::stacks::TokenTransferMemo;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
+use blockstack_lib::chainstate::stacks::db::blocks::MINIMUM_TX_FEE_RATE_PER_BYTE;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::types::StandardPrincipalData;
 use blockstack_lib::codec::StacksMessageCodec;
@@ -31,19 +31,19 @@ use clarity::types::StacksEpochId;
 use clarity::vm::types::OptionalData;
 use clarity::vm::types::{BuffData, ListData, SequenceData};
 use clarity::vm::{ClarityName, ContractName, Value};
+use reqwest::StatusCode;
 use reqwest::header::CONTENT_LENGTH;
 use reqwest::header::CONTENT_TYPE;
-use reqwest::StatusCode;
 use serde::{Deserialize, Deserializer};
 use url::Url;
 
 use crate::config::Settings;
 use crate::error::Error;
 use crate::keys::PublicKey;
+use crate::storage::DbRead;
 use crate::storage::model::BitcoinBlockHash;
 use crate::storage::model::StacksBlock;
 use crate::storage::model::ToLittleEndianOrder as _;
-use crate::storage::DbRead;
 use crate::util::ApiFallbackClient;
 
 use super::contracts::AsTxPayload;
@@ -919,7 +919,7 @@ impl StacksClient {
             match blocks.first().map(|b| b.block_id()) {
                 Some(received_id) if received_id == last_block_id => {}
                 Some(received_id) => {
-                    return Err(Error::GetTenureRawMismatch(received_id, last_block_id))
+                    return Err(Error::GetTenureRawMismatch(received_id, last_block_id));
                 }
                 None => return Err(Error::EmptyStacksTenure),
             }
@@ -1622,8 +1622,8 @@ mod tests {
     use crate::config::NetworkKind;
     use crate::keys::{PrivateKey, PublicKey};
     use crate::stacks::wallet::get_full_tx_size;
-    use crate::storage::in_memory::Store;
     use crate::storage::DbWrite;
+    use crate::storage::in_memory::Store;
 
     use clarity::types::Address;
     use clarity::vm::types::{

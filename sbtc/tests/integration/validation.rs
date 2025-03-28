@@ -1,14 +1,5 @@
 //! Test deposit validation against bitcoin-core
 
-use bitcoin::absolute::LockTime;
-use bitcoin::opcodes;
-use bitcoin::script::PushBytes;
-use bitcoin::sighash::Prevouts;
-use bitcoin::sighash::SighashCache;
-use bitcoin::taproot::LeafVersion;
-use bitcoin::taproot::NodeInfo;
-use bitcoin::taproot::TaprootSpendInfo;
-use bitcoin::transaction::Version;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
@@ -20,10 +11,19 @@ use bitcoin::Transaction;
 use bitcoin::TxIn;
 use bitcoin::TxOut;
 use bitcoin::Witness;
-use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
-use bitcoincore_rpc::jsonrpc::error::RpcError;
+use bitcoin::absolute::LockTime;
+use bitcoin::opcodes;
+use bitcoin::script::PushBytes;
+use bitcoin::sighash::Prevouts;
+use bitcoin::sighash::SighashCache;
+use bitcoin::taproot::LeafVersion;
+use bitcoin::taproot::NodeInfo;
+use bitcoin::taproot::TaprootSpendInfo;
+use bitcoin::transaction::Version;
 use bitcoincore_rpc::Error as BtcRpcError;
 use bitcoincore_rpc::RpcApi;
+use bitcoincore_rpc::jsonrpc::error::Error as JsonRpcError;
+use bitcoincore_rpc::jsonrpc::error::RpcError;
 
 use clarity::types::chainstate::StacksAddress;
 use clarity::vm::types::PrincipalData;
@@ -35,8 +35,8 @@ use sbtc::testing::deposits::TxSetup;
 use sbtc::testing::regtest;
 use sbtc::testing::regtest::AsUtxo;
 use sbtc::testing::regtest::Recipient;
-use secp256k1::SecretKey;
 use secp256k1::SECP256K1;
+use secp256k1::SecretKey;
 
 /// Test the CreateDepositRequest::validate function.
 ///

@@ -7,10 +7,10 @@ use crate::api::models::chainstate::Chainstate;
 use crate::api::models::common::{Fulfillment, Status};
 use crate::api::models::withdrawal::WithdrawalParameters;
 use crate::common::error::{self, ValidationError};
+use crate::database::entries::StatusEntry;
 use crate::database::entries::withdrawal::{
     ValidatedUpdateWithdrawalRequest, ValidatedWithdrawalUpdate, WithdrawalEvent,
 };
-use crate::database::entries::StatusEntry;
 
 /// Query structure for the get withdrawals request.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]

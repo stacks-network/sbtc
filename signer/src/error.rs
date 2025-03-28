@@ -62,7 +62,9 @@ pub enum Error {
 
     /// The DKG verification state machine is in an end-state and can't be used
     /// for the requested operation.
-    #[error("DKG verification state machine is in an end-state and cannot be used for the requested operation: {0}")]
+    #[error(
+        "DKG verification state machine is in an end-state and cannot be used for the requested operation: {0}"
+    )]
     DkgVerificationEnded(PublicKeyXOnly, Box<dkg::verification::State>),
 
     /// The rotate-key frost verification signing round failed for the aggregate
@@ -75,7 +77,9 @@ pub enum Error {
     DkgVerificationWindowElapsed(PublicKey),
 
     /// Expected two aggregate keys to match, but they did not.
-    #[error("two aggregate keys were expected to match but did not: actual={actual}, expected={expected}")]
+    #[error(
+        "two aggregate keys were expected to match but did not: actual={actual}, expected={expected}"
+    )]
     AggregateKeyMismatch {
         /// The aggregate key being compared to the `expected` aggregate key.
         actual: Box<PublicKeyXOnly>,
@@ -699,7 +703,9 @@ pub enum Error {
     PreSignInvalidFeeRate(f64),
 
     /// Error when deposit requests would exceed sBTC supply cap
-    #[error("total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)")]
+    #[error(
+        "total deposit amount ({total_amount} sats) would exceed sBTC supply cap (current max mintable is {max_mintable} sats)"
+    )]
     ExceedsSbtcSupplyCap {
         /// Total deposit amount in sats
         total_amount: u64,

@@ -3,9 +3,9 @@
 //! data patterns.
 
 use crate::idpack::{
+    Segments,
     codec::{Decodable, Encodable},
     segmenters::{BitmapSegmenter, Segmenter},
-    Segments,
 };
 use proptest::prelude::*;
 use std::collections::BTreeSet;

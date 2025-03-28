@@ -10,16 +10,20 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use blockstack_lib::chainstate::stacks::StacksTransaction;
-use futures::future::try_join_all;
 use futures::Stream;
 use futures::StreamExt as _;
+use futures::future::try_join_all;
 use sha2::Digest;
 
+use crate::WITHDRAWAL_BLOCKS_EXPIRY;
+use crate::WITHDRAWAL_DUST_LIMIT;
+use crate::WITHDRAWAL_EXPIRY_BUFFER;
+use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
+use crate::bitcoin::BitcoinInteract;
+use crate::bitcoin::TransactionLookupHint;
 use crate::bitcoin::utxo;
 use crate::bitcoin::utxo::Fees;
 use crate::bitcoin::utxo::UnsignedMockTransaction;
-use crate::bitcoin::BitcoinInteract;
-use crate::bitcoin::TransactionLookupHint;
 use crate::context::Context;
 use crate::context::P2PEvent;
 use crate::context::RequestDeciderEvent;
@@ -41,8 +45,8 @@ use crate::message::Payload;
 use crate::message::SignerMessage;
 use crate::message::StacksTransactionSignRequest;
 use crate::message::WstsMessageId;
-use crate::metrics::Metrics;
 use crate::metrics::BITCOIN_BLOCKCHAIN;
+use crate::metrics::Metrics;
 use crate::metrics::STACKS_BLOCKCHAIN;
 use crate::network;
 use crate::signature::TaprootSignature;
@@ -56,26 +60,22 @@ use crate::stacks::contracts::CompleteDepositV1;
 use crate::stacks::contracts::ContractCall;
 use crate::stacks::contracts::RejectWithdrawalV1;
 use crate::stacks::contracts::RotateKeysV1;
-use crate::stacks::contracts::SmartContract;
 use crate::stacks::contracts::SMART_CONTRACTS;
+use crate::stacks::contracts::SmartContract;
 use crate::stacks::wallet::MultisigTx;
 use crate::stacks::wallet::SignerWallet;
+use crate::storage::DbRead;
 use crate::storage::model;
 use crate::storage::model::StacksTxId;
-use crate::storage::DbRead;
 use crate::wsts_state_machine::FireCoordinator;
 use crate::wsts_state_machine::FrostCoordinator;
 use crate::wsts_state_machine::WstsCoordinator;
-use crate::WITHDRAWAL_BLOCKS_EXPIRY;
-use crate::WITHDRAWAL_DUST_LIMIT;
-use crate::WITHDRAWAL_EXPIRY_BUFFER;
-use crate::WITHDRAWAL_MIN_CONFIRMATIONS;
 
 use bitcoin::hashes::Hash as _;
 use wsts::net::SignatureType;
-use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 use wsts::state_machine::OperationResult as WstsOperationResult;
 use wsts::state_machine::StateMachine as _;
+use wsts::state_machine::coordinator::State as WstsCoordinatorState;
 
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// # Transaction coordinator event loop
@@ -413,7 +413,9 @@ where
         let (needs_verification, needs_rotate_key) =
             assert_rotate_key_action(&last_dkg, current_aggregate_key)?;
         if !needs_verification && !needs_rotate_key {
-            tracing::debug!("stacks node is up to date with the current aggregate key and no DKG verification required");
+            tracing::debug!(
+                "stacks node is up to date with the current aggregate key and no DKG verification required"
+            );
             return Ok(());
         }
         tracing::info!(%needs_verification, %needs_rotate_key, "DKG verification and/or key rotation needed");
@@ -429,7 +431,9 @@ where
         }
 
         if needs_rotate_key {
-            tracing::info!("our aggregate key differs from the one in the registry contract; a key rotation may be necessary");
+            tracing::info!(
+                "our aggregate key differs from the one in the registry contract; a key rotation may be necessary"
+            );
 
             // current_aggregate_key define which wallet can sign stacks tx interacting
             // with the registry smart contract; fallbacks to `aggregate_key` if it's
@@ -481,7 +485,7 @@ where
                 .map(|tx| (&tx.requests).into())
                 .collect(),
             fee_rate: signer_btc_state.fee_rate,
-            last_fees: signer_btc_state.last_fees.map(Into::into),
+            last_fees: signer_btc_state.last_fees,
         };
 
         let presign_ack_filter = |event: &SignerSignal| {
@@ -2584,7 +2588,7 @@ pub fn assert_rotate_key_action(
         model::DkgSharesStatus::Unverified => true,
         model::DkgSharesStatus::Verified => needs_rotate_key,
         model::DkgSharesStatus::Failed => {
-            return Err(Error::DkgVerificationFailed(last_dkg.aggregate_key.into()))
+            return Err(Error::DkgVerificationFailed(last_dkg.aggregate_key.into()));
         }
     };
 
@@ -2602,7 +2606,7 @@ mod tests {
     use crate::keys::{PrivateKey, PublicKey};
     use crate::stacks::api::MockStacksInteract;
     use crate::storage::in_memory::SharedStore;
-    use crate::storage::{model, DbWrite};
+    use crate::storage::{DbWrite, model};
     use crate::testing;
     use crate::testing::context::*;
     use crate::testing::transaction_coordinator::TestEnvironment;
@@ -2679,7 +2683,7 @@ mod tests {
 
         let delay_i = 3;
         let delay = std::time::Duration::from_secs(delay_i);
-        std::env::set_var(
+        testing::set_var(
             "SIGNER_SIGNER__BITCOIN_PROCESSING_DELAY",
             delay_i.to_string(),
         );

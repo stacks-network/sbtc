@@ -6,7 +6,7 @@ use crate::config::{AssessmentMethod, Settings};
 use reqwest::Client;
 use std::convert::Infallible;
 use tracing::error;
-use warp::{http::StatusCode, Rejection, Reply};
+use warp::{Rejection, Reply, http::StatusCode};
 
 /// Handles requests to check the blocklist status of a given address.
 /// Converts successful blocklist status results to JSON and returns them,

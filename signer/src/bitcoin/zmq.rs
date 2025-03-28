@@ -34,10 +34,10 @@ use std::time::Duration;
 
 use bitcoin::Block;
 use bitcoin::BlockHash;
-use bitcoincore_zmq::subscribe_async_monitor_stream::MessageStream;
 use bitcoincore_zmq::Message;
 use bitcoincore_zmq::SocketEvent;
 use bitcoincore_zmq::SocketMessage;
+use bitcoincore_zmq::subscribe_async_monitor_stream::MessageStream;
 use futures::stream::Stream;
 use futures::stream::StreamExt as _;
 

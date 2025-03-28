@@ -4,15 +4,15 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use bitcoin::hashes::Hash as _;
 use bitcoin::OutPoint;
+use bitcoin::hashes::Hash as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::stacks::TransactionPayload;
 use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksBlockId;
-use sqlx::postgres::PgPoolOptions;
 use sqlx::Executor as _;
 use sqlx::PgExecutor;
+use sqlx::postgres::PgPoolOptions;
 use stacks_common::types::chainstate::StacksAddress;
 
 use crate::bitcoin::utxo::SignerUtxo;

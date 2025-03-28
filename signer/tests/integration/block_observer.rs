@@ -1,16 +1,16 @@
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::ops::Deref;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use std::time::Duration;
 
-use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::Address;
 use bitcoin::AddressType;
 use bitcoin::Amount;
 use bitcoin::OutPoint;
+use bitcoin::consensus::encode::serialize_hex;
 use bitcoincore_rpc::RpcApi as _;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
@@ -31,6 +31,7 @@ use signer::error::Error;
 use signer::keys::PublicKey;
 use signer::keys::SignerScriptPubKey as _;
 use signer::stacks::api::TenureBlocks;
+use signer::storage::DbWrite;
 use signer::storage::model;
 use signer::storage::model::BitcoinBlockHash;
 use signer::storage::model::DkgSharesStatus;
@@ -42,7 +43,6 @@ use signer::storage::model::TxOutputType;
 use signer::storage::model::TxPrevout;
 use signer::storage::model::TxPrevoutType;
 use signer::storage::postgres::PgStore;
-use signer::storage::DbWrite;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
 use testing_emily_client::apis::testing_api;
@@ -165,11 +165,12 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // Our database shouldn't have any deposit requests. In fact, our
     // database doesn't have any blockchain data at all.
     let db2 = &ctx.storage;
-    assert!(db2
-        .get_bitcoin_canonical_chain_tip()
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        db2.get_bitcoin_canonical_chain_tip()
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     tokio::spawn(async move {
         flag.store(true, Ordering::Relaxed);
@@ -213,11 +214,12 @@ async fn load_latest_deposit_requests_persists_requests_from_past(blocks_ago: u6
     // Okay now lets check if we have these deposit requests in our
     // database. It should also have bitcoin blockchain data
 
-    assert!(db2
-        .get_bitcoin_canonical_chain_tip()
-        .await
-        .unwrap()
-        .is_some());
+    assert!(
+        db2.get_bitcoin_canonical_chain_tip()
+            .await
+            .unwrap()
+            .is_some()
+    );
     let deposit_requests = db2.get_deposit_requests(&chain_tip, 100).await.unwrap();
 
     assert_eq!(deposit_requests.len(), 2);
@@ -431,16 +433,22 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     // Let's do a sanity check that we do not have any rows in our output
     // tables.
     assert!(fetch_output(&db, TxOutputType::Donation).await.is_empty());
-    assert!(fetch_output(&db, TxOutputType::SignersOpReturn)
-        .await
-        .is_empty());
-    assert!(fetch_output(&db, TxOutputType::SignersOutput)
-        .await
-        .is_empty());
+    assert!(
+        fetch_output(&db, TxOutputType::SignersOpReturn)
+            .await
+            .is_empty()
+    );
+    assert!(
+        fetch_output(&db, TxOutputType::SignersOutput)
+            .await
+            .is_empty()
+    );
     assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_empty());
-    assert!(fetch_input(&db, TxPrevoutType::SignersInput)
-        .await
-        .is_empty());
+    assert!(
+        fetch_input(&db, TxPrevoutType::SignersInput)
+            .await
+            .is_empty()
+    );
 
     // ** Step 3 **
     //
@@ -477,16 +485,22 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     // Okay now we check whether the we have a donation. The details should
     // match what we expect. All other input and output types should not be
     // in the database.
-    assert!(fetch_output(&db, TxOutputType::SignersOpReturn)
-        .await
-        .is_empty());
-    assert!(fetch_output(&db, TxOutputType::SignersOutput)
-        .await
-        .is_empty());
+    assert!(
+        fetch_output(&db, TxOutputType::SignersOpReturn)
+            .await
+            .is_empty()
+    );
+    assert!(
+        fetch_output(&db, TxOutputType::SignersOutput)
+            .await
+            .is_empty()
+    );
     assert!(fetch_input(&db, TxPrevoutType::Deposit).await.is_empty());
-    assert!(fetch_input(&db, TxPrevoutType::SignersInput)
-        .await
-        .is_empty());
+    assert!(
+        fetch_input(&db, TxPrevoutType::SignersInput)
+            .await
+            .is_empty()
+    );
 
     let TxOutput { txid, output_index, amount, .. } =
         fetch_output(&db, TxOutputType::Donation).await[0];
@@ -1265,11 +1279,13 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
 
     let storage = ctx.get_storage();
     // Initially, we have no dkg shares
-    assert!(storage
-        .get_latest_encrypted_dkg_shares()
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .get_latest_encrypted_dkg_shares()
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     tokio::spawn(async move {
         flag.store(true, Ordering::Relaxed);
@@ -1304,11 +1320,13 @@ async fn block_observer_updates_dkg_shares_after_observing_bitcoin_block() {
     assert_eq!(db_chain_tip.block_hash, chain_tip);
 
     // Still no dkg shares
-    assert!(storage
-        .get_latest_encrypted_dkg_shares()
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        storage
+            .get_latest_encrypted_dkg_shares()
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(storage.get_encrypted_dkg_shares_count().await.unwrap(), 0);
 
     // Signers and coordinator should allow DKG
