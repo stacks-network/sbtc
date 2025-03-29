@@ -145,6 +145,8 @@ impl Store {
             return None;
         }
 
+        // This is most likely an sBTC sweep transaction, so we match the
+        // version of locktime used in our actual sweep transactions.
         Some(bitcoin::Transaction {
             version: bitcoin::transaction::Version::TWO,
             lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
