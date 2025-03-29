@@ -391,14 +391,6 @@ pub trait DbRead {
         min_confirmations: u64,
     ) -> impl Future<Output = Result<bool, Error>> + Send;
 
-    /// Fetch the bitcoin transaction that is included in the block
-    /// identified by the block hash.
-    fn get_bitcoin_tx(
-        &self,
-        txid: &model::BitcoinTxId,
-        block_hash: &model::BitcoinBlockHash,
-    ) -> impl Future<Output = Result<Option<model::BitcoinTx>, Error>> + Send;
-
     /// Fetch bitcoin transactions that have fulfilled a deposit request
     /// but where we have not confirmed a stacks transaction finalizing the
     /// request.
