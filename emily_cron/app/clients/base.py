@@ -18,7 +18,7 @@ class APIClient:
         params: Optional[dict[str, Any]] = None,
         json_data: Optional[dict[str, Any]] = None,
         headers: Optional[dict[str, str]] = None,
-        raise_for_error: bool = False,
+        ignore_errors: bool = False,
     ) -> Any:
         """Make an HTTP request and return JSON response.
 
@@ -28,8 +28,7 @@ class APIClient:
             params: Optional query parameters
             json_data: Optional JSON data for request body
             headers: Optional HTTP headers
-            raise_on_error: If True, raises exceptions for HTTP or JSON errors
-                            If False, logs errors and returns empty dict
+            ignore_errors: If True, logs errors and returns empty dict
 
         Returns:
             Parsed JSON response or empty dict on error
@@ -51,20 +50,22 @@ class APIClient:
                 return response.json()
             except Exception as e:
                 logger.error(f"Invalid JSON response from {method} {url}: {e}")
-                if raise_for_error:
+                if not ignore_errors:
                     raise
                 return {}
 
         except requests.RequestException as e:
             logger.error(f"Error {method} {url}: {e}")
-            if raise_for_error:
+            if not ignore_errors:
                 raise
             return {}
 
     @classmethod
-    def get(cls, endpoint: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    def get(
+        cls, endpoint: str, params: Optional[dict[str, Any]] = None, ignore_errors: bool = False
+    ) -> Any:
         """Perform a GET request and return JSON response."""
-        return cls._make_request("GET", endpoint, params=params)
+        return cls._make_request("GET", endpoint, params=params, ignore_errors=ignore_errors)
 
     @classmethod
     def post(
@@ -72,9 +73,12 @@ class APIClient:
         endpoint: str,
         json_data: dict[str, Any],
         headers: Optional[dict[str, str]] = None,
+        ignore_errors: bool = False,
     ) -> dict[str, Any]:
         """Perform a POST request and return JSON response."""
-        return cls._make_request("POST", endpoint, json_data=json_data, headers=headers)
+        return cls._make_request(
+            "POST", endpoint, json_data=json_data, headers=headers, ignore_errors=ignore_errors
+        )
 
     @classmethod
     def put(
@@ -82,6 +86,9 @@ class APIClient:
         endpoint: str,
         json_data: dict[str, Any],
         headers: Optional[dict[str, str]] = None,
+        ignore_errors: bool = False,
     ) -> dict[str, Any]:
         """Perform a PUT request and return JSON response."""
-        return cls._make_request("PUT", endpoint, json_data=json_data, headers=headers)
+        return cls._make_request(
+            "PUT", endpoint, json_data=json_data, headers=headers, ignore_errors=ignore_errors
+        )

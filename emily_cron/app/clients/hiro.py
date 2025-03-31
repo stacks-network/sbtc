@@ -41,6 +41,7 @@ class HiroAPI(APIClient):
         result: dict[str, Any] = cls.post(
             f"/v2/contracts/call-read/{settings.DEPLOYER_ADDRESS}/sbtc-registry/get-completed-deposit",
             json_data=params,
+            ignore_errors=True,
         )
         # Check if the call was successful and returned a value
         # 0x09 represents 'None' in Clarity's option type encoding
@@ -62,7 +63,7 @@ class HiroAPI(APIClient):
         Returns:
             dict: Block information
         """
-        return cls.get(f"/extended/v2/blocks/{height_or_hash}", raise_on_error=True)
+        return cls.get(f"/extended/v2/blocks/{height_or_hash}", ignore_errors=False)
 
     @classmethod
     def get_stacks_block(cls, height_or_hash: int | str = "latest") -> BlockInfo:
@@ -79,7 +80,7 @@ class HiroAPI(APIClient):
         if height_or_hash == "latest":
             # Don't cache "latest" queries
             block_data: dict[str, Any] = cls.get(
-                f"/extended/v2/blocks/{height_or_hash}", raise_on_error=True
+                f"/extended/v2/blocks/{height_or_hash}", ignore_errors=False
             )
         else:
             # Use cached version for specific heights or hashes
