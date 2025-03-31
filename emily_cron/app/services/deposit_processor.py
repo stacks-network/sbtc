@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from itertools import chain
 from typing import Iterable
 
@@ -116,21 +115,14 @@ class DepositProcessor:
                 transaction_details.append(EnrichedDepositInfo.from_missing(deposit))
                 continue
 
-            spending_outputs = {
-                vout.get("scriptpubkey_address", "Unknown"): vout.get("value", 0)
-                for vout in tx_data.get("vout", [])
-            }
+            if "fee" not in tx_data:
+                logger.debug(f"Fee is missing for transaction {deposit.bitcoin_txid}")
 
             additional_info = {
                 "in_mempool": True,
-                "total_input": sum(
-                    vin.get("prevout", {}).get("value", 0) for vin in tx_data.get("vin", [])
-                ),
                 "fee": tx_data.get("fee", 0),
                 "confirmed_height": tx_data.get("status", {}).get("block_height", -1),
                 "confirmed_time": tx_data.get("status", {}).get("block_time", -1),
-                "num_inputs": len(tx_data.get("vin", [])),
-                "spending_outputs": spending_outputs,
             }
 
             transaction_details.append(

@@ -72,21 +72,10 @@ class EnrichedDepositInfo(DepositInfo):
     """Represents a deposit with additional enriched details."""
 
     in_mempool: bool  # Whether the transaction was found by the mempool API
-    total_input: int
     fee: int
     confirmed_height: int
     confirmed_time: int
-    spending_outputs: dict[str, int]
-    num_inputs: int
     # was_minted: bool
-
-    @property
-    def num_outputs(self):
-        return len(self.spending_outputs)
-
-    @property
-    def total_spent(self):
-        return sum(self.spending_outputs.values())
 
     @classmethod
     def from_deposit_info(cls, d: DepositInfo, additional_data: dict) -> Self:
@@ -97,12 +86,9 @@ class EnrichedDepositInfo(DepositInfo):
         """Create an EnrichedDepositInfo with missing values."""
         missing_data = {
             "in_mempool": False,
-            "total_input": -1,
             "fee": -1,
             "confirmed_height": -1,
             "confirmed_time": -1,
-            "spending_outputs": {},
-            "num_inputs": -1,
         }
         return cls(**asdict(d), **missing_data)
 
