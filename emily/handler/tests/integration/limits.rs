@@ -451,7 +451,7 @@ async fn test_available_to_withdraw_no_chainstate_in_db_at_target_height() {
         per_deposit_cap: Some(None),
         per_withdrawal_cap: Some(None),
         rolling_withdrawal_blocks: Some(Some(100)),
-        rolling_withdrawal_cap: Some(Some(10000)),
+        rolling_withdrawal_cap: Some(Some(10_000)),
         account_caps: HashMap::new(),
     };
     // Set some chainstates to make set_limits work
@@ -508,7 +508,7 @@ async fn test_available_to_withdraw_success() {
         per_deposit_cap: Some(None),
         per_withdrawal_cap: Some(None),
         rolling_withdrawal_blocks: Some(Some(10)),
-        rolling_withdrawal_cap: Some(Some(10000)),
+        rolling_withdrawal_cap: Some(Some(10_000)),
         account_caps: HashMap::new(),
     };
     // Set some chainstates to make set_limits work
@@ -521,10 +521,10 @@ async fn test_available_to_withdraw_success() {
     assert!(result.is_ok());
 
     // Create chainstates
-    let min_bitcoin_height = 1000000;
-    let max_bitcoin_height = 1000020;
+    let min_bitcoin_height = 1_000_000;
+    let max_bitcoin_height = 1_000_020;
     let stacks_block_per_bitcoin_block = 5;
-    let mut stacks_height = 2000000;
+    let mut stacks_height = 2_000_000;
     let mut chainstates: Vec<_> = Default::default();
 
     for bitcoin_height in min_bitcoin_height..max_bitcoin_height {
@@ -539,16 +539,16 @@ async fn test_available_to_withdraw_success() {
 
     // Create withdrawals
 
-    // bitcoin heights in window: [1000010;1000019] (both sides including)
-    // stacks heights in window: [2000050;2000099] (both sides including)
+    // bitcoin heights in window: [1_000_010;1_000_019] (both sides including)
+    // stacks heights in window: [2_000_050;2_000_099] (both sides including)
 
     // Here we put different amount to withdrawals that should be included in window and to ones that shouldn't.
     // Thus, if total sum is correct, then only correct withdrawals was counted
     for (stacks_height, amount) in [
-        (2000050, 1000),
-        (2000049, 999),
-        (2000099, 1000),
-        (2000070, 1000),
+        (2_000_050, 1000),
+        (2_000_049, 999),
+        (2_000_099, 1000),
+        (2_000_070, 1000),
     ] {
         let request = CreateWithdrawalRequestBody {
             amount,
