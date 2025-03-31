@@ -618,7 +618,7 @@ mod tests {
 
         assert_eq!(
             settings.bitcoin.rpc_endpoints,
-            vec![url("http://devnet:devnet@localhost:18443")]
+            vec![url("http://devnet:devnet@127.0.0.1:18443")]
         );
         assert_eq!(settings.bitcoin.rpc_endpoints[0].username(), "devnet");
         assert_eq!(settings.bitcoin.rpc_endpoints[0].password(), Some("devnet"));
