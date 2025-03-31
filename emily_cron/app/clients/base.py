@@ -34,7 +34,7 @@ class APIClient:
         Returns:
             Parsed JSON response or empty dict on error
         """
-        url = f"{cls.BASE_URL}{endpoint}".rstrip("/")
+        url = f"{cls.BASE_URL}{endpoint}"
 
         try:
             response = requests.request(
