@@ -3,7 +3,7 @@ from datetime import datetime
 from itertools import chain
 from typing import Iterable
 
-from ..clients import PublicEmilyAPI, PrivateEmilyAPI, HiroAPI, MempoolAPI
+from ..clients import PrivateEmilyAPI, HiroAPI, MempoolAPI
 from ..models import (
     DepositUpdate,
     EnrichedDepositInfo,
@@ -74,8 +74,8 @@ class DepositProcessor:
         logger.info(f"Stacks chain tip: {stacks_chaintip}")
 
         # Fetch pending and accepted deposits
-        pending_deposits = PublicEmilyAPI.fetch_deposits(RequestStatus.PENDING)
-        accepted_deposits = PublicEmilyAPI.fetch_deposits(RequestStatus.ACCEPTED)
+        pending_deposits = PrivateEmilyAPI.fetch_deposits(RequestStatus.PENDING)
+        accepted_deposits = PrivateEmilyAPI.fetch_deposits(RequestStatus.ACCEPTED)
 
         # Enrich deposits with additional transaction data
         enriched_deposits = self._enrich_deposits(chain(pending_deposits, accepted_deposits))

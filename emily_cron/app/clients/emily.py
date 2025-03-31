@@ -21,7 +21,7 @@ class PublicEmilyAPI(APIClient):
         return [DepositInfo.from_json(deposit) for deposit in data.get("deposits", [])]
 
 
-class PrivateEmilyAPI(APIClient):
+class PrivateEmilyAPI(PublicEmilyAPI):
     """Client for interacting with the Private Emily API."""
 
     BASE_URL = settings.PRIVATE_EMILY_ENDPOINT

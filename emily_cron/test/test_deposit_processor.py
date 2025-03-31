@@ -137,7 +137,7 @@ class TestDepositProcessor(unittest.TestCase):
             "active_locktime": active_locktime,
         }
 
-    @patch("app.clients.PublicEmilyAPI.fetch_deposits")
+    @patch("app.clients.PrivateEmilyAPI.fetch_deposits")
     @patch("app.clients.PrivateEmilyAPI.update_deposits")
     @patch("app.clients.MempoolAPI.get_tip_height")
     @patch("app.clients.HiroAPI.get_stacks_block")
