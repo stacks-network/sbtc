@@ -72,10 +72,9 @@ x-stacks-signer: &stacks-signer
     - /bin/bash
     - -c
     - |
-      apt-get update && apt-get install -y gettext-base
       cd /data/
       set -e
-      envsubst < config.toml.in > config.toml
+      perl -pe 's/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/$$ENV{$1}/ge' < config.toml.in > config.toml
       exec stacks-signer run --config config.toml
 
 # Services.
@@ -303,13 +302,12 @@ services:
       - /bin/bash
       - -c
       - |
-        apt-get update && apt-get install -y jq
         set -e
         trap "exit" INT TERM
         trap "kill 0" EXIT
         bitcoin-cli -rpcconnect=bitcoin -rpcwait getmininginfo
-        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=main descriptors=false
-        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=depositor descriptors=true
+        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=main descriptors=false || true
+        bitcoin-cli -rpcconnect=bitcoin -named createwallet wallet_name=depositor descriptors=true || true
         bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin importaddress $${BTC_ADDR} "" false
         bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin generatetoaddress $${INIT_BLOCKS} $${BTC_ADDR}
         ADDR=$$(bitcoin-cli -rpcwallet=depositor -rpcconnect=bitcoin getnewaddress label="" bech32)
@@ -317,7 +315,7 @@ services:
         DEFAULT_TIMEOUT=$$(($$(date +%s) + 30))
         while true; do
           TX=$$(bitcoin-cli -rpcwallet=main -rpcconnect=bitcoin listtransactions '*' 1 0 true)
-          CONFS=$$(echo "$${TX}" | jq '.[].confirmations')
+          CONFS=$$(echo "$${TX}" | grep -oP '"confirmations": \K\d+' | awk '{print $$1}')
           if [ "$${CONFS}" = "0" ] || [ $$(date +%s) -gt $$DEFAULT_TIMEOUT ]; then
             if [ $$(date +%s) -gt $$DEFAULT_TIMEOUT ]; then
               echo "Timed out waiting for a mempool tx, mining a btc block..."
@@ -385,10 +383,9 @@ services:
       - /bin/bash
       - -c
       - |
-        apt-get update && apt-get install -y gettext-base
         cd /data/
         set -e
-        envsubst < config.toml.in > config.toml
+        perl -pe 's/\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?/$$ENV{$1}/ge' < config.toml.in > config.toml
         exec stacks-node start --config config.toml
     extra_hosts:
       - "host.docker.internal:host-gateway"
