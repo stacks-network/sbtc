@@ -1,6 +1,7 @@
 import logging
 import requests
 from typing import Any, Optional
+from requests.exceptions import RequestException, JSONDecodeError
 
 logger = logging.getLogger(__name__)
 
@@ -42,20 +43,13 @@ class APIClient:
                 params=params,
                 json=json_data,
                 headers=headers,
-                timeout=30,  # Add timeout to prevent hanging requests
+                timeout=30,
             )
             response.raise_for_status()
+            return response.json()
 
-            try:
-                return response.json()
-            except Exception as e:
-                logger.error(f"Invalid JSON response from {method} {url}: {e}")
-                if not ignore_errors:
-                    raise
-                return {}
-
-        except requests.RequestException as e:
-            logger.error(f"Error {method} {url}: {e}")
+        except (JSONDecodeError, RequestException) as e:
+            logger.error(f"Error during {method} {url}: {e}")
             if not ignore_errors:
                 raise
             return {}
