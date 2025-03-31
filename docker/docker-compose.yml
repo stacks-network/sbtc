@@ -249,7 +249,7 @@ services:
       BITCOIND_URL: http://bitcoin:18443
       EMILY_URL: http://emily-server:3031
       MEMPOOL_API_URL: http://mempool-web:8083/api
-      PUBLIC_MEMPOOL_URL: http://localhost:8083
+      PUBLIC_MEMPOOL_URL: http://127.0.0.1:8083
       BITCOIN_RPC_USER_NAME: devnet
       BITCOIN_RPC_PASSWORD: devnet
       WALLET_NETWORK: sbtcDevenv
@@ -515,7 +515,7 @@ services:
       STACKS_BLOCKCHAIN_API_HOST: "0.0.0.0"
       STACKS_CORE_RPC_HOST: "stacks-node"
       STACKS_CORE_RPC_PORT: 20443
-      API_DOCS_URL: http://localhost:3999/doc
+      API_DOCS_URL: http://127.0.0.1:3999/doc
     profiles:
       - default
 
