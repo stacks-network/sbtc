@@ -1,42 +1,42 @@
 ################################################################################
 # Define test groups
 ################################################################################
+
 [test-groups]
 # Test group for integration tests that need to be run serially. Tests in this
 # group will be run one at a time.
 serial = { max-threads = 1 }
-# Test group for heavy integration tests. We'll run them first since they take
-# the longest (priority=100) and ensure they have 2 threads.
+# Test group for integration tests that are heavy but run in parallel. Our
+# overrides below for heavy tests use 2 threads each, so the parallelism of
+# these tests will be limited to 2 tests at a time.
 heavy = { max-threads = 4 }
 
 ################################################################################
-# Apply the 'serial' test-group to all integration tests which need to be run
-# serially. This is primarily tests which need to interact with Emily as it is
-# not run using `testcontainers` at the moment.
+# Overrides for specific test filters
 ################################################################################
 
-# All integration tests in the 'sbtc' package. This is because at the moment
-# `testcontainers` are in the `signer` package, which can't be referenced by
-# `sbtc`.
-[[profile.default.overrides]]
-filter = 'package(sbtc) & kind(test)'
-test-group = 'serial'
-
+# Emily Handler
+# ------------------------------------------------------------------------------
 # All integration tests in the 'emily-handler' package as these interact with
-# Emily.
+# shared instances of Bitcoin and Emily.
 [[profile.default.overrides]]
 filter = 'package(emily-handler) & kind(test)'
 test-group = 'serial'
 
+# ZMQ
+# ------------------------------------------------------------------------------
 # Due to the way that ZMQ works, it's possible for subscribers in tests to
 # get messages from other tests' bitcoin core instances, so these need to be
 # run serially.
 [[profile.default.overrides]]
 filter = 'package(signer) & kind(test) & test(/^zmq/)'
 test-group = 'serial'
-threads-required = 100  # Require all available threads = guaranteed to run "alone"
+threads-required = 100  # Require all available test threads = make sure they run "alone"
 
-### For our heavier tests (e.g. 
+# Heavy Tests
+# ------------------------------------------------------------------------------
+# For our heavier tests (e.g. full e2e which take >20s), start them first
+# (priority=100) and give them 2 threads.
 [[profile.default.overrides]]
 filter = """
 package(signer) & kind(test) & (
