@@ -574,8 +574,6 @@ services:
     image: mariadb:10.5.21
     container_name: mariadb
     stop_grace_period: 5s
-    # ports:
-    #   - "127.0.0.1:3306:3306"
     environment:
       MYSQL_DATABASE: "mempool"
       MYSQL_USER: "mempool"
