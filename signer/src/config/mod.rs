@@ -888,11 +888,11 @@ mod tests {
     fn default_config_toml_loads_with_environment() {
         clear_env();
 
-        // The default toml used here specifies http://localhost:20443
+        // The default toml used here specifies http://127.0.0.1:20443
         // as the stacks node endpoint.
         let settings = Settings::new_from_default_config().unwrap();
         let host = settings.stacks.endpoints[0].host();
-        assert_eq!(host, Some(url::Host::Domain("localhost")));
+        assert_eq!(host, Some(url::Host::Domain("127.0.0.1")));
         assert_eq!(settings.stacks.endpoints[0].port(), Some(20443));
 
         std::env::set_var(
