@@ -130,7 +130,7 @@ services:
       - DEFAULT_ROLLING_WITHDRAWAL_CAP=100000000000
       - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     ports:
-      - "3031:3031"
+      - "127.0.0.1:3031:3031"
     profiles:
       - default
 
@@ -552,7 +552,7 @@ services:
       - bitcoin-miner
     environment:
       BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
-    entrypoint: 
+    entrypoint:
       - /bin/bash
       - -c
       - |
