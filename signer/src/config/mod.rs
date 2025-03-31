@@ -892,7 +892,8 @@ mod tests {
         // as the stacks node endpoint.
         let settings = Settings::new_from_default_config().unwrap();
         let host = settings.stacks.endpoints[0].host();
-        assert_eq!(host, Some(url::Host::Domain("127.0.0.1")));
+        let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
+        assert_eq!(host, Some(url::Host::Ipv4(ip)));
         assert_eq!(settings.stacks.endpoints[0].port(), Some(20443));
 
         std::env::set_var(
