@@ -23,6 +23,9 @@ pub struct Limits {
     pub rolling_withdrawal_blocks: Option<u64>,
     /// Maximum total sBTC that can be withdrawn within the rolling withdrawal window.
     pub rolling_withdrawal_cap: Option<u64>,
+    /// Total amount sBTC still available for withdrawals in current window. All withdrawals except rejected
+    /// counted here
+    pub available_to_withdraw: Option<u64>,
     /// Represents the individual limits for requests coming from different accounts.
     pub account_caps: HashMap<String, AccountLimits>,
 }
