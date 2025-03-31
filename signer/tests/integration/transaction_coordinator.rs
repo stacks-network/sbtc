@@ -3791,6 +3791,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         Chainstate {
             stacks_block_hash: stacks_chain_tip.to_string(),
             stacks_block_height: stacks_tip_height,
+            bitcoin_block_height: Some(Some(0)), // TODO: maybe we will want to have here some sensible data.
         },
     )
     .await
