@@ -23,6 +23,10 @@ class DepositProcessor:
     ) -> list[DepositUpdate]:
         """Process transactions with expired locktime.
 
+        This includes:
+        - Transactions where locktime expired and the UTXO was NOT spent.
+        - Transactions where the UTXO was reclaimed.
+
         Args:
             enriched_deposits: List of enriched deposit information
             bitcoin_chaintip_height: Current Bitcoin chain tip height
@@ -32,27 +36,85 @@ class DepositProcessor:
         """
         updates = []
 
-        # Find transactions with expired locktime
-        locktime_expired_txs = [
-            tx for tx in enriched_deposits if tx.is_expired(bitcoin_chaintip_height)
-        ]
+        for tx in enriched_deposits:
+            # Step 1: Check if the time-based expiry condition is met
+            if not tx.is_expired(bitcoin_chaintip_height):
+                continue  # Not eligible for failure yet based on time
 
-        if not locktime_expired_txs:
-            return updates
+            # Step 2: Time has expired, now check UTXO status
+            logger.debug(f"Deposit {tx.bitcoin_txid} time expired, checking UTXO status...")
+            utxo_status = MempoolAPI.get_utxo_status(tx.bitcoin_txid, tx.bitcoin_tx_output_index)
+            is_utxo_spent = utxo_status.get("spent", False)
 
-        logger.info(
-            f"Found {len(locktime_expired_txs)} transactions with expired locktime to mark as FAILED"
-        )
-
-        for tx in locktime_expired_txs:
-            logger.info(f"Marking transaction {tx.bitcoin_txid} with expired locktime as FAILED")
-            updates.append(
-                DepositUpdate(
-                    bitcoin_txid=tx.bitcoin_txid,
-                    bitcoin_tx_output_index=tx.bitcoin_tx_output_index,
-                    status=RequestStatus.FAILED.value,
-                    status_message=f"Locktime expired at height {bitcoin_chaintip_height}",
+            if not is_utxo_spent:
+                # Case 1: Time expired AND UTXO is unspent -> Mark FAILED
+                logger.info(
+                    f"Marking transaction {tx.bitcoin_txid} as FAILED (Locktime expired, unspent)"
                 )
+                updates.append(
+                    DepositUpdate(
+                        bitcoin_txid=tx.bitcoin_txid,
+                        bitcoin_tx_output_index=tx.bitcoin_tx_output_index,
+                        status=RequestStatus.FAILED.value,
+                        status_message=f"Locktime expired at height {bitcoin_chaintip_height} and UTXO unspent",
+                    )
+                )
+                continue
+
+            # Step 3: UTXO is spent, check if it was a reclaim
+            spending_txid = utxo_status.get("txid")
+            if not spending_txid:
+                logger.warning(
+                    f"Deposit {tx.bitcoin_txid} UTXO is spent, but spending TXID is missing from API response. Cannot check for reclaim."
+                )
+                continue  # Cannot determine reclaim, assume it's a signer sweep
+
+            logger.debug(
+                f"Deposit {tx.bitcoin_txid} UTXO spent by {spending_txid}, checking for reclaim..."
+            )
+            spending_tx_details = MempoolAPI.get_transaction(spending_txid)
+            is_reclaim_check = False
+            if spending_tx_details:
+                for vin in spending_tx_details.get("vin", []):
+                    if (
+                        vin.get("txid") == tx.bitcoin_txid
+                        and vin.get("vout") == tx.bitcoin_tx_output_index
+                    ):
+                        witness_data = vin.get("witness", [])
+                        # Simple check: does witness contain the reclaim script?
+                        if any(tx.reclaim_script in item for item in witness_data):
+                            is_reclaim_check = True
+                            break
+            else:
+                logger.warning(
+                    f"Could not fetch spending tx details for {spending_txid} to check for reclaim of {tx.bitcoin_txid}."
+                )
+                # If we can't fetch the spending tx, we can't confirm reclaim.
+                # For safety, assume it might be a signer sweep.
+                continue
+
+            if is_reclaim_check:
+                # Case 2: Time expired, UTXO spent, AND identified as reclaim -> Mark FAILED
+                logger.info(
+                    f"Marking transaction {tx.bitcoin_txid} as FAILED (Depositor reclaim detected)"
+                )
+                updates.append(
+                    DepositUpdate(
+                        bitcoin_txid=tx.bitcoin_txid,
+                        bitcoin_tx_output_index=tx.bitcoin_tx_output_index,
+                        status=RequestStatus.FAILED.value,
+                        status_message=f"Depositor reclaim detected in tx {spending_txid}",
+                    )
+                )
+            else:
+                # Case 3: Time expired, UTXO spent, but NOT identified as reclaim -> Assume signer sweep, do nothing.
+                logger.debug(
+                    f"Deposit {tx.bitcoin_txid} time expired, but UTXO spent by {spending_txid} (likely signer sweep). Not failing."
+                )
+
+        if updates:
+            logger.info(
+                f"Found {len(updates)} transactions to mark as FAILED (expired or reclaimed)"
             )
 
         return updates
@@ -82,11 +144,8 @@ class DepositProcessor:
         # Process deposits and collect updates
         updates = []
 
-        # Process transactions with expired locktime
-        locktime_updates = self.process_expired_locktime(
-            enriched_deposits,
-            bitcoin_chaintip_height,
-        )
+        # Process transactions with expired locktime or reclaimed
+        locktime_updates = self.process_expired_locktime(enriched_deposits, bitcoin_chaintip_height)
         updates.extend(locktime_updates)
 
         # Apply updates
@@ -99,7 +158,7 @@ class DepositProcessor:
         logger.info("Deposit status update job completed")
 
     def _enrich_deposits(self, deposits: Iterable[DepositInfo]) -> list[EnrichedDepositInfo]:
-        """Fetch transaction details and enrich deposit info.
+        """Fetch transaction details and UTXO status, and enrich deposit info.
 
         Args:
             deposits: Iterable of DepositInfo objects

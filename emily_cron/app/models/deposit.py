@@ -75,6 +75,10 @@ class EnrichedDepositInfo(DepositInfo):
     fee: int
     confirmed_height: int
     confirmed_time: int
+    utxo_spent: bool = False  # Whether the deposit UTXO has been spent
+    spending_tx_confirmed: bool = False  # If spent, whether the spending tx is confirmed
+    spending_txid: Optional[str] = None  # If spent, the txid of the spending transaction
+    is_reclaim: Optional[bool] = None  # If spent, whether it was likely a depositor reclaim
     # was_minted: bool
 
     @classmethod
@@ -89,11 +93,18 @@ class EnrichedDepositInfo(DepositInfo):
             "fee": -1,
             "confirmed_height": -1,
             "confirmed_time": -1,
+            "utxo_spent": False,
+            "spending_tx_confirmed": False,
+            "spending_txid": None,
+            "is_reclaim": None,  # Initialize is_reclaim
         }
         return cls(**asdict(d), **missing_data)
 
     def is_expired(self, bitcoin_chaintip_height: int) -> bool:
-        """Check if the deposit is expired.
+        """Check if the deposit's time-based expiry condition has been met.
+
+        Note: This only checks the time component (locktime + confirmations).
+        It does NOT check if the UTXO has been spent.
 
         Args:
             bitcoin_chaintip_height: The height of the tip of the Bitcoin chain
@@ -105,10 +116,15 @@ class EnrichedDepositInfo(DepositInfo):
         if self.confirmed_height < 0:
             return False
 
-        return (
-            bitcoin_chaintip_height
-            >= self.confirmed_height + self.lock_time + settings.MIN_BLOCK_CONFIRMATIONS
+        # Calculate the block height at which the deposit becomes eligible for expiry
+        expiry_eligible_height = (
+            self.confirmed_height + self.lock_time + settings.MIN_BLOCK_CONFIRMATIONS
         )
+
+        # Check if the current chain tip has passed the expiry eligible height
+        is_past_expiry_time = bitcoin_chaintip_height >= expiry_eligible_height
+
+        return is_past_expiry_time
 
 
 @dataclass
