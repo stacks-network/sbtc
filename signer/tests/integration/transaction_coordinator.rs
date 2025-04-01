@@ -3789,7 +3789,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         &emily_config,
         Chainstate {
             stacks_block_hash: stacks_chain_tip.to_string(),
-            stacks_block_height: stacks_tip_height,
+            stacks_block_height: *stacks_tip_height,
             bitcoin_block_height: Some(Some(0)), // TODO: maybe we will want to have here some sensible data.
         },
     )
@@ -3805,7 +3805,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         request_id: withdrawal_request.request_id,
         sender: withdrawal_request.sender_address.to_string(),
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
-        stacks_block_height: stacks_tip_height,
+        stacks_block_height: *stacks_tip_height,
         txid: withdrawal_request.txid.to_string(),
     };
     let response = withdrawal_api::create_withdrawal(&emily_config, request_body).await;
@@ -4336,7 +4336,7 @@ async fn coordinator_skip_onchain_completed_deposits(deposit_completed: bool) {
             let response = Ok(AccountInfo {
                 balance: 0,
                 locked: 0,
-                unlock_height: 0,
+                unlock_height: 0.into(),
                 // this is the only part used to create the stacks transaction.
                 nonce: 12,
             });

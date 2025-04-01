@@ -2018,7 +2018,7 @@ mod tests {
             amount,
             max_fee: 1000,
             recipient: ScriptBuf::new(),
-            bitcoin_block_height: 0,
+            bitcoin_block_height: 0.into(),
         };
 
         (report, SignerVotes::from(Vec::new()))

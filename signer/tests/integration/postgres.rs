@@ -2953,7 +2953,7 @@ async fn get_swept_deposit_requests_boundary() {
         amount: setup.deposit_request.amount,
         outpoint: setup.deposit_request.outpoint,
         sweep_block_hash: setup.sweep_block_hash.into(),
-        sweep_block_height: 42,
+        sweep_block_height: 42.into(),
         sweep_txid: setup.deposit_request.outpoint.txid.into(),
     };
     db.write_completed_deposit_event(&event).await.unwrap();
