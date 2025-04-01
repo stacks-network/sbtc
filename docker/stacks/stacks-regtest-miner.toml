@@ -60,6 +60,7 @@ auth_token = "12345"
 [[events_observer]]
 endpoint = "stacks-api:3700"
 events_keys = ["*"]
+timeout_ms = 10_000
 
 # Add emily-sidecar as an event observer
 [[events_observer]]
@@ -67,6 +68,7 @@ endpoint = "host.docker.internal:20540"
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
+timeout_ms = 10_000
 
 # Add sbtc-signer as an event observers
 [[events_observer]]
@@ -74,31 +76,37 @@ endpoint = "host.docker.internal:8801"
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
+timeout_ms = 10_000
 
 [[events_observer]]
 endpoint = "host.docker.internal:8802"
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
+timeout_ms = 10_000
 
 [[events_observer]]
 endpoint = "host.docker.internal:8803"
 events_keys = [
     "SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS.sbtc-registry::print",
 ]
+timeout_ms = 10_000
 
 # Add stacks-signer as an event observer
 [[events_observer]]
 endpoint = "stacks-signer-1:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+timeout_ms = 10_000
 
 [[events_observer]]
 endpoint = "stacks-signer-2:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+timeout_ms = 10_000
 
 [[events_observer]]
 endpoint = "stacks-signer-3:30000"
 events_keys = ["stackerdb", "block_proposal", "burn_blocks"]
+timeout_ms = 10_000
 
 [burnchain]
 chain = "bitcoin"

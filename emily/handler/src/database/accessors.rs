@@ -21,13 +21,13 @@ use super::entries::limits::{
     LimitEntry, LimitEntryKey, LimitTablePrimaryIndex, GLOBAL_CAP_ACCOUNT,
 };
 use super::entries::withdrawal::{
-    ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry,
-    WithdrawalTableByRecipientSecondaryIndex,
+    ValidatedWithdrawalUpdate, WithdrawalInfoByRecipientEntry, WithdrawalInfoBySenderEntry,
+    WithdrawalTableByRecipientSecondaryIndex, WithdrawalTableBySenderSecondaryIndex,
 };
 use super::entries::{
     chainstate::{
-        ApiStateEntry, ApiStatus, ChainstateEntry, ChainstateTablePrimaryIndex,
-        SpecialApiStateIndex,
+        ApiStateEntry, ApiStatus, ChainstateByBitcoinHeightTableSecondaryIndex, ChainstateEntry,
+        ChainstateTablePrimaryIndex, SpecialApiStateIndex,
     },
     deposit::{
         DepositEntry, DepositEntryKey, DepositInfoEntry, DepositTablePrimaryIndex,
@@ -184,11 +184,14 @@ pub async fn get_deposit_entries_for_transaction(
 /// Pulls in a deposit entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
 ///
+/// An untusted key can only update pending deposits.
+///
 /// TODO(792): Combine this with the withdrawal version.
 pub async fn pull_and_update_deposit_with_retry(
     context: &EmilyContext,
     update: ValidatedDepositUpdate,
     retries: u16,
+    is_trusted_key: bool,
 ) -> Result<DepositEntry, Error> {
     for _ in 0..retries {
         // Get original deposit entry.
@@ -196,6 +199,9 @@ pub async fn pull_and_update_deposit_with_retry(
         // Return the existing entry if no update is necessary.
         if update.is_unnecessary(&deposit_entry) {
             return Ok(deposit_entry);
+        }
+        if !is_trusted_key && deposit_entry.status != Status::Pending {
+            return Err(Error::Forbidden);
         }
         // Make the update package.
         let update_package: DepositUpdatePackage =
@@ -339,7 +345,6 @@ pub async fn get_withdrawal_entries(
 }
 
 /// Get withdrawal entries by recipient.
-#[allow(clippy::ptr_arg)]
 pub async fn get_withdrawal_entries_by_recipient(
     context: &EmilyContext,
     recipient: &String,
@@ -349,6 +354,22 @@ pub async fn get_withdrawal_entries_by_recipient(
     query_with_partition_key::<WithdrawalTableByRecipientSecondaryIndex>(
         context,
         recipient,
+        maybe_next_token,
+        maybe_page_size,
+    )
+    .await
+}
+
+/// Get withdrawal entries by sender.
+pub async fn get_withdrawal_entries_by_sender(
+    context: &EmilyContext,
+    sender: &String,
+    maybe_next_token: Option<String>,
+    maybe_page_size: Option<u16>,
+) -> Result<(Vec<WithdrawalInfoBySenderEntry>, Option<String>), Error> {
+    query_with_partition_key::<WithdrawalTableBySenderSecondaryIndex>(
+        context,
+        sender,
         maybe_next_token,
         maybe_page_size,
     )
@@ -397,11 +418,14 @@ pub async fn get_all_withdrawal_entries_modified_from_height_with_status(
 /// Pulls in a withdrawal entry and then updates it, retrying the specified number
 /// of times when there's a version conflict.
 ///
+/// An untusted key can only update pending withdrawals.
+///
 /// TODO(792): Combine this with the deposit version.
 pub async fn pull_and_update_withdrawal_with_retry(
     context: &EmilyContext,
     update: ValidatedWithdrawalUpdate,
     retries: u16,
+    is_trusted_key: bool,
 ) -> Result<WithdrawalEntry, Error> {
     for _ in 0..retries {
         // Get original withdrawal entry.
@@ -410,6 +434,11 @@ pub async fn pull_and_update_withdrawal_with_retry(
         if update.is_unnecessary(&entry) {
             return Ok(entry);
         }
+
+        if !is_trusted_key && entry.status != Status::Pending {
+            return Err(Error::Forbidden);
+        }
+
         // Make the update package.
         let update_package = WithdrawalUpdatePackage::try_from(&entry, update.clone())?;
         // Attempt to update the withdrawal.
@@ -513,7 +542,7 @@ pub async fn add_chainstate_entry(
     let mut api_state = get_api_state(context).await?;
     debug!("Adding chainstate entry, current api state: {api_state:?}");
     if let ApiStatus::Reorg(reorg_chaintip) = &api_state.api_status {
-        if reorg_chaintip != entry {
+        if reorg_chaintip.key != entry.key {
             warn!("Attempting to update chainstate during a reorg [ new entry {entry:?} | reorg chaintip {reorg_chaintip:?} ]");
             return Err(Error::InconsistentState(Inconsistency::ItemUpdate(
                 "Attempting to update chainstate during a reorg.".to_string(),
@@ -527,7 +556,7 @@ pub async fn add_chainstate_entry(
         get_chainstate_entry_at_height(context, &entry.key.height)
             .await
             .and_then(|existing_entry: ChainstateEntry| {
-                if &existing_entry != entry {
+                if existing_entry.key != entry.key {
                     debug!("Inconsistent state because of a conflict with the current interpretation of a height.");
                     debug!("Existing entry: {existing_entry:?} | New entry: {entry:?}");
                     Err(Error::from_inconsistent_chainstate_entry(existing_entry))
@@ -667,6 +696,82 @@ pub async fn set_api_state(context: &EmilyContext, api_state: &ApiStateEntry) ->
 
 // Limits ----------------------------------------------------------------------
 
+/// Returns height of oldest stacks block anchored to given bitcoin block
+async fn get_oldest_stacks_block_for_bitcoin_block(
+    context: &EmilyContext,
+    bitcoin_height: u64,
+) -> Result<u64, Error> {
+    query_with_partition_key::<ChainstateByBitcoinHeightTableSecondaryIndex>(
+        context,
+        &bitcoin_height,
+        None,
+        None,
+    )
+    .await?
+    .0
+    .iter()
+    .min_by_key(|entry| entry.key.stacks_block_height)
+    .map(|entry| entry.key.stacks_block_height)
+    .ok_or(Error::NotFound)
+}
+
+// Returns oldest stacks block height, ancored to some block in range
+// [range_start_bitcoin_height; range_end_bitcoin_height] (both sides inclusive)
+// If no stacks block is found, returns Error::NotFound.
+async fn get_oldest_stacks_block_in_range(
+    context: &EmilyContext,
+    range_start_bitcoin_height: u64,
+    range_end_bitcoin_height: u64,
+) -> Result<u64, Error> {
+    debug_assert!(range_start_bitcoin_height <= range_end_bitcoin_height);
+    for height in range_start_bitcoin_height..(range_end_bitcoin_height + 1) {
+        if let Ok(stacks_height) = get_oldest_stacks_block_for_bitcoin_block(context, height).await
+        {
+            return Ok(stacks_height);
+        }
+    }
+    Err(Error::NotFound)
+}
+
+async fn calculate_sbtc_left_for_withdrawals(
+    context: &EmilyContext,
+    rolling_withdrawal_blocks: Option<u64>,
+    rolling_withdrawal_cap: Option<u64>,
+) -> Result<Option<u64>, Error> {
+    let (Some(rolling_withdrawal_blocks), Some(rolling_withdrawal_cap)) =
+        (rolling_withdrawal_blocks, rolling_withdrawal_cap)
+    else {
+        // Note that we validate in set_limits that these values are both Some or both None
+        return Ok(None);
+    };
+    let chaintip = get_api_state(context).await?.chaintip();
+    let bitcoin_tip = chaintip.bitcoin_height.ok_or(Error::NotFound)?;
+    let bitcoin_end_block = bitcoin_tip.saturating_sub(rolling_withdrawal_blocks.saturating_sub(1));
+
+    let minimum_stacks_height_in_window =
+        get_oldest_stacks_block_in_range(context, bitcoin_end_block, bitcoin_tip).await?;
+
+    let all_statuses_except_failed: Vec<_> = ALL_STATUSES
+        .iter()
+        .filter(|status| **status != Status::Failed)
+        .collect();
+
+    let mut total_withdrawn = 0u64;
+    for status in all_statuses_except_failed {
+        let withdrawals = get_all_withdrawal_entries_modified_from_height_with_status(
+            context,
+            status,
+            minimum_stacks_height_in_window,
+            None,
+        )
+        .await?;
+        for withdrawal in withdrawals {
+            total_withdrawn = total_withdrawn.saturating_add(withdrawal.amount);
+        }
+    }
+    Ok(Some(rolling_withdrawal_cap.saturating_sub(total_withdrawn)))
+}
+
 /// Note, this function provides the direct output structure for the api call
 /// to get the limits for the full sbtc system, and therefore is breaching the
 /// typical contract for these accessor functions. We do this here because the
@@ -691,7 +796,10 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         per_deposit_minimum: default_global_cap.per_deposit_minimum,
         per_deposit_cap: default_global_cap.per_deposit_cap,
         per_withdrawal_cap: default_global_cap.per_withdrawal_cap,
+        rolling_withdrawal_blocks: default_global_cap.rolling_withdrawal_blocks,
+        rolling_withdrawal_cap: default_global_cap.rolling_withdrawal_cap,
     };
+
     // Aggregate all the latest entries by account.
     let mut limit_by_account: HashMap<String, LimitEntry> = HashMap::new();
     for entry in all_entries.iter() {
@@ -722,12 +830,25 @@ pub async fn get_limits(context: &EmilyContext) -> Result<Limits, Error> {
         .filter(|(_, limit_entry)| !limit_entry.is_empty())
         .map(|(account, limit_entry)| (account, AccountLimits::from(limit_entry)))
         .collect();
+
+    // Calculate total withdrawn amount.
+
+    let available_to_withdraw = calculate_sbtc_left_for_withdrawals(
+        context,
+        global_cap.rolling_withdrawal_blocks,
+        global_cap.rolling_withdrawal_cap,
+    )
+    .await?;
+
     // Get the global limit for the whole thing.
     Ok(Limits {
+        available_to_withdraw,
         peg_cap: global_cap.peg_cap,
         per_deposit_minimum: global_cap.per_deposit_minimum,
         per_deposit_cap: global_cap.per_deposit_cap,
         per_withdrawal_cap: global_cap.per_withdrawal_cap,
+        rolling_withdrawal_blocks: global_cap.rolling_withdrawal_blocks,
+        rolling_withdrawal_cap: global_cap.rolling_withdrawal_cap,
         account_caps,
     })
 }

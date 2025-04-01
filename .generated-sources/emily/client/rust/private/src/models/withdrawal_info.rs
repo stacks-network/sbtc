@@ -23,12 +23,15 @@ pub struct WithdrawalInfo {
     /// The most recent Stacks block height the API was aware of when the withdrawal was last updated. If the most recent update is tied to an artifact on the Stacks blockchain then this height is the Stacks block height that contains that artifact.
     #[serde(rename = "lastUpdateHeight")]
     pub last_update_height: u64,
-    /// The recipient Bitcoin address.
+    /// The recipient's hex-encoded Bitcoin scriptPubKey.
     #[serde(rename = "recipient")]
     pub recipient: String,
     /// The id of the Stacks withdrawal request that initiated the sBTC operation.
     #[serde(rename = "requestId")]
     pub request_id: u64,
+    /// The sender's hex-encoded Stacks principal.
+    #[serde(rename = "sender")]
+    pub sender: String,
     /// The stacks block hash in which this request id was initiated.
     #[serde(rename = "stacksBlockHash")]
     pub stacks_block_hash: String,
@@ -37,6 +40,9 @@ pub struct WithdrawalInfo {
     pub stacks_block_height: u64,
     #[serde(rename = "status")]
     pub status: models::Status,
+    /// The hex encoded txid of the stacks transaction that generated this event.
+    #[serde(rename = "txid")]
+    pub txid: String,
 }
 
 impl WithdrawalInfo {
@@ -47,9 +53,11 @@ impl WithdrawalInfo {
         last_update_height: u64,
         recipient: String,
         request_id: u64,
+        sender: String,
         stacks_block_hash: String,
         stacks_block_height: u64,
         status: models::Status,
+        txid: String,
     ) -> WithdrawalInfo {
         WithdrawalInfo {
             amount,
@@ -57,9 +65,11 @@ impl WithdrawalInfo {
             last_update_height,
             recipient,
             request_id,
+            sender,
             stacks_block_hash,
             stacks_block_height,
             status,
+            txid,
         }
     }
 }

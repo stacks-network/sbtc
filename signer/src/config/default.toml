@@ -41,7 +41,7 @@ endpoints = [
 # The pagination timeout, in seconds, used to fetch deposits requests from Emily.
 # Required: false
 # Environment: SIGNER_EMILY__PAGINATION_TIMEOUT
-# pagination_timeout = 15
+# pagination_timeout = 10
 
 # !! ==============================================================================
 # !! Bitcoin Core Configuration
@@ -104,7 +104,7 @@ endpoints = ["http://localhost:20443"]
 private_key = "41634762d89dfa09133a4a8e9c1378d0161d29cd0a9433b51f1e3d32947a73dc"
 
 # Specifies which network to use when constructing and sending transactions
-# on stacks and bitcoin. This cooresponds to the `chain` flag in the
+# on stacks and bitcoin. This corresponds to the `chain` flag in the
 # bitcoin.conf file of the connected bitcoin-core node, and the
 # `burnchain.mode` flag int he config.toml of the connected stacks-core
 # node.
@@ -154,6 +154,18 @@ bitcoin_processing_delay = 0
 # Seconds to wait before processing new SBTC requests.
 # Required: true Environment: SIGNER_SIGNER__REQUESTS_PROCESSING_DELAY
 requests_processing_delay = 0
+
+# How many bitcoin blocks back from the chain tip the signer will
+# look for deposit decisions to retry to propagate.
+# Required: false
+# Environment: SIGNER_SIGNER__DEPOSIT_DECISIONS_RETRY_WINDOW
+deposit_decisions_retry_window = 3
+
+# How many bitcoin blocks back from the chain tip the signer will
+# look for withdrawal decisions to retry to propagate.
+# Required: false
+# Environment: SIGNER_SIGNER__WITHDRAWAL_DECISIONS_RETRY_WINDOW
+withdrawal_decisions_retry_window = 3
 
 # How many bitcoin blocks back from the chain tip the signer will look for
 # requests. Must be strictly positive.
@@ -243,6 +255,15 @@ sbtc_bitcoin_start_height = 101
 # Required: false
 # Environment: SIGNER_SIGNER__DKG_VERIFICATION_WINDOW
 # dkg_verification_window = 10
+
+# The maximum fee in microSTX that a signer will accept for a Stacks
+# transaction. If the coordinator suggests a fee higher than this value for
+# a transaction the signer will reject it. This value must be greater than
+# zero.
+#
+# Required: false
+# Environment: SIGNER_SIGNER__STACKS_FEES_MAX_USTX
+# stacks_fees_max_ustx = 1500000
 
 # !! ==============================================================================
 # !! Stacks Event Observer Configuration

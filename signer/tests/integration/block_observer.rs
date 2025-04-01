@@ -16,7 +16,6 @@ use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlockHeader;
 use blockstack_lib::net::api::getpoxinfo::RPCPoxInfoData;
 use emily_client::apis::deposit_api;
-use emily_client::apis::testing_api;
 use emily_client::models::CreateDepositRequestBody;
 use fake::Fake as _;
 use fake::Faker;
@@ -46,6 +45,7 @@ use signer::storage::postgres::PgStore;
 use signer::storage::DbWrite;
 use signer::testing::stacks::DUMMY_SORTITION_INFO;
 use signer::testing::stacks::DUMMY_TENURE_INFO;
+use testing_emily_client::apis::testing_api;
 
 use signer::block_observer::BlockObserver;
 use signer::context::Context as _;
@@ -61,6 +61,7 @@ use signer::transaction_coordinator::should_coordinate_dkg;
 use signer::transaction_signer::assert_allow_dkg_begin;
 use url::Url;
 
+use crate::setup::IntoEmilyTestingConfig as _;
 use crate::setup::TestSweepSetup;
 use crate::transaction_coordinator::mock_reqwests_status_code_error;
 use crate::utxo_construction::make_deposit_request;
@@ -363,7 +364,7 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
     )
     .unwrap();
 
-    testing_api::wipe_databases(emily_client.config())
+    testing_api::wipe_databases(&emily_client.config().as_testing())
         .await
         .unwrap();
 
@@ -624,9 +625,9 @@ async fn block_observer_stores_donation_and_sbtc_utxos() {
 }
 
 #[test_case::test_case(false, SbtcLimits::unlimited(); "no contracts, default limits")]
-#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "no contracts, total cap limit")]
+#[test_case::test_case(false, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None, None, None, None); "no contracts, total cap limit")]
 #[test_case::test_case(true, SbtcLimits::unlimited(); "deployed contracts, default limits")]
-#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None); "deployed contracts, total cap limit")]
+#[test_case::test_case(true, SbtcLimits::new(Some(bitcoin::Amount::from_sat(1_000)), None, None, None, None, None, None, None); "deployed contracts, total cap limit")]
 #[tokio::test]
 async fn block_observer_handles_update_limits(deployed: bool, sbtc_limits: SbtcLimits) {
     // We start with the typical setup with a fresh database and context

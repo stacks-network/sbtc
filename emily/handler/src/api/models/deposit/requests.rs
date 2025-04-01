@@ -11,8 +11,13 @@ use utoipa::ToSchema;
 
 use sbtc::deposits::{CreateDepositRequest, DepositInfo};
 
+use crate::api::models::chainstate::Chainstate;
 use crate::api::models::common::{Fulfillment, Status};
-use crate::common::error::Error;
+use crate::common::error::{self, Error, ValidationError};
+use crate::database::entries::deposit::{
+    DepositEntryKey, DepositEvent, ValidatedDepositUpdate, ValidatedUpdateDepositsRequest,
+};
+use crate::database::entries::StatusEntry;
 
 /// Query structure for the GetDepositsQuery struct.
 #[derive(Clone, Default, Debug, PartialEq, Hash, Serialize, Deserialize, ToSchema)]
@@ -118,14 +123,6 @@ pub struct DepositUpdate {
     pub bitcoin_txid: String,
     /// Output index on the bitcoin transaction associated with this specific deposit.
     pub bitcoin_tx_output_index: u32,
-    /// The most recent Stacks block height the API was aware of when the deposit was last
-    /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
-    /// then this height is the Stacks block height that contains that artifact.
-    pub last_update_height: u64,
-    /// The most recent Stacks block hash the API was aware of when the deposit was last
-    /// updated. If the most recent update is tied to an artifact on the Stacks blockchain
-    /// then this hash is the Stacks block hash that contains that artifact.
-    pub last_update_block_hash: String,
     /// The status of the deposit.
     pub status: Status,
     /// The status message of the deposit.
@@ -135,12 +132,97 @@ pub struct DepositUpdate {
     pub fulfillment: Option<Fulfillment>,
 }
 
+impl DepositUpdate {
+    /// Try to convert the deposit update into a validated deposit update.
+    ///
+    /// # Errors
+    ///
+    /// - `ValidationError::DepositMissingFulfillment`: If the deposit update is missing a fulfillment.
+    pub fn try_into_validated_deposit_update(
+        self,
+        chainstate: Chainstate,
+    ) -> Result<ValidatedDepositUpdate, error::Error> {
+        // Make key.
+        let key = DepositEntryKey {
+            bitcoin_tx_output_index: self.bitcoin_tx_output_index,
+            bitcoin_txid: self.bitcoin_txid,
+        };
+        // Make status entry.
+        let status_entry: StatusEntry = match self.status {
+            Status::Confirmed => {
+                let fulfillment =
+                    self.fulfillment
+                        .ok_or(ValidationError::DepositMissingFulfillment(
+                            key.bitcoin_txid.clone(),
+                            key.bitcoin_tx_output_index,
+                        ))?;
+                StatusEntry::Confirmed(fulfillment)
+            }
+            Status::Accepted => StatusEntry::Accepted,
+            Status::Pending => StatusEntry::Pending,
+            Status::Reprocessing => StatusEntry::Reprocessing,
+            Status::Failed => StatusEntry::Failed,
+        };
+        // Make the new event.
+        let event = DepositEvent {
+            status: status_entry,
+            message: self.status_message,
+            stacks_block_height: chainstate.stacks_block_height,
+            stacks_block_hash: chainstate.stacks_block_hash,
+        };
+        // Return the validated update.
+        Ok(ValidatedDepositUpdate { key, event })
+    }
+}
+
 /// Request structure for update deposit request.
 #[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateDepositsRequestBody {
     /// Bitcoin transaction id.
     pub deposits: Vec<DepositUpdate>,
+}
+
+impl UpdateDepositsRequestBody {
+    /// Try to convert the request body into a validated update request.
+    ///
+    /// # Errors
+    ///
+    /// - `ValidationError::DepositsMissingFulfillment`: If any of the deposit updates are missing a fulfillment.
+    pub fn try_into_validated_update_request(
+        self,
+        chainstate: Chainstate,
+    ) -> Result<ValidatedUpdateDepositsRequest, error::Error> {
+        // Validate all the deposit updates.
+        let mut deposits: Vec<(usize, ValidatedDepositUpdate)> = vec![];
+        let mut failed_txs: Vec<String> = vec![];
+
+        for (index, update) in self.deposits.into_iter().enumerate() {
+            match update
+                .clone()
+                .try_into_validated_deposit_update(chainstate.clone())
+            {
+                Ok(validated_update) => deposits.push((index, validated_update)),
+                Err(_) => {
+                    failed_txs.push(format!(
+                        "{}:{}",
+                        update.bitcoin_txid.clone(),
+                        update.bitcoin_tx_output_index
+                    ));
+                }
+            }
+        }
+
+        // If there are failed conversions, return an error.
+        if !failed_txs.is_empty() {
+            return Err(ValidationError::DepositsMissingFulfillment(failed_txs).into());
+        }
+
+        // Sort updates by stacks_block_height to process them in chronological order.
+        deposits.sort_by_key(|(_, update)| update.event.stacks_block_height);
+
+        Ok(ValidatedUpdateDepositsRequest { deposits })
+    }
 }
 
 #[cfg(test)]

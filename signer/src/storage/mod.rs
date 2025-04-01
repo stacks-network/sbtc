@@ -6,6 +6,7 @@
 //! The canonical implementation of these traits is the [`postgres::PgStore`]
 //! allowing the signer to use a Postgres database to store data.
 
+#[cfg(any(test, feature = "testing"))]
 pub mod in_memory;
 pub mod model;
 pub mod postgres;
@@ -132,6 +133,15 @@ pub trait DbRead {
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Vec<model::DepositSigner>, Error>> + Send;
 
+    /// Get all the withdrawal decisions for the given signer in the given window
+    /// of blocks.
+    fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> impl Future<Output = Result<Vec<model::WithdrawalSigner>, Error>> + Send;
+
     /// Returns whether the given `signer_public_key` can provide signature
     /// shares for the deposit transaction.
     ///
@@ -231,6 +241,15 @@ pub trait DbRead {
         id: &model::QualifiedRequestId,
         signer_public_key: &PublicKey,
     ) -> impl Future<Output = Result<Option<WithdrawalRequestReport>, Error>> + Send;
+
+    /// This function returns the total amount of BTC (in sats) that has
+    /// been swept out and confirmed on the bitcoin blockchain identified
+    /// by the given chain tip and context window.
+    fn compute_withdrawn_total(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> impl Future<Output = Result<u64, Error>> + Send;
 
     /// Get bitcoin blocks that include a particular transaction
     fn get_bitcoin_blocks_with_transaction(
@@ -533,6 +552,12 @@ pub trait DbWrite {
     fn write_tx_output(
         &self,
         output: &model::TxOutput,
+    ) -> impl Future<Output = Result<(), Error>> + Send;
+
+    /// Write the withdrawal bitcoin transaction output to the database.
+    fn write_withdrawal_tx_output(
+        &self,
+        output: &model::WithdrawalTxOutput,
     ) -> impl Future<Output = Result<(), Error>> + Send;
 
     /// Write the bitcoin transaction input to the database.

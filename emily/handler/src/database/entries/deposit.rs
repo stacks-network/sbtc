@@ -1,17 +1,12 @@
 //! Entries into the deposit table.
 
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 
 use crate::{
     api::models::{
         chainstate::Chainstate,
         common::{Fulfillment, Status},
-        deposit::{
-            requests::{DepositUpdate, UpdateDepositsRequestBody},
-            Deposit, DepositInfo, DepositParameters,
-        },
+        deposit::{Deposit, DepositInfo, DepositParameters},
     },
     common::error::{Error, Inconsistency},
 };
@@ -286,7 +281,7 @@ pub struct DepositEvent {
     pub status: StatusEntry,
     /// Status message.
     pub message: String,
-    /// Stacks block heigh at the time of this update.
+    /// Stacks block height at the time of this update.
     pub stacks_block_height: u64,
     /// Stacks block hash associated with the height of this update.
     pub stacks_block_hash: String,
@@ -647,56 +642,6 @@ pub struct ValidatedUpdateDepositsRequest {
     pub deposits: Vec<(usize, ValidatedDepositUpdate)>,
 }
 
-/// Implement try from for the validated deposit requests.
-impl TryFrom<UpdateDepositsRequestBody> for ValidatedUpdateDepositsRequest {
-    type Error = Error;
-    fn try_from(update_request: UpdateDepositsRequestBody) -> Result<Self, Self::Error> {
-        // Validate all the deposit updates.
-        let mut deposits: Vec<(usize, ValidatedDepositUpdate)> = update_request
-            .deposits
-            .into_iter()
-            .enumerate()
-            .map(|(index, update)| {
-                update
-                    .try_into()
-                    .map(|validated_update| (index, validated_update))
-            })
-            .collect::<Result<_, Error>>()?;
-
-        // Order the updates by order of when they occur so that it's as though we got them in
-        // chronological order.
-        deposits.sort_by_key(|(_, update)| update.event.stacks_block_height);
-
-        Ok(ValidatedUpdateDepositsRequest { deposits })
-    }
-}
-
-impl ValidatedUpdateDepositsRequest {
-    /// Infers all chainstates that need to be present in the API for the
-    /// deposit updates to be valid.
-    pub fn inferred_chainstates(&self) -> Result<Vec<Chainstate>, Error> {
-        // TODO(TBD): Error if the inferred chainstates have conflicting block hashes
-        // for a the same block height.
-        let mut inferred_chainstates = self
-            .deposits
-            .clone()
-            .into_iter()
-            .map(|(_, update)| Chainstate {
-                stacks_block_hash: update.event.stacks_block_hash,
-                stacks_block_height: update.event.stacks_block_height,
-            })
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect::<Vec<_>>();
-
-        // Sort the chainstates in the order that they should come in.
-        inferred_chainstates.sort_by_key(|chainstate| chainstate.stacks_block_height);
-
-        // Return.
-        Ok(inferred_chainstates)
-    }
-}
-
 /// Validated deposit update.
 #[derive(Clone, Default, Debug, Eq, PartialEq, Hash)]
 pub struct ValidatedDepositUpdate {
@@ -704,37 +649,6 @@ pub struct ValidatedDepositUpdate {
     pub key: DepositEntryKey,
     /// Deposit event.
     pub event: DepositEvent,
-}
-
-impl TryFrom<DepositUpdate> for ValidatedDepositUpdate {
-    type Error = Error;
-    fn try_from(update: DepositUpdate) -> Result<Self, Self::Error> {
-        // Make key.
-        let key = DepositEntryKey {
-            bitcoin_tx_output_index: update.bitcoin_tx_output_index,
-            bitcoin_txid: update.bitcoin_txid,
-        };
-        // Make status entry.
-        let status_entry: StatusEntry = match update.status {
-            Status::Confirmed => {
-                let fulfillment = update.fulfillment.ok_or(Error::InternalServer)?;
-                StatusEntry::Confirmed(fulfillment)
-            }
-            Status::Accepted => StatusEntry::Accepted,
-            Status::Pending => StatusEntry::Pending,
-            Status::Reprocessing => StatusEntry::Reprocessing,
-            Status::Failed => StatusEntry::Failed,
-        };
-        // Make the new event.
-        let event = DepositEvent {
-            status: status_entry,
-            message: update.status_message,
-            stacks_block_height: update.last_update_height,
-            stacks_block_hash: update.last_update_block_hash,
-        };
-        // Return the validated update.
-        Ok(ValidatedDepositUpdate { key, event })
-    }
 }
 
 impl ValidatedDepositUpdate {
@@ -927,6 +841,7 @@ mod tests {
         let chainstate = Chainstate {
             stacks_block_height: reorg_height,
             stacks_block_hash: reorg_hash.to_string(),
+            bitcoin_block_height: Some(0),
         };
         deposit.reorganize_around(&chainstate).unwrap();
 
