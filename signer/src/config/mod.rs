@@ -618,7 +618,7 @@ mod tests {
 
         assert_eq!(
             settings.bitcoin.rpc_endpoints,
-            vec![url("http://devnet:devnet@localhost:18443")]
+            vec![url("http://devnet:devnet@127.0.0.1:18443")]
         );
         assert_eq!(settings.bitcoin.rpc_endpoints[0].username(), "devnet");
         assert_eq!(settings.bitcoin.rpc_endpoints[0].password(), Some("devnet"));
@@ -888,11 +888,12 @@ mod tests {
     fn default_config_toml_loads_with_environment() {
         clear_env();
 
-        // The default toml used here specifies http://localhost:20443
+        // The default toml used here specifies http://127.0.0.1:20443
         // as the stacks node endpoint.
         let settings = Settings::new_from_default_config().unwrap();
         let host = settings.stacks.endpoints[0].host();
-        assert_eq!(host, Some(url::Host::Domain("localhost")));
+        let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
+        assert_eq!(host, Some(url::Host::Ipv4(ip)));
         assert_eq!(settings.stacks.endpoints[0].port(), Some(20443));
 
         std::env::set_var(

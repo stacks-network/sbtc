@@ -88,7 +88,7 @@ services:
     image: "amazon/dynamodb-local:latest"
     command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ."
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     profiles:
       - default
 
@@ -129,7 +129,7 @@ services:
       - DEFAULT_ROLLING_WITHDRAWAL_CAP=100000000000
       - DEPLOYER_ADDRESS=SN3R84XZYA63QS28932XQF3G1J8R9PC3W76P9CSQS
     ports:
-      - "3031:3031"
+      - "127.0.0.1:3031:3031"
     profiles:
       - default
 
@@ -140,7 +140,7 @@ services:
       target: emily-sidecar
     restart: on-failure
     ports:
-      - "20540:20540"
+      - "127.0.0.1:20540:20540"
     environment:
       EMILY_API_KEY: testApiKey
       EMILY_ENDPOINT: http://emily-server:3031
@@ -156,7 +156,7 @@ services:
     <<: *postgres # Inherit all from the "postgres" service
     container_name: postgres-1
     ports:
-      - 5432:5432
+      - "127.0.0.1:5432:5432"
 
   sbtc-signer-1:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
@@ -170,14 +170,14 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-2:4122,tcp://sbtc-signer-3:4122
       SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9181
     ports:
-      - "8801:8801"
+      - "127.0.0.1:8801:8801"
 
   # sbtc signer 2 ----
   postgres-2:
     <<: *postgres # Inherit all from the "postgres" service
     container_name: postgres-2
     ports:
-      - 5433:5432
+      - "127.0.0.1:5433:5432"
 
   sbtc-signer-2:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
@@ -191,14 +191,14 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-3:4122
       SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9182
     ports:
-      - "8802:8801"
+      - "127.0.0.1:8802:8801"
 
   # sbtc signer 3 ----
   postgres-3:
     <<: *postgres # Inherit all from the "postgres" service
     container_name: postgres-3
     ports:
-      - 5434:5432
+      - "127.0.0.1:5434:5432"
 
   sbtc-signer-3:
     <<: *sbtc-signer # Inherit all from the "sbtc-signer" service
@@ -212,7 +212,7 @@ services:
       SIGNER_SIGNER__P2P__SEEDS: tcp://sbtc-signer-1:4122,tcp://sbtc-signer-2:4122
       SIGNER_SIGNER__PROMETHEUS_EXPORTER_ENDPOINT: 0.0.0.0:9183
     ports:
-      - "8803:8801"
+      - "127.0.0.1:8803:8801"
 
   # Blocklist client.
   # -----------------
@@ -226,7 +226,7 @@ services:
       BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY: ${BLOCKLIST_CLIENT_RISK_ANALYSIS__API_KEY:-}
       BLOCKLIST_CLIENT_SERVER__HOST: "0.0.0.0"
     ports:
-      - "3030:3030"
+      - "127.0.0.1:3030:3030"
     profiles:
       - default
 
@@ -242,14 +242,14 @@ services:
       - emily-server
       - bitcoin
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     profiles:
       - default
     environment:
       BITCOIND_URL: http://bitcoin:18443
       EMILY_URL: http://emily-server:3031
       MEMPOOL_API_URL: http://mempool-web:8083/api
-      PUBLIC_MEMPOOL_URL: http://localhost:8083
+      PUBLIC_MEMPOOL_URL: http://127.0.0.1:8083
       BITCOIN_RPC_USER_NAME: devnet
       BITCOIN_RPC_PASSWORD: devnet
       WALLET_NETWORK: sbtcDevenv
@@ -264,8 +264,8 @@ services:
   bitcoin:
     image: bitcoin/bitcoin:25.2
     ports:
-      - "18443:18443"
-      - "28332:28332"
+      - "127.0.0.1:18443:18443"
+      - "127.0.0.1:28332:28332"
     volumes:
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
     entrypoint:
@@ -352,7 +352,7 @@ services:
       bitcoin:
         condition: service_healthy
     ports:
-      - "20443:20443"
+      - "127.0.0.1:20443:20443"
     volumes:
       - ./stacks/stacks-regtest-miner.toml:/data/config.toml.in
       - ./bitcoin/bitcoin.conf:/root/.bitcoin/bitcoin.conf
@@ -494,8 +494,8 @@ services:
     container_name: stacks-api
     stop_grace_period: 5s
     ports:
-      - 3999:3999
-      - 3700:3700
+      - "127.0.0.1:3999:3999"
+      - "127.0.0.1:3700:3700"
     depends_on:
       - postgres-stacks-api
       - stacks-node
@@ -515,7 +515,7 @@ services:
       STACKS_BLOCKCHAIN_API_HOST: "0.0.0.0"
       STACKS_CORE_RPC_HOST: "stacks-node"
       STACKS_CORE_RPC_PORT: 20443
-      API_DOCS_URL: http://localhost:3999/doc
+      API_DOCS_URL: http://127.0.0.1:3999/doc
     profiles:
       - default
 
@@ -524,7 +524,7 @@ services:
     container_name: stacks-explorer
     stop_grace_period: 5s
     ports:
-      - 3020:3000
+      - "127.0.0.1:3020:3000"
     depends_on:
       - bitcoin
       - stacks-node
@@ -542,14 +542,14 @@ services:
     container_name: electrs
     stop_grace_period: 5s
     ports:
-      - 60401:60401
-      - 3002:3002
+      - "127.0.0.1:60401:60401"
+      - "127.0.0.1:3002:3002"
     depends_on:
       - bitcoin
       - bitcoin-miner
     environment:
       BITCOIN_RPC_PORT: *BITCOIN_RPC_PORT
-    entrypoint: 
+    entrypoint:
       - /bin/bash
       - -c
       - |
@@ -571,8 +571,6 @@ services:
     image: mariadb:10.5.21
     container_name: mariadb
     stop_grace_period: 5s
-    ports:
-      - 3306:3306
     environment:
       MYSQL_DATABASE: "mempool"
       MYSQL_USER: "mempool"
@@ -592,7 +590,7 @@ services:
     user: "1000:1000"
     restart: on-failure
     ports:
-      - 8083:8083
+      - "127.0.0.1:8083:8083"
     environment:
       FRONTEND_HTTP_PORT: "8083"
       BACKEND_MAINNET_HTTP_HOST: "mempool-api"
@@ -610,7 +608,7 @@ services:
     user: "1000:1000"
     restart: on-failure
     ports:
-      - 8999:8999
+      - "127.0.0.1:8999:8999"
     environment:
       # Connect to electrs host
       MEMPOOL_BACKEND: "electrum"
@@ -643,7 +641,7 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
     ports:
-      - 9090:9090
+      - "127.0.0.1:9090:9090"
     depends_on:
       - vector
     profiles:
@@ -652,7 +650,7 @@ services:
   loki:
     image: grafana/loki:3.4.2
     ports:
-      - 3100:3100
+      - "127.0.0.1:3100:3100"
     volumes:
       - ./observability/loki-config.yaml:/etc/loki/local-config.yaml:ro
     profiles:
@@ -673,7 +671,7 @@ services:
     volumes:
       - ./observability/grafana/:/etc/grafana/provisioning/
     ports:
-      - 3040:3000
+      - "127.0.0.1:3040:3000"
     depends_on:
       - prometheus
       - loki
@@ -685,7 +683,7 @@ services:
     command: --config /etc/vector/vector.toml
     restart: always
     ports:
-      - 9598
+      - "127.0.0.1:9598:9598"
     volumes:
       - ./observability/vector.toml:/etc/vector/vector.toml:ro
       # This is needed for vector to read logs from other containers
