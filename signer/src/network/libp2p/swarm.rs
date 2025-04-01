@@ -1,4 +1,5 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::num::NonZeroU8;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,10 +11,10 @@ use libp2p::identity::Keypair;
 use libp2p::kad::store::MemoryStore;
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::dial_opts::DialOpts;
-use libp2p::swarm::NetworkBehaviour;
+use libp2p::swarm::{ConnectionCounters, NetworkBehaviour};
 use libp2p::{
-    autonat, gossipsub, identify, kad, mdns, noise, ping, quic, tcp, yamux, Multiaddr, PeerId,
-    Swarm, Transport,
+    autonat, connection_limits, gossipsub, identify, kad, mdns, noise, ping, quic, tcp, yamux,
+    Multiaddr, PeerId, Swarm, Transport,
 };
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
@@ -27,18 +28,22 @@ use super::{bootstrap, event_loop};
 pub struct SignerBehavior {
     pub gossipsub: gossipsub::Behaviour,
     mdns: Toggle<mdns::tokio::Behaviour>,
-    pub kademlia: kad::Behaviour<MemoryStore>,
+    pub kademlia: Toggle<kad::Behaviour<MemoryStore>>,
     ping: ping::Behaviour,
     pub identify: identify::Behaviour,
-    pub autonat_client: autonat::v2::client::Behaviour<StdRng>,
-    pub autonat_server: autonat::v2::server::Behaviour<StdRng>,
+    pub autonat_client: Toggle<autonat::v2::client::Behaviour<StdRng>>,
+    pub autonat_server: Toggle<autonat::v2::server::Behaviour<StdRng>>,
     pub bootstrap: bootstrap::Behavior,
+    pub connection_limits: connection_limits::Behaviour,
 }
 
 pub struct SignerSwarmConfig {
     pub enable_mdns: bool,
+    pub enable_kademlia: bool,
+    pub enable_autonat: bool,
     pub initial_bootstrap_delay: Duration,
     pub seed_addresses: Vec<Multiaddr>,
+    pub num_signers: u16,
 }
 
 impl SignerBehavior {
@@ -55,13 +60,22 @@ impl SignerBehavior {
         }
         .into();
 
-        let autonat_client = autonat::v2::client::Behaviour::new(
-            rand::rngs::StdRng::from_entropy(),
-            autonat::v2::client::Config::default(),
-        );
+        let kademlia = match config.enable_kademlia {
+            true => Some(Self::kademlia(local_peer_id)),
+            false => None,
+        }
+        .into();
 
-        let autonat_server =
-            autonat::v2::server::Behaviour::new(rand::rngs::StdRng::from_entropy());
+        let (autonat_client, autonat_server) = if config.enable_autonat {
+            let client = autonat::v2::client::Behaviour::new(
+                rand::rngs::StdRng::from_entropy(),
+                autonat::v2::client::Config::default(),
+            );
+            let server = autonat::v2::server::Behaviour::new(rand::rngs::StdRng::from_entropy());
+            (Some(client).into(), Some(server).into())
+        } else {
+            (None.into(), None.into())
+        };
 
         let identify = identify::Behaviour::new(identify::Config::new(
             identify::PUSH_PROTOCOL_NAME.to_string(),
@@ -70,20 +84,64 @@ impl SignerBehavior {
 
         let bootstrap_config = bootstrap::Config::new(local_peer_id)
             .with_initial_delay(config.initial_bootstrap_delay)
-            .add_seed_addresses(config.seed_addresses);
-
+            .add_seed_addresses(&config.seed_addresses);
         let bootstrap = bootstrap::Behavior::new(bootstrap_config);
 
         Ok(Self {
             gossipsub: Self::gossipsub(&keypair)?,
             mdns,
-            kademlia: Self::kademlia(local_peer_id),
+            kademlia,
             ping: Default::default(),
             identify,
             autonat_client,
             autonat_server,
             bootstrap,
+            connection_limits: Self::connection_limits(&config),
         })
+    }
+
+    fn connection_limits(config: &SignerSwarmConfig) -> connection_limits::Behaviour {
+        // The number of signers is the number of signers in the set, minus one
+        // for the local signer. This is used to calculate the connection limits.
+        // Note: We use `max(2)` here to ensure that we always have limits
+        // that support at least two signers.
+        let num_signers = config.num_signers.saturating_sub(1).max(2) as u32;
+
+        // Allow `num_signers` * 3 connections to be established at once. This
+        // allows room for one incoming/outgoing connection to each signer, plus
+        // one additional connection per signer as a buffer for protocols such
+        // as autonat.
+        let max_established = num_signers.saturating_mul(3);
+
+        // Allow `num_signers` * 2 _incoming_ connections to be established at
+        // once. This allows room for one incoming connection from each signer,
+        // plus one additional connection per signer as a buffer for protocols
+        // such as autonat.
+        let max_established_incoming = num_signers.saturating_mul(2);
+
+        // Allow for one incoming, one outgoing and one additional connection per
+        // peer.
+        let max_established_per_peer = 3;
+
+        // Allow for `num_signers` _incoming_ connections to be pending at once.
+        // This is conservative, but realistic as we wouldn't expect each signer
+        // to be attempting to open multiple connections to us simultaneously,
+        // even during bootstrapping.
+        let max_pending_incoming = num_signers;
+
+        // Allow for `num_signers` _outgoing_ connections to be pending at once.
+        // This is conservative, but realistic as we wouldn't expect to be dialing
+        // more than `num_signers` signers at once, even during bootstrapping.
+        let max_pending_outgoing = num_signers;
+
+        let limits = connection_limits::ConnectionLimits::default()
+            .with_max_established(Some(max_established))
+            .with_max_established_incoming(Some(max_established_incoming))
+            .with_max_established_per_peer(Some(max_established_per_peer))
+            .with_max_pending_incoming(Some(max_pending_incoming))
+            .with_max_pending_outgoing(Some(max_pending_outgoing));
+
+        connection_limits::Behaviour::new(limits)
     }
 
     /// Create a new gossipsub behavior.
@@ -127,9 +185,12 @@ pub struct SignerSwarmBuilder<'a> {
     seed_addrs: Vec<Multiaddr>,
     external_addresses: Vec<Multiaddr>,
     enable_mdns: bool,
+    enable_kademlia: bool,
+    enable_autonat: bool,
     enable_quic_transport: bool,
     enable_memory_transport: bool,
     initial_bootstrap_delay: Duration,
+    num_signers: u16,
 }
 
 impl<'a> SignerSwarmBuilder<'a> {
@@ -141,9 +202,12 @@ impl<'a> SignerSwarmBuilder<'a> {
             seed_addrs: Vec::new(),
             external_addresses: Vec::new(),
             enable_mdns: false,
+            enable_kademlia: true,
+            enable_autonat: true,
             enable_quic_transport: false,
             enable_memory_transport: false,
             initial_bootstrap_delay: Duration::ZERO,
+            num_signers: crate::MAX_KEYS,
         }
     }
 
@@ -153,9 +217,30 @@ impl<'a> SignerSwarmBuilder<'a> {
         self
     }
 
+    /// Sets whether or not this swarm should use kademlia for peer
+    /// discovery/DHT.
+    pub fn enable_kademlia(mut self, use_kademlia: bool) -> Self {
+        self.enable_kademlia = use_kademlia;
+        self
+    }
+
+    /// Sets whether or not this swarm should use autonat for NAT detection and
+    /// external address discovery.
+    pub fn enable_autonat(mut self, use_autonat: bool) -> Self {
+        self.enable_autonat = use_autonat;
+        self
+    }
+
     /// Sets whether or not this swarm should use the QUIC transport.
     pub fn enable_quic_transport(mut self, enable: bool) -> Self {
         self.enable_quic_transport = enable;
+        self
+    }
+
+    /// Sets the number of signers in the signer set. This is used as a base
+    /// value for connection limits calculations.
+    pub fn with_num_signers(mut self, num_signers: u16) -> Self {
+        self.num_signers = num_signers;
         self
     }
 
@@ -228,18 +313,30 @@ impl<'a> SignerSwarmBuilder<'a> {
     /// Build the [`SignerSwarm`], consuming the builder.
     pub fn build(self) -> Result<SignerSwarm, SignerSwarmError> {
         let keypair: Keypair = (*self.private_key).into();
-        let swarm_config = SignerSwarmConfig {
+        let behavior_config = SignerSwarmConfig {
             enable_mdns: self.enable_mdns,
+            enable_kademlia: self.enable_kademlia,
+            enable_autonat: self.enable_autonat,
             initial_bootstrap_delay: self.initial_bootstrap_delay,
             seed_addresses: self.seed_addrs,
+            num_signers: self.num_signers,
         };
-        let behavior = SignerBehavior::new(keypair.clone(), swarm_config)?;
+        let behavior = SignerBehavior::new(keypair.clone(), behavior_config)?;
+
+        // Protocol configuration
         let noise =
             noise::Config::new(&keypair).map_err(|e| SignerSwarmError::LibP2P(Box::new(e)))?;
         let yamux = yamux::Config::default();
-        let swarm_config = libp2p::swarm::Config::with_tokio_executor()
-            .with_idle_connection_timeout(Duration::from_secs(60));
         let tcp_config = tcp::Config::default().nodelay(true);
+
+        // This is hard-coded to a non-zero u8 value and will never fail.
+        #[allow(clippy::unwrap_in_result)]
+        let dial_concurrency_factor = NonZeroU8::new(4)
+            .ok_or_else(|| SignerSwarmError::Generic("failed to create dial concurrency factor"))?;
+
+        // General swarm options
+        let swarm_config = libp2p::swarm::Config::with_tokio_executor()
+            .with_dial_concurrency_factor(dial_concurrency_factor); // Limits concurrent dialing operations
 
         // Start building the transport with the TCP transport, which should always
         // be enabled.
@@ -348,6 +445,16 @@ impl SignerSwarm {
         event_loop::run(ctx, Arc::clone(&self.swarm)).await;
 
         Ok(())
+    }
+
+    /// Get the current number of established connections maintained by the swarm.
+    pub async fn connection_counters(&self) -> ConnectionCounters {
+        self.swarm
+            .lock()
+            .await
+            .network_info()
+            .connection_counters()
+            .clone()
     }
 }
 

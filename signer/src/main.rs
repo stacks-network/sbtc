@@ -240,6 +240,8 @@ async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
         .enable_mdns(config.signer.p2p.enable_mdns)
         .enable_quic_transport(enable_quic)
         .with_initial_bootstrap_delay(Duration::from_secs(3))
+        // Note: `as` is safe in practice as we will never have ~65k signers.
+        .with_num_signers(config.signer.bootstrap_signing_set().len() as u16)
         .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
