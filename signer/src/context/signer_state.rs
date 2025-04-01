@@ -12,8 +12,8 @@ use libp2p::PeerId;
 
 use crate::keys::PublicKey;
 use crate::storage::model::BitcoinBlockHash;
-use crate::storage::model::BitcoinBlockRef;
 use crate::storage::model::BitcoinBlockHeight;
+use crate::storage::model::BitcoinBlockRef;
 
 /// A struct for holding internal signer state. This struct is served by
 /// the [`SignerContext`] and can be used to cache global state instead of
