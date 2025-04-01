@@ -1377,43 +1377,43 @@ macro_rules! implement_from {
 macro_rules! implement_special_methods {
     ($type:ident, $inner:ty) => {
         impl $type {
-            /// Implementation of saturating_add for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of saturating_add for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn saturating_add(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.saturating_add(rhs))
             }
-            /// Implementation of saturating_sub for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of saturating_sub for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn saturating_sub(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.saturating_sub(rhs))
             }
-            /// Implementation of wrapping_add for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of wrapping_add for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn wrapping_add(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.wrapping_add(rhs))
             }
-            /// Implementation of wrapping_sub for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of wrapping_sub for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn wrapping_sub(self, rhs: impl Into<$type>) -> Self {
                 let rhs: $inner = rhs.into().0;
                 Self(self.0.wrapping_sub(rhs))
             }
-            /// Implementation of checked_add for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of checked_add for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn checked_add(self, rhs: impl Into<$type>) -> Option<Self> {
                 let rhs: $inner = rhs.into().0;
                 self.0.checked_add(rhs).map(Self)
             }
-            /// Implementation of checked_sub for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of checked_sub for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn checked_sub(self, rhs: impl Into<$type>) -> Option<Self> {
                 let rhs: $inner = rhs.into().0;
                 self.0.checked_sub(rhs).map(Self)
             }
-            /// Implementation of overflowing_add for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of overflowing_add for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn overflowing_add(self, rhs: impl Into<$type>) -> (Self, bool) {
                 let rhs: $inner = rhs.into().0;
                 let (val, overflow) = self.0.overflowing_add(rhs);
                 (Self(val), overflow)
             }
-            /// Implementation of overflowing_sub for int wrapper type `[$type]`. Behavies same way as inner type.
+            /// Implementation of overflowing_sub for int wrapper type `[$type]`. Behaves same way as inner type.
             pub fn overflowing_sub(self, rhs: impl Into<$type>) -> (Self, bool) {
                 let rhs: $inner = rhs.into().0;
                 let (val, overflow) = self.0.overflowing_sub(rhs);
