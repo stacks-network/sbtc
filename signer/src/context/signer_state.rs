@@ -147,7 +147,7 @@ impl Default for SignerState {
             // The block hash here is often used as the parent block hash
             // of the genesis block on bitcoin.
             bitcoin_chain_tip: RwLock::new(BitcoinBlockRef {
-                block_height: 0,
+                block_height: 0.into(),
                 block_hash: BitcoinBlockHash::from([0; 32]),
             }),
         }

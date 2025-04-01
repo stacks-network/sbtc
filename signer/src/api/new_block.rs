@@ -19,7 +19,6 @@ use crate::storage::model::CompletedDepositEvent;
 use crate::storage::model::KeyRotationEvent;
 use crate::storage::model::RotateKeysTransaction;
 use crate::storage::model::StacksBlock;
-use crate::storage::model::StacksBlockHeight;
 use crate::storage::model::StacksTxId;
 use crate::storage::model::WithdrawalAcceptEvent;
 use crate::storage::model::WithdrawalRejectEvent;

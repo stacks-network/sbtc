@@ -10,6 +10,7 @@ use stacks_common::types::chainstate::StacksAddress;
 use std::collections::BTreeSet;
 use std::num::NonZeroU16;
 use std::num::NonZeroU32;
+use std::num::NonZeroU64;
 use std::path::Path;
 use url::Url;
 
