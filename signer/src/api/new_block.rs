@@ -167,14 +167,14 @@ pub async fn new_block_handler(state: State<ApiState<impl Context>>, body: Strin
         // So we return a non success status code so that the node retries
         // in a second.
         if let Err(Error::SqlxQuery(error)) = res {
-            tracing::error!(%error, "got an error when writing event to database");
+            tracing::error!(%error, "could not write an event to the database");
             return StatusCode::INTERNAL_SERVER_ERROR;
         // If we got an error processing the event, we log the error and
         // return a success status code so that the node does not retry the
         // webhook. We rely on the redundancy of the other sBTC signers to
         // ensure that the update is sent to Emily.
         } else if let Err(error) = res {
-            tracing::error!(%error, "got an error when processing event");
+            tracing::error!(%error, "could not process an event");
         }
     }
 

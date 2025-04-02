@@ -3791,6 +3791,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         Chainstate {
             stacks_block_hash: stacks_chain_tip.to_string(),
             stacks_block_height: stacks_tip_height,
+            bitcoin_block_height: Some(Some(0)), // TODO: maybe we will want to have here some sensible data.
         },
     )
     .await
@@ -3806,6 +3807,7 @@ async fn sign_bitcoin_transaction_withdrawals() {
         sender: withdrawal_request.sender_address.to_string(),
         stacks_block_hash: withdrawal_request.block_hash.to_string(),
         stacks_block_height: stacks_tip_height,
+        txid: withdrawal_request.txid.to_string(),
     };
     let response = withdrawal_api::create_withdrawal(&emily_config, request_body).await;
     assert!(response.is_ok());

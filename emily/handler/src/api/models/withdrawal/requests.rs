@@ -44,6 +44,8 @@ pub struct CreateWithdrawalRequestBody {
     pub amount: u64,
     /// Withdrawal request parameters.
     pub parameters: WithdrawalParameters,
+    /// The hex encoded txid of the stacks transaction that generated this event.
+    pub txid: String,
 }
 
 /// A singular Withdrawal update that contains only the fields pertinent

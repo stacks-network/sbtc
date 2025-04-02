@@ -901,46 +901,6 @@ impl super::DbRead for SharedStore {
         _context_window: u16,
     ) -> Result<Vec<model::SweptWithdrawalRequest>, Error> {
         unimplemented!("can only be tested using integration tests for now.");
-
-        // NOTE: The below is a starting point for how to write this, but it
-        // lacks some of the additional validations that are expected of this
-        // function. For example, we need to ensure that the
-        // 'withdrawal-accept-event' is in a Stacks block which is part of the
-        // canonical Bitcoin chain, which we cannot do yet (#559: link stacks
-        // blocks with bitcoin blocks).
-
-        // let store = self.lock().await;
-        // let bitcoin_blocks = &store.bitcoin_blocks;
-        // let first = bitcoin_blocks.get(chain_tip);
-
-        // std::iter::successors(first, |block| bitcoin_blocks.get(&block.parent_hash))
-        //     .take(context_window as usize)
-        //     .filter_map(|block| {
-        //         store
-        //             .bitcoin_block_to_transactions
-        //             .get(&block.block_hash)
-        //             .and_then(|txs| {
-        //                 store.transaction_packages.iter().find(|package| {
-        //                     package
-        //                         .transactions
-        //                         .iter()
-        //                         .any(|packaged_tx| txs.iter().any(|tx| *tx == packaged_tx.txid))
-        //                 })
-        //             })
-        //     })
-        //     .flat_map(|package| {
-        //         package.transactions.iter().flat_map(|tx| {
-        //             tx.swept_withdrawals.iter().map(|withdrawal| {
-        //                 Ok(model::SweptWithdrawalRequest {
-        //                     request_id: withdrawal.withdrawal_request_id,
-        //                     block_hash: withdrawal.withdrawal_request_block_hash,
-        //                     sweep_block_hash: package.created_at_block_hash,
-        //                     sweep_txid: tx.txid,
-        //                 })
-        //             })
-        //         })
-        //     })
-        //     .collect::<Result<Vec<_>, Error>>()
     }
 
     async fn get_deposit_request(

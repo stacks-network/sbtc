@@ -114,6 +114,7 @@ pub async fn new_block(
                 Chainstate {
                     stacks_block_height: stacks_chaintip.block_height,
                     stacks_block_hash: stacks_chaintip.block_hash.clone(),
+                    bitcoin_block_height: Some(new_block_event.burn_block_height as u64),
                 },
             ),
             "failed to update chainstate in Emily",
@@ -336,6 +337,7 @@ fn handle_withdrawal_create(
         request_id: event.request_id,
         stacks_block_hash: event.block_id.to_hex(),
         stacks_block_height,
+        txid: event.txid.to_string(),
     }
 }
 
@@ -488,6 +490,7 @@ mod test {
             request_id: event.request_id,
             stacks_block_hash: stacks_chaintip.block_hash,
             stacks_block_height: stacks_chaintip.block_height,
+            txid: event.txid.to_string(),
         };
         let res = handle_withdrawal_create(event, stacks_chaintip.block_height);
         assert_eq!(res, expectation);

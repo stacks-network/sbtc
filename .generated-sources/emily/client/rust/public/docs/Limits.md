@@ -5,6 +5,7 @@
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **account_caps** | [**std::collections::HashMap<String, models::AccountLimits>**](AccountLimits.md) | Represents the individual limits for requests coming from different accounts. | 
+**available_to_withdraw** | Option<**u64**> | Total amount sBTC still available for withdrawals in current window. All withdrawals except rejected counted here | [optional]
 **peg_cap** | Option<**u64**> | Represents the total cap for all pegged-in BTC/sBTC. | [optional]
 **per_deposit_cap** | Option<**u64**> | Per deposit cap. If none then there is no cap. | [optional]
 **per_deposit_minimum** | Option<**u64**> | Per deposit minimum. If none then there is no minimum. | [optional]

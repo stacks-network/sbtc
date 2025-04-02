@@ -160,7 +160,7 @@ impl SignerWallet {
         })
     }
 
-    /// Load the multi-sig wallet from the last rotate-keys-trasnaction
+    /// Load the multi-sig wallet from the last rotate-keys transaction
     /// stored in the database. If it's not there, fall back to the
     /// bootstrap multi-sig wallet in the signer's config.
     ///
@@ -369,9 +369,11 @@ impl MultisigTx {
     /// Creates a signed transaction with the available signatures
     pub fn finalize_transaction(mut self) -> StacksTransaction {
         use TransactionSpendingCondition::OrderIndependentMultisig;
-        let cond = match &mut self.tx.auth {
-            TransactionAuth::Standard(OrderIndependentMultisig(cond)) => cond,
-            _ => unreachable!("spending condition invariant not upheld"),
+        // This struct maintains the fact that it only uses the
+        // TransactionSpendingCondition::OrderIndependentMultisig variant
+        // for the transaction auth.
+        let TransactionAuth::Standard(OrderIndependentMultisig(cond)) = &mut self.tx.auth else {
+            unreachable!("spending condition invariant not upheld");
         };
         let key_encoding = TransactionPublicKeyEncoding::Compressed;
 
@@ -386,7 +388,7 @@ impl MultisigTx {
     }
 }
 
-/// Get the number of bytes for a fully signed stacks trasnaction with the
+/// Get the number of bytes for a fully signed stacks transaction with the
 /// given payload.
 ///
 /// This function is very unlikely to fail in practice.
