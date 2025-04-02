@@ -8,6 +8,7 @@ mod termination;
 use tokio::sync::broadcast::error::RecvError;
 use tokio_stream::wrappers::ReceiverStream;
 
+use crate::SIGNER_CHANNEL_CAPACITY;
 use crate::bitcoin::BitcoinInteract;
 use crate::config::Settings;
 use crate::emily_client::EmilyInteract;
@@ -15,7 +16,6 @@ use crate::error::Error;
 use crate::stacks::api::StacksInteract;
 use crate::storage::DbRead;
 use crate::storage::DbWrite;
-use crate::SIGNER_CHANNEL_CAPACITY;
 
 pub use messaging::*;
 pub use signer_context::SignerContext;

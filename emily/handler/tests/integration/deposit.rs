@@ -1,25 +1,25 @@
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
+use bitcoin::ScriptBuf;
 use bitcoin::consensus::encode::serialize_hex;
 use bitcoin::opcodes::all as opcodes;
-use bitcoin::ScriptBuf;
 use stacks_common::codec::StacksMessageCodec as _;
 use stacks_common::types::chainstate::StacksAddress;
 use test_case::test_case;
 
 use sbtc::testing;
 use sbtc::testing::deposits::TxSetup;
+use testing_emily_client::apis::ResponseContent;
 use testing_emily_client::apis::chainstate_api::set_chainstate;
 use testing_emily_client::apis::configuration::ApiKey;
-use testing_emily_client::apis::ResponseContent;
 use testing_emily_client::models::{Chainstate, Fulfillment, Status, UpdateDepositsRequestBody};
 use testing_emily_client::{
     apis::{self, configuration::Configuration},
     models::{CreateDepositRequestBody, Deposit, DepositInfo, DepositParameters, DepositUpdate},
 };
 
-use crate::common::{clean_setup, StandardError};
+use crate::common::{StandardError, clean_setup};
 
 const BLOCK_HASH: &'static str = "";
 const BLOCK_HEIGHT: u64 = 0;

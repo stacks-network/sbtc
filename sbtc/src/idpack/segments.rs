@@ -4,7 +4,9 @@ use super::Segment;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SegmentsError {
     /// Segments must be added in ascending order (no overlaps permitted).
-    #[error("New segment offset {offset} must be greater than previous segment's maximum value {prev_max}")]
+    #[error(
+        "New segment offset {offset} must be greater than previous segment's maximum value {prev_max}"
+    )]
     OverlappingSegments {
         /// The offset of the segment being added
         offset: u64,

@@ -49,7 +49,7 @@ use std::{collections::HashMap, fmt::Debug};
 use aws_sdk_dynamodb::types::AttributeValue;
 #[cfg(feature = "testing")]
 use aws_sdk_dynamodb::types::{DeleteRequest, WriteRequest};
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use serde::{Deserialize, Serialize};
 use serde_dynamo::Item;
 
