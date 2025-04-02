@@ -514,8 +514,12 @@ impl<C: Context, B> BlockObserver<C, B> {
                 }
             }
 
-            for output in tx_info.to_outputs(&signer_script_pubkeys) {
+            let (tx_outputs, withdrawal_outputs) = tx_info.to_outputs(&signer_script_pubkeys)?;
+            for output in tx_outputs {
                 db.write_tx_output(&output).await?;
+            }
+            for output in withdrawal_outputs {
+                db.write_withdrawal_tx_output(&output).await?;
             }
         }
 
@@ -549,7 +553,7 @@ impl<C: Context, B> BlockObserver<C, B> {
     }
 
     /// Update the sBTC peg limits from Emily
-    async fn update_sbtc_limits(&self) -> Result<(), Error> {
+    async fn update_sbtc_limits(&self, chain_tip: BlockHash) -> Result<(), Error> {
         let limits = self.context.get_emily_client().get_limits().await?;
         let sbtc_deployed = self.context.state().sbtc_contracts_deployed();
 
@@ -569,14 +573,23 @@ impl<C: Context, B> BlockObserver<C, B> {
             Amount::MAX_MONEY
         };
 
+        let rolling_limits = limits.rolling_withdrawal_limits();
+        let withdrawn_total = self
+            .context
+            .get_storage()
+            .compute_withdrawn_total(&chain_tip.into(), rolling_limits.blocks)
+            .await?;
+
         let limits = SbtcLimits::new(
             Some(limits.total_cap()),
             Some(limits.per_deposit_minimum()),
             Some(limits.per_deposit_cap()),
             Some(limits.per_withdrawal_cap()),
+            Some(rolling_limits.blocks),
+            Some(rolling_limits.cap),
+            Some(withdrawn_total),
             Some(max_mintable),
         );
-
         let signer_state = self.context.state();
         if limits == signer_state.get_current_limits() {
             tracing::trace!(%limits, "sBTC limits have not changed");
@@ -618,6 +631,18 @@ impl<C: Context, B> BlockObserver<C, B> {
         Ok(())
     }
 
+    /// Update the `SignerState` object with current bitcoin chain tip.
+    async fn update_bitcoin_chain_tip(&self) -> Result<(), Error> {
+        let db = self.context.get_storage();
+        let chain_tip = db
+            .get_bitcoin_canonical_chain_tip_ref()
+            .await?
+            .ok_or(Error::NoChainTip)?;
+
+        self.context.state().set_bitcoin_chain_tip(chain_tip);
+        Ok(())
+    }
+
     /// Update the `SignerState` object with data that is unlikely to
     /// change until the arrival of the next bitcoin block.
     ///
@@ -627,12 +652,16 @@ impl<C: Context, B> BlockObserver<C, B> {
     /// * sBTC limits from Emily.
     /// * The current signer set.
     /// * The current aggregate key.
+    /// * The current bitcoin chain tip.
     async fn update_signer_state(&self, chain_tip: BlockHash) -> Result<(), Error> {
         tracing::info!("loading sbtc limits from Emily");
-        self.update_sbtc_limits().await?;
+        self.update_sbtc_limits(chain_tip).await?;
 
         tracing::info!("updating the signer state with the current signer set");
-        self.set_signer_set_and_aggregate_key(chain_tip).await
+        self.set_signer_set_and_aggregate_key(chain_tip).await?;
+
+        tracing::info!("updating the signer state with the current bitcoin chain tip");
+        self.update_bitcoin_chain_tip().await
     }
 
     /// Checks if the latest dkg share is pending and is no longer valid

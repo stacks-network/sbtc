@@ -1788,6 +1788,33 @@ impl super::DbRead for PgStore {
         }))
     }
 
+    async fn compute_withdrawn_total(
+        &self,
+        bitcoin_chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+    ) -> Result<u64, Error> {
+        let total_amount = sqlx::query_scalar::<_, Option<i64>>(
+            r#"
+            SELECT SUM(bto.amount)::BIGINT
+            FROM sbtc_signer.bitcoin_tx_outputs AS bto
+            JOIN sbtc_signer.bitcoin_transactions AS bt
+              ON bt.txid = bto.txid
+            JOIN bitcoin_blockchain_of($1, $2) AS bbo
+              ON bbo.block_hash = bt.block_hash
+            WHERE bto.output_type = 'withdrawal'
+            "#,
+        )
+        .bind(bitcoin_chain_tip)
+        .bind(i32::from(context_window))
+        .fetch_one(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        // Amounts are always positive in the database, so this conversion
+        // is always fine.
+        u64::try_from(total_amount.unwrap_or(0)).map_err(|_| Error::TypeConversion)
+    }
+
     async fn get_bitcoin_blocks_with_transaction(
         &self,
         txid: &model::BitcoinTxId,
@@ -2529,6 +2556,41 @@ impl super::DbRead for PgStore {
         .map_err(Error::SqlxQuery)
     }
 
+    async fn get_withdrawal_signer_decisions(
+        &self,
+        chain_tip: &model::BitcoinBlockHash,
+        context_window: u16,
+        signer_public_key: &PublicKey,
+    ) -> Result<Vec<model::WithdrawalSigner>, Error> {
+        sqlx::query_as::<_, model::WithdrawalSigner>(
+            r#"
+            WITH target_block AS (
+                SELECT blocks.block_hash, blocks.created_at
+                FROM sbtc_signer.bitcoin_blockchain_of($1, $2) chain
+                JOIN sbtc_signer.bitcoin_blocks blocks USING (block_hash)
+                ORDER BY chain.block_height ASC
+                LIMIT 1
+            )
+            SELECT
+                ws.request_id
+              , ws.txid
+              , ws.block_hash
+              , ws.signer_pub_key
+              , ws.is_accepted
+
+            FROM sbtc_signer.withdrawal_signers ws
+            WHERE ws.signer_pub_key = $3
+              AND ws.created_at >= (SELECT created_at FROM target_block)
+            "#,
+        )
+        .bind(chain_tip)
+        .bind(i32::from(context_window))
+        .bind(signer_public_key)
+        .fetch_all(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)
+    }
+
     async fn get_deposit_signer_decisions(
         &self,
         chain_tip: &model::BitcoinBlockHash,
@@ -2545,11 +2607,11 @@ impl super::DbRead for PgStore {
                 LIMIT 1
             )
             SELECT
-                ds.txid,
-                ds.output_index,
-                ds.signer_pub_key,
-                ds.can_sign,
-                ds.can_accept
+                ds.txid
+              , ds.output_index
+              , ds.signer_pub_key
+              , ds.can_sign
+              , ds.can_accept
             FROM sbtc_signer.deposit_signers ds
             WHERE ds.signer_pub_key = $3
               AND ds.created_at >= (SELECT created_at FROM target_block)
@@ -3202,6 +3264,31 @@ impl super::DbWrite for PgStore {
         .bind(i64::try_from(output.amount).map_err(Error::ConversionDatabaseInt)?)
         .bind(&output.script_pubkey)
         .bind(output.output_type)
+        .execute(&self.0)
+        .await
+        .map_err(Error::SqlxQuery)?;
+
+        Ok(())
+    }
+
+    async fn write_withdrawal_tx_output(
+        &self,
+        output: &model::WithdrawalTxOutput,
+    ) -> Result<(), Error> {
+        sqlx::query(
+            r#"
+            INSERT INTO bitcoin_withdrawal_tx_outputs (
+                txid
+              , output_index
+              , request_id
+            )
+            VALUES ($1, $2, $3)
+            ON CONFLICT DO NOTHING;
+            "#,
+        )
+        .bind(output.txid)
+        .bind(i32::try_from(output.output_index).map_err(Error::ConversionDatabaseInt)?)
+        .bind(i64::try_from(output.request_id).map_err(Error::ConversionDatabaseInt)?)
         .execute(&self.0)
         .await
         .map_err(Error::SqlxQuery)?;

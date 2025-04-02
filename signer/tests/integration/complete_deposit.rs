@@ -15,6 +15,7 @@ use signer::testing;
 use signer::testing::context::*;
 
 use fake::Fake;
+use signer::DEPOSIT_DUST_LIMIT;
 
 use crate::setup::backfill_bitcoin_blocks;
 use crate::setup::set_deposit_completed;
@@ -490,16 +491,30 @@ async fn complete_deposit_validation_fee_too_low() {
     // Different: We need to update the amount to be something that
     // validation would reject. To do that we update our database.
     //
-    // The fee rate in this test is fixed at 10.0 sats per vbyte and the tx
-    // size is 235 bytes, so we lose 2350 sats to fees. The amount here is
-    // chosen so that 2350 + 546 is greater than it.
-    let deposit_amount = 2895;
+    // We want to trigger the AmountBelowDustLimit error by calculating a deposit amount
+    // that results in a value just below the dust limit after fees are subtracted:
+    //
+    // 1. Get the actual fee from the sweep transaction (info.tx_info.fee)
+    // 2. Calculate: deposit_amount = actual_fee + DEPOSIT_DUST_LIMIT - 1
+    //
+    // This ensures when fee is subtracted from the deposit amount:
+    // deposit_amount - actual_fee = DEPOSIT_DUST_LIMIT - 1
+    //
+    // Which is exactly 1 satoshi below the dust limit, triggering the error regardless
+    // of the exact transaction size or fee rate used in tests.
+    let deposit_amount = setup
+        .sweep_tx_info
+        .as_ref()
+        .map(|info| info.tx_info.fee.to_sat() + DEPOSIT_DUST_LIMIT - 1)
+        .expect("sweep_tx_info not set");
+
     sqlx::query(
         r#"
         UPDATE deposit_requests AS dr
         SET amount = $1
-        WHERE dr.txid = $2
-          AND dr.output_index = $3;
+        WHERE 
+            dr.txid = $2
+            AND dr.output_index = $3;
     "#,
     )
     .bind(deposit_amount as i32)
@@ -532,14 +547,15 @@ async fn complete_deposit_validation_fee_too_low() {
         err => panic!("unexpected error during validation {err}"),
     }
 
-    // Now a sanity check to see what happens if we are at the limit.
+    // Now a sanity check to see what happens if we are above the dust limit.
     let deposit_amount = deposit_amount + 1;
     sqlx::query(
         r#"
         UPDATE deposit_requests AS dr
         SET amount = $1
-        WHERE dr.txid = $2
-          AND dr.output_index = $3;
+        WHERE 
+            dr.txid = $2
+            AND dr.output_index = $3;
     "#,
     )
     .bind(deposit_amount as i32)

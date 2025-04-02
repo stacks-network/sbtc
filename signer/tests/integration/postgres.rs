@@ -5,7 +5,6 @@ use std::ops::Deref;
 use std::time::Duration;
 
 use bitcoin::hashes::Hash as _;
-use bitvec::array::BitArray;
 use blockstack_lib::chainstate::nakamoto::NakamotoBlock;
 use blockstack_lib::clarity::vm::types::PrincipalData;
 use blockstack_lib::clarity::vm::Value as ClarityValue;
@@ -182,7 +181,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
     },
     outpoint: bitcoin::OutPoint::null(),
     tx_fee: 3500,
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
     sweep_block_hash: BitcoinBlockHash::from([0; 32]),
     sweep_block_height: 7,
@@ -193,7 +192,7 @@ impl AsContractCall for InitiateWithdrawalRequest {
 	txid: StacksTxId::from([0; 32]),
 	block_hash: StacksBlockHash::from([0; 32]),
     },
-    signer_bitmap: BitArray::ZERO,
+    signer_bitmap: 0,
     deployer: *testing::wallet::WALLET.0.address(),
 }); "reject-withdrawal")]
 #[test_case(ContractCallWrapper(RotateKeysV1::new(
@@ -1464,6 +1463,119 @@ async fn fetching_deposit_signer_decisions() {
         assert!(deposit_decisions.iter().any(|decision| {
             decision.txid == deposit.txid
                 && decision.output_index == deposit.output_index
+                && decision.signer_pub_key == *signer_pub_key
+        }));
+    }
+
+    signer::testing::storage::drop_db(pg_store).await;
+}
+
+#[tokio::test]
+async fn fetching_withdrawal_signer_decisions() {
+    let pg_store = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(51);
+
+    // This is just a sql test, where we use the `TestData` struct to help
+    // populate the database with test data. We set all the other
+    // unnecessary parameters to zero.
+    let num_signers = 3;
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 5,
+        num_stacks_blocks_per_bitcoin_block: 0,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 1,
+        num_signers_per_request: num_signers,
+        consecutive_blocks: true,
+    };
+
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+
+    let mut test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&pg_store).await;
+
+    let signer_pub_key = signer_set.first().unwrap();
+
+    // We'll register each block with a 2 minute interval
+    // i.e. times -> [-15, -13, -11, -9, -7]
+    let mut new_time = OffsetDateTime::now_utc() - time::Duration::minutes(15);
+    // Update Bitcoin blocks
+    for block in test_data.bitcoin_blocks.iter() {
+        let new_time_str = new_time
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.bitcoin_blocks
+            SET created_at = $1::timestamptz
+            WHERE block_hash = $2"#,
+        )
+        .bind(new_time_str) // Bind as string
+        .bind(block.block_hash)
+        .execute(pg_store.pool())
+        .await
+        .unwrap();
+
+        new_time += time::Duration::minutes(2);
+    }
+
+    // Rotate withdraw to test edge case:
+    // Move first withdraw to be processed last (latest timestamp)
+    // This tests that a withdraw decision can still be returned
+    // even when its associated block falls outside the context window
+    test_data.withdraw_requests.rotate_left(1);
+
+    // Now we'll update the withdraws decisions. Each decision will be
+    // updated so that it will arrive 1 minute after its corresponding block.
+    // With the exception of the first one, which will be updated to arrive last.
+    // Block times:     [-15, -13, -11,  -9,  -7]
+    // Decision times:       [-12, -10,  -8,  -6,  -4]
+    //                         ^    ^     ^    ^    ^
+    //                         |    |     |    |    first withdraw (moved to last)
+    //                         |    |     |    fifth withdraw
+    //                         |    |     forth withdraw
+    //                         |    third withdraw
+    //                         second withdraw
+    new_time = OffsetDateTime::now_utc() - time::Duration::minutes(12);
+    for withdrawal in test_data.withdraw_requests.iter() {
+        let new_time_str = new_time
+            .format(&time::format_description::well_known::Rfc3339)
+            .unwrap();
+        sqlx::query(
+            r#"
+            UPDATE sbtc_signer.withdrawal_signers
+            SET created_at = $1::timestamptz
+            WHERE request_id = $2 AND block_hash = $3 AND signer_pub_key = $4"#,
+        )
+        .bind(new_time_str) // Bind as string
+        .bind(i64::try_from(withdrawal.request_id).unwrap())
+        .bind(withdrawal.block_hash)
+        .bind(signer_pub_key)
+        .execute(pg_store.pool())
+        .await
+        .unwrap();
+
+        new_time += time::Duration::minutes(2);
+    }
+
+    let chain_tip = pg_store
+        .get_bitcoin_canonical_chain_tip()
+        .await
+        .unwrap()
+        .unwrap();
+
+    let withdrawal_decisions = pg_store
+        .get_withdrawal_signer_decisions(&chain_tip, 3, signer_pub_key)
+        .await
+        .unwrap();
+
+    assert_eq!(withdrawal_decisions.len(), 4);
+    // Test data contains 5 withdrawal requests, we should get decisions for
+    // the last 4.
+    for withdrawal in test_data.withdraw_requests[1..].iter() {
+        assert!(withdrawal_decisions.iter().any(|decision| {
+            decision.block_hash == withdrawal.block_hash
+                && decision.request_id == withdrawal.request_id
+                && decision.txid == withdrawal.txid
                 && decision.signer_pub_key == *signer_pub_key
         }));
     }
@@ -5764,6 +5876,222 @@ async fn is_withdrawal_active_for_considered_withdrawal() {
         .await
         .unwrap();
     assert!(active);
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// Check that the query in `compute_withdrawn_total` returns the total
+/// amount of withdrawal amounts in the window.
+#[tokio::test]
+async fn compute_withdrawn_total_gets_all_amounts_in_chain() {
+    let mut db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(4);
+
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 30,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: 0,
+        consecutive_blocks: true,
+    };
+    // The number of signers does not matter
+    let num_signers = 1;
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&mut db).await;
+
+    let context_window = 10;
+    let bitcoin_chain_tip = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
+    let current_total = db
+        .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, context_window)
+        .await
+        .unwrap();
+    assert_eq!(current_total, 0);
+
+    let mut block = db
+        .get_bitcoin_block(&bitcoin_chain_tip.block_hash)
+        .await
+        .unwrap()
+        .unwrap();
+    let amount = 123_456;
+
+    // Let's add a bunch of withdrawal outputs into our blockchain. Later
+    // we will make sure that the query fetches only the ones that it is
+    // supposed to.
+    for _ in 0..context_window {
+        let output = model::TxOutput {
+            amount,
+            output_type: model::TxOutputType::Withdrawal,
+            ..Faker.fake_with_rng(&mut rng)
+        };
+
+        let tx = model::Transaction {
+            txid: output.txid.into_bytes(),
+            tx: Vec::new(),
+            tx_type: model::TransactionType::SbtcTransaction,
+            block_hash: block.block_hash.into_bytes(),
+        };
+        db.write_bitcoin_transactions(vec![tx]).await.unwrap();
+        db.write_tx_output(&output).await.unwrap();
+
+        block = db
+            .get_bitcoin_block(&block.parent_hash)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    // The blockchain with a context window of zero is just the chain_tip,
+    // same thing as a context window of 1.
+    let current_total = db
+        .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, 0)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount);
+
+    // Now let's check that we keep getting more and more outputs as we
+    // increase the context window.
+    for window in 1..context_window {
+        let current_total = db
+            .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, window)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            current_total,
+            amount * window as u64,
+            "Broke at context_window {window}"
+        );
+    }
+
+    signer::testing::storage::drop_db(db).await;
+}
+
+/// Check that the query in `compute_withdrawn_total` returns the total
+/// amount of withdrawal amounts on the identified blockchain.
+///
+/// This tests that if there are conflicting blockchains, where say, both
+/// chains have the same height and there are sweep transactions fulfilling
+/// withdrawals confirmed on both of them, then the the query will only
+/// return the amounts associated with the one identified by the given
+/// chain tip and context window.
+#[tokio::test]
+async fn compute_withdrawn_total_ignores_withdrawals_not_identified_blockchain() {
+    let mut db = testing::storage::new_test_database().await;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(4);
+
+    let test_model_params = testing::storage::model::Params {
+        num_bitcoin_blocks: 30,
+        num_stacks_blocks_per_bitcoin_block: 1,
+        num_deposit_requests_per_block: 0,
+        num_withdraw_requests_per_block: 0,
+        num_signers_per_request: 0,
+        consecutive_blocks: true,
+    };
+    // The number of signers does not matter
+    let num_signers = 1;
+    let signer_set = testing::wsts::generate_signer_set_public_keys(&mut rng, num_signers);
+    let test_data = TestData::generate(&mut rng, &signer_set, &test_model_params);
+    test_data.write_to(&mut db).await;
+
+    let context_window = 10;
+    let bitcoin_chain_tip = db
+        .get_bitcoin_canonical_chain_tip_ref()
+        .await
+        .unwrap()
+        .unwrap();
+    let current_total = db
+        .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, context_window)
+        .await
+        .unwrap();
+    assert_eq!(current_total, 0);
+
+    // Let's add one withdrawal output into the chain tip of our blockchain
+    // and another output on a block at the same height that is not on our
+    // blockchain.
+    let amount1 = 123_456;
+    let output1 = model::TxOutput {
+        amount: amount1,
+        output_type: model::TxOutputType::Withdrawal,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let tx = model::Transaction {
+        txid: output1.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::SbtcTransaction,
+        block_hash: bitcoin_chain_tip.block_hash.into_bytes(),
+    };
+    db.write_bitcoin_transactions(vec![tx]).await.unwrap();
+    db.write_tx_output(&output1).await.unwrap();
+
+    // Okay, and another output on another blockchain
+    let amount2 = 789_101;
+    let another_block = model::BitcoinBlock {
+        block_height: bitcoin_chain_tip.block_height,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let output2 = model::TxOutput {
+        amount: amount2,
+        output_type: model::TxOutputType::Withdrawal,
+        ..Faker.fake_with_rng(&mut rng)
+    };
+
+    let tx = model::Transaction {
+        txid: output2.txid.into_bytes(),
+        tx: Vec::new(),
+        tx_type: model::TransactionType::SbtcTransaction,
+        block_hash: another_block.block_hash.into_bytes(),
+    };
+    db.write_bitcoin_block(&another_block).await.unwrap();
+    db.write_bitcoin_transactions(vec![tx]).await.unwrap();
+    db.write_tx_output(&output2).await.unwrap();
+
+    // The blockchain with a context window of zero is just the chain_tip,
+    // same thing as a context window of 1. So this checks the "regular"
+    // chain tip.
+    let current_total = db
+        .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, 0)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount1);
+
+    // Let's check for the withdrawal output on that other blockchain.
+    let current_total = db
+        .compute_withdrawn_total(&another_block.block_hash, 0)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount2);
+
+    // The blockchain with a context window of 5 should return the same
+    // thing as a context window of zero or 1. Just an additional sanity
+    // check.
+    let current_total = db
+        .compute_withdrawn_total(&bitcoin_chain_tip.block_hash, 5)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount1);
+
+    let current_total = db
+        .compute_withdrawn_total(&another_block.block_hash, 5)
+        .await
+        .unwrap();
+
+    assert_eq!(current_total, amount2);
+
+    // Sanity check that the test isn't totally busted. It still might be
+    // regular busted for some other reason though.
+    assert_ne!(amount1, amount2);
 
     signer::testing::storage::drop_db(db).await;
 }

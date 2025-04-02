@@ -482,7 +482,7 @@ pub struct CallReadResponse {
     pub result: Value,
 }
 
-/// Helper function for converting a hexidecimal string into an integer.
+/// Helper function for converting a hexadecimal string into an integer.
 fn parse_hex_u128(hex: &str) -> Result<u128, Error> {
     let hex_str = hex.trim_start_matches("0x");
     u128::from_str_radix(hex_str, 16).map_err(Error::ParseHexInt)

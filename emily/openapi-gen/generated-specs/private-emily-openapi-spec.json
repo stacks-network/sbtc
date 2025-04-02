@@ -1287,7 +1287,8 @@
         "tags": [
           "limits"
         ],
-        "summary": "Get limits handler.",
+        "summary": "Set limits handler.",
+        "description": "Note, that `available_to_withdraw` is not settable, but is calculated based on the other fields.\nValue of `available_to_withdraw` passed to this endpoint will be ignored.",
         "operationId": "setLimits",
         "requestBody": {
           "content": {
@@ -2229,6 +2230,20 @@
             "description": "Per withdrawal cap. If none then the cap is the same as the global per withdrawal cap.",
             "nullable": true,
             "minimum": 0
+          },
+          "rollingWithdrawalBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of blocks that define the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
           }
         }
       },
@@ -2240,6 +2255,13 @@
           "stacksBlockHash"
         ],
         "properties": {
+          "bitcoinBlockHeight": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bitcoin block height",
+            "nullable": true,
+            "minimum": 0
+          },
           "stacksBlockHash": {
             "type": "string",
             "description": "Stacks block hash at the height."
@@ -2297,7 +2319,8 @@
           "recipient",
           "sender",
           "amount",
-          "parameters"
+          "parameters",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2332,6 +2355,10 @@
             "format": "int64",
             "description": "The stacks block hash in which this request id was initiated.",
             "minimum": 0
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2496,8 +2523,6 @@
         "required": [
           "bitcoinTxid",
           "bitcoinTxOutputIndex",
-          "lastUpdateHeight",
-          "lastUpdateBlockHash",
           "status",
           "statusMessage"
         ],
@@ -2519,16 +2544,6 @@
               }
             ],
             "nullable": true
-          },
-          "lastUpdateBlockHash": {
-            "type": "string",
-            "description": "The most recent Stacks block hash the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
-          },
-          "lastUpdateHeight": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The most recent Stacks block height the API was aware of when the deposit was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
-            "minimum": 0
           },
           "status": {
             "$ref": "#/components/schemas/Status"
@@ -2685,6 +2700,13 @@
               "$ref": "#/components/schemas/AccountLimits"
             }
           },
+          "availableToWithdraw": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Total amount sBTC still available for withdrawals in current window. All withdrawals except rejected\ncounted here",
+            "nullable": true,
+            "minimum": 0
+          },
           "pegCap": {
             "type": "integer",
             "format": "int64",
@@ -2710,6 +2732,20 @@
             "type": "integer",
             "format": "int64",
             "description": "Per withdrawal cap. If none then there is no cap.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalBlocks": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of blocks that define the rolling withdrawal window.",
+            "nullable": true,
+            "minimum": 0
+          },
+          "rollingWithdrawalCap": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Maximum total sBTC that can be withdrawn within the rolling withdrawal window.",
             "nullable": true,
             "minimum": 0
           }
@@ -2808,7 +2844,8 @@
           "lastUpdateBlockHash",
           "status",
           "statusMessage",
-          "parameters"
+          "parameters",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2868,6 +2905,10 @@
           "statusMessage": {
             "type": "string",
             "description": "The status message of the withdrawal."
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2883,7 +2924,8 @@
           "amount",
           "lastUpdateHeight",
           "lastUpdateBlockHash",
-          "status"
+          "status",
+          "txid"
         ],
         "properties": {
           "amount": {
@@ -2928,6 +2970,10 @@
           },
           "status": {
             "$ref": "#/components/schemas/Status"
+          },
+          "txid": {
+            "type": "string",
+            "description": "The hex encoded txid of the stacks transaction that generated this event."
           }
         }
       },
@@ -2951,8 +2997,6 @@
         "description": "A singular Withdrawal update that contains only the fields pertinent\nto updating the status of a withdrawal. This includes the key related\ndata in addition to status history related data.",
         "required": [
           "requestId",
-          "lastUpdateHeight",
-          "lastUpdateBlockHash",
           "status",
           "statusMessage"
         ],
@@ -2964,16 +3008,6 @@
               }
             ],
             "nullable": true
-          },
-          "lastUpdateBlockHash": {
-            "type": "string",
-            "description": "The most recent Stacks block hash the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this hash is the Stacks block hash that contains that artifact."
-          },
-          "lastUpdateHeight": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The most recent Stacks block height the API was aware of when the withdrawal was last\nupdated. If the most recent update is tied to an artifact on the Stacks blockchain\nthen this height is the Stacks block height that contains that artifact.",
-            "minimum": 0
           },
           "requestId": {
             "type": "integer",

@@ -37,3 +37,14 @@ version = "13.0.0"
 who = "xoloki <xoloki@gmail.com>"
 criteria = "safe-to-deploy"
 version = "13.0.1"
+
+[[audits.wsts]]
+who = "xoloki <xoloki@gmail.com>"
+criteria = "safe-to-deploy"
+version = "14.0.0"
+
+[[audits.wsts]]
+who = "djordon <dan.jordon@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "14.0.0 -> 14.0.0@git:11e2316aa0edf996f8e8f9ccbbbfd4bd2975ed1d"
+importable = false

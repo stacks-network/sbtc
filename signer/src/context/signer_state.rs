@@ -11,6 +11,8 @@ use hashbrown::HashSet;
 use libp2p::PeerId;
 
 use crate::keys::PublicKey;
+use crate::storage::model::BitcoinBlockHash;
+use crate::storage::model::BitcoinBlockRef;
 
 /// A struct for holding internal signer state. This struct is served by
 /// the [`SignerContext`] and can be used to cache global state instead of
@@ -23,6 +25,9 @@ pub struct SignerState {
     sbtc_contracts_deployed: AtomicBool,
     sbtc_bitcoin_start_height: AtomicU64,
     is_sbtc_bitcoin_start_height_set: AtomicBool,
+    // The current bitcoin chain tip. This gets updated at the end of the
+    // block observer's duties when it observes a new bitcoin block.
+    bitcoin_chain_tip: RwLock<BitcoinBlockRef>,
 }
 
 impl SignerState {
@@ -61,6 +66,24 @@ impl SignerState {
             .write()
             .expect("BUG: Failed to acquire write lock")
             .replace(aggregate_key);
+    }
+
+    /// Get the current bitcoin chain tip.
+    pub fn bitcoin_chain_tip(&self) -> BitcoinBlockRef {
+        self.bitcoin_chain_tip
+            .read()
+            .expect("BUG: Failed to acquire read lock")
+            .to_owned()
+    }
+
+    /// Set the current bitcoin chain tip.
+    pub fn set_bitcoin_chain_tip(&self, chain_tip: BitcoinBlockRef) {
+        let mut block = self
+            .bitcoin_chain_tip
+            .write()
+            .expect("BUG: Failed to acquire write lock");
+
+        *block = chain_tip;
     }
 
     /// Get the current sBTC limits.
@@ -120,6 +143,12 @@ impl Default for SignerState {
             sbtc_contracts_deployed: Default::default(),
             sbtc_bitcoin_start_height: Default::default(),
             is_sbtc_bitcoin_start_height_set: Default::default(),
+            // The block hash here is often used as the parent block hash
+            // of the genesis block on bitcoin.
+            bitcoin_chain_tip: RwLock::new(BitcoinBlockRef {
+                block_height: 0,
+                block_hash: BitcoinBlockHash::from([0; 32]),
+            }),
         }
     }
 }
@@ -135,27 +164,73 @@ pub struct SbtcLimits {
     per_deposit_cap: Option<Amount>,
     /// Represents the maximum amount of sBTC allowed to be pegged-out per transaction.
     per_withdrawal_cap: Option<Amount>,
+    /// Represents the number of blocks that define the rolling withdrawal window.
+    rolling_withdrawal_blocks: Option<u16>,
+    /// Represents the maximum total sBTC that can be withdrawn within the rolling withdrawal window.
+    rolling_withdrawal_cap: Option<u64>,
+    /// Represents the sum of all withdrawals over the rolling withdrawal
+    /// window.
+    withdrawn_total: Option<u64>,
     /// Represents the maximum amount of sBTC that can currently be minted.
     max_mintable_cap: Option<Amount>,
+}
+
+/// A struct containing the two parameters that define the rolling
+/// withdrawal limits.
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct RollingWithdrawalLimits {
+    /// Represents the number of blocks that define the rolling withdrawal
+    /// window.
+    pub blocks: u16,
+    /// Represents the maximum total sBTC that can be withdrawn within the
+    /// rolling withdrawal window.
+    pub cap: u64,
+    /// Represents the sum of all withdrawals over the rolling withdrawal
+    /// window.
+    pub withdrawn_total: u64,
+}
+
+impl RollingWithdrawalLimits {
+    /// Create a new one where the caps imply no withdrawals are allowed.
+    pub fn fully_constrained(withdrawn_total: u64) -> Self {
+        RollingWithdrawalLimits {
+            blocks: 0,
+            cap: 0,
+            withdrawn_total,
+        }
+    }
+
+    /// Create a new one where the caps imply all withdrawals are allowed.
+    pub fn unlimited(withdrawn_total: u64) -> Self {
+        RollingWithdrawalLimits {
+            blocks: 0,
+            cap: u64::MAX,
+            withdrawn_total,
+        }
+    }
 }
 
 impl std::fmt::Display for SbtcLimits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "[total cap: {:?}, per-deposit min: {:?}, per-deposit cap: {:?}, per-withdrawal cap: {:?}, max-mintable cap: {:?}]",
-            self.total_cap, self.per_deposit_minimum, self.per_deposit_cap, self.per_withdrawal_cap, self.max_mintable_cap
+            "[total cap: {:?}, per-deposit min: {:?}, per-deposit cap: {:?}, per-withdrawal cap: {:?}, max-mintable cap: {:?}, rolling-withdrawal blocks: {:?}, rolling-withdrawal cap: {:?}]",
+            self.total_cap, self.per_deposit_minimum, self.per_deposit_cap, self.per_withdrawal_cap, self.max_mintable_cap, self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap
         )
     }
 }
 
 impl SbtcLimits {
     /// Create a new `SbtcLimits` object.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         total_cap: Option<Amount>,
         per_deposit_minimum: Option<Amount>,
         per_deposit_cap: Option<Amount>,
         per_withdrawal_cap: Option<Amount>,
+        rolling_withdrawal_blocks: Option<u16>,
+        rolling_withdrawal_cap: Option<u64>,
+        withdrawn_total: Option<u64>,
         max_mintable_cap: Option<Amount>,
     ) -> Self {
         Self {
@@ -163,19 +238,25 @@ impl SbtcLimits {
             per_deposit_minimum,
             per_deposit_cap,
             per_withdrawal_cap,
+            rolling_withdrawal_blocks,
+            rolling_withdrawal_cap,
+            withdrawn_total,
             max_mintable_cap,
         }
     }
 
     /// Create a new `SbtcLimits` object with limits set to zero (fully constraining)
     pub fn zero() -> Self {
-        Self::new(
-            Some(Amount::ZERO),
-            Some(Amount::MAX_MONEY),
-            Some(Amount::ZERO),
-            Some(Amount::ZERO),
-            Some(Amount::ZERO),
-        )
+        Self {
+            total_cap: Some(Amount::ZERO),
+            per_deposit_minimum: Some(Amount::MAX_MONEY),
+            per_deposit_cap: Some(Amount::ZERO),
+            per_withdrawal_cap: Some(Amount::ZERO),
+            rolling_withdrawal_blocks: Some(0),
+            rolling_withdrawal_cap: Some(0),
+            withdrawn_total: Some(u64::MAX),
+            max_mintable_cap: Some(Amount::ZERO),
+        }
     }
 
     /// Get the total cap for all pegged-in BTC/sBTC.
@@ -207,6 +288,24 @@ impl SbtcLimits {
     pub fn max_mintable_cap(&self) -> Amount {
         self.max_mintable_cap.unwrap_or(Amount::MAX_MONEY)
     }
+
+    /// Get the rolling withdrawal limits.
+    pub fn rolling_withdrawal_limits(&self) -> RollingWithdrawalLimits {
+        let withdrawn_total = self.withdrawn_total.unwrap_or(0);
+        match (self.rolling_withdrawal_blocks, self.rolling_withdrawal_cap) {
+            // Use explicitly set limits
+            (Some(blocks), Some(cap)) => RollingWithdrawalLimits { blocks, cap, withdrawn_total },
+            // If we did not get any limits back from the API, then we
+            // assume that they are intentionally set to disable limits.
+            (None, None) => RollingWithdrawalLimits::unlimited(withdrawn_total),
+            // If one of these limits is missing and not the other, then
+            // things are in a bad state. Assume that they set to zero.
+            _ => {
+                tracing::warn!("rolling withdrawal limits are partially set; setting them to zero");
+                RollingWithdrawalLimits::fully_constrained(withdrawn_total)
+            }
+        }
+    }
 }
 
 #[cfg(any(test, feature = "testing"))]
@@ -218,7 +317,10 @@ impl SbtcLimits {
             per_deposit_minimum: Some(Amount::ZERO),
             per_deposit_cap: Some(Amount::MAX_MONEY),
             per_withdrawal_cap: Some(Amount::MAX_MONEY),
+            rolling_withdrawal_blocks: Some(0),
+            rolling_withdrawal_cap: Some(u64::MAX),
             max_mintable_cap: Some(Amount::MAX_MONEY),
+            withdrawn_total: Some(0),
         }
     }
 
@@ -230,7 +332,10 @@ impl SbtcLimits {
             per_deposit_minimum: Some(Amount::from_sat(min)),
             per_deposit_cap: Some(Amount::from_sat(max)),
             per_withdrawal_cap: None,
+            rolling_withdrawal_blocks: None,
+            rolling_withdrawal_cap: None,
             max_mintable_cap: None,
+            withdrawn_total: None,
         }
     }
 
@@ -241,7 +346,24 @@ impl SbtcLimits {
             per_deposit_minimum: None,
             per_deposit_cap: None,
             per_withdrawal_cap: Some(Amount::from_sat(max)),
+            rolling_withdrawal_blocks: None,
+            rolling_withdrawal_cap: None,
             max_mintable_cap: None,
+            withdrawn_total: None,
+        }
+    }
+
+    /// Create a new Self with the given withdrawal limits set.
+    pub fn from_withdrawal_limits(per_request_cap: u64, rolling: RollingWithdrawalLimits) -> Self {
+        Self {
+            total_cap: None,
+            per_deposit_minimum: None,
+            per_deposit_cap: None,
+            per_withdrawal_cap: Some(Amount::from_sat(per_request_cap)),
+            rolling_withdrawal_blocks: Some(rolling.blocks),
+            rolling_withdrawal_cap: Some(rolling.cap),
+            max_mintable_cap: None,
+            withdrawn_total: Some(rolling.withdrawn_total),
         }
     }
 }
@@ -261,7 +383,7 @@ impl std::hash::Hash for Signer {
 }
 
 // We implement Borrow so that we don't need to reconstruct a full `Signer`
-// object (which involves hashing) when we lookup a signer in the set.
+// object (which involves hashing) when we look up a signer in the set.
 impl std::borrow::Borrow<PublicKey> for Signer {
     fn borrow(&self) -> &PublicKey {
         &self.public_key

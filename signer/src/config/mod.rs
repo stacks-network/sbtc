@@ -309,6 +309,9 @@ pub struct SignerConfig {
     /// How many bitcoin blocks back from the chain tip the signer will
     /// look for deposit decisions to retry to propagate.
     pub deposit_decisions_retry_window: u16,
+    /// How many bitcoin blocks back from the chain tip the signer will
+    /// look for withdrawal decisions to retry to propagate.
+    pub withdrawal_decisions_retry_window: u16,
     /// The maximum duration of a signing round before the coordinator will
     /// time out and return an error.
     #[serde(deserialize_with = "duration_seconds_deserializer")]
@@ -349,6 +352,8 @@ pub struct SignerConfig {
     /// The number of bitcoin blocks after a DKG start where we attempt to
     /// verify the shares. After this many blocks, we mark the shares as failed.
     pub dkg_verification_window: u16,
+    /// The maximum stacks fee in microSTX that the signer will accept for any stacks transaction.
+    pub stacks_fees_max_ustx: NonZeroU64,
 }
 
 impl Validatable for SignerConfig {
@@ -497,6 +502,7 @@ impl Settings {
         // done.
         cfg_builder = cfg_builder.set_default("signer.context_window", 1000)?;
         cfg_builder = cfg_builder.set_default("signer.deposit_decisions_retry_window", 3)?;
+        cfg_builder = cfg_builder.set_default("signer.withdrawal_decisions_retry_window", 3)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_max_duration", 120)?;
         cfg_builder = cfg_builder.set_default("signer.bitcoin_presign_request_max_duration", 30)?;
         cfg_builder = cfg_builder.set_default("signer.signer_round_max_duration", 30)?;
@@ -507,6 +513,7 @@ impl Settings {
         cfg_builder = cfg_builder.set_default("signer.dkg_target_rounds", 1)?;
         cfg_builder = cfg_builder.set_default("emily.pagination_timeout", 10)?;
         cfg_builder = cfg_builder.set_default("signer.dkg_verification_window", 10)?;
+        cfg_builder = cfg_builder.set_default("signer.stacks_fees_max_ustx", 1_500_000)?;
 
         if let Some(path) = config_path {
             cfg_builder = cfg_builder.add_source(File::from(path.as_ref()));
@@ -556,18 +563,17 @@ impl Validatable for StacksConfig {
 mod tests {
     use std::net::SocketAddr;
     use std::str::FromStr;
+    use std::time::Duration;
 
     use tempfile;
     use toml_edit::DocumentMut;
 
     use crate::config::serialization::try_parse_p2p_multiaddr;
-
     use crate::error::Error;
     use crate::testing::clear_env;
 
-    use std::time::Duration;
-
     use super::*;
+    use test_case::test_case;
 
     /// Helper function to quickly create a URL from a string in tests.
     fn url(s: &str) -> url::Url {
@@ -612,7 +618,7 @@ mod tests {
 
         assert_eq!(
             settings.bitcoin.rpc_endpoints,
-            vec![url("http://devnet:devnet@localhost:18443")]
+            vec![url("http://devnet:devnet@127.0.0.1:18443")]
         );
         assert_eq!(settings.bitcoin.rpc_endpoints[0].username(), "devnet");
         assert_eq!(settings.bitcoin.rpc_endpoints[0].password(), Some("devnet"));
@@ -630,6 +636,7 @@ mod tests {
         assert_eq!(settings.signer.bootstrap_signatures_required, 2);
         assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
+        assert_eq!(settings.signer.withdrawal_decisions_retry_window, 3);
         assert!(settings.signer.prometheus_exporter_endpoint.is_none());
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
@@ -881,11 +888,12 @@ mod tests {
     fn default_config_toml_loads_with_environment() {
         clear_env();
 
-        // The default toml used here specifies http://localhost:20443
+        // The default toml used here specifies http://127.0.0.1:20443
         // as the stacks node endpoint.
         let settings = Settings::new_from_default_config().unwrap();
         let host = settings.stacks.endpoints[0].host();
-        assert_eq!(host, Some(url::Host::Domain("localhost")));
+        let ip: std::net::Ipv4Addr = "127.0.0.1".parse().unwrap();
+        assert_eq!(host, Some(url::Host::Ipv4(ip)));
         assert_eq!(settings.stacks.endpoints[0].port(), Some(20443));
 
         std::env::set_var(
@@ -963,6 +971,7 @@ mod tests {
         };
         remove_parameter("signer", "context_window");
         remove_parameter("signer", "deposit_decisions_retry_window");
+        remove_parameter("signer", "withdrawal_decisions_retry_window");
         remove_parameter("signer", "signer_round_max_duration");
         remove_parameter("signer", "bitcoin_presign_request_max_duration");
         remove_parameter("signer", "dkg_max_duration");
@@ -978,6 +987,7 @@ mod tests {
 
         assert_eq!(settings.signer.context_window, 1000);
         assert_eq!(settings.signer.deposit_decisions_retry_window, 3);
+        assert_eq!(settings.signer.withdrawal_decisions_retry_window, 3);
         assert_eq!(
             settings.signer.bitcoin_presign_request_max_duration,
             Duration::from_secs(30)
@@ -992,16 +1002,32 @@ mod tests {
     }
 
     #[test]
-    fn zero_durations_fails_in_signer_config() {
-        fn test_one(field: &str) {
-            clear_env();
-            std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
-            let _ = Settings::new_from_default_config()
-                .expect_err(&format!("Duration for {field} must be non zero"));
-        }
-        test_one("dkg_max_duration");
-        test_one("bitcoin_presign_request_max_duration");
-        test_one("signer_round_max_duration");
+    fn stacks_fees_max_ustx_can_be_loaded_from_environment() {
+        clear_env();
+        let expected_stacks_fees_max_ustx = NonZeroU64::new(1234).unwrap();
+        std::env::set_var(
+            "SIGNER_SIGNER__STACKS_FEES_MAX_USTX",
+            format!("{expected_stacks_fees_max_ustx}"),
+        );
+        assert_eq!(
+            Settings::new_from_default_config()
+                .unwrap()
+                .signer
+                .stacks_fees_max_ustx,
+            expected_stacks_fees_max_ustx,
+        );
+    }
+
+    #[test_case("dkg_max_duration" ; "dkg_max_duration")]
+    #[test_case("bitcoin_presign_request_max_duration" ; "bitcoin_presign_request_max_duration")]
+    #[test_case("signer_round_max_duration" ; "signer_round_max_duration")]
+    #[test_case("stacks_fees_max_ustx" ; "stacks_fees_max_ustx")]
+    fn zero_values_for_nonzero_fields_fail_in_signer_config(field: &str) {
+        clear_env();
+
+        std::env::set_var(format!("SIGNER_SIGNER__{}", field.to_uppercase()), "0");
+
+        Settings::new_from_default_config().expect_err("value for must be non zero");
     }
 
     #[test]

@@ -51,6 +51,7 @@ fn test_environment(
 > {
     let context_window = 6;
     let deposit_decisions_retry_window = 1;
+    let withdrawal_decisions_retry_window = 1;
 
     let test_model_parameters = testing::storage::model::Params {
         num_bitcoin_blocks: 20,
@@ -71,6 +72,7 @@ fn test_environment(
         num_signers,
         context_window,
         deposit_decisions_retry_window,
+        withdrawal_decisions_retry_window,
         signing_threshold,
         test_model_parameters,
     }
@@ -180,6 +182,7 @@ async fn handle_pending_deposit_request_address_script_pub_key() {
         context: ctx.clone(),
         context_window: 10000,
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
     };
@@ -265,6 +268,7 @@ async fn handle_pending_deposit_request_not_in_signing_set() {
         context: ctx.clone(),
         context_window: 10000,
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         // We generate a new private key here so that we know (with very
         // high probability) that this signer is not in the signer set.
@@ -348,6 +352,7 @@ async fn persist_received_deposit_decision_fetches_missing_deposit_requests() {
         context: ctx.clone(),
         context_window: 10000,
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
         blocklist_checker: Some(()),
         signer_private_key: PrivateKey::new(&mut rng),
     };
@@ -502,6 +507,7 @@ async fn blocklist_client_retry(num_failures: u8, failing_iters: u8) {
         blocklist_checker: Some(blocklist_client),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
     };
 
     // We need this so that there is a live "network". Otherwise we will error
@@ -639,6 +645,7 @@ async fn do_not_procceed_with_blocked_addresses(is_withdrawal: bool, is_blocked:
         blocklist_checker: Some(blocklist_client),
         signer_private_key: setup.aggregated_signer.keypair.secret_key().into(),
         deposit_decisions_retry_window: 1,
+        withdrawal_decisions_retry_window: 1,
     };
 
     // We need this so that there is a live "network". Otherwise we will error
