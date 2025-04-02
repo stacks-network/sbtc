@@ -227,21 +227,36 @@ async fn run_shutdown_signal_watcher(ctx: impl Context) -> Result<(), Error> {
 async fn run_libp2p_swarm(ctx: impl Context) -> Result<(), Error> {
     tracing::info!("initializing the p2p network");
 
-    // Build the swarm.
     tracing::debug!("building the libp2p swarm");
     let config = ctx.config();
 
     let enable_quic = config.signer.p2p.is_quic_used();
 
+    // Limit the number of signers to the maximum number of signer pubkeys we
+    // can support. Note that this value is used as a base value for swarm
+    // connection limit calculations.
+    let num_signers = config
+        .signer
+        .bootstrap_signing_set()
+        .len()
+        .try_into()
+        .unwrap_or(signer::MAX_KEYS);
+
+    // This is how many seconds the swarm will wait before attempting to
+    // bootstrap (i.e. connect to other peers). Three seconds is a sane default
+    // value, giving the swarm a few seconds to start up and bind listener(s)
+    // before proceeding.
+    const INITIAL_BOOTSTRAP_DELAY_SECS: u64 = 3;
+
+    // Build the swarm.
     let mut swarm = SignerSwarmBuilder::new(&config.signer.private_key)
         .add_listen_endpoints(&ctx.config().signer.p2p.listen_on)
         .add_seed_addrs(&ctx.config().signer.p2p.seeds)
         .add_external_addresses(&ctx.config().signer.p2p.public_endpoints)
         .enable_mdns(config.signer.p2p.enable_mdns)
         .enable_quic_transport(enable_quic)
-        .with_initial_bootstrap_delay(Duration::from_secs(3))
-        // Note: `as` is safe in practice as we will never have ~65k signers.
-        .with_num_signers(config.signer.bootstrap_signing_set().len() as u16)
+        .with_initial_bootstrap_delay(Duration::from_secs(INITIAL_BOOTSTRAP_DELAY_SECS))
+        .with_num_signers(num_signers)
         .build()?;
 
     // Start the libp2p swarm. This will run until either the shutdown signal is
